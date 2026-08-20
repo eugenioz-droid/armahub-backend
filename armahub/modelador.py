@@ -8,6 +8,9 @@ Router de la biblioteca de templates y de la traza de instancias:
   PUT    /templates/{id}                     -> edita nombre / tipo / params / obra
   DELETE /templates/{id}                     -> borra (409 si tiene instancias)
   POST   /elementos/instancia                -> guarda la RECETA instanciada (trazabilidad)
+  PUT    /elementos/instancia/{id}           -> ACTUALIZA esa estructura (no la reemplaza)
+  GET    /elementos/instancia/{id}           -> la estructura completa, para REABRIRLA
+  GET    /lotes/{id}/elementos               -> estructuras de un despiece + nº de barras
 
 IMPORTANTE: la INSERCIÓN de las barras generadas NO pasa por aquí — se reusa el
 endpoint existente POST /lotes/{id}/barras (lotes.py, extendido en T1.1 con
@@ -365,9 +368,48 @@ class TemplateActualizar(BaseModel):
 
 
 class InstanciaCrear(BaseModel):
+    """La ESTRUCTURA que el editor cargó a un despiece. Los campos de traza son
+    OPCIONALES a propósito: el Enfierrador MVP (panel_3d.js) manda sólo los tres de
+    siempre y tiene que seguir funcionando igual."""
     lote_id: Optional[int] = None
     template_id: Optional[int] = None
     params: dict
+    # TRAZA (migración 107). `nombre` viene DERIVADO del front (obra · ciclo · piso ·
+    # eje): el usuario no escribe un nombre de estructura.
+    nombre: Optional[str] = None
+    elemento: Optional[str] = None
+    piso: Optional[str] = None
+    id_proyecto: Optional[str] = None
+    sector: Optional[str] = None
+    ciclo: Optional[str] = None
+    eje: Optional[str] = None
+
+
+class InstanciaActualizar(BaseModel):
+    """PUT NO destructivo (mismo criterio que TemplateActualizar): sólo se escribe lo
+    que VIENE en el JSON. Reabrir una estructura y regenerarla no puede borrar la traza
+    que el llamador no mandó."""
+    params: Optional[dict] = None
+    nombre: Optional[str] = None
+    elemento: Optional[str] = None
+    piso: Optional[str] = None
+    estado: Optional[str] = None
+    template_id: Optional[int] = None
+
+
+# ESTADO de una estructura instanciada. 'retirada' = se le borraron todas las barras;
+# la fila NO se borra para que la traza (quién la creó, con qué receta) siga existiendo.
+ESTADO_ACTIVA = "activa"
+ESTADO_RETIRADA = "retirada"
+
+
+def _texto(v):
+    """Texto limpio o None. Vacío se guarda como NULL (no como cadena vacía): así
+    "sin dato" es UNA sola cosa en la columna."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
 
 
 def _params_dict(p):
@@ -622,12 +664,110 @@ def crear_instancia(body: InstanciaCrear, user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso_instancia(cur, user)
+            ahora = _now_iso()
             cur.execute(
-                """INSERT INTO elementos_template (template_id, lote_id, params, creado_por, fecha)
-                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-                (body.template_id, body.lote_id, json.dumps(body.params), email, _now_iso()),
+                """INSERT INTO elementos_template
+                     (template_id, lote_id, params, creado_por, fecha,
+                      nombre, elemento, piso, estado, id_proyecto, sector, ciclo, eje,
+                      updated_at, editado_por)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (body.template_id, body.lote_id, json.dumps(body.params), email, ahora,
+                 _texto(body.nombre), _texto(body.elemento), _texto(body.piso), ESTADO_ACTIVA,
+                 _texto(body.id_proyecto), _texto(body.sector), _texto(body.ciclo), _texto(body.eje),
+                 ahora, email),
             )
             new_id = cur.fetchone()[0]
     audit(email, "crear_instancia_template", f"lote {body.lote_id} · template {body.template_id}",
           "elemento_template", str(new_id))
     return {"ok": True, "id": new_id}
+
+
+@router.put("/elementos/instancia/{instancia_id}")
+def actualizar_instancia(instancia_id: int, body: InstanciaActualizar, user=Depends(get_current_user)):
+    """Reabrir una estructura y volver a generarla la ACTUALIZA — no la reemplaza. La
+    fila conserva su id, y con él las barras que ya apuntan a ella
+    (barras.template_instancia_id): por eso el sync puede cruzar generaciones."""
+    campos = body.model_dump(exclude_unset=True)
+    if not campos:
+        return {"ok": True, "id": instancia_id, "cambios": []}
+    email = user.get("email", "?")
+    sets, params, cambios = [], [], []
+    if "params" in campos:
+        if not isinstance(body.params, dict) or not body.params:
+            raise HTTPException(status_code=400, detail="La instancia no tiene parámetros (receta) válidos.")
+        sets.append("params = %s"); params.append(json.dumps(body.params)); cambios.append("receta")
+    for campo, valor in (("nombre", body.nombre), ("elemento", body.elemento),
+                         ("piso", body.piso), ("template_id", body.template_id)):
+        if campo in campos:
+            sets.append(f"{campo} = %s"); params.append(_texto(valor) if campo != "template_id" else valor)
+            cambios.append(campo)
+    if "estado" in campos:
+        est = (body.estado or "").strip().lower()
+        if est not in (ESTADO_ACTIVA, ESTADO_RETIRADA):
+            raise HTTPException(status_code=400, detail="Estado de estructura desconocido.")
+        sets.append("estado = %s"); params.append(est); cambios.append("estado")
+    sets.append("updated_at = %s"); params.append(_now_iso())
+    sets.append("editado_por = %s"); params.append(email)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso_instancia(cur, user)
+            cur.execute("SELECT id FROM elementos_template WHERE id = %s", (instancia_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Esa estructura ya no existe.")
+            cur.execute("UPDATE elementos_template SET " + ", ".join(sets) + " WHERE id = %s",
+                        tuple(params) + (instancia_id,))
+    audit(email, "actualizar_instancia_template", ", ".join(cambios) or "sin cambios",
+          "elemento_template", str(instancia_id))
+    return {"ok": True, "id": instancia_id, "cambios": cambios}
+
+
+@router.get("/lotes/{lote_id}/elementos")
+def listar_instancias_lote(lote_id: int, user=Depends(get_current_user)):
+    """Estructuras cargadas a un despiece, con cuántas barras VIVAS tiene cada una.
+    Es lo que necesita el creador de despieces para ofrecer "reabrir", y es la misma
+    consulta sobre la que se apoyará el element manager cuando exista."""
+    _check_permiso_lectura(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT e.id, e.nombre, e.elemento, e.piso, e.estado, e.template_id,
+                          e.creado_por, e.fecha, e.updated_at,
+                          (SELECT COUNT(*) FROM barras b WHERE b.template_instancia_id = e.id) AS n_barras
+                     FROM elementos_template e
+                    WHERE e.lote_id = %s
+                    ORDER BY e.id""",
+                (lote_id,),
+            )
+            filas = cur.fetchall()
+    campos = ["id", "nombre", "elemento", "piso", "estado", "template_id",
+              "creado_por", "fecha", "updated_at", "n_barras"]
+    return {"ok": True, "lote_id": lote_id,
+            "elementos": [dict(zip(campos, f)) for f in filas]}
+
+
+@router.get("/elementos/instancia/{instancia_id}")
+def ver_instancia(instancia_id: int, user=Depends(get_current_user)):
+    """La estructura COMPLETA (con su receta) para volver a abrirla en el editor."""
+    _check_permiso_lectura(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, template_id, lote_id, params, nombre, elemento, piso, estado,
+                          id_proyecto, sector, ciclo, eje, creado_por, fecha, updated_at, editado_por
+                     FROM elementos_template WHERE id = %s""",
+                (instancia_id,),
+            )
+            r = cur.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Esa estructura ya no existe.")
+    params = _params_dict(r[3])
+    return {
+        "ok": True, "id": r[0], "template_id": r[1], "lote_id": r[2], "params": params,
+        # Mismo trato que los templates: el shape se DEDUCE al leer para las filas
+        # escritas antes de que existiera la columna (no se reescribe la tabla).
+        "schema_version": _schema_de_params(params),
+        "nombre": r[4], "elemento": r[5], "piso": r[6], "estado": r[7] or ESTADO_ACTIVA,
+        "id_proyecto": r[8], "sector": r[9], "ciclo": r[10], "eje": r[11],
+        "creado_por": r[12], "fecha": r[13], "updated_at": r[14], "editado_por": r[15],
+    }

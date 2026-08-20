@@ -1501,8 +1501,33 @@
       sector: c.sector || null, ciclo: c.ciclo || null,
       piso: (ST.piso || '').trim() || null, eje: c.eje || null,
       nombre_plano: c.nombre_plano || null,
-      template_instancia_id: (ST.instanciaId != null) ? ST.instanciaId : null
+      template_instancia_id: (ST.instanciaId != null) ? ST.instanciaId : null,
+      // Cada item sale con su IDENTIFICADOR DE ORIGEN (de que componente y de que
+      // posicion de su distribucion nacio): es la llave con la que el backend cruza
+      // esta generacion con la anterior y decide que actualizar, crear y borrar.
+      trazarOrigen: true
     };
+  }
+
+  // UID ESTABLE POR COMPONENTE - la otra mitad del identificador de origen.
+  // Se estampa EN LA RECETA para que VIAJE con ella: al reabrir la estructura el
+  // componente sigue siendo el mismo aunque se reordenen o se agreguen otros (el
+  // indice posicional no sirve para eso). Idempotente y auto-sanador: solo escribe
+  // donde falta o donde quedo DUPLICADO - duplicar un componente clona su uid, y dos
+  // componentes con el mismo uid volverian ambiguo el cruce.
+  // En modo biblioteca NO se llama: la receta de un template no cambia ni un byte.
+  function _estamparUids(receta) {
+    var comps = (receta && receta.componentes) || [];
+    var vistos = {};
+    comps.forEach(function (c, i) {
+      if (!c || typeof c !== 'object') return;
+      var u = (c.uid != null) ? String(c.uid) : '';
+      if (!u || vistos[u]) {
+        u = 'u' + i + '-' + Date.now().toString(36) + Math.floor(Math.random() * 1679616).toString(36);
+        c.uid = u;
+      }
+      vistos[u] = true;
+    });
   }
 
   function _modoObra() { return !!(ST.ctxObra && ST.ctxObra.loteId); }
@@ -1521,6 +1546,10 @@
     if (d.reglas && typeof d.reglas.reanclarReceta === 'function') {
       try { d.reglas.reanclarReceta(ST.receta); } catch (e) { /* nunca romper el render */ }
     }
+    // Va ANTES de generar y ANTES del sello del dirty-tracking (que se toma tras la 1a
+    // regeneracion): asi el uid es parte del estado "recien abierto" y estampar no
+    // aparece como un cambio del usuario.
+    if (_modoObra()) _estamparUids(ST.receta);
     var out = d.gen.generarViga(ST.receta, _ctxGen());
     _etiquetarCi(out);
     ST.ultimoOut = out;
@@ -9816,7 +9845,11 @@
       var el = $(id); if (el) el.style.display = obra ? '' : 'none';
     });
     var btn = $('te_btnCargarDespiece');
-    if (btn) { btn.style.display = obra ? '' : 'none'; btn.disabled = false; }
+    if (btn) {
+      btn.style.display = obra ? '' : 'none'; btn.disabled = false;
+      // El texto DICE cual de las dos cosas hace: crear la estructura o actualizarla.
+      if (obra) btn.textContent = _textoBotonDespiece();
+    }
     // "Volver a la lista" lleva al Gestor del Catalogo: desde un despiece no es a
     // donde se entro, asi que en modo obra no se ofrece.
     var vl = $('te_btnVolverLista'); if (vl) vl.style.display = obra ? 'none' : '';
@@ -9951,7 +9984,33 @@
     var err = $('te_saveErr'); if (err) { err.textContent = msg || ''; err.title = msg || ''; }
   }
 
-  // CARGAR AL DESPIECE - reusa POST /lotes/{id}/barras (el canal del ingreso manual).
+  // TRAZA de la estructura. El NOMBRE va DERIVADO (obra . ciclo . piso . eje): se guarda
+  // ya resuelto para que un futuro "element manager" sea LEER la tabla, no recalcular.
+  function _trazaInstancia() {
+    var c = ST.ctxObra || {};
+    return {
+      nombre: _nombreEstructura(), elemento: (ST.elemento || '').toLowerCase(),
+      piso: (ST.piso || '').trim(),
+      id_proyecto: c.id_proyecto || null, sector: c.sector || null,
+      ciclo: c.ciclo || null, eje: c.eje || null
+    };
+  }
+
+  var _TXT_CARGAR = '\ud83e\uddf1 Cargar al despiece';
+  var _TXT_ACTUALIZAR = '\ud83e\uddf1 Actualizar en el despiece';
+
+  function _textoBotonDespiece() {
+    return (ST.instanciaId != null) ? _TXT_ACTUALIZAR : _TXT_CARGAR;
+  }
+
+  // CARGAR / ACTUALIZAR EN EL DESPIECE.
+  // --------------------------------------------------------------------------
+  // La PRIMERA vez crea la estructura y sus barras por POST /lotes/{id}/barras (el
+  // canal del ingreso manual). Cuando la estructura YA existe, regenerar no la
+  // reemplaza: se ACTUALIZA (PUT de la receta + POST .../barras/sync), y el backend
+  // cruza las barras por su origen_ref para actualizar lo que cambio, crear lo nuevo y
+  // borrar lo que dejo de existir. Asi la barra conserva su id, su historia y su marca
+  // de revision en vez de nacer de cero en cada pasada.
   global.templateEditorCargarAlDespiece = function () {
     if (!_modoObra()) return;
     var btn = $('te_btnCargarDespiece');
@@ -9964,40 +10023,65 @@
       var pi = $('te_ribPiso'); if (pi && pi.focus) { pi.focus(); if (pi.select) pi.select(); }
       return;
     }
-    var barras = _barrasPayload(null);
+    var barras = _barrasPayload(ST.instanciaId);
     if (!barras.length) {
       _errObra('Todavia no hay barras generadas: agrega componentes al elemento.');
       return;
     }
-    if (btn) { btn.disabled = true; btn.textContent = 'Cargando\u2026'; }
     var ctx = ST.ctxObra;
-    // 1) TRAZA de la estructura (elementos_template). Es la fila que hace real el
-    //    409 del DELETE de un template y la que permitira reabrirla.
-    _tplFetch('/elementos/instancia', {
-      method: 'POST', headers: _tplHeaders(true),
-      body: JSON.stringify({ lote_id: ctx.loteId, template_id: ST.tplOrigen, params: ST.receta })
-    }).catch(function () { return null; })
-      .then(function (ri) {
-        var instId = (ri && ri.ok && ri.id != null) ? ri.id : null;
-        if (instId != null) ST.instanciaId = instId;
-        return _tplFetch('/lotes/' + encodeURIComponent(ctx.loteId) + '/barras', {
+    var regenera = (ST.instanciaId != null);
+    if (btn) { btn.disabled = true; btn.textContent = regenera ? 'Actualizando\u2026' : 'Cargando\u2026'; }
+    var traza = _trazaInstancia();
+    var paso1 = regenera
+      ? _tplFetch('/elementos/instancia/' + encodeURIComponent(ST.instanciaId), {
+          method: 'PUT', headers: _tplHeaders(true),
+          body: JSON.stringify({
+            params: ST.receta, nombre: traza.nombre, elemento: traza.elemento,
+            piso: traza.piso, template_id: ST.tplOrigen
+          })
+        }).then(function () { return ST.instanciaId; })
+      : _tplFetch('/elementos/instancia', {
           method: 'POST', headers: _tplHeaders(true),
-          body: JSON.stringify({ barras: _barrasPayload(instId) })
-        });
-      })
+          body: JSON.stringify(Object.assign({
+            lote_id: ctx.loteId, template_id: ST.tplOrigen, params: ST.receta
+          }, traza))
+        }).then(function (ri) { return (ri && ri.id != null) ? ri.id : null; });
+
+    paso1.then(function (instId) {
+      if (instId == null) {
+        // Sin estructura no hay a que colgar las barras: mejor no cargarlas que
+        // dejarlas huerfanas y sin forma de reabrirlas.
+        throw new Error('no se pudo guardar la estructura');
+      }
+      ST.instanciaId = instId;
+      var url = '/lotes/' + encodeURIComponent(ctx.loteId) + '/barras' + (regenera ? '/sync' : '');
+      var cuerpo = regenera
+        ? { instancia_id: instId, barras: _barrasPayload(instId) }
+        : { barras: _barrasPayload(instId) };
+      return _tplFetch(url, {
+        method: 'POST', headers: _tplHeaders(true), body: JSON.stringify(cuerpo)
+      });
+    })
       .then(function (r) {
-        if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddf1 Cargar al despiece'; }
-        var n = (r && r.creadas) || barras.length;
+        if (btn) { btn.disabled = false; btn.textContent = _textoBotonDespiece(); }
         _errObra('');
-        _actualizarStatus('\u2705 ' + n + ' item(s) cargados al despiece \u00b7 ' + _nombreEstructura());
+        var msg;
+        if (regenera) {
+          msg = '\u2705 ' + (r.actualizadas || 0) + ' actualizada(s) \u00b7 ' + (r.creadas || 0) +
+                ' nueva(s) \u00b7 ' + (r.eliminadas || 0) + ' borrada(s)';
+        } else {
+          msg = '\u2705 ' + ((r && r.creadas) || barras.length) + ' item(s) cargados al despiece';
+        }
+        _actualizarStatus(msg + ' \u00b7 ' + _nombreEstructura());
         // La grilla del despiece tiene que mostrar lo que acaba de entrar.
         if (typeof global.ac2CargarLote === 'function') {
           try { global.ac2CargarLote(ctx.loteId); } catch (e) { /* la carga ya esta hecha */ }
         }
       })
       .catch(function (e) {
-        if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddf1 Cargar al despiece'; }
-        _errObra('No se cargaron las barras: ' + ((e && e.message) || 'error desconocido'));
+        if (btn) { btn.disabled = false; btn.textContent = _textoBotonDespiece(); }
+        _errObra((regenera ? 'No se actualizo la estructura: ' : 'No se cargaron las barras: ') +
+                 ((e && e.message) || 'error desconocido'));
       });
   };
 

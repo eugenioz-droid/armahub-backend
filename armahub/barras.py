@@ -1812,6 +1812,9 @@ _SNAP_COLS_BARRA = [
     "marca", "figura",
     "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
     "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo", "editado_por", "revisada",
+    # De QUÉ estructura del modelador venía (migración 107). Sin estas dos, el registro
+    # de una barra borrada no decía de qué elemento salía ni de qué parte de él.
+    "template_instancia_id", "origen_ref",
 ]
 # Columnas destino en barras_eliminadas (misma secuencia; `id` → `barra_id`).
 _SNAP_COLS_DEST = ["barra_id" if c == "id" else c for c in _SNAP_COLS_BARRA]

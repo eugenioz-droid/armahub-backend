@@ -202,6 +202,17 @@ function sesion() {
 
 const tick = () => new Promise(r => setImmediate(r));
 
+// ¿El editor cree que hay cambios sin guardar? Se pregunta cerrando: el dirty-check
+// vive en templateEditorCerrar y dispara un confirm cuando los hay.
+function ok_sinDirty(w) {
+  const antes = w._confirms.length;
+  w._confirmRespuesta = false;
+  w.templateEditorCerrar();
+  const limpio = (w._confirms.length === antes);
+  if (!limpio) w._confirmRespuesta = true;
+  return limpio;
+}
+
 // Recorre un árbol y devuelve los archivos con la extensión pedida.
 function archivos(dir, ext, acc) {
   acc = acc || [];
@@ -366,6 +377,56 @@ function sinComentariosJs(src) {
     const antes = w._llamadas.length;
     w.templateEditorCargarAlDespiece();
     ok(w._llamadas.length === antes, 'y llamarlo a mano no hace nada (no hay despiece al que cargar)');
+  }
+
+  // ============================================================== E9
+  // ESTRUCTURA REABRIBLE — volver a cargar una estructura que YA existe tiene que
+  // ACTUALIZARLA, no duplicarla. Si esto se rompe, nada falla a la vista: se cargan
+  // barras nuevas y las viejas quedan de fantasmas, o se recrean todas y cada
+  // regeneración le borra la revisión al cubicador.
+  console.log('E9 — reabrir y regenerar ACTUALIZA la estructura, no la reemplaza');
+  {
+    const w = sesion();
+    const ctx = { loteId: 42, id_proyecto: 'EXPLORA', sector: 'VCIELO', ciclo: 'C1',
+                  eje: 'E3', nombre_plano: 'P-101', estructura: 'VIGA' };
+    w._responder = (url) => {
+      if (/\/elementos\/instancia\/77$/.test(url)) return { status: 200, body: { ok: true, id: 77 } };
+      if (/\/barras\/sync$/.test(url)) {
+        return { status: 200, body: { ok: true, actualizadas: 7, creadas: 1, eliminadas: 2 } };
+      }
+      return { status: 200, body: {} };
+    };
+    w.templateEditorAbrirEnObra(ctx, {
+      receta: w.ModeladorSemilla.semillaViga(), piso: 'P4', instanciaId: 77
+    });
+    const ST = w.TemplateEditor._st;
+    ok(ST.instanciaId === 77, 'la estructura reabierta conserva su id');
+    ok(w._el('te_btnCargarDespiece').textContent.indexOf('Actualizar') >= 0,
+      'y el botón dice ACTUALIZAR, no cargar');
+
+    // UID por componente: es la mitad del identificador de origen y tiene que quedar
+    // EN LA RECETA (viaja con ella al guardar, así sobrevive a reabrir).
+    const uids = ST.receta.componentes.map(c => c.uid);
+    ok(uids.every(u => !!u), 'cada componente quedó con su uid');
+    ok(new Set(uids).size === uids.length, 'y son únicos (duplicar un componente no clona el suyo)');
+    ok(ST.ultimoOut.barras.every(b => /^[^#]+#\d+$/.test(b.origen_ref || '')),
+      'cada barra generada trae su identificador de origen');
+    ok(ok_sinDirty(w), 'estampar el uid NO cuenta como cambio sin guardar');
+
+    w.templateEditorCargarAlDespiece();
+    await tick(); await tick(); await tick();
+    const put = w._llamadas.find(l => l.metodo === 'PUT' && /\/elementos\/instancia\/77$/.test(l.url));
+    const sync = w._llamadas.find(l => l.metodo === 'POST' && /\/lotes\/42\/barras\/sync$/.test(l.url));
+    const alta = w._llamadas.find(l => l.metodo === 'POST' && /\/lotes\/42\/barras$/.test(l.url));
+    ok(!!put, 'la receta se ACTUALIZA sobre la misma fila (PUT), no se crea otra');
+    ok(put && put.body.nombre === 'EXPLORA \u00b7 C1 \u00b7 P4 \u00b7 E3',
+      'con el nombre DERIVADO de obra \u00b7 ciclo \u00b7 piso \u00b7 eje (no hay campo que llenar)');
+    ok(put && put.body.piso === 'P4' && put.body.elemento === 'viga', 'y su piso y elemento');
+    ok(!!sync, 'las barras van por el sync (actualizar / crear / borrar)');
+    ok(!alta, 'y NO por el alta, que habr\u00eda duplicado la estructura entera');
+    ok(sync && sync.body.instancia_id === 77, 'el sync sabe qu\u00e9 estructura est\u00e1 regenerando');
+    ok(sync && sync.body.barras.every(b => !!b.origen_ref),
+      'y manda el identificador de origen de cada barra, que es con lo que se cruzan');
   }
 
   // ============================================================== E6

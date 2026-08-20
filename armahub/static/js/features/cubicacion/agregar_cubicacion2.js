@@ -351,9 +351,10 @@ var AC2_TDS='padding:2px 5px; border-top:1px solid #f0f0f0;';
 // input numérico editable en celda (clase .ac2cell = estilo Bar Manager). class ac2nav marca
 // las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). data-col/data-row para que
 // ↑↓ vayan a la MISMA columna de la fila de arriba/abajo (robusto aunque las filas difieran).
-function ac2Inp(id, campo, val, w, rojo){
+function ac2Inp(id, campo, val, w, rojo, bloq){
   var wst = w ? ' style="width:'+w+'px;"' : '';
-  var ro = ac2SoloLectura() ? ' disabled' : '';   // lote eliminado (histórico) → inputs bloqueados
+  // lote eliminado (histórico) o barra de una estructura del modelador → inputs bloqueados
+  var ro = (ac2SoloLectura() || bloq) ? ' disabled' : '';
   return '<input type="number" value="'+(val==null?'':ac2Esc(val))+'" '+
     'class="ac2cell ac2nav'+(rojo?' rojo':'')+'" data-col="'+campo+'" data-row="'+id+'"'+wst+ro+' '+
     'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" onkeydown="ac2NavKey(event,this)"/>';
@@ -406,7 +407,9 @@ function ac2Fila(b){
   var td='<td style="'+AC2_TDS+'">';
   var tdr='<td style="'+AC2_TDS+' text-align:right;">';
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
-  var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
+  var bloq = ac2BarraDeEstructura(b);   // barra nacida del Enfierrador: solo lectura
+  var dis = bloq ? ' disabled' : '';
+  var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo],bloq)+'</td>'; };
   // Fondo de fila: rojo TENUE si la geometría es inválida (prioritario) → el usuario ubica la fila
   // con problema. Si NO es inválida y está SELECCIONADA en modo masivo, azul suave (resalta lo
   // marcado sin confundir con el rojo de error).
@@ -428,16 +431,16 @@ function ac2Fila(b){
   // Piso OBLIGATORIO: si la barra ya tiene figura pero le falta el piso, se resalta en rojo (igual
   // que las medidas faltantes) para que el cubicador vea que debe elegirlo antes de guardar/revisar.
   var _pisoFalta = (b.figura && !ac2TienePiso(b));
-  h+='<td style="'+AC2_TDS+(AC2.masiva?' padding-left:12px;':'')+'"><select class="ac2cell ac2nav'+(_pisoFalta?' rojo':'')+'" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;'+(_pisoFalta?' background:#ffebee;':'')+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
+  h+='<td style="'+AC2_TDS+(AC2.masiva?' padding-left:12px;':'')+'"><select'+dis+' class="ac2cell ac2nav'+(_pisoFalta?' rojo':'')+'" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;'+(_pisoFalta?' background:#ffebee;':'')+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
   // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
   // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
     var op='<option value=""'+(b.marca?'':' selected')+'>— tipo —</option>'+
       AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
-    h+='<td style="'+AC2_TDS+'"><select class="ac2cell ac2nav" data-col="marca" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
+    h+='<td style="'+AC2_TDS+'"><select'+dis+' class="ac2cell ac2nav" data-col="marca" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
     // Sufijo de tipología: texto libre. Se concatena a la tipología SOLO al exportar (aSa); NO
     // altera b.marca. Estado en b.suf_tipo. Input directo (no re-render).
-    h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="—" title="Se concatena a la tipología solo al exportar"/></td>';
+    h+='<td style="'+AC2_TDS+'"><input type="text"'+dis+' value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="—" title="Se concatena a la tipología solo al exportar"/></td>';
   }
   // φ (diámetro) — select de lista fija, navegable con teclado. Cada <option> lleva SU color (así el
   // desplegable ayuda a elegir, no toma el del actual). El estilado de <option> depende del navegador;
@@ -446,19 +449,19 @@ function ac2Fila(b){
     AC2_DIAMS.map(function(d){ var c=ac2DiamColor(d);
       return '<option'+(Number(b.diam)===d?' selected':'')+' style="background:'+(c||'#fff')+'; color:'+ac2DiamTexto(d)+';">'+d+'</option>'; }).join('');
   var _dcol=ac2DiamColor(b.diam);
-  h+='<td style="'+AC2_TDS+' text-align:right;"><select class="ac2cell ac2nav" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;'+(_dcol?' background:'+_dcol+'; color:'+ac2DiamTexto(b.diam)+'; font-weight:600;':'')+'">'+opd+'</select></td>';
+  h+='<td style="'+AC2_TDS+' text-align:right;"><select'+dis+' class="ac2cell ac2nav" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;'+(_dcol?' background:'+_dcol+'; color:'+ac2DiamTexto(b.diam)+'; font-weight:600;':'')+'">'+opd+'</select></td>';
   // Cant (unitaria) · Mult (multiplicador) · Cant.T (= cant×mult, SOLO LECTURA — no re-multiplica
   // el peso, que ya usa cant×mult; solo informa el total).
   // 56px (= .ac2cell, como las dims): con 40 una cantidad de 3+ cifras se CORTABA.
-  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,56)+'</td>';
-  if (AC2.verMult) h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,56)+'</td>';
+  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,56,false,bloq)+'</td>';
+  if (AC2.verMult) h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,56,false,bloq)+'</td>';
   h+='<td id="ac2cantt_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#607d8b; font-weight:600;">'+ac2CantTotal(b)+'</td>';
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
   h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
   // Peso (calculado en vivo) — solo lectura. Si hay largo pero falta φ, muestra "—" (falta φ).
   h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2PesoTxt(b)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
-  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
+  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text"'+dis+' list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
   if (AC2.render) h+='<td id="ac2dib_'+b._id+'" style="'+AC2_TDS+'">'+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
   for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
@@ -473,11 +476,18 @@ function ac2Fila(b){
   // Rev (revisada): solo marcable si la barra está COMPLETA y VÁLIDA (φ+figura+medidas ok).
   var lista=ac2BarraLista(b);
   h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2rev"'+(b.rev&&lista?' checked':'')+(lista?'':' disabled')+' onclick="ac2ToggleRev('+b._id+',this)" title="'+(lista?'Marcar/desmarcar revisada':'Completa la barra (φ, figura y sus medidas) para poder revisarla.')+'"/></td>';
-  // Acciones por fila.
-  h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
-     '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#558B2F; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
-     '<span onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
-     '<span onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
+  // Acciones por fila. Una barra de estructura no se agrega, ni se duplica, ni se
+  // quita suelta: su única acción es REABRIR la estructura que la generó.
+  if (bloq){
+    h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
+       '<span onclick="ac2AbrirEditor3D('+b._instanciaId+')" title="Abrir la estructura que generó esta barra" style="cursor:pointer; margin-right:6px;">🧱</span>'+
+       '<span title="Barra generada por el Enfierrador: se modifica reabriendo su estructura" style="color:#90a4ae;">🔒</span></td></tr>';
+  } else {
+    h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
+       '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#558B2F; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
+       '<span onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
+       '<span onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
+  }
   return h;
 }
 
@@ -569,6 +579,13 @@ function ac2CtxText(){
 function ac2Bloqueado(){ return (AC2.barras.length>0) || AC2.loteEstado==='terminada' || AC2.loteEstado==='eliminado'; }
 // Solo-lectura DURA: un lote eliminado es histórico congelado; no se edita nada de su grilla.
 function ac2SoloLectura(){ return AC2.loteEstado==='eliminado'; }
+// BARRA DE UNA ESTRUCTURA DEL MODELADOR: se ve, no se toca. Es el resultado de una
+// receta — editarla suelta dejaría la estructura diciendo una cosa y el despiece otra,
+// y la próxima regeneración pisaría el cambio sin avisar. Se modifica REABRIENDO la
+// estructura en el Enfierrador (el botón 🧱 de la fila). El backend hace lo mismo:
+// DELETE /lotes/{id}/barras/{id} responde 409 para estas barras.
+// NO cubre el check de REVISADA: esa marca es del cubicador y el sync la conserva.
+function ac2BarraDeEstructura(b){ return !!(b && b._origen==='template' && b._instanciaId!=null); }
 // Reconcilia el TEXTO visible de los comboboxes de ciclo/eje hacia el estado. Necesario porque el
 // combobox solo copia su texto a AC2 en el blur (con delay); si el usuario hace clic en un botón
 // antes del blur, el texto se perdía (causa de lotes guardados sin ciclo/eje). Llamar SIEMPRE
@@ -981,6 +998,9 @@ var AC2_CAMPOS_NUM={diam:1,cant:1,mult:1,radio:1,ang1:1,ang2:1,ang3:1,ang4:1,
 // Lo usa la edición masiva en tándem para aplicar el mismo cambio a varias barras y re-render una vez.
 function ac2SetBarraDato(id, campo, valor){
   var b=ac2BarraPorId(id); if(!b) return;
+  // El input ya va disabled, pero el bloqueo de verdad va ACÁ: la edición masiva en
+  // tándem escribe sobre barras que el usuario no está tocando, y por ahí se colaba.
+  if (ac2BarraDeEstructura(b)) return;
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else if (campo==='figura') b[campo]=_ac2NormFigura(valor);   // normalizar para que matchee el catálogo
   else b[campo]=valor;
@@ -1180,12 +1200,17 @@ window.ac2CopiarTipologia=function(id){
 };
 window.ac2Duplicar=function(id){
   var b=ac2BarraPorId(id); if(!b) return;
+  if (ac2BarraDeEstructura(b)) return;   // una copia suelta no pertenecería a la estructura
   var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false;
   AC2.barras.splice(AC2.barras.indexOf(b)+1,0, copia);
   ac2Render();
 };
 window.ac2Quitar=async function(id){
   var b=ac2BarraPorId(id);
+  if (ac2BarraDeEstructura(b)){
+    alert('Esta barra viene de una estructura del Enfierrador. Ábrela con 🧱 para quitarla:\nal regenerar, las barras que dejan de existir se borran solas.');
+    return;
+  }
   // Si la barra YA está guardada en BD, hay que borrarla también allá; si no, quedaría huérfana y
   // 'terminar' la contaría como no revisada (aunque el usuario ya no la vea).
   if (b && b._guardada && b._dbid){
@@ -1807,7 +1832,10 @@ window.ac2CtxEditor3D=function(){
            estructura:AC2.estructura||null };
 };
 
-window.ac2AbrirEditor3D=function(){
+// Sin argumento crea una estructura NUEVA; con instanciaId REABRE una ya cargada (su
+// receta, su piso y su nombre), y al volver a cargarla el backend actualiza en vez de
+// duplicar — cada barra conserva su id, su historia y su revisión.
+window.ac2AbrirEditor3D=async function(instanciaId){
   if (!AC2.loteId){ alert('Crea primero el despiece (Obra + Ciclo + Eje).'); return; }
   if (AC2.loteEstado!=='borrador'){
     // El backend responde 409 al agregar barras a un lote terminado: se dice ANTES,
@@ -1817,7 +1845,16 @@ window.ac2AbrirEditor3D=function(){
   if (typeof window.templateEditorAbrirEnObra!=='function'){
     alert('El editor aún se está cargando. Reintenta en un momento.'); return;
   }
-  window.templateEditorAbrirEnObra(ac2CtxEditor3D(), {});
+  var opts={};
+  if (instanciaId!=null){
+    var d=await _ac2Get('/elementos/instancia/'+instanciaId);
+    if (!d || !d.params || !d.params.geometria){
+      alert('No se pudo abrir esa estructura (su receta no está disponible).'); return;
+    }
+    opts={ receta:d.params, piso:d.piso||'', nombre:d.nombre||'', instanciaId:d.id,
+           elemento:(d.elemento||'').toUpperCase()||null, tplOrigen:d.template_id };
+  }
+  window.templateEditorAbrirEnObra(ac2CtxEditor3D(), opts);
 };
 
 // RECARGAR el despiece abierto. El editor 3D llama a esto tras cargar barras. NO

@@ -80,6 +80,13 @@
   // FIGURA DESCONOCIDA → devuelve null (NO una barra con todo en null). El
   // llamador lo convierte en aviso visible. Antes se caía a un spec vacío y salía
   // un payload de 0 kg que el backend rechazaba sin que nadie supiera por qué.
+  // UID ESTABLE DEL COMPONENTE. Cae al índice sólo cuando la receta no trae uid (el
+  // camino de la biblioteca, que no necesita trazar nada): ahí nadie va a cruzar
+  // generaciones, así que un identificador posicional alcanza.
+  function _uidComp(comp, ci) {
+    return (comp && comp.uid != null && String(comp.uid) !== '') ? String(comp.uid) : ('c' + ci);
+  }
+
   function placementABarra(pl, ctx) {
     var spec = specFigura(pl.figura);
     if (!spec) return null;
@@ -100,6 +107,8 @@
       origen: 'template',
       template_instancia_id: (ctx.template_instancia_id != null ? ctx.template_instancia_id : null)
     };
+    // Clave de TRABAJO (no viaja al backend: agruparBarras la consume y la borra).
+    if (ctx.trazarOrigen) b._uid = (pl.meta && pl.meta.uid) || null;
     // dim_a..dim_i: solo los parciales de la figura.
     LETRAS.forEach(function (L) {
       var col = 'dim_' + L.toLowerCase();
@@ -222,14 +231,41 @@
     return true;
   }
 
-  function agruparBarras(barras) {
+  // IDENTIFICADOR DE ORIGEN (`origen_ref`) — sólo con trazar=true (modo obra).
+  // -----------------------------------------------------------------------------
+  // Es la llave que cruza una generación con la siguiente: dice de QUÉ COMPONENTE y de
+  // QUÉ POSICIÓN de su distribución nació cada item ('uid#ordinal'). Con ella, reabrir
+  // una estructura y regenerarla ACTUALIZA la barra que ya existía (conserva su id, su
+  // historia y su marca de revisión) en vez de borrarla y crear otra.
+  //
+  // Trazar CAMBIA LA AGRUPACIÓN a propósito: con traza, dos componentes distintos que
+  // producen barras idénticas quedan en items SEPARADOS. Sin esa separación el item
+  // resultante no tendría un origen único y el cruce sería ambiguo — y en un despiece
+  // son dos posiciones distintas del elemento, no una. En la biblioteca (trazar=false)
+  // la agrupación queda EXACTAMENTE como estaba: mismas claves, mismos items.
+  //
+  // LÍMITE MEDIDO: el ordinal es la posición del item DENTRO de su componente. Cambiar
+  // una medida no lo mueve (el item sigue siendo el mismo, se actualiza); agregar o
+  // quitar capas/tramos sí corre los ordinales de ese componente, y ahí el cruce trata
+  // la diferencia como creación/borrado — que es lo correcto.
+  function agruparBarras(barras, trazar) {
     var mapa = {}, orden = [];
     barras.forEach(function (b) {
-      var k = _claveBarra(b);
+      var k = (trazar ? ((b._uid || '?') + '\u0000') : '') + _claveBarra(b);
       if (!mapa[k]) { mapa[k] = Object.assign({}, b, { cant: 0 }); orden.push(k); }
       mapa[k].cant += 1;
     });
-    return orden.map(function (k) { return mapa[k]; });
+    var items = orden.map(function (k) { return mapa[k]; });
+    var cont = {};
+    items.forEach(function (b) {
+      if (trazar) {
+        var u = b._uid || 'c?';
+        cont[u] = (cont[u] == null) ? 0 : (cont[u] + 1);
+        b.origen_ref = u + '#' + cont[u];
+      }
+      delete b._uid;   // clave de trabajo: nunca sale del generador
+    });
+    return items;
   }
 
   // ---------------------------------------------------------------------------
@@ -365,7 +401,9 @@
 
   // generarViga(receta) → { placements, barras, resumen }
   // receta = { tipo:'viga', geometria:{largo,ancho,alto,recub_sup,recub_inf,recub_lat}, componentes:[...] }
-  // ctx = { sector, ciclo, piso, eje, nombre_plano, template_instancia_id } (contexto del lote)
+  // ctx = { sector, ciclo, piso, eje, nombre_plano, template_instancia_id,
+  //         trazarOrigen } (contexto del lote). trazarOrigen=true agrega `origen_ref` a
+  // cada item y separa los items por componente — ver agruparBarras.
   function generarViga(receta, ctx) {
     ctx = ctx || {};
     var geo = receta.geometria || {};
@@ -434,6 +472,11 @@
         pls.forEach(function (pl) {
           pl.meta = pl.meta || {};
           pl.meta.ci = p.ci;              // índice ORIGINAL (el etiquetado no rota)
+          // UID DEL COMPONENTE — de qué barra de la receta nació este placement. Es la
+          // mitad del identificador de origen (ver agruparBarras). El uid lo estampa el
+          // editor EN LA RECETA y viaja con ella, así que sobrevive a guardar y reabrir;
+          // el índice `ci` no sirve para eso (reordenar componentes lo cambia).
+          pl.meta.uid = _uidComp(p.comp, p.ci);
           if (k < 1) return;              // 'no' no aporta a ninguna pila
           // El arrastre manual (pos_hint) se descuenta: mover una barra a mano no
           // la cambia de cara en la cadena (conserva el aporte de su cara natural).
@@ -480,7 +523,7 @@
       });
     });
     // Barras AGRUPADAS por item/etiqueta (cant = N) — lo que se carga al despiece.
-    var barras = agruparBarras(barrasSueltas);
+    var barras = agruparBarras(barrasSueltas, !!ctx.trazarOrigen);
 
     // Resumen (stats en vivo) — kg estimado en el front (NO se envía).
     var totalBarrasFisicas = 0, totalKg = 0;

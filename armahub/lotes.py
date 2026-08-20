@@ -58,6 +58,65 @@ def _largo_desde_figura(cur, figura, dims):
     return largo_desde_lados(cur, figura, dims)
 
 
+def _valores_barra(cur, b, i, factor):
+    """Valida UNA barra del payload y devuelve todo lo que se DERIVA de ella
+    (dims, largo, peso unitario y total, cantidad total, PROD).
+
+    Es la fuente ÚNICA de esas reglas. Antes vivían escritas dentro del alta de barras;
+    el sync de una estructura del modelador necesita EXACTAMENTE las mismas (misma
+    validación de ubicación, misma geometría contra el catálogo, mismo largo por suma de
+    lados, mismo factor de peso de la obra), y copiarlas habría garantizado que los dos
+    caminos se separaran con el tiempo. Lanza las MISMAS HTTPException que antes: el
+    mensaje que ve el usuario no cambia.
+    """
+    from .catalogo import validar_geometria
+    # UBICACIÓN OBLIGATORIA (defensa server-side, fuente de verdad): ninguna barra
+    # manual se guarda sin ciclo, eje y sector. Antes eran Optional y se insertaba
+    # NULL en silencio → lotes "corruptos" sin contexto. Se rechaza TODA la tanda.
+    faltan = [n for n, val in (("sector", b.sector), ("piso", b.piso), ("ciclo", b.ciclo), ("eje", b.eje))
+              if not (val or "").strip()]
+    if faltan:
+        raise HTTPException(status_code=400, detail={
+            "msg": "Falta ubicación obligatoria (" + ", ".join(faltan) + ") en la barra " + str(i + 1) + ".",
+            "barra_idx": i, "faltan": faltan,
+        })
+    dims = {f"dim_{L}": getattr(b, f"dim_{L}") for L in "abcdefghi"}
+    dims.update({a: getattr(b, a) for a in ("ang1", "ang2", "ang3", "ang4")})
+    dims["radio"] = b.radio
+    # Validar la geometría contra el catálogo (misma regla que el Bar Manager):
+    # la figura exige valor en SUS slots y vacío en los demás. Si no cuadra, se
+    # rechaza TODA la tanda (transaccional) con detalle de qué barra/slots fallan
+    # → no se crean barras con geometría inválida (data siempre buena).
+    if b.figura:
+        v = validar_geometria(cur, b.figura, dims)
+        if not v.get("ok"):
+            raise HTTPException(status_code=400, detail={
+                "msg": "Geometría inválida en la barra " + str(i + 1) + " (figura " + str(b.figura) + ").",
+                "barra_idx": i, "figura": b.figura,
+                "slots_sobran": v.get("slots_sobran", []),
+                "slots_faltan": v.get("slots_faltan", []),
+                "errores": v.get("errores", []),
+            })
+    largo = _largo_desde_figura(cur, b.figura, dims)
+    peso_u = _peso_teorico(b.diam, largo)
+    if peso_u is not None:
+        peso_u = peso_u * (1 + factor / 100.0)
+    cant_total = (b.cant or 0) * (b.mult or 1)
+    peso_t = (peso_u * cant_total) if (peso_u is not None) else None
+    return {"largo": largo, "peso_u": peso_u, "peso_t": peso_t, "cant_total": cant_total,
+            # PROD (cod_proyecto) se DERIVA del diámetro (no lo ingresa el usuario).
+            "cod_prod": cod_prod_de_diam(b.diam)}
+
+
+def _origen_valido(origen):
+    """Sólo se aceptan los orígenes propios de ESTE canal. Cualquier otro cae a
+    'manual': no se permite inyectar 'csv'/'pedido' desde aquí (invariante de canales).
+    'template' = barra nacida del editor 3D — su clasificación propia, la que permite
+    distinguirla en un despiece donde también hay barras del CSV y del ingreso manual."""
+    o = (origen or "manual").strip().lower()
+    return o if o in ("manual", "template") else "manual"
+
+
 def _id_unico_manual():
     """id_unico de barra manual: prefijo 'M-' + uuid corto. Nunca colisiona con el
     id_unico del CSV (ID_PROYECTO/PLANO/ID de ArmaDetailer)."""
@@ -121,9 +180,21 @@ class BarraManual(BaseModel):
     # el id de la receta (elementos_template) para trazabilidad. No cambia nada más.
     origen: Optional[str] = None
     template_instancia_id: Optional[int] = None
+    # IDENTIFICADOR DE ORIGEN (migración 107): de qué componente de la receta y de qué
+    # posición de su distribución nació esta barra ('uid#ordinal'). Es la llave con la
+    # que el sync cruza una generación con la siguiente. Vacío en el ingreso manual.
+    origen_ref: Optional[str] = None
 
 
 class BarrasBatch(BaseModel):
+    barras: List[BarraManual]
+
+
+class BarrasSync(BaseModel):
+    """Regenerar una estructura ya cargada. `barras` es el estado COMPLETO que la
+    estructura tiene que tener después: el backend deduce qué actualizar, qué crear y
+    qué borrar comparando origen_ref contra lo que hay."""
+    instancia_id: int
     barras: List[BarraManual]
 
 
@@ -516,54 +587,18 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             factor = _factor_peso(cur, id_proyecto)
             now = _now_iso()
             sectores_tocados = set()
-            from .catalogo import validar_geometria
             for i, b in enumerate(body.barras):
-                # UBICACIÓN OBLIGATORIA (defensa server-side, fuente de verdad): ninguna barra
-                # manual se guarda sin ciclo, eje y sector. Antes eran Optional y se insertaba
-                # NULL en silencio → lotes "corruptos" sin contexto. Se rechaza TODA la tanda.
-                faltan = [n for n, val in (("sector", b.sector), ("piso", b.piso), ("ciclo", b.ciclo), ("eje", b.eje))
-                          if not (val or "").strip()]
-                if faltan:
-                    raise HTTPException(status_code=400, detail={
-                        "msg": "Falta ubicación obligatoria (" + ", ".join(faltan) + ") en la barra " + str(i + 1) + ".",
-                        "barra_idx": i, "faltan": faltan,
-                    })
-                dims = {f"dim_{L}": getattr(b, f"dim_{L}") for L in "abcdefghi"}
-                dims.update({a: getattr(b, a) for a in ("ang1", "ang2", "ang3", "ang4")})
-                dims["radio"] = b.radio
-                # Validar la geometría contra el catálogo (misma regla que el Bar Manager):
-                # la figura exige valor en SUS slots y vacío en los demás. Si no cuadra, se
-                # rechaza TODA la tanda (transaccional) con detalle de qué barra/slots fallan
-                # → no se crean barras con geometría inválida (data siempre buena).
-                if b.figura:
-                    v = validar_geometria(cur, b.figura, dims)
-                    if not v.get("ok"):
-                        raise HTTPException(status_code=400, detail={
-                            "msg": "Geometría inválida en la barra " + str(i + 1) + " (figura " + str(b.figura) + ").",
-                            "barra_idx": i, "figura": b.figura,
-                            "slots_sobran": v.get("slots_sobran", []),
-                            "slots_faltan": v.get("slots_faltan", []),
-                            "errores": v.get("errores", []),
-                        })
-                largo = _largo_desde_figura(cur, b.figura, dims)
-                peso_u = _peso_teorico(b.diam, largo)
-                if peso_u is not None:
-                    peso_u = peso_u * (1 + factor / 100.0)
-                cant_total = (b.cant or 0) * (b.mult or 1)
-                peso_t = (peso_u * cant_total) if (peso_u is not None) else None
+                # Validación + derivados: MISMA función que usa el sync del modelador.
+                v = _valores_barra(cur, b, i, factor)
+                largo, peso_u, peso_t = v["largo"], v["peso_u"], v["peso_t"]
+                cant_total, cod_prod = v["cant_total"], v["cod_prod"]
                 idu = _id_unico_manual()
-                # PROD (cod_proyecto) se DERIVA del diámetro (no lo ingresa el usuario).
-                cod_prod = cod_prod_de_diam(b.diam)
                 # Revisada viaja con la barra: si el cubicador la marcó en la grilla, se guarda
                 # revisada=true + trazabilidad (quién/cuándo). Habilita terminar el lote (5N.19).
                 rev_por = email if b.revisada else None
                 rev_fecha = now if b.revisada else None
                 # Modelador 3D (T1.1): origen OPCIONAL (default 'manual' → intacto) + template_instancia_id.
-                # Solo se aceptan orígenes conocidos de este canal (manual/template); cualquier otro
-                # cae a 'manual' (no se permite inyectar 'csv'/'pedido' desde aquí — invariante de canales).
-                origen_barra = (b.origen or "manual").strip().lower()
-                if origen_barra not in ("manual", "template"):
-                    origen_barra = "manual"
+                origen_barra = _origen_valido(b.origen)
                 cur.execute(
                     """INSERT INTO barras
                        (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
@@ -571,18 +606,18 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio,
                         revisada, revisada_por, revisada_fecha, suf_tipo,
-                        origen, template_instancia_id, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
+                        origen, template_instancia_id, origen_ref, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                %s,%s,%s,%s,
-                               %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
+                               %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
                     (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje,
                      ((b.nombre_plano or "").strip() or plano_lote), b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
                      bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
-                     origen_barra, b.template_instancia_id,
+                     origen_barra, b.template_instancia_id, ((b.origen_ref or "").strip() or None),
                      lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
                 )
                 creadas.append({"id": cur.fetchone()[0], "id_unico": idu})   # id numérico + id_unico
@@ -607,6 +642,165 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             "ids": [c["id"] for c in creadas], "id_unicos": [c["id_unico"] for c in creadas]}
 
 
+@router.post("/lotes/{lote_id}/barras/sync")
+def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(get_current_user)):
+    """REGENERAR una estructura ya cargada: ACTUALIZA, no reemplaza.
+
+    El usuario reabre una estructura en el editor, la modifica y vuelve a cargarla. Lo
+    fácil sería borrar todas sus barras y crearlas de nuevo — y sería destructivo: cada
+    barra perdería su id, su historia de edición y su marca de revisión, y el cubicador
+    tendría que revisar de cero un despiece del que sólo cambió un lado.
+
+    El cruce entre generaciones se hace con `origen_ref` (de qué componente y de qué
+    posición de su distribución nació la barra), que se estampa al crearla. Tres
+    operaciones, en este orden:
+      · ACTUALIZAR lo que sigue existiendo   → conserva id, revisión e historia.
+      · CREAR lo nuevo                        → nace con su origen_ref.
+      · BORRAR de verdad lo que dejó de existir (sin barras fantasma), copiándolo antes
+        a `barras_eliminadas` — el MISMO registro histórico que usa el Bar Manager, para
+        que el borrado no quede sin rastro.
+
+    Transaccional: o entra todo o no entra nada. Un lote TERMINADO no se sincroniza
+    (409, misma regla que agregar barras: desde ahí se corrige en el Bar Manager).
+    """
+    from .barras import _SNAP_COLS_BARRA, _SNAP_COLS_DEST
+    email = user.get("email", "?")
+    if body.instancia_id is None:
+        raise HTTPException(status_code=400, detail="Falta la estructura a sincronizar.")
+    actualizadas = creadas = eliminadas = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT id_proyecto, estado, plano FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            id_proyecto, estado_lote = r[0], r[1]
+            if estado_lote == "terminada":
+                raise HTTPException(status_code=409,
+                                    detail="El lote está terminado; edita las barras desde el Bar Manager.")
+            cur.execute("SELECT id FROM elementos_template WHERE id = %s AND lote_id = %s",
+                        (body.instancia_id, lote_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Esa estructura no pertenece a este despiece.")
+            plano_lote = (r[2] or "").strip() or None
+            factor = _factor_peso(cur, id_proyecto)
+            now = _now_iso()
+            sectores_tocados = set()
+
+            # Lo que HAY hoy, indexado por su identificador de origen. Una barra sin
+            # origen_ref (cargada antes de la migración 107) no se puede cruzar: se trata
+            # como sobrante y se borra, que es lo que el usuario pidió — la generación
+            # nueva la reemplaza con su equivalente ya trazada.
+            cur.execute(
+                "SELECT id, origen_ref, sector, piso, ciclo FROM barras "
+                "WHERE lote_id = %s AND template_instancia_id = %s",
+                (lote_id, body.instancia_id))
+            existentes, sobrantes = {}, []
+            for bid, ref, sec, pis, cic in cur.fetchall():
+                sectores_tocados.add((sec, pis, cic))
+                if ref and ref not in existentes:
+                    existentes[ref] = bid
+                else:
+                    sobrantes.append(bid)
+
+            vistas = set()
+            for i, b in enumerate(body.barras):
+                v = _valores_barra(cur, b, i, factor)
+                ref = (b.origen_ref or "").strip() or None
+                np_val = (b.nombre_plano or "").strip() or plano_lote
+                sectores_tocados.add((b.sector, b.piso, b.ciclo))
+                dim_vals = tuple(getattr(b, f"dim_{L}") for L in "abcdefghi")
+                ang_vals = (b.ang1, b.ang2, b.ang3, b.ang4, b.radio)
+                barra_id = existentes.get(ref) if ref else None
+                if barra_id is not None and ref not in vistas:
+                    vistas.add(ref)
+                    # ACTUALIZAR. NO se tocan: id, id_unico, creado_por, fecha_carga ni
+                    # `revisada` — la marca del cubicador es SUYA, y una regeneración no
+                    # es motivo para borrarle el trabajo de revisión.
+                    cur.execute(
+                        """UPDATE barras SET sector=%s, piso=%s, ciclo=%s, eje=%s, nombre_plano=%s,
+                               diam=%s, largo_total=%s, mult=%s, cant=%s, cant_total=%s,
+                               peso_unitario=%s, peso_total=%s, marca=%s, figura=%s, cod_proyecto=%s,
+                               dim_a=%s, dim_b=%s, dim_c=%s, dim_d=%s, dim_e=%s, dim_f=%s,
+                               dim_g=%s, dim_h=%s, dim_i=%s,
+                               ang1=%s, ang2=%s, ang3=%s, ang4=%s, radio=%s, suf_tipo=%s,
+                               editado_por=%s, editado_fecha=%s
+                             WHERE id = %s""",
+                        (b.sector, b.piso, b.ciclo, b.eje, np_val,
+                         b.diam, v["largo"], b.mult, b.cant, v["cant_total"],
+                         v["peso_u"], v["peso_t"], b.marca, b.figura, v["cod_prod"]) +
+                        dim_vals + ang_vals + ((b.suf_tipo or "").strip() or None, email, now, barra_id),
+                    )
+                    actualizadas += 1
+                else:
+                    # CREAR. Nace igual que por el alta normal (mismo origen, mismo estado).
+                    cur.execute(
+                        """INSERT INTO barras
+                           (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
+                            mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
+                            dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                            ang1, ang2, ang3, ang4, radio,
+                            revisada, suf_tipo,
+                            origen, template_instancia_id, origen_ref, import_id, lote_id, estado,
+                            fecha_carga, creado_por, editado_por, editado_fecha)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
+                                   %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
+                                   FALSE,%s,
+                                   %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)""",
+                        (_id_unico_manual(), id_proyecto, b.sector, b.piso, b.ciclo, b.eje, np_val,
+                         b.diam, v["largo"], b.mult, b.cant, v["cant_total"],
+                         v["peso_u"], v["peso_t"], b.marca, b.figura, v["cod_prod"]) +
+                        dim_vals + ang_vals +
+                        ((b.suf_tipo or "").strip() or None,
+                         _origen_valido(b.origen), body.instancia_id, ref,
+                         lote_id, now, email, email, now),
+                    )
+                    creadas += 1
+                    if ref:
+                        vistas.add(ref)
+
+            # BORRAR lo que dejó de existir. Borrado REAL (sin barras fantasma), pero NO
+            # sin rastro: antes se copia a `barras_eliminadas` con quién y cuándo, igual
+            # que el borrado del Bar Manager.
+            a_borrar = sobrantes + [bid for ref, bid in existentes.items() if ref not in vistas]
+            if a_borrar:
+                cols_src = ", ".join(_SNAP_COLS_BARRA)
+                cols_dst = ", ".join(_SNAP_COLS_DEST)
+                cur.execute(
+                    f"""INSERT INTO barras_eliminadas (eliminada_por, eliminada_fecha, {cols_dst})
+                        SELECT %s, %s, {cols_src} FROM barras WHERE id = ANY(%s)""",
+                    (email, now, a_borrar),
+                )
+                cur.execute("DELETE FROM barras WHERE id = ANY(%s)", (a_borrar,))
+                eliminadas = cur.rowcount
+
+            cur.execute(
+                "UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s",
+                (lote_id, lote_id),
+            )
+            # La estructura sin barras vivas queda RETIRADA: la fila no se borra para no
+            # perder la traza de quién la creó y con qué receta.
+            cur.execute("SELECT COUNT(*) FROM barras WHERE template_instancia_id = %s", (body.instancia_id,))
+            vivas = int(cur.fetchone()[0] or 0)
+            cur.execute("UPDATE elementos_template SET estado = %s, updated_at = %s, editado_por = %s WHERE id = %s",
+                        ("activa" if vivas else "retirada", now, email, body.instancia_id))
+            # 5N.4: cambiar el contenido de un sector lo marca 'modificado' (es la señal
+            # que el export ya pinta en rojo; no se pregunta nada al usuario).
+            try:
+                from .sector_estado import marcar_sector_modificado
+                for sec, pis, cic in sectores_tocados:
+                    marcar_sector_modificado(cur, id_proyecto, sec, pis, cic, por=email)
+            except Exception:
+                pass
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "sincronizar_estructura",
+          f"estructura {body.instancia_id} · {actualizadas} act · {creadas} nuevas · {eliminadas} borradas",
+          "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "instancia_id": body.instancia_id,
+            "actualizadas": actualizadas, "creadas": creadas, "eliminadas": eliminadas}
+
+
 @router.delete("/lotes/{lote_id}/barras/{barra_id}")
 def eliminar_barra_lote(lote_id: int, barra_id: int, user=Depends(get_current_user)):
     """Borra UNA barra ya guardada de un lote (cuando el usuario la quita de la grilla). Sin esto,
@@ -624,11 +818,22 @@ def eliminar_barra_lote(lote_id: int, barra_id: int, user=Depends(get_current_us
             if r[0] == "terminada":
                 raise HTTPException(status_code=409, detail="El lote está terminado; edita las barras desde el Bar Manager.")
             cur.execute(
-                "SELECT sector, piso, ciclo FROM barras WHERE id = %s AND lote_id = %s",
+                "SELECT sector, piso, ciclo, origen, template_instancia_id FROM barras "
+                "WHERE id = %s AND lote_id = %s",
                 (barra_id, lote_id))
             b = cur.fetchone()
             if not b:
                 raise HTTPException(status_code=404, detail="Barra no encontrada en este lote.")
+            # Las barras de una ESTRUCTURA del modelador no se editan sueltas: son el
+            # resultado de una receta, y sacarle una por fuera dejaría la estructura
+            # diciendo una cosa y el despiece otra. Se cambian reabriendo la estructura
+            # (el sync borra de verdad las que dejaron de existir).
+            if b[3] == "template" and b[4] is not None:
+                raise HTTPException(status_code=409, detail={
+                    "msg": "Esta barra viene de una estructura del modelador. Ábrela con el "
+                           "Enfierrador para cambiarla o quitarla.",
+                    "template_instancia_id": b[4],
+                })
             cur.execute("DELETE FROM barras WHERE id = %s AND lote_id = %s", (barra_id, lote_id))
             cur.execute("UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s",
                         (lote_id, lote_id))
