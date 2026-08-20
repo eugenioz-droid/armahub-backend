@@ -6946,10 +6946,13 @@
       wrap.appendChild(flecha);
     }
 
-    // ATAJOS 40φ / 60φ — rescatados de la fila de EMPALME, que se retiró por
-    // redundante (era el mismo concepto —prolongar el extremo libre— en otro
-    // campo y sólo para el lado longitudinal). Acá sirven para CUALQUIER lado.
-    [40, 60].forEach(function (nPhi) {
+    // ATAJO 60φ — rescatado de la fila de EMPALME, que se retiró por redundante
+    // (era el mismo concepto —prolongar el extremo libre— en otro campo y sólo para
+    // el lado longitudinal). Acá sirve para CUALQUIER lado.
+    // EL 40φ SE ELIMINÓ (21-ago, decisión del usuario: «el 40φ no se usa nunca»).
+    // Queda la lista por si mañana vuelve a haber más de un atajo: el bucle es el
+    // mismo y _nPhi ya calcula cualquier n·φ.
+    [60].forEach(function (nPhi) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'te-phibtn';
       b.textContent = nPhi + 'φ';
@@ -7690,9 +7693,14 @@
   // Campo ÚNICO: la misma definición para todo elemento (por eso no está en la tabla
   // por elemento). `k` = clave que se MUESTRA cuando las tres difieren (una receta
   // vieja, o la semilla de viga, que nace 4/4/3).
+  // fila 1 = AL LADO DEL ESPESOR (21-ago, pedido del usuario). Estuvo en la fila 2
+  // desde que se unificaron los tres recubrimientos en un campo, y esa segunda fila
+  // le costaba un renglón de altura a los 4 cuadrantes sin ganar nada: es UN campo.
+  // Los campos POR CARA (4 campos) siguen declarando fila:2 — ahí la segunda fila sí
+  // se gana el sitio, y el render por filas los soporta sin tocar nada.
   var GEO_RECUB_UNICO = {
     id: 'te_geoRecub', k: 'recub_sup', ks: ['recub_sup', 'recub_inf', 'recub_lat'],
-    lbl: 'Recub (cm)', min: 0, def: GEO_RECUB_DEF, fila: 2,
+    lbl: 'Recub (cm)', min: 0, def: GEO_RECUB_DEF, fila: 1,
     title: 'Recubrimiento (cm) — se aplica a todas las caras y bordes'
   };
   // Campos POR CARA, por elemento. Hoy no se renderizan (GEO_RECUB_POR_CARA=false),
@@ -7758,6 +7766,7 @@
       }).join('') + '</div>';
     }).join('');
     _bindGeometria();
+    _ajustarRibbonUnaLinea();   // cambian los campos → cambia el ancho del ribbon
   }
 
   // Vuelca ST.receta.geometria a los inputs (al abrir y tras arrastrar un nodo).
@@ -7894,6 +7903,10 @@
     // igual—, sólo no se ven.
     var bloque = $('te_colocBloque');
     if (bloque) bloque.classList.toggle('on', tool === 'colocar');
+    // El bloque entra y sale de la MISMA línea del ribbon: con él abierto el ancho
+    // pedido crece de golpe, así que hay que re-medir (puede tocar compactar) y al
+    // cerrarlo hay que devolver las etiquetas.
+    _ajustarRibbonUnaLinea();
     if (caraPlano) _redibujar2D(ST.ultimoOut);   // limpia la cara resaltada
     _setQuadCursor();
     _actualizarStatus();
@@ -9804,7 +9817,11 @@
       ST._resizeBtnBound = true;
       global.addEventListener('resize', function () {
         var bd = $('te_backdrop');
-        if (bd && bd.classList.contains('on')) _posicionarFlipBtn();
+        if (!(bd && bd.classList.contains('on'))) return;
+        _posicionarFlipBtn();
+        // …y el ribbon vuelve a medirse: achicar la ventana puede obligar al plan B
+        // (etiquetas de tipología fuera) y agrandarla tiene que devolverlas.
+        _ajustarRibbonUnaLinea();
       });
     }
   }
@@ -10413,6 +10430,32 @@
     });
   }
 
+  // ==========================================================================
+  // EL RIBBON EN UNA SOLA LÍNEA — y el PLAN B, medido
+  // --------------------------------------------------------------------------
+  // El ribbon no wrappea (CSS: flex-wrap:nowrap): el pedido es ganar altura para los
+  // cuadrantes, y un segundo renglón la devuelve entera. Cuando el ancho no alcanza
+  // ceden, por orden: (1) la nota de ayuda, que se recorta sola con ellipsis, y
+  // (2) las ETIQUETAS de las tipologías — el plan B que el usuario autorizó, que
+  // deja el cuadrito de color con su tooltip.
+  //
+  // SE MIDE, NO SE ADIVINA. Un breakpoint por ancho de ventana no sabe cuántas
+  // tipologías tiene el elemento en curso (9 en viga, otras en muro), ni si el bloque
+  // de colocación está abierto, ni cuánto mide la fuente del usuario. Acá se pregunta
+  // al DOM si el contenido cabe (scrollWidth > clientWidth) con las etiquetas puestas,
+  // y sólo entonces se compacta. En una pantalla ancha las etiquetas siguen ahí.
+  // Se re-mide tras cada cosa que cambia el contenido del ribbon (render de campos,
+  // de tipologías, entrar/salir de colocación) y al cambiar el tamaño de la ventana.
+  function _ajustarRibbonUnaLinea() {
+    var rib = $('te_ribbon'), modal = $('te_modal');
+    if (!rib || !modal || typeof rib.clientWidth !== 'number') return;
+    // Se mide SIEMPRE desde el estado ancho: si no, una vez compactado el ribbon ya
+    // cabría y nunca volvería a soltar las etiquetas al agrandar la ventana.
+    modal.classList.remove('te-rib-compacto');
+    if (!rib.clientWidth) return;                    // modal cerrado: nada que medir
+    if (rib.scrollWidth > rib.clientWidth + 1) modal.classList.add('te-rib-compacto');
+  }
+
   // ---- Ribbon dinámico de tipologías por elemento (wrap si son >6) ----
   function _renderRibbonTips() {
     var cont = $('te_tipbtns'); if (!cont) return;
@@ -10421,8 +10464,12 @@
     if (codigos.indexOf(ST.tipologia) === -1) ST.tipologia = codigos[0];
     cont.innerHTML = lista.map(function (t) {
       var col = TPL_COLORES[t[0]] || '#607d8b';
+      // La ETIQUETA va en su propio <span>: el modo compacto del ribbon la esconde
+      // (plan B del usuario) y queda el cuadrito de color, que con el title de al
+      // lado sigue diciendo qué tipología es.
       return '<span class="te-tipbtn' + (t[0] === ST.tipologia ? ' on' : '') + '" data-tip="' + _esc(t[0]) +
-        '" title="' + _esc(t[1]) + '"><span class="te-sw" style="background:' + col + '"></span>' + _esc(t[0]) + '</span>';
+        '" title="' + _esc(t[0]) + ' · ' + _esc(t[1]) + '"><span class="te-sw" style="background:' + col + '"></span>' +
+        '<span class="te-tipnm">' + _esc(t[0]) + '</span></span>';
     }).join('');
     // Cambiar de ELEMENTO cambia las tipologías (y arriba pudo reasignarse
     // ST.tipologia): el datalist y el campo Figura tienen que seguirlas, si no el
@@ -10432,6 +10479,7 @@
     _prellenarRibbonDesdeConfig(false);
     _refrescarFigDatalist();
     _validarFiguraRibbon(false);
+    _ajustarRibbonUnaLinea();   // cambian los chips → cambia el ancho del ribbon
   }
 
   // ==========================================================================

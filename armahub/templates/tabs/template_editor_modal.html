@@ -181,25 +181,41 @@
   #te_modal .te-xbtn{border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;width:32px;height:30px;cursor:pointer;
     font-size:15px;color:var(--te-muted);display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;flex-shrink:0}
 
-  /* ---- RIBBON: 1) hormigón · 2) agregar barra (con su bloque de colocación) ----
-     Wrappea por GRUPOS (row-gap): cada .te-grp es indivisible, así ninguno se
-     parte por la mitad al cambiar el ancho de la ventana. */
+  /* ---- RIBBON: UNA SOLA LÍNEA (21-ago) ----
+     Largo · Alto · Espesor · Recub · ＋ Agregar barra · figura · φ · tipologías.
+     Antes wrappeaba por grupos y el hormigón traía además una 2ª fila para el recub:
+     dos renglones de ribbon = dos renglones menos de cuadrante. El objetivo del
+     cambio es GANAR ALTURA para los 4 cuadrantes, así que acá se prohíbe el wrap
+     (nowrap) y el que cede cuando falta ancho es, por orden: la nota de ayuda (se
+     recorta con ellipsis) y después las etiquetas de las tipologías (clase
+     .te-rib-compacto, que pone _ajustarRibbonUnaLinea midiendo de verdad).
+     El overflow-x:auto es el último recurso: si ni compactando cabe, la fila
+     scrollea en vez de esconder controles donde nadie pueda alcanzarlos. */
   #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:var(--te-panel);
-    flex-wrap:wrap;row-gap:8px}
-  #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
-  /* GRUPO COLOCAR (20-ago): el botón "＋ Agregar barra" arriba y DEBAJO el bloque
-     figura+φ+tipología. En columna y alineado a la izquierda para que el bloque
-     cuelgue del botón, no se le ponga al lado. */
-  #te_modal #te_ribbon .te-grp-colocar{flex-direction:column;align-items:flex-start;gap:6px}
+    flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+  /* Los grupos NO se encogen: si algo tiene que ceder es la nota, no un campo. */
+  #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:0 0 auto}
+  #te_modal #te_ribbon .te-divv,#te_modal #te_ribbon .te-3dlbl,
+  #te_modal #te_ribbon .te-3dseg{flex:0 0 auto}
+  /* GRUPO COLOCAR (21-ago): el botón "＋ Agregar barra" y, A SU DERECHA, el bloque
+     figura+φ+tipología. Estuvo en COLUMNA (el bloque colgando del botón) del 20 al
+     21-ago: se leía bien pero costaba una fila entera de altura al cuadrante, y el
+     usuario prefiere la altura. CUÁNDO aparece el bloque no cambia — sigue siendo
+     sólo en modo colocación. */
+  #te_modal #te_ribbon .te-grp-colocar{flex-direction:row;align-items:center;gap:8px}
   /* El bloque SÓLO existe mientras se coloca: lo prende/apaga _activarHerramienta
      con la clase .on (ST.tool === 'colocar'). Antes figura/φ/tipologías estaban
-     siempre a la vista y hacían creer que elegirlos ya colocaba algo. Puede
-     wrappear por dentro: 9 tipologías no siempre caben en una línea. */
+     siempre a la vista y hacían creer que elegirlos ya colocaba algo. NO wrappea:
+     el ribbon entero es una línea (ver arriba); si las 9 tipologías no caben, lo que
+     se cae son sus etiquetas, no el renglón. */
   #te_modal #te_colocBloque{display:none}
-  #te_modal #te_colocBloque.on{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:6px}
+  #te_modal #te_colocBloque.on{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
   /* Campos chicos del grupo HORMIGÓN (cm) — escriben ST.receta.geometria.
-     El grupo va en DOS FILAS: dims arriba (largo/alto/ancho) y el RECUB ÚNICO
-     abajo (un solo campo que escribe recub_sup = recub_inf = recub_lat). */
+     UNA SOLA FILA (21-ago): Largo · Alto · Espesor · Recub. El recub estuvo en una
+     2ª fila (fila:2 en GEO_RECUB_UNICO) y ahora va al lado del espesor, que es donde
+     se lee sin bajar la vista y sin costarle un renglón al cuadrante. El mecanismo
+     de filas sigue vivo para el control POR CARA (4 campos), que todavía no se
+     expone: si se re-expusiera volvería a haber dos filas y esto lo soporta. */
   #te_modal .te-grp-horm{align-items:center}
   #te_modal .te-hormrows{display:flex;flex-direction:column;gap:5px}
   #te_modal .te-hormrow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
@@ -235,16 +251,33 @@
   /* φ sin la palabra "MM" (20-ago): el símbolo solo, y más grande que un .te-lbl
      normal porque a 10.5 px una letra griega suelta no se lee. */
   #te_modal #te_ribbon .te-lbl.te-lbl-phi{font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--te-ink)}
-  #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:wrap}
-  #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
+  #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:nowrap}
+  #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600;flex:0 0 auto}
+  /* PLAN B DEL USUARIO, y sólo si de verdad no cabe: se caen las ETIQUETAS de las
+     tipologías y queda el cuadrito de color con su tooltip (que ya decía el nombre
+     largo). Lo enciende _ajustarRibbonUnaLinea MIDIENDO el ribbon, no un breakpoint
+     inventado: en una pantalla ancha las etiquetas siguen ahí. */
+  #te_modal.te-rib-compacto #te_tipbtns .te-tipnm{display:none}
+  #te_modal.te-rib-compacto #te_tipbtns .te-tipbtn{padding:6px 7px;gap:0}
   #te_modal .te-tipbtn .te-sw{width:11px;height:11px;border-radius:3px}
   #te_modal .te-tipbtn:hover{border-color:var(--te-acero);background:var(--te-hover)}
   #te_modal .te-tipbtn.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   #te_modal .te-tipbtn.on .te-mode{color:#eaffd9}
   #te_modal .te-tipbtn .te-mode{font-size:9px;color:var(--te-faint);border:1px solid var(--te-line);border-radius:7px;padding:0 5px}
+  /* La NOTA de ayuda del ribbon es lo ÚNICO que se encoge cuando falta ancho: se
+     recorta con ellipsis (el texto entero queda en su title) en vez de empujar el
+     renglón. Es ayuda, no un control: perderla no impide hacer nada. */
   #te_modal .te-note{font-size:10.5px;color:var(--te-faint);margin-top:4px}
+  #te_modal #te_ribbon .te-note{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #te_modal #te_ribbon .te-spacer{flex:1 1 auto;min-width:0}
 
   #te_modal #te_body{flex:1;display:flex;min-height:0}
+  /* COLUMNA DE TRABAJO = fila de herramientas + los 4 cuadrantes. El PANEL de
+     componentes es hermano de esta columna y no de los cuadrantes, y por eso llega
+     hasta el borde superior del area de trabajo (justo bajo el ribbon) en vez de
+     empezar debajo de las herramientas. min-width:0 = los cuadrantes pueden
+     encogerse; sin eso la grilla impone su min-content y empuja al panel. */
+  #te_modal #te_work{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 
   /* ---- IZQUIERDA: componentes (desplegables con sus propiedades) ---- */
   #te_modal #te_side{width:360px;min-width:360px;border-right:1px solid var(--te-line);background:var(--te-panel);overflow-y:auto;padding:11px 14px 20px}
@@ -991,7 +1024,10 @@
                 style="width:180px;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px"></select>
       </div>
       <div class="te-spacer" style="flex:1"></div>
-      <span class="te-note" style="margin:0">Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.</span>
+      <!-- Ayuda: se RECORTA con ellipsis cuando el ribbon aprieta (ver .te-note en el
+           CSS), por eso lleva el texto completo tambien en el title. -->
+      <span class="te-note" style="margin:0"
+            title="Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.">Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.</span>
       <!-- FONDO (●◐○ = oscuro/medio/claro). SUBIÓ ACÁ desde la fila de herramientas
            (20-ago): pinta LOS 4 CUADRANTES —fondo, grilla 2D y la inversión de los
            trazos del overlay—, no el 3D, así que es un ajuste global del mismo rango
@@ -1011,35 +1047,6 @@
       <span id="te_bigwarnTxt"></span>
       <span class="te-bwsp"></span>
       <button class="te-bwx" id="te_bigwarnX" title="Ocultar aviso" aria-label="Ocultar aviso">✕</button>
-    </div>
-
-    <!-- HERRAMIENTAS del colocador (aplican a las 4 vistas) -->
-    <div id="te_ctools">
-      <span class="te-tlbl">Herramientas</span>
-      <button class="te-ctool te-ctool-ico on" data-tool="mover" title="Seleccionar / mover (cursor neutro)" aria-label="Seleccionar"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M5 3l14 8-6 1.5 3.5 6-2.5 1.4-3.4-6L5 19V3z"/></svg></button>
-      <!-- "Colocar" y "Rango" ya NO son herramientas:
-           · colocar  → botón "＋ Agregar barra" del ribbon (o "＋ Agregar componente")
-           · rango    → flecha sobre la barra SELECCIONADA (arrastrarla la activa) -->
-      <!-- "⟳ Rotar" SE ELIMINÓ del ribbon (decisión del usuario): duplicaba el botón
-           "+90°" de la fila "Rotación °" del panel del componente. La acción sigue
-           existiendo en el panel y con la BARRA ESPACIADORA. -->
-      <span class="te-divv"></span>
-      <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
-      <button class="te-ctool" data-toggle="cotas" title="Cotas del elemento + medidas por lado de la barra seleccionada (atajo: SHIFT)">📐 Cotas</button>
-      <span class="te-divv"></span>
-      <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
-      <span class="te-divv"></span>
-      <!-- MOSTRAR/OCULTAR el listado de barras. Vive ACÁ y no junto a la tabla
-           (pedido explícito: "un botón que la muestre y la oculte apareciendo siempre
-           en el mismo lugar"): la barra de herramientas es fija, mientras que el fondo
-           del panel izquierdo —donde estaba el desplegable— se mueve con el scroll y
-           con cuántos componentes haya. -->
-      <button class="te-ctool" id="te_barrasToggle" aria-expanded="false"
-              title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
-      <span style="flex:1"></span>
-      <span id="te_ctoolsStatus" style="font-size:10.5px;color:var(--te-faint)">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
-      <!-- El radial de FONDO estuvo acá entre el 18 y el 20-ago; ahora vive en el
-           RIBBON (arriba), donde se lee como lo que es: un ajuste de vista global. -->
     </div>
 
     <div id="te_body">
@@ -1068,6 +1075,42 @@
              360 px sin scroll horizontal, y el botón que lo abre pasó a la barra de
              herramientas para estar SIEMPRE en el mismo lugar. -->
 
+      </div>
+
+      <!-- DERECHA: la fila de HERRAMIENTAS y los 4 cuadrantes, en columna. Existe
+           porque el panel de componentes tiene que llegar HASTA ARRIBA del area de
+           trabajo (pedido del usuario): con #te_ctools como fila suelta del modal, la
+           columna izquierda empezaba por debajo de ella y perdia esa franja. La
+           consecuencia aceptada es que la fila de herramientas ya no cruza todo el
+           ancho: arranca a la derecha del panel. No pierde ningun boton. -->
+      <div id="te_work">
+      <!-- HERRAMIENTAS del colocador (aplican a las 4 vistas) -->
+      <div id="te_ctools">
+        <span class="te-tlbl">Herramientas</span>
+        <button class="te-ctool te-ctool-ico on" data-tool="mover" title="Seleccionar / mover (cursor neutro)" aria-label="Seleccionar"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M5 3l14 8-6 1.5 3.5 6-2.5 1.4-3.4-6L5 19V3z"/></svg></button>
+        <!-- "Colocar" y "Rango" ya NO son herramientas:
+             · colocar  → botón "＋ Agregar barra" del ribbon (o "＋ Agregar componente")
+             · rango    → flecha sobre la barra SELECCIONADA (arrastrarla la activa) -->
+        <!-- "⟳ Rotar" SE ELIMINÓ del ribbon (decisión del usuario): duplicaba el botón
+             "+90°" de la fila "Rotación °" del panel del componente. La acción sigue
+             existiendo en el panel y con la BARRA ESPACIADORA. -->
+        <span class="te-divv"></span>
+        <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
+        <button class="te-ctool" data-toggle="cotas" title="Cotas del elemento + medidas por lado de la barra seleccionada (atajo: SHIFT)">📐 Cotas</button>
+        <span class="te-divv"></span>
+        <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
+        <span class="te-divv"></span>
+        <!-- MOSTRAR/OCULTAR el listado de barras. Vive ACÁ y no junto a la tabla
+             (pedido explícito: "un botón que la muestre y la oculte apareciendo siempre
+             en el mismo lugar"): la barra de herramientas es fija, mientras que el fondo
+             del panel izquierdo —donde estaba el desplegable— se mueve con el scroll y
+             con cuántos componentes haya. -->
+        <button class="te-ctool" id="te_barrasToggle" aria-expanded="false"
+                title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
+        <span style="flex:1"></span>
+        <span id="te_ctoolsStatus" style="font-size:10.5px;color:var(--te-faint)">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
+        <!-- El radial de FONDO estuvo acá entre el 18 y el 20-ago; ahora vive en el
+             RIBBON (arriba), donde se lee como lo que es: un ajuste de vista global. -->
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->
@@ -1256,6 +1299,7 @@
           <div class="te-barras-b" id="te_barrasBody"></div>
         </div>
       </div>
+      </div><!-- /#te_work -->
 
     </div>
 
