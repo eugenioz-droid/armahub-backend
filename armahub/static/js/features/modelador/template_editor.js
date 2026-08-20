@@ -1109,16 +1109,23 @@
   // Nombres de OBRA de las dos caras de cada eje. Sin jerga de ejes: la ficha dice
   // «a 12 cm del testero», no «x = −285». La letra del eje queda en el tooltip, con
   // _ejeLetra (que es la única traducción interno → letra visible).
+  // LAS DOS CARAS DEL EJE DE PROFUNDIDAD (ancho de la viga, espesor del muro) SE
+  // LLAMAN FRONTAL Y POSTERIOR, no «+» y «−». El signo es jerga de ejes y no dice
+  // nada en obra; frontal/posterior sí, y además NO se inventa: la cámara de la
+  // elevación mira desde +Z (_ORTO_DIR.z.eye = [0,0,1]), así que la cara que en esa
+  // vista da hacia el usuario es literalmente la del máximo del eje. El vocabulario
+  // es el mismo que ya usa el radial de Cara/anclaje (Superior · Inferior · Lateral ·
+  // Extremo): por eso la viga conserva el «lateral» y el muro habla de sus caras.
   var CARAS_OBRA = {
     viga: {
       x: { min: 'testero inicio', max: 'testero fin' },
       y: { min: 'cara inferior', max: 'cara superior' },
-      z: { min: 'cara lateral −', max: 'cara lateral +' }
+      z: { min: 'lateral posterior', max: 'lateral frontal' }
     },
     muro: {
       x: { min: 'extremo inicio', max: 'extremo fin' },
       y: { min: 'borde inferior', max: 'borde superior' },
-      z: { min: 'cara −', max: 'cara +' }
+      z: { min: 'cara posterior', max: 'cara frontal' }
     }
   };
   // Cómo se llama el EJE en la ficha (tampoco por su letra: por lo que recorre).
@@ -6501,7 +6508,9 @@
     // Cara / anclaje (radial) — 4 caras: las dos del eje vertical (sup/inf), la
     // LATERAL (cortinas) y el EXTREMO (testeros del elemento), que antes no se podía
     // elegir ni clicando el borde.
-    var caraRow = _div('te-row');
+    // FILA ANCHA (rótulo arriba): son CUATRO botones y en la columna de valor de la
+    // grilla normal el último se salía por el borde del panel — inalcanzable.
+    var caraRow = _div('te-row te-row-ancha');
     caraRow.appendChild(_label('Cara / anclaje'));
     caraRow.appendChild(_radial(
       [['sup', 'Superior'], ['inf', 'Inferior'], ['lateral', 'Lateral'], ['extremo', 'Extremo']],
@@ -7104,24 +7113,39 @@
     // siempre simétrico y el usuario necesita acortar el estribo y CARGARLO a un
     // costado (estribo de confinamiento). El largo de corte es el mismo en los
     // tres; lo que cambia es dónde queda la barra.
-    if (!esEspejo) {
-      var ext = (d.extremo === 'ini') ? 'ini' : (d.extremo === 'fin' ? 'fin' : (cerrada ? 'centro' : 'fin'));
-      var flecha = document.createElement('button');
-      flecha.type = 'button'; flecha.className = 'te-deltadir';
-      flecha.textContent = (ext === 'fin') ? '→' : (ext === 'ini' ? '←' : '↔');
-      flecha.title = (ext === 'centro')
-        ? 'Crece/acorta CENTRADO (mitad por cada borde). Clic para cargarlo a un lado.'
-        : (ext === 'fin'
-          ? 'Crece/acorta por el borde FINAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el inicio queda quieto)') + '. Clic para cambiar.'
-          : 'Crece/acorta por el borde INICIAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el final queda quieto)') + '. Clic para cambiar.');
+    // LA FLECHA SE PINTA EN LOS DOS LADOS DEL PAR (reporte 19-ago: «deja la flecha,
+    // que estén linkeadas también»). Antes sólo salía en el lado que el usuario tocó,
+    // así que la fila del espejo tenía una celda MENOS y el par se veía desalineado
+    // (B: «Δ −577 → 60φ» · D: «Δ −577 60φ»). El espejo la muestra BLOQUEADA, igual que
+    // su campo Δ: el motor replica `extremo` junto con el valor, o sea que es el mismo
+    // dato y no puede tener dos estados.
+    // OJO: el estado se lee del lado que MANDA (`dFlecha`), no de _deltasEfectivos.
+    // Esa función normaliza «sin extremo» a 'fin' y aquí el default de una figura
+    // CERRADA es 'centro' — leerla de ahí habría pintado '→' en el espejo mientras su
+    // par muestra '↔', que es otra vez el par diciendo dos cosas distintas.
+    var dFlecha = esEspejo ? (c.dims[info.de] || {}) : d;
+    var ext = (dFlecha.extremo === 'ini') ? 'ini' : (dFlecha.extremo === 'fin' ? 'fin' : (cerrada ? 'centro' : 'fin'));
+    var flecha = document.createElement('button');
+    flecha.type = 'button'; flecha.className = 'te-deltadir' + (esEspejo ? ' te-deltadir-esp' : '');
+    flecha.textContent = (ext === 'fin') ? '→' : (ext === 'ini' ? '←' : '↔');
+    flecha.title = (ext === 'centro')
+      ? 'Crece/acorta CENTRADO (mitad por cada borde). Clic para cargarlo a un lado.'
+      : (ext === 'fin'
+        ? 'Crece/acorta por el borde FINAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el inicio queda quieto)') + '. Clic para cambiar.'
+        : 'Crece/acorta por el borde INICIAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el final queda quieto)') + '. Clic para cambiar.');
+    if (esEspejo) {
+      flecha.disabled = true;
+      flecha.title = 'Por dónde crece este lado: lo mismo que ' + info.de + ' (contorno cerrado), ' +
+        'igual que su Δ. Para cambiarlo, edita el lado ' + info.de + '.';
+    } else {
       flecha.onclick = function () {
         // cerradas: centro → fin → ini → centro · abiertas: fin ↔ ini
         if (cerrada) d.extremo = (ext === 'centro') ? 'fin' : (ext === 'fin' ? 'ini' : 'centro');
         else d.extremo = (ext === 'fin') ? 'ini' : 'fin';
         _mut(ci); _renderPanel();
       };
-      wrap.appendChild(flecha);
     }
+    wrap.appendChild(flecha);
 
     // ATAJO 60φ — rescatado de la fila de EMPALME, que se retiró por redundante
     // (era el mismo concepto —prolongar el extremo libre— en otro campo y sólo para

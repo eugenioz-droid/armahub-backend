@@ -143,7 +143,15 @@
     font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--te-ink)}
   #te_backdrop.on{display:flex}
   #te_backdrop *{box-sizing:border-box}
-  #te_modal{width:99vw;height:98vh;background:var(--te-panel);border-radius:14px;
+  /* EL COLOR DE TEXTO POR DEFECTO SE DECLARA AQUÍ, NO SÓLO EN #te_backdrop.
+     El backdrop resuelve su `color:var(--te-ink)` con SU propio --te-ink, que es
+     siempre el del tema CLARO (los temas cuelgan de #te_modal.te-tema-*, un nivel más
+     abajo). O sea que todo lo que no declaraba color propio heredaba ese gris casi
+     negro y quedaba ilegible en medio/oscuro — el título de las fichas del panel de
+     componentes (.te-nm) era el caso visible del reporte. Repitiendo la declaración en
+     #te_modal, la variable se resuelve YA dentro del tema y el subárbol entero
+     acompaña al fondo. En claro --te-ink vale lo mismo que arriba: no cambia nada. */
+  #te_modal{width:99vw;height:98vh;background:var(--te-panel);color:var(--te-ink);border-radius:14px;
     box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
 
   /* ---- TÍTULO ---- */
@@ -311,7 +319,17 @@
   #te_modal .te-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
   #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
   #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}
-  #te_modal .te-radial{display:inline-flex;border:1px solid var(--te-line);border-radius:7px;overflow:hidden}
+  /* FILA ANCHA: el rótulo va ARRIBA y el control se lleva el ancho entero de la ficha.
+     La usa «Cara / anclaje», que son CUATRO botones: en la columna de valor (1fr de
+     una grilla 96px+1fr dentro de un panel de 360 px) el cuarto se salía por el borde
+     y quedaba INALCANZABLE. Con el rótulo arriba entran los cuatro en una línea. */
+  #te_modal .te-row.te-row-ancha{grid-template-columns:1fr;gap:3px}
+  /* …y por si aun así no entran (zoom del navegador, un idioma más largo, una opción
+     nueva), el radial ENVUELVE en vez de desbordar: ningún botón puede quedar fuera.
+     min-width:0 es lo que deja que la celda de grilla lo comprima hasta obligarlo a
+     envolver; sin él la celda se estira al min-content y vuelve a desbordar. */
+  #te_modal .te-radial{display:inline-flex;flex-wrap:wrap;min-width:0;max-width:100%;
+    border:1px solid var(--te-line);border-radius:7px;overflow:hidden}
   #te_modal .te-radial button{border:none;background:var(--te-field);padding:5px 9px;font-size:11px;color:var(--te-muted);cursor:pointer;font-weight:600}
   #te_modal .te-radial button+button{border-left:1px solid var(--te-line)}
   #te_modal .te-radial button.on{background:var(--te-azul-b);color:var(--te-azul-t)}
@@ -368,7 +386,7 @@
   #te_modal #te_side input.te-delta{width:52px;text-align:right;flex:0 0 auto;padding:3px 4px}
   /* FILA DE POSICIÓN MEDIDA: [ 12 ] cm de [ testero inicio ▾ ]. El campo del número
      es angosto y el selector de cara se lleva el resto del renglón (los nombres de
-     obra son largos: "cara lateral −"). OJO ESPECIFICIDAD: la regla base de la ficha
+     obra son largos: "lateral posterior"). OJO ESPECIFICIDAD: la regla base de la ficha
      es `#te_modal #te_side input,select {width:100%}` con DOS ids, así que estos dos
      también los repiten o el campo se estira y saca la fila del panel. */
   #te_modal .te-posrow{display:flex;align-items:center;gap:5px;min-width:0}
@@ -436,7 +454,13 @@
     background:var(--te-azul-b);border-color:var(--te-field-b);font-style:italic;opacity:1;-webkit-text-fill-color:var(--te-azul-t)}
   #te_modal .te-deltadir{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;color:var(--te-muted);cursor:pointer}
-  #te_modal .te-deltadir:hover{background:var(--te-hover);color:var(--te-acero-t)}
+  #te_modal .te-deltadir:hover:not(:disabled){background:var(--te-hover);color:var(--te-acero-t)}
+  /* FLECHA HEREDADA DEL PAR ESPEJO — mismo trato que el Δ replicado de al lado (azul,
+     bloqueada): es el MISMO dato visto dos veces, no un control apagado. Se pinta
+     igual que en el lado que manda para que las dos filas del par tengan las mismas
+     columnas; sin ella, al espejo le faltaba una celda y el par salía desalineado. */
+  #te_modal .te-deltadir.te-deltadir-esp{color:var(--te-azul-t);background:var(--te-azul-b);
+    border-color:var(--te-field-b);opacity:1;cursor:default}
   /* SELECTOR DE MODO DE COLOCACIÓN (3 botoncitos: Puntual / Distribución / Arreglo).
      Control segmentado que ocupa el ancho del panel; el activo va en acero. Cambiarlo
      re-renderiza los campos contextuales de abajo (menú contextual por modo). */
