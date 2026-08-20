@@ -60,6 +60,10 @@
        cabecera #ddd, separador de filas #efefef y fila apuntada #fafafa. En claro,
        por lo tanto, la franja se ve exactamente igual que antes. */
     --te-btab-b:#dddddd; --te-btab-row:#efefef; --te-btab-hover:#fafafa;
+    /* Trazo de las figuras de la barra rápida. En claro es EL MISMO color con que
+       las dibuja el motor del Diseñador (#00695c), así que el tema de siempre no
+       cambia; los otros dos lo aclaran para que no se hunda en el fondo. */
+    --te-figq-ink:#00695c;
     /* --te-canvas3d = TEMAS3D.claro.bg de template_editor.js. Desde que el fondo es
        global lo usan los 4 cuadrantes (via --te-ov-lienzo), no sólo el 3D. */
     --te-canvas3d:#d8dee7; --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
@@ -91,6 +95,7 @@
     --te-warn:#ffab5e; --te-warn-bg:rgba(230,81,0,.22);
     --te-band:#232a38; --te-band-b:#4b5670;
     --te-btab-b:#4b5670; --te-btab-row:#48536a; --te-btab-hover:#414c61;
+    --te-figq-ink:#5fcabb;
   }
   /* OSCURO — VARIANTE A: CARBÓN NEUTRO (la implementada). El lienzo #14171c es casi
      neutro y el marco también: grafito sin tinte. Es el oscuro "de taller" (Fusion,
@@ -107,6 +112,7 @@
     --te-warn:#ffb877; --te-warn-bg:rgba(230,81,0,.20);
     --te-band:#13171c; --te-band-b:#39414b;
     --te-btab-b:#39414b; --te-btab-row:#2f353d; --te-btab-hover:#2a3038;
+    --te-figq-ink:#6fd6c6;
   }
   /* OSCURO — VARIANTE B: AZUL NOCHE. NO está implementada; queda escrita para que
      cambiarla sea SUSTITUIR NÚMEROS en el bloque .te-tema-oscuro de arriba y nada más
@@ -122,6 +128,7 @@
        --te-sw-ring:rgba(255,255,255,.32);
        --te-band:#111726; --te-band-b:#3a4557;
        --te-btab-b:#3a4557; --te-btab-row:#303a4c; --te-btab-hover:#29324a;
+       --te-figq-ink:#5fcabb;
   */
   /* FONDO DE LOS CAMPOS POR VARIABLE. Antes no había regla: los inputs y selects se
      quedaban con el blanco por defecto del navegador, o sea que en oscuro TODOS los
@@ -266,6 +273,40 @@
   /* φ sin la palabra "MM" (20-ago): el símbolo solo, y más grande que un .te-lbl
      normal porque a 10.5 px una letra griega suelta no se lee. */
   #te_modal #te_ribbon .te-lbl.te-lbl-phi{font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--te-ink)}
+  /* ---- BARRA RÁPIDA DE FIGURAS (21-ago) ----
+     Matriz 2×5 de casillas chicas dentro del ribbon. El dibujo va a 36×26 px y sin
+     una sola letra (ni lado, ni ángulo, ni cota, ni el código): a este tamaño la
+     línea pelada se reconoce y cualquier texto sería una mancha. El código está en
+     el tooltip de la casilla.
+     La matriz la impone la GRILLA: 5 columnas y flujo por FILAS, así que el orden que
+     pidió el usuario se lee como se lee cualquier lista —de izquierda a derecha y
+     después la fila de abajo—: 101A 102A 103A 103B 103C arriba, 104A 104B 104C 105A
+     105C abajo. El orden lo manda TE_FIGS_RAPIDAS en template_editor.js. */
+  #te_modal .te-figq{display:grid;grid-template-columns:repeat(5,auto);gap:3px;flex:0 0 auto}
+  #te_modal .te-figq button{padding:0;border:1px solid var(--te-line);border-radius:5px;
+    background:var(--te-field);cursor:pointer;line-height:0;display:block;
+    min-width:38px;min-height:28px}
+  #te_modal .te-figq button:hover{border-color:var(--te-acero);background:var(--te-hover)}
+  /* LA ACTIVA se marca con el MISMO azul con que se marca "＋ Agregar barra" en modo
+     colocación: las dos cosas dicen "esto es lo que va a salir del próximo clic". */
+  #te_modal .te-figq button.on{border-color:var(--te-azul);background:var(--te-azul-b);
+    box-shadow:0 0 0 2px rgba(21,101,192,.20)}
+  /* Casilla SIN dibujo: la figura no está en el catálogo vigente o no trae geometría.
+     Queda vacía y apagada —no se inventa un icono— pero conserva su tooltip, que es
+     lo que explica por qué está así. */
+  #te_modal .te-figq button.vacia{cursor:default;opacity:.4;background:var(--te-ghost)}
+  #te_modal .te-figq button.vacia:hover{border-color:var(--te-line);background:var(--te-ghost)}
+  #te_modal .te-figq svg{display:block}
+  /* EL TRAZO SIGUE AL TEMA. El motor del Diseñador emite el color como ATRIBUTO de
+     presentación (stroke="#00695c"), y un atributo de presentación pierde contra
+     cualquier regla CSS: por eso se puede re-teñir desde acá sin tocar el motor (que
+     dibuja para el Catálogo, sobre papel blanco, y ahí ese verde azulado es correcto).
+     En claro vale exactamente el color del motor, o sea que el tema de siempre no
+     cambia; en medio/oscuro se aclara, si no el trazo se hundía en el fondo.
+     El `> path` es a propósito: el motor mete también dos <path> de punta de flecha
+     dentro de <defs>, que sólo se usan en las cotas (que acá no se dibujan) y que no
+     tienen por qué llevar trazo. */
+  #te_modal .te-figq svg > path{stroke:var(--te-figq-ink)}
   #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:nowrap}
   #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600;flex:0 0 auto}
   /* PLAN B DEL USUARIO, y sólo si de verdad no cabe: se caen las ETIQUETAS de las
@@ -1103,6 +1144,21 @@
                desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
           <div class="te-tipbtns" id="te_tipbtns"></div>
         </div>
+      </div>
+      <div class="te-divv"></div>
+      <!-- BARRA RÁPIDA DE FIGURAS — las 10 que el usuario coloca casi siempre, en una
+           matriz de 2×5. Un clic deja esa figura como la activa para colocar (y entra
+           en modo colocación si hacía falta): es EL MISMO gesto que teclear el código
+           en el campo Figura, por la misma puerta.
+           VACÍO a propósito: las casillas las dibuja _renderFigsRapidas()
+           (template_editor.js) con el MOTOR del Diseñador y la geometría del catálogo
+           —los mismos que pintan la matriz del Catálogo y las miniaturas del Bar
+           Manager—, no con iconos escritos a mano que se desincronizarían.
+           Va FUERA de #te_colocBloque: el botón sirve justamente para entrar a
+           colocar, así que tiene que verse también cuando no se está colocando. -->
+      <div class="te-grp te-grp-figq">
+        <div class="te-figq" id="te_figQuick"
+             title="Figuras de uso frecuente: un clic la deja lista para colocar"></div>
       </div>
       <!-- GRUPO OBRA (el editor haciendo de ENFIERRADOR) — SOLO se ve cuando el
            modal se abre con contexto de despiece (templateEditorAbrirEnObra). En modo

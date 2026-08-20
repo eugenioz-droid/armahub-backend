@@ -589,6 +589,119 @@
     _refrescarFigDatalist(!String(el.value || '').trim(), tip);
   }
 
+  // ==========================================================================
+  // BARRA RÁPIDA DE FIGURAS (21-ago) — matriz 2×5 en el ribbon
+  // --------------------------------------------------------------------------
+  // Las diez figuras que el usuario coloca casi siempre, a un clic. El clic hace
+  // EXACTAMENTE lo mismo que teclear ese código en el campo Figura: escribe en el
+  // campo y llama a la MISMA puerta (_aplicarFiguraRibbon). No hay una segunda
+  // regla de validación ni un segundo camino hacia ST.figura — si mañana cambia
+  // cómo se acepta una figura, cambia para las dos entradas a la vez.
+  //
+  // EL DIBUJO NO ES UN ICONO A MANO. Lo pinta el motor del Diseñador
+  // (disenadorMotor.dibujarFigura) con la geometría del catálogo, que es el mismo
+  // que dibuja la matriz del Catálogo y las miniaturas del Bar Manager. Así estos
+  // botones heredan los codos y el trazo ya afinados, y no pueden quedar mostrando
+  // una forma que el catálogo dejó de tener.
+  //
+  // LA GEOMETRÍA SÓLO LLEGA CON EL CATÁLOGO REAL: el espejo estático de
+  // catalogo_figuras.js trae parciales/ángulos/radio pero NO `geometria` (el trazo
+  // lo dibuja el Diseñador y vive en la BD). Por eso la matriz se repinta cuando
+  // vuelve GET /figuras-catalogo. Hasta entonces —y si una figura no trae
+  // geometría— la casilla queda VACÍA con su tooltip: no se inventa un dibujo.
+  var TE_FIGS_RAPIDAS = ['101A', '102A', '103A', '103B', '103C', '104A', '104B', '104C', '105A', '105C'];
+  // Tamaño del dibujo de cada casilla, en px. El pad es chico a propósito: sin
+  // etiquetas no hay que reservar sitio para ninguna letra, así que todo el
+  // recuadro es figura. (El CSS le da min-width/min-height al botón para que las
+  // casillas vacías midan lo mismo que las dibujadas.)
+  var TE_FIGQ_W = 36, TE_FIGQ_H = 26, TE_FIGQ_PAD = 3;
+
+  // SVG de una figura para la barra rápida, o '' si no hay con qué dibujarla.
+  function _svgFigRapida(cod) {
+    var motor = global.disenadorMotor;
+    if (!motor || typeof motor.dibujarFigura !== 'function') return '';
+    var d = _figDef(cod);
+    var geo = d && d.geometria;
+    // El motor dibuja desde `puntos` si los hay y, si no, reconstruye desde `tramos`:
+    // basta con que venga cualquiera de los dos (con menos, devolvería el cartel de
+    // "Sin geometría para dibujar", que dentro de un botón de 36 px no se lee).
+    var hayPuntos = geo && geo.puntos && geo.puntos.length >= 2;
+    var hayTramos = geo && geo.tramos && geo.tramos.length;
+    if (!hayPuntos && !hayTramos) return '';
+    // COPIA SIN ADORNOS. labels_auto:false ya apaga las letras de lado y los ángulos
+    // automáticos, pero las etiquetas MANUALES (las que el usuario puso en el
+    // Diseñador) y las cotas de arco se dibujan igual: son datos de la geometría, no
+    // opciones del render. Se vacían en la copia y no en el motor, que dibuja la
+    // ficha completa donde sí corresponde. `cotas_arco_iso: []` además apaga el
+    // cálculo automático de cotas de arco 2D (el motor sólo lo hace si el campo
+    // viene sin definir).
+    var g = {}, k;
+    for (k in geo) if (Object.prototype.hasOwnProperty.call(geo, k)) g[k] = geo[k];
+    g.etiquetas = [];
+    g.cotas_arco_iso = [];
+    try {
+      return motor.dibujarFigura(g, null, {
+        width: TE_FIGQ_W, height: TE_FIGQ_H, pad: TE_FIGQ_PAD,
+        labels_auto: false, angulos: false
+      });
+    } catch (e) { return ''; }
+  }
+
+  function _renderFigsRapidas() {
+    var cont = $('te_figQuick'); if (!cont) return;
+    cont.innerHTML = TE_FIGS_RAPIDAS.map(function (cod) {
+      var svg = _svgFigRapida(cod);
+      // La casilla sin dibujo NO se deshabilita con el atributo `disabled`: un botón
+      // deshabilitado no recibe eventos de ratón y en varios navegadores se queda
+      // también sin tooltip, que es justo lo único que le queda por decir.
+      return '<button type="button" data-fig="' + _esc(cod) + '"' +
+        (svg ? '' : ' class="vacia"') +
+        ' title="' + _esc(cod) + (svg ? ' — dejarla lista para colocar' : ' — el catálogo no trae su dibujo') + '"' +
+        ' aria-label="' + _esc(cod) + '">' + svg + '</button>';
+    }).join('');
+    _marcarFigRapida();
+  }
+
+  // Qué casilla está activa. Se llama desde las tres puertas por las que cambia
+  // ST.figura (el campo mientras se teclea, el campo al aplicar, y el prellenado
+  // desde la configuración), no desde _actualizarStatus: esa corre por cada
+  // movimiento del ratón durante un arrastre.
+  function _marcarFigRapida() {
+    var cont = $('te_figQuick'); if (!cont) return;
+    var act = _figKey(ST.figura);
+    Array.prototype.forEach.call(cont.querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-fig') === act);
+    });
+  }
+
+  // Clic en una casilla = "quiero colocar ESTA figura".
+  function _elegirFiguraRapida(cod) {
+    var fig = $('te_ribFigura'); if (!fig) return;
+    fig.value = cod;
+    // Si el catálogo vigente la rechaza no se entra a colocar: el campo queda en
+    // rojo y la barra de estado dice por qué (lo hace _validarFiguraRibbon).
+    if (!_aplicarFiguraRibbon(true)) { _marcarFigRapida(); return; }
+    // La otra mitad del gesto: elegir figura estando en "Seleccionar" no colocaba
+    // nada, así que el atajo obligaba a ir igual a pulsar "＋ Agregar barra".
+    if (ST.tool !== 'colocar') _entrarModoColocacion();
+    _marcarFigRapida();
+  }
+
+  function _bindFigsRapidas() {
+    var cont = $('te_figQuick'); if (!cont || cont._teBound) return;
+    cont._teBound = true;
+    // Delegado en el contenedor: la matriz se re-emite entera cuando llega el
+    // catálogo, así que cablear botón por botón dejaría los listeners viejos
+    // colgando de nodos que ya no están.
+    cont.addEventListener('click', function (e) {
+      var t = e.target;
+      var b = (t && t.closest) ? t.closest('button[data-fig]') : null;
+      if (!b || b.classList.contains('vacia')) return;
+      e.stopPropagation();
+      _elegirFiguraRapida(b.getAttribute('data-fig'));
+    });
+  }
+
   // Catálogo REAL al abrir el editor: GET /figuras-catalogo → actualizar(data).
   // El módulo del catálogo trae un espejo estático para arrancar; esto lo
   // REEMPLAZA por lo que hay en la BD. Si la red falla manda el espejo y NO se
@@ -607,6 +720,10 @@
         if (data) c.actualizar(data);
         _refrescarFigDatalist();
         _validarFiguraRibbon(false);
+        // LA BARRA RÁPIDA SE DIBUJA ACÁ, no antes: el espejo estático no trae la
+        // `geometria` de las figuras (sólo parciales/ángulos), así que hasta este
+        // punto las diez casillas estaban vacías.
+        _renderFigsRapidas();
         var bd = $('te_backdrop');
         if (bd && bd.classList.contains('on')) {
           // Este re-render es NORMALIZACIÓN, no edición del usuario: la ficha re-lee
@@ -7969,6 +8086,22 @@
     return true;
   }
 
+  // LA PUERTA del campo Figura del ribbon: valida lo que hay escrito y, si el
+  // catálogo lo acepta, lo deja como figura activa (re-sellando lo cargado si se
+  // estaba colocando). Devuelve si la aplicó.
+  // Existe como función propia desde que hay DOS gestos que hacen lo mismo —teclear
+  // el código y pulsar una casilla de la barra rápida—: el segundo escribe en el
+  // campo y llama aquí, en vez de repetir la validación por su cuenta, que es como
+  // se terminan teniendo dos reglas que se separan al primer cambio.
+  function _aplicarFiguraRibbon(conStatus) {
+    var fig = $('te_ribFigura'); if (!fig) return false;
+    if (!_validarFiguraRibbon(!!conStatus)) return false;
+    ST.figura = _figKey(fig.value);
+    if (_hayCargado()) _sellarCargado(); else _actualizarStatus();
+    _marcarFigRapida();
+    return true;
+  }
+
   // ==========================================================================
   // PRELLENADO DEL RIBBON DESDE LA CONFIGURACIÓN (figura y φ de partida)
   // ==========================================================================
@@ -8010,6 +8143,7 @@
         ST.diam = Number(diamCfg);
       }
     }
+    _marcarFigRapida();   // el prellenado también cambia ST.figura
   }
 
   // Soltar lo cargado (Esc / herramienta que no coloca) → sin ghost, deselecciona.
@@ -8020,6 +8154,7 @@
   }
 
   function _bindRibbon() {
+    _bindFigsRapidas();   // matriz 2×5 de figuras frecuentes (delegado, una sola vez)
     // FIGURA del ribbon — VALIDADA contra el catálogo. 'input' sólo pinta el borde
     // mientras se teclea; 'change' (blur/Enter) APLICA, y si la figura no existe o
     // no es dibujable NO se aplica: ST.figura conserva la última válida y el status
@@ -8041,14 +8176,11 @@
           if (kf && !_figError(kf)) {
             ST.figura = kf;
             if (_hayCargado()) _sellarCargado();
+            _marcarFigRapida();   // la barra rápida dice cuál está activa, se teclee o se pulse
           }
         }
       });
-      fig.addEventListener('change', function () {
-        if (!_validarFiguraRibbon(true)) return;
-        ST.figura = _figKey(fig.value);
-        if (_hayCargado()) _sellarCargado(); else _actualizarStatus();
-      });
+      fig.addEventListener('change', function () { _aplicarFiguraRibbon(true); });
       if (_figKey(fig.value)) ST.figura = _figKey(fig.value);
     }
     var dia = $('te_ribDiam');
@@ -10345,6 +10477,7 @@
     _actualizarTitulos();
     _renderElemSel();   // el selector del titlebar apunta al elemento de ESTE template
     _renderRibbonTips();
+    _renderFigsRapidas();   // matriz 2×5 del ribbon (se repinta cuando llega el catálogo real)
     _actualizarBtnGuardar();
     var se = $('te_saveErr'); if (se) se.textContent = '';
     _bindUI();
@@ -11737,6 +11870,10 @@
     _figSpec: _figSpec, _figError: _figError, _figsDibujables: _figsDibujables,
     _motivoNoDibujable: _motivoNoDibujable,
     _cargarCatalogoFiguras: _cargarCatalogoFiguras, _refrescarFigDatalist: _refrescarFigDatalist,
+    // BARRA RÁPIDA DE FIGURAS (matriz 2×5 del ribbon)
+    TE_FIGS_RAPIDAS: TE_FIGS_RAPIDAS, _svgFigRapida: _svgFigRapida,
+    _renderFigsRapidas: _renderFigsRapidas, _elegirFiguraRapida: _elegirFiguraRapida,
+    _aplicarFiguraRibbon: _aplicarFiguraRibbon,
     // FIGURA vs TIPOLOGÍA (aviso, no bloqueo)
     _figsDeTipologia: _figsDeTipologia, _figsDeTipologiaActiva: _figsDeTipologiaActiva,
     _figAvisoTipologia: _figAvisoTipologia, _validarFiguraRibbon: _validarFiguraRibbon,
