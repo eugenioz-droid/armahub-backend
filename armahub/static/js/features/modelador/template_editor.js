@@ -5710,9 +5710,12 @@
   // ==========================================================================
   // SELECCIÓN / MOVER / BORRAR / ROTAR
   // ==========================================================================
+  // CAMBIAR DE SELECCIÓN NO RE-ARMA LA GRILLA (20-ago): la receta no cambió, así que
+  // las tejas siguen valiendo. Sólo se mueve la marca .sel y se repinta la ficha en
+  // su zona fija. Antes esto llamaba a _renderPanel y reconstruía el panel entero.
   function _seleccionar(ci) {
     ST.selCi = ci;
-    _renderPanel();
+    _renderSeleccion();
     _redibujar2D(ST.ultimoOut);
     _actualizarStatus();
   }
@@ -6349,12 +6352,45 @@
   // ==========================================================================
   var LETRAS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
+  // EL PANEL SE PINTA EN DOS TROZOS INDEPENDIENTES (20-ago).
+  //   _renderGrilla()  → las tejas. Depende de CUÁNTOS componentes hay y de la
+  //                      identidad de cada uno. Sólo cambia con mutaciones.
+  //   _renderDetalle() → la ficha de la barra seleccionada. Depende de QUIÉN está
+  //                      seleccionado y de la forma de su ficha.
+  // POR QUÉ SEPARADOS: antes _renderPanel re-armaba TODO el DOM del panel en cada
+  // mutación y en cada cambio de selección. Con la ficha en zona propia, cambiar de
+  // teja no tiene por qué reconstruir la grilla (y encima le perdería el scroll):
+  // basta mover la clase .sel. _renderPanel queda como el camino COMPLETO, para los
+  // llamadores estructurales (colocar, borrar, deshacer, abrir template…).
   function _renderPanel() {
+    if (!$('te_compList') || !ST.receta) return;   // sin panel en el DOM no hay nada que pintar
+    _renderGrilla();
+    _renderDetalle();
+    // El selector de elemento se habilita/deshabilita según haya barras: hay que
+    // refrescarlo con cada mutación (colocar la 1ª barra lo bloquea; borrar la
+    // última lo libera).
+    _renderElemSel();
+    _actualizarStatus();
+    // La ficha flotante del 3D muestra la SELECCIÓN: se repinta acá porque este es
+    // el punto por el que pasa todo cambio de selección.
+    _pintarFichaSel();
+  }
+
+  // CAMBIÓ SÓLO LA SELECCIÓN: la grilla se queda como está (no se re-arma ni pierde
+  // su scroll), sólo se mueve la marca y se repinta la ficha.
+  function _renderSeleccion() {
+    if (!$('te_compList') || !ST.receta) return;
+    _marcarSelGrilla();
+    _renderDetalle();
+    _actualizarStatus();
+    _pintarFichaSel();
+  }
+
+  function _renderGrilla() {
     var cont = $('te_compList'); if (!cont || !ST.receta) return;
     var cnt = $('te_compCount'); if (cnt) cnt.textContent = ST.receta.componentes.length;
     cont.innerHTML = '';
-    ST._panelVivo = [];   // el DOM viejo se va: sus refrescadores también
-    // LISTA VACÍA: se dice qué hacer AHÍ, que es donde el usuario está mirando, y
+    // GRILLA VACÍA: se dice qué hacer AHÍ, que es donde el usuario está mirando, y
     // se va sola con la primera barra. Reemplaza a la nota fija que vivía bajo el
     // botón y que seguía ahí con el template lleno.
     if (!ST.receta.componentes.length) {
@@ -6366,14 +6402,74 @@
     ST.receta.componentes.forEach(function (c, ci) {
       cont.appendChild(_compEl(c, ci));
     });
-    // El selector de elemento se habilita/deshabilita según haya barras: hay que
-    // refrescarlo con cada mutación (colocar la 1ª barra lo bloquea; borrar la
-    // última lo libera).
-    _renderElemSel();
-    _actualizarStatus();
-    // La ficha flotante del 3D muestra la SELECCIÓN: se repinta acá porque este es
-    // el punto por el que pasa todo cambio de selección (_seleccionar → _renderPanel).
-    _pintarFichaSel();
+    _habilitarDropCola(cont);
+  }
+
+  // Mueve la marca de selección entre tejas YA pintadas y trae a la vista la que
+  // quedó elegida (seleccionar desde una vista 2D/3D puede apuntar a una teja que
+  // está fuera del scroll de la grilla). 'nearest' = no mueve nada si ya se ve.
+  function _marcarSelGrilla() {
+    var cont = $('te_compList'); if (!cont) return;
+    Array.prototype.forEach.call(cont.querySelectorAll('.te-comp'), function (el) {
+      var esta = (Number(el.getAttribute('data-ci')) === ST.selCi);
+      el.classList.toggle('sel', esta);
+      if (esta && el.scrollIntoView) {
+        try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* navegador sin opciones */ }
+      }
+    });
+  }
+
+  // Repinta UNA teja en su sitio. La usa _mut cuando la ficha cambia algo que la teja
+  // muestra (color, tipología, figura, φ, espejo): re-armar la grilla entera por eso
+  // sería tirar el scroll y el DOM de las otras N tejas.
+  function _refrescarTeja(ci) {
+    var cont = $('te_compList'); if (!cont || !ST.receta) return;
+    var c = ST.receta.componentes[ci]; if (!c) return;
+    var viejo = cont.querySelector('.te-comp[data-ci="' + ci + '"]'); if (!viejo) return;
+    cont.replaceChild(_compEl(c, ci), viejo);
+  }
+
+  // ZONA DE DETALLE — la ficha del componente seleccionado, en sitio FIJO.
+  // Aquí (y sólo aquí) se resetea ST._panelVivo: todos los campos vivos los registra
+  // _compBody, así que el DOM que se va es exactamente el que los tenía.
+  function _renderDetalle() {
+    var host = $('te_detBody'); if (!host) return;
+    _bindDetalleAcciones();
+    host.innerHTML = '';
+    ST._panelVivo = [];   // el DOM viejo se va: sus refrescadores también
+    var c = (ST.selCi >= 0 && ST.receta && ST.receta.componentes) ? ST.receta.componentes[ST.selCi] : null;
+    var sw = $('te_detSw'), tag = $('te_detTag'), bDup = $('te_detDup'), bDel = $('te_detDel');
+    if (sw) sw.style.display = c ? '' : 'none';
+    if (bDup) bDup.style.display = c ? '' : 'none';
+    if (bDel) bDel.style.display = c ? '' : 'none';
+    // SIN SELECCIÓN la zona NO se encoge: el hueco reservado es lo que impide que la
+    // grilla salte de sitio al seleccionar (que es todo el punto del cambio).
+    if (!c) {
+      if (tag) tag.textContent = '';
+      var vac = _div('te-detvacio');
+      vac.textContent = 'Selecciona una barra —abajo en la grilla o directo en una vista— y su ficha se abre aquí.';
+      host.appendChild(vac);
+      return;
+    }
+    if (sw) sw.style.background = _colorComp(c);
+    if (tag) tag.textContent = (c.tipologia || '') + ' · ' + (c.figura || '—') +
+      (_poseDe(c).espejo ? ' ⇋' : '');
+    host.appendChild(_compBody(c, ST.selCi, _rolComp(c)));
+  }
+
+  // Duplicar y Quitar: viven en la barra del detalle y actúan sobre la selección
+  // vigente, así que se enlazan UNA vez y no se re-crean con cada ficha.
+  function _bindDetalleAcciones() {
+    var d = $('te_detDup');
+    if (d && !d._teBound) {
+      d._teBound = true;
+      d.addEventListener('click', function (e) { e.stopPropagation(); if (ST.selCi >= 0) _duplicar(ST.selCi); });
+    }
+    var x = $('te_detDel');
+    if (x && !x._teBound) {
+      x._teBound = true;
+      x.addEventListener('click', function (e) { e.stopPropagation(); _borrarSeleccion(); });
+    }
   }
 
   // ==========================================================================
@@ -6416,19 +6512,33 @@
     for (var i = 0; i < L.length; i++) { try { L[i](); } catch (e) { /* un campo no rompe el arrastre */ } }
   }
 
-  // Refresca SÓLO la línea de descripción de cada componente YA pintado (cara ·
-  // reparto · N barras · ø). Hace falta porque la CANTIDAD DE BARRAS no sale de la
-  // receta sino del último generado: tocar un @, mover un rango o cambiar el hormigón
-  // la mueve sin que el panel se re-arme.
+  // Línea chica de la TEJA: SÓLO cantidad y diámetro (decisión del usuario 20-ago).
+  // El modo de colocación y la separación —que antes iban acá— se dicen en la ficha,
+  // y en 101px de teja el espacio es lo escaso. El texto largo (_compDesc) sigue
+  // existiendo: viaja al tooltip de la teja, así no se pierde de la vista rápida.
+  function _tejaDesc(c, ci) {
+    var nb = _nBarrasComp(ci);
+    return (nb == null ? '' : nb + ' un · ') + 'ø' + c.diam;
+  }
+
+  // Refresca SÓLO la línea chica de cada teja YA pintada (N un · ø) y su tooltip.
+  // Hace falta porque la CANTIDAD DE BARRAS no sale de la receta sino del último
+  // generado: tocar un @, mover un rango o cambiar el hormigón la mueve sin que la
+  // grilla se re-arme.
   function _refrescarDescComps() {
     var cont = $('te_compList'); if (!cont || !ST.receta) return;
     var comps = ST.receta.componentes || [];
     Array.prototype.forEach.call(cont.querySelectorAll('.te-comp'), function (el) {
       var ci = Number(el.getAttribute('data-ci'));
       var c = comps[ci]; if (!c) return;
+      el.title = _tejaTitle(c, ci);
       var de = el.querySelector('.te-de'); if (!de) return;
-      de.textContent = _compDesc(c, ci);
+      de.textContent = _tejaDesc(c, ci);
     });
+  }
+
+  function _tejaTitle(c, ci) {
+    return (c.tipologia || '') + ' · ' + (c.figura || '—') + ' — ' + _compDesc(c, ci);
   }
 
   // ==========================================================================
@@ -6564,17 +6674,23 @@
     card.style.display = '';
   }
 
+  // TEJA de un componente. Ya NO contiene la ficha: al clicarla, la ficha se dibuja
+  // en la zona fija de arriba (_renderDetalle). Lleva lo mínimo que identifica a la
+  // barra y lo que se cambia sin abrirla: color · tipología·figura · cantidad·ø ·
+  // jerarquía · puntitos de arrastre.
   function _compEl(c, ci) {
-    var rol = _rolComp(c);
     var col = _colorComp(c);   // el swatch muestra el color REAL de la barra (override incluido)
     var sel = (ci === ST.selCi);
     var wrap = document.createElement('div');
-    wrap.className = 'te-comp' + (sel ? ' open sel' : '');
+    wrap.className = 'te-comp' + (sel ? ' sel' : '');
     wrap.setAttribute('data-ci', ci);
+    // El texto largo que la línea chica ya no muestra (modo, separación) vive acá: la
+    // teja no lo dice, pero sigue a un hover de distancia.
+    wrap.title = _tejaTitle(c, ci);
 
-    // TIPOLOGÍA HUÉRFANA — se marca EN LA FILA, no sólo dentro de la ficha: el
-    // usuario cierra las fichas y mira la lista, y ahí es donde tiene que ver
-    // CUÁL de sus barras quedó con la tipología de otro elemento.
+    // TIPOLOGÍA HUÉRFANA — se marca EN LA TEJA, no sólo dentro de la ficha: el
+    // usuario mira la grilla, y ahí es donde tiene que ver CUÁL de sus barras quedó
+    // con la tipología de otro elemento.
     var ajena = _tipAjenaAlElemento(c);
     if (ajena) wrap.style.borderLeft = '3px solid var(--te-warn)';
 
@@ -6585,50 +6701,60 @@
     var sinFig = !!(mig && mig.figura_desconocida);
     if (sinFig) wrap.style.borderLeft = '3px solid var(--te-err)';
 
+    // Fila de arriba: asa de arrastre · color · marca de espejo. Se construye con
+    // nodos y no con innerHTML porque el ASA se le pasa al enlazador de arrastre: con
+    // innerHTML habría que ir a buscarla después con un querySelector, y el asa es
+    // justo la pieza que no puede fallar en silencio.
+    var top = _div('te-tjtop');
+    var asa = _span('⠿');
+    asa.className = 'te-drag'; asa.title = 'Arrastrar para reordenar';
+    top.appendChild(asa);
+    var swEl = document.createElement('span');
+    swEl.className = 'te-sw'; swEl.style.background = col;
+    top.appendChild(swEl);
     // MARCA DE ESPEJO — pegada al swatch y SÓLO si la pose está espejada.
-    // Es la contrapartida de haberle sacado la cara a _compDesc: sin ella, dos
+    // Es la contrapartida de haberle sacado la cara a la descripción: sin ella, dos
     // componentes iguales que sólo difieren en el espejo (las dos MH 104B del reporte)
-    // quedan indistinguibles en la lista. Va como icono y no como palabra a propósito:
-    // el usuario pidió menos texto en la línea.
-    var esp = _poseDe(c).espejo
-      ? '<span class="te-espm" title="Pose espejada (el gancho cierra al otro lado)">⇋</span>' : '';
+    // quedan indistinguibles en la grilla.
+    if (_poseDe(c).espejo) {
+      var espEl = _span('⇋');
+      espEl.className = 'te-espm'; espEl.title = 'Pose espejada (el gancho cierra al otro lado)';
+      top.appendChild(espEl);
+    }
+    var spEl = _span(''); spEl.className = 'te-sp';
+    top.appendChild(spEl);
+    wrap.appendChild(top);
 
-    // Cabecera
-    var ch = document.createElement('div'); ch.className = 'te-ch';
-    ch.innerHTML =
-      '<span class="te-drag" title="Arrastrar para reordenar">⠿</span>' +
-      '<span class="te-sw" style="background:' + col + '"></span>' + esp +
-      '<div><div class="te-nm">' +
+    var nm = _div('te-nm');
+    nm.innerHTML =
       (sinFig ? '<span style="color:var(--te-err)" title="La figura ' + _esc(c.figura || '') +
         ' no está en el catálogo vigente: esta barra no se genera.">⛔ </span>' : '') +
       (ajena ? '<span style="color:var(--te-warn)" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
-      _esc(c.tipologia) + ' · ' + _esc(c.figura) + '</div>' +
-      '<div class="te-de">' + _esc(_compDesc(c, ci)) + '</div></div>' +
-      '<span class="te-sp"></span>' +
-      '<button class="te-mini" data-act="dup" title="Duplicar">⧉</button>' +
-      '<button class="te-mini" data-act="del" title="Quitar">🗑</button>';
-    // JERARQUÍA (nivel vs recubrimiento) — se edita en el HEADER, junto a ⧉/🗑, para
-    // verla y cambiarla sin abrir el componente. 'auto' = sin dato (el motor aplica
-    // el default del rol: estribo 0, traba/cabezal 1). Los eventos del select NO
-    // burbujean al header (si no, elegir un nivel plegaría/desplegaría la ficha).
-    ch.insertBefore(_selJerarquia(c, ci), ch.querySelector('[data-act="dup"]'));
-    ch.addEventListener('click', function (e) {
-      var act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
-      if (act === 'del') { e.stopPropagation(); ST.selCi = ci; _borrarSeleccion(); return; }
-      if (act === 'dup') { e.stopPropagation(); _duplicar(ci); return; }
-      // BUG 6B — el header es un TOGGLE: si el componente ya está seleccionado (abierto),
-      // volver a clicarlo lo PLIEGA (deselecciona). Antes solo seleccionaba, así que la
-      // única forma de plegar era clic-en-vacío en una vista (y en las densas nunca caías
-      // en vacío → "solo se pliega en XZ"). Ahora se pliega desde el panel en cualquier caso.
+      _esc(c.tipologia) + ' · ' + _esc(c.figura);
+    wrap.appendChild(nm);
+
+    var de = _div('te-de');
+    de.textContent = _tejaDesc(c, ci);
+    wrap.appendChild(de);
+
+    // JERARQUÍA (nivel vs recubrimiento) — se edita EN LA TEJA para verla y cambiarla
+    // sin tener que abrir la ficha. Los eventos del select NO burbujean (si no,
+    // elegir un nivel cambiaría además la selección).
+    var bot = _div('te-tjbot');
+    var jl = _span('jer'); jl.className = 'te-jlbl';
+    bot.appendChild(jl);
+    bot.appendChild(_selJerarquia(c, ci));
+    wrap.appendChild(bot);
+
+    wrap.addEventListener('click', function () {
+      // BUG 6B — la teja es un TOGGLE: si el componente ya está seleccionado, volver a
+      // clicarlo lo DESELECCIONA. Antes sólo seleccionaba, así que la única forma de
+      // soltar la selección era clic-en-vacío en una vista (y en las densas nunca caías
+      // en vacío → "solo se pliega en XZ").
       if (ST.selCi === ci) { _seleccionar(-1); } else { _seleccionar(ci); }
     });
-    wrap.appendChild(ch);
 
-    // Cuerpo (solo si seleccionado — evita DOM enorme)
-    if (sel) wrap.appendChild(_compBody(c, ci, rol));
-
-    // Drag-reorder básico
-    _habilitarDrag(wrap, ci);
+    _habilitarDrag(wrap, ci, asa);
     return wrap;
   }
 
@@ -6639,7 +6765,7 @@
   // el select seguía mostrando 2 después de corregir el motor.
   function _jerDefault(rol) { return 1; }
 
-  // <select> de JERARQUÍA del componente (header). Escribe comp.jerarquia:
+  // <select> de JERARQUÍA del componente (pie de la teja). Escribe comp.jerarquia:
   //   'no'  → pegado al recubrimiento, NO participa de la jerarquía
   //   1..9  → nivel (1 = exterior; 2+ se apoyan por dentro del anterior).
   // No hay opción "auto": si el componente no trae el campo, se estampa el default
@@ -6658,7 +6784,7 @@
       sel.appendChild(op);
     });
     sel.value = String(c.jerarquia);
-    // el header es clicable (selecciona/pliega): el select se lo queda para él.
+    // la teja entera es clicable (selecciona/deselecciona): el select se lo queda.
     ['click', 'mousedown', 'dblclick'].forEach(function (ev) {
       sel.addEventListener(ev, function (e) { e.stopPropagation(); });
     });
@@ -7989,10 +8115,14 @@
   //  YA cambiado. El undo cubre las acciones estructurales — colocar/borrar/rotar/
   //  duplicar/agregar/rango/mover/nodo/reordenar — donde el snapshot precede a la
   //  mutación.)
+  // (20-ago) redibujaFicha ya NO re-arma la grilla entera: re-arma la FICHA —que es lo
+  // que cambió de forma— y repinta LA teja de ese componente, porque un cambio de
+  // color/tipología/figura/φ/espejo sí se ve en ella. Las otras N tejas y el scroll de
+  // la grilla se quedan como estaban.
   function _mut(ci, redibujaFicha) {
     _regenerar();
-    if (redibujaFicha) _renderPanel();
-    else { _actualizarStatus(); }
+    if (redibujaFicha) { _renderDetalle(); _refrescarTeja(ci); }
+    _actualizarStatus();
   }
 
   function _setFigura(ci, fig) {
@@ -8021,22 +8151,82 @@
     _regenerar(); _renderPanel();
   }
 
-  // Drag-reorder simple (HTML5 DnD sobre el ⠿).
-  function _habilitarDrag(wrap, ci) {
-    var handle = wrap.querySelector('.te-drag'); if (!handle) return;
+  // ==========================================================================
+  // REORDENAR ARRASTRANDO — EN GRILLA (20-ago)
+  // --------------------------------------------------------------------------
+  // EN UNA LISTA VERTICAL "soltar sobre la fila N" bastaba: el hueco es uno solo y
+  // está donde está la fila. EN UNA GRILLA no: la teja apuntada tiene un hueco a su
+  // IZQUIERDA y otro a su DERECHA, y elegir "siempre el índice de la teja" hacía que
+  // arrastrar hacia adelante cayera SIEMPRE una posición corta (el elemento que se
+  // saca corre los índices de atrás). Así que:
+  //   · la MITAD de la teja bajo el cursor decide el lado (antes / después),
+  //   · el lado elegido se DIBUJA (caret .te-dz-l/.te-dz-r) para verlo antes de soltar,
+  //   · y el índice de destino se corrige por el hueco que deja el propio arrastrado.
+  // Soltar en el vacío de la grilla (bajo la última teja) manda al final.
+  // El asa sigue siendo el ⠿: arrastrar desde el cuerpo de la teja no se activa,
+  // porque ahí el gesto natural es CLIC = seleccionar.
+  // ==========================================================================
+  function _dzLimpiar(cont) {
+    if (!cont) return;
+    Array.prototype.forEach.call(cont.querySelectorAll('.te-dz-l,.te-dz-r'), function (el) {
+      el.classList.remove('te-dz-l'); el.classList.remove('te-dz-r');
+    });
+  }
+
+  // Mueve `from` al hueco `hueco` (índice de inserción ANTES de sacar el elemento).
+  function _reordenarComp(from, hueco) {
+    var arr = ST.receta && ST.receta.componentes; if (!arr) return;
+    if (isNaN(from) || from < 0 || from >= arr.length) return;
+    var to = hueco;
+    if (from < to) to--;   // al sacar el arrastrado, todo lo que iba detrás corre uno
+    if (to === from || to < 0) return;
+    _pushUndo();
+    var m = arr.splice(from, 1)[0]; arr.splice(to, 0, m);
+    ST.selCi = to;
+    _regenerar(); _renderPanel();
+  }
+
+  function _habilitarDrag(wrap, ci, handle) {
+    if (!handle) return;
     handle.setAttribute('draggable', 'true');
-    handle.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', String(ci)); e.dataTransfer.effectAllowed = 'move'; });
-    wrap.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    handle.addEventListener('dragstart', function (e) {
+      e.dataTransfer.setData('text/plain', String(ci));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    handle.addEventListener('dragend', function () { _dzLimpiar($('te_compList')); });
+    // Mitad izquierda = insertar ANTES de esta teja; mitad derecha = DESPUÉS.
+    wrap.addEventListener('dragover', function (e) {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      var r = wrap.getBoundingClientRect();
+      var antes = (e.clientX - r.left) < (r.width / 2);
+      wrap.classList.toggle('te-dz-l', antes);
+      wrap.classList.toggle('te-dz-r', !antes);
+    });
+    wrap.addEventListener('dragleave', function (e) {
+      // dragleave TAMBIÉN salta al pasar de la teja a un hijo suyo (el swatch, el
+      // texto): sin este filtro el caret parpadearía mientras se cruza la teja.
+      if (e.relatedTarget && wrap.contains && wrap.contains(e.relatedTarget)) return;
+      wrap.classList.remove('te-dz-l'); wrap.classList.remove('te-dz-r');
+    });
     wrap.addEventListener('drop', function (e) {
+      e.preventDefault(); e.stopPropagation();   // no dejar que la grilla lo mande al final
+      var antes = wrap.classList.contains('te-dz-l');
+      _dzLimpiar($('te_compList'));
+      _reordenarComp(Number(e.dataTransfer.getData('text/plain')), ci + (antes ? 0 : 1));
+    });
+  }
+
+  // Soltar en el HUECO de la grilla (debajo de la última teja) = mandar al final.
+  // Sin esto, ese gesto no hacía nada y parecía que el arrastre se había perdido.
+  function _habilitarDropCola(cont) {
+    if (!cont || cont._teDropBound) return;
+    cont._teDropBound = true;
+    cont.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    cont.addEventListener('drop', function (e) {
       e.preventDefault();
-      var from = Number(e.dataTransfer.getData('text/plain'));
-      var to = ci;
-      if (isNaN(from) || from === to) return;
-      _pushUndo();
-      var arr = ST.receta.componentes;
-      var m = arr.splice(from, 1)[0]; arr.splice(to, 0, m);
-      ST.selCi = to;
-      _regenerar(); _renderPanel();
+      _dzLimpiar(cont);
+      var n = (ST.receta && ST.receta.componentes) ? ST.receta.componentes.length : 0;
+      _reordenarComp(Number(e.dataTransfer.getData('text/plain')), n);
     });
   }
 

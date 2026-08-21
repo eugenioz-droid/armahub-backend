@@ -337,28 +337,90 @@
      encogerse; sin eso la grilla impone su min-content y empuja al panel. */
   #te_modal #te_work{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 
-  /* ---- IZQUIERDA: componentes (desplegables con sus propiedades) ---- */
-  #te_modal #te_side{width:360px;min-width:360px;border-right:1px solid var(--te-line);background:var(--te-panel);overflow-y:auto;padding:11px 14px 20px}
+  /* ==== IZQUIERDA: DOS ZONAS FIJAS — arriba la FICHA, abajo la GRILLA de tejas ====
+     POR QUÉ: antes la ficha se desplegaba DENTRO de la fila clicada. Como la ficha es
+     larga, abrirla empujaba todo lo de abajo y el panel saltaba arriba o abajo según
+     en qué parte de la lista estuvieras. Ahora la ficha tiene sitio propio y FIJO: al
+     cambiar de teja cambia el contenido, no la posición.
+     REPARTO DE ALTURA en UNA sola variable (--te-det-fr = cuántas veces la ficha es
+     más alta que la grilla): 1.15 → ~53% ficha / ~47% grilla. Se afina tocando ESE
+     número y nada más. Va con flex-grow sobre basis 0 (no con height:%) porque el
+     porcentaje dentro de un flex column no resuelve igual en todos los navegadores.
+     --te-teja-min = ancho mínimo de teja; con 360px de panel manda cuántas entran
+     por fila (98px → 3 columnas, ver #te_compList). */
+  #te_modal{--te-det-fr:1.15; --te-teja-min:98px}
+  /* El panel YA NO scrollea: scrollean sus dos zonas por separado (si no, la ficha
+     larga volvería a arrastrar a la grilla). De ahí overflow:hidden y el padding
+     movido a cada zona. */
+  #te_modal #te_side{width:360px;min-width:360px;border-right:1px solid var(--te-line);background:var(--te-panel);
+    display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  #te_modal #te_detalle{flex:var(--te-det-fr) 1 0;min-height:0;display:flex;flex-direction:column;
+    padding:0 14px;border-bottom:1px solid var(--te-line)}
+  #te_modal #te_grid{flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:0 14px}
+  /* La cabecera de cada zona queda QUIETA: sólo el cuerpo scrollea. */
+  #te_modal #te_detalle .te-sh,#te_modal #te_grid .te-sh{flex:0 0 auto}
+  #te_modal #te_detBody{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 12px}
+  /* Identificación de la barra que se está editando, en la propia cabecera de la zona
+     (no es un control nuevo: es lo que la fila decía y la ficha necesita seguir
+     diciendo). text-transform/letter-spacing se anulan: .te-sh va en versalitas. */
+  #te_modal .te-detag{font-size:11px;font-weight:700;color:var(--te-ink);text-transform:none;letter-spacing:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+  #te_modal .te-detvacio{font-size:11px;color:var(--te-faint);line-height:1.45;padding:10px 2px}
+  /* DUPLICAR y QUITAR viven en la barra del detalle, no en la teja: en 101px de teja
+     el espacio es lo escaso, y estas dos acciones son sobre "la barra que estoy
+     mirando", que es justo lo que esta zona muestra. Sólo se ven con selección. */
+  #te_modal .te-dact{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
+    cursor:pointer;font-size:12px;line-height:1;color:var(--te-faint);padding:3px 6px;flex:0 0 auto}
+  #te_modal .te-dact:hover{color:var(--te-ink);border-color:var(--te-acero);background:var(--te-hover)}
+  /* GRILLA DE TEJAS. auto-fill+minmax(…,1fr) = el navegador mete las que caben y las
+     estira para llenar el ancho exacto → ninguna teja queda cortada ni sobra un
+     canal muerto, aunque aparezca la barra de scroll. Con 360px de panel (332 de
+     contenido menos ~12 de scrollbar) salen 3 por fila de ~101px.
+     align-content:start = con 2 tejas no se estiran a lo alto. */
+  #te_modal #te_compList{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--te-teja-min),1fr));
+    gap:7px;align-content:start;padding:0 2px 12px}
   #te_modal .te-sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted);margin:6px 0 8px;display:flex;align-items:center;gap:6px}
   #te_modal .te-sh .te-ln{flex:1;height:1px;background:var(--te-line)}
-  #te_modal .te-comp{border:1px solid var(--te-line);border-radius:9px;margin-bottom:7px;overflow:hidden;background:var(--te-panel)}
+  /* TEJA: compacta y más cuadrada que alargada (~101×80). Ya no lleva cuerpo dentro,
+     así que no hay .open — sólo .sel. Lleva SÓLO: color · tipología·figura ·
+     cantidad·ø · jerarquía · puntitos de arrastre. Lo demás (modo de colocación,
+     separación, duplicar, quitar) está en el detalle: acá el espacio es lo escaso. */
+  #te_modal .te-comp{border:1px solid var(--te-line);border-radius:9px;overflow:hidden;background:var(--te-panel2);
+    padding:5px 6px 6px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0}
+  #te_modal .te-comp:hover{border-color:var(--te-acero)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
-  #te_modal .te-comp .te-ch{display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer;background:var(--te-panel2)}
+  #te_modal .te-comp .te-tjtop{display:flex;align-items:center;gap:3px;min-width:0}
+  #te_modal .te-comp .te-tjbot{display:flex;align-items:center;gap:4px;min-width:0;margin-top:auto}
+  #te_modal .te-comp .te-tjbot .te-jlbl{font-size:9.5px;color:var(--te-faint);font-weight:700;flex:0 0 auto}
   #te_modal .te-comp .te-sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
   /* MARCA DE ESPEJO junto al swatch. Existe porque la línea de descripción dejó de
      decir la cara (y con ella el " esp."): sin esto, dos componentes que sólo
-     difieren en el espejo quedan con la fila idéntica. Icono y no palabra: el pedido
+     difieren en el espejo quedan con la teja idéntica. Icono y no palabra: el pedido
      era JUSTAMENTE sacarle texto a la línea. */
   #te_modal .te-comp .te-espm{flex-shrink:0;font-size:11px;line-height:1;color:var(--te-trv);
-    font-weight:700;margin-left:-4px;cursor:help}
-  #te_modal .te-comp .te-nm{font-weight:700;font-size:12.5px}
-  #te_modal .te-comp .te-de{font-size:10.5px;color:var(--te-muted)}
-  #te_modal .te-comp .te-drag{cursor:grab;color:var(--te-faint);margin-right:2px}
+    font-weight:700;cursor:help}
+  #te_modal .te-comp .te-nm{font-weight:700;font-size:11.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #te_modal .te-comp .te-de{font-size:10px;color:var(--te-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #te_modal .te-comp .te-drag{cursor:grab;color:var(--te-faint);font-size:11px;line-height:1;flex:0 0 auto}
   #te_modal .te-comp .te-sp{flex:1}
-  #te_modal .te-comp .te-mini{border:none;background:none;cursor:pointer;font-size:12px;color:var(--te-faint);padding:1px 3px}
-  #te_modal .te-comp .te-mini:hover{color:var(--te-ink)}
-  #te_modal .te-comp .te-cbody{display:none;padding:9px 10px;border-top:1px solid var(--te-line)}
-  #te_modal .te-comp.open .te-cbody{display:block}
+  /* Botón chico sin marco. Nació en el header de la fila (⧉/🗑) y esas dos acciones se
+     fueron al detalle, pero el "auto" del color de la ficha lo sigue usando: la regla
+     se queda, sin el .te-comp que la ataba a la fila vieja. */
+  #te_modal .te-mini{border:none;background:none;cursor:pointer;font-size:11px;color:var(--te-faint);padding:1px 4px}
+  #te_modal .te-mini:hover{color:var(--te-ink)}
+  /* CARET DE INSERCIÓN del arrastre. En una lista vertical bastaba "soltar sobre la
+     fila"; en una grilla el hueco está a la IZQUIERDA o a la DERECHA de la teja
+     apuntada, y hay que verlo antes de soltar. */
+  #te_modal .te-comp.te-dz-l{box-shadow:inset 3px 0 0 0 var(--te-acero)}
+  #te_modal .te-comp.te-dz-r{box-shadow:inset -3px 0 0 0 var(--te-acero)}
+  /* La ficha vive ahora en #te_detBody y no dentro de la teja: sin .te-comp arriba,
+     .te-cbody se muestra sola (era display:none + .open). Sólo se le quita el
+     recuadro que tenía como cuerpo desplegable. */
+  #te_modal #te_detBody .te-cbody{padding:0}
+  /* La lista VACÍA ocupa la fila completa de la grilla (si no, quedaría metida en la
+     primera columna de 101px). */
+  #te_modal #te_compList .te-note{grid-column:1/-1}
   #te_modal .te-fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
   #te_modal .te-fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
   #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-field-b);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}
@@ -556,12 +618,14 @@
   #te_modal .te-modebtn.on{background:var(--te-acero);color:#fff}
   #te_modal .te-modebtn.on:hover{background:var(--te-acero-d);color:#fff}
   #te_modal .te-addcomp{width:100%;border:1px dashed var(--te-acero);color:var(--te-acero-t);background:var(--te-hover);border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
-  /* JERARQUÍA por componente (select chico en el header, junto a ⧉/🗑).
+  /* JERARQUÍA por componente (select chico al pie de la teja, junto al rótulo "jer").
      OJO especificidad: la regla "#te_modal #te_side select{width:100%}" lleva DOS
-     ids, así que este selector también los repite (si no, el select saldría ancho). */
-  #te_modal #te_side .te-comp .te-ch select.te-jer{width:auto;flex:0 0 auto;font-size:10.5px;padding:1px 3px;
+     ids, así que este selector también los repite (si no, el select saldría ancho).
+     flex:1 1 auto + min-width:0 = ocupa lo que sobra de los ~89px útiles de la teja
+     sin desbordarla. */
+  #te_modal #te_side .te-comp select.te-jer{width:auto;flex:1 1 auto;min-width:0;font-size:10px;padding:0 2px;
     border:1px solid var(--te-field-b);border-radius:5px;background:var(--te-field);color:var(--te-muted);cursor:pointer}
-  #te_modal #te_side .te-comp .te-ch select.te-jer:hover{color:var(--te-ink);border-color:var(--te-acero)}
+  #te_modal #te_side .te-comp select.te-jer:hover{color:var(--te-ink);border-color:var(--te-acero)}
 
   /* ---- LISTADO DE BARRAS (despiece) — franja al pie de los 4 cuadrantes ----
      Overlay absoluto sobre #te_quad (que es position:relative): al mostrarse NO
@@ -1206,20 +1270,45 @@
 
     <div id="te_body">
 
-      <!-- IZQUIERDA: componentes colocados (desplegables con propiedades).
+      <!-- IZQUIERDA: DOS ZONAS FIJAS (20-ago).
+           ARRIBA la FICHA de la barra seleccionada; ABAJO la GRILLA de tejas. Antes
+           la ficha se desplegaba dentro de la propia fila y, al ser larga, empujaba
+           todo lo de abajo: el panel saltaba arriba o abajo según en qué parte de la
+           lista estuvieras. Con la ficha en sitio fijo, cambiar de teja cambia el
+           CONTENIDO y no la POSICIÓN. Cada zona scrollea por su cuenta.
            Se RENDERIZA dinámicamente desde ST.receta.componentes en template_editor.js
-           (_renderPanel). Cada .te-comp lleva data-ci = índice del componente. -->
+           (_renderGrilla / _renderDetalle). Cada .te-comp lleva data-ci = índice. -->
       <div id="te_side">
-        <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
 
-        <!-- Lista dinámica de componentes -->
-        <div id="te_compList"></div>
+        <!-- ZONA 1 · DETALLE (no se mueve). El espacio queda RESERVADO aunque no haya
+             selección (estado vacío): así la grilla no salta al seleccionar. -->
+        <div id="te_detalle">
+          <div class="te-sh">
+            <span>Barra</span>
+            <span class="te-sw" id="te_detSw" style="display:none"></span>
+            <span class="te-detag" id="te_detTag"></span>
+            <span class="te-ln"></span>
+            <!-- Duplicar y Quitar actúan sobre LA BARRA QUE SE ESTÁ MIRANDO, que es lo
+                 que muestra esta zona; salieron de la teja para liberarle espacio. -->
+            <button type="button" class="te-dact" id="te_detDup" title="Duplicar esta barra" style="display:none">⧉</button>
+            <button type="button" class="te-dact" id="te_detDel" title="Quitar esta barra" style="display:none">🗑</button>
+          </div>
+          <div id="te_detBody"></div>
+        </div>
+
+        <!-- ZONA 2 · GRILLA de tejas compactas, con su propio scroll. -->
+        <div id="te_grid">
+          <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
+
+          <!-- Grilla dinámica de componentes (3 tejas por fila con el panel en 360px) -->
+          <div id="te_compList"></div>
+        </div>
 
         <!-- La nota permanente que estaba aquí decía tres cosas que ya se dicen
              solas: que este botón es el mismo "＋ Agregar barra" del ribbon (jerga
              del código), cómo salir de colocar (lo dice la barra de estado al
-             entrar) y para qué es el ⠿ (lo dice su tooltip). En su lugar, la lista
-             vacía se explica sola (_renderPanel). -->
+             entrar) y para qué es el ⠿ (lo dice su tooltip). En su lugar, la grilla
+             vacía se explica sola (_renderGrilla). -->
         <!-- "＋ Agregar componente" se retiró (19-ago, decisión del usuario): era el MISMO
              handler que "＋ Agregar barra" del ribbon, y ahí es donde corresponde, junto a
              figura/φ/tipología, que es lo que se define ANTES de colocar. -->
