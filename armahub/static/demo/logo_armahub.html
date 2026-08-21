@@ -2,74 +2,78 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ArmaHub · logo</title>
 <style>
-  /* El original mide 807x146. El fierro ocupa la izquierda y la palabra arranca en
-     --x-txt. Todo se dibuja SOBRE una caja de ese tamaño exacto, así el fierro nunca
-     se toca (es el PNG recortado) y la palabra cae donde caía ARMACERO. */
-  :root{--W:807px; --H:146px; --x-txt:248px; --baseline:105px; --cap:75px}
+  /* NO SE RECORTA NADA. Se pinta el PNG entero y se TAPA la palabra ARMACERO con un
+     rectángulo del mismo negro, encima del cual va ARMAHUB. Así el gancho no se puede
+     cortar: nunca se toca. Lo único que hay que acertar es DÓNDE empieza la R, y para
+     eso está el control de abajo. */
+  :root{--W:807px;--H:146px;--corte:262px;--baseline:106px;--cap:76px;--esp:-2px;--fuente:1}
   *{box-sizing:border-box}
   body{margin:0;font:14px/1.55 "Segoe UI",system-ui,sans-serif;background:#f4f6f8;color:#243}
   header{background:#111214;color:#fff;padding:16px 24px}
   header h1{margin:0;font-size:16px;font-weight:700}
   header p{margin:4px 0 0;font-size:12.5px;color:#9aa4b0}
-  main{max-width:940px;margin:0 auto;padding:20px 24px 60px}
-  .caso{background:#fff;border:1px solid #e3e8ee;border-radius:10px;margin-bottom:16px;overflow:hidden}
-  .caso h2{margin:0;padding:10px 15px;font-size:13px;font-weight:700;color:#33691e;
+  main{max-width:900px;margin:0 auto;padding:20px 24px 60px}
+  .caja{background:#fff;border:1px solid #e3e8ee;border-radius:10px;margin-bottom:16px;overflow:hidden}
+  .caja h2{margin:0;padding:10px 15px;font-size:13px;font-weight:700;color:#33691e;
     border-bottom:1px solid #eef2f6;background:#fafcf7}
   .nota{padding:10px 15px;font-size:12.5px;color:#5b6770;border-top:1px solid #eef2f6;background:#fbfcfd;margin:0}
-  .tira{background:#111214;padding:14px 18px}
-  .fila{position:relative;width:var(--W);height:var(--H);max-width:100%;margin:0 auto 6px}
-  .fila > *{position:absolute;inset:0}
-  /* el PNG entero */
-  .png{background:url('/static/images/logo-armacero.png') no-repeat left top;background-size:var(--W) var(--H)}
-  /* el PNG recortado: SÓLO el fierro */
-  .iso{background:url('/static/images/logo-armacero.png') no-repeat left top;background-size:var(--W) var(--H);
-       clip-path:inset(0 calc(var(--W) - var(--x-txt)) 0 0)}
-  .pal{color:#fff;letter-spacing:-2px;white-space:nowrap;
-       font-size:calc(var(--cap) / 0.716);          /* alto de mayúscula = --cap */
-       left:var(--x-txt) !important; top:calc(var(--baseline) - var(--cap)) !important;
-       right:auto !important; bottom:auto !important; line-height:1}
-  .f-arial{font-family:'Arial Black',sans-serif}
-  .f-impact{font-family:Impact,'Haettenschweiler',sans-serif;letter-spacing:0}
-  .f-hel{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:900}
-  .f-seg{font-family:'Segoe UI',system-ui,sans-serif;font-weight:900}
-  .sobre .pal{color:#ff1e8e;mix-blend-mode:normal;opacity:.72}
-  .rot{color:#9aa4b0;font-size:11.5px;padding:2px 18px 8px;background:#111214;margin:0}
+  .lienzo{background:#000;padding:16px 18px}
+  .fila{position:relative;width:var(--W);height:var(--H);max-width:100%;margin:0 auto}
+  .png{position:absolute;inset:0;background:url('/static/images/logo-armacero.png') no-repeat left top;
+       background-size:var(--W) var(--H)}
+  /* el tapón: del corte hacia la derecha, del mismo negro del archivo */
+  .tapa{position:absolute;top:0;bottom:0;right:0;left:var(--corte);background:#000}
+  .pal{position:absolute;left:var(--corte);top:calc(var(--baseline) - var(--cap));
+       font-size:calc(var(--cap) / .716);line-height:1;letter-spacing:var(--esp);
+       color:#fff;white-space:nowrap;font-family:'Arial Black',sans-serif}
+  .ctrl{padding:12px 15px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:12.5px}
+  .ctrl label{display:flex;gap:7px;align-items:center}
+  .ctrl input[type=range]{width:190px}
+  .val{font-weight:700;color:#33691e;min-width:44px;display:inline-block}
+  .ref{background:#000;padding:10px 18px}
+  .ref img{max-width:100%;display:block;margin:0 auto}
 </style></head><body>
 <header>
-  <h1>Primero: ¿la fuente calza?</h1>
-  <p>Abajo, la misma palabra ARMACERO escrita con cada fuente candidata, sobre el original. La que se superponga bien es la buena.</p>
+  <h1>ArmaHub · el gancho no se toca</h1>
+  <p>El archivo se pinta entero y sólo se tapa la palabra. Mueve el corte hasta que la A quede completa y la R vieja desaparezca.</p>
 </header>
 <main>
 
-<section class="caso">
-  <h2>Prueba de calce — mi texto en rosado ENCIMA del original</h2>
-  <div class="tira">
-    <div class="fila sobre"><div class="png"></div><div class="pal f-arial">RMACERO</div></div>
-    <p class="rot">1 · Arial Black</p>
-    <div class="fila sobre"><div class="png"></div><div class="pal f-hel">RMACERO</div></div>
-    <p class="rot">2 · Helvetica/Arial en peso 900</p>
-    <div class="fila sobre"><div class="png"></div><div class="pal f-seg">RMACERO</div></div>
-    <p class="rot">3 · Segoe UI Black</p>
-    <div class="fila sobre"><div class="png"></div><div class="pal f-impact">RMACERO</div></div>
-    <p class="rot">4 · Impact</p>
+<section class="caja">
+  <h2>Ajústalo tú</h2>
+  <div class="ctrl">
+    <label>Dónde empieza la palabra <input type="range" id="c" min="200" max="330" value="262"><span class="val" id="cv">262</span></label>
+    <label>Alto de letra <input type="range" id="k" min="60" max="92" value="76"><span class="val" id="kv">76</span></label>
+    <label>Separación <input type="range" id="e" min="-8" max="4" value="-2"><span class="val" id="ev">-2</span></label>
   </div>
-  <p class="nota">Si alguna tapa al original casi sin sobresalir, esa es la fuente y ARMAHUB va a quedar idéntico. Si <b>ninguna</b> calza, no hay forma de acertar sin el archivo de la fuente corporativa: dímelo y te lo pido a quien lleve la marca.</p>
-</section>
-
-<section class="caso">
-  <h2>El resultado — sólo cambia la palabra</h2>
-  <div class="tira">
-    <div class="fila"><div class="iso"></div><div class="pal f-arial">RMAHUB</div></div>
-    <p class="rot">Fierro original intacto · ARMAHUB en la fuente 1</p>
-    <div class="fila"><div class="iso"></div><div class="pal f-hel">RMAHUB</div></div>
-    <p class="rot">Fierro original intacto · ARMAHUB en la fuente 2</p>
+  <div class="lienzo">
+    <div class="fila"><div class="png"></div><div class="tapa"></div><div class="pal">RMAHUB</div></div>
   </div>
-  <p class="nota">El fierro no está redibujado: es el archivo original recortado. Lo único que cambia respecto del logo de Armacero es la palabra.</p>
+  <p class="nota">Si al mover el corte hacia la derecha aparece un trozo de la <b>R</b> vieja, te pasaste; si el gancho pierde su pata, te quedaste corto. El punto justo es donde la A se ve entera y no hay resto de la palabra anterior. <b>Dime los tres números</b> y lo dejo fijo.</p>
 </section>
 
-<section class="caso">
-  <h2>El original, para comparar</h2>
-  <div class="tira"><div class="fila"><div class="png"></div></div></div>
+<section class="caja">
+  <h2>Comprobación: el mismo ajuste escribiendo ARMACERO</h2>
+  <div class="lienzo">
+    <div class="fila"><div class="png"></div><div class="tapa"></div><div class="pal" id="comp">RMACERO</div></div>
+  </div>
+  <p class="nota">Si esta línea se ve igual que el logo original, la fuente calza y ARMAHUB va a quedar bien. Si se nota distinta, la fuente corporativa es otra y hace falta el archivo.</p>
 </section>
 
-</main></body></html>
+<section class="caja">
+  <h2>El original</h2>
+  <div class="ref"><img src="/static/images/logo-armacero.png" alt="Logo Armacero"></div>
+</section>
+
+</main>
+<script>
+  var R = document.documentElement;
+  function liga(id, vid, prop, suf) {
+    var i = document.getElementById(id), o = document.getElementById(vid);
+    i.addEventListener('input', function () { o.textContent = i.value; R.style.setProperty(prop, i.value + suf); });
+  }
+  liga('c', 'cv', '--corte', 'px');
+  liga('k', 'kv', '--cap', 'px');
+  liga('e', 'ev', '--esp', 'px');
+</script>
+</body></html>
