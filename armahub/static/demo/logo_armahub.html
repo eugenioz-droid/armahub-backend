@@ -2,82 +2,74 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ArmaHub · logo</title>
 <style>
-  /* EL ISOTIPO NO SE REDIBUJA. Es el archivo original recortado por CSS, así que es
-     pixel por pixel el mismo fierro de Armacero. La caja muestra sólo la parte
-     izquierda de logo-armacero.png (807x146); ajustando --iso-w se mueve el corte. */
-  :root{--iso-w:238px; --iso-full:807px; --iso-h:146px; --verde:#8DC63F; --negro:#111214}
+  /* El original mide 807x146. El fierro ocupa la izquierda y la palabra arranca en
+     --x-txt. Todo se dibuja SOBRE una caja de ese tamaño exacto, así el fierro nunca
+     se toca (es el PNG recortado) y la palabra cae donde caía ARMACERO. */
+  :root{--W:807px; --H:146px; --x-txt:248px; --baseline:105px; --cap:75px}
   *{box-sizing:border-box}
   body{margin:0;font:14px/1.55 "Segoe UI",system-ui,sans-serif;background:#f4f6f8;color:#243}
-  header{background:var(--negro);color:#fff;padding:18px 26px}
-  header h1{margin:0;font-size:17px;font-weight:700}
+  header{background:#111214;color:#fff;padding:16px 24px}
+  header h1{margin:0;font-size:16px;font-weight:700}
   header p{margin:4px 0 0;font-size:12.5px;color:#9aa4b0}
-  main{max-width:980px;margin:0 auto;padding:22px 26px 60px}
-  .caso{background:#fff;border:1px solid #e3e8ee;border-radius:10px;margin-bottom:18px;overflow:hidden}
-  .caso h2{margin:0;padding:11px 16px;font-size:13px;font-weight:700;color:#33691e;
+  main{max-width:940px;margin:0 auto;padding:20px 24px 60px}
+  .caso{background:#fff;border:1px solid #e3e8ee;border-radius:10px;margin-bottom:16px;overflow:hidden}
+  .caso h2{margin:0;padding:10px 15px;font-size:13px;font-weight:700;color:#33691e;
     border-bottom:1px solid #eef2f6;background:#fafcf7}
-  .caso .nota{padding:10px 16px;font-size:12.5px;color:#5b6770;border-top:1px solid #eef2f6;background:#fbfcfd;margin:0}
-  .lienzo{padding:26px 22px;display:flex;align-items:center;justify-content:center;min-height:120px;background:var(--negro)}
-  .lienzo.claro{background:#fff}
-
-  /* El bloque marca+texto: el isotipo es una caja con el PNG de fondo, alineado a la
-     izquierda, y el texto va pegado a su derecha con la misma altura de x. */
-  .marca{display:inline-flex;align-items:center;gap:2px}
-  .iso{width:var(--iso-w);height:var(--iso-h);flex:0 0 auto;
-       background:url('/static/images/logo-armacero.png') no-repeat left center;
-       background-size:var(--iso-full) var(--iso-h)}
-  .txt{font-family:'Arial Black','Archivo Black',Impact,sans-serif;font-size:96px;
-       letter-spacing:-2px;line-height:1;color:#fff;position:relative;top:-3px}
-  .claro .txt{color:var(--negro)}
-  .esc{transform-origin:left center}
-  .escalas{display:flex;gap:34px;align-items:center;flex-wrap:wrap;padding:22px;background:var(--negro)}
-  .orig{padding:18px 22px;background:var(--negro);text-align:center}
-  .orig img{max-width:100%;display:block;margin:0 auto}
+  .nota{padding:10px 15px;font-size:12.5px;color:#5b6770;border-top:1px solid #eef2f6;background:#fbfcfd;margin:0}
+  .tira{background:#111214;padding:14px 18px}
+  .fila{position:relative;width:var(--W);height:var(--H);max-width:100%;margin:0 auto 6px}
+  .fila > *{position:absolute;inset:0}
+  /* el PNG entero */
+  .png{background:url('/static/images/logo-armacero.png') no-repeat left top;background-size:var(--W) var(--H)}
+  /* el PNG recortado: SÓLO el fierro */
+  .iso{background:url('/static/images/logo-armacero.png') no-repeat left top;background-size:var(--W) var(--H);
+       clip-path:inset(0 calc(var(--W) - var(--x-txt)) 0 0)}
+  .pal{color:#fff;letter-spacing:-2px;white-space:nowrap;
+       font-size:calc(var(--cap) / 0.716);          /* alto de mayúscula = --cap */
+       left:var(--x-txt) !important; top:calc(var(--baseline) - var(--cap)) !important;
+       right:auto !important; bottom:auto !important; line-height:1}
+  .f-arial{font-family:'Arial Black',sans-serif}
+  .f-impact{font-family:Impact,'Haettenschweiler',sans-serif;letter-spacing:0}
+  .f-hel{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:900}
+  .f-seg{font-family:'Segoe UI',system-ui,sans-serif;font-weight:900}
+  .sobre .pal{color:#ff1e8e;mix-blend-mode:normal;opacity:.72}
+  .rot{color:#9aa4b0;font-size:11.5px;padding:2px 18px 8px;background:#111214;margin:0}
 </style></head><body>
 <header>
-  <h1>ArmaHub · el fierro ORIGINAL, sin redibujar</h1>
-  <p>El isotipo es el archivo de Armacero recortado, no una versión mía. Sin bajada.</p>
+  <h1>Primero: ¿la fuente calza?</h1>
+  <p>Abajo, la misma palabra ARMACERO escrita con cada fuente candidata, sobre el original. La que se superponga bien es la buena.</p>
 </header>
 <main>
 
 <section class="caso">
-  <h2>El original, como referencia</h2>
-  <div class="orig"><img src="/static/images/logo-armacero.png" alt="Logo Armacero"></div>
+  <h2>Prueba de calce — mi texto en rosado ENCIMA del original</h2>
+  <div class="tira">
+    <div class="fila sobre"><div class="png"></div><div class="pal f-arial">RMACERO</div></div>
+    <p class="rot">1 · Arial Black</p>
+    <div class="fila sobre"><div class="png"></div><div class="pal f-hel">RMACERO</div></div>
+    <p class="rot">2 · Helvetica/Arial en peso 900</p>
+    <div class="fila sobre"><div class="png"></div><div class="pal f-seg">RMACERO</div></div>
+    <p class="rot">3 · Segoe UI Black</p>
+    <div class="fila sobre"><div class="png"></div><div class="pal f-impact">RMACERO</div></div>
+    <p class="rot">4 · Impact</p>
+  </div>
+  <p class="nota">Si alguna tapa al original casi sin sobresalir, esa es la fuente y ARMAHUB va a quedar idéntico. Si <b>ninguna</b> calza, no hay forma de acertar sin el archivo de la fuente corporativa: dímelo y te lo pido a quien lleve la marca.</p>
 </section>
 
 <section class="caso">
-  <h2>ARMAHUB · el mismo fierro, el mismo tamaño de letra</h2>
-  <div class="lienzo">
-    <div class="marca"><div class="iso"></div><span class="txt">RMAHUB</span></div>
+  <h2>El resultado — sólo cambia la palabra</h2>
+  <div class="tira">
+    <div class="fila"><div class="iso"></div><div class="pal f-arial">RMAHUB</div></div>
+    <p class="rot">Fierro original intacto · ARMAHUB en la fuente 1</p>
+    <div class="fila"><div class="iso"></div><div class="pal f-hel">RMAHUB</div></div>
+    <p class="rot">Fierro original intacto · ARMAHUB en la fuente 2</p>
   </div>
-  <div class="lienzo claro">
-    <div class="marca"><div class="iso"></div><span class="txt">RMAHUB</span></div>
-  </div>
-  <p class="nota">El fierro hace de A, igual que en el original. La letra es la más pesada del sistema: <b>no es la fuente corporativa</b>, ver abajo.</p>
+  <p class="nota">El fierro no está redibujado: es el archivo original recortado. Lo único que cambia respecto del logo de Armacero es la palabra.</p>
 </section>
 
 <section class="caso">
-  <h2>Cómo aguanta al achicarse</h2>
-  <div class="escalas">
-    <div class="marca esc" style="transform:scale(.42)"><div class="iso"></div><span class="txt">RMAHUB</span></div>
-    <div class="marca esc" style="transform:scale(.26)"><div class="iso"></div><span class="txt">RMAHUB</span></div>
-    <div class="iso" style="transform:scale(.30);transform-origin:left center"></div>
-  </div>
-  <p class="nota">La última es sólo el fierro, para el favicon y la esquina del modal.</p>
-</section>
-
-<section class="caso">
-  <h2>Lo que falta para que quede exacto</h2>
-  <p class="nota" style="border-top:none">
-    <b>La tipografía no es la corporativa.</b> El logo está en el repositorio como imagen, no como
-    vector, así que la fuente no se puede extraer de ahí. Y tampoco sirve reutilizar las letras del
-    propio logo: ARMACERO comparte «ARMA» con ARMAHUB, pero no tiene ni H, ni U, ni B.
-    <br><br>
-    Con <b>el archivo de la fuente</b> o <b>el logo original en vector</b>, la calzo exacta y esto deja
-    de ser un parecido. Es lo único que falta.
-    <br><br>
-    El <b>fierro es el de verdad</b>: no lo redibujé, es el PNG original recortado. Si el corte deja
-    fuera un pixel o se lleva uno de más, es un número y lo ajusto.
-  </p>
+  <h2>El original, para comparar</h2>
+  <div class="tira"><div class="fila"><div class="png"></div></div></div>
 </section>
 
 </main></body></html>
