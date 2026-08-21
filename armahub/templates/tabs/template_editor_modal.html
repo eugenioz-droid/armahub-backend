@@ -671,9 +671,9 @@
      el remate de cualquier cota de plano; sin él, el trazo cruza las cifras.
      pointer-events:none — son lectura de un gesto en curso, no un objetivo: sin esto
      se meterían entre el cursor y el tirador que el usuario está arrastrando. */
-  #te_modal .te-rango-cota{font-size:10px;font-weight:700;fill:var(--te-ov-rango-f);paint-order:stroke;
+  #te_modal .te-rango-cota{font-size:11.5px;font-weight:700;fill:var(--te-ov-rango-f);paint-order:stroke;
     stroke:var(--te-ov-cota-bg);stroke-width:3px;stroke-linejoin:round;pointer-events:none;user-select:none}
-  #te_modal .te-rango-cotaL{stroke:var(--te-ov-rango-f);stroke-width:.9;stroke-dasharray:3 2;
+  #te_modal .te-rango-cotaL{stroke:var(--te-ov-rango-f);stroke-width:1.4;stroke-dasharray:4 2;
     pointer-events:none}
   /* Fila de ángulos: tantas columnas como ángulos declare la figura (2 anchos, 4 caben). */
   #te_modal .te-angrow{display:grid;gap:8px;margin-bottom:6px}
@@ -1081,29 +1081,37 @@
      verde era el mismo tono que el acento de la interfaz. Se puede confundir con la
      SELECCIÓN (que es magenta #ff2d95, otra familia) menos que antes con el acento.
      El preview inactivo sigue distinguiéndose por su opacity (la pone el JS en el <g>). */
-  #te_modal .te-rango-line{stroke:var(--te-ov-rango);stroke-width:1;stroke-dasharray:3 3;opacity:.85}
-  #te_modal .te-rango-arrow{fill:none;stroke:var(--te-ov-rango);stroke-width:1.3}
+  /* ABANICO CON MAS CUERPO (22-ago). Los grosores y el cuerpo de letra se calibraron
+     mirando el tema CLARO, donde un trazo fino sobre fondo casi blanco se lee bien. En
+     los dos oscuros el mismo trazo desaparece: el ojo necesita mas superficie para
+     distinguir un color sobre negro que sobre blanco. Se suben en los TRES temas -no
+     solo en los oscuros- para que la pieza sea la misma en todas partes; en claro la
+     diferencia se nota poco y en oscuro es la que la hace visible. */
+  #te_modal .te-rango-line{stroke:var(--te-ov-rango);stroke-width:1.6;stroke-dasharray:4 3;opacity:1}
+  #te_modal .te-rango-arrow{fill:none;stroke:var(--te-ov-rango);stroke-width:2}
   #te_modal .te-rango-hit{fill:rgba(0,0,0,.001)}
-  #te_modal .te-rango-end{fill:#fff;stroke:var(--te-ov-rango);stroke-width:1.2}
+  /* El tirador iba con relleno BLANCO fijo: en oscuro era un punto blanco flotando que
+     no pertenecia a la paleta. Ahora usa el fondo de cota, que sigue al tema. */
+  #te_modal .te-rango-end{fill:var(--te-ov-cota-bg);stroke:var(--te-ov-rango);stroke-width:1.8}
   #te_modal .te-rango-end:hover{fill:var(--te-ov-rango)}
   /* TRAMOS (multi-@) sobre la flecha de rango: un DIVISOR arrastrable en cada límite
      entre tramos contiguos + una etiqueta "@N" clicable por tramo (abre un input
      inline). Mismo azul de la flecha — es la misma pieza de UI. */
-  #te_modal .te-rango-div{stroke:var(--te-ov-rango);stroke-width:1.4}
+  #te_modal .te-rango-div{stroke:var(--te-ov-rango);stroke-width:2.1}
   #te_modal .te-rango-divhit{fill:rgba(0,0,0,.001)}
-  #te_modal .te-rango-at{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
+  #te_modal .te-rango-at{fill:var(--te-ov-rango);font:700 10.5px "Segoe UI",system-ui,sans-serif;
     cursor:pointer;user-select:none}
   #te_modal .te-rango-at:hover{fill:var(--te-ov-rango-f)}
-  #te_modal .te-rango-atbg{fill:var(--te-ov-cota-bg);opacity:.85;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
+  #te_modal .te-rango-atbg{fill:var(--te-ov-cota-bg);opacity:.95;stroke:var(--te-ov-rango);stroke-width:1;cursor:pointer}
   /* RÓTULO DEL LARGO del abanico (la distancia que recorre la distribución) y el
      largo de cada tramo del nodo múltiple. Misma familia que el "@N" —es la misma
      pieza de UI— con caja OPACA: sobre la flecha horizontal interrumpe el trazo,
      como una cota de plano. El hover se pinta sobre el GRUPO para que se iluminen
      la caja y el número a la vez (pasar por encima del texto dejaba el fondo
      apagado y el realce se leía a medias). */
-  #te_modal .te-rango-len{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
+  #te_modal .te-rango-len{fill:var(--te-ov-rango);font:700 10.5px "Segoe UI",system-ui,sans-serif;
     cursor:pointer;user-select:none}
-  #te_modal .te-rango-lenbg{fill:var(--te-ov-cota-bg);opacity:.9;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
+  #te_modal .te-rango-lenbg{fill:var(--te-ov-cota-bg);opacity:.95;stroke:var(--te-ov-rango);stroke-width:1;cursor:pointer}
   #te_modal .te-rango-lengrp:hover .te-rango-lenbg{fill:var(--te-ov-cota-bgh);opacity:1;stroke-width:1.3}
   #te_modal .te-rango-lengrp:hover .te-rango-len{fill:var(--te-ov-rango-f)}
   /* El "@N" gana el mismo realce completo (caja Y número). Tenía sólo el :hover del
@@ -1438,7 +1446,7 @@
         <button class="te-ctool" id="te_barrasToggle" aria-expanded="false"
                 title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
         <span style="flex:1"></span>
-        <span id="te_ctoolsStatus" style="font-size:10.5px;color:var(--te-faint)">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
+        <span id="te_ctoolsStatus" style="font-size:10.5px;color:var(--te-ink)">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->

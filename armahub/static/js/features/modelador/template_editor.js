@@ -5518,6 +5518,16 @@
     ST.selCi = ST.receta.componentes.length - 1;
     _regenerar();
     _renderPanel();
+    // SALIR DEL MODO COLOCAR AL COLOCAR (22-ago, pedido del usuario). Antes el modo
+    // quedaba encendido y el clic siguiente ponía otra barra sin querer -- y como el
+    // clic tambien es "seleccionar", el usuario que iba a elegir la barra recien puesta
+    // terminaba poniendo una segunda encima. Sale ademas por la misma puerta de siempre
+    // (_activarHerramienta), asi que el ribbon esconde figura/phi/tipologia y la barra
+    // de estado se actualiza sin cablear nada aparte.
+    // Queda pendiente el modo CONTINUO que el usuario quiere despues: colocar varias
+    // seguidas sin salir. Cuando llegue, esto pasa a ser el comportamiento por defecto
+    // y el continuo un modificador, no al reves.
+    _activarHerramienta('mover');
   }
 
   // pos_hint: qué ejes fija el click. Estribo (perimetral) → su X (posición a lo
