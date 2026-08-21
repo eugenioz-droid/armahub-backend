@@ -6889,6 +6889,21 @@
     // se mira de la barra que se está editando. Vive ahora en la ficha, que es donde
     // está el resto de lo que define a esa barra.
 
+    // PAPELERA EN LA TEJA (22-ago). Va superpuesta en la esquina y sólo aparece al
+    // pasar el cursor —o en la teja seleccionada—, así la teja NO crece: en 70 px de
+    // ancho un botón permanente le habría comido el sitio a la tipología, que es lo
+    // que identifica la barra. Corta la propagación para no seleccionar al borrar.
+    var del = document.createElement('button');
+    del.type = 'button'; del.className = 'te-tjdel'; del.textContent = '🗑';
+    del.title = 'Quitar esta barra';
+    del.setAttribute('aria-label', 'Quitar esta barra');
+    del.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (ST.selCi !== ci) ST.selCi = ci;   // _borrarSeleccion trabaja sobre la selección
+      _borrarSeleccion();
+    });
+    wrap.appendChild(del);
+
     wrap.addEventListener('click', function () {
       // BUG 6B — la teja es un TOGGLE: si el componente ya está seleccionado, volver a
       // clicarlo lo DESELECCIONA. Antes sólo seleccionaba, así que la única forma de

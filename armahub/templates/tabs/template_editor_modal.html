@@ -409,6 +409,15 @@
      separación, duplicar, quitar) está en el detalle: acá el espacio es lo escaso. */
   #te_modal .te-comp{border:1px solid var(--te-line);border-radius:9px;overflow:hidden;background:var(--te-panel2);
     padding:4px 5px 5px;cursor:pointer;display:flex;flex-direction:column;gap:1px;min-width:0}
+  /* PAPELERA de la teja: superpuesta, no ocupa sitio en el flujo, así la teja no
+     crece. Aparece al pasar el cursor y en la teja seleccionada (si no, la única
+     forma de llegar a ella sería adivinar que está). */
+  #te_modal .te-comp{position:relative}
+  #te_modal .te-tjdel{position:absolute;top:1px;right:1px;border:none;background:none;
+    font-size:11px;line-height:1;padding:2px 3px;border-radius:4px;cursor:pointer;
+    opacity:0;transition:opacity .12s,background .12s}
+  #te_modal .te-comp:hover .te-tjdel,#te_modal .te-comp.sel .te-tjdel{opacity:.55}
+  #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14))}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
   #te_modal .te-comp .te-tjtop{display:flex;align-items:center;gap:3px;min-width:0}
