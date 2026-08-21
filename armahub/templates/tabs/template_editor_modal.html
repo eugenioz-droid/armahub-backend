@@ -230,8 +230,10 @@
      siempre a la vista y hacían creer que elegirlos ya colocaba algo. NO wrappea:
      el ribbon entero es una línea (ver arriba); si las 9 tipologías no caben, lo que
      se cae son sus etiquetas, no el renglón. */
-  #te_modal #te_colocBloque{display:none}
-  #te_modal #te_colocBloque.on{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+  #te_modal #te_colocBloque,
+  #te_modal #te_colocTip{display:none}
+  #te_modal #te_colocBloque.on,
+  #te_modal #te_colocTip.on{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
   /* Campos chicos del grupo HORMIGÓN (cm) — escriben ST.receta.geometria.
      UNA SOLA FILA (21-ago): Largo · Alto · Espesor · Recub. El recub estuvo en una
      2ª fila (fila:2 en GEO_RECUB_UNICO) y ahora va al lado del espesor, que es donde
@@ -282,10 +284,10 @@
      pidió el usuario se lee como se lee cualquier lista —de izquierda a derecha y
      después la fila de abajo—: 101A 102A 103A 103B 103C arriba, 104A 104B 104C 105A
      105C abajo. El orden lo manda TE_FIGS_RAPIDAS en template_editor.js. */
-  #te_modal .te-figq{display:grid;grid-template-columns:repeat(5,auto);gap:3px;flex:0 0 auto}
+  #te_modal .te-figq{display:grid;grid-template-columns:repeat(5,auto);gap:2px;flex:0 0 auto}
   #te_modal .te-figq button{padding:0;border:1px solid var(--te-line);border-radius:5px;
     background:var(--te-field);cursor:pointer;line-height:0;display:block;
-    min-width:38px;min-height:28px}
+    min-width:32px;min-height:24px}
   #te_modal .te-figq button:hover{border-color:var(--te-acero);background:var(--te-hover)}
   /* LA ACTIVA se marca con el MISMO azul con que se marca "＋ Agregar barra" en modo
      colocación: las dos cosas dicen "esto es lo que va a salir del próximo clic". */
@@ -1139,6 +1141,22 @@
                  actualizar también TE_DIAMS en template_editor.js. -->
             <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option><option>28</option><option>32</option><option>36</option>
           </select>
+        </div>
+        <!-- BARRA RÁPIDA DE FIGURAS — las 10 que el usuario coloca casi siempre, en una
+             matriz de 2×5. Un clic deja esa figura como la activa para colocar (y entra
+             en modo colocación si hacía falta): es EL MISMO gesto que teclear el código
+             en el campo Figura, por la misma puerta.
+             VACÍO a propósito: las casillas las dibuja _renderFigsRapidas()
+             (template_editor.js) con el MOTOR del Diseñador y la geometría del catálogo.
+             POR QUÉ VA ACÁ (20-ago): antes cerraba el ribbon, después de las tipologías,
+             y como la cantidad de tipologías cambia con el elemento (la viga trae 9 y el
+             muro 6), la matriz se corría de sitio al cambiar de elemento. Entre el φ y
+             las tipologías su posición sólo depende de campos de ancho fijo.
+             Va FUERA del bloque de colocación: el botón sirve justamente para ENTRAR a
+             colocar, así que tiene que verse también cuando no se está colocando. -->
+        <div class="te-figq" id="te_figQuick"
+             title="Figuras de uso frecuente: un clic la deja lista para colocar"></div>
+        <div id="te_colocTip">
           <span class="te-lbl">Tipología</span>
           <!-- VACÍO a propósito: lo renderiza _renderRibbonTips() (template_editor.js)
                desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
@@ -1146,20 +1164,6 @@
         </div>
       </div>
       <div class="te-divv"></div>
-      <!-- BARRA RÁPIDA DE FIGURAS — las 10 que el usuario coloca casi siempre, en una
-           matriz de 2×5. Un clic deja esa figura como la activa para colocar (y entra
-           en modo colocación si hacía falta): es EL MISMO gesto que teclear el código
-           en el campo Figura, por la misma puerta.
-           VACÍO a propósito: las casillas las dibuja _renderFigsRapidas()
-           (template_editor.js) con el MOTOR del Diseñador y la geometría del catálogo
-           —los mismos que pintan la matriz del Catálogo y las miniaturas del Bar
-           Manager—, no con iconos escritos a mano que se desincronizarían.
-           Va FUERA de #te_colocBloque: el botón sirve justamente para entrar a
-           colocar, así que tiene que verse también cuando no se está colocando. -->
-      <div class="te-grp te-grp-figq">
-        <div class="te-figq" id="te_figQuick"
-             title="Figuras de uso frecuente: un clic la deja lista para colocar"></div>
-      </div>
       <!-- GRUPO OBRA (el editor haciendo de ENFIERRADOR) — SOLO se ve cuando el
            modal se abre con contexto de despiece (templateEditorAbrirEnObra). En modo
            biblioteca queda display:none y el ribbon se ve exactamente como antes.

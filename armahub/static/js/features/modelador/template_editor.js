@@ -614,7 +614,7 @@
   // etiquetas no hay que reservar sitio para ninguna letra, así que todo el
   // recuadro es figura. (El CSS le da min-width/min-height al botón para que las
   // casillas vacías midan lo mismo que las dibujadas.)
-  var TE_FIGQ_W = 36, TE_FIGQ_H = 26, TE_FIGQ_PAD = 3;
+  var TE_FIGQ_W = 30, TE_FIGQ_H = 22, TE_FIGQ_PAD = 2;   // 20-ago: achicadas en proporción
 
   // SVG de una figura para la barra rápida, o '' si no hay con qué dibujarla.
   function _svgFigRapida(cod) {
@@ -8476,8 +8476,13 @@
     // alguna sin el bloque. Los campos siguen existiendo en el DOM mientras está
     // oculto —_renderRibbonTips y _prellenarRibbonDesdeConfig escriben en ellos
     // igual—, sólo no se ven.
+    // DOS bloques desde el 20-ago: la barra rápida de figuras se metió ENTRE el φ y
+    // las tipologías (para que no se corra de sitio al cambiar de elemento), y eso
+    // partió en dos lo que era un solo contenedor. Los dos se encienden juntos.
     var bloque = $('te_colocBloque');
     if (bloque) bloque.classList.toggle('on', tool === 'colocar');
+    var bloqueTip = $('te_colocTip');
+    if (bloqueTip) bloqueTip.classList.toggle('on', tool === 'colocar');
     // El bloque entra y sale de la MISMA línea del ribbon: con él abierto el ancho
     // pedido crece de golpe, así que hay que re-medir (puede tocar compactar) y al
     // cerrarlo hay que devolver las etiquetas.
