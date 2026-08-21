@@ -32,6 +32,9 @@
 //      2,0 en el campo (el borde apoyado en la línea de recubrimiento), no 2,4 (el
 //      eje). Cada lado se corrige con SU signo y el descuento sigue la DIRECCIÓN del
 //      tramo, no un φ/2 a ciegas.
+//   L. LAS DOS CARAS DEL MISMO EJE, CON UNA PIEZA ASIMÉTRICA — una punta que dobla
+//      y otra cortada a ras no se corrigen con el mismo descuento; con una pieza
+//      simétrica (el estribo de la sección I) el error se esconde.
 //   H+J+K. LOS SEIS CAMPOS (23-ago) — tres pares, uno por eje, sin desplegable de
 //      cara. El eje que NO reparte: dos lecturas de la misma posición (una determina
 //      la otra). El eje que SÍ reparte: las dos puntas del rango, independientes, y
@@ -345,6 +348,54 @@ console.log('\nI · recubrimiento 2 y φ8 → el campo dice 2,0 (borde), no 2,4 
   // corren de través), así que ahí sí sobresale el radio entero.
   ok(r2(bb.x.hiB - bb.x.loB) === 0.8,
     'el estribo, plano en x, ocupa un φ de espesor real (=' + r2(bb.x.hiB - bb.x.loB) + ')');
+}
+
+// ============ L · LAS DOS CARAS DEL MISMO EJE, CON UNA PIEZA ASIMÉTRICA (23-ago)
+// La sección I mide con un ESTRIBO, que es simétrico: sus dos puntas se corrigen
+// igual y por eso un error de signo o una mitad mal repartida se esconden ahí.
+// Reporte del usuario: muro 720×310×20 recub 2, CB 102A φ16 en pose {extremo, −1,
+// rumbo y}, A fija 35 y B en auto. La 102A DOBLA en una punta y se corta A RAS en la
+// otra, así que el φ/2 que hay que descontar NO es el mismo en las dos caras del eje
+// y — y el motor se lo repartía a medias.
+// MEDIDO antes del fix: 1,60 abajo (el codo, METIDO 0,4 en su propio recubrimiento) y
+// 2,40 arriba (el corte, con 0,4 de sobra). Con φ8: 1,80 / 2,20 — el sesgo es siempre
+// φ/4. La causa está en el motor (figura_puntos._normalizarCadena centraba el bbox de
+// los EJES en vez de dar a cada punta SU reserva), y acá se congela lo que el usuario
+// LEE, que es lo que se rompió.
+console.log('\nL · pieza asimétrica: las dos caras del eje y, cada una con su descuento');
+{
+  const MURO = { largo: 720, alto: 310, ancho: 20, recub_sup: 2, recub_inf: 2, recub_lat: 2 };
+  const cb = (fig, phi, delta) => ({
+    comp_id: 'C1', tipologia: 'CB', figura: fig, diam: phi, modo: 'lineal',
+    pose: { cara: 'extremo', lado: -1, rumbo: 'y' },
+    dims: (fig === '102A')
+      ? { A: { modo: 'fija', valor: 35 }, B: delta ? { modo: 'auto', delta } : { modo: 'auto' } }
+      : { A: { modo: 'fija', valor: 35 }, B: { modo: 'auto' }, C: { modo: 'auto' } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0 }
+  });
+  [8, 16].forEach((phi) => {
+    montar(cb('102A', phi), MURO);
+    regenerar();
+    ok(hueco('y', 'min') === 2 && hueco('y', 'max') === 2,
+      '102A φ' + phi + ' (doblez abajo, corte arriba): 2,0 en LAS DOS caras del eje y — antes ' +
+      (phi === 16 ? '1,60 / 2,40' : '1,80 / 2,20') +
+      ' (=' + hueco('y', 'min') + ' / ' + hueco('y', 'max') + ')');
+  });
+  // CONTROL SIMÉTRICO: la 103A dobla en las dos puntas y ya daba 2,0 / 2,0. Es la
+  // pieza con la que el defecto se escondía, y no se mueve.
+  montar(cb('103A', 16), MURO);
+  regenerar();
+  ok(hueco('y', 'min') === 2 && hueco('y', 'max') === 2,
+    '103A φ16 (simétrica): sigue en 2,0 / 2,0 (=' + hueco('y', 'min') + ' / ' + hueco('y', 'max') + ')');
+  // Y EL CASO COMPLETO DEL USUARIO, con su Δ 96 en el lado B: la punta de abajo cierra
+  // en su recubrimiento y la de arriba asoma 94 cm — un arranque que sigue en la
+  // próxima etapa de hormigonado, que es para lo que existe el Δ. Los dos números son
+  // del MISMO eje y NO se corrigen con el mismo signo.
+  montar(cb('102A', 16, 96), MURO);
+  regenerar();
+  ok(hueco('y', 'min') === 2 && hueco('y', 'max') === -94,
+    'con Δ 96: 2,0 abajo (nada lo explica, tiene que cerrar) y −94 arriba (lo pidió el Δ) (=' +
+    hueco('y', 'min') + ' / ' + hueco('y', 'max') + ')');
 }
 
 console.log(fallos ? ('\n' + fallos + ' FALLO(S)') : '\nOK — el desplazamiento medido está congelado');

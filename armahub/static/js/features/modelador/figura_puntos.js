@@ -1556,13 +1556,43 @@
     // auto-largo cerraba el ancho total pero el conjunto asomaba ini/2 por un
     // lado — la fuga residual del hallazgo del verificador). El empalme sigue
     // sesgando el conjunto hacia su extremo, como en el cabezal.
+    // ==========================================================================
+    // CADA PUNTA CON SU RESERVA, NO LA MITAD DE LA SUMA (23-ago)
+    // ==========================================================================
+    // El auto-largo ya RESERVA lo que ocupa cada punta: `sobresCadena` devuelve
+    // {ini, fin} y cada uno lleva el φ/2 del extremo que termina en DOBLEZ, porque
+    // lo que tiene que quedar en línea con el recubrimiento es la CRESTA del codo y
+    // no su eje. Pero esa reserva se le resta al LARGO —o sea a la SUMA de las dos
+    // puntas— y acá se centraba el bbox de los EJES: cada extremo acababa
+    // recibiendo la MITAD del total en vez de LO SUYO.
+    // Con una pieza SIMÉTRICA (doblez en las dos puntas: 103A, 104B, 105x…) las dos
+    // mitades son iguales y no se nota — por eso vivió tanto. Con una punta doblada
+    // y la otra CORTADA A RAS (102A/102B/102C y toda cadena cuyo dominante sea el
+    // primer o el último tramo) el descuento entero se reparte en dos y la pieza
+    // queda corrida φ/4 hacia el lado del doblez, METIDA en su propio recubrimiento.
+    // MEDIDO (muro 720×310×20 recub 2, CB φ16 rumbo y, A fija 35 · B auto):
+    //   102A → recubrimiento 1.60 abajo (el doblez) y 2.40 arriba (el corte).
+    //   103A → 2.00 y 2.00, que es lo correcto y lo que escondía el defecto.
+    //   (con φ8 el mismo caso daba 1.80 / 2.20: el sesgo es siempre φ/4.)
+    // Ahora cada lado se corrige CON SU SIGNO y con SU reserva, y las dos puntas
+    // del 102A cierran en 2.00.
+    //
+    // LAS CONDICIONES SON LAS MISMAS DE `sobresCadena` a propósito (hay doblez en la
+    // punta baja si el dominante no es el PRIMER tramo, y en la alta si no es el
+    // ÚLTIMO), leídas en el mismo marco que deja `_orientarCadena` —el dominante
+    // sobre +u—: medir y dibujar tienen que descontar exactamente lo mismo o la
+    // barra se mide con una reserva y se coloca con otra.
+    var rphiC = (Number(diamCm) || 0) / 2;
+    var resLo = (!cerrada && iL > 0) ? rphiC : 0;
+    var resHi = (!cerrada && iL < tramos.length - 1) ? rphiC : 0;
     var minU = Infinity, maxU = -Infinity;
     for (i = 0; i < out.length; i++) {
       if (out[i].u < minU) minU = out[i].u;
       if (out[i].u > maxU) maxU = out[i].u;
     }
+    minU -= resLo; maxU += resHi;               // la ENVOLVENTE del acero, punta a punta
     var anchoTotal = (maxU - minU) - emp.ini - emp.fin;
-    var u0 = -anchoTotal / 2 - emp.ini - minU;  // el BBOX (sin empalmes) queda centrado
+    var u0 = -anchoTotal / 2 - emp.ini - minU;  // …y ES ELLA la que queda centrada
     for (i = 0; i < out.length; i++) out[i].u += u0;
     return { pts: out, cerrada: cerrada, iLong: iL, lado: null };
   }
@@ -2131,6 +2161,113 @@
     };
   }
 
+
+  // ==========================================================================
+  // ¿EL TRAZO CABE A LO LARGO? — LA MITAD QUE LE FALTABA A `sobresCadena` (21-ago)
+  // ==========================================================================
+  // `sobresCadena` mide lo que ASOMA más allá del lado longitudinal poniéndolo en
+  // un placeholder de 1000 cm, con la premisa escrita de que «los sobres no
+  // dependen de él». Esa premisa vale para la punta que se dobla HACIA ATRÁS
+  // (primer giro < 90°: la 102B saca su pata por detrás del arranque y lo que
+  // asoma es constante), pero NO para la que se dobla HACIA ADELANTE (giro > 90° —
+  // la 103C y todas las de ficha 135): esa pata cae DENTRO de los 1000 cm de
+  // mentira, así que reserva 0 y el auto-largo se queda con el largo útil COMPLETO
+  // mientras el trazo ocupa lo que mida la pata.
+  //
+  // MEDIDO (muro 600×310×20 recub 2, MV 103C φ8, rumbo z = el ESPESOR, A = 11 de
+  // gancho auto + Δ 48 del usuario = 59): la pata de 59 a 45° alcanza 41.72 cm
+  // sobre el eje en que corre la pieza, donde hay 16 útiles (20 − 2 − 2).
+  // `sobresCadena` devolvía {ini: 0.4, fin: 0.4} —sólo el φ/2 de los codos—, el
+  // auto-largo daba B = 16 y el trazo salía de z = −20.3 a +20.3: 40.61 cm de
+  // ancho en un muro de 20. Con rumbo x (la misma barra corriendo a lo largo) ese
+  // bloque cabe de sobra en los 592 útiles y no pasa nada — por eso el defecto
+  // sólo se ve cuando el rumbo es el eje CORTO.
+  //
+  // ESE CASO NO SE ARREGLA CON OTRO LARGO, y por eso esto AVISA en vez de clampar:
+  // el bloque de la punta es RÍGIDO —su extensión sobre u no depende del
+  // longitudinal—, así que si él solo se pasa del útil no hay valor de B que lo
+  // salve. Lo único honesto es decirlo con el número que lo causó.
+  //
+  // Cómo se mide, sin muestreo ni tablas: cada punto DIBUJADO es afín en el largo
+  // del longitudinal (los rumbos salen de los GIROS y el radio es constante), con
+  // pendiente 0 antes del tramo longitudinal y 1 después. Se traza con L y con
+  // L + 1, se separan los dos bloques por esa pendiente y se mide la extensión de
+  // cada uno: la mayor es el piso que ningún largo puede bajar.
+  //   dims  = las dims de CRESTA que se van a dibujar (Δ y empalme incluidos).
+  //   utilU = largo útil del hormigón sobre el eje en que corre la pieza.
+  // Devuelve null si cabe; si no, { ocupa, util, lados } con las letras del bloque
+  // que lo impide.
+  function largoCadenaNoCabe(figura, rol, dims, ladoLPref, diamCm, utilU, angOvr) {
+    var f = (figura || '').toUpperCase();
+    if (familiaDeDibujo(f, rol || null) !== 'cadena') return null;
+    if (!(Number(utilU) > 0)) return null;
+    var tr = tramosDeFigura(f, angOvr);
+    if (!tr) return null;
+    var ladoL = (ladoLPref !== undefined) ? ladoLPref : ladoLongitudinalCadena(f, dims);
+    if (ladoL == null) return null;                    // cerrada → no hay auto-largo
+    var iL = -1, i;
+    for (i = 0; i < tr.tramos.length; i++) {
+      if (tr.tramos[i].lado === ladoL) { iL = i; break; }
+    }
+    if (iL < 0) return null;
+    // Las dims que TRAZAN son las de vértice; las que llegan acá son de cresta (lo
+    // que se lista y se corta). Se convierte con la MISMA función que usa el
+    // dibujo, para que esta medición y el trazo no puedan discrepar.
+    var vert = _dimsNumericas(dimsAVertice(f, rol || null, dims, diamCm, angOvr));
+    var L0 = Number(vert[ladoL]);
+    // NUNCA se muestrea en L = 0: un tramo degenerado le esconde su doblez al pase
+    // de ganchos y las dos listas quedarían desalineadas (la misma cautela que
+    // autosCadenaSeccion). Con L0 ≤ 0 la barra ya está avisada por el lado ≤ 0.
+    if (!(L0 > 0)) return null;
+    // u de cada punto DIBUJADO, en el marco que deja el longitudinal corriendo en
+    // +u desde su arranque (el mismo marco de sobresCadena).
+    function us(L) {
+      var num = {}, k;
+      for (k in vert) if (Object.prototype.hasOwnProperty.call(vert, k)) num[k] = vert[k];
+      num[ladoL] = L;
+      var c = _cadena2D(tr.tramos, num, 10);
+      var a = c.pts[iL], b = c.pts[iL + 1];
+      var ang = Math.atan2(b.v - a.v, b.u - a.u);
+      var co = Math.cos(-ang), si = Math.sin(-ang);
+      var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true, iL);
+      var out = [], j;
+      for (j = 0; j < pts.length; j++) {
+        out.push((pts[j].u - a.u) * co - (pts[j].v - a.v) * si);
+      }
+      return out;
+    }
+    var u0 = us(L0), u1 = us(L0 + 1);
+    if (u0.length !== u1.length) return null;
+    // Bloque RÍGIDO = los puntos que NO se mueven con el largo (pendiente ≈ 0);
+    // el otro son los que van colgados del extremo (pendiente ≈ 1).
+    var loF = Infinity, hiF = -Infinity, loM = Infinity, hiM = -Infinity;
+    for (i = 0; i < u0.length; i++) {
+      if (Math.abs(u1[i] - u0[i]) < 0.5) {
+        if (u0[i] < loF) loF = u0[i];
+        if (u0[i] > hiF) hiF = u0[i];
+      } else {
+        if (u0[i] < loM) loM = u0[i];
+        if (u0[i] > hiM) hiM = u0[i];
+      }
+    }
+    var spanF = (hiF >= loF) ? (hiF - loF) : 0;
+    var spanM = (hiM >= loM) ? (hiM - loM) : 0;
+    // El φ/2 de cada extremo CON DOBLEZ: la cresta del codo es la que tiene que
+    // quedar en línea con el recubrimiento, no su eje (misma regla que sobresCadena).
+    var rphi = (diamCm || 0) / 2;
+    var reserva = (iL > 0 ? rphi : 0) + (iL < tr.tramos.length - 1 ? rphi : 0);
+    var rigida = Math.max(spanF, spanM) + reserva;
+    if (rigida <= Number(utilU) + 1e-6) return null;
+    var lados = [], t;
+    var desde = (spanF >= spanM) ? 0 : iL + 1;
+    var hasta = (spanF >= spanM) ? iL : tr.tramos.length;
+    for (i = desde; i < hasta; i++) {
+      t = tr.tramos[i];
+      if (t && t.lado != null && lados.indexOf(t.lado) < 0) lados.push(t.lado);
+    }
+    return { ocupa: rigida, util: Number(utilU), lados: lados };
+  }
+
   // Radiografía de la cadena de una figura (para tests, avisos y la UI):
   // { fuente, tramos, giros, cerrada, ladoLong }.
   function cadenaInfo(figura, dims, angOvr) {
@@ -2196,6 +2333,18 @@
     var x0 = -bBase / 2 - eIni, x1 = bBase / 2 + eFin;
     var A = (dims.A != null) ? dims.A : 0;
     var C = (dims.C != null) ? dims.C : 0;
+    // CADA PUNTA CON SU RESERVA (23-ago) — la misma corrección que `_normalizarCadena`,
+    // acá para que el constructor viejo y el trazador genérico no se separen (el
+    // piloto de convención de test_trazador_generico los compara punto a punto).
+    // El extremo que lleva PATA termina en un doblez y su cresta es la que se apoya
+    // en el recubrimiento (eje a recub + φ/2); el que no la lleva es un corte a ras
+    // y no sobresale nada. Centrar B a secas le daba a los dos la misma mitad: con
+    // pata en un solo extremo (102A con A, o con C) la pieza quedaba corrida φ/4
+    // hacia el lado de la pata, metida en su propio recubrimiento (medido: 1.60 de
+    // recubrimiento donde el hormigón pide 2.00, con φ16).
+    var _rp = (Number(diamCm) || 0) / 2;
+    var _sesgo = ((A ? _rp : 0) - (C ? _rp : 0)) / 2;
+    x0 += _sesgo; x1 += _sesgo;
     // 102x / recta sin patas → segmento simple.
     if (!A && !C) return [P(x0, 0), P(x1, 0)];
     // 103x: pata A (inicio) + tramo B + pata C (fin), ganchos hacia el núcleo (90°).
@@ -2941,6 +3090,7 @@
     // despiece — reglas lo AVISA en vez de dejar que el 3D mienta en silencio.
     canalDelTrazo: canalDelTrazo,
     sobresCadena: sobresCadena,   // reserva del auto-largo (puntas inclinadas)
+    largoCadenaNoCabe: largoCadenaNoCabe,   // …y si ni con esa reserva cabe, el número que lo impide
     // ÁNGULO POR BARRA (el catálogo sugiere, el componente decide). La UI arma el
     // control con esto: `rangoAngulo` le da los topes del slider, `mapaAngulosFigura`
     // le dice qué vértice mueve cada α, `validarAngulo` le da el motivo listo para

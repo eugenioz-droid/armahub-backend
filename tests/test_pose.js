@@ -412,13 +412,17 @@ ok(POSES_24.length === 24,
   // MIGRACIÓN CABEZAL → TRAZADOR: ±296 → ±295.6. La 102A tiene UNA pata (extremo
   // inicial), así que el auto-largo reserva φ/2 = 0.8 SÓLO en ese extremo —la
   // cresta del codo tiene que quedar en línea con el recub, la punta recta del
-  // otro extremo no dobla contra nada— y B pasa de 592 a 591.2. La cadena se centra
-  // por BBOX (convención ya vigente para todo el trazador), así que esos 0.8 se
-  // reparten 0.4 y 0.4: ±295.6. Lo que el assert protege —que la MEDIA VUELTA
-  // existe y lleva la pata de un testero al otro— es exactamente lo mismo.
-  ok(vistos.size === 4 && patas[1] === '295.6/0',
+  // otro extremo no dobla contra nada— y B pasa de 592 a 591.2.
+  // 23-AGO · 295.6 → 295.2, Y ESTE NÚMERO ES EL BUENO. La cadena se centraba por el
+  // bbox de los EJES, así que esos 0.8 reservados para UNA punta se repartían 0.4 y
+  // 0.4: la cresta del codo acababa en 296.4 —0.4 DENTRO del recubrimiento— y la
+  // punta recta en 295.6, con 0.4 de sobra. Ahora cada punta lleva SU reserva: el
+  // eje del codo a 295.2 (cresta en 296 = recub 4 EXACTO) y el corte a ras en 296.
+  // Lo que el assert protege —que la MEDIA VUELTA existe y lleva la pata de un
+  // testero al otro— es exactamente lo mismo.
+  ok(vistos.size === 4 && patas[1] === '295.2/0',
     'girando en torno a su normal la 102A pasa por 4 barras distintas y la MEDIA VUELTA ' +
-    'lleva la pata de x=−295.6 a x=+295.6 (=' + patas.join(' · ') + ')');
+    'lleva la pata de x=−295.2 a x=+295.2 (=' + patas.join(' · ') + ')');
   ok(JSON.stringify(barra102(p).puntos) === ini,
     '…y la 4ª devuelve la barra BYTE-IDÉNTICA a la de partida');
 })();
@@ -535,17 +539,25 @@ const n102 = R.expandirComponente(cab({ figura: '102A', dims: dims102, distribuc
 const e102 = R.expandirComponente(cab({
   figura: '102A', pose: { cara: 'sup', lado: 1, rumbo: 'x', espejo: true }, dims: dims102, distribucion: dist1
 }), viga)[0];
-// ±296 → ±295.6 por la migración cabezal → trazador: la 102A reserva φ/2 = 0.8 en
-// su ÚNICO extremo con doblez (la cresta del codo al recub) y el centrado por bbox
-// reparte esa reserva a los dos lados. El espejo, que es lo que se mide acá, no
-// cambia: la pata sigue saltando de un testero al otro.
-ok(close(n102.puntos[0].x, -295.6) && close(e102.puntos[0].x, 295.6),
+// ±296 → ±295.2: la 102A reserva φ/2 = 0.8 en su ÚNICO extremo con doblez (la
+// cresta del codo va en línea con el recub) y esa reserva la lleva ESE extremo, no
+// media cada uno — antes se repartía 0.4 y 0.4 y el codo se metía 0.4 en el
+// recubrimiento (ver la nota del giro, más arriba). El espejo, que es lo que se
+// mide acá, no cambia: la pata sigue saltando de un testero al otro.
+ok(close(n102.puntos[0].x, -295.2) && close(e102.puntos[0].x, 295.2),
   '102A: la pata pasa del extremo −X al +X (=' + r3(n102.puntos[0].x) + ' → ' + r3(e102.puntos[0].x) + ')');
 ok(JSON.stringify(n102.dims) === JSON.stringify(e102.dims),
   'y las dims NO cambian: es la MISMA barra (=' + JSON.stringify(e102.dims) + ')');
-ok(close(lim(n102, 'x').lo, lim(e102, 'x').lo) && close(lim(n102, 'x').hi, lim(e102, 'x').hi) &&
+// …y TAMPOCO SE MUEVE: la reflexión es sobre su propio plano medio, así que la
+// pieza ocupa el MISMO sitio. Lo que se compara es el bbox del ACERO —la cresta del
+// codo por un lado y el corte a ras por el otro, ±296 en los dos casos—, no el de
+// los ejes: con una punta doblada y la otra cortada el eje NO es simétrico (295.2
+// contra 296), y exigir que el bbox de ejes coincida era exigir el defecto de antes.
+ok(close(lim(n102, 'x').lo, -lim(e102, 'x').hi) && close(lim(n102, 'x').hi, -lim(e102, 'x').lo) &&
   close(lim(n102, 'y').lo, lim(e102, 'y').lo) && close(lim(n102, 'y').hi, lim(e102, 'y').hi),
-  'tampoco se MUEVE: el bbox es el mismo (la reflexión es sobre su propio plano medio)');
+  'tampoco se MUEVE: el acero ocupa lo mismo, con el eje espejado punta por punta ' +
+  '(x ' + r3(lim(n102, 'x').lo) + '…' + r3(lim(n102, 'x').hi) + ' vs ' +
+  r3(lim(e102, 'x').lo) + '…' + r3(lim(e102, 'x').hi) + ')');
 // (b) ESTRIBO: su plano es la SECCIÓN y el espejo invierte la binormal → los
 //     ganchos cambian de esquina.
 const dimsES = { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } };

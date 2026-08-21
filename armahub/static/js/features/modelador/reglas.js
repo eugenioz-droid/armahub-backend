@@ -2894,10 +2894,30 @@
   // El EMPALME no es un defecto: asoma fuera del hormigón A PROPÓSITO y sólo por
   // el eje por el que corre la barra (su rumbo), así que ese eje lleva de holgura
   // exactamente lo que suman los dos Δ de empalme.
+  //
+  // …Y EL Δ DEL DOMINANTE TAMPOCO (23-ago, corrección de dominio del usuario):
+  // «el empalme sí puede salirse del hormigón, eso es esperado; para eso es el
+  // DELTA, para esos ajustes». Un arranque se proyecta fuera del elemento a
+  // propósito porque continúa en la próxima etapa de hormigonado. Con los dos
+  // casos —el desborde QUERIDO y el que sale de un 'auto' mal derivado— bajo el
+  // mismo texto de «no construible», el aviso se vuelve ruido y se aprende a
+  // ignorarlo, que es lo peor que le puede pasar a un aviso.
+  // MEDIDO (muro 720×310×20 recub 2, CB 102A φ16 rumbo y, B auto + Δ 96): la barra
+  // asomaba 94.8 cm por arriba y el motor la llamaba no construible; son 94.8 de
+  // los 96 que el usuario ESCRIBIÓ, o sea exactamente lo que pidió.
+  // La holgura es la del Δ del DOMINANTE —el lado que corre a lo largo, el único
+  // que alarga la barra por su propio eje—, por el MISMO canal y con la misma
+  // convención que el empalme (`anchorBase.delta`, que ya existe y dice cuánto y
+  // por qué punta creció). Un Δ en una PATA no entra: eso no es un arranque, es
+  // una figura que se sale de través, y ahí el aviso tiene que sonar. Y si el
+  // desborde SUPERA lo que el Δ justifica, el aviso sale igual por la DIFERENCIA:
+  // la resta la hace `lim`, no un `if` que apague el canal.
   function _avisarFueraDelHormigon(base, comp, placements, host) {
     if (!base || !host || !placements || !placements.length) return;
     var emp = (base.anchorBase && base.anchorBase.empalme) || null;
     var holgura = emp ? ((Number(emp.ini) || 0) + (Number(emp.fin) || 0)) : 0;
+    var dlt = (base.anchorBase && base.anchorBase.delta) || null;
+    if (dlt) holgura += Math.max(0, (Number(dlt.ini) || 0) + (Number(dlt.fin) || 0));
     var ejeRumbo = poseDe(comp).rumbo;
     var r = (Number(base.diam) || 0) / 2;
     var peor = 0, ejePeor = null, capaPeor = null, i, k, e, lim, bb, exc, ejes = ['x', 'y', 'z'];
@@ -4062,6 +4082,39 @@
           (deltas[kD].origen === 'espejo' ? ' (espejo de ' + deltas[kD].de + ')' : '') +
           ': lo deja en ' + _num2(dims[kD]) + ' cm (medía ' + _num2(antes) + '). ' +
           'Se genera igual —el dato tiene que verse— pero esa barra no es construible.');
+      }
+    }
+    // -------------------------------------------------------------------------
+    // ¿Y CABE A LO LARGO? — EL LÍMITE QUE EL AUTO-LARGO NO ESTABA PONIENDO (21-ago)
+    // -------------------------------------------------------------------------
+    // El auto del lado longitudinal es `largoUtil − sobres`, y `sobresCadena` mide
+    // esos sobres con el longitudinal en un placeholder de 1000 cm. Con esa mentira
+    // la punta que se dobla HACIA ADELANTE (giro > 90°) cae siempre DENTRO del tramo
+    // y no reserva nada: el auto se queda con el largo útil COMPLETO mientras el
+    // trazo ocupa lo que mida esa punta. MEDIDO (muro 600×310×20 recub 2, MV 103C
+    // φ8, rumbo z = el espesor, A = 11 auto + Δ 48 = 59): la pata alcanza 41.72 cm
+    // sobre z, donde hay 16 útiles, y la barra salía de −20.3 a +20.3 (40.61 de
+    // ancho en un muro de 20). Con rumbo x la misma barra cabe y no pasa nada: el
+    // defecto sólo asoma cuando el rumbo es el eje CORTO.
+    //
+    // NO SE CLAMPA NADA: ese bloque es RÍGIDO (su extensión no depende del
+    // longitudinal), así que ningún valor de B lo arregla — cambiar B para taparlo
+    // sería mentir sobre una figura que no entra. Se mide sobre las dims FINALES
+    // (Δ y empalme ya sumados, que es lo que se dibuja) y se DICE con el número que
+    // lo causó: qué lado, cuánto ocupa y cuánto hay. El aviso genérico de «fierro
+    // fuera del hormigón» sigue saliendo detrás; éste es el que nombra la causa.
+    if (avisos && comp._rol === 'cabezal') {
+      var fpC = _fp();
+      var noCabe = (fpC && fpC.largoCadenaNoCabe)
+        ? fpC.largoCadenaNoCabe(comp.figura, comp._rol, dims, lado,
+            Number(comp.diam) / 10 || 0, mk.largoUtil, angOvr)
+        : null;
+      if (noCabe) {
+        _avisarEn(avisos, 'El lado ' + noCabe.lados.join('+') + ' ocupa ' +
+          _num2(noCabe.ocupa) + ' cm sobre el eje en que corre la pieza, y ahí hay ' +
+          _num2(noCabe.util) + ' cm útiles: ningún largo del lado ' + lado +
+          ' lo arregla. Se genera igual —el dato tiene que verse— pero hay que ' +
+          'acortar ese lado o girar la pieza para que corra por donde sí cabe.');
       }
     }
     return dims;

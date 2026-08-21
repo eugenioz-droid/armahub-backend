@@ -373,5 +373,181 @@ console.log('\nF — barrido del catálogo × hosts × tipologías × distribuci
     JSON.stringify(peorSilencio) + ')');
 }
 
+
+// ===========================================================================
+// G · EL AUTO-LARGO SE ACOTA CONTRA EL EJE POR EL QUE CORRE LA PIEZA (23-ago)
+// ===========================================================================
+// Reporte del usuario: «siempre que vuelvo a entrar al editor esta figura 103C se
+// me desajusta visualmente… es como que se perdiera el límite que le da el lado
+// automático». El auto del lado longitudinal es `largoUtil − sobresCadena`, y
+// `sobresCadena` mide esos sobres poniendo el longitudinal en un placeholder de
+// 1000 cm, con la premisa escrita de que «los sobres no dependen de él». Vale para
+// la punta que se dobla HACIA ATRÁS (giro < 90°, la 102B), no para la que se dobla
+// HACIA ADELANTE (giro > 90°, la 103C y las de ficha 135): esa pata cae DENTRO de
+// los 1000 de mentira, reserva 0, y el auto se queda con el largo útil COMPLETO
+// mientras el trazo ocupa lo que mida la pata.
+// MEDIDO (muro 600×310×20 recub 2, MV 103C φ8, rumbo z = el ESPESOR, A = 11 de
+// gancho auto + Δ 48 del usuario = 59): B = 16 (= 20 − 2 − 2, correcto) pero el
+// trazo iba de z = −20.3 a +20.3 — 40.61 cm de ancho en un muro de 20. La misma
+// barra con rumbo x da bbox z = 0: el defecto sólo asoma cuando el rumbo es el eje
+// CORTO, que es por lo que el usuario veía sólo esos componentes.
+console.log('\nG — el eje CORTO como rumbo: la pieza no puede abarcar más que su espesor útil:');
+{
+  const M310 = { largo: 600, alto: 310, ancho: 20, recub_sup: 2, recub_inf: 2, recub_lat: 2 };
+  const V30 = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
+  // El componente EXACTO del reporte, salvo el Δ (que es lo que se varía).
+  function c103C(delta, fig) {
+    const spec = CAT.get(fig || '103C');
+    const dims = {};
+    spec.parciales.forEach(function (L) {
+      dims[L] = (L === 'A' && delta) ? { modo: 'auto', delta: delta } : { modo: 'auto' };
+    });
+    return {
+      tipologia: 'MV', figura: fig || '103C', diam: 8, modo: 'lineal', dims: dims,
+      angulos: { a1: 45 },
+      pose: { cara: 'inf', lado: -1, rumbo: 'z', espejo: false },
+      distribucion: { modo: 'linear', sep: 20, rango: { eje: 'x', from: -218, to: 222, sep: 20 } }
+    };
+  }
+  // (1) SIN Δ —lo que el motor elige solo— la barra NO puede abarcar más que el
+  //     espesor útil en su eje corto. Es el criterio de aceptación del reporte.
+  {
+    const c = c103C(0);
+    const pl = R.expandirComponente(c, M310)[0];
+    const z = lim(pl, 'z');
+    ok(Math.max(Math.abs(z.lo), Math.abs(z.hi)) + 0.4 <= 10 + 1e-9,
+      '103C todo auto: la cara del fierro cabe en el espesor (z = ' + r2(z.lo) + '…' + r2(z.hi) +
+      ', muro de 20)');
+    ok(!avisos(c).length, '…y sin avisos: no hay nada que decir (=' + JSON.stringify(avisos(c)) + ')');
+  }
+  // (2) CON el Δ 48 del usuario la pata mide 59 y a 45° alcanza 41.41 cm sobre el
+  //     eje en que corre la pieza, donde hay 16 útiles. Eso NO lo arregla ningún
+  //     largo de B —el bloque de la punta es RÍGIDO—, así que no se clampa: se
+  //     dibuja igual y el motor NOMBRA EL LADO con su número (antes: el auto daba
+  //     B = 16 y sólo hablaba el aviso genérico, que culpa al φ y al Sep de capas).
+  {
+    const c = c103C(48);
+    const pl = R.expandirComponente(c, M310)[0];
+    const z = lim(pl, 'z');
+    ok(r2(z.hi - z.lo) === 40.61, 'con Δ 48 el trazo mide 40.61 en z (el dato honesto, se ve)');
+    ok(avisos(c).some(function (a) { return /lado A ocupa 41\.41 cm/.test(a) && /16 cm útiles/.test(a); }),
+      'y el motor nombra el LADO A con su número y con el útil que hay (=' +
+      JSON.stringify(avisos(c)) + ')');
+  }
+  // (3) LA MISMA BARRA CON RUMBO X CABE Y NO DICE NADA de la pata: el aviso no es del
+  //     componente, es de la relación entre la pata y el eje por el que corre.
+  {
+    const c = c103C(48);
+    c.pose = { cara: 'inf', lado: -1, rumbo: 'x', espejo: false };
+    R.expandirComponente(c, M310);
+    ok(!avisos(c).some(function (a) { return /lado A ocupa/.test(a); }),
+      'girada a rumbo x la pata cabe en los 592 útiles y no se avisa nada de ella');
+  }
+  // (4) NO ES SÓLO LA 103C: el barrido de las de 2 y 3 lados con ángulo, rumbo en el
+  //     eje CORTO, en muro y en viga. Con el 'auto' del motor todas caben (que es lo
+  //     que el usuario ve, y por eso creía que era una figura sola); en cuanto la
+  //     pata crece, la que se dobla hacia ADELANTE se sale, y ninguna en silencio.
+  [['muro', M310], ['viga', V30]].forEach(function (par) {
+    ['102B', '102C', '103B', '103C', '103D'].forEach(function (f) {
+      const semi = par[1].ancho / 2;
+      const cA = c103C(0, f);
+      const zA = lim(R.expandirComponente(cA, par[1])[0], 'z');
+      ok(Math.max(Math.abs(zA.lo), Math.abs(zA.hi)) + 0.4 <= semi + 1e-9,
+        par[0] + ' ' + f + ' todo auto: cabe en el eje corto (z = ' + r2(zA.lo) + '…' + r2(zA.hi) + ')');
+      const cD = c103C(48, f);
+      const zD = lim(R.expandirComponente(cD, par[1])[0], 'z');
+      const cabe = Math.max(Math.abs(zD.lo), Math.abs(zD.hi)) + 0.4 <= semi + 1e-9;
+      ok(cabe || avisos(cD).some(function (a) { return /ocupa .* cm sobre el eje en que corre/.test(a); }),
+        par[0] + ' ' + f + ' con Δ 48: cabe, o NO cabe y el motor nombra el lado (z = ' +
+        r2(zD.lo) + '…' + r2(zD.hi) + (cabe ? ' · cabe' : ' · nombrado') + ')');
+    });
+  });
+}
+
+// ===========================================================================
+// H · CADA PUNTA CON SU RESERVA (el medio diámetro no se reparte a medias)
+// ===========================================================================
+// El auto-largo reserva φ/2 en el extremo que termina en DOBLEZ —la CRESTA del codo
+// es la que se apoya en la línea de recubrimiento, no su eje— y 0 en el que termina
+// en CORTE A RAS. Pero esa reserva se le restaba al LARGO (o sea a la SUMA de las
+// dos puntas) y la pieza se centraba por el bbox de los EJES: cada extremo recibía
+// LA MITAD DEL TOTAL en vez de LO SUYO.
+// Con una pieza SIMÉTRICA no se nota —las dos mitades son iguales— y por eso vivió
+// tanto. Este bloque mide LAS DOS CARAS DEL MISMO EJE con una pieza ASIMÉTRICA, que
+// es donde el defecto se ve.
+// MEDIDO (muro 720×310×20 recub 2, CB φ16 rumbo y, A fija 35 · B auto):
+//   102A (doblez abajo, corte arriba) → recubrimiento 1.60 abajo y 2.40 arriba: el
+//        codo METIDO 0.4 en su propio recubrimiento. Con φ8: 1.80 / 2.20 (el sesgo
+//        es siempre φ/4).
+//   103A (doblez en las dos puntas)   → 2.00 / 2.00, que es lo correcto y lo que
+//        escondía el defecto.
+console.log('\nH — las DOS caras del mismo eje, con una pieza asimétrica:');
+{
+  const MURO720 = { largo: 720, alto: 310, ancho: 20, recub_sup: 2, recub_inf: 2, recub_lat: 2 };
+  function cb(fig, phi, delta, pataFija) {
+    return {
+      tipologia: 'CB', figura: fig, diam: phi, modo: 'lineal',
+      pose: { cara: 'extremo', lado: -1, rumbo: 'y' },
+      dims: Object.fromEntries(CAT.get(fig).parciales.map(function (L) {
+        if (L === 'A') return [L, { modo: 'fija', valor: pataFija || 35 }];
+        if (L === 'B' && delta) return [L, { modo: 'auto', delta: delta }];
+        return [L, { modo: 'auto' }];
+      })),
+      distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0 }
+    };
+  }
+  // Recubrimiento REAL de cada punta = de la cara del hormigón a la CRESTA del acero.
+  // La cresta está φ/2 más allá del eje en el extremo que DOBLA, y en el eje mismo en
+  // el que se corta a ras (una punta plana no sobresale por su propio eje).
+  function recubs(pl, phi, dobIni, dobFin) {
+    const y = lim(pl, 'y'), r = phi / 20;
+    return {
+      inf: r2(155 + (y.lo - (dobIni ? r : 0))),
+      sup: r2(155 - (y.hi + (dobFin ? r : 0)))
+    };
+  }
+  [8, 16].forEach(function (phi) {
+    const c = cb('102A', phi);
+    const rc = recubs(R.expandirComponente(c, MURO720)[0], phi, true, false);
+    ok(rc.inf === 2 && rc.sup === 2,
+      '102A φ' + phi + ': las DOS caras del eje y a 2.00 (antes ' +
+      (phi === 16 ? '1.60 / 2.40' : '1.80 / 2.20') + ') (=' + rc.inf + ' / ' + rc.sup + ')');
+  });
+  // CONTROL SIMÉTRICO: la 103A dobla en las dos puntas, así que ya daba 2.00 / 2.00 y
+  // NO se mueve. Es la pieza con la que el defecto se escondía.
+  {
+    const c = cb('103A', 16);
+    const rc = recubs(R.expandirComponente(c, MURO720)[0], 16, true, true);
+    ok(rc.inf === 2 && rc.sup === 2,
+      '103A φ16 (simétrica): sigue en 2.00 / 2.00 — el control que escondía el defecto (=' +
+      rc.inf + ' / ' + rc.sup + ')');
+  }
+  // Y EL CASO DEL USUARIO, CON SU Δ. «El empalme sí puede salirse del hormigón, eso es
+  // esperado; para eso es el DELTA»: el desborde de arriba es el que PIDIÓ (Δ 96 en el
+  // dominante, un arranque que sigue en la próxima etapa de hormigonado) y no se avisa;
+  // la punta de abajo, que ningún Δ explica, cierra en su recubrimiento.
+  {
+    const c = cb('102A', 16, 96);
+    const pl = R.expandirComponente(c, MURO720)[0];
+    const rc = recubs(pl, 16, true, false);
+    ok(rc.inf === 2, 'con Δ 96 la punta SIN Δ sigue cerrando en 2.00 (=' + rc.inf + ')');
+    ok(r2(lim(pl, 'y').hi) === 249, '…y la punta con Δ asoma 94 cm, que es lo que se pidió');
+    ok(!avisos(c).length,
+      'y el motor NO grita: el desborde lo explica el Δ del dominante (=' +
+      JSON.stringify(avisos(c)) + ')');
+  }
+  // …PERO LA HOLGURA ES HOLGURA, NO UN INTERRUPTOR, Y ES SÓLO DE SU EJE. El Δ del
+  // dominante alarga la barra POR DONDE CORRE (el rumbo, acá la y): lo que se sale
+  // por OTRO eje no lo explica y sigue avisándose. Una pata de 800 en un muro de 720
+  // cruza el elemento a lo LARGO y asoma por el testero opuesto.
+  {
+    const c2 = cb('102A', 16, 96, 800);
+    R.expandirComponente(c2, MURO720);
+    ok(avisos(c2).some(function (a) { return /Fierro FUERA del hormigón: .* eje x/.test(a); }),
+      'una pata de 800 que se sale por el eje x SÍ se avisa: el Δ del dominante es de la y (=' +
+      JSON.stringify(avisos(c2)) + ')');
+  }
+}
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nOK — fierro fuera del hormigón: causas raíz congeladas.');
 process.exit(fallos ? 1 : 0);
