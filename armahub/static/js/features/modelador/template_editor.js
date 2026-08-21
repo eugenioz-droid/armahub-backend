@@ -6718,17 +6718,13 @@
     var swEl = document.createElement('span');
     swEl.className = 'te-sw'; swEl.style.background = col;
     top.appendChild(swEl);
-    // MARCA DE ESPEJO — pegada al swatch y SÓLO si la pose está espejada.
-    // Es la contrapartida de haberle sacado la cara a la descripción: sin ella, dos
-    // componentes iguales que sólo difieren en el espejo (las dos MH 104B del reporte)
-    // quedan indistinguibles en la grilla.
-    if (_poseDe(c).espejo) {
-      var espEl = _span('⇋');
-      espEl.className = 'te-espm'; espEl.title = 'Pose espejada (el gancho cierra al otro lado)';
-      top.appendChild(espEl);
-    }
-    var spEl = _span(''); spEl.className = 'te-sp';
-    top.appendChild(spEl);
+    // LA MARCA DE ESPEJO SE FUE DE LA TEJA (21-ago, pedido del usuario): en 70 px de
+    // ancho competía con la tipología, que es lo que de verdad identifica la barra.
+    // Consecuencia asumida: dos componentes que sólo difieren en el espejo se ven
+    // iguales en la grilla; la ficha lo sigue diciendo en la frase de Orientación.
+    // Y FUERA el separador elástico: empujaba la tipología contra el borde derecho y
+    // le comía el ancho, así que un "MH" salía cortado en "M…". Ahora va pegada al
+    // color, que es donde se lee sola.
     wrap.appendChild(top);
 
     // LA TIPOLOGÍA VA ARRIBA, junto al asa y al color — y nada más. La figura bajó a
