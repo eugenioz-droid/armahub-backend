@@ -6815,6 +6815,11 @@
     // no cómo se reparte.
     idRow.appendChild(_fld('Jerarquía', _selJerarquia(c, ci)));
     body.appendChild(idRow);
+    // HUECO para la fila de color: se reserva acá —arriba, junto a la identidad de la
+    // barra— pero la fila se construye más abajo, donde vive el resto de su lógica.
+    // Appendearla aquí directamente la metía como `undefined`: la variable existe por
+    // hoisting pero todavía no tiene valor.
+    var huecoCol = _div(''); body.appendChild(huecoCol);
 
     // TIPOLOGÍA HUÉRFANA (ver _tipAjenaAlElemento) — esta barra quedó con la
     // tipología de otro elemento, típicamente tras cambiar Viga → Muro. El aviso
@@ -7015,10 +7020,9 @@
       // El rótulo y sus flechas van en UN envoltorio: la fila de acciones envuelve
       // cuando no cabe, y sueltos el "Patas" podía quedarse en un renglón y sus
       // flechas irse al siguiente.
+      // 22-ago: sin rótulo. Las cuatro flechas se explican solas y el texto "Patas"
+      // gastaba ancho en una fila donde el ancho es lo escaso.
       var patWrap = _div('te-opatas');
-      var patLbl = _span('Patas');
-      patLbl.className = 'te-oacclbl';
-      patWrap.appendChild(patLbl);
       var spinNow = ((((Number(c.orient && c.orient.spin) || 0) % 360) + 360) % 360);
       var spinSeg = _radial([['0', '↓'], ['90', '→'], ['180', '↑'], ['270', '←']], String(spinNow), function (v) {
         _pushUndo();
@@ -7070,10 +7074,13 @@
     // pero se pueden cambiar en el componente"). Se aplica en 'change' (al cerrar
     // el picker), no en 'input': cada cambio regenera motor+3D y el arrastre del
     // picker dispara decenas por segundo.
-    var rowCol = _div('te-row');
-    rowCol.appendChild(_label('Color'));
+    // 22-ago: SIN rótulo y en UNA sola línea. Un selector de color se reconoce solo,
+    // así que la palabra "Color" era un renglón regalado; y la barra ancha del picker
+    // pasa a ser un cuadro del alto de la fila, con los colores ya usados a su lado en
+    // la MISMA línea en vez de bajar a una segunda.
+    var rowCol = _div('te-rowcol');
     var wCol = _div(''); wCol.style.display = 'flex'; wCol.style.gap = '6px'; wCol.style.alignItems = 'center';
-    wCol.style.flexWrap = 'wrap';   // la fila de colores usados baja de línea, no desborda
+    wCol.style.flexWrap = 'nowrap'; wCol.style.minWidth = '0';
     var inCol = document.createElement('input');
     inCol.type = 'color'; inCol.value = _colorComp(c); inCol.className = 'te-color';
     inCol.title = 'Color de esta barra en el editor (default: el de su tipología ' + _colDe(c.tipologia) + ')';
@@ -7108,7 +7115,7 @@
       wCol.appendChild(wSw);
     }
     rowCol.appendChild(wCol);
-    body.appendChild(rowCol);
+    huecoCol.appendChild(rowCol);   // ← al hueco reservado arriba, no al final
 
     // Distribución
     body.appendChild(_distBox(c, ci, rol, d));

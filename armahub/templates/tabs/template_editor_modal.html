@@ -442,6 +442,14 @@
   /* La lista VACÍA ocupa la fila completa de la grilla (si no, quedaría metida en la
      primera columna de 101px). */
   #te_modal #te_compList .te-note{grid-column:1/-1}
+  /* COLOR en UNA línea, sin rótulo (22-ago): el picker deja de ser una barra ancha y
+     pasa a ser un cuadro del alto de la fila, y los colores ya usados van a su lado en
+     el mismo renglón. Antes gastaba dos: una para la palabra "Color" y otra para los
+     swatches, que bajaban por el flex-wrap. */
+  #te_modal .te-rowcol{display:flex;align-items:center;gap:6px;margin-bottom:7px;min-width:0}
+  #te_modal .te-rowcol .te-color{width:30px;height:26px;padding:0;flex:0 0 auto;border-radius:6px;
+    border:1px solid var(--te-field-b);cursor:pointer;background:none}
+  #te_modal .te-rowcol .te-colsws{flex:1 1 auto;flex-wrap:nowrap;overflow-x:auto;min-width:0}
   #te_modal .te-fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
   #te_modal .te-fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
   #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-field-b);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}
