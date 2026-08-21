@@ -354,14 +354,21 @@
      movido a cada zona. */
   #te_modal #te_side{width:360px;min-width:360px;border-right:1px solid var(--te-line);background:var(--te-panel);
     display:flex;flex-direction:column;min-height:0;overflow:hidden}
-  #te_modal #te_detalle{flex:var(--te-det-fr) 1 0;min-height:0;display:flex;flex-direction:column;
-    padding:0 14px;border-bottom:1px solid var(--te-line)}
+  #te_modal #te_detalle{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:0 14px}
   /* 21-ago: la grilla dejó de repartirse la altura con la ficha y pasó a TOPARSE en
      --te-grid-filas filas de teja. Antes crecía con el panel y con 11 barras dejaba un
      hueco enorme debajo; ahora lo que sobra se lo queda la ficha, que es donde se
      trabaja. Con más barras que ese tope, la grilla scrollea. */
-  #te_modal #te_grid{flex:0 0 auto;min-height:0;display:flex;flex-direction:column;padding:0 14px;
-    max-height:calc(var(--te-grid-filas) * (var(--te-teja-h) + 5px) + 30px)}
+  /* TIRA LATERAL DERECHA (21-ago): una sola columna de tejas, apiladas de arriba
+     abajo. El ancho lo manda la teja (--te-teja-min) más su padding y el sitio del
+     scrollbar; el alto es todo el modal, así que ya no hay tope de filas ni hueco
+     muerto debajo. */
+  #te_modal #te_grid{flex:0 0 auto;min-height:0;display:flex;flex-direction:column;
+    width:calc(var(--te-teja-min) + 26px);padding:0 6px 0 8px;
+    border-left:1px solid var(--te-line);background:var(--te-panel)}
+  /* La cabecera de la tira no cabe en horizontal: se queda sólo el contador. */
+  #te_modal #te_grid .te-sh > span:first-child{display:none}
+  #te_modal #te_grid .te-sh{justify-content:flex-end;gap:5px}
   /* La cabecera de cada zona queda QUIETA: sólo el cuerpo scrollea. */
   #te_modal #te_detalle .te-sh,#te_modal #te_grid .te-sh{flex:0 0 auto}
   #te_modal #te_detBody{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 12px}
@@ -383,7 +390,7 @@
      contenido menos ~12 de scrollbar) salen 3 por fila de ~101px.
      align-content:start = con 2 tejas no se estiran a lo alto. */
   #te_modal #te_compList{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
-    display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--te-teja-min),1fr));
+    display:grid;grid-template-columns:1fr;
     gap:5px;align-content:start;padding:0 2px 12px}
   #te_modal .te-sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted);margin:6px 0 8px;display:flex;align-items:center;gap:6px}
   #te_modal .te-sh .te-ln{flex:1;height:1px;background:var(--te-line)}
@@ -1307,13 +1314,6 @@
           <div id="te_detBody"></div>
         </div>
 
-        <!-- ZONA 2 · GRILLA de tejas compactas, con su propio scroll. -->
-        <div id="te_grid">
-          <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
-
-          <!-- Grilla dinámica de componentes (3 tejas por fila con el panel en 360px) -->
-          <div id="te_compList"></div>
-        </div>
 
         <!-- La nota permanente que estaba aquí decía tres cosas que ya se dicen
              solas: que este botón es el mismo "＋ Agregar barra" del ribbon (jerga
@@ -1564,6 +1564,17 @@
           </div>
           <div class="te-barras-b" id="te_barrasBody"></div>
         </div>
+      </div>
+      <!-- TIRA DE COMPONENTES — 21-ago. Antes vivia DENTRO del panel izquierdo, debajo de
+           la ficha, y le comia la mitad de la altura. Ahora es una columna del ancho de UNA
+           teja pegada al borde derecho: las tejas se apilan de arriba abajo, el panel
+           izquierdo queda entero para la ficha y los cuadrantes solo ceden el ancho de una
+           teja. Las tejas NO cambian: son exactamente las mismas. -->
+      <div id="te_grid">
+        <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
+
+        <!-- Grilla dinámica de componentes (3 tejas por fila con el panel en 360px) -->
+        <div id="te_compList"></div>
       </div>
       </div><!-- /#te_work -->
 
