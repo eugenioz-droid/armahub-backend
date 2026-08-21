@@ -6516,9 +6516,13 @@
   // El modo de colocación y la separación —que antes iban acá— se dicen en la ficha,
   // y en 101px de teja el espacio es lo escaso. El texto largo (_compDesc) sigue
   // existiendo: viaja al tooltip de la teja, así no se pierde de la vista rápida.
+  // 21-ago: la teja se achica y reparte distinto. Arriba queda sólo la TIPOLOGÍA
+  // (junto al asa y al color) y todo lo demás baja a esta línea: diámetro, cantidad y
+  // FIGURA. La figura estaba arriba y era lo más largo del renglón; abajo cabe sin
+  // ensanchar la teja, que es lo que se estaba pagando.
   function _tejaDesc(c, ci) {
     var nb = _nBarrasComp(ci);
-    return (nb == null ? '' : nb + ' un · ') + 'ø' + c.diam;
+    return 'ø' + c.diam + ' · ' + (nb == null ? '' : nb + ' un · ') + (c.figura || '');
   }
 
   // Refresca SÓLO la línea chica de cada teja YA pintada (N un · ø) y su tooltip.
@@ -6725,26 +6729,24 @@
     top.appendChild(spEl);
     wrap.appendChild(top);
 
-    var nm = _div('te-nm');
-    nm.innerHTML =
-      (sinFig ? '<span style="color:var(--te-err)" title="La figura ' + _esc(c.figura || '') +
-        ' no está en el catálogo vigente: esta barra no se genera.">⛔ </span>' : '') +
-      (ajena ? '<span style="color:var(--te-warn)" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
-      _esc(c.tipologia) + ' · ' + _esc(c.figura);
-    wrap.appendChild(nm);
+    // LA TIPOLOGÍA VA ARRIBA, junto al asa y al color — y nada más. La figura bajó a
+    // la línea chica (21-ago): era el texto más largo del renglón y obligaba a la teja
+    // a ser ancha para nada.
+    var nm = _span(
+      (sinFig ? '⛔ ' : '') + (ajena ? '⚠ ' : '') + (c.tipologia || ''));
+    nm.className = 'te-nm';
+    if (sinFig) nm.style.color = 'var(--te-err)';
+    else if (ajena) nm.style.color = 'var(--te-warn)';
+    top.appendChild(nm);
 
     var de = _div('te-de');
     de.textContent = _tejaDesc(c, ci);
     wrap.appendChild(de);
 
-    // JERARQUÍA (nivel vs recubrimiento) — se edita EN LA TEJA para verla y cambiarla
-    // sin tener que abrir la ficha. Los eventos del select NO burbujean (si no,
-    // elegir un nivel cambiaría además la selección).
-    var bot = _div('te-tjbot');
-    var jl = _span('jer'); jl.className = 'te-jlbl';
-    bot.appendChild(jl);
-    bot.appendChild(_selJerarquia(c, ci));
-    wrap.appendChild(bot);
+    // LA JERARQUÍA SE FUE DE LA TEJA (21-ago, pedido del usuario): ocupaba un renglón
+    // entero —etiqueta + desplegable— en cada una de las N tejas para un dato que sólo
+    // se mira de la barra que se está editando. Vive ahora en la ficha, que es donde
+    // está el resto de lo que define a esa barra.
 
     wrap.addEventListener('click', function () {
       // BUG 6B — la teja es un TOGGLE: si el componente ya está seleccionado, volver a
@@ -6810,6 +6812,10 @@
     idRow.appendChild(_fld('Figura', _figInputComp(c, ci)));
     idRow.appendChild(_fld('φ mm', _select(TE_DIAMS.map(String), String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
     idRow.appendChild(_fld('Sufijo', _input({ value: c.suf_tipo || '', placeholder: 'sup / A…' }, function (v) { c.suf_tipo = v; _mut(ci, true); })));
+    // JERARQUÍA — bajó de la teja a la ficha el 21-ago. Va con la identidad de la
+    // barra (figura, φ, sufijo) porque es de la misma naturaleza: describe ESTA barra,
+    // no cómo se reparte.
+    idRow.appendChild(_fld('Jerarquía', _selJerarquia(c, ci)));
     body.appendChild(idRow);
 
     // TIPOLOGÍA HUÉRFANA (ver _tipAjenaAlElemento) — esta barra quedó con la
