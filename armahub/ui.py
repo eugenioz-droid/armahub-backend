@@ -20,6 +20,13 @@ from .db import users_count
 
 _start_ts = str(int(time.time()))
 
+# VERSION VISIBLE (22-ago). Hasta hoy no habia forma de saber que version tiene un
+# usuario en pantalla: cuando alguien reportaba "no veo el cambio" no se podia
+# distinguir un despliegue pendiente de un cache del navegador de un cambio que
+# simplemente no estaba donde el creia. Render publica el commit en el entorno; si no
+# esta (local), se cae a la hora de arranque, que ya se usaba para el cache-bust.
+_BUILD = (os.environ.get("RENDER_GIT_COMMIT") or "")[:7] or ("local-" + _start_ts)
+
 router = APIRouter()
 
 _templates_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -44,7 +51,7 @@ def ui_bootstrap():
 @router.get("/ui", response_class=HTMLResponse)
 def ui_app():
     tmpl = _env.get_template("app.html")
-    html = tmpl.render(cache_bust=_start_ts)
+    html = tmpl.render(cache_bust=_start_ts, build=_BUILD)
     return HTMLResponse(
         content=html,
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}

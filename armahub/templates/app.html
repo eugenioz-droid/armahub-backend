@@ -19,7 +19,8 @@
          contenido en el archivo (2172x724): el logo ocupa x 33..2118 e y 185..543.
          mix-blend-mode:screen hace que el negro del archivo se funda con el fondo
          del header en vez de dibujar un rectángulo más oscuro. -->
-    <h1 class="brand"><img src="/static/images/logo-armahub.png" alt="ArmaHub"></h1>
+    <h1 class="brand" id="ahBrand" title="ArmaHub · version {{ build }}"
+        data-build="{{ build }}"><img src="/static/images/logo-armahub.png" alt="ArmaHub"></h1>
     <div class="user-info">
       <span class="user-badge" id="whoEmail">—</span>
       <span class="user-badge" id="whoRole">—</span>
@@ -325,5 +326,16 @@
 <script src="/static/js/app/registry.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/shell.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/bootstrap.js?v={{ cache_bust }}"></script>
+  <script>
+    // VERSION EN LA CONSOLA (22-ago). Cuando alguien dice "no veo el cambio", esto
+    // convierte la discusion en un dato: se le pide que abra la consola (F12) y lea la
+    // linea. Si el commit no coincide con el desplegado, es cache; si coincide, el
+    // cambio no esta donde se creia y hay que buscarlo en otro lado.
+    (function () {
+      var b = (document.getElementById('ahBrand') || {}).dataset;
+      console.log('%cArmaHub build ' + ((b && b.build) || '?'),
+        'background:#1a1a1a;color:#8BC34A;padding:2px 6px;border-radius:4px;font-weight:700');
+    })();
+  </script>
 </body>
 </html>
