@@ -6522,7 +6522,9 @@
   // ensanchar la teja, que es lo que se estaba pagando.
   function _tejaDesc(c, ci) {
     var nb = _nBarrasComp(ci);
-    return 'ø' + c.diam + ' · ' + (nb == null ? '' : nb + ' un · ') + (c.figura || '');
+    // Separadores SIN espacios: con la teja a 70 px lo que sobra es ancho, y
+    // "ø8·17un·103B" entra donde "ø8 · 17 un · 103B" se cortaba con puntos suspensivos.
+    return 'ø' + c.diam + '·' + (nb == null ? '' : nb + 'un·') + (c.figura || '');
   }
 
   // Refresca SÓLO la línea chica de cada teja YA pintada (N un · ø) y su tooltip.
@@ -6808,7 +6810,7 @@
     var cerrado = _esContornoCerrado(c);
 
     // Identidad
-    var idRow = _div('te-grid3');
+    var idRow = _div('te-idrow');
     idRow.appendChild(_fld('Figura', _figInputComp(c, ci)));
     idRow.appendChild(_fld('φ mm', _select(TE_DIAMS.map(String), String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
     idRow.appendChild(_fld('Sufijo', _input({ value: c.suf_tipo || '', placeholder: 'sup / A…' }, function (v) { c.suf_tipo = v; _mut(ci, true); })));

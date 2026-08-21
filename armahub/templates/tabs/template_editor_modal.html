@@ -348,7 +348,7 @@
      porcentaje dentro de un flex column no resuelve igual en todos los navegadores.
      --te-teja-min = ancho mínimo de teja; con 360px de panel manda cuántas entran
      por fila (98px → 3 columnas, ver #te_compList). */
-  #te_modal{--te-det-fr:1.15; --te-teja-min:78px}
+  #te_modal{--te-det-fr:1.15; --te-teja-min:70px; --te-teja-h:42px; --te-grid-filas:3}
   /* El panel YA NO scrollea: scrollean sus dos zonas por separado (si no, la ficha
      larga volvería a arrastrar a la grilla). De ahí overflow:hidden y el padding
      movido a cada zona. */
@@ -356,7 +356,12 @@
     display:flex;flex-direction:column;min-height:0;overflow:hidden}
   #te_modal #te_detalle{flex:var(--te-det-fr) 1 0;min-height:0;display:flex;flex-direction:column;
     padding:0 14px;border-bottom:1px solid var(--te-line)}
-  #te_modal #te_grid{flex:1 1 0;min-height:0;display:flex;flex-direction:column;padding:0 14px}
+  /* 21-ago: la grilla dejó de repartirse la altura con la ficha y pasó a TOPARSE en
+     --te-grid-filas filas de teja. Antes crecía con el panel y con 11 barras dejaba un
+     hueco enorme debajo; ahora lo que sobra se lo queda la ficha, que es donde se
+     trabaja. Con más barras que ese tope, la grilla scrollea. */
+  #te_modal #te_grid{flex:0 0 auto;min-height:0;display:flex;flex-direction:column;padding:0 14px;
+    max-height:calc(var(--te-grid-filas) * (var(--te-teja-h) + 5px) + 30px)}
   /* La cabecera de cada zona queda QUIETA: sólo el cuerpo scrollea. */
   #te_modal #te_detalle .te-sh,#te_modal #te_grid .te-sh{flex:0 0 auto}
   #te_modal #te_detBody{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 12px}
@@ -379,7 +384,7 @@
      align-content:start = con 2 tejas no se estiran a lo alto. */
   #te_modal #te_compList{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
     display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--te-teja-min),1fr));
-    gap:7px;align-content:start;padding:0 2px 12px}
+    gap:5px;align-content:start;padding:0 2px 12px}
   #te_modal .te-sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted);margin:6px 0 8px;display:flex;align-items:center;gap:6px}
   #te_modal .te-sh .te-ln{flex:1;height:1px;background:var(--te-line)}
   /* TEJA: compacta y más cuadrada que alargada (~101×80). Ya no lleva cuerpo dentro,
@@ -400,7 +405,8 @@
     font-weight:700;cursor:help}
   #te_modal .te-comp .te-nm{font-weight:700;font-size:11.5px;line-height:1.25;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
-  #te_modal .te-comp .te-de{font-size:9.5px;color:var(--te-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #te_modal .te-comp .te-de{font-size:9px;color:var(--te-muted);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;letter-spacing:-.2px}
   #te_modal .te-comp .te-drag{cursor:grab;color:var(--te-faint);font-size:11px;line-height:1;flex:0 0 auto}
   #te_modal .te-comp .te-sp{flex:1}
   /* Botón chico sin marco. Nació en el header de la fila (⧉/🗑) y esas dos acciones se
@@ -426,8 +432,14 @@
   /* minmax(0,1fr): columnas EXACTAMENTE iguales. Con `1fr` (= minmax(auto,1fr)) un
      label largo impone su min-content y ROBA ancho a las otras columnas (el campo se
      desplaza). Los labels además quedan cortos y la explicación va en el title. */
-  #te_modal .te-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
-  #te_modal .te-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  #te_modal .te-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  #te_modal .te-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  /* IDENTIDAD DE LA BARRA en UNA sola línea (21-ago): figura · φ · sufijo · jerarquía.
+     Las cuatro no caben a partes iguales, así que se reparten por lo que cada una
+     necesita: la figura es un código de 4 caracteres, el φ y la jerarquía son números
+     de uno o dos dígitos con su flecha, y el sufijo es lo único de largo libre. */
+  #te_modal .te-idrow{display:grid;grid-template-columns:1.15fr .95fr 1.25fr .9fr;gap:5px}
+  #te_modal .te-idrow .te-fld input,#te_modal .te-idrow .te-fld select{padding-left:7px;padding-right:4px}
   #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
   #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}
   /* FILA DE RÓTULO CORTO: los 96 px del label genérico son espacio muerto cuando el
@@ -1066,7 +1078,7 @@
   #te_modal #te_quad.tool-mover   .te-vista:not(.d3){cursor:default}
 
   /* barra de herramientas del colocador (aplica a las 4 vistas) */
-  #te_modal #te_ctools{display:flex;align-items:center;gap:7px;padding:6px 14px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  #te_modal #te_ctools{display:flex;align-items:center;gap:5px;padding:6px 14px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
   #te_modal #te_ctools .te-tlbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-faint);margin-right:2px}
   #te_modal .te-ctool{border:1px solid var(--te-line);background:var(--te-field);border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:var(--te-ink);font-weight:600}
   #te_modal .te-ctool.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
