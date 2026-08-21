@@ -469,7 +469,11 @@
      Las cuatro no caben a partes iguales, así que se reparten por lo que cada una
      necesita: la figura es un código de 4 caracteres, el φ y la jerarquía son números
      de uno o dos dígitos con su flecha, y el sufijo es lo único de largo libre. */
-  #te_modal .te-idrow{display:grid;grid-template-columns:1.15fr .95fr 1.25fr .9fr;gap:5px}
+  /* CINCO campos en la fila de identidad (22-ago): figura · φ · recub · sufijo ·
+     jerarquía. El recubrimiento propio bajó de un renglón entero a un hueco de dos
+     dígitos, que es todo lo que necesita. Los anchos se reparten por lo que cada uno
+     pide, no a partes iguales. */
+  #te_modal .te-idrow{display:grid;grid-template-columns:1fr .78fr .62fr 1.05fr .72fr;gap:4px}
   #te_modal .te-idrow .te-fld input,#te_modal .te-idrow .te-fld select{padding-left:7px;padding-right:4px}
   #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
   #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}

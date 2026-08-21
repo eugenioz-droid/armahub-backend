@@ -6952,6 +6952,12 @@
     var idRow = _div('te-idrow');
     idRow.appendChild(_fld('Figura', _figInputComp(c, ci)));
     idRow.appendChild(_fld('φ mm', _select(TE_DIAMS.map(String), String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
+    // RECUBRIMIENTO PROPIO — sube a esta fila (22-ago). Gastaba un renglon entero para
+    // un campo de dos digitos, y pertenece a la identidad de la barra igual que el phi.
+    var inRecId = _input({ value: (c.recub_override != null ? c.recub_override : ''), placeholder: 'auto' },
+      function (v) { c.recub_override = (v === '' ? null : Number(v)); _mut(ci, true); });
+    inRecId.title = 'Recubrimiento en cm solo para esta barra. Vacio = el del elemento.';
+    idRow.appendChild(_fld('Recub', inRecId));
     idRow.appendChild(_fld('Sufijo', _input({ value: c.suf_tipo || '', placeholder: 'sup / A…' }, function (v) { c.suf_tipo = v; _mut(ci, true); })));
     // JERARQUÍA — bajó de la teja a la ficha el 21-ago. Va con la identidad de la
     // barra (figura, φ, sufijo) porque es de la misma naturaleza: describe ESTA barra,
@@ -7188,12 +7194,8 @@
     // Pose/Espejo —y la rotación de plano cuando vuelva— quedan AGRUPADAS abajo).
     // "Recub. override" era el nombre del campo de la receta puesto en pantalla.
     // El dato sigue llamándose recub_override; lo que se lee dice qué hace.
-    var recRow = _div('te-row');
-    recRow.appendChild(_label('Recub. propio'));
-    var inRec = _input({ value: (c.recub_override != null ? c.recub_override : ''), placeholder: 'el del elemento' }, function (v) { c.recub_override = (v === '' ? null : Number(v)); _mut(ci); });
-    inRec.title = 'Recubrimiento en cm sólo para esta barra. Vacío = el del elemento.';
-    recRow.appendChild(inRec);
-    body.appendChild(recRow);
+    // (la fila propia de «Recub. propio» se retiro: el campo vive ahora en la fila de
+    //  identidad, detras del diametro, y con dos digitos le sobra)
 
     // (Las filas «Pose», «Rotar» y «Patas» que vivían acá se fueron ARRIBA, al bloque
     // ORIENTACIÓN: eran el mismo asunto —cómo está puesta la pieza— repartido por la
