@@ -6251,6 +6251,43 @@
     return isFinite(b.u0) ? b : null;
   }
 
+  // BORDES DE LA PIEZA SOBRE UN EJE DEL MUNDO (cm), expandiendo un CLON con el
+  // hormigon de ahora. Se usa a mitad de arrastre, cuando ST.ultimoOut todavia
+  // muestra el estado anterior: preguntarle al motor es lo unico honesto.
+  function _bordesEjeMundo(c, eje) {
+    var R = global.ModeladorReglas, host = ST.receta && ST.receta.geometria;
+    if (!R || !R.expandirComponente || !host || !c || !eje) return null;
+    var pls;
+    try {
+      var clon = JSON.parse(JSON.stringify(c, function (k, v) {
+        return (String(k).charAt(0) === '_') ? undefined : v;
+      }));
+      pls = R.expandirComponente(clon, host) || [];
+    } catch (e) { return null; }
+    var pl = pls[0];
+    if (!pl || !pl.puntos || !pl.puntos.length) return null;
+    var lo = Infinity, hi = -Infinity;
+    pl.puntos.forEach(function (q) {
+      var v = Number(q[eje]);
+      if (!isFinite(v)) return;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    });
+    return isFinite(lo) ? { lo: lo, hi: hi } : null;
+  }
+
+  // ¿Hacia donde crece este eje del mundo en la vista? La camara de algunos
+  // cuadrantes mira "al reves", asi que el borde de la derecha en pantalla no
+  // siempre es el maximo del eje. Se pregunta proyectando dos puntos.
+  function _ejeMundoCreceHacia(plano, ejeVista, ejeMundo) {
+    var pj = _proyDe(plano);
+    var a = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 };
+    b[ejeMundo] = 1;
+    var qa = pj(a), qb = pj(b);
+    var d = (ejeVista === 'u') ? (qb.u - qa.u) : (qb.v - qa.v);
+    return (d < 0) ? -1 : 1;
+  }
+
   function _iniciarDragMarco(plano, ci, eje, ladoUV, uv0) {
     var c = ST.receta.componentes[ci]; if (!c) return;
     var R = global.ModeladorReglas, host = ST.receta && ST.receta.geometria;
@@ -6379,10 +6416,29 @@
         ': no se puede redimensionar arrastrando.');
       return;
     }
+    // EL BORDE OPUESTO SE QUEDA QUIETO (24-ago). Ver la nota larga en
+    // _dragMarcoMove: el tirador cambia el TAMANO y el motor vuelve a centrar la
+    // pieza, asi que los DOS bordes se mueven. Acá se decide si esta pieza acepta
+    // que le compensemos la posicion, y contra que borde del mundo.
+    //   · EL EJE DEL MUNDO que corre por el borde agarrado.
+    //   · SI LA POSICION EN ESE EJE ES NUESTRA: la misma lista que ofrecen los
+    //     campos de Offset de la ficha (_ejesDesplazables). Si por ese eje la pieza
+    //     REPARTE, la posicion la manda el abanico y no se toca: ahi el tirador
+    //     sigue como siempre (crece centrado sobre cada copia).
+    //   · QUE BORDE es el agarrado en coordenadas del mundo (la camara puede estar
+    //     mirando al reves).
+    // Con compensacion el borde agarrado sigue al cursor 1:1, asi que la razon del
+    // sondeo (0.5 cuando el motor centra) deja de aplicarse al numero.
+    var defP = (_defsPlanos() || {})[plano] || null;
+    var ejeMundo = defP ? ((eje === 'u') ? defP.u : defP.v) : null;
+    var compensa = !!(ejeMundo && _ejesDesplazables(c).indexOf(ejeMundo) >= 0);
+    var signo = ejeMundo ? _ejeMundoCreceHacia(plano, eje, ejeMundo) : 1;
     ST.dragMarco = {
       plano: plano, ci: ci, eje: eje, ladoUV: ladoUV,
       L: mejor.L, extremo: mejor.extremo, ratio: mejor.ratio || 1,
-      medida0: m0, delta0: d0, uv0: uv0, pushed: false
+      medida0: m0, delta0: d0, uv0: uv0, pushed: false,
+      ejeMundo: ejeMundo, compensa: compensa,
+      agarradoEsMax: (ladoUV === '+') ? (signo > 0) : (signo < 0)
     };
   }
 
@@ -6395,7 +6451,13 @@
     // PASO 1 cm, el mismo del resto de los arrastres: era 0.5 y el usuario lo corrigió
     // el 18-ago — «no fabricamos al milímetro, fabricamos al centímetro».
     var pasoT = PASO_ARRASTRE_CM;
-    var medida = Math.round((dm.medida0 + afuera / (dm.ratio || 1)) / pasoT) * pasoT;
+    // EL BORDE AGARRADO SIGUE AL CURSOR 1:1 cuando compensamos (abajo). Sin
+    // compensacion vale la razon del sondeo: si el motor reparte el crecimiento
+    // entre los dos bordes, 1 cm de cursor son 2 cm de medida.
+    var medida = Math.round((dm.medida0 + afuera / (dm.compensa ? 1 : (dm.ratio || 1))) / pasoT) * pasoT;
+    // Donde esta AHORA el borde que NO se agarro. Se mide antes de escribir la dim
+    // para poder devolverlo a su sitio despues.
+    var b0 = dm.compensa ? _bordesEjeMundo(c, dm.ejeMundo) : null;
     c.dims = c.dims || {};
     var d = c.dims[dm.L];
     if (!d || typeof d !== 'object') {
@@ -6421,6 +6483,48 @@
     d.modo = 'fija';
     d.valor = medida - dm.delta0;
     d.extremo = dm.extremo;
+    // ==================================================================
+    // EL BORDE OPUESTO SE QUEDA QUIETO (24-ago, defecto reportado por el usuario)
+    // ------------------------------------------------------------------
+    // EL DEFECTO. El usuario achicó un estribo de confinamiento con un tirador
+    // hasta dejarlo sobre la 4ª capa de cabezales, y al arrastrar el OTRO tirador
+    // para que alcanzara también la 3ª «se desajustaba completo». MEDIDO: el
+    // tirador sólo escribía TAMAÑO, y una pieza sin posición propia el motor la
+    // CENTRA — así que al cambiar la medida se movían LOS DOS bordes. El primer
+    // arrastre se sentía perfecto (el borde agarrado sigue al cursor) mientras el
+    // otro borde se corría en silencio la misma cantidad; recién el segundo
+    // arrastre lo hacía evidente, porque ahí el que se corría era el que el
+    // usuario acababa de colocar a mano.
+    //
+    // POR QUÉ EL OTRO ORDEN SÍ FUNCIONABA: tirador (tamaño) y después Offset
+    // (posición) escriben campos DISTINTOS y no se pisan. Dos tiradores escribían
+    // dos veces el mismo campo, y el segundo deshacía la intención del primero.
+    // Los dos caminos tenían que llegar al mismo estado y no llegaban.
+    //
+    // LA REGLA: arrastrar un tirador mueve ESE borde y deja el otro donde está.
+    // Se mide dónde quedó el borde opuesto después de reescribir la medida y se
+    // corrige la posición por la diferencia — por la MISMA puerta que usan los
+    // campos de Offset (pos_hint + ancla invalidada), no por un camino aparte. Así
+    // dos tiradores dejan exactamente el mismo estado que tirador + Offset, y la
+    // posición resultante queda anclada a su cara: sobrevive al cambio de
+    // hormigón igual que la que se escribe a mano (MEDIDO: muro 600 → 800 → 400,
+    // el hueco al testero no se mueve).
+    //
+    // CUÁNDO NO: si por ese eje la pieza REPARTE, la posición la manda el abanico
+    // y no es nuestra para tocar (los campos de Offset tampoco la ofrecen). Ahí el
+    // tirador sigue comportándose como antes: cada copia crece centrada.
+    // ==================================================================
+    if (dm.compensa && b0) {
+      var b1 = _bordesEjeMundo(c, dm.ejeMundo);
+      if (b1) {
+        var corr = dm.agarradoEsMax ? (b0.lo - b1.lo) : (b0.hi - b1.hi);
+        if (isFinite(corr) && corr) {
+          c.pos_hint = c.pos_hint || {};
+          c.pos_hint[dm.ejeMundo] = (Number(c.pos_hint[dm.ejeMundo]) || 0) + corr;
+          _anclarHintUI(c);   // el ancla vieja ya no vale; el motor la re-estampa
+        }
+      }
+    }
     _actualizarStatus('Lado ' + dm.L + ' = ' + medida + ' cm (' +
       (dm.extremo === 'ini' ? '← ini' : 'fin →') + ')' +
       (dm.delta0 ? ' — incluye el Δ ' + dm.delta0 + ' de la ficha' : '') + '.');
@@ -12359,6 +12463,9 @@
     // MOVER A MANO (apagado): expuestos para que la suite congele la política —que la
     // llave está en false y que un arrastre marcado `bloq` no toca la barra.
     _dragMover: _dragMover, _MOVER_A_MANO: TE_MOVER_A_MANO,
+    // TIRADOR DEL MARCO: expuestos para que la suite maneje el gesto completo
+    // (agarrar un borde y arrastrarlo), no una imitacion de lo que el gesto escribe.
+    _iniciarDragMarco: _iniciarDragMarco, _dragMarcoMove: _dragMarcoMove,
     // TIPOLOGÍA vs ELEMENTO (marca PERSISTENTE: sobrevive al primer clic)
     _tipAjenaAlElemento: _tipAjenaAlElemento,
     // SELECTOR DE ELEMENTO dentro del editor (viga ⇄ muro sin salir ni recrear)

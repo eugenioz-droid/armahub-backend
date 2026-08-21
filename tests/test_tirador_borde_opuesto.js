@@ -1,0 +1,242 @@
+// =============================================================================
+// EL TIRADOR DEL MARCO DEJA QUIETO EL BORDE OPUESTO — test headless (Node)
+// =============================================================================
+// EL DEFECTO QUE CONGELA (reportado y medido, 24-ago).
+// El usuario achicó un estribo de confinamiento arrastrando un tirador hasta
+// dejarlo sobre la 4ª capa de cabezales, y al arrastrar el OTRO tirador para que
+// alcanzara también la 3ª «se desajustaba completo». Con los campos de Offset no
+// se arreglaba nada, porque lo que se había roto no era la posición sino el
+// tamaño. Hecho en el otro orden —un tirador para el tamaño, Offset para la
+// posición— funcionaba perfecto y hasta sobrevivía al cambio de largo del muro.
+//
+// LA CAUSA, MEDIDA: el tirador sólo escribía TAMAÑO, y una pieza sin posición
+// propia el motor la CENTRA. Al cambiar la medida se movían LOS DOS bordes: el
+// primer arrastre se sentía bien (el borde agarrado sigue al cursor) mientras el
+// opuesto se corría en silencio la misma cantidad. El segundo arrastre lo hacía
+// evidente porque ahí el que se corría era el que el usuario acababa de colocar.
+// MEDIDO en el defecto: muro 600, estribo lleno (594,2). Tirador derecho 60 cm
+// adentro → ancho 474,2 con los DOS huecos en 62,9. Tirador izquierdo 40 más →
+// ancho 394,2 y los dos huecos en 102,9: el borde derecho, ya colocado, se había
+// corrido otros 40.
+//
+// LA REGLA NUEVA: arrastrar un tirador mueve ESE borde y deja el otro donde está.
+// La posición se corrige por la MISMA puerta que los campos de Offset de la ficha
+// (pos_hint + ancla invalidada), así que los dos caminos llegan al mismo estado.
+//
+// QUÉ PROTEGE, en orden:
+//   A. UN TIRADOR — el borde opuesto no se mueve y el agarrado sigue al cursor
+//      1:1 (antes eran 2 cm de medida por cada cm de cursor, repartidos a medias).
+//   B. EL CASO DEL USUARIO — dos tiradores seguidos, cada uno mueve SU borde.
+//   C. LOS DOS CAMINOS DAN LO MISMO — dos tiradores == tirador + Offset, medido
+//      con la misma regla (hueco a la cara) y no de casualidad.
+//   D. LA POSICIÓN QUEDA ANCLADA — el hueco a la cara no se mueve con el muro en
+//      600, 800 y 400. Es el pedido de fondo: un template sirve para otro elemento.
+//   E. SI POR ESE EJE REPARTE, NO SE TOCA LA POSICIÓN — ahí manda el abanico (los
+//      campos de Offset tampoco ofrecen ese eje) y el tirador sigue como antes.
+//
+// Correr con: node tests/test_tirador_borde_opuesto.js
+
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const BASE = path.join(__dirname, '..', 'armahub', 'static', 'js', 'features', 'modelador');
+
+let fallos = 0;
+function ok(c, m) { if (!c) { console.error('  ✗ ' + m); fallos++; } else { console.log('  ✓ ' + m); } }
+const r2 = (v) => Math.round(Number(v) * 100) / 100;
+const clon = (o) => JSON.parse(JSON.stringify(o));
+
+// --------------------------------------------------------------- entorno mínimo
+// Mismo mini-DOM que tests/test_cotas_vivas.js: acá se prueban la CUENTA y la
+// ESCRITURA, que son funciones sobre la receta; el DOM real no hace falta.
+function El() {
+  this.style = {}; this.dataset = {}; this.children = []; this.className = ''; this.value = '';
+  this.classList = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+}
+El.prototype.appendChild = function (c) { this.children.push(c); return c; };
+El.prototype.setAttribute = function () {}; El.prototype.getAttribute = function () { return null; };
+El.prototype.addEventListener = function () {}; El.prototype.removeEventListener = function () {};
+El.prototype.querySelector = function () { return null; };
+El.prototype.querySelectorAll = function () { return []; };
+El.prototype.closest = function () { return null; };
+
+const win = {};
+win.window = win; win.self = win;
+win.document = {
+  body: new El(), documentElement: new El(), head: new El(),
+  createElement: () => new El(), createElementNS: () => new El(), createTextNode: () => new El(),
+  getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
+  addEventListener() {}, removeEventListener() {}
+};
+win.console = console;
+win.JSON = JSON; win.Math = Math; win.Date = Date; win.Object = Object; win.Array = Array;
+win.Number = Number; win.String = String; win.Boolean = Boolean; win.isFinite = isFinite;
+win.parseFloat = parseFloat; win.parseInt = parseInt; win.isNaN = isNaN; win.Error = Error;
+win.Promise = Promise; win.RegExp = RegExp;
+win.localStorage = { getItem: () => null, setItem() {}, removeItem() {}, key: () => null, length: 0 };
+win.navigator = { userAgent: 'node' };
+win.location = { href: 'http://x/', origin: 'http://x' };
+win.fetch = () => Promise.reject(new Error('sin red'));
+win.alert = () => {}; win.confirm = () => false;
+win.setTimeout = () => 0; win.clearTimeout = () => {};
+win.setInterval = () => 0; win.clearInterval = () => {};
+win.requestAnimationFrame = () => 0; win.cancelAnimationFrame = () => {};
+win.addEventListener = () => {}; win.removeEventListener = () => {};
+win.getComputedStyle = () => ({});
+win.devicePixelRatio = 1; win.innerWidth = 1200; win.innerHeight = 800;
+
+const ctx = vm.createContext(win);
+function mod(file, nombre) {
+  const src = fs.readFileSync(path.join(BASE, file), 'utf8');
+  const m = { exports: {} };
+  vm.runInContext('(function(module, exports, require, global){' + src + '\n})', ctx, { filename: file })(m, m.exports, require, win);
+  if (nombre) win[nombre] = m.exports;
+  return m.exports;
+}
+mod('catalogo_figuras.js', 'ModeladorCatalogoFiguras');
+mod('figura_puntos.js', 'ModeladorFiguraPuntos');
+mod('motor_geom.js', 'ModeladorMotorGeom');
+mod('reglas.js', 'ModeladorReglas');
+mod('generar.js', 'ModeladorGenerar');
+mod('semilla_viga.js', 'ModeladorSemilla');
+vm.runInContext(fs.readFileSync(path.join(BASE, 'template_editor.js'), 'utf8'), ctx, { filename: 'template_editor.js' });
+
+const R = win.ModeladorReglas;
+const G = win.ModeladorGenerar;
+const TE = win.TemplateEditor;
+const ST = TE._ST;
+
+const MURO = { largo: 600, alto: 250, ancho: 20, recub_sup: 2.5, recub_inf: 2.5, recub_lat: 2.5 };
+
+// Estribo de confinamiento en la cara del muro (pose rumbo z): su lado A corre por
+// el LARGO del muro —el eje que el usuario arrastra— y su lado B por la altura.
+function estribo() {
+  return {
+    comp_id: 'EC1', tipologia: 'EC', figura: '104D', diam: 8, cara: 'lateral', suf_tipo: '',
+    jerarquia: 1, modo: 'puntual', plano_pieza: { volteado: false },
+    pose: { cara: 'sup', lado: 1, rumbo: 'z' },
+    dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0, sentido: 'nucleo' }
+  };
+}
+function montar(largo) {
+  ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO, { largo: largo || 600 }), componentes: [estribo()] };
+  ST.selCi = 0; ST.ultimoOut = null;
+  ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
+  R.normalizarReceta(ST.receta);
+  regen();
+  return ST.receta.componentes[0];
+}
+// El mismo orden del editor: reanclar contra el hormigón de AHORA y generar. No se
+// llama _regenerar porque arrastra medio panel de DOM detrás.
+function regen() {
+  R.reanclarReceta(ST.receta);
+  const out = G.generarElemento(ST.receta);
+  (out.placements || []).forEach((pl) => { pl.meta = pl.meta || {}; pl.meta.ci = 0; });
+  ST.ultimoOut = out;
+  return out;
+}
+// Lo que se ve: cuánto mide la pieza sobre el largo del muro y cuánto queda a cada
+// testero. Se mide sobre lo que el motor generó de verdad.
+function medir() {
+  const c = ST.receta.componentes[0];
+  const pls = R.expandirComponente(JSON.parse(JSON.stringify(c)), ST.receta.geometria) || [];
+  if (!pls.length) return null;
+  let mn = Infinity, mx = -Infinity;
+  pls[0].puntos.forEach((q) => { if (q.x < mn) mn = q.x; if (q.x > mx) mx = q.x; });
+  const L = ST.receta.geometria.largo;
+  return { ancho: r2(mx - mn), izq: r2(mn + L / 2), der: r2(L / 2 - mx) };
+}
+// EL GESTO COMPLETO: agarrar el borde `ladoUV` del eje horizontal de la elevación y
+// arrastrarlo `cm` (signo en coordenadas de la vista, igual que el mouse).
+function tirar(ladoUV, cm) {
+  TE._iniciarDragMarco('largo', 0, 'u', ladoUV, { u: 0, v: 0 });
+  if (!ST.dragMarco) return null;
+  const dm = ST.dragMarco;
+  TE._dragMarcoMove('largo', { u: cm, v: 0 });
+  ST.dragMarco = null;
+  regen();
+  return dm;
+}
+
+// ================================================================ A · UN TIRADOR
+console.log('A · un tirador mueve SU borde y deja el otro donde está');
+{
+  montar(600);
+  const a = medir();
+  tirar('+', -60);
+  const b = medir();
+  ok(b.izq === a.izq, 'el borde que NO se agarró no se movió (' + a.izq + ' → ' + b.izq + ')');
+  ok(r2(b.der - a.der) === 60, 'el borde agarrado siguió al cursor 1:1: 60 cm de arrastre, 60 de borde (=' + r2(b.der - a.der) + ')');
+  ok(r2(a.ancho - b.ancho) === 60, 'y la pieza se achicó eso mismo, no el doble (=' + r2(a.ancho - b.ancho) + ')');
+}
+
+// ========================================================= B · EL CASO DEL USUARIO
+console.log('');
+console.log('B · dos tiradores seguidos: el segundo no arruina lo del primero');
+{
+  montar(600);
+  tirar('+', -60);
+  const uno = medir();
+  tirar('-', 40);
+  const dos = medir();
+  ok(dos.der === uno.der, 'el borde colocado con el PRIMER tirador se quedó quieto (' + uno.der + ' → ' + dos.der + ')');
+  ok(r2(dos.izq - uno.izq) === 40, 'y el segundo movió sólo el suyo, 40 cm (=' + r2(dos.izq - uno.izq) + ')');
+  ok(r2(uno.ancho - dos.ancho) === 40, 'la pieza se achicó 40, no 80 (=' + r2(uno.ancho - dos.ancho) + ')');
+}
+
+// ====================================================== C · LOS DOS CAMINOS IGUALES
+console.log('');
+console.log('C · dos tiradores == tirador + Offset');
+{
+  const hueco = () => r2(TE._huecoACara(TE._bboxCompMundo(0), 'x', 'min'));
+  montar(600); tirar('+', -60); tirar('-', 20);
+  const A = medir(); const hA = hueco();
+  const dimA = JSON.parse(JSON.stringify(ST.receta.componentes[0].dims.A));
+
+  montar(600); tirar('+', -60);
+  ST.receta.componentes[0].dims.A = JSON.parse(JSON.stringify(dimA)); regen();
+  TE._setHuecoACara(0, 'x', 'min', hA); regen();
+  const B = medir(); const hB = hueco();
+
+  ok(A.ancho === B.ancho, 'mismo tamaño por los dos caminos (=' + A.ancho + ')');
+  ok(hA === hB, 'mismo hueco a la cara (=' + hA + ')');
+  ok(A.izq === B.izq && A.der === B.der, 'y la pieza quedó en el mismo lugar (' + A.izq + '/' + A.der + ' vs ' + B.izq + '/' + B.der + ')');
+}
+
+// ================================================== D · LA POSICIÓN QUEDA ANCLADA
+console.log('');
+console.log('D · lo que dejó el tirador sobrevive al cambio de hormigón');
+{
+  montar(600);
+  tirar('+', -60);
+  tirar('-', 40);
+  const base = medir();
+  const izqs = [], anchos = [];
+  [800, 400, 600].forEach((L) => {
+    ST.receta.geometria.largo = L; regen();
+    const m = medir(); izqs.push(m.izq); anchos.push(m.ancho);
+  });
+  ok(izqs.every((v) => v === base.izq), 'el hueco al testero no se mueve con el muro en 800/400/600 (=' + izqs.join(' / ') + ')');
+  ok(anchos.every((v) => v === base.ancho), '…y el tamaño tampoco (=' + anchos.join(' / ') + ')');
+}
+
+// ============================================ E · SI REPARTE POR AHÍ, MANDA EL ABANICO
+console.log('');
+console.log('E · por el eje que reparte, la posición no es del tirador');
+{
+  const c = montar(600);
+  c.modo = 'arreglo';
+  c.distribucion = { modo: 'arreglo', activa: true,
+    rango:  { eje: 'x', from: -230, to: 230, sep: 120 },
+    rango2: { eje: 'y', from: -60, to: 60, sep: 60 } };
+  regen();
+  ok(TE._ejesDesplazables(c).indexOf('x') < 0, 'los campos de Offset no ofrecen el eje del abanico');
+  tirar('+', -60);
+  ok(!(c.pos_hint && c.pos_hint.x != null), 'y el tirador tampoco le escribe posición en ese eje');
+  ok(c.dims.A && c.dims.A.modo === 'fija', '…pero sí le deja la medida (=' + JSON.stringify(c.dims.A) + ')');
+}
+
+console.log(fallos ? ('' + fallos + ' FALLO(S)') : 'OK — el tirador deja quieto el borde opuesto');
+process.exit(fallos ? 1 : 0);
