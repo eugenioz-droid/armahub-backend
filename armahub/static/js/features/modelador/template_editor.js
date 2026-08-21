@@ -7577,10 +7577,19 @@
     var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.alignItems = 'center';
     // El placeholder DICE qué falta: en Fija sin valor el campo ya no llega con un 0
     // inventado, así que tiene que verse que ahí va una medida escrita por el usuario.
-    var inp = _input({ value: (d.modo === 'fija' && d.valor != null) ? d.valor : '', placeholder: (d.modo === 'auto' ? 'auto' : 'medida'), type: 'number' }, function (v) {
-      d.modo = 'fija'; d.valor = Number(v); _mut(ci);
+    // SIN CANDADO (22-ago, idea del usuario). El campo está SIEMPRE habilitado y el
+    // modo lo decide lo que haya escrito: un número lo fija, y vaciarlo —o poner 0—
+    // lo devuelve a auto. Antes había que pulsar un candado sólo para poder escribir,
+    // y ese botón ocupaba sitio en una fila donde el ancho es lo escaso.
+    // El 0 vuelve a auto y no se acepta como medida a propósito: un lado de 0 cm no
+    // es una barra, así que tratarlo como "no escribí nada" es lo que el usuario
+    // quiso decir. Es el mismo criterio que ya usa el Δ de la fila de al lado.
+    var inp = _input({ value: (d.modo === 'fija' && d.valor != null) ? d.valor : '', placeholder: 'auto', type: 'number' }, function (v) {
+      var s = String(v == null ? '' : v).trim();
+      if (s === '' || Number(s) === 0 || !isFinite(Number(s))) { d.modo = 'auto'; delete d.valor; }
+      else { d.modo = 'fija'; d.valor = Number(s); }
+      _mut(ci, true);   // el modo cambió: la ficha tiene que reflejarlo en el acto
     });
-    if (d.modo === 'auto') inp.disabled = true;
     // ESPEJO DE UNA MEDIDA FIJA: en un contorno CERRADO el lado opuesto mide lo
     // mismo y el motor le replica el crecimiento (reglas._fijasEspejo). El campo lo
     // DICE en vez de quedarse en 'auto' mintiendo — el mismo trato que ya recibe el
@@ -7598,26 +7607,9 @@
     // receta y no la de antes de agarrarla. Misma regla que el resto de los campos
     // vivos; el lado espejo se deja quieto porque su valor lo replica el motor.
     if (!fEsp[L]) _vivo(function () { _valVivo(inp, (d.modo === 'fija' && d.valor != null) ? d.valor : ''); });
-    // CANDADO en vez de "Fija/Auto" (idea del usuario, 15-ago): el texto se comía
-    // ~45 px y en el flex los controles de la derecha se COMPRIMÍAN hasta
-    // desaparecer — por eso la flecha "no se veía". Cerrado = medida FIJA (la
-    // escribe el usuario) · abierto = AUTO (la deriva el elemento).
-    var tog = document.createElement('button');
-    tog.className = 'te-lock ' + ((d.modo === 'fija') ? 'cerrado' : 'abierto');
-    tog.textContent = (d.modo === 'fija') ? '🔒' : '🔓';
-    tog.title = (d.modo === 'fija')
-      ? 'Medida FIJA (la escribes tú). Clic para volver a Auto.'
-      : 'Medida AUTO (la deriva el elemento: largo/alto/ancho − recub). Clic para fijarla.';
-    tog.addEventListener('click', function () {
-      d.modo = (d.modo === 'fija') ? 'auto' : 'fija';
-      // El toggle NO inventa un valor. Antes ponía 0 al pasar a «Fija» (hay que pasar
-      // por Fija para que el input se habilite y se pueda escribir), o sea: un CLIC
-      // escribía en la receta una medida que el usuario no puso — un lado de 0 cm que
-      // el motor dibuja igual. Sin valor el input arranca VACÍO, que es exactamente lo
-      // que el usuario ve: "acá falta la medida" (y reglas.js ya lo avisa en rojo).
-      _mut(ci); _renderPanel();
-    });
-    wrap.appendChild(inp); wrap.appendChild(tog);
+    // (El candado que estaba acá se retiró: el modo lo dice el propio campo.)
+    inp.title = 'Medida de este lado en cm. Vacío = la deriva el elemento (auto).';
+    wrap.appendChild(inp);
 
     // --- Δ DE ESTE LADO + POR QUÉ PUNTA ---------------------------------------
     // El motor ya lo consume entero (suma al largo de corte y a los kg, y en una
