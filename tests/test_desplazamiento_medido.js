@@ -26,6 +26,10 @@
 //      y el gesto podrían discrepar.
 //   F. CAMBIAR LA CARA NO MUEVE NADA — el selector sólo dice desde dónde se mide: los
 //      dos huecos más el ancho de la pieza suman el elemento, y la barra no se movió.
+//   I. LA MEDIDA VA AL BORDE DE LA BARRA, NO A SU EJE — recubrimiento 2 + φ8 dan
+//      2,0 en el campo (el borde apoyado en la línea de recubrimiento), no 2,4 (el
+//      eje). Cada lado se corrige con SU signo y el descuento sigue la DIRECCIÓN del
+//      tramo, no un φ/2 a ciegas.
 //   G. LA Y DE UN CABEZAL — el caso que el usuario pidió (segunda capa de cabezales
 //      sin arrastrarla): el eje de la cara contra la que se ancla SÍ acepta el
 //      desplazamiento, y también conserva la distancia al cambiar el hormigón.
@@ -227,7 +231,10 @@ console.log('\nF · el selector de cara sólo cambia desde dónde se mide');
   const bb = TE._bboxCompMundo(0);
   const hMin = r2(TE._huecoACara(bb, 'x', 'min'));
   const hMax = r2(TE._huecoACara(bb, 'x', 'max'));
-  const ancho = r2(bb.x.hi - bb.x.lo);
+  // El ANCHO que cierra la cuenta es el del ACERO (loB/hiB), no el del eje: los dos
+  // huecos se miden al borde, así que el trozo del medio también. Con el ancho del
+  // eje la suma se quedaba un φ corta (23-ago).
+  const ancho = r2(bb.x.hiB - bb.x.loB);
   ok(hMin === 40, 'el hueco al testero inicio es el que se escribió (=' + hMin + ')');
   ok(r2(hMin + ancho + hMax) === r2(ST.receta.geometria.largo),
     'los dos huecos + la pieza suman el elemento (' + hMin + ' + ' + ancho + ' + ' + hMax + ')');
@@ -269,6 +276,34 @@ console.log('\nH · la ficha arma una fila por eje libre');
   TE._filasDesplazamiento(vacio, c, 0);
   ok(vacio.children.length === 0,
     'sin nada generado no se rotula una distancia inventada');
+}
+
+// ============================ I · LA MEDIDA VA AL BORDE, NO AL EJE (caso del usuario)
+// «Todo el modelo mide a los bordes»: las dims A/B/C de una figura se miden a la
+// cresta del doblez. Con recubrimiento 2 cm y φ8 el fierro apoya su BORDE en la línea
+// de recubrimiento, así que la ficha tiene que decir 2,0 — y no 2,4, que es el eje
+// (2 del recubrimiento + el medio diámetro que hay del borde al eje).
+console.log('\nI · recubrimiento 2 y φ8 → el campo dice 2,0 (borde), no 2,4 (eje)');
+{
+  montar(estribo(), { largo: 600, alto: 60, ancho: 30, recub_sup: 2, recub_inf: 2, recub_lat: 2 });
+  regenerar();
+  const bb = TE._bboxCompMundo(0);
+  ok(hueco('y', 'max') === 2 && hueco('y', 'min') === 2,
+    'a la cara superior y a la inferior: 2,0 (=' + hueco('y', 'max') + ' / ' + hueco('y', 'min') + ')');
+  ok(hueco('z', 'max') === 2 && hueco('z', 'min') === 2,
+    'a los dos laterales: 2,0 (=' + hueco('z', 'max') + ' / ' + hueco('z', 'min') + ')');
+  // El eje sigue estando —es lo que se traslada— y sigue a 2,4: la corrección es de
+  // MEDIDA, no un cambio de la geometría.
+  ok(r2(GEO.alto / 2 - bb.y.hi) === 2.4 && r2(bb.y.hiB - bb.y.hi) === 0.4,
+    'el EJE de la barra sigue a 2,4 de la cara: el borde está medio diámetro más afuera');
+  // EL SIGNO ES POR LADO: el borde de arriba sube y el de abajo baja (si los dos se
+  // corrigieran igual, un hueco saldría bien y el otro con un φ de error).
+  ok(r2(bb.y.loB - bb.y.lo) === -0.4 && r2(bb.y.hiB - bb.y.hi) === 0.4,
+    'cada lado se corrige con SU signo (−0.4 abajo · +0.4 arriba)');
+  // Y NO ES UN φ/2 A CIEGAS: sobre el eje x el estribo es plano (todos sus tramos
+  // corren de través), así que ahí sí sobresale el radio entero.
+  ok(r2(bb.x.hiB - bb.x.loB) === 0.8,
+    'el estribo, plano en x, ocupa un φ de espesor real (=' + r2(bb.x.hiB - bb.x.loB) + ')');
 }
 
 console.log(fallos ? ('\n' + fallos + ' FALLO(S)') : '\nOK — el desplazamiento medido está congelado');

@@ -1374,22 +1374,65 @@
     return t[eje] || CARAS_OBRA.viga[eje];
   }
 
+  // ==========================================================================
+  // LA MEDIDA VA AL BORDE DE LA BARRA, NO A SU EJE (23-ago)
+  // --------------------------------------------------------------------------
+  // Defecto de fondo: TODO el modelo mide a los bordes (las dims A/B/C de una figura
+  // se miden a la CRESTA del doblez, no al eje), pero los `puntos` de un placement
+  // son el EJE de la barra. Medido con los datos del usuario —recubrimiento 2 cm y
+  // φ8—: el fierro apoya su BORDE en la línea de recubrimiento, así que su eje queda
+  // a 2 + 0.4 = 2.4 cm de la cara y la ficha decía 2,4 donde en obra se mide 2,0.
+  //
+  // NO ES UN φ/2 A CIEGAS: CUÁNTO SOBRESALE DEPENDE DE LA DIRECCIÓN DEL TRAMO. Un
+  // tramo que corre POR el eje que se mide termina en un CORTE PLANO y no sobresale
+  // nada (el extremo de una barra longitudinal contra el testero mide lo que dice su
+  // punta); uno perpendicular cruza el eje entero y sobresale φ/2 (la cresta de un
+  // estribo). Para un cilindro de radio r y dirección unitaria u la envolvente sobre
+  // cada eje e es r·√(1−u_e²), que da exactamente 0 a lo largo y r de través sin
+  // partir en casos. Un tramo de largo cero cae en la esfera (r en los tres ejes).
+  // ==========================================================================
+  var _EJES3 = ['x', 'y', 'z'];
+  function _acumBordeTramo(a, b, r, lo, hi) {
+    if (!a || !b) return;
+    var dx = Number(b.x) - Number(a.x), dy = Number(b.y) - Number(a.y), dz = Number(b.z) - Number(a.z);
+    if (!isFinite(dx) || !isFinite(dy) || !isFinite(dz)) return;
+    var d = { x: dx, y: dy, z: dz };
+    var L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    for (var i = 0; i < 3; i++) {
+      var e = _EJES3[i];
+      var va = Number(a[e]), vb = Number(b[e]);
+      if (!isFinite(va) || !isFinite(vb)) continue;
+      var u = (L > 1e-9) ? (d[e] / L) : 0;
+      var s = (Number(r) || 0) * Math.sqrt(Math.max(0, 1 - u * u));
+      var v0 = Math.min(va, vb) - s, v1 = Math.max(va, vb) + s;
+      if (v0 < lo[e]) lo[e] = v0;
+      if (v1 > hi[e]) hi[e] = v1;
+    }
+  }
+
   // bbox del componente EN COORDENADAS DEL HOST (cm), de lo ÚLTIMO GENERADO.
   // Sale del generado real (ST.ultimoOut, etiquetado con meta.ci) y no de una
   // expansión propia a propósito: _hostDeReceta no lleva las pilas por cara que arma
   // generar.js, así que una expansión aparte pondría la pieza en otro sitio y la
   // ficha rotularía un hueco que el dibujo desmiente (la misma razón por la que
   // _etiquetarCi expande CLONES). null = todavía no hay nada generado.
+  // Cada eje trae DOS pares: `lo`/`hi` son el EJE de la barra (lo que hay que mover
+  // para trasladarla, y de donde sale el centro que elige la cara de anclaje) y
+  // `loB`/`hiB` son el BORDE DEL ACERO (ver _acumBordeTramo), que es lo que se MIDE.
   function _bboxCompMundo(ci) {
     var out = ST.ultimoOut;
     if (!out || !out.placements) return null;
-    var EJES = ['x', 'y', 'z'];
+    var EJES = _EJES3;
     var lo = { x: Infinity, y: Infinity, z: Infinity };
     var hi = { x: -Infinity, y: -Infinity, z: -Infinity };
+    var loB = { x: Infinity, y: Infinity, z: Infinity };
+    var hiB = { x: -Infinity, y: -Infinity, z: -Infinity };
     var n = 0;
     out.placements.forEach(function (pl) {
       if (!pl.meta || pl.meta.ci !== ci) return;
-      (pl.puntos || []).forEach(function (pt) {
+      var pts = pl.puntos || [];
+      var r = (Number(pl.diam) || 0) / 2;      // pl.diam YA viene en cm (ver generar.js)
+      pts.forEach(function (pt) {
         for (var i = 0; i < 3; i++) {
           var e = EJES[i], v = Number(pt[e]);
           if (!isFinite(v)) continue;
@@ -1398,13 +1441,23 @@
           n++;
         }
       });
+      // El borde va POR TRAMOS, no por puntos: la envolvente de cada uno depende de
+      // hacia dónde corre (un punto suelto —placement de un solo punto— es la esfera).
+      if (pts.length === 1) _acumBordeTramo(pts[0], pts[0], r, loB, hiB);
+      for (var j = 0; j + 1 < pts.length; j++) _acumBordeTramo(pts[j], pts[j + 1], r, loB, hiB);
     });
     if (!n) return null;
     var bb = {};
     for (var k = 0; k < 3; k++) {
       var ej = EJES[k];
       if (!isFinite(lo[ej]) || !isFinite(hi[ej])) return null;
-      bb[ej] = { lo: lo[ej], hi: hi[ej], c: (lo[ej] + hi[ej]) / 2 };
+      bb[ej] = {
+        lo: lo[ej], hi: hi[ej], c: (lo[ej] + hi[ej]) / 2,
+        // Sin tramos válidos (φ desconocido, un solo punto ilegible) el borde cae al
+        // eje: se pierde la corrección, nunca la medida.
+        loB: isFinite(loB[ej]) ? loB[ej] : lo[ej],
+        hiB: isFinite(hiB[ej]) ? hiB[ej] : hi[ej]
+      };
     }
     return bb;
   }
@@ -1452,13 +1505,17 @@
   }
 
   // HUECO entre la pieza y una cara del HORMIGÓN (cm). Mismo criterio que la cota
-  // viva del arrastre: borde del bbox contra la cara, no contra el recubrimiento.
+  // viva del arrastre: borde de la pieza contra la cara, no contra el recubrimiento.
   // Negativo = la pieza se pasó de esa cara, y se dice con su signo.
+  // VA AL BORDE DEL ACERO (loB/hiB), no al eje: con recub 2 y φ8 el campo dice 2,0 y
+  // no 2,4. El medio diámetro se descuenta POR EL LADO QUE CORRESPONDE —el borde de
+  // abajo baja y el de arriba sube—, así que los dos huecos se achican; escribirlo
+  // con el mismo signo en los dos dejaría uno bien y el otro con un φ de error.
   function _huecoACara(bb, eje, ref) {
     if (!bb || !bb[eje]) return null;
     var D = _dimEjeGeo(eje);
     if (!isFinite(D)) return null;
-    return (ref === 'max') ? (D / 2 - bb[eje].hi) : (bb[eje].lo + D / 2);
+    return (ref === 'max') ? (D / 2 - bb[eje].hiB) : (bb[eje].loB + D / 2);
   }
 
   // ESCRIBIR el desplazamiento: «déjame `cm` entre esta pieza y esta cara». Se
@@ -4728,8 +4785,9 @@
   //     lo invadió sale NEGATIVO, con su signo — es lo que hay, y es más útil que un
   //     número positivo al hormigón que no avisa de nada (una barra puede estar
   //     dentro del hormigón y aun así fuera de norma).
-  //     DOS PRECISIONES para leer el número: (1) los puntos son el EJE de la barra,
-  //     así que una pieza tangente al recubrimiento marca φ/2, no 0; (2) es el
+  //     DOS PRECISIONES para leer el número: (1) se mide al BORDE del acero, no al
+  //     eje (23-ago: los puntos son el eje y hasta entonces una pieza tangente al
+  //     recubrimiento marcaba φ/2 en vez de 0 — ver _acumBordeTramo); (2) es el
   //     recubrimiento del HORMIGÓN, pelado — una barra de nivel 2 se ancla además
   //     detrás de la pila de su cara (0.8 cm tras un estribo φ8), así que su margen
   //     real es ese tanto menor. La línea que se rotula es la de la norma, que es la
@@ -4753,6 +4811,12 @@
   function _cotasVivasPieza(svg, plano, X, Y, VW, VH, b) {
     var def = (_defsPlanos() || {})[plano]; if (!def || !b) return;
     var marco = ST.dragMarco;
+    // EL BORDE DEL ACERO en ejes del mundo (23-ago). `b` viene del marco de selección,
+    // que recorre los PUNTOS (= el eje de la barra); la ficha ya mide al borde, y las
+    // dos cosas se miran a la vez. Es una pasada más sobre el mismo generado
+    // (0.01 ms en la viga-semilla, contra los 3.6 ms de generarViga del mismo frame).
+    // Sin bbox —un `out` que no sea ST.ultimoOut— se cae al proyectado de siempre.
+    var bbB = _bboxCompMundo(ST.selCi);
     // QUÉ EJES SE ROTULAN. Redimensionando: sólo el borde que la mano arrastra.
     // Moviendo: los dos ejes que la vista controla (el arrastre toca los dos).
     var filas = marco
@@ -4769,6 +4833,7 @@
       var loW = lim.lo, hiW = lim.hi;
       var a0 = f.horiz ? Math.min(b.u0, b.u1) : Math.min(b.v0, b.v1);
       var a1 = f.horiz ? Math.max(b.u0, b.u1) : Math.max(b.v0, b.v1);
+      if (bbB && bbB[f.eje]) { a0 = bbB[f.eje].loB; a1 = bbB[f.eje].hiB; }
       var P = f.horiz ? X : Y;
       // La cota corre por el MEDIO de la pieza en el eje perpendicular (como una
       // cota temporal de Revit): el trecho queda FUERA del bbox, así que la línea
