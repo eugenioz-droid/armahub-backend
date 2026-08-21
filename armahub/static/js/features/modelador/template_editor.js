@@ -11479,9 +11479,8 @@
     if (codigos.indexOf(ST.tipologia) === -1) ST.tipologia = codigos[0];
     cont.innerHTML = lista.map(function (t) {
       var col = TPL_COLORES[t[0]] || '#607d8b';
-      // La ETIQUETA va en su propio <span>: el modo compacto del ribbon la esconde
-      // (plan B del usuario) y queda el cuadrito de color, que con el title de al
-      // lado sigue diciendo qué tipología es.
+      // La ETIQUETA va en su propio <span>. Desde el 22-ago YA NO se esconde cuando el
+      // ribbon aprieta: ahora el ribbon baja a dos líneas y el nombre se conserva.
       return '<span class="te-tipbtn' + (t[0] === ST.tipologia ? ' on' : '') + '" data-tip="' + _esc(t[0]) +
         '" title="' + _esc(t[0]) + ' · ' + _esc(t[1]) + '"><span class="te-sw" style="background:' + col + '"></span>' +
         '<span class="te-tipnm">' + _esc(t[0]) + '</span></span>';

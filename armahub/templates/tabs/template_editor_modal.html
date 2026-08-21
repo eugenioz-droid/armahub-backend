@@ -311,12 +311,14 @@
   #te_modal .te-figq svg > path{stroke:var(--te-figq-ink)}
   #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:nowrap}
   #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600;flex:0 0 auto}
-  /* PLAN B DEL USUARIO, y sólo si de verdad no cabe: se caen las ETIQUETAS de las
-     tipologías y queda el cuadrito de color con su tooltip (que ya decía el nombre
-     largo). Lo enciende _ajustarRibbonUnaLinea MIDIENDO el ribbon, no un breakpoint
-     inventado: en una pantalla ancha las etiquetas siguen ahí. */
-  #te_modal.te-rib-compacto #te_tipbtns .te-tipnm{display:none}
-  #te_modal.te-rib-compacto #te_tipbtns .te-tipbtn{padding:6px 7px;gap:0}
+  /* CUANDO NO CABE, EL RIBBON BAJA A DOS LÍNEAS — no se pierde el texto (22-ago).
+     Antes el plan B era esconder las ETIQUETAS de tipología y dejar sólo el cuadrito
+     de color; el usuario lo probó en una pantalla más angosta y es incómodo: quedan
+     seis cuadros de colores sin nombre y hay que ir a buscar cada tooltip. Ganar una
+     línea de alto cuesta menos que perder los nombres. La clase la sigue poniendo
+     _ajustarRibbonUnaLinea MIDIENDO de verdad, no un breakpoint inventado: en pantalla
+     ancha el ribbon sigue en una sola línea. */
+  #te_modal.te-rib-compacto #te_ribbon{flex-wrap:wrap;overflow-x:hidden;row-gap:6px}
   #te_modal .te-tipbtn .te-sw{width:11px;height:11px;border-radius:3px}
   #te_modal .te-tipbtn:hover{border-color:var(--te-acero);background:var(--te-hover)}
   #te_modal .te-tipbtn.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
