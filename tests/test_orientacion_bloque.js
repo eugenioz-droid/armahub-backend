@@ -296,8 +296,18 @@ console.log('\nF · la ficha arma ORIENTACIÓN y ya no arma la fila «Lado»');
   ok(t.indexOf('Cara') >= 0 && t.indexOf('Corre') >= 0, 'los rótulos del bloque son «Cara» y «Corre»');
 
   // ESPEJO = un botón compacto, no una fila con Normal/Espejo.
+  // 23-ago: la letra «E» pasó a ser EL ICONO DE ESPEJO de AutoCAD (eje punteado con
+  // una figura y su reflejo a cada lado), dibujado con el mismo criterio que los
+  // iconos de cara — trazo simple y currentColor, para que siga al estado del botón y
+  // a los tres temas sin reglas de color nuevas.
   const esp = conClase(ficha, 'te-espbtn');
-  ok(esp.length === 1 && esp[0].textContent === 'E', 'el espejo es UN botón marcado «E»');
+  ok(esp.length === 1, 'el espejo es UN botón compacto, no una fila');
+  const svgEsp = String(esp[0].innerHTML || '');
+  ok(!esp[0].textContent && svgEsp.indexOf('<svg') === 0, '…y ya no lleva la letra «E», sino un dibujo');
+  ok((svgEsp.match(/<polygon/g) || []).length === 2 && svgEsp.indexOf('stroke-dasharray') > 0,
+    'el dibujo es una figura y su reflejo a los lados de un eje punteado');
+  ok(svgEsp.indexOf('currentColor') > 0 && svgEsp.indexOf('fill="#') < 0,
+    '…todo con currentColor: sigue al botón y a los tres temas sin una regla de color');
   ok(t.indexOf('Normal') < 0, '…y ya no hay fila «Normal / Espejo»');
 
   // ACCIONES aparte del estado, con los dos giros (y las patas cuando la figura las tiene).

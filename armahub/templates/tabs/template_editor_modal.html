@@ -510,9 +510,14 @@
   /* Fila «Corre» = los dos rumbos válidos + el botón de ESPEJO, que NO es una fila
      propia: casi nunca se toca a mano (lo mueve el propio giro). */
   #te_modal .te-orow{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+  /* 23-ago: la letra «E» pasó a ser el ICONO DE ESPEJO (eje punteado + figura y
+     reflejo). line-height:0 = el <svg> no arrastra el interlineado de una línea de
+     texto, así el botón conserva la altura que tenía con la letra. El dibujo va con
+     currentColor y hereda estos colores (gris apagado · blanco sobre morado en .on). */
   #te_modal .te-espbtn{border:1px solid var(--te-field-b);background:var(--te-field);
     border-radius:6px;min-width:24px;padding:4px 7px;font-size:11px;font-weight:800;
-    color:var(--te-muted);cursor:pointer;flex:0 0 auto}
+    line-height:0;color:var(--te-muted);cursor:pointer;flex:0 0 auto}
+  #te_modal .te-espico{display:block}
   #te_modal .te-espbtn:hover{background:var(--te-hover);color:var(--te-acero-t)}
   /* Encendido = el MORADO con el que ya se marca el espejo en la cabecera del
      componente (.te-espm): una sola señal para una sola cosa. Va de FONDO con texto

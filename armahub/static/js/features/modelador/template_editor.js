@@ -1160,6 +1160,28 @@
       '</g></svg>';
   }
   function _iconoCara6(id) { return _iconoCaras6([id]); }
+
+  // ICONO DE ESPEJO (23-ago) — el de AutoCAD: un EJE PUNTEADO vertical con una figura
+  // y su reflejo, uno a cada lado. Reemplaza a la letra «E» del botón, que no decía
+  // nada a quien no supiera ya qué hacía. Mismo criterio que los iconos de cara: trazo
+  // simple y `currentColor`, así el dibujo sigue al estado del botón (apagado = gris
+  // de campo · encendido = el morado de espejo, con texto blanco) y a los tres temas
+  // sin una regla de color nueva.
+  // EL REFLEJO VA SIN RELLENO: es lo que distingue el original de su imagen. Con las
+  // dos macizas el dibujo se lee como dos cuñas cualquiera y se pierde el «esto es lo
+  // mismo, dado vuelta», que es justo lo que hace el botón.
+  var _ICO_ESPEJO = (function () {
+    var izq = '4,7 10,4 10,20 4,17';                 // la figura
+    var der = '20,7 14,4 14,20 20,17';               // …y su reflejo en x = 12
+    return '<svg class="te-espico" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">' +
+      '<polygon points="' + izq + '" fill="currentColor" fill-opacity=".85" stroke="currentColor" ' +
+      'stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<polygon points="' + der + '" fill="none" stroke="currentColor" stroke-width="1.2" ' +
+      'stroke-linejoin="round" opacity=".8"/>' +
+      '<line x1="12" y1="1.5" x2="12" y2="22.5" stroke="currentColor" stroke-width="1.2" ' +
+      'stroke-linecap="round" stroke-dasharray="3 2.5"/>' +
+      '</svg>';
+  })();
   // Las DOS caras opuestas de un eje, sacadas de _CARAS6 (no de una tabla nueva que
   // se pueda desincronizar): { min:'ext-', max:'ext+' } para x, etc.
   function _carasIdDeEje(eje) {
@@ -7093,7 +7115,7 @@
     var espBtn = document.createElement('button');
     espBtn.type = 'button';
     espBtn.className = 'te-espbtn' + (pose.espejo ? ' on' : '');
-    espBtn.textContent = 'E';
+    espBtn.innerHTML = _ICO_ESPEJO;   // constante del módulo, nunca dato del usuario
     espBtn.title = 'Espejo: la MISMA pose dada vuelta sobre su eje de anclaje (el gancho cierra ' +
       'al otro lado). Ahora está ' + (pose.espejo ? 'ESPEJADA — clic para devolverla.' : 'normal.') +
       ' Girando con R también se pasa por acá.';
