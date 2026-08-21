@@ -13,7 +13,13 @@
 <body>
   <!-- Header -->
   <div class="header">
-    <h1>ArmaHub</h1>
+    <!-- LOGO. El archivo trae mucho margen negro alrededor, así que se muestra
+         RECORTADO: la caja .brand define el trozo visible y la imagen va dentro,
+         escalada y corrida, sin editar el PNG. Los números salen de medir el
+         contenido en el archivo (2172x724): el logo ocupa x 33..2118 e y 185..543.
+         mix-blend-mode:screen hace que el negro del archivo se funda con el fondo
+         del header en vez de dibujar un rectángulo más oscuro. -->
+    <h1 class="brand"><img src="/static/images/logo-armahub.png" alt="ArmaHub"></h1>
     <div class="user-info">
       <span class="user-badge" id="whoEmail">—</span>
       <span class="user-badge" id="whoRole">—</span>

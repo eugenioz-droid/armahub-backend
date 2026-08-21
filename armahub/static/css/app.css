@@ -19,6 +19,17 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 .header h1 { margin: 0; color: #8BC34A; font-size: 30px; letter-spacing: 1px; }
+/* LOGO DEL HEADER (21-ago) — reemplaza al texto "ArmaHub".
+   El PNG mide 2172x724 y el logo ocupa sólo x 33..2118, y 185..543 (2085x358): el
+   resto es margen negro. En vez de editar la imagen, la caja recorta y la imagen va
+   dentro escalada al alto que se quiere (30 px de logo) y corrida a su sitio.
+   Si algún día se cambia el archivo, estos cuatro números se recalculan igual:
+   escala = alto_deseado / alto_del_contenido, y los offsets son las esquinas por esa
+   escala, en negativo. */
+.header h1.brand { width: 175px; height: 30px; overflow: hidden; position: relative; }
+.header h1.brand img { position: absolute; width: 182px; left: -3px; top: -15px; display: block;
+  /* el negro del archivo se funde con el fondo oscuro del header */
+  mix-blend-mode: screen; }
 .user-info {
   display: flex;
   gap: 12px;
