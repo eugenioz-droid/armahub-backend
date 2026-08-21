@@ -8136,7 +8136,7 @@
     // RÓTULO al lado, no encima: la fila ya gasta alto con el icono y los dos campos,
     // y sin nombre nadie sabe qué son esos seis números. Lo que no cabe va al title.
     var envol = _div('te-posrow');
-    var rot = _span('Distancia a caras');
+    var rot = _span('Offset');
     rot.className = 'te-posrot';
     rot.title = 'A cuántos centímetros está la barra de cada cara del hormigón. Cada par ' +
       'son las dos caras opuestas de un eje: escribes en el que te convenga y el otro se ' +
