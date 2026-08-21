@@ -367,8 +367,17 @@
     width:calc(var(--te-teja-min) + 26px);padding:0 6px 0 8px;
     border-left:1px solid var(--te-line);background:var(--te-panel)}
   /* La cabecera de la tira no cabe en horizontal: se queda sólo el contador. */
-  #te_modal #te_grid .te-sh > span:first-child{display:none}
-  #te_modal #te_grid .te-sh{justify-content:flex-end;gap:5px}
+  #te_modal #te_grid .te-sh{justify-content:space-between;gap:5px;padding-right:2px}
+  /* PLEGAR — la tira se va contra el borde y deja todo el ancho a los cuadrantes.
+     Plegada queda una pestaña de 18 px con la flecha al revés para volver. */
+  #te_modal .te-gplegar{border:none;background:none;cursor:pointer;font-size:15px;line-height:1;
+    padding:2px 4px;color:var(--te-muted);border-radius:5px}
+  #te_modal .te-gplegar:hover{background:var(--te-hover);color:var(--te-ink)}
+  #te_modal #te_grid.plegado{width:18px;padding:0}
+  #te_modal #te_grid.plegado #te_compList,
+  #te_modal #te_grid.plegado #te_compCount{display:none}
+  #te_modal #te_grid.plegado .te-sh{justify-content:center;padding:0}
+  #te_modal #te_grid.plegado .te-ln{display:none}
   /* La cabecera de cada zona queda QUIETA: sólo el cuerpo scrollea. */
   #te_modal #te_detalle .te-sh,#te_modal #te_grid .te-sh{flex:0 0 auto}
   #te_modal #te_detBody{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 12px}
@@ -1565,18 +1574,18 @@
           <div class="te-barras-b" id="te_barrasBody"></div>
         </div>
       </div>
+      </div><!-- /#te_work -->
       <!-- TIRA DE COMPONENTES — 21-ago. Antes vivia DENTRO del panel izquierdo, debajo de
            la ficha, y le comia la mitad de la altura. Ahora es una columna del ancho de UNA
            teja pegada al borde derecho: las tejas se apilan de arriba abajo, el panel
            izquierdo queda entero para la ficha y los cuadrantes solo ceden el ancho de una
            teja. Las tejas NO cambian: son exactamente las mismas. -->
       <div id="te_grid">
-        <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
+        <div class="te-sh"><button type="button" id="te_gridPlegar" class="te-gplegar" title="Plegar la tira de componentes">›</button><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
 
         <!-- Grilla dinámica de componentes (3 tejas por fila con el panel en 360px) -->
         <div id="te_compList"></div>
       </div>
-      </div><!-- /#te_work -->
 
     </div>
 

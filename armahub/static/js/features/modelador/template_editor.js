@@ -8737,6 +8737,21 @@
     // en el panel y con la BARRA ESPACIADORA (_rotarSeleccion), que no se tocó.
 
     // Los DOS botones "agregar" hacen lo mismo: entrar en modo colocación.
+    // PLEGAR LA TIRA DE COMPONENTES (21-ago). La tira come el ancho de una teja a los
+    // cuadrantes; plegada deja una pestaña de 18 px y los devuelve enteros. El 3D vive
+    // de su tamaño en píxeles, así que hay que avisarle: sin el resize se queda con el
+    // viewport viejo y la escena aparece estirada hasta el siguiente gesto.
+    var plg = $('te_gridPlegar');
+    if (plg && !plg._teBound) {
+      plg._teBound = true;
+      plg.addEventListener('click', function () {
+        var g = $('te_grid'); if (!g) return;
+        var plegado = g.classList.toggle('plegado');
+        plg.textContent = plegado ? '‹' : '›';
+        plg.title = plegado ? 'Mostrar la tira de componentes' : 'Plegar la tira de componentes';
+        _resize();   // el 3D y las ortográficas viven de su tamaño en píxeles
+      });
+    }
     var addRib = $('te_btnAgregarBarra');
     if (addRib && !addRib._teBound) { addRib._teBound = true; addRib.addEventListener('click', function () { _entrarModoColocacion(); }); }
     // (el botón "＋ Agregar componente" del panel se retiró el 19-ago: era el mismo
