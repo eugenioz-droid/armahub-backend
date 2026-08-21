@@ -609,7 +609,8 @@
   // lo dibuja el Diseñador y vive en la BD). Por eso la matriz se repinta cuando
   // vuelve GET /figuras-catalogo. Hasta entonces —y si una figura no trae
   // geometría— la casilla queda VACÍA con su tooltip: no se inventa un dibujo.
-  var TE_FIGS_RAPIDAS = ['101A', '102A', '103A', '103B', '103C', '104A', '104B', '104C', '105A', '105C'];
+  var TE_FIGS_RAPIDAS = ['101A', '102A', '102C', '103A', '103B', '103C',
+                         '104A', '104B', '104C', '105A', '105C', '106A'];
   // Tamaño del dibujo de cada casilla, en px. El pad es chico a propósito: sin
   // etiquetas no hay que reservar sitio para ninguna letra, así que todo el
   // recuadro es figura. (El CSS le da min-width/min-height al botón para que las
@@ -8132,6 +8133,16 @@
     var bb = _bboxCompMundo(ci);
     if (!bb) return;
     var libres = _ejesDesplazables(c);
+    // RÓTULO al lado, no encima: la fila ya gasta alto con el icono y los dos campos,
+    // y sin nombre nadie sabe qué son esos seis números. Lo que no cabe va al title.
+    var envol = _div('te-posrow');
+    var rot = _span('Distancia a caras');
+    rot.className = 'te-posrot';
+    rot.title = 'A cuántos centímetros está la barra de cada cara del hormigón. Cada par ' +
+      'son las dos caras opuestas de un eje: escribes en el que te convenga y el otro se ' +
+      'recalcula solo. En el eje por el que la barra se reparte, los dos campos son las ' +
+      'puntas del reparto y sí son independientes.';
+    envol.appendChild(rot);
     var fila = _div('te-posejes');
     var n = 0;
     _EJES3.forEach(function (eje) {
@@ -8139,7 +8150,7 @@
       fila.appendChild(_parPosicionEje(c, ci, eje, libres.indexOf(eje) >= 0));
       n++;
     });
-    if (n) body.appendChild(fila);
+    if (n) { envol.appendChild(fila); body.appendChild(envol); }
   }
 
   // UN par (icono + dos campos) del eje `eje`. `libre` = el desplazamiento manda en

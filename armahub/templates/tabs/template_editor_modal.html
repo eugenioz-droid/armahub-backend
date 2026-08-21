@@ -284,7 +284,7 @@
      pidió el usuario se lee como se lee cualquier lista —de izquierda a derecha y
      después la fila de abajo—: 101A 102A 103A 103B 103C arriba, 104A 104B 104C 105A
      105C abajo. El orden lo manda TE_FIGS_RAPIDAS en template_editor.js. */
-  #te_modal .te-figq{display:grid;grid-template-columns:repeat(5,auto);gap:2px;flex:0 0 auto}
+  #te_modal .te-figq{display:grid;grid-template-columns:repeat(6,auto);gap:2px;flex:0 0 auto}
   #te_modal .te-figq button{padding:0;border:1px solid var(--te-line);border-radius:5px;
     background:var(--te-field);cursor:pointer;line-height:0;display:block;
     min-width:32px;min-height:24px}
@@ -466,6 +466,12 @@
   #te_modal #te_side .te-rowcol input.te-color::-webkit-color-swatch-wrapper{padding:0}
   #te_modal #te_side .te-rowcol input.te-color::-webkit-color-swatch{border:none;border-radius:3px}
   #te_modal .te-rowcol .te-colsws{flex:1 1 auto;flex-wrap:nowrap;overflow-x:auto;min-width:0;margin:0}
+  /* DISTANCIA A CARAS — el rótulo va AL LADO de los tres pares, no encima: la fila ya
+     gasta alto con el icono y los dos campos de cada eje. */
+  #te_modal .te-posrow{display:flex;align-items:center;gap:6px;min-width:0;margin-bottom:6px}
+  #te_modal .te-posrot{font-size:10.5px;color:var(--te-muted);font-weight:600;line-height:1.15;
+    flex:0 0 52px;max-width:52px}
+  #te_modal .te-posrow .te-posejes{flex:1 1 auto;min-width:0;margin:0}
   #te_modal .te-fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
   #te_modal .te-fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
   #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-field-b);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}

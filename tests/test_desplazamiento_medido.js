@@ -264,8 +264,13 @@ console.log('\nH · la ficha arma UNA fila con los tres pares');
   const body = new El();
   TE._filasDesplazamiento(body, c, 0);
   ok(body.children.length === 1,
-    'una sola fila (los tres pares viven en ella) (=' + body.children.length + ')');
-  const cols = body.children[0].children;
+    'una sola fila (rotulo + los tres pares viven en ella) (=' + body.children.length + ')');
+  // 22-ago: la fila gano un ROTULO al lado ("Distancia a caras"), asi que los pares ya
+  // no cuelgan del primer hijo sino del segundo. El rotulo va DENTRO de la misma fila
+  // -no encima- para no gastar alto en la ficha.
+  const envol = body.children[0];
+  ok(envol.children.length === 2, 'la fila lleva el rotulo y el grupo de pares (=' + envol.children.length + ')');
+  const cols = envol.children[1].children;
   ok(cols.length === 3, 'TRES pares, uno por eje — también el que reparte (=' + cols.length + ')');
   // Cada par = icono + los dos campos (el desplegable de cara desapareció).
   ok(cols.every((col) => col.children.length === 2 && col.children[1].children.length === 2),
