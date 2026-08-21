@@ -573,15 +573,29 @@
      escribirse con los dos ids o pierde y el campo se estira al 100% — que es
      exactamente lo que empujó la fila fuera del panel el 15-ago. */
   #te_modal #te_side input.te-delta{width:52px;text-align:right;flex:0 0 auto;padding:3px 4px}
-  /* FILA DE POSICIÓN MEDIDA: [ 12 ] cm de [ testero inicio ▾ ]. El campo del número
-     es angosto y el selector de cara se lleva el resto del renglón (los nombres de
-     obra son largos: "lateral posterior"). OJO ESPECIFICIDAD: la regla base de la ficha
-     es `#te_modal #te_side input,select {width:100%}` con DOS ids, así que estos dos
-     también los repiten o el campo se estira y saca la fila del panel. */
-  #te_modal .te-posrow{display:flex;align-items:center;gap:5px;min-width:0}
-  #te_modal #te_side input.te-posd{width:62px;text-align:right;flex:0 0 auto;padding:3px 5px}
-  #te_modal #te_side select.te-poscara{width:auto;flex:1 1 auto;min-width:0;font-size:11px;padding:3px 4px}
-  #te_modal .te-posun{font-size:10.5px;color:var(--te-muted);font-weight:600;flex:0 0 auto}
+  /* POSICIÓN MEDIDA — TRES PARES DE CAMPOS (23-ago), uno por eje, con el icono del PAR
+     DE CARAS OPUESTAS encima de cada par. Sustituye a las filas
+     [ 12 ] cm de [ testero inicio ▾ ]: el desplegable sobra en cuanto se ven las dos
+     distancias a la vez. Ver la nota de _filasDesplazamiento en template_editor.js.
+     EL PANEL ES ANGOSTO (~292 px de fila): tres columnas minmax(0,1fr) —EXACTAMENTE
+     iguales; con `1fr` a secas un campo impone su min-content y roba ancho a las
+     otras— y dentro de cada una dos campos al 50%. Da ~44 px por campo, que es lo que
+     necesita un número de tres cifras con signo a 11 px sin cortarse. */
+  #te_modal .te-posejes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;
+    align-items:start;margin:0 0 7px}
+  #te_modal .te-poseje{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+  /* El icono se dibuja con currentColor, así que hereda este gris de rótulo y funciona
+     en los tres temas sin una regla de color nueva (igual que los del radial de Cara).
+     line-height:0 = el <svg> no arrastra el interlineado de una línea de texto. */
+  #te_modal .te-posico{line-height:0;color:var(--te-muted);cursor:help}
+  #te_modal .te-pospar{display:flex;gap:3px;width:100%;min-width:0}
+  /* OJO ESPECIFICIDAD (la trampa de siempre): la regla base es `#te_modal #te_side
+     input{width:100%}` con DOS ids, así que ésta los lleva también o los campos se
+     estiran al 100% cada uno y el par se sale de su columna. */
+  #te_modal #te_side .te-pospar input.te-posd{flex:1 1 0;width:auto;min-width:0;
+    text-align:center;font-size:11px;padding:3px 2px}
+  #te_modal #te_side .te-pospar input.te-posd:disabled{background:var(--te-panel2);
+    color:var(--te-faint);cursor:not-allowed}
   /* las flechitas del input number COMÍAN el espacio interior del campo y
      tapaban el valor («el field tapa los números, aunque hay espacio») */
   #te_modal input[type=number]::-webkit-inner-spin-button,

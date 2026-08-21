@@ -1140,11 +1140,16 @@
       ocultas: 'M' + n.bl + 'L' + f.bl + 'M' + f.bl + 'L' + f.tl + 'M' + f.bl + 'L' + f.br
     };
   })();
-  function _iconoCara6(id) {
-    var c = _ICO_CARA.caras[id] || _ICO_CARA.caras.sup;
-    var relleno = '<polygon points="' + c.pts.join(' ') + '" fill="currentColor" fill-opacity="' +
-      (c.frente ? '.88' : '.32') + '" stroke="currentColor" stroke-width="1" stroke-opacity="' +
-      (c.frente ? '.9' : '.65') + '"' + (c.frente ? '' : ' stroke-dasharray="2 1.5"') + '/>';
+  // UNA o VARIAS caras encendidas sobre la MISMA caja. El plural lo usa el bloque de
+  // posición, que enciende el PAR DE CARAS OPUESTAS de un eje: un solo vocabulario
+  // visual en toda la ficha, sin un segundo juego de símbolos que aprender.
+  function _iconoCaras6(ids) {
+    var relleno = (ids || []).map(function (id) {
+      var c = _ICO_CARA.caras[id] || _ICO_CARA.caras.sup;
+      return '<polygon points="' + c.pts.join(' ') + '" fill="currentColor" fill-opacity="' +
+        (c.frente ? '.88' : '.32') + '" stroke="currentColor" stroke-width="1" stroke-opacity="' +
+        (c.frente ? '.9' : '.65') + '"' + (c.frente ? '' : ' stroke-dasharray="2 1.5"') + '/>';
+    }).join('');
     return '<svg class="te-caraico" viewBox="0 0 40 28" width="30" height="21" aria-hidden="true" focusable="false">' +
       relleno +
       '<g fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">' +
@@ -1153,6 +1158,14 @@
       '<path d="' + _ICO_CARA.unen + '" opacity=".6"/>' +
       '<path d="' + _ICO_CARA.ocultas + '" opacity=".28" stroke-dasharray="2 1.5"/>' +
       '</g></svg>';
+  }
+  function _iconoCara6(id) { return _iconoCaras6([id]); }
+  // Las DOS caras opuestas de un eje, sacadas de _CARAS6 (no de una tabla nueva que
+  // se pueda desincronizar): { min:'ext-', max:'ext+' } para x, etc.
+  function _carasIdDeEje(eje) {
+    var out = {};
+    _CARAS6.forEach(function (f) { if (f.eje === eje) out[f.ref] = f.id; });
+    return out;
   }
 
   // POSE POR DEFECTO de una tipología — la AUTORIDAD es el motor (tabla
@@ -1490,19 +1503,10 @@
     return libres.filter(function (e) { return !fuera[e]; });
   }
 
-  // LA CARA QUE ELIGIÓ EL MOTOR. Con ancla estampada, la suya; sin ella (la pieza
-  // nunca se movió) se deriva con LA FÓRMULA DEL MOTOR —la cara más cercana al centro
-  // del grupo, reglas.anclaDeCoord— y no con una cuenta propia que pudiera discrepar.
-  function _caraRefEje(c, eje, bb) {
-    var pa = c && c.pos_ancla && c.pos_ancla[eje];
-    if (pa && (pa.ref === 'min' || pa.ref === 'max')) return pa.ref;
-    var d = _deps();
-    if (bb && bb[eje] && d.reglas && typeof d.reglas.anclaDeCoord === 'function') {
-      var a = d.reglas.anclaDeCoord(bb[eje].c, _dimEjeGeo(eje));
-      if (a && (a.ref === 'min' || a.ref === 'max')) return a.ref;
-    }
-    return 'min';
-  }
+  // (23-ago) Acá vivía `_caraRefEje` — «la cara que eligió el motor», que era el valor
+  // de partida del desplegable de cara. Ese desplegable YA NO EXISTE: la ficha muestra
+  // las distancias a LAS DOS caras del eje, así que no hay ninguna que elegir ni
+  // ninguna cara de partida que derivar. El ancla la sigue eligiendo el motor.
 
   // HUECO entre la pieza y una cara del HORMIGÓN (cm). Mismo criterio que la cota
   // viva del arrastre: borde de la pieza contra la cara, no contra el recubrimiento.
@@ -1539,6 +1543,58 @@
     c.pos_hint = c.pos_hint || {};
     c.pos_hint[eje] = (Number(c.pos_hint[eje]) || 0) + delta;
     _anclarHintUI(c);
+    return true;
+  }
+
+  // ==========================================================================
+  // EL EJE QUE SÍ REPARTE — las dos puntas del rango, medidas a las caras (23-ago)
+  // --------------------------------------------------------------------------
+  // En un eje por el que corre la distribución la posición NO la manda pos_hint (el
+  // editor lo borra al encender el abanico): la mandan `from`/`to`. Así que el par de
+  // campos de ese eje muestra DÓNDE EMPIEZA Y DÓNDE TERMINA EL REPARTO, y moverlos
+  // mueve el rango. Ahí los dos números SÍ son independientes: el largo del rango es
+  // libre, a diferencia del eje que no reparte (donde la pieza tiene un tamaño y una
+  // distancia determina la otra).
+  //
+  // SE MIDE AL EJE DE LA BARRA, no al borde: `from`/`to` son POSICIONES del reparto —
+  // dónde va la primera y la última barra— y es exactamente el número que la cota
+  // viva del abanico dibuja mientras se arrastra (_anclaViva). Los dos se miran a la
+  // vez, así que tienen que decir lo mismo. El borde es la medida de una PIEZA contra
+  // una cara (el otro par), que es otra cosa.
+  // ==========================================================================
+  // Rango que reparte por un eje del mundo, o null si por ese eje no reparte nadie.
+  function _rangoDeEje(c, eje) {
+    var d = c && c.distribucion;
+    if (!d || !d.activa) return null;
+    var modo = _modoDe(c);
+    if (modo !== 'lineal' && modo !== 'arreglo') return null;
+    if (d.rango && ((d.rango.eje || _ejeDistDe(c)) === eje)) return d.rango;
+    if (modo === 'arreglo' && d.rango2 && d.rango2.eje === eje) return d.rango2;
+    return null;
+  }
+  // Distancia de la CARA a la punta del rango de ese lado (cm). El rango puede ir al
+  // revés (to < from), así que el lado se toma por geometría —el menor contra la cara
+  // 'min'— y no por el nombre del campo.
+  function _puntaRangoACara(rango, eje, ref) {
+    if (!rango || rango.from == null || rango.to == null) return null;
+    var D = _dimEjeGeo(eje);
+    if (!isFinite(D)) return null;
+    var a = Number(rango.from), b = Number(rango.to);
+    return (ref === 'max') ? (D / 2 - Math.max(a, b)) : (Math.min(a, b) + D / 2);
+  }
+  // …y escribirla. Escribe SIEMPRE en la punta de ESE lado (no siempre en `from`): en
+  // un rango al revés, escribir en el campo del testero inicio movería la otra punta.
+  // NO regenera —lo hace quien llama, como el resto de los campos—, pero sí re-ancla
+  // (el número que escribió el usuario ES el ancla) y reencaja los tramos.
+  function _setPuntaRangoACara(c, rango, eje, ref, cm) {
+    var n = Number(cm);
+    var D = _dimEjeGeo(eje);
+    if (!rango || !isFinite(n) || !isFinite(D)) return false;
+    var asc = (Number(rango.to) >= Number(rango.from));
+    rango[(asc === (ref === 'max')) ? 'to' : 'from'] = (ref === 'max') ? (D / 2 - n) : (-D / 2 + n);
+    _anclarRangoUI(rango, rango.eje || eje);
+    var d = c && c.distribucion;
+    if (d && rango === d.rango) _syncTramos(d);
     return true;
   }
 
@@ -8012,69 +8068,122 @@
 
   // --- fábricas de UI reutilizables ---
 
-  // FILAS DE POSICIÓN de la ficha: «esta pieza a tantos cm de esta cara», una por
-  // cada eje en el que el desplazamiento aplica de verdad (_ejesDesplazables).
-  // Ver la nota larga de «DESPLAZAMIENTO MEDIDO CON CARA DE REFERENCIA» arriba: acá
-  // sólo está la pantalla; el número, la cara y la escritura salen de esos helpers.
+  // ==========================================================================
+  // POSICIÓN MEDIDA — TRES PARES DE CAMPOS, UNO POR EJE (23-ago)
+  // --------------------------------------------------------------------------
+  // Sustituye a las filas «A lo largo [2,4] cm de [extremo inicio ▾]». EL DESPLEGABLE
+  // DESAPARECE: ya no hay que elegir referencia porque están las DOS distancias, una
+  // a cada cara opuesta del eje. Encima de cada par va el icono de la caja con ESE PAR
+  // de caras encendido — los mismos iconos del bloque de Orientación, no un segundo
+  // juego de símbolos.
+  //
+  // SON DOS CASOS DISTINTOS, y el par no se comporta igual en los tres ejes:
+  //   · EJE QUE NO REPARTE → los dos campos son DOS LECTURAS DE LA MISMA POSICIÓN.
+  //     No son independientes: si la pieza está a 10 de una cara, su distancia a la
+  //     otra ya está determinada por el tamaño del elemento. Los dos se escriben, y al
+  //     escribir en uno EL OTRO SE RECALCULA SOLO (pedido expreso del usuario) — sale
+  //     gratis porque los dos releen del generado después de mutar.
+  //   · EJE QUE SÍ REPARTE → el par son LAS DOS PUNTAS DEL RANGO (ver
+  //     _puntaRangoACara): dónde empieza y dónde termina el reparto, y moverlos mueve
+  //     el rango. Ahí sí son independientes. NO se apagan: el usuario los quiere
+  //     sincronizados con la distribución, y como todo campo vivo siguen al arrastre
+  //     del abanico.
+  //
+  // CONTRA QUÉ SE MIDE (decisión cerrada): la CARA DEL HORMIGÓN, igual que la cota
+  // viva del arrastre. Por dentro el ancla se sigue guardando contra el RECUBRIMIENTO
+  // (reglas.js, _recubLadosEje), que es lo que hace que al cambiar el recubrimiento
+  // las piezas se recoloquen. Las dos referencias conviven a propósito y difieren
+  // exactamente en el recubrimiento.
+  // ==========================================================================
   function _filasDesplazamiento(body, c, ci) {
-    var bb = _bboxCompMundo(ci);
     // Sin nada generado no hay medida honesta que rotular (la barra todavía no está
     // en ningún sitio). Aparece sola en cuanto se genera.
+    var bb = _bboxCompMundo(ci);
     if (!bb) return;
-    _ejesDesplazables(c).forEach(function (eje) {
+    var libres = _ejesDesplazables(c);
+    var fila = _div('te-posejes');
+    var n = 0;
+    _EJES3.forEach(function (eje) {
       if (!bb[eje]) return;
-      var caras = _carasObraEje(eje);
-      // La cara arranca en la que ELIGIÓ EL MOTOR. El selector sólo cambia desde
-      // dónde se mide AHORA, así que vive en esta clausura: no se persiste en la
-      // receta (nadie elige cara al crear la pieza) ni en ST (sería estado que se
-      // queda viejo cuando el componente cambia de sitio o se borra).
-      var ref = _caraRefEje(c, eje, bb);
-      var row = _div('te-row');
-      row.appendChild(_label(EJE_ROTULO_POS[eje]));
-      var wrap = _div('te-posrow');
-      var inp = _input({ value: _cm1(_huecoACara(bb, eje, ref)), type: 'number', step: 'any' }, function (v) {
+      fila.appendChild(_parPosicionEje(c, ci, eje, libres.indexOf(eje) >= 0));
+      n++;
+    });
+    if (n) body.appendChild(fila);
+  }
+
+  // UN par (icono + dos campos) del eje `eje`. `libre` = el desplazamiento manda en
+  // este eje; si no, manda el rango que reparte por él.
+  function _parPosicionEje(c, ci, eje, libre) {
+    var rango = libre ? null : _rangoDeEje(c, eje);
+    // Eje tomado por una distribución que NO expone un rango editable (el editor le
+    // borra el hint a este eje en el primer gesto): se muestra la medida, pero
+    // escribirla sería un número que se pierde solo. Se dice en el title.
+    var muerto = !libre && !rango;
+    var caras = _carasObraEje(eje);
+    var ids = _carasIdDeEje(eje);
+    var col = _div('te-poseje');
+    var ico = _div('te-posico');
+    ico.innerHTML = _iconoCaras6([ids.min, ids.max]);
+    ico.title = EJE_ROTULO_POS[eje] + ' (eje ' + _ejeLetra(eje) + '): a la izquierda ' +
+      caras.min + ', a la derecha ' + caras.max + '.';
+    col.appendChild(ico);
+    var par = _div('te-pospar');
+    var campo = {};
+
+    function leer(ref) {
+      return rango ? _puntaRangoACara(rango, eje, ref)
+                   : _huecoACara(_bboxCompMundo(ci), eje, ref);
+    }
+    function refrescar() {
+      ['min', 'max'].forEach(function (ref) { _valVivo(campo[ref], _cm1(leer(ref))); });
+    }
+    ['min', 'max'].forEach(function (ref) {
+      var inp = _input({ value: _cm1(leer(ref)), type: 'number', step: 'any' }, function (v) {
         // Campo vaciado = no hay medida que aplicar. Se repinta el valor de ahora en
-        // vez de escribir un 0 que el usuario no pidió (mismo criterio que el
-        // candado de las dims: un clic no inventa una medida).
+        // vez de escribir un 0 que el usuario no pidió (mismo criterio que el candado
+        // de las dims: un clic no inventa una medida).
         if (String(v == null ? '' : v).trim() === '') { refrescar(); return; }
         _pushUndo();
-        if (!_setHuecoACara(ci, eje, ref, v)) { refrescar(); return; }
-        _mut(ci);      // regenera; la ficha NO cambia de forma, así que no se re-arma
-        refrescar();   // …y el campo dice dónde quedó DE VERDAD (pudo toparse)
+        var hecho = rango ? _setPuntaRangoACara(c, rango, eje, ref, v)
+                          : _setHuecoACara(ci, eje, ref, v);
+        if (!hecho) { refrescar(); return; }
+        // La ficha no cambia de FORMA salvo que el rango lleve tramos (ahí se re-arma
+        // la lista de tramos reencajada).
+        _mut(ci, !!(rango && rango.tramos && rango.tramos.length > 1));
+        refrescar();   // …y los DOS campos dicen dónde quedó DE VERDAD (pudo toparse)
       });
       inp.className = 'te-posd';
-      var un = document.createElement('span');
-      un.className = 'te-posun';
-      un.textContent = 'cm de';
-      var sel = _selectPairs([['min', caras.min], ['max', caras.max]], ref, function (v) {
-        ref = (v === 'max') ? 'max' : 'min';
-        refrescar();   // no muta nada: sólo cambia desde qué cara se está midiendo
-      });
-      sel.className = 'te-poscara';
-      function refrescar() {
-        var b2 = _bboxCompMundo(ci) || bb;
-        _valVivo(inp, _cm1(_huecoACara(b2, eje, ref)));
-        titular();
-      }
-      function titular() {
-        var nom = (ref === 'max') ? caras.max : caras.min;
-        inp.title = 'Distancia entre esta barra y ' + nom + ', en cm (eje ' + _ejeLetra(eje) + '). ' +
-          'Escríbela y la barra se va ahí: es el MISMO camino que arrastrarla, así que el ' +
-          'número y el gesto no pueden discrepar. Al cambiar el hormigón la barra conserva ' +
-          'su distancia a la cara. Negativo = la barra se pasó de esa cara.';
-        sel.title = 'Cara desde la que se mide. La que aparece al abrir la ficha es la que ' +
-          'el motor eligió para anclar esta barra (la más cercana); cambiarla acá sólo ' +
-          'cambia desde dónde se mide, no mueve nada.';
-      }
-      titular();
-      wrap.appendChild(inp); wrap.appendChild(un); wrap.appendChild(sel);
-      row.appendChild(wrap);
-      body.appendChild(row);
-      // El campo sigue al ARRASTRE en vivo: mover la barra con la mano cambia esta
-      // distancia, y el panel no puede decir un número distinto del que se dibuja
-      // (es el mismo trato que el rango, los tramos y el Δ).
-      _vivo(refrescar);
+      if (muerto) inp.disabled = true;
+      inp.title = _tituloPosicion(eje, ref, caras, rango, muerto);
+      campo[ref] = inp;
+      par.appendChild(inp);
     });
+    col.appendChild(par);
+    // Los campos siguen al ARRASTRE en vivo: mover la barra o el abanico con la mano
+    // cambia estas distancias, y el panel no puede decir un número distinto del que se
+    // dibuja (mismo trato que el rango, los tramos y el Δ).
+    _vivo(refrescar);
+    return col;
+  }
+
+  function _tituloPosicion(eje, ref, caras, rango, muerto) {
+    var nom = (ref === 'max') ? caras.max : caras.min;
+    var ejeTxt = ' (eje ' + _ejeLetra(eje) + ').';
+    if (rango) {
+      return 'Dónde ' + (ref === 'max' ? 'TERMINA' : 'EMPIEZA') + ' el reparto: cm entre ' + nom +
+        ' y la barra de ese extremo' + ejeTxt + ' Mueve esa punta del rango, así que los ' +
+        'dos campos del par son independientes (el largo del reparto es libre).';
+    }
+    if (muerto) {
+      return 'Distancia entre esta barra y ' + nom + ', en cm' + ejeTxt + ' Sólo lectura: en ' +
+        'este eje la posición la manda la distribución, y un número escrito acá se lo ' +
+        'llevaría el primer gesto.';
+    }
+    return 'Distancia entre el BORDE de esta barra y ' + nom + ', en cm' + ejeTxt +
+      ' Escríbela y la barra se va ahí: es el MISMO camino que arrastrarla, así que el ' +
+      'número y el gesto no pueden discrepar. El otro campo del par es esta misma ' +
+      'posición leída desde la cara opuesta, así que se recalcula solo. Al cambiar el ' +
+      'hormigón la barra conserva su distancia a la cara. Negativo = se pasó de esa cara.';
   }
 
   // cm con UN decimal (lo que se lee en obra). null → campo vacío.
@@ -12104,12 +12213,15 @@
     // RECUBRIMIENTO si se está redimensionando, contra el HORMIGÓN si se mueve.
     _cotasVivasPieza: _cotasVivasPieza, _arrastrandoPieza: _arrastrandoPieza,
     _lineasRecubEje: _lineasRecubEje, _facesEje: _facesEje,
-    // DESPLAZAMIENTO MEDIDO CON CARA DE REFERENCIA (21-ago) — el número que la ficha
-    // escribe. Se exponen la MEDIDA (_huecoACara sobre _bboxCompMundo), la CARA que
-    // eligió el motor (_caraRefEje), los EJES en los que aplica (_ejesDesplazables) y
-    // la ESCRITURA (_setHuecoACara), que es la misma puerta del arrastre.
-    _bboxCompMundo: _bboxCompMundo, _huecoACara: _huecoACara, _caraRefEje: _caraRefEje,
+    // POSICIÓN MEDIDA (21-ago · tres pares de campos desde el 23-ago) — el número que
+    // la ficha escribe. Se exponen la MEDIDA al BORDE del acero (_huecoACara sobre
+    // _bboxCompMundo), los EJES en los que manda el desplazamiento (_ejesDesplazables)
+    // y la ESCRITURA (_setHuecoACara), que es la misma puerta del arrastre; para el eje
+    // que reparte, las dos puntas del rango (_puntaRangoACara / _setPuntaRangoACara).
+    _bboxCompMundo: _bboxCompMundo, _huecoACara: _huecoACara,
     _ejesDesplazables: _ejesDesplazables, _setHuecoACara: _setHuecoACara,
+    _rangoDeEje: _rangoDeEje, _puntaRangoACara: _puntaRangoACara,
+    _setPuntaRangoACara: _setPuntaRangoACara, _iconoCaras6: _iconoCaras6,
     _filasDesplazamiento: _filasDesplazamiento, _carasObraEje: _carasObraEje,
     // El panel sigue al gesto EN VIVO: los campos que el arrastre escribe (rango,
     // largo de tramo, Δ) se releen de la receta sin re-armar el DOM de la ficha.

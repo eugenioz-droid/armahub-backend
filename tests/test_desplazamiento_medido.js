@@ -13,8 +13,7 @@
 //      fuera (ahí manda el rango, y el editor borra el hint de ese eje al encender
 //      el abanico); en un ARREGLO, también el de la 2ª línea. Sin distribución
 //      activa, los tres.
-//   B. LA CARA LA ELIGE EL MOTOR — la que muestra la ficha es exactamente la que
-//      devuelve reglas.anclaDeCoord (la más cercana), no una cuenta propia.
+//   B. (retirada 23-ago: el desplegable de cara desapareció — ver la sección B).
 //   C. EL NÚMERO ESCRITO ES EL QUE QUEDA — se teclea una distancia y la pieza queda
 //      ahí, medida sobre lo que el motor generó de verdad.
 //   D. …Y SOBREVIVE AL HORMIGÓN — es EL pedido: al cambiar el elemento, la pieza
@@ -26,13 +25,18 @@
 //      y el gesto podrían discrepar.
 //   F. CAMBIAR LA CARA NO MUEVE NADA — el selector sólo dice desde dónde se mide: los
 //      dos huecos más el ancho de la pieza suman el elemento, y la barra no se movió.
+//   G. LA Y DE UN CABEZAL — el caso que el usuario pidió (segunda capa de cabezales
+//      sin arrastrarla): el eje de la cara contra la que se ancla SÍ acepta el
+//      desplazamiento, y también conserva la distancia al cambiar el hormigón.
 //   I. LA MEDIDA VA AL BORDE DE LA BARRA, NO A SU EJE — recubrimiento 2 + φ8 dan
 //      2,0 en el campo (el borde apoyado en la línea de recubrimiento), no 2,4 (el
 //      eje). Cada lado se corrige con SU signo y el descuento sigue la DIRECCIÓN del
 //      tramo, no un φ/2 a ciegas.
-//   G. LA Y DE UN CABEZAL — el caso que el usuario pidió (segunda capa de cabezales
-//      sin arrastrarla): el eje de la cara contra la que se ancla SÍ acepta el
-//      desplazamiento, y también conserva la distancia al cambiar el hormigón.
+//   H+J+K. LOS SEIS CAMPOS (23-ago) — tres pares, uno por eje, sin desplegable de
+//      cara. El eje que NO reparte: dos lecturas de la misma posición (una determina
+//      la otra). El eje que SÍ reparte: las dos puntas del rango, independientes, y
+//      el campo de cada cara escribe en la punta de SU lado aunque el rango vaya al
+//      revés.
 //
 // Correr con: node tests/test_desplazamiento_medido.js
 
@@ -172,24 +176,11 @@ console.log('\nA · en qué ejes se ofrece el desplazamiento');
     TE._ejesDesplazables(area).join(',') + ')');
 }
 
-// ======================================================= B · la cara la elige el motor
-console.log('\nB · la cara de referencia es la que elige el motor');
-{
-  const c = montar(estribo());
-  regenerar();
-  const bb = TE._bboxCompMundo(0);
-  ['x', 'y', 'z'].forEach((eje) => {
-    const dim = (eje === 'y') ? GEO.alto : (eje === 'z' ? GEO.ancho : GEO.largo);
-    const delMotor = R.anclaDeCoord(bb[eje].c, dim).ref;
-    ok(TE._caraRefEje(c, eje, bb) === delMotor,
-      'eje ' + eje + ': la ficha muestra la cara del motor (' + delMotor + ')');
-  });
-  // …y con ancla ya estampada manda la del ancla, no una re-derivación paralela.
-  c.pos_hint = { x: -285 };
-  regenerar();
-  ok(c.pos_ancla && c.pos_ancla.x && TE._caraRefEje(c, 'x', TE._bboxCompMundo(0)) === c.pos_ancla.x.ref,
-    'con ancla estampada, la ficha muestra ESA cara (=' + JSON.stringify(c.pos_ancla.x) + ')');
-}
+// ============================================ B · sin cara que elegir (23-ago)
+// La ficha ya NO tiene desplegable de cara: muestra las DOS distancias del eje, así
+// que no hay una cara de partida que derivar. Lo que sigue vivo —y es lo que
+// importaba— es que EL ANCLA la elige el motor (la cara más cercana), y eso lo
+// congela la sección E de más abajo.
 
 // ================================ C+D+E · el número escrito queda, y sobrevive al hormigón
 console.log('\nC+D+E · se teclea la distancia, la pieza queda ahí y la conserva');
@@ -260,7 +251,7 @@ console.log('\nG · segunda capa de cabezales: distancia a la cara superior');
 }
 
 // ======================================== H · la fila se arma (camino DOM de la ficha)
-console.log('\nH · la ficha arma una fila por eje libre');
+console.log('\nH · la ficha arma UNA fila con los tres pares');
 {
   const c = montar(estribo({
     modo: 'lineal',
@@ -269,13 +260,63 @@ console.log('\nH · la ficha arma una fila por eje libre');
   regenerar();
   const body = new El();
   TE._filasDesplazamiento(body, c, 0);
-  ok(body.children.length === 2,
-    'dos ejes libres → dos filas en la ficha (=' + body.children.length + ')');
+  ok(body.children.length === 1,
+    'una sola fila (los tres pares viven en ella) (=' + body.children.length + ')');
+  const cols = body.children[0].children;
+  ok(cols.length === 3, 'TRES pares, uno por eje — también el que reparte (=' + cols.length + ')');
+  // Cada par = icono + los dos campos (el desplegable de cara desapareció).
+  ok(cols.every((col) => col.children.length === 2 && col.children[1].children.length === 2),
+    'cada par es un icono + DOS campos, sin desplegable de cara');
   const vacio = new El();
   ST.ultimoOut = null;                       // todavía no se generó nada
   TE._filasDesplazamiento(vacio, c, 0);
   ok(vacio.children.length === 0,
     'sin nada generado no se rotula una distancia inventada');
+}
+
+// ============================ J · los seis campos: dos casos distintos por eje
+// El eje que NO reparte: dos lecturas de la MISMA posición (escribir en uno recoloca
+// la pieza y el otro se recalcula solo). El eje que SÍ reparte: las dos puntas del
+// rango, independientes — y NO se apagan.
+console.log('\nJ · el par del eje que reparte son las dos puntas del rango');
+{
+  const c = montar(estribo({
+    modo: 'lineal',
+    distribucion: { modo: 'linear', activa: true, sep: 20, rango: { from: -290, to: 290, sep: 20, eje: 'x' } }
+  }));
+  regenerar();
+  const rg = TE._rangoDeEje(c, 'x');
+  ok(rg === c.distribucion.rango, 'el eje x lo manda el rango de la distribución');
+  ok(TE._rangoDeEje(c, 'y') === null && TE._rangoDeEje(c, 'z') === null,
+    'los otros dos ejes no los reparte nadie');
+  ok(r2(TE._puntaRangoACara(rg, 'x', 'min')) === 10 && r2(TE._puntaRangoACara(rg, 'x', 'max')) === 10,
+    'el par dice dónde empieza y dónde termina el reparto (10 y 10 en una viga de 600)');
+  // Escribir una punta mueve ESA punta y deja la otra donde estaba: son independientes
+  // (el largo del rango es libre).
+  TE._setPuntaRangoACara(c, rg, 'x', 'min', 40); regenerar();
+  ok(r2(rg.from) === -260 && r2(rg.to) === 290,
+    'escribir 40 al testero inicio movió sólo esa punta (=' + r2(rg.from) + ' / ' + r2(rg.to) + ')');
+  ok(r2(TE._puntaRangoACara(rg, 'x', 'min')) === 40, 'y el campo lo dice (=40)');
+  // Rango AL REVÉS: el campo de cada cara escribe en la punta de SU lado, no siempre
+  // en `from` (si no, el testero inicio movería la punta del otro extremo).
+  const rev = { from: 290, to: -290, sep: 20, eje: 'x' };
+  TE._setPuntaRangoACara(c, rev, 'x', 'min', 50);
+  ok(r2(rev.to) === -250 && r2(rev.from) === 290,
+    'con el rango al revés, el campo del testero inicio mueve la punta de ese lado');
+}
+
+// ============================================ K · el par del eje que NO reparte
+console.log('\nK · el par del eje libre son dos lecturas de la misma posición');
+{
+  const c = montar(estribo());
+  regenerar();
+  TE._setHuecoACara(0, 'z', 'min', 4); regenerar();
+  const bb = TE._bboxCompMundo(0);
+  const hMin = r2(TE._huecoACara(bb, 'z', 'min'));
+  const hMax = r2(TE._huecoACara(bb, 'z', 'max'));
+  ok(hMin === 4, 'se escribió 4 en el campo de la izquierda (=' + hMin + ')');
+  ok(r2(hMin + (bb.z.hiB - bb.z.loB) + hMax) === r2(GEO.ancho),
+    'el otro campo NO es libre: lo determinan la pieza y el elemento (=' + hMax + ')');
 }
 
 // ============================ I · LA MEDIDA VA AL BORDE, NO AL EJE (caso del usuario)
