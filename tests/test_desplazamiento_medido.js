@@ -403,5 +403,25 @@ console.log('\nL · pieza asimétrica: las dos caras del eje y, cada una con su 
     hueco('y', 'min') + ' / ' + hueco('y', 'max') + ')');
 }
 
+// ====================================== E . mover la barra a mano esta desactivado
+// (21-ago) El arrastre reescribe pos_hint y esa posicion a mano no sobrevive un cambio
+// de dimension del hormigon, asi que la puerta esta cerrada. Se congela aca para que
+// nadie la reabra sin querer: el dia que se reabra a proposito, este bloque cambia y
+// se ve en el diff.
+console.log('\nE - mover la barra a mano');
+{
+  ok(TE._MOVER_A_MANO === false, 'la llave TE_MOVER_A_MANO esta apagada');
+
+  const c = montar(estribo());
+  regenerar();
+  const antes = JSON.stringify(c.pos_hint || null);
+  ST.dragMove = { ci: 0, plano: 'largo', startHost: { x: 0, y: 0, z: 0 }, startHint: {}, pushed: false, bloq: true };
+  TE._dragMover('largo', { u: 120, v: 30 });
+  ok(JSON.stringify(c.pos_hint || null) === antes,
+    'un arrastre bloqueado NO toca la posicion de la barra (=' + JSON.stringify(c.pos_hint || null) + ')');
+  ok(ST.dragMove.aviso === true, 'y avisa por la barra de estado (una vez por arrastre, no por mousemove)');
+  ST.dragMove = null;
+}
+
 console.log(fallos ? ('\n' + fallos + ' FALLO(S)') : '\nOK — el desplazamiento medido está congelado');
 process.exit(fallos ? 1 : 0);

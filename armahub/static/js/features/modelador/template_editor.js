@@ -338,6 +338,23 @@
 
   // Diámetros estándar (mm) — espejo de armahub/diametros.py: DIAM_ESTANDAR.
   // Alimenta los DOS selects de φ (ribbon y panel del componente): una sola lista.
+  // MOVER LA BARRA A MANO: APAGADO (21-ago, pedido del usuario).
+  //
+  // Arrastrar una barra escribe su pos_hint, y esa posición a mano NO sobrevive un
+  // cambio de dimensión del hormigón: la barra se queda donde el usuario la dejó
+  // mientras el elemento crece o se achica alrededor. Es justo lo contrario de lo que
+  // resolvimos con el anclaje, así que hasta que la posición manual se ancle igual que
+  // el rango, la puerta queda cerrada.
+  //
+  // Lo que SÍ se puede seguir arrastrando: los tiradores del marco (ST.dragMarco) y el
+  // abanico completo con sus dos extremos (ST.dragRango). Esos ya están anclados y se
+  // reacomodan solos. El clic sobre la barra tampoco se pierde: sigue SELECCIONANDO,
+  // que es el otro 90% de para qué se le hace clic a una barra.
+  //
+  // Para reabrirlo: poner esto en true. No hay nada más que revertir — `_dragMover`
+  // sigue entero al otro lado de la llave.
+  var TE_MOVER_A_MANO = false;
+
   var TE_DIAMS = [8, 10, 12, 16, 18, 22, 25, 28, 32, 36];
 
   // ==========================================================================
@@ -6098,7 +6115,10 @@
           if (ST.tool === 'mover' && uv) {
             // pushed:false → el snapshot se toma en el 1er movimiento real (un
             // simple clic para seleccionar NO ensucia el stack de undo).
-            ST.dragMove = { ci: ci, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(ci), pushed: false };
+            // bloq: ver TE_MOVER_A_MANO. El arrastre SE ARMA igual estando apagado,
+            // a propósito: así el primer movimiento real tiene a quién avisarle en
+            // vez de que la barra simplemente no responda y parezca un cuelgue.
+            ST.dragMove = { ci: ci, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(ci), pushed: false, bloq: !TE_MOVER_A_MANO };
           }
           evt.preventDefault();
           return;
@@ -6112,7 +6132,7 @@
           var pk = _pickBarra(plano, sp.px, sp.py);
           if (pk >= 0) {
             _seleccionar(pk);
-            if (uv) ST.dragMove = { ci: pk, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(pk), pushed: false };
+            if (uv) ST.dragMove = { ci: pk, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(pk), pushed: false, bloq: !TE_MOVER_A_MANO };
             evt.preventDefault();
             return;
           }
@@ -6158,6 +6178,15 @@
 
   function _dragMover(plano, uv) {
     var dm = ST.dragMove; if (!dm) return;
+    // MOVER A MANO APAGADO (ver TE_MOVER_A_MANO): se avisa UNA vez por arrastre —no en
+    // cada mousemove— y no se toca la barra.
+    if (dm.bloq) {
+      if (!dm.aviso) {
+        dm.aviso = true;
+        _actualizarStatus('Mover la barra a mano está desactivado. Usa los campos de Offset de la ficha, o arrastra los tiradores del marco y del abanico.');
+      }
+      return;
+    }
     var c = ST.receta.componentes[dm.ci]; if (!c) return;
     if (!dm.pushed) { _pushUndo(); dm.pushed = true; }   // snapshot en el 1er move
     var host = _clickHost(plano, uv);
@@ -12327,6 +12356,9 @@
     _figsDeTipologia: _figsDeTipologia, _figsDeTipologiaActiva: _figsDeTipologiaActiva,
     _figAvisoTipologia: _figAvisoTipologia, _validarFiguraRibbon: _validarFiguraRibbon,
     _actualizarStatus: _actualizarStatus,   // la barra de estado lleva el aviso
+    // MOVER A MANO (apagado): expuestos para que la suite congele la política —que la
+    // llave está en false y que un arrastre marcado `bloq` no toca la barra.
+    _dragMover: _dragMover, _MOVER_A_MANO: TE_MOVER_A_MANO,
     // TIPOLOGÍA vs ELEMENTO (marca PERSISTENTE: sobrevive al primer clic)
     _tipAjenaAlElemento: _tipAjenaAlElemento,
     // SELECTOR DE ELEMENTO dentro del editor (viga ⇄ muro sin salir ni recrear)
