@@ -2060,6 +2060,18 @@
     // 3 · LA POSICIÓN. Dónde cayó la copia contra dónde tendría que caer (el
     // reflejo del original). Si el reparto ya la llevó, la diferencia es 0 y no se
     // escribe nada: en el eje del abanico un hint no tendría a quién mandarle.
+    //
+    // EL ANCLA VIEJA SE TIRA ANTES DE MEDIR (25-ago, defecto reportado: «parece que
+    // lo tomó como punto medio o algo así»). `pos_ancla` guarda la posición como
+    // distancia a una cara y la resuelve ELLA, ignorando el hint; pero la corrección
+    // se escribe EN EL HINT. Midiendo con el ancla viva se medía un régimen que
+    // después no iba a existir, y encima el ancla de la pieza ORIGINAL pincha la cara
+    // de la que ya no es: la copia cambió de pose y su punto de nacimiento se mudó al
+    // testero de enfrente. MEDIDO —cabezal de borde con hint en x, muro de 600— la
+    // copia terminaba a 1450 cm del testero en vez de a 866: se pasaba por el doble
+    // del salto del punto de nacimiento. Tirando el ancla acá, medir y escribir
+    // hablan del mismo estado. El motor la vuelve a estampar al expandir.
+    if (copia.pos_ancla) delete copia.pos_ancla[e];
     var pls1 = _expandirClon(copia, host);
     var centro1 = _centroUnion(pls1, e);
     if (isFinite(centro0) && isFinite(centro1)) {
@@ -2068,7 +2080,6 @@
       else {
         copia.pos_hint = copia.pos_hint || {};
         copia.pos_hint[e] = (Number(copia.pos_hint[e]) || 0) + delta;
-        if (copia.pos_ancla) delete copia.pos_ancla[e];
         // VERIFICAR, no suponer: hay ejes donde la posición no es nuestra (las
         // capas de un cabezal). Ahí el hint se escribe y no pasa nada, y eso hay
         // que decirlo.

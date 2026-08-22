@@ -5241,6 +5241,15 @@
     // El botón contextual "Voltear plano (R)" se re-pega a la pieza tras redibujar
     // (los transforms de cada vista quedaron frescos arriba → posición exacta).
     _posicionarFlipBtn();
+    // LAS BANDAS DEL ESPEJO SE REPINTAN CON LA VISTA (25-ago, reportado: «el botón
+    // del scroll para panear eliminó las ayudas visuales, pero la función seguía
+    // activa»). Dibujar la vista rehace el SVG entero, así que la capa del espejo se
+    // iba con él y el modo quedaba encendido sin nada en pantalla — lo peor de los
+    // dos mundos. Van acá y no en el handler del pan porque _redibujar2D es por donde
+    // pasan TODOS los repintados (pan, zoom, maximizar, cambio de tema): cablearlo en
+    // cada gesto habría dejado a los demás sin bandas igual que ahora. Además hace
+    // falta: las bandas están en píxeles y el paneo mueve los píxeles.
+    if (ST.espejoPend) _pintarCarasEspejo();
   }
 
   // ==========================================================================
@@ -8763,6 +8772,11 @@
     if (f) _dibujarCaraHiEnCapa(layer, plano, f, '#d500f9');
   }
   function _espejarEnCara(f) {
+    // UN GESTO, UNA COPIA. La banda trae su propio listener y además está la red del
+    // clic suelto sobre la vista: si algún día los dos llegaran, el segundo espejaría
+    // la copia recién hecha (que ya es la seleccionada) y aparecerían dos. El modo es
+    // la llave del gesto, así que se pregunta por él.
+    if (!ST.espejoPend) return;
     var ci = ST.selCi;
     var c = ST.receta && ST.receta.componentes && ST.receta.componentes[ci];
     var R = global.ModeladorReglas;

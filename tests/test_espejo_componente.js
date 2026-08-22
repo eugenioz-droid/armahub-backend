@@ -214,5 +214,37 @@ console.log('F · espejar no ensucia el componente de origen');
   ok(res.comp !== c, 'y la copia es otro objeto');
 }
 
+// ======================== G . MEDIR DONDE SE ESCRIBE (el ancla vieja se tira antes)
+// (25-ago) El usuario espejo un componente y la copia salio muy lejos, fuera del
+// hormigon: "parece que lo tomo como punto medio o algo asi, deberia tomar el eje
+// del elemento de hormigon". La causa: pos_ancla guarda la posicion como distancia
+// a una cara y la resuelve ELLA, ignorando el hint -pero la correccion del espejo se
+// escribe EN EL HINT-. Medir con el ancla viva era medir un estado que despues no
+// iba a existir, y peor: el ancla del ORIGINAL pincha la cara de la que la copia ya
+// no es, porque al espejarse su punto de nacimiento se muda al testero de enfrente.
+// MEDIDO en el defecto: cabezal de borde con hint en x, muro de 600 -la copia caia a
+// 1450 cm del testero en vez de a 866, pasada por el DOBLE del salto del nacimiento.
+console.log('');
+console.log('G . con el ancla de posicion viva, la copia sigue siendo el reflejo');
+{
+  const h = host(600);
+  const cb = {
+    comp_id: 'CB1', tipologia: 'CB', figura: '101A', diam: 16, jerarquia: 2,
+    modo: 'lineal', pose: { cara: 'extremo', lado: -1, rumbo: 'y' },
+    dims: { A: { modo: 'auto' } },
+    distribucion: { modo: 'layered', n_capas: 2, barras_capa: 3, gap: 10, sentido: 'nucleo' },
+    pos_hint: { x: -280 }
+  };
+  caja(cb, h, 'x');                      // expandir SIN clonar deja pos_ancla estampada
+  ok(!!(cb.pos_ancla && cb.pos_ancla.x), 'el original tiene el ancla viva, como en el editor');
+  const a = caja(cb, h, 'x');
+
+  const res = R.espejarComponente(cb, h, 'x');
+  const b = caja(res.comp, h, 'x');
+  ok(b.aMin === a.aMax && b.aMax === a.aMin,
+    'la copia es el reflejo exacto (' + a.aMin + '/' + a.aMax + ' -> ' + b.aMin + '/' + b.aMax + ')');
+  ok(res.posicionExacta === true, 'y se reporta como exacta');
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el espejo del componente está congelado');
 process.exit(fallos ? 1 : 0);
