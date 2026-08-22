@@ -160,6 +160,24 @@ function tirar(ladoUV, cm) {
   return dm;
 }
 
+// EL MISMO GESTO PERO HECHO CON EL MOUSE: un arrastre real no es un salto, son
+// decenas de mousemove seguidos, y entre dos de ellos el editor REGENERA (el rAF de
+// _regenerarDiferido). Esa regeneración le vuelve a estampar el ancla de posición a
+// la pieza, así que el 2º mousemove ya no encuentra el mismo estado que el 1º: es la
+// diferencia que hacía que `tirar()` no viera la deriva del bloque F.
+function tirarMouse(ladoUV, cm, pasos) {
+  TE._iniciarDragMarco('largo', 0, 'u', ladoUV, { u: 0, v: 0 });
+  if (!ST.dragMarco) return null;
+  const dm = ST.dragMarco;
+  for (let i = 1; i <= pasos; i++) {
+    TE._dragMarcoMove('largo', { u: cm * i / pasos, v: 0 });
+    regen();                 // el rAF del editor, que es lo que re-ancla la pieza
+  }
+  ST.dragMarco = null;
+  regen();
+  return dm;
+}
+
 // ================================================================ A · UN TIRADOR
 console.log('A · un tirador mueve SU borde y deja el otro donde está');
 {
@@ -236,6 +254,125 @@ console.log('E · por el eje que reparte, la posición no es del tirador');
   tirar('+', -60);
   ok(!(c.pos_hint && c.pos_hint.x != null), 'y el tirador tampoco le escribe posición en ese eje');
   ok(c.dims.A && c.dims.A.modo === 'fija', '…pero sí le deja la medida (=' + JSON.stringify(c.dims.A) + ')');
+}
+
+// ============================== F · ARRASTRE CON EL MOUSE (la deriva que quedaba)
+// EL DEFECTO QUE CONGELA (reportado el 25-ago, con el fix del 24 ya puesto): «al
+// desplazar el segundo tirador (derecha), el primero que ya desplacé (izquierda) se
+// desplaza un poco… mejoró bastante pero debe quedarse quieto».
+//
+// POR QUÉ NO LO VEÍAN A–E: usan `tirar()`, que es UN mousemove por gesto sobre una
+// pieza PUNTUAL. Un arrastre de verdad son decenas de mousemove con una regeneración
+// en el medio, y la pieza del usuario es un estribo de confinamiento REPARTIDO a lo
+// alto del muro — y esa combinación es la que enciende el defecto.
+//
+// LA CAUSA, MEDIDA: la posición de la pieza se guarda como distancia a una cara
+// (`pos_ancla`), y esa ancla vale `base + hint`, donde `base` —dónde nace la pieza
+// SIN traslación— DEPENDE DEL TAMAÑO. En cuanto el tirador reescribe la medida el
+// ancla queda vieja y pasa a pinchar el CENTRO del grupo. El tirador la usaba de dos
+// maneras equivocadas: MEDÍA con ella (el sondeo y los bordes de la corrección) pero
+// ESCRIBÍA `pos_hint`, que es el régimen que queda después — cuenta hecha en un
+// sistema y aplicada en otro—, y sólo la invalidaba cuando la corrección daba ≠ 0.
+// MEDIDO con la mezcla: medio centímetro de borde opuesto por cada centímetro de
+// medida → 19,5 cm de deriva en un arrastre de 40 hecho paso a paso, y 12,5 cm en
+// uno de 25 de un solo salto (ahí el sondeo, viendo todo «centrado», hasta elegía el
+// extremo contrario al borde agarrado).
+//
+// LA REGLA: el tirador mide en el MISMO régimen en el que escribe (clon con el ancla
+// invalidada, la misma puerta que _anclarHintUI), y cambiar el tamaño invalida el
+// ancla SIEMPRE, dé lo que dé la corrección.
+console.log('');
+console.log('F · el estribo repartido, arrastrado con el mouse');
+{
+  // El estribo del usuario: repartido a lo alto del muro. Los tiradores de izquierda
+  // y derecha corren por el largo (x), que NO es el eje que reparte — o sea que la
+  // posición en ese eje sí es del tirador.
+  function montarRepartido() {
+    const c = estribo();
+    c.modo = 'lineal';
+    c.distribucion = { modo: 'linear', activa: true, sep: 20,
+      rango: { eje: 'y', from: -80, to: 80, sep: 20 } };
+    ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: [c] };
+    ST.selCi = 0; ST.ultimoOut = null;
+    ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
+    R.normalizarReceta(ST.receta);
+    regen();
+    return c;
+  }
+  // Lo que se ve en la elevación: el hueco a cada testero, medido sobre TODAS las
+  // copias del reparto y no sólo sobre la primera.
+  function huecos() {
+    const c = ST.receta.componentes[0];
+    const pls = R.expandirComponente(clon(c), ST.receta.geometria) || [];
+    let mn = Infinity, mx = -Infinity;
+    pls.forEach((pl) => pl.puntos.forEach((q) => {
+      if (q.x < mn) mn = q.x; if (q.x > mx) mx = q.x;
+    }));
+    const L = ST.receta.geometria.largo;
+    return { copias: pls.length, ancho: r2(mx - mn), izq: r2(mn + L / 2), der: r2(L / 2 - mx) };
+  }
+
+  // Los tres gestos del usuario, arrastrados como se arrastran de verdad. 40
+  // mousemove por gesto: el número no importa, importa que sean MUCHOS y que el
+  // editor regenere entre uno y otro.
+  const a = (montarRepartido(), huecos());
+  ok(a.copias > 1, 'el estribo está repartido de verdad (' + a.copias + ' copias)');
+  tirarMouse('+', -60, 40);
+  const b = huecos();
+  ok(b.izq === a.izq, 'g1 · el borde opuesto no se movió (' + a.izq + ' → ' + b.izq + ')');
+  ok(r2(b.der - a.der) === 60, 'g1 · el agarrado siguió al cursor 1:1 (=' + r2(b.der - a.der) + ')');
+
+  tirarMouse('-', 40, 40);
+  const c2 = huecos();
+  ok(c2.der === b.der, 'g2 · el borde que colocó el 1er tirador se quedó quieto (' +
+    b.der + ' → ' + c2.der + ') — acá derivaba 19,5 cm');
+  ok(r2(c2.izq - b.izq) === 40, 'g2 · y el segundo movió sólo el suyo (=' + r2(c2.izq - b.izq) + ')');
+
+  tirarMouse('+', -25, 40);
+  const d = huecos();
+  ok(d.izq === c2.izq, 'g3 · el borde del 2º tirador tampoco se mueve (' +
+    c2.izq + ' → ' + d.izq + ')');
+  ok(r2(d.der - c2.der) === 25, 'g3 · el 3er gesto movió su borde 25 cm (=' + r2(d.der - c2.der) + ')');
+
+  // EL MISMO 3er GESTO DE UN SOLO SALTO: acá el sondeo veía la pieza «centrada» por
+  // el ancla vieja, elegía el extremo contrario al borde agarrado y la pieza se
+  // achicaba hacia adentro por los dos lados (12,5 cm de deriva).
+  montarRepartido(); tirarMouse('+', -60, 40); tirarMouse('-', 40, 40);
+  const e1 = huecos();
+  tirar('+', -25);
+  const e2 = huecos();
+  ok(e2.izq === e1.izq, 'g3 de un salto · el borde opuesto tampoco se mueve (' +
+    e1.izq + ' → ' + e2.izq + ') — acá derivaba 12,5 cm');
+  ok(r2(e2.der - e1.der) === 25, 'g3 de un salto · su borde se movió 25 (=' + r2(e2.der - e1.der) + ')');
+
+  // EL CAMINO NO CAMBIA EL DESTINO: arrastrar de a poquito con el mouse tiene que
+  // dejar la pieza donde la deja un salto. Si la cuenta se acumulara mousemove a
+  // mousemove en vez de resolverse contra el estado real, estas dos no coincidirían.
+  ok(d.ancho === e2.ancho && d.izq === e2.izq && d.der === e2.der,
+    'con el mouse o de un salto se llega al MISMO lugar (' + d.izq + '/' + d.ancho + '/' + d.der +
+    ' vs ' + e2.izq + '/' + e2.ancho + '/' + e2.der + ')');
+}
+
+// ================================== G · GESTOS ENCADENADOS SOBRE PIEZA PUNTUAL
+// El mismo arrastre con el mouse sobre la pieza suelta de los bloques A–D: acá el
+// fix del 24-ago ya alcanzaba, y este bloque existe para que siga alcanzando —
+// invalidar el ancla en cada mousemove no puede aflojar el caso simple.
+console.log('');
+console.log('G · pieza suelta, cuatro gestos encadenados con el mouse');
+{
+  montar(600);
+  let prev = medir();
+  const gestos = [['+', -60], ['-', 40], ['+', -25], ['-', 12]];
+  gestos.forEach(function (g, i) {
+    tirarMouse(g[0], g[1], 35);
+    const m = medir();
+    const opuesto = (g[0] === '+') ? r2(m.izq - prev.izq) : r2(m.der - prev.der);
+    const propio = (g[0] === '+') ? r2(m.der - prev.der) : r2(m.izq - prev.izq);
+    ok(opuesto === 0, 'g' + (i + 1) + ' (' + g[0] + ' ' + g[1] + ') · el borde opuesto quieto (Δ=' + opuesto + ')');
+    ok(propio === Math.abs(g[1]),
+      'g' + (i + 1) + ' · el agarrado siguió al cursor ' + Math.abs(g[1]) + ' cm (=' + propio + ')');
+    prev = m;
+  });
 }
 
 console.log(fallos ? ('' + fallos + ' FALLO(S)') : 'OK — el tirador deja quieto el borde opuesto');

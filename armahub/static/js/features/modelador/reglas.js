@@ -1910,6 +1910,175 @@
   // panel muestra y lo que el motor reparte sean el MISMO número.
   // Idempotente: llamarla dos veces seguidas no mueve nada. El editor la llama en
   // cada regeneración, que es el único sitio por el que pasan todos los cambios.
+  // ===========================================================================
+  // ESPEJAR UN COMPONENTE contra el plano medio del elemento (24-ago)
+  // ---------------------------------------------------------------------------
+  // EL PEDIDO (palabras del usuario): «en muros el lado derecho será igual al
+  // izquierdo, sería muy conveniente poder espejar cabezales, estribos y trabas de
+  // confinamiento». Rehacer a mano el confinamiento del otro extremo es lento y se
+  // presta a errores que recién aparecen en taller.
+  //
+  // QUÉ ES UN ESPEJO ACÁ: la reflexión contra el plano medio del elemento en un eje
+  // del mundo. Se compone de dos cosas, y las dos ya tienen dónde vivir:
+  //   · LA POSICIÓN — como se guarda por DISTANCIA A UNA CARA, espejar es cambiar
+  //     de qué cara se mide dejando la distancia igual. Por eso la copia sigue
+  //     anclada y aguanta el cambio de hormigón igual que el original.
+  //   · LA ORIENTACIÓN — la pieza queda dada vuelta (los ganchos apuntan al otro
+  //     lado). Eso es otra de las 24 poses; no hace falta un campo nuevo.
+  // Las MEDIDAS no se tocan: un espejo no cambia largos.
+  //
+  // CÓMO SE SACA LA POSE — dos candidatas y el motor desempata.
+  // Reflejar la normal y el longitudinal da una ROTACIÓN, no la reflexión: falta el
+  // bit de quiralidad, y si ese bit sobra o falta depende de en qué plano vive la
+  // figura —las cadenas y los cabezales viven en (L,N) y los estribos y las trabas
+  // en (N,B)—. En vez de una tabla que habría que mantener figura por figura: se
+  // reflejan N y L (eso fija la pose salvo la quiralidad), quedan DOS candidatas
+  // que difieren sólo en ese bit, y se le pregunta al motor cuál reproduce la pieza
+  // reflejada. Si ninguna se distingue de la otra, la figura es simétrica y da
+  // igual cuál se tome.
+  //
+  // POR QUÉ NO SE BARREN LAS 24 (se intentó y estaba MAL): la forma de una barra
+  // suelta no alcanza para identificar una pose. Un cabezal 101A es un palo recto y
+  // el barrido encontraba una pose «que calzaba» mucho antes que la correcta —
+  // MEDIDO: el espejo en x de un cabezal de borde salía con la normal en z y la
+  // copia cruzaba el muro entero (593 cm de recorrido donde el original medía 10).
+  // Derivar N y L primero deja el barrido sin nada que adivinar.
+  //
+  // EL REPARTO SE DA VUELTA CON ELLA: un abanico sobre el eje espejado invierte sus
+  // dos puntas (y sus tramos), así que el @10/@20/@10 de un extremo llega al otro
+  // leído desde el testero que corresponde.
+  //
+  // LO QUE ESTA FUNCIÓN NO PUEDE: si por ese eje la posición NO es una distancia a
+  // una cara sino el sistema de capas (la altura de un cabezal), no hay dónde
+  // escribirla y la copia se queda donde estaba, sólo dada vuelta. Se INFORMA en
+  // vez de mentir: `posicionExacta:false`. (El usuario lo pidió así: si una pieza
+  // simétrica queda encima de la original, se crea igual y él la mueve — «ahí
+  // obligamos al usuario a ser cuidadoso».)
+  // ===========================================================================
+  // Reflejar un eje con signo: sólo cambia el signo del que ES el eje del espejo.
+  function _reflejarEje(v, E) {
+    if (!v) return v;
+    return (v.eje === E) ? { eje: v.eje, s: -v.s } : v;
+  }
+  // Las DOS poses candidatas del espejo: N y L reflejados (eso ya fija la cara, el
+  // lado y el rumbo) y las dos quiralidades.
+  function _posesEspejo(pose, E) {
+    var d = derivarPose(pose);
+    var N2 = _reflejarEje(d.N, E), L2 = _reflejarEje(d.L, E);
+    var cara2 = (N2.eje === 'y') ? ((N2.s > 0) ? 'sup' : 'inf')
+      : ((N2.eje === 'z') ? 'lateral' : 'extremo');
+    var esp = (L2.s < 0);
+    return [
+      normalizarPose({ cara: cara2, lado: N2.s, rumbo: L2.eje, espejo: esp }),
+      normalizarPose({ cara: cara2, lado: N2.s, rumbo: L2.eje, espejo: !esp })
+    ];
+  }
+  function _ptsDe(pls) { return (pls && pls[0] && pls[0].puntos) ? pls[0].puntos : null; }
+  // FIRMA DE UNA FORMA, invariante a traslación: los puntos referidos a su propio
+  // mínimo. El ORDEN se conserva a propósito — es lo que distingue una pieza de su
+  // reflejo cuando las dos ocupan la misma caja.
+  function _firmaForma(pts) {
+    if (!pts || !pts.length) return null;
+    var mn = { x: Infinity, y: Infinity, z: Infinity }, i, e;
+    for (i = 0; i < pts.length; i++) {
+      for (e in mn) { if (Number(pts[i][e]) < mn[e]) mn[e] = Number(pts[i][e]); }
+    }
+    var s = [];
+    for (i = 0; i < pts.length; i++) {
+      s.push(_r6(pts[i].x - mn.x) + ',' + _r6(pts[i].y - mn.y) + ',' + _r6(pts[i].z - mn.z));
+    }
+    return s.join(';');
+  }
+  // Centro de TODAS las copias sobre un eje. Se usa la unión y no la primera barra
+  // porque al dar vuelta un abanico la primera copia pasa a ser la última.
+  function _centroUnion(pls, eje) {
+    var lo = Infinity, hi = -Infinity;
+    for (var i = 0; i < (pls || []).length; i++) {
+      var pts = pls[i].puntos || [];
+      for (var j = 0; j < pts.length; j++) {
+        var v = Number(pts[j][eje]);
+        if (!isFinite(v)) continue;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+    }
+    return isFinite(lo) ? (lo + hi) / 2 : NaN;
+  }
+  function _expandirClon(comp, host) {
+    try { return expandirComponente(JSON.parse(JSON.stringify(comp)), host) || []; }
+    catch (e) { return []; }
+  }
+
+  // Devuelve { comp, formaExacta, posicionExacta }. `comp` es SIEMPRE un objeto
+  // nuevo: el original no se toca.
+  function espejarComponente(comp, host, eje) {
+    var e = _ejeCanon(eje);
+    var copia = JSON.parse(JSON.stringify(comp || {}));
+    var out = { comp: copia, formaExacta: false, posicionExacta: false };
+    if (!e || !host || !comp) return out;
+
+    var pls0 = _expandirClon(comp, host);
+    var pts0 = _ptsDe(pls0);
+    if (!pts0) return out;
+    var centro0 = _centroUnion(pls0, e);
+
+    // 1 · EL REPARTO SE DA VUELTA. `from` y `to` son coordenadas absolutas del
+    // host: reflejarlas es negarlas, y al negarlas se intercambian (el `from`
+    // reflejado queda a la derecha del `to` reflejado). Los tramos se leen desde
+    // `from`, así que su lista también se invierte.
+    var d = copia.distribucion;
+    if (d && typeof d === 'object') {
+      ['rango', 'rango2'].forEach(function (k) {
+        var r = d[k];
+        if (!r || r.from == null || r.to == null) return;
+        var ejeR = r.eje || ((k === 'rango') ? 'x' : 'y');
+        if (ejeR !== e) return;
+        var f = Number(r.from), tt = Number(r.to);
+        if (!isFinite(f) || !isFinite(tt)) return;
+        r.from = -tt; r.to = -f;
+        if (r.tramos && r.tramos.length) r.tramos = r.tramos.slice().reverse();
+        delete r.ancla;                       // apuntaba al borde de enfrente
+        anclarRango(r, host, ejeR, true);
+      });
+    }
+
+    // 2 · LA POSE que reproduce el reflejo. Se le pregunta al motor.
+    var objetivo = _firmaForma(pts0.map(function (q) {
+      var w = { x: Number(q.x), y: Number(q.y), z: Number(q.z) };
+      w[e] = -w[e];
+      return w;
+    }));
+    var poses = _posesEspejo(poseDe(comp), e);
+    copia.pose = poses[0];                     // la candidata sin desempatar
+    for (var i = 0; i < poses.length; i++) {
+      var prueba = JSON.parse(JSON.stringify(copia));
+      prueba.pose = poses[i];
+      var f = _firmaForma(_ptsDe(_expandirClon(prueba, host)));
+      if (f && f === objetivo) { copia.pose = poses[i]; out.formaExacta = true; break; }
+    }
+
+    // 3 · LA POSICIÓN. Dónde cayó la copia contra dónde tendría que caer (el
+    // reflejo del original). Si el reparto ya la llevó, la diferencia es 0 y no se
+    // escribe nada: en el eje del abanico un hint no tendría a quién mandarle.
+    var pls1 = _expandirClon(copia, host);
+    var centro1 = _centroUnion(pls1, e);
+    if (isFinite(centro0) && isFinite(centro1)) {
+      var delta = (-centro0) - centro1;
+      if (Math.abs(delta) <= 1e-6) out.posicionExacta = true;
+      else {
+        copia.pos_hint = copia.pos_hint || {};
+        copia.pos_hint[e] = (Number(copia.pos_hint[e]) || 0) + delta;
+        if (copia.pos_ancla) delete copia.pos_ancla[e];
+        // VERIFICAR, no suponer: hay ejes donde la posición no es nuestra (las
+        // capas de un cabezal). Ahí el hint se escribe y no pasa nada, y eso hay
+        // que decirlo.
+        var centro2 = _centroUnion(_expandirClon(copia, host), e);
+        out.posicionExacta = isFinite(centro2) && Math.abs((-centro0) - centro2) <= 0.01;
+      }
+    }
+    return out;
+  }
+
   function reanclarReceta(receta) {
     if (!receta || typeof receta !== 'object') return receta;
     var comps = receta.componentes;
@@ -4903,6 +5072,9 @@
     derivarPose: derivarPose,          // → { N, L, B, P, caraLocal, ladoLocal, orientacion }
     poseDe: poseDe,                    // pose EFECTIVA de un comp (pose > campos viejos)
     rotarPose90: rotarPose90,          // giro de 90° en un eje del MUNDO (cerrado en las 24)
+    // ESPEJO contra el plano medio del elemento en un eje del mundo. Devuelve
+    // { comp, formaExacta, posicionExacta } — ver su nota larga.
+    espejarComponente: espejarComponente,
     POSES_DEFAULT: POSES_DEFAULT,      // tabla de DATOS elemento × tipología
     poseDefault: poseDefault,
     // Lado que se ESTIRA/ancla (elección del componente → cascada catálogo → 'B'

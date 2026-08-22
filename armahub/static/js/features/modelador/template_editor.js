@@ -187,6 +187,12 @@
     // la barra ya colocada no respetaba.
     figura: '', tipologia: 'CBS', diam: null,
     tool: 'mover', snap: true, cotas: false,   // arranca en SELECCIONAR (flechita), no colocando
+    // ESPEJAR (24-ago): el gesto es de DOS TIEMPOS —el botón arma, el clic en una
+    // cara decide contra qué plano se refleja—, así que hay que recordar entre los
+    // dos que hay un espejo esperando. No es una herramienta (`tool`) porque no
+    // cambia lo que hace el clic sobre una barra: es un modo de UN solo clic que se
+    // consume y se apaga.
+    espejoPend: false,
     // `cotas` = UN SOLO INTERRUPTOR PARA LAS DOS CAPAS DE MEDIDAS (20-ago, pedido del
     // usuario). Antes eran dos cosas separadas —el botón del ribbon acotaba el
     // HORMIGÓN y SHIFT apretado mostraba las medidas por lado de la barra— y había
@@ -5990,6 +5996,10 @@
       // dibuja en la capa dedicada. Si hay un arrastre en curso, no interfiere.
       svg.addEventListener('mousemove', function (evt) {
         if (ST.dragMove || ST.dragMarco || ST.dragRango) return;
+        // ESPEJO ARMADO: la capa del ghost muestra la CARA bajo el cursor, que es
+        // contra la que se va a reflejar. Va antes del guard de "hay algo cargado"
+        // porque el espejo no carga ninguna figura: copia la que ya está.
+        if (ST.espejoPend) { _hoverEspejo(plano, svg, evt); return; }
         if (!_hayCargado()) { if (ST.ghost) _limpiarGhost(); return; }
         var sp = _svgPoint(svg, evt); if (!sp) return;
         ST.ultimoPlano = plano;
@@ -6099,6 +6109,20 @@
         // modo explícito, no se "roba" el clic para seleccionar).
         // CLAMP (tarea 3): si el clic cae FUERA del hormigón, NO se coloca nada
         // (mata "barras al aire"). El ghost ya avisó en rojo + not-allowed.
+        // ESPEJO ARMADO: este clic elige la CARA de destino y se consume. Va antes
+        // que todo lo demás —incluso antes de colocar— porque es un modo de un solo
+        // clic: mientras está armado, el clic no hace ninguna otra cosa.
+        if (ST.espejoPend) {
+          evt.preventDefault();
+          var fEsp = uv ? _caraCercana(plano, uv) : null;
+          if (!fEsp) {
+            _actualizarStatus('Espejar: acércate a una CARA del hormigón — el espejo se hace contra ella.');
+            return;
+          }
+          _espejarEnCara(fEsp);
+          return;
+        }
+
         if (ST.tool === 'colocar') {
           if (!uv) return;
           if (!_dentroDelBoundary(plano, uv)) { _actualizarStatus('Fuera del hormigón: clic dentro del contorno para colocar.'); return; }
@@ -6251,9 +6275,32 @@
     return isFinite(b.u0) ? b : null;
   }
 
+  // EL RÉGIMEN EN EL QUE VA A CAER EL GESTO: un clon del componente con el ancla de
+  // posición invalidada, o sea colocado por su `pos_hint` crudo. Es LA MISMA PUERTA
+  // que usa _anclarHintUI sobre el componente de verdad (reglas.anclarPosHint sin
+  // base = «esto que había ya no vale»), y por eso lo que se mida acá es lo que el
+  // usuario va a ver. Sin componente con hint no hace nada.
+  function _sinAnclaVieja(clon, host) {
+    var R = global.ModeladorReglas;
+    if (!R || typeof R.anclarPosHint !== 'function') return clon;
+    try { R.anclarPosHint(clon, host, true); } catch (e) { /* nunca romper el arrastre */ }
+    return clon;
+  }
+
   // BORDES DE LA PIEZA SOBRE UN EJE DEL MUNDO (cm), expandiendo un CLON con el
   // hormigon de ahora. Se usa a mitad de arrastre, cuando ST.ultimoOut todavia
   // muestra el estado anterior: preguntarle al motor es lo unico honesto.
+  //
+  // SE MIDE CON EL ANCLA DE POSICIÓN INVALIDADA, que es como la deja el gesto
+  // (25-ago, la deriva que quedaba: «el primero que ya desplacé se desplaza un
+  // poco»). El ancla guarda `base + hint` y `base` —dónde nace la pieza SIN
+  // traslación— depende del TAMAÑO: apenas el tirador reescribe la medida, el ancla
+  // vieja deja de describir la pieza y pasa a pinchar el CENTRO del grupo. Medir con
+  // ella era medir un estado que nunca iba a existir, porque el arrastre escribe
+  // pos_hint y la invalida: la corrección salía calculada en un régimen y aplicada
+  // en el otro. MEDIDO (estribo repartido a lo alto, 2º tirador de 40 cm arrastrado
+  // con el mouse): el borde ya colocado se corría 19,5 cm — medio centímetro por
+  // cada centímetro de medida. Invalidándola acá: 0.
   function _bordesEjeMundo(c, eje) {
     var R = global.ModeladorReglas, host = ST.receta && ST.receta.geometria;
     if (!R || !R.expandirComponente || !host || !c || !eje) return null;
@@ -6262,6 +6309,7 @@
       var clon = JSON.parse(JSON.stringify(c, function (k, v) {
         return (String(k).charAt(0) === '_') ? undefined : v;
       }));
+      _sinAnclaVieja(clon, host);
       pls = R.expandirComponente(clon, host) || [];
     } catch (e) { return null; }
     var pl = pls[0];
@@ -6293,11 +6341,19 @@
     var R = global.ModeladorReglas, host = ST.receta && ST.receta.geometria;
     if (!R || !R.expandirComponente || !host) return;
     var PROBE = 5;   // cm del sondeo: grande contra redondeos, chico contra avisos
-    // expande un CLON (sin campos runtime _*) con un Δ extra opcional en un lado
+    // expande un CLON (sin campos runtime _*) con un Δ extra opcional en un lado.
+    // EL SONDEO MIDE EN EL MISMO RÉGIMEN QUE EL ARRASTRE (25-ago): con el ancla de
+    // posición viva, el motor pincha el CENTRO del grupo y TODO candidato mueve los
+    // dos bordes por igual — el sondeo devolvía ratio 0,5 para los dos extremos y el
+    // desempate «seguí el extremo ya escrito» dejaba el tirador cargando por el lado
+    // contrario al que el usuario agarró. MEDIDO: un 3er gesto de 25 cm sobre el
+    // borde 'fin' seguía escribiendo extremo 'ini' y la pieza se achicaba centrada,
+    // 12,5 cm de deriva del borde opuesto en un solo salto.
     function expandir(mod) {
       var clon = JSON.parse(JSON.stringify(c, function (k, val) {
         return (String(k).charAt(0) === '_') ? undefined : val;
       }));
+      _sinAnclaVieja(clon, host);
       if (mod) {
         clon.dims = clon.dims || {};
         var d = clon.dims[mod.L];
@@ -6521,9 +6577,18 @@
         if (isFinite(corr) && corr) {
           c.pos_hint = c.pos_hint || {};
           c.pos_hint[dm.ejeMundo] = (Number(c.pos_hint[dm.ejeMundo]) || 0) + corr;
-          _anclarHintUI(c);   // el ancla vieja ya no vale; el motor la re-estampa
         }
       }
+      // EL ANCLA SE INVALIDA AUNQUE LA CORRECCIÓN HAYA DADO 0 (25-ago, la deriva que
+      // quedaba). Cambiar el TAMAÑO ya la dejó vieja: guarda `base + hint` y `base`
+      // depende del tamaño. Dejarla viva no es «no tocar nada» — el motor la resuelve
+      // en la regeneración siguiente, pincha el CENTRO del grupo y REESCRIBE el hint
+      // con lo que le dé, así que la pieza se achica hacia adentro por los dos lados.
+      // MEDIDO: medio centímetro de borde opuesto por cada centímetro de medida, o
+      // sea 19,5 cm en un arrastre de 40 hecho con el mouse (paso a paso) y 12,5 en
+      // uno de 25 de un solo salto. La re-estampa el motor al expandir, ya con el
+      // tamaño y la posición nuevos.
+      _anclarHintUI(c);
     }
     _actualizarStatus('Lado ' + dm.L + ' = ' + medida + ' cm (' +
       (dm.extremo === 'ini' ? '← ini' : 'fin →') + ')' +
@@ -8512,6 +8577,97 @@
     _regenerar(); _renderPanel();
   }
 
+  // ==========================================================================
+  // ESPEJAR LA SELECCIÓN (24-ago, pedido del usuario)
+  // --------------------------------------------------------------------------
+  // «En muros el lado derecho será igual al izquierdo (o similar), entonces sería
+  // muy conveniente poder espejar algunos componentes como los cabezales, estribos
+  // y trabas de confinamiento». En su muro real son CUATRO componentes por extremo
+  // —dos de cabezales con dos capas cada uno y dos de estribos de confinamiento—
+  // que hoy hay que rehacer a mano en el otro testero.
+  //
+  // DOS TIEMPOS, PORQUE EL EJE NO SE ADIVINA. Una pieza puede espejarse contra tres
+  // planos distintos y el editor no tiene forma de saber cuál quiere el usuario:
+  // preguntarlo con un desplegable sería más clics y menos claro que señalarlo. Así
+  // que el botón ARMA y el usuario CLICA LA CARA de destino en cualquiera de las
+  // tres vistas —las mismas cuatro aristas que ya resaltan al colocar una barra—.
+  // El eje sale de la arista clicada, explícito, sin inferencias: es la respuesta a
+  // «para las barras distribuidas en otros sentidos se puede enredar el comando».
+  //
+  // LA COPIA ES UNA COPIA Y NADA MÁS (decisión del usuario): misma tipología, mismo
+  // sufijo, sin ligadura con la original — «si vemos utilidad en agregar más
+  // opciones lo hacemos después». Y si la pieza es simétrica en ese eje, la copia
+  // cae encima, sólo dada vuelta: también decisión suya, «ahí obligamos al usuario
+  // a ser cuidadoso».
+  //
+  // EL CÁLCULO NO VIVE ACÁ: lo hace reglas.espejarComponente, que es donde está el
+  // modelo de poses y el de anclajes. Acá sólo se elige el eje y se inserta.
+  // ==========================================================================
+  function _marcarBotonEspejo() {
+    var b = $('te_btnEspejar');
+    if (b) b.classList.toggle('on', !!ST.espejoPend);
+  }
+  function _armarEspejo() {
+    if (ST.selCi < 0) {
+      _actualizarStatus('Espejar: selecciona primero la barra que quieres copiar al otro lado.');
+      return;
+    }
+    ST.espejoPend = true;
+    _marcarBotonEspejo();
+    _actualizarStatus('Espejar: clic en la CARA de destino (cualquier arista del hormigón, en cualquier vista). Esc para salir.');
+  }
+  function _salirEspejo() {
+    if (!ST.espejoPend) return;
+    ST.espejoPend = false;
+    _marcarBotonEspejo();
+    _limpiarGhost();
+    _actualizarStatus('Espejar cancelado.');
+  }
+  // Resaltado de la cara bajo el cursor mientras el espejo espera. Reusa el mismo
+  // dibujo que el snap de cara del colocador: si el usuario ya aprendió a leer ese
+  // resaltado, no tiene que aprender otro.
+  function _hoverEspejo(plano, svg, evt) {
+    Object.keys(SVG_ID).forEach(function (k) {
+      var s = $(SVG_ID[k]); if (!s) return;
+      var g = s.querySelector('.te-ghost-layer');
+      if (g) { while (g.firstChild) g.removeChild(g.firstChild); }
+    });
+    var layer = _ghostLayer(svg); if (!layer) return;
+    var sp = _svgPoint(svg, evt); if (!sp) return;
+    var uv = _pixelToUV(plano, sp.px, sp.py); if (!uv) return;
+    var f = _caraCercana(plano, uv);
+    ST.caraHi = f ? {
+      plano: plano, cara: f.cara, edge: f.edge, orient: f.orient,
+      axis: f.axis, sign: f.sign, pos: f.pos, a: f.a, b: f.b
+    } : null;
+    if (f) _dibujarCaraHiEnCapa(layer, plano, f, '#d500f9');
+  }
+  function _espejarEnCara(f) {
+    var ci = ST.selCi;
+    var c = ST.receta && ST.receta.componentes && ST.receta.componentes[ci];
+    var R = global.ModeladorReglas;
+    if (!c || !R || typeof R.espejarComponente !== 'function') { _salirEspejo(); return; }
+    var res = R.espejarComponente(c, _hostDeReceta(), f.axis);
+    if (!res || !res.comp) {
+      _actualizarStatus('No se pudo espejar esa barra contra esa cara.');
+      _salirEspejo();
+      return;
+    }
+    _pushUndo();
+    ST.receta.componentes.splice(ci + 1, 0, res.comp);
+    ST.selCi = ci + 1;
+    ST.espejoPend = false;
+    _marcarBotonEspejo();
+    _limpiarGhost();
+    _regenerar(); _renderPanel();
+    // SE DICE LO QUE NO SE PUDO. Hay ejes donde la posición no es una distancia a
+    // una cara sino el sistema de capas: ahí la copia queda donde estaba, sólo dada
+    // vuelta, y callarlo dejaría al usuario buscando una barra que nunca se movió.
+    var aviso = 'Copia espejada contra la cara ' + (f.cara || '') + '.';
+    if (!res.posicionExacta) aviso += ' OJO: en ese eje la posición la manda el reparto o las capas, así que la copia quedó donde estaba la original — muévela desde la ficha.';
+    _actualizarStatus(aviso);
+  }
+
   function _duplicar(ci) {
     var c = ST.receta.componentes[ci]; if (!c) return;
     _pushUndo();
@@ -9097,6 +9253,15 @@
     // si un día #te_ctools ya viniera marcado, el botón Borrar se quedaba sin listener.
     var del = $('te_btnBorrar');
     if (del && !del._teBound) { del._teBound = true; del.addEventListener('click', function () { _borrarSeleccion(); }); }
+    // ESPEJAR: el mismo botón arma y desarma (apretarlo dos veces sale, igual que
+    // Esc). Va con el mismo guard propio que Borrar, por la misma razón.
+    var esp = $('te_btnEspejar');
+    if (esp && !esp._teBound) {
+      esp._teBound = true;
+      esp.addEventListener('click', function () {
+        if (ST.espejoPend) _salirEspejo(); else _armarEspejo();
+      });
+    }
 
     // El botón "⟳ Rotar" del ribbon SE ELIMINÓ (decisión del usuario): duplicaba el
     // "+90°" de la fila "Rotación °" del panel del componente. La acción sigue viva
@@ -11428,6 +11593,7 @@
     var bd = $('te_backdrop');
     if (!bd || !bd.classList.contains('on')) return;
     if (_vistaMaximizada()) { _maximizarVista(null); return; }
+    if (ST.espejoPend) { _salirEspejo(); return; }
     if (ST.tool === 'colocar') { _salirModoColocacion(); return; }
     global.templateEditorCerrar();
   });
@@ -12442,6 +12608,8 @@
     _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
     _caraDeEje: _caraDeEje,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
+    // ESPEJAR: la suite maneja el gesto entero (armar, elegir cara, soltar).
+    _armarEspejo: _armarEspejo, _salirEspejo: _salirEspejo, _espejarEnCara: _espejarEnCara,
     _ejeDistDe: _ejeDistDe,                                     // eje de reparto (x | z si volteada)
     _transformDesdeCamara: _transformDesdeCamara,               // G7 — overlay ≡ cámara orto
     _signosPantalla: _signosPantalla, _pixelToUV: _pixelToUV, _uvToPixel: _uvToPixel,

@@ -418,7 +418,14 @@
   #te_modal .te-tjdel{position:absolute;top:1px;right:1px;border:none;background:none;
     font-size:11px;line-height:1;padding:2px 3px;border-radius:4px;cursor:pointer;
     opacity:0;transition:opacity .12s,background .12s}
-  #te_modal .te-comp:hover .te-tjdel,#te_modal .te-comp.sel .te-tjdel{opacity:.55}
+  /* SE VE, NO SE ADIVINA (24-ago). Estaba en .55 en los dos casos y el usuario
+     -que la habia pedido- la dio por no implementada: a ese gris, en 11 px y sobre
+     una teja chica, no se lee. En la teja SELECCIONADA sube a opaca (es la unica
+     que puede borrarse desde ahi, asi que ahi tiene que gritar) y al pasar el
+     cursor por cualquier otra queda a .7. La teja no crece: la papelera sigue
+     superpuesta en la esquina, fuera del flujo. */
+  #te_modal .te-comp:hover .te-tjdel{opacity:.7}
+  #te_modal .te-comp.sel .te-tjdel{opacity:1}
   #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14))}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
@@ -1426,6 +1433,14 @@
         <button class="te-ctool" data-toggle="cotas" title="Cotas del elemento + medidas por lado de la barra seleccionada (atajo: SHIFT)">📐 Cotas</button>
         <span class="te-divv"></span>
         <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
+        <!-- ESPEJAR (24-ago, pedido del usuario): "en muros el lado derecho sera igual
+             al izquierdo, seria muy conveniente poder espejar cabezales, estribos y
+             trabas de confinamiento". Va junto a Borrar porque, como el, actua sobre
+             LA SELECCION -- no es un interruptor de vista como snap/cotas/fondo.
+             El gesto es de dos tiempos (boton, despues la cara de destino), asi que el
+             boton QUEDA ENCENDIDO mientras espera el clic y el titulo lo dice: sin eso
+             el usuario aprieta y no pasa nada visible. -->
+        <button class="te-ctool" id="te_btnEspejar" title="Espejar la barra seleccionada: aprieta aqui y despues clic en la cara de destino. La copia queda a la misma distancia de esa cara, dada vuelta.">⇄ Espejar</button>
         <span class="te-divv"></span>
         <!-- FONDO (●◐○ = oscuro/medio/claro) — MUDANZA del 21-ago desde el ribbon:
              mismo id, mismas tres opciones y el mismo handler de template_editor.js
