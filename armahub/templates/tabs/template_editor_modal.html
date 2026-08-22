@@ -1056,6 +1056,22 @@
   #te_modal #te_quad.tool-colocar .te-vista.te-ghost-block:not(.d3){cursor:not-allowed}
   /* SNAP DE CARA — cara del hormigón resaltada bajo el cursor (línea gruesa). El
      color lo pone JS según la tipología activa; aquí el grosor y el glow. */
+  /* ESPEJAR — LAS CARAS COMO BANDAS CLICABLES (25-ago). El gesto pide "clic en la
+     cara de destino" y la primera version no pintaba ninguna: habia que acertarle a
+     una franja de 9 cm, que en un muro de 600 son nueve pixeles. La banda ES el
+     blanco, y lleva escrito su nombre de obra para saber contra que se esta
+     espejando antes de soltar el clic. Morado: el color que el editor ya usa para
+     "esto es un preview, todavia no existe" (el ghost del colocador). */
+  #te_modal .te-esp-band{fill:rgba(213,0,249,.16);stroke:#d500f9;stroke-width:1.2;
+    cursor:pointer;transition:fill .1s}
+  #te_modal .te-esp-band:hover{fill:rgba(213,0,249,.45)}
+  #te_modal .te-esp-lbl{fill:#d500f9;font:700 9.5px "Segoe UI",system-ui,sans-serif;
+    text-anchor:middle;dominant-baseline:middle;pointer-events:none;paint-order:stroke;
+    stroke:var(--te-ov-cota-bg);stroke-width:2.5;stroke-linejoin:round}
+  /* Boton de la barra de herramientas que HOY no aplica (espejar sin barra elegida).
+     No se usa `disabled`: el boton tiene que seguir siendo clicable para poder
+     explicar por que no se puede, que es justo lo que faltaba. */
+  #te_modal .te-ctool.te-off{opacity:.42}
   #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
     filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
   /* BOTÓN CONTEXTUAL DE GIRO (R) — flota sobre la pieza SELECCIONADA en los

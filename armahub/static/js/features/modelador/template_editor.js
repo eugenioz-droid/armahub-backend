@@ -3218,6 +3218,22 @@
     return best;
   }
 
+  // La cara más cercana al cursor SIN umbral: siempre devuelve una de las cuatro.
+  // Es lo que quiere un gesto de «elegí una cara» —el usuario ya decidió que va a
+  // elegir una; hacerle acertar una franja sólo agrega frustración—, al revés del
+  // snap del colocador, donde la banda de captura existe justamente para poder NO
+  // elegir ninguna.
+  function _caraMasCercana(plano, uv) {
+    if (!uv) return null;
+    var faces = _facesDeVista(plano);
+    var best = null, bestD = Infinity;
+    faces.forEach(function (f) {
+      var d = (f.orient === 'h') ? Math.abs(uv.v - f.pos) : Math.abs(uv.u - f.pos);
+      if (d < bestD) { bestD = d; best = f; }
+    });
+    return best;
+  }
+
   // ==========================================================================
   // GHOST (§INTERACCIÓN-2.0 tarea 1) — previsualización que SIGUE al cursor con la
   // forma REAL de la figura cargada, el COLOR de la tipología y un BADGE "CBS ø16".
@@ -5894,6 +5910,11 @@
     ST.selCi = ci;
     _renderSeleccion();
     _redibujar2D(ST.ultimoOut);
+    // El boton de espejar se prende y se apaga con la SELECCION (sin barra elegida
+    // no hay nada que espejar). Va aca porque _seleccionar es la unica puerta por la
+    // que la seleccion se mueve; cablearlo en cada llamador dejaria botones mintiendo.
+    _marcarBotonEspejo();
+    if (ST.espejoPend && ci < 0) _salirEspejo();
     _actualizarStatus();
   }
 
@@ -6114,11 +6135,13 @@
         // clic: mientras está armado, el clic no hace ninguna otra cosa.
         if (ST.espejoPend) {
           evt.preventDefault();
-          var fEsp = uv ? _caraCercana(plano, uv) : null;
-          if (!fEsp) {
-            _actualizarStatus('Espejar: acércate a una CARA del hormigón — el espejo se hace contra ella.');
-            return;
-          }
+          // Lo normal es clicar la BANDA (que trae su propio listener). Esto es la
+          // red: un clic en cualquier otra parte de la vista toma la cara MÁS
+          // CERCANA, sin umbral. La primera versión exigía caer dentro de 9 cm de la
+          // arista —9 píxeles en un muro de 600— y por eso «no pude seleccionar la
+          // cara»: no hay puntería que valga, así que ya no hace falta tenerla.
+          var fEsp = uv ? _caraMasCercana(plano, uv) : null;
+          if (!fEsp) { _actualizarStatus('Espejar: clic DENTRO de una de las tres vistas.'); return; }
           _espejarEnCara(fEsp);
           return;
         }
@@ -8603,23 +8626,120 @@
   // EL CÁLCULO NO VIVE ACÁ: lo hace reglas.espejarComponente, que es donde está el
   // modelo de poses y el de anclajes. Acá sólo se elige el eje y se inserta.
   // ==========================================================================
+  // LAS CARAS SE PINTAN, NO SE ADIVINAN (25-ago). Primera versión: el botón armaba
+  // y había que acertarle a una franja de 9 cm alrededor de una arista, sin nada en
+  // pantalla que dijera dónde. El usuario: «no hay ayudas ni nada por el estilo,
+  // tampoco sé si el plano de trabajo es el correcto o en cuál me deja seleccionar
+  // la cara. Tampoco pude seleccionar la cara». Y tenía razón: 9 cm de un muro de
+  // 600 son 9 píxeles, o sea un blanco invisible e imposible de acertar.
+  //
+  // AHORA: mientras el espejo espera, LAS TRES VISTAS pintan sus cuatro caras como
+  // BANDAS anchas, translúcidas y ROTULADAS con su nombre de obra (el mismo que usa
+  // el desplazamiento medido: «testero inicio», «cara frontal»…). La banda ES el
+  // blanco: se clica ella, no una coordenada. Así queda contestado de una vez dónde
+  // hay que clicar, en qué vista, y contra qué se va a espejar.
+  //
+  // LAS TRES VISTAS A LA VEZ, a propósito: cada una muestra cuatro de las seis
+  // caras, y entre las tres están todas. El usuario elige en la que esté mirando en
+  // vez de tener que deducir cuál es «la vista correcta».
+  function _capaEspejo(svg) {
+    if (!svg) return null;
+    var g = svg.querySelector('.te-espejo-layer');
+    if (!g) { g = _svgEl('g', { 'class': 'te-espejo-layer' }); svg.appendChild(g); }
+    else if (g !== svg.lastChild) svg.appendChild(g);
+    return g;
+  }
+  function _limpiarCarasEspejo() {
+    Object.keys(SVG_ID).forEach(function (k) {
+      var s = $(SVG_ID[k]); if (!s) return;
+      var g = s.querySelector('.te-espejo-layer');
+      if (g && g.parentNode) g.parentNode.removeChild(g);
+    });
+  }
+  // eje + signo → id de las seis caras, para poder pedirle su nombre de obra.
+  function _idCara6De(axis, sign) {
+    if (axis === 'y') return (sign > 0) ? 'sup' : 'inf';
+    if (axis === 'z') return (sign > 0) ? 'lat+' : 'lat-';
+    return (sign > 0) ? 'ext+' : 'ext-';
+  }
+  function _pintarCarasEspejo() {
+    _limpiarCarasEspejo();
+    if (!ST.espejoPend) return;
+    var GRUESO = 17;   // px de la banda: un blanco que se acierta sin puntería
+    Object.keys(SVG_ID).forEach(function (plano) {
+      var svg = $(SVG_ID[plano]); if (!svg) return;
+      var faces = _facesDeVista(plano);
+      if (!faces || !faces.length) return;
+      var centro = _uvToPixel(plano, 0, 0);
+      if (!centro) return;
+      var g = _capaEspejo(svg); if (!g) return;
+      faces.forEach(function (f) {
+        var p1, p2;
+        if (f.orient === 'h') { p1 = _uvToPixel(plano, f.a, f.pos); p2 = _uvToPixel(plano, f.b, f.pos); }
+        else { p1 = _uvToPixel(plano, f.pos, f.a); p2 = _uvToPixel(plano, f.pos, f.b); }
+        if (!p1 || !p2) return;
+        var x0 = Math.min(p1.px, p2.px), x1 = Math.max(p1.px, p2.px);
+        var y0 = Math.min(p1.py, p2.py), y1 = Math.max(p1.py, p2.py);
+        // LA BANDA VA HACIA ADENTRO del hormigón —hacia el centro de la vista—: por
+        // fuera se pisaría con las cotas y con el borde del cuadrante. El "adentro"
+        // se pregunta comparando con el centro y no con el signo del eje, porque hay
+        // cámaras que miran al revés y ahí el borde de la derecha no es el máximo.
+        var r;
+        if (f.orient === 'h') {
+          var abajo = (y0 < centro.py);      // la cara está arriba en pantalla
+          r = { x: x0, y: abajo ? y0 : (y0 - GRUESO), w: Math.max(4, x1 - x0), h: GRUESO };
+        } else {
+          var derecha = (x0 < centro.px);    // la cara está a la izquierda
+          r = { x: derecha ? x0 : (x0 - GRUESO), y: y0, w: GRUESO, h: Math.max(4, y1 - y0) };
+        }
+        var nombre = _nombreCara6(_idCara6De(f.axis, f.sign));
+        var rect = _svgEl('rect', {
+          'class': 'te-esp-band', x: r.x.toFixed(1), y: r.y.toFixed(1),
+          width: r.w.toFixed(1), height: r.h.toFixed(1), rx: 3,
+          'data-esp-axis': f.axis, 'data-esp-cara': f.cara
+        });
+        rect.addEventListener('mousedown', function (ev) {
+          ev.stopPropagation(); ev.preventDefault();
+          _espejarEnCara(f);
+        });
+        var tt = _svgEl('title', {});
+        tt.textContent = 'Espejar contra ' + nombre;
+        rect.appendChild(tt);
+        g.appendChild(rect);
+        // El rótulo va DENTRO de la banda; en las verticales, girado.
+        var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        var txt = _svgEl('text', { 'class': 'te-esp-lbl', x: cx.toFixed(1), y: cy.toFixed(1) });
+        if (f.orient === 'v') txt.setAttribute('transform', 'rotate(-90 ' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ')');
+        txt.textContent = nombre;
+        g.appendChild(txt);
+      });
+    });
+  }
+
+  // EL BOTÓN DICE SI SE PUEDE, ANTES DE APRETARLO. Sin barra seleccionada no hay
+  // nada que espejar: apretarlo dejaba un mensaje en la barra de estado y ninguna
+  // otra señal, así que se leía como «el botón no funciona». Apagado se ve apagado.
   function _marcarBotonEspejo() {
     var b = $('te_btnEspejar');
-    if (b) b.classList.toggle('on', !!ST.espejoPend);
+    if (!b) return;
+    b.classList.toggle('on', !!ST.espejoPend);
+    b.classList.toggle('te-off', ST.selCi < 0);
   }
   function _armarEspejo() {
     if (ST.selCi < 0) {
-      _actualizarStatus('Espejar: selecciona primero la barra que quieres copiar al otro lado.');
+      _actualizarStatus('ESPEJAR — primero elige la barra: clic en su caluga o en la barra misma. Después el botón te deja elegir la cara.');
       return;
     }
     ST.espejoPend = true;
     _marcarBotonEspejo();
-    _actualizarStatus('Espejar: clic en la CARA de destino (cualquier arista del hormigón, en cualquier vista). Esc para salir.');
+    _pintarCarasEspejo();
+    _actualizarStatus('ESPEJAR — clic en la banda MORADA de la cara contra la que quieres espejar. Están en las tres vistas y cada una dice cuál es. Esc para salir.');
   }
   function _salirEspejo() {
     if (!ST.espejoPend) return;
     ST.espejoPend = false;
     _marcarBotonEspejo();
+    _limpiarCarasEspejo();
     _limpiarGhost();
     _actualizarStatus('Espejar cancelado.');
   }
@@ -8635,7 +8755,7 @@
     var layer = _ghostLayer(svg); if (!layer) return;
     var sp = _svgPoint(svg, evt); if (!sp) return;
     var uv = _pixelToUV(plano, sp.px, sp.py); if (!uv) return;
-    var f = _caraCercana(plano, uv);
+    var f = _caraMasCercana(plano, uv);
     ST.caraHi = f ? {
       plano: plano, cara: f.cara, edge: f.edge, orient: f.orient,
       axis: f.axis, sign: f.sign, pos: f.pos, a: f.a, b: f.b
@@ -8658,6 +8778,7 @@
     ST.selCi = ci + 1;
     ST.espejoPend = false;
     _marcarBotonEspejo();
+    _limpiarCarasEspejo();
     _limpiarGhost();
     _regenerar(); _renderPanel();
     // SE DICE LO QUE NO SE PUDO. Hay ejes donde la posición no es una distancia a
