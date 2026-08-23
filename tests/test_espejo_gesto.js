@@ -13,8 +13,10 @@
 // discriminante es la cara que se clica.
 //
 // QUÉ PROTEGE:
-//   A. SIN SELECCIÓN NO SE ARMA — apretar el botón sin barra elegida avisa y no
-//      deja el editor en un modo del que haya que salir.
+//   A. SIN SELECCIÓN, ARMA Y ESPERA — apretar el botón sin barra elegida no es un
+//      error: pide la barra y sigue armado.
+//   E+F. EL ORDEN NO IMPORTA — botón y después barra llega al mismo lugar que barra
+//      y después botón, y un clic en una cara sin barra elegida no tumba el modo.
 //   B. EL GESTO COMPLETO — armar, clic en una cara, y aparece la copia espejada
 //      justo después del original, seleccionada, con el modo ya apagado.
 //   C. SE PUEDE SALIR — Esc / volver a apretar el botón desarma sin crear nada.
@@ -123,12 +125,16 @@ function regen() {
 const CARA_TESTERO = { cara: 'extremo', axis: 'x', sign: 1, edge: 'right', orient: 'v' };
 const nComp = () => ST.receta.componentes.length;
 
-// ================================================== A · SIN SELECCIÓN NO SE ARMA
-console.log('A · el botón sin barra seleccionada');
+// ============================================ A · SIN SELECCIÓN, ARMA Y ESPERA
+// (25-ago) Antes NO armaba y se quedaba mudo: el usuario apretaba el botón, elegía
+// la barra y no pasaba nada — «así que nada ocurre». Una herramienta se aprieta
+// primero y se usa después, como el resto del editor, así que el modo arma igual y
+// espera lo que falte.
+console.log('A · el botón sin barra seleccionada arma y espera');
 {
   montar();
   TE._armarEspejo();
-  ok(ST.espejoPend === false, 'no queda armado');
+  ok(ST.espejoPend === true, 'queda armado esperando la barra');
   ok(nComp() === 1, 'y no creó nada');
 }
 
@@ -177,6 +183,39 @@ console.log('D · el modo se consume: un clic, una copia');
   // Un segundo clic en la vista, con el modo YA apagado, no puede espejar de nuevo.
   ok(ST.espejoPend === false, 'tras espejar el modo está apagado');
   ok(tras1 === 2, 'y hay exactamente una copia (=' + tras1 + ')');
+}
+
+// ===================================================== E . EL ORDEN NO IMPORTA
+// (25-ago) La primera version exigia elegir la barra ANTES de apretar el boton: sin
+// seleccion no armaba y se quedaba muda. El usuario hizo lo natural -"presiono el
+// boton, selecciono un componente y no aparecen las ayudas ni nada, asi que nada
+// ocurre"-, porque una herramienta se aprieta primero y se usa despues, como el
+// resto del editor.
+console.log('');
+console.log('E . apretar el boton primero y elegir la barra despues');
+{
+  montar();
+  TE._armarEspejo();
+  ok(ST.espejoPend === true, 'arma aunque no haya nada seleccionado');
+  ok(nComp() === 1, 'sin crear nada, claro');
+
+  ST.selCi = 0;                      // el usuario elige la barra con el modo ya armado
+  ok(ST.espejoPend === true, 'elegir la barra no lo desarma');
+  TE._espejarEnCara(CARA_TESTERO);
+  ok(nComp() === 2, 'y el clic en la cara espeja igual que por el otro camino');
+  ok(ST.espejoPend === false, 'dejando el modo apagado');
+}
+
+// ======================================== F . SIN BARRA ELEGIDA NO ESPEJA NADA
+console.log('');
+console.log('F . con el modo armado pero sin barra, el clic en una cara no crea nada');
+{
+  montar();
+  TE._armarEspejo();
+  ST.selCi = -1;
+  TE._espejarEnCara(CARA_TESTERO);
+  ok(nComp() === 1, 'no se creo ninguna copia');
+  ok(ST.espejoPend === true, 'y el modo sigue esperando la barra, no se cae');
 }
 
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');

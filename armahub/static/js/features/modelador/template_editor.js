@@ -6144,6 +6144,17 @@
         // clic: mientras está armado, el clic no hace ninguna otra cosa.
         if (ST.espejoPend) {
           evt.preventDefault();
+          // UN CLIC SOBRE UNA BARRA LA ELIGE, no espeja. Es la otra mitad de «el
+          // orden no importa»: con el modo ya armado, lo que falta es decirle a QUÉ
+          // barra, y el gesto para eso es el de siempre. Sólo el hit exacto de la
+          // barra cuenta —no el pick por proximidad—, porque las caras viven pegadas
+          // al hormigón y ahí siempre hay barras cerca.
+          var ciEsp = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-ci');
+          if (ciEsp != null && evt.target.getAttribute('data-hit')) { _seleccionar(Number(ciEsp)); return; }
+          if (ST.selCi < 0) {
+            _actualizarStatus('ESPEJAR — elige primero la barra: clic sobre ella o sobre su caluga.');
+            return;
+          }
           // Lo normal es clicar la BANDA (que trae su propio listener). Esto es la
           // red: un clic en cualquier otra parte de la vista toma la cara MÁS
           // CERCANA, sin umbral. La primera versión exigía caer dentro de 9 cm de la
@@ -8673,8 +8684,10 @@
   }
   function _pintarCarasEspejo() {
     _limpiarCarasEspejo();
-    if (!ST.espejoPend) return;
-    var GRUESO = 17;   // px de la banda: un blanco que se acierta sin puntería
+    // Sin barra elegida no hay nada que espejar: el modo sigue armado esperándola y
+    // las caras aparecen recién cuando hay a quién aplicárselas. Pintarlas antes
+    // prometería una acción que el clic no podría cumplir.
+    if (!ST.espejoPend || ST.selCi < 0) return;
     Object.keys(SVG_ID).forEach(function (plano) {
       var svg = $(SVG_ID[plano]); if (!svg) return;
       var faces = _facesDeVista(plano);
@@ -8689,6 +8702,13 @@
         if (!p1 || !p2) return;
         var x0 = Math.min(p1.px, p2.px), x1 = Math.max(p1.px, p2.px);
         var y0 = Math.min(p1.py, p2.py), y1 = Math.max(p1.py, p2.py);
+        // EL GRUESO SE MIDE CONTRA LA VISTA. 17 px fijos son cómodos en la elevación
+        // de un muro, pero el canto del mismo muro son 20 cm — NUEVE píxeles— y ahí
+        // las dos bandas se montaban una sobre otra y tapaban el elemento entero.
+        // Se toma un tercio de lo que hay a lo ancho, con techo y piso.
+        var perp = (f.orient === 'h') ? Math.abs(_uvToPixel(plano, 0, 0).py - _uvToPixel(plano, 0, f.pos).py) * 2
+          : Math.abs(_uvToPixel(plano, 0, 0).px - _uvToPixel(plano, f.pos, 0).px) * 2;
+        var GRUESO = Math.max(4, Math.min(17, perp * 0.34));
         // LA BANDA VA HACIA ADENTRO del hormigón —hacia el centro de la vista—: por
         // fuera se pisaría con las cotas y con el borde del cuadrante. El "adentro"
         // se pregunta comparando con el centro y no con el signo del eje, porque hay
@@ -8734,15 +8754,20 @@
     b.classList.toggle('on', !!ST.espejoPend);
     b.classList.toggle('te-off', ST.selCi < 0);
   }
+  // EL ORDEN NO IMPORTA (25-ago). La primera versión exigía elegir la barra ANTES de
+  // apretar el botón: si no había selección no armaba y se quedaba muda. El usuario
+  // hizo lo natural —«presiono el botón, selecciono un componente y no aparecen las
+  // ayudas ni nada, así que nada ocurre»— porque una herramienta se aprieta primero y
+  // se usa después, como el resto del editor. Ahora el modo se arma siempre y ESPERA
+  // lo que falte: sin barra elegida pide la barra, y en cuanto hay una aparecen las
+  // bandas solas (el repintado de la vista las trae, ver _redibujar2D).
   function _armarEspejo() {
-    if (ST.selCi < 0) {
-      _actualizarStatus('ESPEJAR — primero elige la barra: clic en su caluga o en la barra misma. Después el botón te deja elegir la cara.');
-      return;
-    }
     ST.espejoPend = true;
     _marcarBotonEspejo();
     _pintarCarasEspejo();
-    _actualizarStatus('ESPEJAR — clic en la banda MORADA de la cara contra la que quieres espejar. Están en las tres vistas y cada una dice cuál es. Esc para salir.');
+    _actualizarStatus(ST.selCi < 0
+      ? 'ESPEJAR — elige la barra que quieres copiar (clic en la barra o en su caluga). Después aparecen las caras. Esc para salir.'
+      : 'ESPEJAR — clic en la banda MORADA de la cara contra la que quieres espejar. Están en las tres vistas y cada una dice cuál es. Esc para salir.');
   }
   function _salirEspejo() {
     if (!ST.espejoPend) return;
@@ -8779,8 +8804,15 @@
     if (!ST.espejoPend) return;
     var ci = ST.selCi;
     var c = ST.receta && ST.receta.componentes && ST.receta.componentes[ci];
+    // FALTA UN DATO, NO ES UN ERROR DEL GESTO: sin barra elegida el modo SIGUE
+    // armado esperandola. Cancelarlo aca obligaria a volver a apretar el boton, que
+    // es exactamente la friccion que este gesto vino a sacar.
+    if (!c) {
+      _actualizarStatus('ESPEJAR — elige primero la barra: clic sobre ella o sobre su caluga.');
+      return;
+    }
     var R = global.ModeladorReglas;
-    if (!c || !R || typeof R.espejarComponente !== 'function') { _salirEspejo(); return; }
+    if (!R || typeof R.espejarComponente !== 'function') { _salirEspejo(); return; }
     var res = R.espejarComponente(c, _hostDeReceta(), f.axis);
     if (!res || !res.comp) {
       _actualizarStatus('No se pudo espejar esa barra contra esa cara.');
