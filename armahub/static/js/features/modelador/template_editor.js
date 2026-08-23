@@ -193,6 +193,22 @@
     // cambia lo que hace el clic sobre una barra: es un modo de UN solo clic que se
     // consume y se apaga.
     espejoPend: false,
+    // SELECCIÓN MÚLTIPLE (25-ago) — `selCi` SIGUE SIENDO LA SELECCIÓN. Estos son los
+    // componentes que van ADEMÁS, y sólo los miran tres cosas: el resaltado (tejas,
+    // 2D y 3D), el espejo y el borrado. Todo lo demás —la ficha, los tiradores, el
+    // abanico, girar, duplicar— sigue trabajando sobre `selCi` y no se enteró.
+    //
+    // POR QUÉ ASÍ Y NO UN ARRAY. `selCi` lo leen 65 sitios de este archivo, y varios
+    // no tienen un significado plural: la ficha muestra UNA barra, el tirador estira
+    // UNA, el abanico es el de UNA. Convertirlo en lista habría pedido decidir qué
+    // hace cada uno de esos 65 con cuatro barras a la vez —y equivocarse en uno solo
+    // es una regresión silenciosa—. Con un acompañante, lo que existía no cambia de
+    // significado y lo plural se declara donde de verdad lo es.
+    //
+    // SE VACÍA en cuanto la lista de componentes se mueve (crear, borrar, duplicar,
+    // reordenar, deshacer): son ÍNDICES, y un índice que sobrevive a un splice apunta
+    // a otra barra. Antes que arrastrar índices podridos, se suelta la selección.
+    selExtra: [],
     // `cotas` = UN SOLO INTERRUPTOR PARA LAS DOS CAPAS DE MEDIDAS (20-ago, pedido del
     // usuario). Antes eran dos cosas separadas —el botón del ribbon acotaba el
     // HORMIGÓN y SHIFT apretado mostraba las medidas por lado de la barra— y había
@@ -2217,6 +2233,9 @@
     if (!ST.receta) return;
     try {
       ST.undoStack.push({ receta: JSON.parse(JSON.stringify(ST.receta)), selCi: ST.selCi });
+      // Los acompañantes NO viajan en el snapshot: son índices y la receta que se
+      // restaura puede tener otra cantidad de componentes. Deshacer deja UNA barra
+      // seleccionada, que es un estado siempre válido.
     } catch (e) { return; }
     if (ST.undoStack.length > ST._undoMax) ST.undoStack.shift();
   }
@@ -2227,6 +2246,7 @@
     ST.receta = snap.receta;
     ST.selCi = (snap.selCi != null) ? snap.selCi : -1;
     if (ST.selCi >= (ST.receta.componentes || []).length) ST.selCi = -1;
+    ST.selExtra = [];
     // cualquier interacción a medio-hacer se cancela al deshacer
     ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
     // EL ELEMENTO VIAJA EN LA RECETA (receta.tipo) desde que se puede cambiar dentro
@@ -2659,7 +2679,7 @@
       var mesh = barras[i];
       var base = mesh.userData.matBase;
       if (!base) continue;
-      var sel = (ST.selCi >= 0 && mesh.userData.ci === ST.selCi);
+      var sel = _estaSeleccionado(mesh.userData.ci);
       if (sel) {
         var ms = mesh.userData.matSel;
         if (!ms || ms.userData._base !== base) {
@@ -4120,7 +4140,7 @@
       var color = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
       var rol = _rolComp(pl);
       var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
-      var sel = (ci === ST.selCi && ST.selCi >= 0);
+      var sel = (ci >= 0) && _estaSeleccionado(ci);
       var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
       if (!pts.length) return;
 
@@ -5564,6 +5584,7 @@
     });
     ST.receta.componentes.push(comp);
     ST.selCi = ST.receta.componentes.length - 1;
+    _soltarExtras();
     _regenerar();
     _renderPanel();
     // SALIR DEL MODO COLOCAR AL COLOCAR (22-ago, pedido del usuario). Antes el modo
@@ -5915,7 +5936,83 @@
   // CAMBIAR DE SELECCIÓN NO RE-ARMA LA GRILLA (20-ago): la receta no cambió, así que
   // las tejas siguen valiendo. Sólo se mueve la marca .sel y se repinta la ficha en
   // su zona fija. Antes esto llamaba a _renderPanel y reconstruía el panel entero.
+  // TODOS los componentes seleccionados: la selección más sus acompañantes, sin
+  // repetidos y sin índices que ya no existen. Es la lista que consumen el espejo y
+  // el borrado; ordenada de mayor a menor para poder recorrerla haciendo splice sin
+  // que se corran los índices de atrás.
+  function _selTodos() {
+    var n = (ST.receta && ST.receta.componentes) ? ST.receta.componentes.length : 0;
+    var out = [], vistos = {};
+    function sumar(ci) {
+      ci = Number(ci);
+      if (!(ci >= 0) || ci >= n || vistos[ci]) return;
+      vistos[ci] = true; out.push(ci);
+    }
+    sumar(ST.selCi);
+    (ST.selExtra || []).forEach(sumar);
+    return out.sort(function (a, b) { return b - a; });
+  }
+  function _estaSeleccionado(ci) {
+    // El `ci < 0` es el placement SIN componente (meta.ci ausente). Antes lo filtraba
+    // el `ST.selCi >= 0` que cada sitio de resaltado llevaba pegado; al centralizar
+    // la pregunta hay que traerse el filtro, o con NADA seleccionado (selCi = -1)
+    // esas barras se pintarian todas como elegidas.
+    if (!(ci >= 0)) return false;
+    return ci === ST.selCi || (ST.selExtra || []).indexOf(ci) >= 0;
+  }
+  // Vaciar los acompañantes. Se llama cada vez que la lista de componentes cambia de
+  // forma (ver la nota de ST.selExtra).
+  function _soltarExtras() {
+    if (ST.selExtra && ST.selExtra.length) ST.selExtra = [];
+  }
+  // CTRL+CLIC: suma o resta una barra de la selección.
+  //   · no estaba          → se suma como acompañante
+  //   · era un acompañante → se quita
+  //   · era LA selección   → se cede el puesto al primer acompañante (y si no hay,
+  //                          se suelta todo). Así ctrl+clic siempre "quita lo que
+  //                          clicaste", sin importar cuál de los dos papeles tenía.
+  function _alternarSeleccion(ci) {
+    ci = Number(ci);
+    var n = (ST.receta && ST.receta.componentes) ? ST.receta.componentes.length : 0;
+    if (!(ci >= 0) || ci >= n) return;
+    ST.selExtra = ST.selExtra || [];
+    if (ci === ST.selCi) {
+      var siguiente = ST.selExtra.length ? ST.selExtra.shift() : -1;
+      ST.selCi = siguiente;
+    } else {
+      var k = ST.selExtra.indexOf(ci);
+      if (k >= 0) ST.selExtra.splice(k, 1);
+      else if (ST.selCi < 0) ST.selCi = ci;
+      else ST.selExtra.push(ci);
+    }
+    _renderSeleccion();
+    _redibujar2D(ST.ultimoOut);
+    _marcarBotonEspejo();
+    if (ST.espejoPend) _pintarCarasEspejo();
+    var n2 = _selTodos().length;
+    _actualizarStatus(n2 > 1 ? (n2 + ' barras seleccionadas — ctrl+clic suma o quita.') : undefined);
+  }
+
+  // SHIFT+CLIC en la tira: de la seleccion actual hasta `ci`, inclusive. La
+  // principal no se mueve -sigue siendo la que muestra la ficha- y el resto entra
+  // de acompanante.
+  function _seleccionarTramo(ci) {
+    ci = Number(ci);
+    var n = (ST.receta && ST.receta.componentes) ? ST.receta.componentes.length : 0;
+    if (!(ci >= 0) || ci >= n || ST.selCi < 0) return;
+    var a = Math.min(ST.selCi, ci), b = Math.max(ST.selCi, ci);
+    ST.selExtra = [];
+    for (var k = a; k <= b; k++) if (k !== ST.selCi) ST.selExtra.push(k);
+    _renderSeleccion();
+    _redibujar2D(ST.ultimoOut);
+    _marcarBotonEspejo();
+    if (ST.espejoPend) _pintarCarasEspejo();
+    var t = _selTodos().length;
+    _actualizarStatus(t > 1 ? (t + ' barras seleccionadas — ctrl+clic suma o quita, shift+clic toma un tramo.') : undefined);
+  }
+
   function _seleccionar(ci) {
+    _soltarExtras();          // un clic normal SUSTITUYE la selección, no la amplía
     ST.selCi = ci;
     _renderSeleccion();
     _redibujar2D(ST.ultimoOut);
@@ -5969,10 +6066,14 @@
     if (!ST.receta) return;
     // Sin selección el botón parecía "roto" (no pasaba absolutamente nada): ahora lo
     // dice en la barra de estado.
-    if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a Borrar.'); return; }
+    var borrar = _selTodos();
+    if (!borrar.length) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a Borrar.'); return; }
     _pushUndo();
-    ST.receta.componentes.splice(ST.selCi, 1);
-    ST.selCi = -1;
+    // De mayor a menor (así viene _selTodos): un splice no corre los índices que
+    // faltan por borrar.
+    borrar.forEach(function (ci) { ST.receta.componentes.splice(ci, 1); });
+    ST.selCi = -1; ST.selExtra = [];
+    if (borrar.length > 1) _actualizarStatus(borrar.length + ' barras borradas.');
     _regenerar();
     _renderPanel();
   }
@@ -6178,6 +6279,9 @@
         var ci = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-ci');
         if (ci != null && evt.target.getAttribute('data-hit')) {
           ci = Number(ci);
+          // CTRL+CLIC suma o quita, igual que en la teja. En los cuadrantes 2D ctrl
+          // está libre: el pan es el botón del medio y shift son las cotas.
+          if (evt.ctrlKey || evt.metaKey) { _alternarSeleccion(ci); return; }
           _seleccionar(ci);
           if (ST.tool === 'mover' && uv) {
             // pushed:false → el snapshot se toma en el 1er movimiento real (un
@@ -6806,8 +6910,15 @@
   function _marcarSelGrilla() {
     var cont = $('te_compList'); if (!cont) return;
     Array.prototype.forEach.call(cont.querySelectorAll('.te-comp'), function (el) {
-      var esta = (Number(el.getAttribute('data-ci')) === ST.selCi);
+      var ciTeja = Number(el.getAttribute('data-ci'));
+      var esta = (ciTeja === ST.selCi);
       el.classList.toggle('sel', esta);
+      // ACOMPANANTES de una seleccion multiple. Esta funcion marcaba SOLO la
+      // principal, asi que ctrl+clic sumaba barras que el resaltado 2D y 3D mostraba
+      // pero la tira de tejas no: la marca de la teja solo se ponia al CREARLA, y
+      // aca las tejas ya existen. Sin esto, el usuario no tenia como saber cuantas
+      // llevaba elegidas justo en el sitio donde las esta eligiendo.
+      el.classList.toggle('selx', !esta && (ST.selExtra || []).indexOf(ciTeja) >= 0);
       if (esta && el.scrollIntoView) {
         try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* navegador sin opciones */ }
       }
@@ -7082,8 +7193,12 @@
   function _compEl(c, ci) {
     var col = _colorComp(c);   // el swatch muestra el color REAL de la barra (override incluido)
     var sel = (ci === ST.selCi);
+    // ACOMPAÑANTE de una selección múltiple: se marca distinto de la principal a
+    // propósito. La ficha de la derecha muestra UNA barra —la principal—, y si las
+    // cuatro tejas se vieran iguales no habría forma de saber cuál se está editando.
+    var extra = !sel && (ST.selExtra || []).indexOf(ci) >= 0;
     var wrap = document.createElement('div');
-    wrap.className = 'te-comp' + (sel ? ' sel' : '');
+    wrap.className = 'te-comp' + (sel ? ' sel' : (extra ? ' selx' : ''));
     wrap.setAttribute('data-ci', ci);
     // El texto largo que la línea chica ya no muestra (modo, separación) vive acá: la
     // teja no lo dice, pero sigue a un hover de distancia.
@@ -7151,16 +7266,23 @@
     del.setAttribute('aria-label', 'Quitar esta barra');
     del.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      if (ST.selCi !== ci) ST.selCi = ci;   // _borrarSeleccion trabaja sobre la selección
+      // La papelera de la teja borra ESA barra y nada más: _borrarSeleccion trabaja
+      // sobre la selección, y con varias elegidas se habría llevado a todas.
+      ST.selCi = ci; _soltarExtras();
       _borrarSeleccion();
     });
     wrap.appendChild(del);
 
-    wrap.addEventListener('click', function () {
+    wrap.addEventListener('click', function (ev) {
       // BUG 6B — la teja es un TOGGLE: si el componente ya está seleccionado, volver a
       // clicarlo lo DESELECCIONA. Antes sólo seleccionaba, así que la única forma de
       // soltar la selección era clic-en-vacío en una vista (y en las densas nunca caías
       // en vacío → "solo se pliega en XZ").
+      if (ev && (ev.ctrlKey || ev.metaKey)) { _alternarSeleccion(ci); return; }
+      // SHIFT+CLIC = TRAMO, desde la seleccion actual hasta esta teja. Es el gesto
+      // que todo el mundo prueba para "de la 1 a la 4", y en la TIRA shift esta
+      // libre (en los cuadrantes no: ahi es el interruptor de las cotas).
+      if (ev && ev.shiftKey && ST.selCi >= 0) { _seleccionarTramo(ci); return; }
       if (ST.selCi === ci) { _seleccionar(-1); } else { _seleccionar(ci); }
     });
 
@@ -8802,26 +8924,39 @@
     // la copia recién hecha (que ya es la seleccionada) y aparecerían dos. El modo es
     // la llave del gesto, así que se pregunta por él.
     if (!ST.espejoPend) return;
-    var ci = ST.selCi;
-    var c = ST.receta && ST.receta.componentes && ST.receta.componentes[ci];
-    // FALTA UN DATO, NO ES UN ERROR DEL GESTO: sin barra elegida el modo SIGUE
-    // armado esperandola. Cancelarlo aca obligaria a volver a apretar el boton, que
-    // es exactamente la friccion que este gesto vino a sacar.
-    if (!c) {
+    // TODAS LAS SELECCIONADAS, no sólo la principal (25-ago): el caso real del
+    // usuario son CUATRO componentes por extremo del muro —dos de cabezales y dos de
+    // estribos de confinamiento— y espejarlos de a uno era justo el trabajo que esta
+    // función vino a sacar. La lista viene de mayor a menor, así que cada copia se
+    // inserta detrás de SU original sin correr los índices de las que faltan.
+    var todos = _selTodos();
+    if (!todos.length) {
       _actualizarStatus('ESPEJAR — elige primero la barra: clic sobre ella o sobre su caluga.');
       return;
     }
     var R = global.ModeladorReglas;
     if (!R || typeof R.espejarComponente !== 'function') { _salirEspejo(); return; }
-    var res = R.espejarComponente(c, _hostDeReceta(), f.axis);
-    if (!res || !res.comp) {
-      _actualizarStatus('No se pudo espejar esa barra contra esa cara.');
-      _salirEspejo();
-      return;
+    var host = _hostDeReceta();
+    var hechos = [], fallidos = 0, inexactos = 0;
+    todos.forEach(function (ci) {
+      var c = ST.receta.componentes[ci];
+      if (!c) return;
+      var res = R.espejarComponente(c, host, f.axis);
+      if (!res || !res.comp) { fallidos++; return; }
+      if (!res.posicionExacta) inexactos++;
+      hechos.push({ ci: ci, comp: res.comp });
+    });
+    if (!hechos.length) {
+      _actualizarStatus('No se pudo espejar contra esa cara.');
+      return;                    // el modo sigue armado: que pruebe otra cara
     }
     _pushUndo();
-    ST.receta.componentes.splice(ci + 1, 0, res.comp);
-    ST.selCi = ci + 1;
+    hechos.forEach(function (h) { ST.receta.componentes.splice(h.ci + 1, 0, h.comp); });
+    // La selección pasa a las COPIAS: es lo que el usuario acaba de crear y lo que va
+    // a querer mirar o mover. La principal es la de la primera (la de índice menor).
+    var nuevos = hechos.map(function (h) { return h.ci + 1; }).sort(function (a, b) { return a - b; });
+    ST.selCi = nuevos[0];
+    ST.selExtra = nuevos.slice(1);
     ST.espejoPend = false;
     _marcarBotonEspejo();
     _limpiarCarasEspejo();
@@ -8830,8 +8965,10 @@
     // SE DICE LO QUE NO SE PUDO. Hay ejes donde la posición no es una distancia a
     // una cara sino el sistema de capas: ahí la copia queda donde estaba, sólo dada
     // vuelta, y callarlo dejaría al usuario buscando una barra que nunca se movió.
-    var aviso = 'Copia espejada contra la cara ' + (f.cara || '') + '.';
-    if (!res.posicionExacta) aviso += ' OJO: en ese eje la posición la manda el reparto o las capas, así que la copia quedó donde estaba la original — muévela desde la ficha.';
+    var aviso = (hechos.length === 1 ? 'Copia espejada' : (hechos.length + ' copias espejadas')) +
+      ' contra ' + (_nombreCara6(_idCara6De(f.axis, f.sign)) || 'la cara') + '.';
+    if (fallidos) aviso += ' ' + fallidos + ' no se pudo(ieron) espejar.';
+    if (inexactos) aviso += ' OJO: en ' + inexactos + ' la posición en ese eje la manda el reparto o las capas, así que quedó(aron) donde estaba(n) la(s) original(es) — muévela(s) desde la ficha.';
     _actualizarStatus(aviso);
   }
 
@@ -8841,6 +8978,7 @@
     var copia = JSON.parse(JSON.stringify(c));
     ST.receta.componentes.splice(ci + 1, 0, copia);
     ST.selCi = ci + 1;
+    _soltarExtras();
     _regenerar(); _renderPanel();
   }
 
@@ -8876,6 +9014,7 @@
     _pushUndo();
     var m = arr.splice(from, 1)[0]; arr.splice(to, 0, m);
     ST.selCi = to;
+    _soltarExtras();   // reordenar corre los índices: los acompañantes ya no valen
     _regenerar(); _renderPanel();
   }
 
@@ -11369,8 +11508,9 @@
       ST.receta = { tipo: ST.elemento, geometria: geo, componentes: [] };
     }
     if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
-    ST.selCi = -1; ST.ultimoOut = null;
+    ST.selCi = -1; ST.selExtra = []; ST.ultimoOut = null;
     ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
+    ST.espejoPend = false;   // abrir otra receta no puede dejar un espejo a medias
     // Asegurar el flag de distribución en la semilla (estribo/traba ya distribuidos).
     (ST.receta.componentes || []).forEach(function (c) {
       var rol = _rolComp(c);
@@ -12648,6 +12788,11 @@
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,
     _borrarSeleccion: _borrarSeleccion,
+    // SELECCION MULTIPLE: expuestos para que la suite maneje el gesto (ctrl+clic) y
+    // no una imitacion de lo que el gesto deja escrito.
+    _seleccionar: _seleccionar, _alternarSeleccion: _alternarSeleccion,
+    _selTodos: _selTodos, _estaSeleccionado: _estaSeleccionado, _duplicar: _duplicar,
+    _seleccionarTramo: _seleccionarTramo,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
     // PALETA ÚNICA — la consume panel_3d, que tenía su propia tabla ya divergida

@@ -108,9 +108,16 @@ function estribo() {
     pos_hint: { x: -250 }
   };
 }
-function montar() {
-  ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: [estribo()] };
-  ST.selCi = -1; ST.ultimoOut = null; ST.espejoPend = false;
+function montar(n) {
+  const comps = [];
+  for (let i = 0; i < (n || 1); i++) {
+    const c = estribo();
+    c.comp_id = 'EC' + (i + 1);
+    c.pos_hint = { x: -250 + i * 40 };
+    comps.push(c);
+  }
+  ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: comps };
+  ST.selCi = -1; ST.selExtra = []; ST.ultimoOut = null; ST.espejoPend = false;
   R.normalizarReceta(ST.receta);
   regen();
 }
@@ -216,6 +223,107 @@ console.log('F . con el modo armado pero sin barra, el clic en una cara no crea 
   TE._espejarEnCara(CARA_TESTERO);
   ok(nComp() === 1, 'no se creo ninguna copia');
   ok(ST.espejoPend === true, 'y el modo sigue esperando la barra, no se cae');
+}
+
+// ================================================== G . SELECCION MULTIPLE
+// (25-ago) El caso real del usuario son CUATRO componentes por extremo del muro
+// -dos de cabezales con dos capas cada uno y dos de estribos de confinamiento- y
+// espejarlos de a uno era justo el trabajo que esta funcion vino a sacar. Ctrl+clic
+// suma y quita; `selCi` sigue siendo LA seleccion (la que muestra la ficha) y los
+// demas van de acompanantes.
+console.log('');
+console.log('G . ctrl+clic suma y quita');
+{
+  montar(4);
+  TE._seleccionar(0);
+  ok(TE._selTodos().length === 1, 'un clic normal deja una sola');
+  TE._alternarSeleccion(2);
+  TE._alternarSeleccion(3);
+  ok(TE._selTodos().join(',') === '3,2,0', 'ctrl+clic suma (=' + TE._selTodos().join(',') + ')');
+  ok(ST.selCi === 0, 'y la principal no cambia: es la que muestra la ficha');
+  ok(TE._estaSeleccionado(2) === true && TE._estaSeleccionado(1) === false, 'el resaltado sabe cuales son');
+
+  TE._alternarSeleccion(2);
+  ok(TE._selTodos().join(',') === '3,0', 'ctrl+clic sobre una ya elegida la quita (=' + TE._selTodos().join(',') + ')');
+  TE._alternarSeleccion(0);
+  ok(ST.selCi === 3 && TE._selTodos().join(',') === '3', 'quitar LA principal le cede el puesto a un acompanante');
+
+  TE._seleccionar(1);
+  ok(TE._selTodos().join(',') === '1', 'un clic normal SUSTITUYE, no amplia');
+}
+
+// ============================================ H . ESPEJAR VARIAS DE UNA VEZ
+console.log('');
+console.log('H . el espejo toma todas las seleccionadas');
+{
+  montar(4);
+  TE._seleccionar(0);
+  TE._alternarSeleccion(1);
+  TE._alternarSeleccion(2);
+  const antes = nComp();
+  TE._armarEspejo();
+  TE._espejarEnCara(CARA_TESTERO);
+  ok(nComp() === antes + 3, 'salieron tres copias, una por cada seleccionada (=' + nComp() + ')');
+  ok(TE._selTodos().length === 3, 'y la seleccion paso a las copias (=' + TE._selTodos().length + ')');
+  ok(ST.espejoPend === false, 'con el modo apagado');
+  // cada copia quedo detras de SU original: 0->1, 2->3, 4->5 tras los tres splices
+  const ids = ST.receta.componentes.map(function (c) { return c.comp_id; });
+  ok(ids[0] === ids[1] && ids[2] === ids[3] && ids[4] === ids[5],
+    'cada copia esta pegada a su original (=' + ids.join(' ') + ')');
+  ok(ids[6] === 'EC4', 'y la que no estaba seleccionada quedo intacta al final');
+}
+
+// ================================================ I . BORRAR VARIAS DE UNA VEZ
+console.log('');
+console.log('I . borrar toma todas las seleccionadas');
+{
+  montar(4);
+  TE._seleccionar(1);
+  TE._alternarSeleccion(3);
+  TE._borrarSeleccion();
+  const ids = ST.receta.componentes.map(function (c) { return c.comp_id; });
+  ok(ids.join(',') === 'EC1,EC3', 'se fueron las dos elegidas y solo esas (=' + ids.join(',') + ')');
+  ok(TE._selTodos().length === 0, 'y no queda nada seleccionado');
+}
+
+// ============================ J . LO QUE MUEVE LA LISTA SUELTA LOS ACOMPANANTES
+// Son INDICES: uno que sobrevive a un splice apunta a otra barra. Antes que
+// arrastrar indices podridos -y espejar o borrar la barra equivocada- se suelta.
+console.log('');
+console.log('J . duplicar suelta los acompanantes');
+{
+  montar(4);
+  TE._seleccionar(0);
+  TE._alternarSeleccion(3);
+  ok(TE._selTodos().length === 2, 'dos elegidas antes de duplicar');
+  TE._duplicar(0);
+  ok(TE._selTodos().length === 1, 'tras duplicar queda una sola: los indices se corrieron');
+}
+
+// ================================================== K . SHIFT+CLIC TOMA UN TRAMO
+console.log('');
+console.log('K . shift+clic en la tira toma un tramo entero');
+{
+  montar(5);
+  TE._seleccionar(1);
+  TE._seleccionarTramo(3);
+  ok(TE._selTodos().join(',') === '3,2,1', 'de la 1 a la 3 (=' + TE._selTodos().join(',') + ')');
+  ok(ST.selCi === 1, 'la principal no se mueve: sigue siendo la que muestra la ficha');
+  TE._seleccionarTramo(0);
+  ok(TE._selTodos().join(',') === '1,0', 'y hacia atras tambien (=' + TE._selTodos().join(',') + ')');
+}
+
+// ============================== L . SIN NADA ELEGIDO NO SE RESALTA MEDIA VISTA
+// El `ci < 0` es el placement sin componente. Antes lo filtraba el `ST.selCi >= 0`
+// que cada sitio de resaltado llevaba pegado; al centralizar la pregunta habia que
+// traerse el filtro, o con NADA seleccionado esas barras se pintaban como elegidas.
+console.log('');
+console.log('L . el resaltado no toma las barras sin componente');
+{
+  montar(3);
+  TE._seleccionar(-1);
+  ok(TE._estaSeleccionado(-1) === false, 'ci -1 no esta seleccionado aunque selCi valga -1');
+  ok(TE._estaSeleccionado(0) === false, 'y sin seleccion no hay ninguna marcada');
 }
 
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');

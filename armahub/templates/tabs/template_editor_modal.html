@@ -429,6 +429,11 @@
   #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14))}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
+  /* ACOMPANANTE de una seleccion multiple (ctrl+clic). Se marca DISTINTO de la
+     principal a proposito: la ficha de la derecha muestra UNA barra -la principal- y
+     si las cuatro tejas se vieran iguales no habria como saber cual se esta
+     editando. Mismo color, borde punteado y sin el halo. */
+  #te_modal .te-comp.selx{border-color:var(--te-acero);border-style:dashed}
   #te_modal .te-comp .te-tjtop{display:flex;align-items:center;gap:3px;min-width:0}
   #te_modal .te-comp .te-sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
   /* MARCA DE ESPEJO junto al swatch. Existe porque la línea de descripción dejó de
