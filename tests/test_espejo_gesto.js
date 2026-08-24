@@ -479,5 +479,45 @@ console.log('Q . la ampolleta');
   ok(TE._nOcultos() === 0, 'y se pueden prender todas de una');
 }
 
+// ============ R . LA COLOCACION ES LA MISMA PARA TODAS LAS TIPOLOGIAS
+// (25-ago) La regla del usuario: el lado dominante queda paralelo al borde que se
+// clico. Se cumplia en cinco de las seis tipologias. EC -y ES/ESC- se salia, porque
+// la pregunta "esta pieza se muestra de frente en la vista?" tenia una segunda mitad
+// que preguntaba por TIPOLOGIA: rol estribo + esPiezaDeSeccion es verdadero para
+// CUALQUIER figura puesta con EC, asi que una figura abierta nacia apuntando al fondo
+// y se veia como un punto. Ahora la pregunta es TOPOLOGICA: se muestra de frente lo
+// que encuadra una seccion -cerrada, o cadena de 4+ lados-.
+console.log('');
+console.log('R . el borde clicado manda igual en todas las tipologias');
+{
+  const TIPS = ['MH', 'MV', 'EC', 'TC', 'TR', 'CB'];
+  function poseCon(tip, fig, plano, borde) {
+    ST.elemento = 'muro';
+    ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: [] };
+    ST.selCi = -1; ST.selExtra = []; ST.espejoColoc = false;
+    const f = TE._facesDeVista(plano).filter(function (x) { return x.edge === borde; })[0];
+    ST.caraHi = f ? { plano: plano, cara: f.cara, edge: f.edge, orient: f.orient,
+                      axis: f.axis, sign: f.sign, pos: f.pos, a: f.a, b: f.b } : null;
+    const c = TE._compDesdeClick(plano, { x: 0, y: 0, z: 8 }, { tipologia: tip, figura: fig, diam: 8 });
+    ST.caraHi = null;
+    return R.poseDe(c);
+  }
+  [['seccion','top'],['seccion','left'],['largo','top'],['largo','left'],['planta','bottom']].forEach(function (caso) {
+    const poses = TIPS.map(function (t) { return poseCon(t, '103B', caso[0], caso[1]); });
+    const uno = poses[0];
+    const todas = poses.every(function (p) {
+      return p.cara === uno.cara && p.lado === uno.lado && p.rumbo === uno.rumbo;
+    });
+    ok(todas, caso[0] + '/' + caso[1] + ': las seis tipologias colocan igual (' +
+      uno.cara + '/' + uno.rumbo + ')');
+  });
+  // …y una figura CERRADA sigue mostrandose de frente, que es lo que ese camino
+  // existe para sostener: eso lo decide su topologia, no con que tipologia se puso.
+  const cerrada = poseCon('MH', '104D', 'largo', 'top');
+  ok(cerrada.rumbo === 'z', 'una 104D bajo MH igual se muestra de frente en la elevacion (rumbo=' + cerrada.rumbo + ')');
+  const cerrada2 = poseCon('EC', '104D', 'largo', 'top');
+  ok(cerrada2.rumbo === cerrada.rumbo, '…y con EC exactamente igual: lo decide la figura');
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);

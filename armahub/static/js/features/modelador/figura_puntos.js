@@ -242,6 +242,19 @@
   // Lo que NO cambia: 1 lado (recta, sin dobleces que honrar) y el MARCO CERRADO
   // de 4 lados (constructor propio calibrado, con sus arcos de gancho sísmico).
   var MIN_LADOS_CADENA_LONG = 2;
+  // ¿ESTA FIGURA PUEDE TRAZARSE COMO CADENA DE SECCIÓN? Sólo topología: 4+ lados con
+  // tramos. Con menos, el constructor de sección no tiene con qué encuadrar (los
+  // ganchos de 135° de la 103E/103H los traza el marco con su arco calibrado).
+  // Existe porque la colocación necesitaba preguntar «¿esta pieza se muestra de
+  // frente en la vista?» y lo estaba preguntando por TIPOLOGÍA — ver la nota del
+  // 25-ago en template_editor._compDesdeClick.
+  function esCadenaDeSeccion(figura) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    var n = spec ? spec.parciales.length : 0;
+    return (n >= MAX_LADOS_DIBUJABLES) && !!tramosDeFigura(f);
+  }
+
   function familiaDeDibujo(figura, rol) {
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
@@ -3040,6 +3053,7 @@
     // ¿La pieza ENCUADRA la sección? (estribo / traba / cadena de sección). Es el
     // criterio ÚNICO del anidado: una pieza de sección anida, nunca se traslada.
     esPiezaDeSeccion: esPiezaDeSeccion,
+    esCadenaDeSeccion: esCadenaDeSeccion,   // topologia pura: 4+ lados trazables
     patasDeFigura: patasDeFigura,
     MAX_LADOS_DIBUJABLES: MAX_LADOS_DIBUJABLES,
     // CADENAS (trazador genérico). La convención de tramos es la del Diseñador de

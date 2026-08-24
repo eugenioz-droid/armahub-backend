@@ -5738,9 +5738,24 @@
       // (Modelo A, 14-ago): la TRABA ya no entra como pieza de sección — toda
       // figura abierta entra COMO SE DIBUJÓ y se gira con ESPACIO. Sección =
       // topología cerrada, o rol estribo con figura de sección (305A/104B-ES).
-      var esSeccionV = !!(fpV &&
-        ((fpV.familiaDeDibujo && fpV.familiaDeDibujo(sel.figura, null) === 'estribo') ||
-         (rol === 'estribo' && fpV.esPiezaDeSeccion && fpV.esPiezaDeSeccion(sel.figura, 'estribo'))));
+      // (25-ago) LA SEGUNDA MITAD PREGUNTABA POR TIPOLOGIA, y era la ultima rama que
+      // le quedaba a la regla de colocacion. `rol === 'estribo' && esPiezaDeSeccion`
+      // es verdadero para CUALQUIER figura puesta con EC/ES/ESC, asi que una figura
+      // abierta -un 103B- nacia apuntando al FONDO de la vista y se veia como un
+      // punto. MEDIDO: misma figura, mismo borde clicado, seis tipologias -> MH, MV,
+      // TC, TR y CB daban la misma cara, el mismo lado y el mismo rumbo; EC era la
+      // unica que se salia. Justo lo que el usuario venia diciendo: "la tipologia no
+      // determina posicion y no debemos tener ramas".
+      //
+      // Se reemplaza por TOPOLOGIA PURA, que es lo que esta pregunta siempre quiso
+      // decir: se muestra de frente en la vista lo que ENCUADRA una seccion, o sea
+      // una figura cerrada o una cadena de 4+ lados trazable en seccion. MEDIDO sobre
+      // el catalogo: cambia exactamente las 17 figuras que estaban rotas (101A a 201A)
+      // y deja intactas 104D, 106A, 305A, 104B y 105A, que son las que este camino
+      // existe para sostener.
+      var esSeccionV = !!(fpV && fpV.familiaDeDibujo &&
+        (fpV.familiaDeDibujo(sel.figura, null) === 'estribo' ||
+         (fpV.esCadenaDeSeccion && fpV.esCadenaDeSeccion(sel.figura))));
       // AQUI VIVIO UN OVERRIDE PARA LA TRABA, Y ESTUVO MAL (25-ago). Se le hizo
       // ignorar esta regla para que cruzara el espesor viniera de donde viniera. El
       // usuario lo corto de raiz: «la tipologia NO DECIDE LA COLOCACION. La logica de
