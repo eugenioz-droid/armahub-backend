@@ -415,16 +415,22 @@
      crece. Aparece al pasar el cursor y en la teja seleccionada (si no, la única
      forma de llegar a ella sería adivinar que está). */
   #te_modal .te-comp{position:relative}
+  /* SIEMPRE A LA VISTA (24-ago). Nacio apareciendo solo al pasar el cursor, para no
+     ensuciar la tira; el usuario la dio por no implementada dos veces seguidas -"no
+     aparece"- porque una papelera que hay que descubrir pasando el mouse no existe.
+     Y el sitio ya estaba reservado: la esquina de la teja queda vacia igual. Asi que
+     se ve siempre, tenue, y sube al pasar por encima. La teja no crece: sigue
+     superpuesta, fuera del flujo. */
   #te_modal .te-tjdel{position:absolute;top:1px;right:1px;border:none;background:none;
     font-size:11px;line-height:1;padding:2px 3px;border-radius:4px;cursor:pointer;
-    opacity:0;transition:opacity .12s,background .12s}
+    opacity:.45;transition:opacity .12s,background .12s}
   /* SE VE, NO SE ADIVINA (24-ago). Estaba en .55 en los dos casos y el usuario
      -que la habia pedido- la dio por no implementada: a ese gris, en 11 px y sobre
      una teja chica, no se lee. En la teja SELECCIONADA sube a opaca (es la unica
      que puede borrarse desde ahi, asi que ahi tiene que gritar) y al pasar el
      cursor por cualquier otra queda a .7. La teja no crece: la papelera sigue
      superpuesta en la esquina, fuera del flujo. */
-  #te_modal .te-comp:hover .te-tjdel{opacity:.7}
+  #te_modal .te-comp:hover .te-tjdel{opacity:.8}
   #te_modal .te-comp.sel .te-tjdel{opacity:1}
   #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14))}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}

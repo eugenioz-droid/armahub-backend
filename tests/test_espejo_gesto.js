@@ -351,5 +351,31 @@ console.log('M . el panel de la seleccion multiple');
   ok(filas.length === 3, 'una fila por barra elegida (=' + filas.length + ')');
 }
 
+// ============ N . EL CHECK DE CAPAS ANIDADAS SOLO SE OFRECE DONDE HACE ALGO
+// (25-ago) El usuario: "ajustar las capas anidadas no hace nada". Y era cierto EN
+// SU CASO: el anidado acorta las PATAS de la capa de adentro para que no choquen
+// con la de afuera, y una barra recta no tiene patas que acortar. El check no
+// estaba roto: estaba ofrecido donde no aplica, que para el usuario es lo mismo.
+console.log('');
+console.log('N . el anidado se ofrece donde cambia algo');
+{
+  ST.receta = { tipo: 'viga', geometria: { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 }, componentes: [] };
+  function capas(figura, dims) {
+    return {
+      comp_id: 'C1', tipologia: 'CB', figura: figura, diam: 16, jerarquia: 2, modo: 'puntual',
+      pose: { cara: 'sup', lado: 1, rumbo: 'x' }, dims: dims,
+      distribucion: { modo: 'layered', n_capas: 2, barras_capa: 2, gap: 30, sentido: 'nucleo' }
+    };
+  }
+  const recta = capas('101A', { A: { modo: 'auto' } });
+  const conPatas = capas('103B', { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' } });
+  ST.receta.componentes = [recta, conPatas];
+  R.normalizarReceta(ST.receta);
+  ok(TE._anidadoCambiaAlgo(ST.receta.componentes[0]) === false,
+    'una barra recta no tiene patas que acortar: el check no se ofrece');
+  ok(TE._anidadoCambiaAlgo(ST.receta.componentes[1]) === true,
+    'una figura con patas si anida: el check se ofrece');
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);

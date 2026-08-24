@@ -8236,9 +8236,50 @@
   // `rol === 'estribo'`, una traba de 2+ capas mostraba el toggle apagado mientras el
   // motor anidaba: el usuario leía un estado que no era el suyo.
   // Aquí sólo se escribe el dato (distribucion.anidar); quien lo consume es el motor.
+  // ¿EL ANIDADO CAMBIA ALGO EN ESTA FIGURA? Se le PREGUNTA AL MOTOR en vez de
+  // mantener una tabla figura por figura: se expande un clon con el anidado apagado
+  // y otro con él encendido, y se comparan las barras que salen (sus dims y cuántas
+  // son). Mismo criterio que el sondeo del tirador del marco.
+  //
+  // POR QUÉ HACE FALTA (25-ago, reportado por el usuario: «ajustar las capas
+  // anidadas no hace nada»). Y era cierto EN SU CASO: el anidado acorta las PATAS de
+  // la capa interior para que no choquen con la de afuera, y una barra recta (101A)
+  // no tiene patas que acortar. MEDIDO: 101A con dos capas da A=595 con el check
+  // marcado y sin marcar; una 103B en cambio pasa de B=592 a 588,8 en la 2ª capa
+  // (−3,2 = dos diámetros de ø16). El check no estaba roto: estaba ofrecido donde no
+  // aplica, que para el usuario es lo mismo que roto.
+  function _anidadoCambiaAlgo(c) {
+    var R = global.ModeladorReglas, host = _hostDeReceta();
+    if (!R || !R.expandirComponente || !host || !c) return true;   // ante la duda, se ofrece
+    function firma(valor) {
+      var clon = JSON.parse(JSON.stringify(c, function (k, v) {
+        return (String(k).charAt(0) === '_') ? undefined : v;
+      }));
+      clon.distribucion = clon.distribucion || {};
+      clon.distribucion.anidar = valor;
+      var pls;
+      try { pls = R.expandirComponente(clon, host) || []; } catch (e) { return null; }
+      return pls.length + '|' + pls.map(function (p) { return JSON.stringify(p.dims || {}); }).join(';');
+    }
+    var a = firma(false), b = firma(true);
+    if (a == null || b == null) return true;
+    return a !== b;
+  }
+
   function _filaAnidar(box, c, ci, rol, d) {
     if (!(Number(d.n_capas) > 1)) return;
     var esEstribo = (rol === 'estribo' || rol === 'traba');
+    // EL CHECK NO SE OFRECE SI NO HARÍA NADA. En vez de dejarlo ahí sin efecto —que
+    // es lo que el usuario reportó— se dice POR QUÉ no está: si no, su ausencia sería
+    // otro misterio. Sólo se evalúa en las figuras OPT-IN: en una cerrada el anidado
+    // viene puesto y apagarlo siempre cambia algo (medido: la 2ª capa de un 104D en
+    // una viga de 60 no cabe anidada y el motor no la emite).
+    if (!esEstribo && !_anidadoCambiaAlgo(c)) {
+      var nota = _div('te-note');
+      nota.textContent = 'El anidado acorta las patas de la capa de adentro; esta figura no tiene patas que acortar, así que las capas van iguales.';
+      box.appendChild(nota);
+      return;
+    }
     var row = _div('te-fld');
     var lab = document.createElement('label');
     lab.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer';
@@ -12854,6 +12895,7 @@
     _seleccionar: _seleccionar, _alternarSeleccion: _alternarSeleccion,
     _selTodos: _selTodos, _estaSeleccionado: _estaSeleccionado, _duplicar: _duplicar,
     _seleccionarTramo: _seleccionarTramo, _detalleMultiple: _detalleMultiple,
+    _anidadoCambiaAlgo: _anidadoCambiaAlgo,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
     // PALETA ÚNICA — la consume panel_3d, que tenía su propia tabla ya divergida
