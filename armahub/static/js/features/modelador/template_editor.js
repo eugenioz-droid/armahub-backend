@@ -64,7 +64,18 @@
   var TEMAS3D = {
     oscuro: { bg: 0x14171c, g1: 0x2a3340, g2: 0x222a34 },
     medio: { bg: 0x2b3242, g1: 0x4a5568, g2: 0x3a4353 },
-    claro: { bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6 }
+    claro: { bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6 },
+    // PAPEL — el claro CÁLIDO (25-ago, pedido del usuario: «otra alternativa de
+    // formato claro»). Mismo contraste que el claro, otra TEMPERATURA: el lienzo se
+    // va al arena. Además de cansar menos en jornada larga, separa mejor las barras:
+    // casi todos los colores de tipología son fríos (azul, verde, morado) y sobre un
+    // gris azulado compiten con el fondo.
+    papel: { bg: 0xe3dbcb, g1: 0xc3b79f, g2: 0xd3c9b6 },
+    // MIXTO — paneles claros, LIENZO OSCURO. El intermedio partido por donde importa:
+    // se LEE sobre blanco (campos, tejas, números) y se MIRA sobre negro, que es donde
+    // el naranja del estribo y el azul del cabezal de verdad se despegan. Es lo que
+    // hacen Revit, Rhino y Fusion. El 3D y las 2D quedan oscuros; el marco, claro.
+    mixto: { bg: 0x141a22, g1: 0x2b3644, g2: 0x222b37 }
   };
   function _tema3D() { return TEMAS3D[ST.tema3d] || TEMAS3D.claro; }
 
@@ -2546,7 +2557,9 @@
   // también al abrir el modal, no sólo al tocar el radial.
   function _marcarTemaEnQuad() {
     var nodos = [$('te_quad'), $('te_modal')];
-    ['oscuro', 'medio', 'claro'].forEach(function (k) {
+    // Las clases van por TODAS las claves de TEMAS3D: agregar un tema es agregar su
+    // entrada allá y su bloque de variables en el modal, nada más.
+    Object.keys(TEMAS3D).forEach(function (k) {
       var on = (ST.tema3d === k);
       nodos.forEach(function (n) { if (n) n.classList.toggle('te-tema-' + k, on); });
     });

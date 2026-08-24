@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Template Editor — 2 temas nuevos (maqueta)</title>
+<style>
+  /* =======================================================================
+     MAQUETA, NO CÓDIGO DE PRODUCCIÓN. Sirve para ELEGIR: no cablea nada del
+     editor. Los tres temas de hoy están copiados TAL CUAL de
+     tabs/template_editor_modal.html para que la comparación sea honesta; los
+     dos nuevos son la propuesta.
+     ======================================================================= */
+  *{box-sizing:border-box}
+  body{margin:0;background:#20242b;color:#e7ecf2;
+       font:14px/1.45 "Segoe UI",system-ui,sans-serif;padding:22px 20px 60px}
+  h1{font-size:19px;margin:0 0 4px}
+  .lede{color:#9fabb9;font-size:13px;margin:0 0 22px;max-width:930px}
+  .lede b{color:#e7ecf2}
+  .fila{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:26px}
+  .card{width:308px;border-radius:12px;overflow:hidden;border:1px solid #39414b;
+        background:#171b21}
+  .card > h2{margin:0;font-size:12px;letter-spacing:.6px;text-transform:uppercase;
+             padding:9px 11px;color:#cfd8e3;background:#232830;border-bottom:1px solid #39414b;
+             display:flex;align-items:center;gap:8px}
+  .card > h2 .pt{margin-left:auto;font-size:10.5px;letter-spacing:0;text-transform:none;
+                 color:#8e99a7;font-weight:400}
+  .nota{font-size:11.5px;line-height:1.4;color:#9fabb9;padding:9px 11px;background:#1b1f26;
+        border-top:1px solid #2f353d}
+  .nota b{color:#dfe6ee}
+  .nueva > h2{background:#243a24;color:#cde9b8;border-bottom-color:#3c5a3c}
+  .nueva{border-color:#3c5a3c}
+
+  /* ------------------------------------------------- el trozo de editor -- */
+  .te{--te-bg:#eef1f4;--te-ink:#1f2937;--te-muted:#64748b;--te-faint:#9aa4b0;
+      --te-line:#dbe1e8;--te-panel:#fff;--te-panel2:#f6f8fa;--te-field:#fff;
+      --te-field-b:#dbe1e8;--te-hover:#f7fbf2;--te-acero:#8BC34A;--te-acero-d:#558B2F;
+      --te-acero-t:#558B2F;--te-azul-t:#1565c0;--te-band:#e6ecf3;--te-band-b:#b7c3d0;
+      --te-grid:rgba(120,140,165,.22);--te-grid2:rgba(120,140,165,.40);
+      background:var(--te-panel);color:var(--te-ink)}
+  .te .barra{display:flex;align-items:center;gap:6px;padding:7px 9px;
+             border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  .btn{border:1px solid var(--te-line);background:var(--te-panel);color:var(--te-ink);
+       border-radius:7px;font-size:11px;padding:4px 8px;cursor:default}
+  .btn.on{background:var(--te-acero);border-color:var(--te-acero-d);color:#fff;font-weight:700}
+  .cuerpo{display:flex;min-height:186px}
+  .quad{flex:1;position:relative;background:var(--te-bg);
+        background-image:linear-gradient(var(--te-grid) 1px,transparent 1px),
+                         linear-gradient(90deg,var(--te-grid) 1px,transparent 1px);
+        background-size:17px 17px}
+  .quad .tit{position:absolute;top:6px;left:8px;font-size:9.5px;font-weight:700;
+             letter-spacing:.5px;color:var(--te-muted)}
+  .quad svg{position:absolute;inset:0;width:100%;height:100%}
+  .lado{width:113px;border-left:1px solid var(--te-line);background:var(--te-panel);
+        padding:8px 8px 10px}
+  .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--te-muted);
+       margin:0 0 3px}
+  .campo{width:100%;border:1px solid var(--te-field-b);background:var(--te-field);
+         color:var(--te-ink);border-radius:6px;font-size:11.5px;padding:3px 6px;margin-bottom:7px}
+  .teja{border:1px solid var(--te-line);border-radius:8px;background:var(--te-panel2);
+        padding:4px 5px;margin-bottom:4px;display:flex;align-items:center;gap:5px;font-size:11px}
+  .teja.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
+  .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
+  .pie{font-size:10.5px;color:var(--te-ink);padding:6px 9px;border-top:1px solid var(--te-line);
+       background:var(--te-panel2)}
+  .pie i{color:var(--te-acero-t);font-style:normal;font-weight:700}
+  .pie s{color:var(--te-faint);text-decoration:none}
+
+  /* --------------------------------------------- LOS TRES DE HOY (copia) -- */
+  .t-medio{--te-bg:#1e2431;--te-ink:#e8edf5;--te-muted:#a6b3c6;--te-faint:#98a7bb;
+    --te-line:#48536a;--te-panel:#363f52;--te-panel2:#2e3648;--te-field:#262d3b;
+    --te-field-b:#4b5670;--te-hover:#414c61;--te-acero-t:#a5d76a;--te-azul-t:#7cc0f8;
+    --te-band:#232a38;--te-band-b:#4b5670;
+    --te-grid:rgba(150,170,200,.16);--te-grid2:rgba(150,170,200,.30)}
+  .t-oscuro{--te-bg:#0e1114;--te-ink:#e7ecf2;--te-muted:#9fabb9;--te-faint:#8e99a7;
+    --te-line:#2f353d;--te-panel:#1e2228;--te-panel2:#181c21;--te-field:#141820;
+    --te-field-b:#39414b;--te-hover:#2a3038;--te-acero-t:#aada6f;--te-azul-t:#82c2f7;
+    --te-band:#13171c;--te-band-b:#39414b;
+    --te-grid:rgba(150,170,200,.13);--te-grid2:rgba(150,170,200,.26)}
+
+  /* ================= PROPUESTA 1 · PAPEL (claro cálido) ==================
+     El claro de hoy es gris azulado y frío: a pantalla completa, ocho horas
+     seguidas, cansa. Este mantiene TODO el contraste pero mueve el blanco
+     hacia el papel: fondo arena, panel hueso, tinta parda en vez de negra
+     azulada. Las barras -que son el dato- resaltan MAS sobre un fondo cálido,
+     porque casi todos los colores de tipologia son frios (azul, verde, morado).
+     No es "un claro más oscuro": es el mismo claro con otra temperatura. */
+  .t-papel{--te-bg:#efe9dd;--te-ink:#2f2b25;--te-muted:#6f6759;--te-faint:#9c9284;
+    --te-line:#ded4c2;--te-panel:#fffdf8;--te-panel2:#f7f2e8;--te-field:#fffdf8;
+    --te-field-b:#dcd1bd;--te-hover:#f4efe0;--te-acero-t:#4d7c1f;--te-azul-t:#12559f;
+    --te-band:#e9e1d1;--te-band-b:#c8bca5;
+    --te-grid:rgba(140,124,96,.24);--te-grid2:rgba(140,124,96,.42)}
+
+  /* ================ PROPUESTA 2 · MIXTO (claro / oscuro) =================
+     El intermedio que pediste, pero partido por donde de verdad importa: los
+     PANELES claros -que es donde se LEE: campos, tejas, numeros- y el LIENZO
+     oscuro, que es donde se MIRA. Es lo que hacen Revit, Rhino y Fusion, y por
+     una razon: sobre negro, el naranja del estribo y el azul del cabezal se
+     separan mucho mejor que sobre gris claro, mientras que un formulario sobre
+     negro obliga a subir el brillo de la pantalla. Aqui no hay que elegir.
+     Ademas resuelve tu caso: tu trabajas en el panel, tus usuarios miran el 3D. */
+  .t-mixto{--te-bg:#141a22;--te-ink:#1f2937;--te-muted:#64748b;--te-faint:#9aa4b0;
+    --te-line:#d3dae2;--te-panel:#ffffff;--te-panel2:#f4f7fa;--te-field:#ffffff;
+    --te-field-b:#d3dae2;--te-hover:#f7fbf2;--te-acero-t:#4a7c1c;--te-azul-t:#1565c0;
+    --te-band:#e6ecf3;--te-band-b:#b7c3d0;
+    --te-grid:rgba(150,175,205,.17);--te-grid2:rgba(150,175,205,.32)}
+  /* En MIXTO el titulo del cuadrante va sobre el lienzo oscuro: no puede heredar
+     la tinta del panel. Es el unico ajuste extra que pide el tema. */
+  .t-mixto .quad .tit{color:#8fa0b5}
+</style>
+</head>
+<body>
+
+<h1>Template Editor · dos temas nuevos para elegir</h1>
+<p class="lede">Arriba, <b>los tres de hoy</b>, copiados tal cual del editor.
+Abajo, <b>las dos propuestas</b>. Cada tarjeta muestra el mismo trozo real:
+un cuadrante con barras, la tira de tejas, un campo, los botones y la barra de estado.
+Los colores de las barras <b>no cambian en ningún tema</b> — son identidad de la
+tipología, no decoración.</p>
+
+<div class="fila" id="hoy"></div>
+
+<h1 style="margin-top:6px">Las dos propuestas</h1>
+<p class="lede">La idea: <b>una alternativa clara más</b> y <b>una intermedia</b>.</p>
+<div class="fila" id="nuevos"></div>
+
+<script>
+/* La misma maqueta repetida por tema: si el trozo cambia, cambia en los cinco a la
+   vez. Lo que se compara es el TEMA, no cinco dibujos distintos. */
+var TEMAS_HOY = [
+  ['', 'Claro', 'el de hoy',
+   'El que usas. Gris azulado, frío. Es el punto de partida de la propuesta «Papel».'],
+  ['t-medio', 'Medio', 'el de hoy',
+   'Azul apagado. A tus usuarios les funciona; a ti no te encanta.'],
+  ['t-oscuro', 'Oscuro', 'el de hoy',
+   'Carbón neutro, estilo taller (Fusion, Rhino). El único color lo ponen las barras.']
+];
+var TEMAS_NUEVOS = [
+  ['t-papel', 'Papel', 'propuesta · claro',
+   '<b>Mismo contraste, otra temperatura.</b> Fondo arena, panel hueso, tinta parda. Cansa menos en jornada larga y los colores de tipología —casi todos fríos— resaltan más sobre un fondo cálido.'],
+  ['t-mixto', 'Mixto', 'propuesta · claro/oscuro',
+   '<b>Paneles claros, lienzo oscuro.</b> Se lee sobre blanco y se mira sobre negro, que es como trabajan Revit y Rhino. Resuelve tu caso y el de tus usuarios en un solo tema.']
+];
+
+function tarjeta(t, nueva) {
+  return '<div class="card' + (nueva ? ' nueva' : '') + '">' +
+    '<h2>' + t[1] + '<span class="pt">' + t[2] + '</span></h2>' +
+    '<div class="te ' + t[0] + '">' +
+      '<div class="barra">' +
+        '<button class="btn on">＋ Agregar barra</button>' +
+        '<button class="btn">Snap</button><button class="btn">Cotas</button>' +
+      '</div>' +
+      '<div class="cuerpo">' +
+        '<div class="quad"><span class="tit">ELEVACIÓN · YZ</span>' + DIBUJO + '</div>' +
+        '<div class="lado">' +
+          '<p class="lbl">Diámetro</p><input class="campo" value="ø8" readonly>' +
+          '<div class="teja sel"><span class="sw" style="background:#e65100"></span>EC · 104D</div>' +
+          '<div class="teja"><span class="sw" style="background:#1565c0"></span>MH · 101A</div>' +
+          '<div class="teja"><span class="sw" style="background:#7b1fa2"></span>TR · 103B</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pie">Lado B = 15 cm · <i>sel: EC 104D</i> · <s>SHIFT = medidas</s></div>' +
+    '</div>' +
+    '<div class="nota">' + t[3] + '</div>' +
+  '</div>';
+}
+
+/* Un muro con sus dos cortinas, un estribo de confinamiento y una traba: el mismo
+   dibujo en los cinco, con los colores REALES de cada tipología. */
+var DIBUJO = (function () {
+  var s = '<svg viewBox="0 0 195 186" preserveAspectRatio="none">';
+  s += '<rect x="26" y="24" width="143" height="138" fill="none" stroke="var(--te-grid2)" stroke-width="1" stroke-dasharray="4 3"/>';
+  for (var i = 0; i < 9; i++) {                       // cortina horizontal (MH)
+    var y = 33 + i * 15;
+    s += '<line x1="32" y1="' + y + '" x2="163" y2="' + y + '" stroke="#1565c0" stroke-width="2" stroke-linecap="round"/>';
+  }
+  for (var j = 0; j < 4; j++) {                       // estribos de confinamiento (EC)
+    var x = 36 + j * 9;
+    s += '<path d="M' + x + ',30 L' + x + ',156" stroke="#e65100" stroke-width="2.4" fill="none" stroke-linecap="round"/>';
+  }
+  for (var k = 0; k < 5; k++) {                       // trabas (TR), vistas de punta
+    s += '<circle cx="' + (96 + (k % 2) * 26) + '" cy="' + (44 + k * 24) + '" r="3.1" fill="#7b1fa2"/>';
+  }
+  return s + '</svg>';
+})();
+
+document.getElementById('hoy').innerHTML = TEMAS_HOY.map(function (t) { return tarjeta(t, false); }).join('');
+document.getElementById('nuevos').innerHTML = TEMAS_NUEVOS.map(function (t) { return tarjeta(t, true); }).join('');
+</script>
+</body>
+</html>
