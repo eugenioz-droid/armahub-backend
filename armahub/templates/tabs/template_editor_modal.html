@@ -484,7 +484,10 @@
      es continuo -el usuario pidio "mas medidas" que tres botones fijos- sin ocupar
      media barra de herramientas. */
   #te_modal .te-cortewrap{position:relative;display:inline-flex}
-  #te_modal #te_btnCorte b{font-weight:700;color:var(--te-acero-t)}
+  /* Mas compacto que el resto de la barra (25-ago): no es una accion, es un ESTADO
+     con su valor a la vista, y no tiene que pesar lo mismo que Borrar o Espejar. */
+  #te_modal #te_btnCorte{padding:3px 7px;font-size:11px}
+  #te_modal #te_btnCorte b{font-weight:700;color:var(--te-acero-t);margin-left:2px}
   #te_modal .te-cortepop{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:40;
     width:250px;padding:10px 11px 11px;border:1px solid var(--te-line);border-radius:10px;
     background:var(--te-panel);box-shadow:0 8px 24px rgba(15,20,28,.18);
@@ -1570,7 +1573,7 @@
              una sola decision para las tres vistas, por eso vive aca y no repetido en
              cada canvas. -->
         <span class="te-cortewrap">
-          <button class="te-ctool" id="te_btnCorte">⬍ Corte <b class="te-cortelbl">auto</b></button>
+          <button class="te-ctool" id="te_btnCorte" title="Profundidad de la rebanada que muestran los cortes">⬍<b class="te-cortelbl">auto</b></button>
           <span class="te-cortepop" id="te_cortePop">
             <label for="te_corteRange">Profundidad de la rebanada</label>
             <input type="range" id="te_corteRange" min="1" max="200" step="1" value="200">
@@ -1601,9 +1604,12 @@
              otro es claro Y oscuro a la vez. Asi que cada boton pasa a ser una
              MUESTRA de su tema -mitad lienzo, mitad panel-, que es lo unico que los
              distingue de verdad y ademas escala si manana hay un sexto. -->
+        <!-- ORDEN: de MAS CLARO a MAS OSCURO (25-ago, criterio del usuario). Con
+             cinco temas la fila necesita un eje que se lea sin memorizar, y el unico
+             que los ordena a todos es cuanta luz tienen. Mixto cae al medio porque es
+             exactamente eso: claro por un lado y oscuro por el otro. -->
         <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
-          <button type="button" data-tema="oscuro" title="Oscuro — carbón neutro, de taller"><i style="--a:#14171c;--b:#1e2228"></i></button><button type="button" data-tema="medio" title="Medio — azul apagado"><i style="--a:#2b3242;--b:#363f52"></i></button><button type="button" class="on" data-tema="claro" title="Claro — gris azulado (el de siempre)"><i style="--a:#d8dee7;--b:#ffffff"></i></button><button type="button" data-tema="papel" title="Papel — claro cálido: mismo contraste, menos brillo"><i style="--a:#e3dbcb;--b:#fffdf8"></i></button><button type="button" data-tema="mixto" title="Mixto — paneles claros y lienzo oscuro"><i style="--a:#141a22;--b:#ffffff"></i></button>
-        </span>
+          <button type="button" class="on" data-tema="claro" title="Claro — gris azulado (el de siempre)"><i style="--a:#d8dee7;--b:#ffffff"></i></button><button type="button" data-tema="papel" title="Papel — claro cálido: mismo contraste, menos brillo"><i style="--a:#e3dbcb;--b:#fffdf8"></i></button><button type="button" data-tema="mixto" title="Mixto — paneles claros y lienzo oscuro"><i style="--a:#141a22;--b:#ffffff"></i></button><button type="button" data-tema="medio" title="Medio — azul apagado"><i style="--a:#2b3242;--b:#363f52"></i></button><button type="button" data-tema="oscuro" title="Oscuro — carbón neutro, de taller"><i style="--a:#14171c;--b:#1e2228"></i></button></span>
         <span class="te-divv"></span>
         <!-- MOSTRAR/OCULTAR el listado de barras. Vive ACÁ y no junto a la tabla
              (pedido explícito: "un botón que la muestre y la oculte apareciendo siempre
