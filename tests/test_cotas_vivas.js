@@ -654,5 +654,42 @@ console.log('\nÑ · CONTAR BARRAS NO LE MUEVE LA POSICIÓN A NADIE');
   ok(out.placements.some(p => p.meta && p.meta.ci === 1), '…y el etiquetado por ci se hizo igual');
 }
 
+// ---------------------------------------------------------------------------
+console.log('');
+console.log('Z . LA MEDIDA DE CADA LADO SE REFRESCA AL EDITAR');
+// ---------------------------------------------------------------------------
+// (25-ago) La ficha muestra, al final de la fila de cada lado, lo que ESE lado mide
+// de verdad. El usuario: "si modifico, tengo que soltar la barra para que la vuelva
+// a reconocer; debe actualizarse cuando hago la edicion". Escribir el numero al
+// armar la ficha no alcanza: editar un campo REGENERA pero NO vuelve a armar la
+// ficha -a proposito, para no robarle el foco a quien teclea-, asi que la medida se
+// quedaba en el valor de hace un rato.
+{
+  const c = montar([{
+    comp_id: 'X1', tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral',
+    angulos: [135, 135], modo: 'puntual', plano_pieza: { orientacion: 'acostada', volteado: false },
+    dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0, sentido: 'nucleo' }
+  }]);
+  TE._regenerar();
+  const antes = TE._medidaLadoReal(0, 'B');
+  ok(antes != null, 'con una barra generada, el lado B tiene medida (=' + antes + ')');
+
+  // Un <span> registrado como los que arma la ficha.
+  const span = { textContent: '', className: '', title: '' };
+  ST._medVivas = [{ el: span, ci: 0, L: 'B' }];
+  TE._refrescarMedidasLados();
+  ok(span.textContent === String(antes), 'el span de la ficha dice esa medida (=' + span.textContent + ')');
+
+  // EDITAR SIN RE-ARMAR LA FICHA: se cambia la dim y se regenera, que es justo lo
+  // que hace _mut cuando el usuario teclea en un campo.
+  c.dims.B = { modo: 'fija', valor: 30 };
+  TE._regenerar();
+  const ahora = TE._medidaLadoReal(0, 'B');
+  ok(ahora !== antes, 'la medida cambio con la edicion (' + antes + ' -> ' + ahora + ')');
+  ok(span.textContent === String(ahora),
+    'y el span YA lo dice, sin volver a armar la ficha (=' + span.textContent + ')');
+}
+
 console.log(fallos ? ('\n' + fallos + ' FALLO(S)') : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

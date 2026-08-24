@@ -193,6 +193,9 @@
     // cambia lo que hace el clic sobre una barra: es un modo de UN solo clic que se
     // consume y se apaga.
     espejoPend: false,
+    // Los <span> de "cuánto mide este lado" que la ficha tiene ahora en pantalla.
+    // Se rehace con cada ficha y lo reescribe cada regeneración (ver _medVivas abajo).
+    _medVivas: [],
     // SELECCIÓN MÚLTIPLE (25-ago) — `selCi` SIGUE SIENDO LA SELECCIÓN. Estos son los
     // componentes que van ADEMÁS, y sólo los miran tres cosas: el resaltado (tejas,
     // 2D y 3D), el espejo y el borrado. Todo lo demás —la ficha, los tiradores, el
@@ -2197,6 +2200,10 @@
     // se apaga cuando no hay cambios). Cada regeneración es un cambio potencial, así
     // que el estado se recalcula aquí y no en veinte llamadores sueltos.
     _actualizarBtnGuardar();
+    // Las medidas por lado de la ficha muestran lo que ACABA de salir del motor. Va
+    // acá —en el punto único por el que pasa toda mutación— y no en cada llamador:
+    // así ninguna forma de cambiar la barra puede dejar el número viejo en pantalla.
+    _refrescarMedidasLados();
     // NO PERDER TRABAJO: autoguardado del borrador (throttled; no hace nada con el
     // modal cerrado). Va al final: se guarda lo que YA quedó regenerado/normalizado.
     _programarBorrador();
@@ -6943,6 +6950,7 @@
     _bindDetalleAcciones();
     host.innerHTML = '';
     ST._panelVivo = [];   // el DOM viejo se va: sus refrescadores también
+    ST._medVivas = [];    // idem: los <span> de las medidas por lado
     var c = (ST.selCi >= 0 && ST.receta && ST.receta.componentes) ? ST.receta.componentes[ST.selCi] : null;
     var sw = $('te_detSw'), tag = $('te_detTag'), bDup = $('te_detDup'), bDel = $('te_detDel');
     if (sw) sw.style.display = c ? '' : 'none';
@@ -8171,15 +8179,39 @@
     // el usuario le va a leer al taller. Sale del motor, no de una cuenta propia:
     // es el `dims` del placement que la última generación emitió para esta barra.
     // Se refresca solo, porque la ficha se vuelve a armar en cada regeneración.
-    var med = _medidaLadoReal(ci, L);
-    var val = _span(med == null ? '—' : (med + ''));
-    val.className = 'te-dimval' + (med == null ? ' vacio' : '');
-    val.title = (med == null)
-      ? 'Todavía no hay una barra generada para leer esta medida.'
-      : 'Lo que mide el lado ' + L + ' en la barra que se está generando: ' + med + ' cm.';
+    var val = _span('—');
+    val.className = 'te-dimval vacio';
+    // SE REFRESCA SOLA EN CADA REGENERACIÓN (25-ago, reportado: «si modifico, tengo
+    // que soltar la barra para que la vuelva a reconocer; debe actualizarse cuando
+    // hago la edición»). Escribir el número una vez al armar la ficha no alcanza:
+    // editar un campo REGENERA pero NO vuelve a armar la ficha —a propósito, para no
+    // robarle el foco a quien está tecleando—, así que la medida se quedaba en el
+    // valor de hace un rato. Se apunta en un registro y `_regenerar` la reescribe.
+    // Es SEGURO hacerlo siempre, al revés que los refrescadores de _panelVivo: esto
+    // escribe en un <span>, no en un <input>, así que no puede pisar lo que el
+    // usuario está escribiendo ni moverle el cursor.
+    ST._medVivas.push({ el: val, ci: ci, L: L });
     wrap.appendChild(val);
     row.appendChild(wrap);
     return row;
+  }
+
+  // Reescribe TODAS las medidas de la ficha con lo que el motor acaba de emitir.
+  // Silenciosa si la ficha no tiene ninguna (nada seleccionado, o una figura sin
+  // filas de lado).
+  function _refrescarMedidasLados() {
+    var L = ST._medVivas;
+    if (!L || !L.length) return;
+    for (var i = 0; i < L.length; i++) {
+      var r = L[i];
+      if (!r || !r.el) continue;
+      var v = _medidaLadoReal(r.ci, r.L);
+      r.el.textContent = (v == null) ? '—' : (v + '');
+      r.el.className = 'te-dimval' + (v == null ? ' vacio' : '');
+      r.el.title = (v == null)
+        ? 'Todavía no hay una barra generada para leer esta medida.'
+        : 'Lo que mide el lado ' + r.L + ' en la barra que se está generando: ' + v + ' cm.';
+    }
   }
 
   // La medida REAL de un lado, tal como salió de la última generación. Se lee del
@@ -12979,6 +13011,7 @@
     _selTodos: _selTodos, _estaSeleccionado: _estaSeleccionado, _duplicar: _duplicar,
     _seleccionarTramo: _seleccionarTramo, _detalleMultiple: _detalleMultiple,
     _compEl: _compEl,   // la teja, para poder verificar que trae su papelera
+    _medidaLadoReal: _medidaLadoReal, _refrescarMedidasLados: _refrescarMedidasLados,
     _anidadoCambiaAlgo: _anidadoCambiaAlgo,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
