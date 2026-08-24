@@ -296,8 +296,10 @@
     // --- PERF / VISTAS (frente B) ---
     // dirty: render-on-demand. El loop sólo pinta si algo lo marcó (_marcarSucio).
     dirty: true,
-    // barras3D: meshes de barra del último _redibujar, con userData.span (extensión
-    //   por eje) y userData.matBase/matClip → clipping LOCAL por vista (B2).
+    // barras3D: meshes del último _redibujar. Desde el 24-ago hay UNO POR COMPONENTE
+    //   (todas sus barras fusionadas, ver _gruposMalla3D), con userData.ci,
+    //   userData.span (extensión por eje del componente ENTERO) y
+    //   userData.matBase/matClip → clipping LOCAL por vista (B2).
     barras3D: [],
     // luzFrontal: DirectionalLight extra que se coloca en el eye de cada vista orto
     //   (sólo visible durante los 3 renders orto) para que las tapas/secciones no
@@ -2704,6 +2706,73 @@
     return s;
   }
 
+  // PERF (24-ago) · LADOS DEL TUBO. Estaban en 10; quedan en 8, no en 6. El 6 se
+  // descartó por la TAPA del extremo (ver _cilindroParte en motor_geom): es el
+  // círculo que se ve cuando en la vista de SECCIÓN un longitudinal se mira de
+  // punta, y ahí la silueta se lee LITERAL —un hexágono parece una tuerca, un
+  // octógono ya pasa por círculo—. Y el ahorro que se dejaba en la mesa no vale la
+  // pena: los triángulos NUNCA fueron el cuello de botella (62.760 en el muro de
+  // 9 m, nada para una GPU); el cuello eran las 664 llamadas de dibujo por cuadro,
+  // y eso lo arregla la fusión por componente de _redibujar, no la teselación.
+  var SEG_RADIALES = 8;
+
+  // PERF (24-ago) · AGRUPADOR POR COMPONENTE — el componente ES la unidad de
+  // material del editor: seleccionar, resaltar, apagar y clipear ya trabajaban por
+  // `ci` y nunca por barra suelta. De ahí que las 166 barras del muro de 9 m puedan
+  // salir como 6 mallas 3D y 6 trazos 2D en vez de 166 de cada cosa.
+  // Acá vive el ÚNICO recorrido que lo decide, y con él el filtro de la ampolleta
+  // (_ocultoCi): un componente apagado no se agrupa, así que ni se construye su
+  // malla ni se emite su trazo —igual que antes, cuando el filtro estaba suelto en
+  // cada bucle.
+  // `clave(pl, ci)` devuelve el discriminante FINO: lo que impediría juntar dos
+  // barras del MISMO componente (material 3D distinto, color 2D distinto, una vista
+  // de punta y otra de perfil) las manda a grupos separados sola, sin que este
+  // código tenga que dar por sentado que hoy no pasa. Devolver null descarta.
+  function _agruparPlacements(placements, clave) {
+    var grupos = [], indice = {};
+    for (var i = 0; i < (placements || []).length; i++) {
+      var pl = placements[i];
+      if (!pl) continue;
+      var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+      if (_ocultoCi(ci)) continue;
+      var k = clave ? clave(pl, ci) : '';
+      if (k == null) continue;
+      k = ci + '|' + k;
+      var g = indice[k];
+      if (!g) { g = indice[k] = { ci: ci, clave: k, pls: [] }; grupos.push(g); }
+      g.pls.push(pl);
+    }
+    return grupos;
+  }
+
+  // Grupos de MALLA 3D. La clave lleva el material porque un componente PUEDE traer
+  // color propio (_matDeComp): hoy el color es del componente entero y esto devuelve
+  // un grupo por componente, pero si un día dos barras suyas pidieran materiales
+  // distintos saldrían como dos mallas en vez de perder un color por el camino.
+  function _gruposMalla3D(placements) {
+    var mats = [];
+    return _agruparPlacements(placements, function (pl) {
+      var m = _matDeComp(pl);
+      var im = mats.indexOf(m);
+      if (im < 0) { im = mats.length; mats.push(m); }
+      return 'm' + im;
+    });
+  }
+
+  // Span del COMPONENTE ENTERO. userData.span es lo que el clipping por vista lee
+  // para decidir si la pieza es una "rebanada" o si CRUZA el corte; desde la fusión
+  // el mesh ya no es una barra sino todas las del componente, así que el span tiene
+  // que ser el de la UNIÓN —con el de la primera barra, una cortina de 46 barras
+  // repartido en 9 m se declararía del ancho de UNA.
+  function _spanDeGrupo(pls) {
+    var todos = [];
+    for (var i = 0; i < pls.length; i++) {
+      var p = pls[i].puntos || [];
+      for (var j = 0; j < p.length; j++) todos.push(p[j]);
+    }
+    return _spanDePuntos(todos);
+  }
+
   function _redibujar(out) {
     var THREE = global.THREE, geom = _deps().geom;
     if (!THREE || !ST.world || !geom) return;
@@ -2719,22 +2788,40 @@
         new THREE.EdgesGeometry(new THREE.BoxGeometry(g.largo, g.alto, g.ancho)), matEdges);
       ST.world.add(box); ST.world.add(edges);
     }
-    (out.placements || []).forEach(function (pl) {
-      // APAGADO = NO SE CONSTRUYE. No basta con `mesh.visible = false`: eso ahorra la
-      // llamada de dibujo pero no el tubo ni la memoria de video, que es lo caro. La
-      // barra sigue existiendo en el despiece; lo único que no existe es su malla.
-      if (pl.meta && _ocultoCi(pl.meta.ci)) return;
-      var mat = _matDeComp(pl);   // color por barra: override de la receta o el de su tipología
-      var mesh = geom.barraSolida(pl.puntos, pl.diam, mat, { segmentosRadiales: 10 });
-      if (!mesh) return;
+    // PERF (24-ago) · UNA MALLA POR COMPONENTE, no una por barra. Medido en el muro
+    // de 9 m del usuario (4 mallas @20 + 2 confinamientos @12 = 6 componentes, 166
+    // barras): eran 166 meshes y el cuadro los dibuja CUATRO veces —las 3 vistas
+    // orto más el pase 3D— o sea 664 llamadas de dibujo por cuadro. Fusionadas por
+    // componente quedan 6 meshes y 24 llamadas. Los triángulos son los MISMOS
+    // (62.760): lo caro nunca fue la geometría, fue la cantidad de llamadas.
+    // Encaja sin inventar nada porque el componente ya era la unidad de todo lo
+    // demás: _resaltarSeleccion3D y _clipLocalPorVista iteran ST.barras3D leyendo
+    // userData.ci / matBase / matActivo / span, y ese contrato queda igual — lo
+    // único que cambia es que ahora cada entrada representa al componente entero.
+    // APAGADO = NO SE CONSTRUYE (lo filtra _agruparPlacements con _ocultoCi): no
+    // basta con `mesh.visible = false`, eso ahorra la llamada de dibujo pero no el
+    // tubo ni la memoria de video, que es lo caro.
+    _gruposMalla3D(out.placements || []).forEach(function (gr) {
+      var mat = _matDeComp(gr.pls[0]);   // color por componente: override de la receta o el de su tipología
+      // Las partes (cilindros + toros) de TODAS las barras del componente se
+      // acumulan y se fusionan UNA sola vez — ver motor_geom.partesDeBarra: hacerlo
+      // barra por barra y después otra vez el componente copiaba cada vértice dos
+      // veces, y esto corre en cada regeneración (o sea, en cada arrastre).
+      var partes = [];
+      for (var i = 0; i < gr.pls.length; i++) {
+        var pl = gr.pls[i];
+        var ps = geom.partesDeBarra(pl.puntos, pl.diam, { segmentosRadiales: SEG_RADIALES });
+        if (ps) partes.push.apply(partes, ps);
+      }
+      if (!partes.length) return;
+      var geoFus = geom.fusionarGeometrias(partes);
+      if (!geoFus) return;
+      var mesh = new THREE.Mesh(geoFus, mat);
       // B2·(a): guardar el span por eje + el material COMPARTIDO original. El clipping
       // por vista se aplica clonando ese material sólo cuando hace falta.
-      mesh.userData.span = _spanDePuntos(pl.puntos);
+      mesh.userData.span = _spanDeGrupo(gr.pls);
       mesh.userData.matBase = mat;
-      mesh.userData.ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
-      // SECCIÓN LIMPIA: rol + eje por el que CORRE la barra, calculados UNA vez aquí
-      // (no por frame). Los usa _clipLocalPorVista para esconder del render las
-      // barras vistas DE PUNTA — el overlay ya las dibuja como círculo de sección.
+      mesh.userData.ci = gr.ci;
       ST.barras3D.push(mesh);
       ST.world.add(mesh);
     });
@@ -3233,6 +3320,16 @@
         emissive: new THREE.Color(hex), emissiveIntensity: MAT_EMISSIVE });
     }
     return ST.materialesColor[hex];
+  }
+
+  // Un círculo como SUBTRAZO de un path (dos semiarcos relativos). Es lo que permite
+  // meter TODAS las barras de punta de un componente en UN solo nodo SVG: un <circle>
+  // no se concatena con nada, y eran 3 nodos por barra en la vista de sección.
+  function _dCirculo(cx, cy, r) {
+    var rr = r.toFixed(1), d2 = (2 * r).toFixed(1);
+    return 'M' + (cx - r).toFixed(1) + ',' + cy.toFixed(1) +
+           'a' + rr + ',' + rr + ' 0 1,0 ' + d2 + ',0' +
+           'a' + rr + ',' + rr + ' 0 1,0 -' + d2 + ',0Z';
   }
 
   function _svgEl(tag, attrs) {
@@ -4260,61 +4357,98 @@
 
     // Barras: halo de selección + HIT invisible SIEMPRE; el trazo sólido sólo cuando
     // el SVG es el que dibuja (sin render orto detrás).
-    placements.forEach(function (pl) {
-      var ci0 = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
-      // Apagado: ni trazo ni zona de clic. Que una barra invisible siguiera siendo
-      // clicable en el cuadrante sería lo peor de los dos mundos.
-      if (_ocultoCi(ci0)) return;
-      var color = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
-      var rol = _rolComp(pl);
-      var ci = ci0;
-      var sel = (ci >= 0) && _estaSeleccionado(ci);
-      var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
-      if (!pts.length) return;
-
+    //
+    // PERF (24-ago) · UN TRAZO POR COMPONENTE, no dos nodos SVG por barra. El muro de
+    // 9 m del usuario (6 componentes, 166 barras) rehacía 996 nodos en CADA
+    // regeneración —166 barras × 2 nodos × 3 vistas—, o sea que arrastrar un tirador
+    // reconstruía tres veces un DOM de mil nodos por cada paso del mouse. Los `d` se
+    // CONCATENAN: cada barra empieza con 'M', que abre un subtrazo, así que el
+    // componente entero cabe en un path de trazo y uno de HIT. El hit-testing no
+    // cambia porque data-ci ya era por componente, no por barra.
+    // Las barras vistas DE PUNTA se dibujan con RELLENO, no con trazo, así que no
+    // pueden compartir path con las de perfil: la clave del agrupador las separa y se
+    // concatenan entre ellas como arcos (_dCirculo).
+    // Y se emite POR CAPAS (halos → trazos → hits) en vez de barra por barra: el SVG
+    // no tiene z-index, manda el orden del documento, así que de paso ningún halo
+    // tapa el trazo de otro componente y TODOS los hits quedan por encima, que es lo
+    // que el clic espera. Apagado: ni trazo ni zona de clic —lo filtra
+    // _agruparPlacements con _ocultoCi—; que una barra invisible siguiera siendo
+    // clicable en el cuadrante sería lo peor de los dos mundos.
+    var capaHalo = [], capaTrazo = [], capaHit = [];
+    _agruparPlacements(placements, function (pl) {
+      var rolK = _rolComp(pl);
+      var puntaK = (rolK === 'cabezal' && _ejeMayorSpan(pl.puntos) === def.depth);
+      var colorK = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
+      var opK = (rolK === 'estribo' && plano === 'planta') ? '.6' : '1';
+      return (puntaK ? 'o' : 'l') + colorK + opK;
+    }).forEach(function (gr) {
+      var pl0 = gr.pls[0];
+      var rol = _rolComp(pl0);
+      var color = _colorComp(_compDePl(pl0) || { tipologia: pl0.tipologia });
+      var sel = (gr.ci >= 0) && _estaSeleccionado(gr.ci);
       // ¿La barra se ve DE PUNTA en esta vista? (su eje longitudinal es la
       // profundidad del plano) → círculo, no polilínea. Criterio GEOMÉTRICO (sirve
       // igual para piezas volteadas, cuyo eje longitudinal ya cambió de verdad).
-      if (rol === 'cabezal' && _ejeMayorSpan(pl.puntos) === def.depth) {
-        // Punto representativo = el TRAMO RECTO que corre en profundidad (el cuerpo
-        // de la barra), NO pts[0] (que es la punta del gancho → el círculo salía
-        // "abajo" mientras la barra iba arriba). Todos los puntos del tramo proyectan
-        // al mismo (u,v): tomamos el extremo del segmento con mayor delta en depth.
-        var q0 = pts[0], mejorDelta = -1;
-        var raw = pl.puntos || [];
-        for (var si = 1; si < raw.length; si++) {
-          var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
-          if (dd > mejorDelta) { mejorDelta = dd; q0 = proj(raw[si]); }
+      var punta = (rol === 'cabezal' && _ejeMayorSpan(pl0.puntos) === def.depth);
+      var dTrazo = '', dHalo = '', dHit = '';
+      for (var k = 0; k < gr.pls.length; k++) {
+        var pl = gr.pls[k];
+        var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
+        if (!pts.length) continue;
+        if (punta) {
+          // Punto representativo = el TRAMO RECTO que corre en profundidad (el cuerpo
+          // de la barra), NO pts[0] (que es la punta del gancho → el círculo salía
+          // "abajo" mientras la barra iba arriba). Todos los puntos del tramo proyectan
+          // al mismo (u,v): tomamos el extremo del segmento con mayor delta en depth.
+          var q0 = pts[0], mejorDelta = -1;
+          var raw = pl.puntos || [];
+          for (var si = 1; si < raw.length; si++) {
+            var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
+            if (dd > mejorDelta) { mejorDelta = dd; q0 = proj(raw[si]); }
+          }
+          // Radio REAL de la barra en px. OJO con las unidades: pl.diam YA viene en
+          // CENTÍMETROS (reglas.js lo convierte una sola vez: φ16 → 1.6) y t.s es
+          // px/cm → radio = diam/2 * s. Antes se dividía por 20 (se re-aplicaba el
+          // mm→cm) y el círculo salía 10× chico; el piso de 3 px lo tapaba dibujando
+          // todos los φ iguales. Piso 1.5 px: sólo actúa en zoom-out extremo.
+          var rPx = Math.max(1.5, (Number(pl.diam) / 2) * Math.abs(t.s || 1));
+          var cx = X(q0.u), cy = Y(q0.v);
+          dTrazo += _dCirculo(cx, cy, rPx);
+          dHalo += _dCirculo(cx, cy, rPx + 2.5);
+          dHit += _dCirculo(cx, cy, Math.max(7.5, rPx + 3));   // hit generoso: es lo que hace clicable la barra
+        } else {
+          dTrazo += (dTrazo ? ' ' : '') + pts.map(function (q, i) {
+            return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1);
+          }).join(' ');
         }
-        // Radio REAL de la barra en px. OJO con las unidades: pl.diam YA viene en
-        // CENTÍMETROS (reglas.js lo convierte una sola vez: φ16 → 1.6) y t.s es
-        // px/cm → radio = diam/2 * s. Antes se dividía por 20 (se re-aplicaba el
-        // mm→cm) y el círculo salía 10× chico; el piso de 3 px lo tapaba dibujando
-        // todos los φ iguales. Piso 1.5 px: sólo actúa en zoom-out extremo.
-        var rPx = Math.max(1.5, (Number(pl.diam) / 2) * Math.abs(t.s || 1));
-        if (sel) svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: rPx + 2.5, 'class': 'te-bar-halo' }));
-        svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: rPx, fill: color, style: 'pointer-events:none' }));
-        // hit generoso (transparente) — es lo que hace clicable la barra
-        svg.appendChild(_svgEl('circle', {
-          cx: X(q0.u), cy: Y(q0.v), r: Math.max(7.5, rPx + 3), fill: 'transparent',
-          'data-ci': ci, 'data-hit': '1', style: 'cursor:pointer'
+      }
+      if (!dTrazo) return;
+      if (punta) {
+        if (sel) capaHalo.push(_svgEl('path', { 'class': 'te-bar-halo', d: dHalo }));
+        // el círculo de sección se pinta SIEMPRE, también en modo overlay: es la marca
+        // permanente de la barra vista de punta y el render 3D no la dibuja.
+        capaTrazo.push(_svgEl('path', { d: dTrazo, fill: color, style: 'pointer-events:none' }));
+        capaHit.push(_svgEl('path', {
+          d: dHit, fill: 'transparent', 'data-ci': gr.ci, 'data-hit': '1', style: 'cursor:pointer'
         }));
         return;
       }
-      var d = pts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
-      if (sel) svg.appendChild(_svgEl('path', { 'class': 'te-bar-halo', d: d }));
+      if (sel) capaHalo.push(_svgEl('path', { 'class': 'te-bar-halo', d: dTrazo }));
       if (!soloOverlay) {
-        svg.appendChild(_svgEl('path', {
-          'class': 'te-bar' + (sel ? ' sel' : ''), d: d, stroke: color, style: 'pointer-events:none',
+        capaTrazo.push(_svgEl('path', {
+          'class': 'te-bar' + (sel ? ' sel' : ''), d: dTrazo, stroke: color, style: 'pointer-events:none',
           opacity: (rol === 'estribo' && plano === 'planta') ? 0.6 : 1
         }));
       }
       // trazo de HIT transparente ancho (facilita el clic sobre la línea fina)
-      svg.appendChild(_svgEl('path', {
-        d: d, fill: 'none', stroke: 'transparent', 'stroke-width': 9, 'stroke-linecap': 'round',
-        'data-ci': ci, 'data-hit': '1', style: 'cursor:pointer'
+      capaHit.push(_svgEl('path', {
+        d: dTrazo, fill: 'none', stroke: 'transparent', 'stroke-width': 9, 'stroke-linecap': 'round',
+        'data-ci': gr.ci, 'data-hit': '1', style: 'cursor:pointer'
       }));
     });
+    capaHalo.forEach(function (n) { svg.appendChild(n); });
+    capaTrazo.forEach(function (n) { svg.appendChild(n); });
+    capaHit.forEach(function (n) { svg.appendChild(n); });
 
     // BBOX punteado de la PIEZA seleccionada (todas sus barras juntas) + esquinitas
     // — la marca de selección "de conjunto"; el realce por barra lo pone el render
@@ -10975,7 +11109,8 @@
   //     (Vector3 + Quaternion). Con un raycaster contra los meshes, ESTA función —la
   //     que decide dónde queda clavado el giro— quedaría sin una sola medición, y
   //     esta función ya se volvió indemostrable a ojo dos veces seguidas.
-  //   · el mesh de una barra es un TUBO teselado (10 caras, ver _redibujar): el
+  //   · el mesh es un TUBO teselado (8 caras, ver SEG_RADIALES) y además desde la
+  //     fusión por componente ya ni siquiera es UNA barra: el
   //     raycaster devolvería un punto de su SUPERFICIE, con el error de la
   //     teselación. Acá el punto cae en el EJE de la barra, que es donde el usuario
   //     cree que está apuntando.
@@ -13489,7 +13624,13 @@
     // FICHA POR FAMILIA (contorno cerrado ⇒ sin patas ni empalme)
     _familiaDibujo: _familiaDibujo, _esContornoCerrado: _esContornoCerrado,
     // ficha del componente (el panel de dims dinámico sale de los parciales del catálogo)
-    _compBody: _compBody
+    _compBody: _compBody,
+    // PERF (24-ago) — el agrupador por componente y lo que emite cada camino de
+    // dibujo. Expuestos para que la suite CUENTE mallas 3D y nodos SVG de una receta
+    // real: es el número que se fue a arreglar, y sin test vuelve solo.
+    _agruparPlacements: _agruparPlacements, _gruposMalla3D: _gruposMalla3D,
+    _spanDeGrupo: _spanDeGrupo, _dCirculo: _dCirculo,
+    _dibujarVista2D: _dibujarVista2D, SEG_RADIALES: SEG_RADIALES
   };
 
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));

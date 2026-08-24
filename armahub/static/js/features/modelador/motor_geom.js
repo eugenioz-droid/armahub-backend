@@ -177,10 +177,15 @@
     return { geo: geo, matriz: m };
   }
 
-  // ---- Generador central: barra sólida (Mesh) desde polilínea + diámetro ----
-  // puntos: [{x,y,z}] o Vector3[]. diamCm en cm. material = THREE.Material.
-  // Devuelve THREE.Mesh (fusionada) o THREE.Group (fallback), o null si <2 pts.
-  function barraSolida(puntos, diamCm, material, opciones) {
+  // ---- PARTES de una barra (cilindros + toros) SIN fusionar -----------------
+  // PERF (24-ago) · se separó de barraSolida para poder juntar VARIAS barras en UNA
+  // sola malla con UNA sola pasada de fusión. Fusionar barra por barra y después
+  // fusionar el componente entero copia cada vértice DOS veces: en el muro de 9 m
+  // (166 barras, ~130k vértices) eso era medio millón de copias por regeneración,
+  // y una regeneración ocurre en cada arrastre de tirador. Con las partes a la
+  // vista, quien dibuja acumula las de todo el componente y fusiona UNA vez.
+  // Devuelve [{geo, matriz}], o null si no hay THREE o la polilínea no da barra.
+  function partesDeBarra(puntos, diamCm, opciones) {
     var THREE = _T();
     if (!THREE) return null;
     opciones = opciones || {};
@@ -217,6 +222,16 @@
         cursor = pts[i];
       }
     }
+    return partes;
+  }
+
+  // ---- Generador central: barra sólida (Mesh) desde polilínea + diámetro ----
+  // puntos: [{x,y,z}] o Vector3[]. diamCm en cm. material = THREE.Material.
+  // Devuelve THREE.Mesh (fusionada) o THREE.Group (fallback), o null si <2 pts.
+  function barraSolida(puntos, diamCm, material, opciones) {
+    var THREE = _T();
+    var partes = partesDeBarra(puntos, diamCm, opciones);
+    if (!partes) return null;
     var merged = fusionarGeometrias(partes);
     if (merged) return new THREE.Mesh(merged, material);
     // Fallback (no debería pasar con THREE presente): grupo de meshes sin fusionar.
@@ -244,6 +259,7 @@
     radioDobladoNorma: radioDobladoNorma,
     analizarBarra: analizarBarra,
     barraSolida: barraSolida,
+    partesDeBarra: partesDeBarra,
     fusionarGeometrias: fusionarGeometrias,
     largoPolilinea: largoPolilinea
   };
