@@ -995,19 +995,6 @@
     return _EJES_MUNDO.filter(function (e) { return e !== n; });
   }
   function _rumboValido(cara, rumbo) { return _rumbosDeCara(cara).indexOf(rumbo) >= 0; }
-  // EL EJE QUE CRUZA EL ELEMENTO: por donde una traba tiene que coser. Es el eje más
-  // corto del hormigón —el espesor de un muro, el ancho de una viga—, preguntado a
-  // la geometría y no escrito por tipo de elemento: así una columna o lo que venga
-  // después no necesita una entrada nueva en ninguna tabla.
-  function _ejeQueCruza() {
-    var g = ST.receta && ST.receta.geometria;
-    if (!g) return null;
-    var dims = [['x', Number(g.largo)], ['y', Number(g.alto)], ['z', Number(g.ancho)]]
-      .filter(function (p) { return isFinite(p[1]) && p[1] > 0; });
-    if (!dims.length) return null;
-    dims.sort(function (a, b) { return a[1] - b[1]; });
-    return dims[0][0];
-  }
   // Rumbo por defecto de una cara: el largo (x) si es ⊥ a ella; si no, el primero.
   function _rumboDefaultDeCara(cara) {
     var r = _rumbosDeCara(cara);
@@ -5499,42 +5486,18 @@
       var esSeccionV = !!(fpV &&
         ((fpV.familiaDeDibujo && fpV.familiaDeDibujo(sel.figura, null) === 'estribo') ||
          (rol === 'estribo' && fpV.esPiezaDeSeccion && fpV.esPiezaDeSeccion(sel.figura, 'estribo'))));
-      // UNA TRABA NO ELIGE RUMBO SEGÚN LA VISTA (25-ago, defecto reportado). El
-      // resto de las piezas nacen "como se ven": corren dentro del plano donde
-      // clicaste. Una traba no puede — cruza el elemento por definición, y su eje es
-      // el espesor lo mires desde donde lo mires. Con la regla general, la MISMA
-      // traba salía distinta según el cuadrante: MEDIDO, un 103B como TR nacía
-      // corriendo en x si se clicaba en la sección y DE PIE (rumbo y) si se clicaba
-      // en la elevación o en la planta. Por eso a unos usuarios les funcionaba y a
-      // otros no: dependía del cuadrante, no de lo que hacían.
-      // Que lo decida la TIPOLOGÍA es legítimo acá y no una tabla paralela: "traba"
-      // no describe cómo se dibuja la figura —eso lo sigue mandando la topología—
-      // sino para qué está puesta, que es justo lo que elige una tipología.
-      // Y en la vista donde la traba corre hacia adentro se verá como un PUNTO: es
-      // correcto, es una barra vista de punta.
-      // OJO CON QUE SE LE PREGUNTA. `_rolDe` pasa por rolDeComponente, que desde
-      // Modelo A resuelve por TOPOLOGIA y contesta 'cabezal' para una traba con
-      // figura abierta -es su trabajo, la figura manda como se dibuja-. Lo que hace
-      // falta acá es otra cosa: PARA QUE esta puesta la barra, y eso lo dice la
-      // tipologia. Con `_rolDe` el branch no entraba y en la elevacion la traba
-      // volvia a nacer de pie (medido: rumbo x en largo, rumbo z en las otras dos).
-      var rTip = global.ModeladorReglas;
-      var esTrabaV = !!(rTip && rTip.rolDeTipologia && rTip.rolDeTipologia(sel.tipologia) === 'traba');
-      if (esTrabaV && !esSeccionV) {
-        var ejeCruce = _ejeQueCruza();
-        if (ejeCruce) {
-          if (!_rumboValido(pose.cara, ejeCruce)) {
-            // la cara default mira justo por donde hay que cruzar → tomar una cara
-            // cuyo normal sea OTRO eje (priorizando el borde que se clicó).
-            var candsT = [f && f.cara, 'sup', 'lateral', 'extremo'];
-            for (var cT = 0; cT < candsT.length; cT++) {
-              var ccT = candsT[cT];
-              if (ccT && _NORMAL_DE_CARA[ccT] && _NORMAL_DE_CARA[ccT] !== ejeCruce) { pose.cara = ccT; break; }
-            }
-          }
-          if (_rumboValido(pose.cara, ejeCruce)) pose.rumbo = ejeCruce;
-        }
-      } else if (esSeccionV) {
+      // AQUI VIVIO UN OVERRIDE PARA LA TRABA, Y ESTUVO MAL (25-ago). Se le hizo
+      // ignorar esta regla para que cruzara el espesor viniera de donde viniera. El
+      // usuario lo corto de raiz: «la tipologia NO DECIDE LA COLOCACION. La logica de
+      // inserccion debe ser siempre la misma. Con cualquier barra tendras un caso mal
+      // insertado si elegimos mal la vista o la cara: por eso el usuario debe tener
+      // el control». Tiene razon y la regla es una sola: la barra nace en el plano de
+      // la vista donde se clico, sea cual sea su tipologia. Si eso deja una traba
+      // acostada en la elevacion, es porque ahi la puso el usuario — y la mueve.
+      // Lo que la tipologia SI aporta es la pose de PARTIDA (POSES_DEFAULT), igual
+      // que para MH, MV o un cabezal; esta regla la ajusta despues, para todos por
+      // igual y sin excepciones.
+      if (esSeccionV) {
         if (_NORMAL_DE_CARA[pose.cara] === defV.depth) {
           // la cara default quedó ∥ al plano de la pieza: elegir una cara VÁLIDA
           // (normal dentro del plano de la vista), priorizando el borde clickeado
@@ -13096,7 +13059,7 @@
     // Ghost con la FORMA REAL: la polilínea proyectada y el componente de preview
     // (el MISMO que crea el clic) — para poder comparar ghost ≡ barra colocada.
     _ghostPlacement: _ghostPlacement, _ghostFormaBasica: _ghostFormaBasica,
-    _compDesdeClick: _compDesdeClick, _ejeQueCruza: _ejeQueCruza,
+    _compDesdeClick: _compDesdeClick,
     // TANDA P · POSE CANÓNICA {cara, lado, rumbo, espejo} + rotar-en-vista
     _poseDe: _poseDe, _setPose: _setPose,
     _poseDefault: _poseDefault, _poseDefaultMotor: _poseDefaultMotor,

@@ -377,28 +377,37 @@ console.log('N . el anidado se ofrece donde cambia algo');
     'una figura con patas si anida: el check se ofrece');
 }
 
-// ============ O . LA TRABA NACE IGUAL DESDE CUALQUIER CUADRANTE
-// (25-ago) El usuario: "lo raro es que a otros usuarios no les pasa... capaz
-// insertaron la barra en otra cara?". Exacto: la regla general hace que una pieza
-// nazca corriendo DENTRO del plano donde se clico, y con eso la misma traba salia
-// distinta segun el cuadrante -MEDIDO: rumbo x desde la seccion y DE PIE (rumbo y)
-// desde la elevacion o la planta-. Una traba no puede elegir: cruza el elemento por
-// definicion, y su eje es el espesor se mire desde donde se mire.
+// ============ O . LA COLOCACION NO DEPENDE DE LA TIPOLOGIA
+// (25-ago) Hubo un override que hacia que la traba ignorara la regla general para
+// que cruzara el espesor viniera de donde viniera. El usuario lo corto: "la
+// tipologia NO DECIDE LA COLOCACION. La logica de insercion debe ser siempre la
+// misma. Con cualquier barra tendras un caso mal insertado si elegimos mal la vista
+// o la cara: por eso el usuario debe tener el control".
+// La regla es una sola: la barra nace en el plano de la vista donde se clico. Este
+// bloque existe para que nadie vuelva a meterle una excepcion a una tipologia.
 console.log('');
-console.log('O . la traba cruza el espesor desde cualquier vista');
+console.log('O . la vista manda, la tipologia no');
 {
   ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: [] };
   ST.elemento = 'muro'; ST.caraHi = null; ST.espejoColoc = false;
-  ok(TE._ejeQueCruza() === 'z', 'el eje que cruza el muro es el espesor (=' + TE._ejeQueCruza() + ')');
+  function rumboDe(tip, plano) {
+    return R.poseDe(TE._compDesdeClick(plano, { x: 0, y: 0, z: 8 }, { tipologia: tip, figura: '103B', diam: 8 })).rumbo;
+  }
+  // La PROFUNDIDAD de cada cuadrante del muro (el eje que sale de la pantalla),
+  // escrita a mano porque es el dato contra el que se compara: una barra que naciera
+  // apuntando ahi seria invisible en la vista donde el usuario la esta poniendo.
+  const FONDO = { seccion: 'y', largo: 'z', planta: 'x' };
   ['seccion', 'largo', 'planta'].forEach(function (plano) {
-    const c = TE._compDesdeClick(plano, { x: 0, y: 0, z: 8 }, { tipologia: 'TR', figura: '103B', diam: 8 });
-    const p = R.poseDe(c);
-    ok(p.rumbo === 'z', 'clic en ' + plano + ': corre por el espesor (rumbo=' + p.rumbo + ')');
+    const r = rumboDe('TR', plano);
+    ok(r !== FONDO[plano],
+      'clic en ' + plano + ': la traba NO nace apuntando al fondo de esa vista (rumbo=' + r + ', fondo=' + FONDO[plano] + ')');
   });
-  // …y una malla SIGUE eligiendo segun la vista, que es la regla general.
-  const mh1 = R.poseDe(TE._compDesdeClick('seccion', { x: 0, y: 0, z: 8 }, { tipologia: 'MH', figura: '103B', diam: 8 }));
-  const mh2 = R.poseDe(TE._compDesdeClick('planta', { x: 0, y: 0, z: 8 }, { tipologia: 'MH', figura: '103B', diam: 8 }));
-  ok(mh1.rumbo !== mh2.rumbo, 'una malla si sigue a la vista (' + mh1.rumbo + ' vs ' + mh2.rumbo + ')');
+  // Y la traba no tiene privilegios: cambiar de vista le cambia el rumbo igual que
+  // a cualquier otra barra.
+  ok(rumboDe('TR', 'seccion') !== rumboDe('TR', 'largo'),
+    'la traba sigue a la vista como todas (' + rumboDe('TR', 'seccion') + ' vs ' + rumboDe('TR', 'largo') + ')');
+  ok(rumboDe('MH', 'seccion') !== rumboDe('MH', 'planta'),
+    'una malla tambien (' + rumboDe('MH', 'seccion') + ' vs ' + rumboDe('MH', 'planta') + ')');
 }
 
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
