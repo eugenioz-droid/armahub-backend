@@ -422,8 +422,9 @@
      se ve siempre, tenue, y sube al pasar por encima. La teja no crece: sigue
      superpuesta, fuera del flujo. */
   #te_modal .te-tjdel{position:absolute;top:2px;right:2px;border:1px solid var(--te-line);
-    background:var(--te-panel);font-size:12px;line-height:1;padding:2px 4px;border-radius:6px;
-    cursor:pointer;opacity:.85;z-index:2;transition:opacity .12s,background .12s,border-color .12s}
+    background:var(--te-panel);color:var(--te-ink);line-height:0;padding:2px 3px;border-radius:6px;
+    cursor:pointer;opacity:.85;z-index:2;display:flex;align-items:center;
+    transition:opacity .12s,background .12s,border-color .12s,color .12s}
   /* SE VE, NO SE ADIVINA (24-ago). Estaba en .55 en los dos casos y el usuario
      -que la habia pedido- la dio por no implementada: a ese gris, en 11 px y sobre
      una teja chica, no se lee. En la teja SELECCIONADA sube a opaca (es la unica
@@ -431,7 +432,7 @@
      cursor por cualquier otra queda a .7. La teja no crece: la papelera sigue
      superpuesta en la esquina, fuera del flujo. */
   #te_modal .te-comp:hover .te-tjdel,#te_modal .te-comp.sel .te-tjdel{opacity:1}
-  #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14));border-color:#c62828}
+  #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14));border-color:#c62828;color:#c62828}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
   /* ACOMPANANTE de una seleccion multiple (ctrl+clic). Se marca DISTINTO de la
@@ -1094,6 +1095,12 @@
      No se usa `disabled`: el boton tiene que seguir siendo clicable para poder
      explicar por que no se puede, que es justo lo que faltaba. */
   #te_modal .te-ctool.te-off{opacity:.42}
+  /* LA MEDIDA REAL del lado, al final de su fila. Es un DATO, no un campo: sin
+     recuadro, alineada a la derecha y en cifras tabulares para que la columna se
+     lea de un vistazo cuando hay cuatro lados. */
+  #te_modal .te-dimval{margin-left:6px;min-width:44px;text-align:right;font-weight:700;
+    font-size:11.5px;color:var(--te-ink);font-variant-numeric:tabular-nums;flex-shrink:0}
+  #te_modal .te-dimval.vacio{color:var(--te-faint);font-weight:400}
   #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
     filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
   /* BOTÓN CONTEXTUAL DE GIRO (R) — flota sobre la pieza SELECCIONADA en los

@@ -7322,7 +7322,18 @@
     // ancho un botón permanente le habría comido el sitio a la tipología, que es lo
     // que identifica la barra. Corta la propagación para no seleccionar al borrar.
     var del = document.createElement('button');
-    del.type = 'button'; del.className = 'te-tjdel'; del.textContent = '🗑';
+    del.type = 'button'; del.className = 'te-tjdel';
+    // ICONO DIBUJADO, NO EMOJI (25-ago). Iba con el carácter 🗑 y el usuario lo
+    // verificó él mismo: «el botón está, pero no se ve. Si hago hover con el mouse sí
+    // me da la opción de eliminar». O sea el botón existía, respondía y ocupaba su
+    // sitio — lo que no se dibujaba era el GLIFO: ese emoji depende de que la fuente
+    // instalada lo tenga, y a 11-12 px en una teja puede salir vacío. Tres rondas
+    // subiendo opacidades no podían arreglar eso porque el problema nunca fue la
+    // opacidad. Un <svg> inline se dibuja siempre y toma el color de la letra, igual
+    // que el icono de la herramienta Seleccionar del ribbon.
+    del.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+      'aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>';
     del.title = 'Quitar esta barra';
     del.setAttribute('aria-label', 'Quitar esta barra');
     del.addEventListener('click', function (ev) {
@@ -8152,8 +8163,39 @@
       b.onclick = function () { _pushUndo(); d.delta = cm; _mut(ci, true); _renderPanel(); };
       wrap.appendChild(b);
     });
+
+    // LO QUE ESE LADO MIDE DE VERDAD (25-ago, pedido del usuario: «agrega el valor de
+    // cada lado en esta parte… así si el usuario selecciona una barra, tiene los
+    // valores reales que entrega esa barra»). La fila decía cómo NACE el lado —auto,
+    // fijo, su Δ, su extremo— pero no cuánto termina midiendo, que es el número que
+    // el usuario le va a leer al taller. Sale del motor, no de una cuenta propia:
+    // es el `dims` del placement que la última generación emitió para esta barra.
+    // Se refresca solo, porque la ficha se vuelve a armar en cada regeneración.
+    var med = _medidaLadoReal(ci, L);
+    var val = _span(med == null ? '—' : (med + ''));
+    val.className = 'te-dimval' + (med == null ? ' vacio' : '');
+    val.title = (med == null)
+      ? 'Todavía no hay una barra generada para leer esta medida.'
+      : 'Lo que mide el lado ' + L + ' en la barra que se está generando: ' + med + ' cm.';
+    wrap.appendChild(val);
     row.appendChild(wrap);
     return row;
+  }
+
+  // La medida REAL de un lado, tal como salió de la última generación. Se lee del
+  // placement, que es lo que el motor emitió — no se recalcula acá, porque una
+  // segunda cuenta que "debería dar lo mismo" es una que algún día no lo da.
+  function _medidaLadoReal(ci, L) {
+    var out = ST.ultimoOut;
+    if (!out || !out.placements) return null;
+    for (var i = 0; i < out.placements.length; i++) {
+      var pl = out.placements[i];
+      if (!pl.meta || pl.meta.ci !== ci) continue;
+      var v = pl.dims ? Number(pl.dims[L]) : NaN;
+      if (!isFinite(v)) return null;
+      return Math.round(v * 10) / 10;
+    }
+    return null;
   }
 
   // Panel de distribución = SELECTOR de modo (3 botones) + campos CONTEXTUALES
