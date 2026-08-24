@@ -631,13 +631,25 @@ ok(R.poseDefault('muro', 'MH').cara === 'lateral' && R.poseDefault('muro', 'MH')
   'MURO/MH: malla horizontal = cortina que corre a lo LARGO (lateral, rumbo x)');
 ok(R.poseDefault('muro', 'MV').cara === 'lateral' && R.poseDefault('muro', 'MV').rumbo === 'y',
   'MURO/MV: la misma cortina DE PIE (lateral, rumbo y)');
-// FEEDBACK 13-ago: la pose vieja {extremo, rumbo z} era IMPOSIBLE — el plano de
-// una pieza de sección es ⊥ a su rumbo, así que rumbo z dejaba el plano ⊥ al
-// espesor que la traba debe CRUZAR (TC 104B resolvía 244×4 y se dibujaba plana).
-// Cuerpo en el espesor ⇒ el plano CONTIENE z ⇒ rumbo y: la MISMA sección
-// horizontal del EC al que acompaña, repartida en la altura.
-ok(R.poseDefault('muro', 'TR').cara === 'lateral' && R.poseDefault('muro', 'TR').rumbo === 'y',
-  'MURO/TR: cose las caras z± en la sección horizontal del EC (lateral, rumbo y)');
+// LA TRABA CRUZA EL ESPESOR — y esta aserción ya cambió DOS VECES, así que vale la
+// pena dejar escrito por qué la de hoy no es otra vuelta más:
+//   · {extremo, rumbo z}   — hasta el 13-ago. Cuerpo en z pero con la cara
+//     equivocada: las cerradas salían planas (TC 104B resolvía 244×4).
+//   · {lateral, rumbo y}   — 13-ago. Correcta SÓLO mientras la traba fuera PIEZA DE
+//     SECCIÓN: ahí el rumbo es el eje por el que la pieza se REPITE y su plano
+//     —perpendicular al rumbo— contiene el espesor.
+//   · {sup, rumbo z}       — hoy. El 14-ago, en Modelo A, la traba dejó de ser pieza
+//     de sección (`esPiezaDeSeccion` pasó a exigir rol estribo): el rumbo volvió a
+//     significar «por dónde corre la barra», y con rumbo y la traba nacía DE PIE,
+//     de 244 cm, en el plano de la cara. Medido con un 103B como TR en un muro
+//     600×250×20, y reportado por el usuario. Con rumbo z el cuerpo mide 15 —el
+//     espesor menos los recubrimientos— que es lo que una traba mide.
+// La lección: esta pose y `esPiezaDeSeccion` están acopladas. Si alguna vez se
+// vuelve a mover una, hay que mirar la otra.
+ok(R.poseDefault('muro', 'TR').cara === 'sup' && R.poseDefault('muro', 'TR').rumbo === 'z',
+  'MURO/TR: la traba cose las dos cortinas cruzando el espesor (sup, rumbo z)');
+ok(R.poseDefault('muro', 'TC').rumbo === 'z' && R.poseDefault('muro', 'TM').rumbo === 'z',
+  'MURO/TC y TM: lo mismo — son trabas, no dependen de la figura que se les ponga');
 ok(R.poseDefault('muro', 'CB').cara === 'extremo' && R.poseDefault('muro', 'CB').rumbo === 'y',
   'MURO/CB: cabezal de borde = pegado al TESTERO, corriendo en alto (extremo, rumbo y)');
 ok(R.poseDefault('viga', 'XXX') === null && R.poseDefault('OTRA', 'CBS') === null,

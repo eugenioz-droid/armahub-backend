@@ -411,5 +411,40 @@ ok(close(plAsim[0].dims.A, 250 - 2 * 6),
 ok(lim(plAsim[0], 'y').hi <= 125 - 3 + 1e-9 && lim(plAsim[0], 'y').lo >= -125 + 6 - 1e-9,
   'las dos puntas quedan dentro (arriba sobra 3 cm: es el precio del par simétrico)');
 
+// ===========================================================================
+// L9 . LA TRABA DEL MURO CRUZA EL ESPESOR (25-ago, regresion reportada)
+// ---------------------------------------------------------------------------
+// Una traba cose las dos cortinas: su cuerpo corre POR EL ESPESOR. Eso no es una
+// preferencia de dibujo, es lo que una traba ES.
+//
+// La pose por defecto de TC/TR/TM se rompio en dos pasos que por separado tenian
+// sentido: el 13-ago paso a {lateral, rumbo y} -correcta SOLO si la traba se trata
+// como pieza de seccion, porque ahi el rumbo es el eje por el que se repite- y el
+// 14-ago, en Modelo A, la traba dejo de ser pieza de seccion. Desde ese dia el
+// rumbo volvio a significar 'por donde corre la barra' y la traba nacia DE PIE.
+// MEDIDO en un muro 600x250x20: un 103B como TR salia de 244,2 cm de alto.
+console.log('');
+console.log('L9 . la traba del muro cruza el espesor, no nace de pie');
+{
+  const MUROT = { largo: 600, alto: 250, ancho: 20, recub_sup: 2.5, recub_inf: 2.5, recub_lat: 2.5 };
+  const p = R.poseDefault('muro', 'TR');
+  ok(p && p.rumbo === 'z', 'la traba corre por el espesor (rumbo=' + (p && p.rumbo) + ')');
+  ok(p && p.cara === 'sup', 'apoyada en una cara cuyo normal NO es el espesor (cara=' + (p && p.cara) + ')');
+
+  const c = {
+    comp_id: 'T1', tipologia: 'TR', figura: '103B', diam: 8, jerarquia: 1, modo: 'puntual',
+    pose: p, dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0, sentido: 'nucleo' }
+  };
+  const pls = R.expandirComponente(JSON.parse(JSON.stringify(c)), MUROT) || [];
+  ok(pls.length === 1, 'genera su barra (=' + pls.length + ')');
+  const dims = (pls[0] && pls[0].dims) || {};
+  ok(Number(dims.B) === 15, 'su cuerpo mide el espesor menos los recubrimientos: 15 (=' + dims.B + ')');
+  ok(Number(dims.B) < 100, 'y NO el alto del muro, que es como salia con la pose rota');
+  let mn = Infinity, mx = -Infinity;
+  (pls[0].puntos || []).forEach(function (q) { if (q.z < mn) mn = q.z; if (q.z > mx) mx = q.z; });
+  ok((mx - mn) > 10, 'y ocupa el espesor de verdad (' + Math.round((mx - mn) * 10) / 10 + ' cm en z)');
+}
+
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — muro: cara cortina + orientaciones (acostada/volteada/de pie).');

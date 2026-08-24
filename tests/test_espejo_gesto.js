@@ -377,5 +377,29 @@ console.log('N . el anidado se ofrece donde cambia algo');
     'una figura con patas si anida: el check se ofrece');
 }
 
+// ============ O . LA TRABA NACE IGUAL DESDE CUALQUIER CUADRANTE
+// (25-ago) El usuario: "lo raro es que a otros usuarios no les pasa... capaz
+// insertaron la barra en otra cara?". Exacto: la regla general hace que una pieza
+// nazca corriendo DENTRO del plano donde se clico, y con eso la misma traba salia
+// distinta segun el cuadrante -MEDIDO: rumbo x desde la seccion y DE PIE (rumbo y)
+// desde la elevacion o la planta-. Una traba no puede elegir: cruza el elemento por
+// definicion, y su eje es el espesor se mire desde donde se mire.
+console.log('');
+console.log('O . la traba cruza el espesor desde cualquier vista');
+{
+  ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: [] };
+  ST.elemento = 'muro'; ST.caraHi = null; ST.espejoColoc = false;
+  ok(TE._ejeQueCruza() === 'z', 'el eje que cruza el muro es el espesor (=' + TE._ejeQueCruza() + ')');
+  ['seccion', 'largo', 'planta'].forEach(function (plano) {
+    const c = TE._compDesdeClick(plano, { x: 0, y: 0, z: 8 }, { tipologia: 'TR', figura: '103B', diam: 8 });
+    const p = R.poseDe(c);
+    ok(p.rumbo === 'z', 'clic en ' + plano + ': corre por el espesor (rumbo=' + p.rumbo + ')');
+  });
+  // …y una malla SIGUE eligiendo segun la vista, que es la regla general.
+  const mh1 = R.poseDe(TE._compDesdeClick('seccion', { x: 0, y: 0, z: 8 }, { tipologia: 'MH', figura: '103B', diam: 8 }));
+  const mh2 = R.poseDe(TE._compDesdeClick('planta', { x: 0, y: 0, z: 8 }, { tipologia: 'MH', figura: '103B', diam: 8 }));
+  ok(mh1.rumbo !== mh2.rumbo, 'una malla si sigue a la vista (' + mh1.rumbo + ' vs ' + mh2.rumbo + ')');
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);

@@ -1266,16 +1266,29 @@
       MV: { cara: 'lateral', lado: 1, rumbo: 'y' },
       MA: { cara: 'lateral', lado: 1, rumbo: 'x' },
       EC: { cara: 'lateral', lado: 1, rumbo: 'y' },
-      // TC/TR/TM cosen las dos CARAS del muro (z±): su cuerpo corre EN el
-      // espesor, así que su plano tiene que CONTENER z — el plano de una pieza
-      // de sección es ⊥ a su rumbo, o sea rumbo 'y' (sección horizontal, la
-      // MISMA del EC al que acompañan) y se reparten en la altura, que es lo que
-      // el rumbo también manda. La pose vieja {extremo, rumbo z} era imposible:
-      // dejaba el plano de la pieza ⊥ al espesor que debía cruzar (medido: TC
-      // 104B resolvía sus 4 dims al alto útil 244 y se dibujaba plana).
-      TC: { cara: 'lateral', lado: 1, rumbo: 'y' },
-      TR: { cara: 'lateral', lado: 1, rumbo: 'y' },
-      TM: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      // TC/TR/TM COSEN LAS DOS CARAS DEL MURO: su cuerpo CRUZA EL ESPESOR. Eso no
+      // es una preferencia de dibujo, es lo que una traba ES, así que su rumbo —el
+      // eje por el que corre— tiene que ser z, y su cara una cuyo normal no sea z
+      // (un rumbo no puede ser paralelo a la normal de su cara).
+      //
+      // HISTORIA, porque esto ya se rompió una vez y conviene no repetirla:
+      //   · Hasta el 13-ago era { extremo, rumbo z }. Esa pose SÍ ponía el cuerpo en
+      //     z, pero con la cara equivocada, y las cerradas salían planas.
+      //   · El 13-ago pasó a { lateral, rumbo y }. Correcta SÓLO si la traba se trata
+      //     como PIEZA DE SECCIÓN: ahí el rumbo es el eje por el que la pieza se
+      //     repite y su plano (⊥ al rumbo) contiene el espesor.
+      //   · El 14-ago, en «el rol traba muere en el motor» (Modelo A), la traba dejó
+      //     de ser pieza de sección: `esPiezaDeSeccion` pasó a exigir rol estribo.
+      //     Desde ese día el rumbo volvió a significar «por donde corre la barra» y
+      //     esta pose empezó a parir trabas DE PIE de 244 cm en el plano de la cara.
+      //     MEDIDO en un muro 600×250×20: 103B como TR salía 0 × 244,2 × 9,5.
+      //     Con { sup, rumbo z } sale con el cuerpo en 15 cm —el espesor menos los
+      //     recubrimientos— y sus dos ganchos: eso es una traba.
+      // Los dos commits eran razonables por separado; juntos dejaron la pose
+      // describiendo un mundo que ya no existía. El usuario lo reportó con 103B y TC.
+      TC: { cara: 'sup', lado: 1, rumbo: 'z' },
+      TR: { cara: 'sup', lado: 1, rumbo: 'z' },
+      TM: { cara: 'sup', lado: 1, rumbo: 'z' },
       CB: { cara: 'extremo', lado: 1, rumbo: 'y' }
     },
     COLUMNA: {
