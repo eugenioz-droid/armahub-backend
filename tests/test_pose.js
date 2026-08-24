@@ -689,8 +689,38 @@ console.log('\nP6 — 305A colocada con tipología ES:');
 ok(FP.familiaDeDibujo('305A', 'estribo') === 'cadena',
   '305A (5 tramos que no cierran) con rol estribo → CADENA, no marco cerrado (=' +
   FP.familiaDeDibujo('305A', 'estribo') + ')');
-ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('103E', 'estribo') === 'estribo',
-  'el marco de verdad (104D) y el EC de 3 lados del catálogo (103E) siguen saliendo del constructor de marco');
+// 22-AGO · ASSERT CORREGIDO. Antes exigía que la 103E también saliera del constructor
+// de marco, y eso congelaba la MITAD del defecto que el fix 305A dejó viva: la rama
+// `rol === 'estribo'` de familiaDeDibujo cerraba con un `return 'estribo'` que se comía
+// TODA figura de 1–3 lados. MEDIDO sobre las 63 del catálogo con ES/EC/ESC: 17 (101A ·
+// 102A/B/C · 103A–L · 201A) se redibujaban como marco cerrado, las 17 con los mismos 35
+// puntos y el mismo perímetro de 170.214 cm — una 101A, que es una barra RECTA,
+// incluida. Ahora el marco de verdad sigue siendo marco y cada figura abierta se dibuja
+// con SUS puntos.
+ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('104D', null) === 'estribo',
+  'el marco de verdad (104D) sale del constructor de marco, con rol y sin rol');
+ok(FP.familiaDeDibujo('103E', 'estribo') === 'cadena' && FP.familiaDeDibujo('101A', 'estribo') === 'recta',
+  'y el EC de 3 lados (103E) y la recta (101A) se dibujan como lo que SON, no como el ' +
+  'marco que la tipología les imponía');
+// LAS TRES FIGURAS QUE ERAN LA MISMA BARRA. El síntoma exacto que reportó el usuario:
+// bajo EC, un 103B, un 103A y un 102A salían idénticos (35 puntos, A=595/C=595/B=245 en
+// su muro, 24/52/24 en la viga). Si vuelven a coincidir, es que la tipología volvió a
+// pisar la topología.
+(function () {
+  function firma(fig) {
+    const dims = {};
+    (CAT.get(fig).parciales || []).forEach(k => { dims[k] = { modo: 'auto' }; });
+    const pl = R.expandirComponente({
+      tipologia: 'EC', figura: fig, diam: 8, cara: 'lateral', dims: dims,
+      distribucion: { modo: 'linear', rango: { eje: 'x', from: 0, to: 0, sep: 50 } }
+    }, viga)[0];
+    return pl.puntos.length + '#' + JSON.stringify(pl.dims);
+  }
+  const f = ['103B', '103A', '102A', '101A'].map(firma);
+  ok(new Set(f).size === 4,
+    'bajo EC, 103B / 103A / 102A / 101A dan CUATRO barras distintas (antes las cuatro ' +
+    'eran la misma: 35 puntos y dims A24/B52/C24) (=' + JSON.stringify(f) + ')');
+})();
 const es305 = R.expandirComponente({
   tipologia: 'ES', figura: '305A', diam: 8, cara: 'lateral',
   dims: {
@@ -747,8 +777,15 @@ ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
 // —la que se dibuja como marco y la que se dibuja como cadena— se miden con la MISMA
 // vara, y la que no respete el recub declarado falla.
 (function () {
-  const SEC = CAT.codigos().filter(f => FP.familiaDeDibujo(f, 'estribo') === 'cadena');
-  const MARCO = ['103E', '103H', '104D', '104O', '104P'];
+  // 22-AGO · EL BARRIDO PASA A SER EL CATÁLOGO ENTERO. Antes eran «las cadenas» más una
+  // lista de 5 marcos escrita a mano, y esa partición dependía de `familiaDeDibujo` con
+  // rol — o sea de la misma función que tenía el defecto. Con ella, 17 figuras (101A,
+  // 102x, 103x, 201A) quedaban FUERA del barrido justo porque el rol las clasificaba
+  // 'estribo' y no estaban en la lista de 5: el hueco se tapaba a sí mismo.
+  // Barrer las 63 no necesita saber qué familia es cada una — que es de lo que se trata:
+  // ninguna figura colocada como pieza de sección puede sacar fierro del hormigón.
+  const SEC = CAT.codigos();
+  const MARCO = [];
   const DIST = {
     linear: { modo: 'linear', rango: { eje: 'x', from: -50, to: 50, sep: 50 } },
     'layered×1': { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 3 },
@@ -921,8 +958,17 @@ ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
     'el AUTO de las ' + SEC.length + ' cadenas de sección dibuja EXACTAMENTE el marco útil (' +
     (malas.length ? malas.slice(0, 4).join(' · ') + (malas.length > 4 ? ' · +' + (malas.length - 4) : '') : SEC.length + '/' + SEC.length + ' exactas') + ')');
 })();
-// El anidado también sigue al DIBUJO: una cadena abierta no anida como anillo
-// concéntrico, así que sus capas se separan con Sep (y no se quedan encimadas).
+// F1 EN EL OTRO DISTRIBUIDOR (22-ago) — ASSERT CORREGIDO, ERA EL MISMO DEFECTO.
+// Este bloque decía: «una cadena abierta no anida como anillo concéntrico, así que sus
+// capas se separan con Sep (y no se quedan encimadas)», y comprobaba que la 2ª capa se
+// CORRÍA 3 cm en z. Eso es literalmente el defecto F1 —la pieza de sección que se
+// TRASLADA por la normal en vez de anidar— sobreviviendo en `distribuidorArreglo`,
+// que se quedó preguntando `_dibujaMarcoCerrado` cuando layered ya había migrado a
+// `esPiezaDeSeccion`. MEDIDO con arreglo de 3 capas @3 y todo en 'auto': las 32
+// cadenas de sección del catálogo sacaban entre 1.6 y 3.8 cm de fierro FUERA del
+// hormigón en la viga y en el muro, con avisos = []. La misma pieza no puede anidar en
+// 'layered' y trasladarse en 'arreglo': encuadrar la sección no depende del modo de
+// reparto. Ahora las dos rutas dan el MISMO anillo concéntrico.
 const arr305 = R.expandirComponente({
   tipologia: 'ES', figura: '305A', diam: 8, cara: 'lateral',
   dims: {
@@ -931,9 +977,42 @@ const arr305 = R.expandirComponente({
   },
   distribucion: { modo: 'arreglo', n_capas: 2, sep_capas: 3, eje_capas: 'z', rango: { eje: 'x', from: -50, to: 50, sep: 50 } }
 }, viga);
-ok(arr305.length === 6 && close(centro(arr305[arr305.length - 1], 'z') - centro(arr305[0], 'z'), 3),
-  'en arreglo, la 2ª capa se separa los 3 cm del campo Sep (no queda encimada) (=' +
-  r3(centro(arr305[arr305.length - 1], 'z') - centro(arr305[0], 'z')) + ')');
+(function () {
+  const c1 = lim(arr305[0], 'z'), c2 = lim(arr305[arr305.length - 1], 'z');
+  const y1 = lim(arr305[0], 'y'), y2 = lim(arr305[arr305.length - 1], 'y');
+  ok(arr305.length === 6 && close(c1.hi - c2.hi, 3) && close(c2.lo - c1.lo, 3) &&
+     close(y1.hi - y2.hi, 3) && close(y2.lo - y1.lo, 3),
+    'en arreglo, la 2ª capa es un ANILLO 3 cm más chico por lado (no se traslada por ' +
+    'el eje de capas hasta salirse) (z ' + JSON.stringify(c1) + ' → ' + JSON.stringify(c2) +
+    ' · y ' + JSON.stringify(y1) + ' → ' + JSON.stringify(y2) + ')');
+  ok(close(centro(arr305[arr305.length - 1], 'z'), centro(arr305[0], 'z')),
+    '…y CONCÉNTRICO: los dos anillos comparten centro (=' +
+    r3(centro(arr305[0], 'z')) + ' / ' + r3(centro(arr305[arr305.length - 1], 'z')) + ')');
+})();
+// Y el barrido que lo vigila: ninguna figura del catálogo, en ARREGLO de 3 capas @3,
+// puede sacar fierro del hormigón. Es la misma guarda que arriba para linear/layered,
+// en el distribuidor que se había quedado fuera.
+(function () {
+  const fuera = [];
+  let n = 0;
+  CAT.codigos().forEach(f => {
+    const dims = {};
+    (CAT.get(f).parciales || []).forEach(k => { dims[k] = { modo: 'auto' }; });
+    R.expandirComponente({
+      tipologia: 'ES', figura: f, diam: 8, cara: 'lateral', dims: dims,
+      distribucion: { modo: 'arreglo', n_capas: 3, sep_capas: 3, eje_capas: 'z',
+        rango: { eje: 'x', from: -50, to: 50, sep: 50 } }
+    }, viga).forEach(pl => {
+      n++;
+      const z = lim(pl, 'z'), y = lim(pl, 'y'), r = 0.4;
+      const sobra = Math.max(0, z.hi + r - 15, -15 - (z.lo - r), y.hi + r - 30, -30 - (y.lo - r));
+      if (sobra > 1e-6) fuera.push(r3(sobra) + ' cm · ' + f);
+    });
+  });
+  ok(fuera.length === 0,
+    'ARREGLO ×3 @3: ninguna de las 63 figuras saca fierro del hormigón (' +
+    (fuera.length ? fuera.slice(0, 6).join(' · ') : n + ' piezas, 0 cm fuera') + ')');
+})();
 // Y el payload sigue llevando las 5 dims (lo que el backend pesa).
 (function () {
   const out = G.generarViga({

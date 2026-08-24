@@ -2897,25 +2897,21 @@
     return { eje: eje, pos: pos };
   }
 
-  // ¿ESTA pieza se DIBUJA como marco cerrado? Es la pregunta que gobierna el
-  // anidado (anillo concéntrico vs. ajuste de dims), y la responde el módulo que
-  // dibuja — no el rol. Antes bastaba con `rol === 'estribo'` porque el rol forzaba
-  // el marco SIEMPRE; con el fix 305A ya no (una cadena colocada como ES se traza
-  // como cadena), así que preguntar por el rol daría un anidado que no corresponde
-  // al dibujo. Sin figura_puntos cargado se cae al criterio histórico.
-  function _dibujaMarcoCerrado(base) {
-    var fp = _fp();
-    if (!fp || !fp.familiaDeDibujo) return base.rol === 'estribo';
-    return fp.familiaDeDibujo(base.figura, base.rol) === 'estribo';
-  }
-
+  // AQUÍ VIVÍA `_dibujaMarcoCerrado` («¿esta pieza se dibuja como marco cerrado?»),
+  // RETIRADA EL 22-ago POR QUEDARSE SIN LLAMADORES. Era la pregunta con la que se
+  // decidía el anidado antes del defecto F1; layered la abandonó entonces y el
+  // arreglo recién ahora, así que el último uso desapareció. Se borra en vez de
+  // dejarla «por si acaso»: una función que contesta la pregunta EQUIVOCADA sobre el
+  // anidado, viva y al lado de la correcta, es una invitación a volver a llamarla.
+  // Lo que preguntaba se sigue pudiendo preguntar donde corresponde —
+  // `figura_puntos.familiaDeDibujo(figura) === 'estribo'`— y ahí ya no depende del rol.
+  //
   // ¿Esta pieza ENCUADRA LA SECCIÓN? — la pregunta que gobierna el anidado de las
-  // capas (defecto F1). NO es la misma que `_dibujaMarcoCerrado`: esa separa el
-  // estribo de la cadena (y sirve para decidir CÓMO se traza), pero el estribo, la
-  // traba y la cadena de sección son las TRES la misma clase de pieza —encuadran el
-  // marco de núcleo— y las tres tienen que anidar sus capas hacia adentro en vez de
-  // trasladarse por la normal. Fuente única en figura_puntos (esPiezaDeSeccion), que
-  // es donde vive el despacho de los tres constructores.
+  // capas (defecto F1). NO es «¿se dibuja como marco?»: esa separa el estribo de la
+  // cadena y sirve para decidir CÓMO se traza, pero el estribo y la cadena de sección
+  // son la MISMA clase de pieza —encuadran el marco de núcleo— y las dos tienen que
+  // anidar sus capas hacia adentro en vez de trasladarse por la normal. Fuente única
+  // en figura_puntos (esPiezaDeSeccion), que es donde vive el plano de trabajo.
   function _esPiezaDeSeccion(base) {
     var fp = _fp();
     if (!fp || !fp.esPiezaDeSeccion) return base.rol === 'estribo';
@@ -3230,10 +3226,22 @@
     // ANIDADO — MISMO criterio que en layered (una sola regla para los dos
     // distribuidores; antes el arreglo sólo anidaba figuras cerradas y una malla
     // de corchetes en 2 cortinas salía con las dos capas del mismo largo):
-    //   · CERRADA (estribo) → por default: anillos concéntricos separados
+    //   · PIEZA DE SECCIÓN → por default: anillos concéntricos separados
     //     k·sep_capas (cfg.anidar === false lo desactiva);
     //   · ABIERTA con patas → OPT-IN (cfg.anidar === true): ajusta SOLO dims.
-    var marcoA = _dibujaMarcoCerrado(base);          // (fix 305A: manda el DIBUJO)
+    //
+    // AQUÍ SEGUÍA VIVO EL DEFECTO F1 (22-ago). El criterio era `_dibujaMarcoCerrado`
+    // («¿se dibuja como marco?»), o sea el que layered ABANDONÓ cuando se midió F1:
+    // una pieza de sección que se traza como CADENA contestaba "no", no anidaba, y el
+    // k·sep_capas entero se iba a la POSICIÓN — la pieza se trasladaba por el eje de
+    // capas hasta salirse del hormigón. Layered se migró a `_esPiezaDeSeccion` y el
+    // arreglo se quedó atrás. MEDIDO en la viga 600×60×30 y en el muro 400×250×20,
+    // φ8, arreglo de 3 capas @3 con todo en 'auto': las 32 cadenas de sección del
+    // catálogo (104B/C/H…, 105x, 305A) sacaban entre 1.6 y 3.8 cm de fierro FUERA del
+    // hormigón, exactamente el mismo síntoma de F1 y en el mismo número.
+    // Encuadrar la sección no depende del modo de reparto: la misma pieza no puede
+    // anidar en 'layered' y trasladarse en 'arreglo'.
+    var marcoA = _esPiezaDeSeccion(base);
     var anidaCerr = marcoA && (!cfg || cfg.anidar !== false);
     var anidaAb = (cfg && cfg.anidar === true) && !marcoA &&
       ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));

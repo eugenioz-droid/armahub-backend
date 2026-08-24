@@ -246,29 +246,62 @@ console.log('\nC — un gancho que no cabe se dibuja igual y se avisa (nada de r
     JSON.stringify(avisosDe(c).filter(a => /FUERA/.test(a))) + ')');
 }
 
-// ==================================== D · Δ EN UN LADO MUDO → DATO BUENO + AVISO
-console.log('\nD — Δ en un lado que el trazo no lee: el dato es correcto y se AVISA');
+// ============ D · LA FIGURA ABIERTA DE SECCIÓN YA NO ES MUDA: SE DIBUJA (22-ago)
+console.log('\nD — 103B con rol de sección: el trazo SIGUE a la dim (antes era muda)');
 {
-  // Una 103B (figura ABIERTA de 3 lados) forzada a rol de sección cae en el
-  // constructor de MARCO, que traza el rectángulo del hormigón sin mirar las dims.
-  // Acá NO hay número que corregir: 24+57+24 es lo que se corta y lo que pesa. El
-  // fix es que el motor deje de callarse que el 3D muestra otra cosa.
+  // ESTE BLOQUE DECÍA LO CONTRARIO, Y CONGELABA EL DEFECTO. Su texto era: «una 103B
+  // (figura ABIERTA de 3 lados) forzada a rol de sección cae en el constructor de
+  // MARCO, que traza el rectángulo del hormigón sin mirar las dims», y de ahí
+  // concluía que «acá NO hay número que corregir» y que el fix correcto era AVISAR.
+  // El aviso era honesto, pero la causa NO era inevitable: quien mandaba la 103B al
+  // constructor de marco era la rama `rol === 'estribo'` de `familiaDeDibujo`, o sea
+  // la TIPOLOGÍA pisando la TOPOLOGÍA (reglas.rolDeComponente traduce ES/EC/ESC →
+  // 'estribo', así que ramificar por rol es ramificar por tipología).
+  // MEDIDO sobre el catálogo: 17 de las 63 figuras se redibujaban así, las 17 con los
+  // MISMOS 35 puntos y el MISMO perímetro de 170.214 cm — un 103B, un 103A y un 102A
+  // bajo EC eran la misma barra dígito a dígito. El usuario lo reportó como «puse un
+  // estribo de confinamiento con figura 103B y me insertó una 106A».
+  // Con la rama fuera, la 103B se dibuja como su cadena EN EL PLANO DE LA SECCIÓN y
+  // sus dims llegan al trazo: los 46 casos mudos del barrido F bajaron a 0 — no
+  // porque se avisen mejor, sino porque dejaron de existir.
   const a = R.expandirComponente(comp('103B', 'ES'), HOST);
   const cD = comp('103B', 'ES', c => { c.dims.B.delta = 5; });
   const b = R.expandirComponente(cD, HOST);
   casi(b[0].dims.B, a[0].dims.B + 5, 1e-9, '103B ES: la dim B sube el Δ (el corte es correcto)');
-  casi(perimetro(b[0].puntos), perimetro(a[0].puntos), 1e-9,
-    'el trazo NO se mueve — y eso es lo que el motor tiene que confesar, no tapar');
-  ok(avisosDelTrazo(cD).length === 1 && /NO mueve el trazo 3D/.test(avisosDelTrazo(cD)[0]),
-    'sale UN aviso que lo dice con la letra y el número (=' + JSON.stringify(avisosDelTrazo(cD)) + ')');
-
-  // UN AVISO POR SITUACIÓN, NO UNO POR LADO: tres lados mudos son EL MISMO
-  // problema. Repetir el texto tres veces entierra los avisos que sí son distintos.
+  casi(perimetro(b[0].puntos) - perimetro(a[0].puntos), 5, 1e-9,
+    'y el trazo crece los MISMOS 5 cm (antes: 0.000000, y se avisaba de dim muda)');
+  ok(avisosDelTrazo(cD).length === 0,
+    'ya no hay nada que confesar: cero avisos de trazo (=' + JSON.stringify(avisosDelTrazo(cD)) + ')');
+  // Y con los tres lados a la vez: los tres mueven el dibujo, y lo que crece el trazo
+  // es exactamente lo que crece el corte.
   const c3 = comp('103B', 'ES', c => { c.dims.A.delta = 5; c.dims.B.delta = 5; c.dims.C.delta = 5; });
-  R.expandirComponente(c3, HOST);
-  ok(avisosDelTrazo(c3).length === 1 && /A = 29 · B = 57 · C = 29/.test(avisosDelTrazo(c3)[0]),
-    'los 3 lados mudos salen en UN solo aviso, en orden alfabético (=' +
-    JSON.stringify(avisosDelTrazo(c3)) + ')');
+  const b3 = R.expandirComponente(c3, HOST);
+  casi(perimetro(b3[0].puntos) - perimetro(a[0].puntos),
+    sumaDims(b3[0].dims) - sumaDims(a[0].dims), 1e-9,
+    'los 3 lados con Δ: trazo y corte crecen lo mismo');
+  ok(avisosDelTrazo(c3).length === 0,
+    '…y ninguno avisa (=' + JSON.stringify(avisosDelTrazo(c3)) + ')');
+
+  // EL CANAL DE AVISO NO SE MURIÓ: SE QUEDÓ SIN CLIENTES EN EL CATÁLOGO ACTUAL, y
+  // sigue siendo la red para una figura que se dibuje DEL MARCO y traiga un lado que
+  // el marco no lleva. Se prueba con una figura SINTÉTICA: un marco cerrado de 4
+  // lados cuyas letras no son A–D (el marco dibuja A/C = ancho y B/D = alto), así que
+  // sus dims no tienen por dónde llegar al trazo. Si esto dejara de avisar, el
+  // silencio volvería por la puerta de atrás.
+  {
+    const cod = '__MARCOGHIJ__';
+    CAT.FIGURAS[cod] = { codigo: cod, parciales: ['G', 'H', 'I', 'J'],
+      angulos: [135, 135, 135, 135], radio: false, geometria: null };
+    ok(FP.familiaDeDibujo(cod) === 'estribo' && FP.canalDelTrazo(cod, 'estribo', 'G') === null,
+      'figura sintética: marco cerrado con lados G–J → se dibuja del marco y su lado G ' +
+      'no tiene canal (=' + FP.canalDelTrazo(cod, 'estribo', 'G') + ')');
+    const cS = comp(cod, 'ES', c => { c.dims.G.delta = 5; });
+    R.expandirComponente(cS, HOST);
+    // UN solo aviso aunque sean dos lados (G y su par espejo I): es EL MISMO problema.
+    ok(avisosDelTrazo(cS).length === 1 && /NO mueven? el trazo 3D/.test(avisosDelTrazo(cS)[0]),
+      '…y el motor lo AVISA con las letras y los números (=' + JSON.stringify(avisosDelTrazo(cS)) + ')');
+    delete CAT.FIGURAS[cod];
+  }
 }
 
 // ============== E · DIM FIJA SOBRE EL MARCO: LO MANDA IGUAL QUE EL Δ (21-ago)
@@ -350,8 +383,18 @@ console.log('\nF — barrido de las 63 figuras: cero Δ que suba el corte sin mo
   // NÚMEROS EXACTOS DEL BARRIDO — son el "antes/después" del hallazgo y valen como
   // guard: si una figura nueva o un cambio de clasificación mueve el reparto entre
   // coherentes y mudas, este assert lo caza y obliga a explicar por qué.
-  ok(coherentes === 472, 'coherentes = 472 (eran 456: los 16 ganchos 106x se sumaron) =' + coherentes);
-  ok(mudasConAviso === 46, 'mudas = 46, TODAS con aviso (eran 62 con 0 avisos) =' + mudasConAviso);
+  // 22-AGO · 472 → 518 coherentes y 46 → 0 mudas. Las 46 mudas eran EXACTAMENTE la
+  // clase que este archivo describía como incorregible: «la figura que no se dibuja
+  // de sus dims (101A, 102x, 103x y 201A con rol ES)». No era incorregible — era la
+  // rama `rol === 'estribo'` de familiaDeDibujo mandándolas al constructor de MARCO,
+  // o sea la tipología decidiendo el trazo. Con la rama fuera cada una se dibuja con
+  // SUS puntos y sus dims llegan al dibujo: el problema desapareció en vez de
+  // anunciarse. Ya no queda NI UNA dim muda en las 63 figuras del catálogo.
+  ok(coherentes === 518,
+    'coherentes = 518 (eran 472, y antes de esa tanda 456) =' + coherentes);
+  ok(mudasConAviso === 0,
+    'mudas = 0: las 46 de la tanda anterior eran las figuras abiertas que la ' +
+    'tipología redibujaba como marco =' + mudasConAviso);
 }
 
 // ============================== G · CONTRATO DE `canalDelTrazo` (fuente única)
@@ -365,8 +408,13 @@ console.log('\nG — canalDelTrazo: por dónde entra al dibujo la medida de cada
   ok(FP.canalDelTrazo('106A', 'estribo', 'B') === 'marco' &&
      FP.canalDelTrazo('106A', 'estribo', 'C') === 'marco',
     '106A: B..E llevan medida del MARCO → sólo el Δ los mueve');
-  ok(FP.canalDelTrazo('103B', 'estribo', 'B') === null,
-    '103B con rol de sección: ninguna ruta — el marco se dibuja sin mirar sus dims');
+  // 22-AGO · ANTES ESTE ASSERT PEDÍA `null` («103B con rol de sección: ninguna ruta —
+  // el marco se dibuja sin mirar sus dims»), y ese null era el síntoma del defecto:
+  // la 103B caía en el constructor de marco por su TIPOLOGÍA, no por su forma. Ahora
+  // se dibuja como su cadena en el plano de la sección, así que su medida entra por
+  // el mismo canal que en cualquier otra cadena: 'dims'.
+  ok(FP.canalDelTrazo('103B', 'estribo', 'B') === 'dims',
+    '103B con rol de sección: canal dims — se dibuja como su cadena, tramo a tramo');
   ok(JSON.stringify(FP.ganchosTerminales('106A', 'estribo')) === '{"ini":"A","fin":"F"}',
     'ganchosTerminales lee las letras de los tramos, no una tabla por código');
   ok(FP.ganchosTerminales('104D', 'estribo') === null,

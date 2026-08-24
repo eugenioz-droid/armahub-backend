@@ -227,8 +227,17 @@ console.log('\nC — sin mapeo fiable no se destaca nada (mejor eso que el lado 
 {
   // (14-ago) La 101A-TRV salió de esta lista: la forma fija murió y su trazo
   // real SÍ es su cadena (una recta = su parcial A), así que el dominante mapea.
+  // 22-AGO · LA 103E SALIÓ DE ESTA LISTA, y por la misma razón por la que entró la
+  // 101A-TRV el 14-ago: su trazo SÍ es su cadena. Estaba acá porque la rama
+  // `rol === 'estribo'` de familiaDeDibujo la mandaba al constructor de marco —
+  // «dibuja 4 lados teniendo 3 parciales»—, que es exactamente el defecto que se
+  // corrigió: 17 figuras del catálogo (101A · 102A/B/C · 103A–L · 201A) salían con el
+  // MISMO perímetro de 170.214 cm bajo ES/EC/ESC, o sea la figura elegida no existía.
+  // Con la figura mandando el trazado, la 103E se dibuja como su cadena de 3 tramos y
+  // el dominante SÍ mapea: no destacarlo sería esconder el lado que el auto estira.
+  // Lo que queda en la lista es lo que de verdad no tiene mapeo: el MARCO CERRADO
+  // (104D dibuja 4 lados del marco de núcleo, no de sus dims) y el 106A.
   [['104D', 'ES', 'marco de estribo: dibuja 4 lados'],
-   ['103E', 'ES', 'marco de estribo con 3 parciales: el trazo no es su cadena'],
    ['106A', 'ES', 'rombo: constructor propio']
   ].forEach(([fig, tip, porque]) => {
     const c = comp(fig, tip);
@@ -239,6 +248,18 @@ console.log('\nC — sin mapeo fiable no se destaca nada (mejor eso que el lado 
       FP.ladoDominanteFigura(fig));
     ok(rng === null, fig + ' ' + tip + ' → null (' + porque + ')');
   });
+  // …Y LA OTRA MITAD, que es la que este test perdió al sacar la 103E de arriba: una
+  // figura ABIERTA colocada como pieza de sección SÍ tiene mapeo, porque su trazo es
+  // su cadena. Si mañana volviera a caer en el constructor de marco, esto lo caza.
+  {
+    const c = comp('103E', 'ES');
+    c.diam = 8;
+    const r = primerPlacement(c);
+    const rng = r && TE._tramoDominanteEnTrazo('103E', r.rol, r.pl.puntos, r.pl.diam,
+      FP.ladoDominanteFigura('103E'));
+    ok(!!rng, '103E ES → SÍ se destaca su dominante: se dibuja como su cadena de 3 tramos (=' +
+      JSON.stringify(rng) + ')');
+  }
   // Sin φ no hay cota para separar arco de tramo real: tampoco se adivina.
   {
     const r = primerPlacement(comp('102B', 'CBS'));

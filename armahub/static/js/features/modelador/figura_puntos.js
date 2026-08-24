@@ -242,12 +242,19 @@
   // Lo que NO cambia: 1 lado (recta, sin dobleces que honrar) y el MARCO CERRADO
   // de 4 lados (constructor propio calibrado, con sus arcos de gancho sísmico).
   var MIN_LADOS_CADENA_LONG = 2;
-  // ¿ESTA FIGURA PUEDE TRAZARSE COMO CADENA DE SECCIÓN? Sólo topología: 4+ lados con
-  // tramos. Con menos, el constructor de sección no tiene con qué encuadrar (los
-  // ganchos de 135° de la 103E/103H los traza el marco con su arco calibrado).
-  // Existe porque la colocación necesitaba preguntar «¿esta pieza se muestra de
-  // frente en la vista?» y lo estaba preguntando por TIPOLOGÍA — ver la nota del
+  // ¿ESTA FIGURA ENCUADRA UNA SECCIÓN POR SÍ SOLA? Sólo topología: 4+ lados con
+  // tramos. Existe porque la colocación necesitaba preguntar «¿esta pieza se muestra
+  // de frente en la vista?» y lo estaba preguntando por TIPOLOGÍA — ver la nota del
   // 25-ago en template_editor._compDesdeClick.
+  //
+  // NO ES LA MISMA PREGUNTA QUE `familiaDeDibujo` (22-ago). Hasta hoy el umbral de 4+
+  // se justificaba diciendo «con menos, el constructor de sección no tiene con qué
+  // encuadrar: los ganchos de 135° de la 103E/103H los traza el marco con su arco
+  // calibrado». Eso ya NO es cierto —una 103E colocada como estribo se traza como su
+  // cadena, no como un marco—, así que el umbral se queda por su PROPIO motivo, que
+  // es de colocación: una figura abierta de 1–3 lados nace corriendo DENTRO del plano
+  // de la vista donde se hizo clic, no de frente. El número no cambia; la razón sí, y
+  // ésa es la que hay que leer si algún día se toca.
   function esCadenaDeSeccion(figura) {
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
@@ -255,29 +262,43 @@
     return (n >= MAX_LADOS_DIBUJABLES) && !!tramosDeFigura(f);
   }
 
-  function familiaDeDibujo(figura, rol) {
+  // `rol` SE IGNORA — está en la firma por los llamadores de siempre (22-ago).
+  // ---------------------------------------------------------------------------
+  // EL ÚLTIMO SITIO EN QUE LA TIPOLOGÍA PISABA LA TOPOLOGÍA. Hasta hoy esta función
+  // abría con `if (rol === 'estribo') { … return 'estribo'; }`, y ese `return` final
+  // se comía CUALQUIER figura que no fuera marco ni cadena de 4+: 17 de las 63 del
+  // catálogo (101A · 102A/B/C · 103A–L · 201A) se redibujaban como marco cerrado al
+  // colocarlas con ES/EC/ESC. MEDIDO: las 17 salían con los MISMOS 35 puntos y el
+  // MISMO perímetro de 170.214 cm, y un 103B, un 103A y un 102A bajo EC eran la
+  // misma barra dígito a dígito (A=24 · B=52 · C=24) — la figura que el usuario
+  // eligió no llegaba a existir. Es el bug que reportó como «puse un estribo de
+  // confinamiento con figura 103B y me insertó una 106A».
+  //
+  // Y ramificar por `rol` ERA ramificar por tipología: `reglas.rolDeComponente`
+  // traduce ES/EC/ESC → 'estribo'. Con la rama fuera, esta función contesta LO
+  // MISMO con rol y sin rol: la FORMA la decide la FIGURA y nada más.
+  //
+  // LO QUE NO SE MOVIÓ NI UN DÍGITO (medido figura por figura): el marco cerrado
+  // (104A/D/E/F/G/M/N/O/P/Q), el estribo con ganchos declarados (106A–D) y las
+  // cadenas de 4+ (104B/C/H…, 105x, 305A) contestaban ya lo mismo por las dos ramas.
+  // La rama sólo cambiaba el destino de las 17 de arriba.
+  //
+  // LAS OTRAS DOS RESPONSABILIDADES QUE EL ROL SÍ MANDA VIVEN APARTE, y por eso
+  // sacar esta rama no las toca:
+  //   · el PLANO DE TRABAJO (sección ⊥ al rumbo vs longitudinal) → `_cadenaGenerica`
+  //     con el rol, que es la colocación, no la figura;
+  //   · el ANIDADO de las capas (anillo concéntrico vs traslación) → `esPiezaDeSeccion`.
+  function familiaDeDibujo(figura, rol) {   // `rol`: ignorado, ver arriba
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
     var n = spec ? spec.parciales.length : 0;
     var esMarco = _esPerimetro(spec, f) && (!spec || n === MAX_LADOS_DIBUJABLES);
     var tieneTramos = !!tramosDeFigura(f);
-    // DOS UMBRALES, DOS PLANOS DE TRABAJO. La cadena de SECCIÓN (rol estribo)
-    // sigue pidiendo 4+ lados: ahí el constructor de marco no "miente" con las
-    // 1–3 lados (103E/103H son ganchos de 135° que el marco traza con su arco
-    // calibrado), y bajarle el umbral cambiaría el ANCLAJE de esas piezas, no
-    // sólo su trazo. La cadena LONGITUDINAL (rol cabezal / sin rol) entra desde
-    // 2 lados, que es donde aparece el primer doblez con ángulo de catálogo.
-    var esCadenaSeccion = (n >= MAX_LADOS_DIBUJABLES) && tieneTramos;
+    // La cadena entra desde 2 lados, que es donde aparece el primer doblez con
+    // ángulo de catálogo. (Antes había DOS umbrales, uno por plano de trabajo: el
+    // de sección pedía 4+ lados. Ese umbral era justamente lo que mandaba las 1–3
+    // lados al marco; el plano de trabajo no se decide acá.)
     var esCadenaLong = (n >= MIN_LADOS_CADENA_LONG) && tieneTramos;
-    if (rol === 'estribo') {
-      if (esMarco) return 'estribo';
-      // 106A y familia (correccion 14-ago): estribo rectangular con sus GANCHOS
-      // declarados como parciales -> el MARCO manda, como el 104D y como era
-      // antes de la Tanda P ("el estribo estaba bien en vigas").
-      if (esEstriboConGanchos(f)) return 'estribo';
-      if (esCadenaSeccion) return 'cadena';
-      return 'estribo';
-    }
     // (14-ago, Modelo A) El bloque `rol === 'traba'` MURIÓ: una figura abierta
     // bajo TR/TC/TRV es un longitudinal más y cae al camino general de abajo —
     // se dibuja como se dibujó, y el cruce es girar la pieza, no una familia.
@@ -299,10 +320,11 @@
   // ¿ES UNA PIEZA DE SECCIÓN? — CONCEPTO ÚNICO (TANDA P · defecto F1).
   // ---------------------------------------------------------------------------
   // Una pieza de sección es la que vive en el plano ⊥ al rumbo y ENCUADRA el marco
-  // de núcleo: las tres que despacha `figuraAPuntos` a `_estriboPerimetral`,
-  // `_traba` y `_cadenaSeccion`. Es EXACTAMENTE el criterio del despacho (ver el
-  // `if (rol === 'estribo' || rol === 'traba')` de `_cadenaGenerica`), escrito una
-  // sola vez para que nadie tenga que reconstruirlo.
+  // de núcleo: la que `figuraAPuntos` manda a `_estriboPerimetral` o a
+  // `_cadenaSeccion`. Es EXACTAMENTE el criterio del PLANO DE TRABAJO (ver el
+  // `if (rol === 'estribo')` de `_cadenaGenerica`), escrito una sola vez para que
+  // nadie tenga que reconstruirlo. (`_traba` y el rol 'traba' murieron el 14-ago con
+  // el Modelo A; el texto que los nombraba se quedó.)
   //
   // POR QUÉ HACE FALTA (defecto F1): reglas.js decidía el ANIDADO preguntando
   // «¿se dibuja como marco CERRADO?» (`_dibujaMarcoCerrado`). Esa pregunta separa
@@ -317,10 +339,22 @@
   // La FORMA (marco / cadena / traba) sigue decidiendo CÓMO encoge cada una — eso
   // vive en `anidarFigura` —; lo que se unifica acá es el SI: una pieza de sección
   // anida SIEMPRE, nunca se traslada.
+  //
+  // LA FORMA YA NO ENTRA EN ESTA RESPUESTA (22-ago). Hasta hoy exigía además
+  // `familiaDeDibujo ∈ {estribo, rombo, cadena}`, y eso funcionaba sólo porque la
+  // familia estaba CONTAMINADA por el rol: con la rama `rol === 'estribo'` fuera,
+  // una 101A colocada como ES pasa a familia 'recta' y una 103B a 'cadena', así que
+  // la pregunta por la forma habría dejado de anidar justo a las 17 figuras que se
+  // acaban de arreglar. MEDIDO en la viga 600×60×30 con layered×3 y Sep 3: sin
+  // anidar, sus capas se trasladan por la normal y 102A/103A/103B/103E terminan
+  // entre 1.7 y 2 cm FUERA del hormigón — peor que el defecto original.
+  // Y no es un parche: encuadrar la sección es una propiedad de la COLOCACIÓN (esta
+  // pieza vive en el plano ⊥ al rumbo y se reparte a lo largo), no de la forma que
+  // tenga la barra. Una figura recta colocada como estribo encuadra la sección
+  // exactamente igual que un marco de 4 lados; lo que cambia es CÓMO encoge, y eso
+  // lo resuelve `anidarFigura`, que es donde vive la forma.
   function esPiezaDeSeccion(figura, rol) {
-    if (rol !== 'estribo') return false;
-    var fam = familiaDeDibujo(figura, rol);
-    return fam === 'estribo' || fam === 'rombo' || fam === 'cadena';
+    return rol === 'estribo';
   }
 
   // ---------------------------------------------------------------------------
@@ -1019,6 +1053,15 @@
   // del motor los redondea bien y con los mismos endpoints. R = 2φ + φ/2, el
   // MISMO radio de eje del estribo (norma: mandril interno 2φ).
   // SOLO CAPA VISUAL: largo/peso salen de las dims en el backend, nunca de acá.
+  // FRACCIÓN DEL CUERPO que el codo puede consumir como retranqueo. Es lo que hace
+  // que un cuerpo corto NO se lo coma el arco (queda siempre algo de tramo recto).
+  // De ella sale el largo MÍNIMO de cuerpo con el que el codo se dibuja con su radio
+  // de norma; por debajo, el dibujo lo encoge y la capa de medición (sinClamp) deja
+  // de describir la misma figura. Los solvers muestrean por encima de ese largo (ver
+  // `autosCadenaSeccion`), que es la única forma de que resolver y dibujar coincidan.
+  var FRAC_CUERPO_CODO = 0.49;
+  function _cuerpoMinimoCodo(diamCm) { return radioEjeCm(diamCm) / FRAC_CUERPO_CODO; }
+
   function _ganchoFinal2D(pts, R0, sinClamp) {
     var n = pts.length;
     if (n < 3 || !(R0 > 0)) return pts;
@@ -1037,7 +1080,7 @@
     // `sinClamp` = radio de NORMA constante, lo usa la capa de MEDICIÓN: con R
     // dependiente del largo del cuerpo la cuenta afín de los solvers dejaría de
     // ser afín. El dibujo sí clampa (un cuerpo más corto que R no se come).
-    var R = sinClamp ? R0 : Math.min(R0, 0.49 * L1);
+    var R = sinClamp ? R0 : Math.min(R0, FRAC_CUERPO_CODO * L1);
     // Tangencia en el cuerpo, retranqueo R desde el vértice (regla de la cresta).
     var T1 = { u: V0.u - d1u * R, v: V0.v - d1v * R };
     var O = { u: T1.u - d1v * s * R, v: T1.v + d1u * s * R };  // centro del arco
@@ -1751,9 +1794,17 @@
   // él — si no, el 'auto' mediría contra la dimensión equivocada del hormigón (el
   // defecto D1, 11 cm de fierro fuera). `familiaDeDibujo` sigue leyendo el catálogo:
   // QUIÉN dibuja la figura es identidad, no geometría.
-  function ejesCadenaSeccion(figura, rol, angOvr) {
+  // LA ÚNICA EXCLUSIÓN ES EL MARCO CERRADO (22-ago). Antes exigía familia 'cadena'
+  // y eso dejaba fuera a las 1–3 lados, porque la rama `rol === 'estribo'` de
+  // `familiaDeDibujo` las clasificaba 'estribo'. Con esa rama muerta hay que decir
+  // explícitamente lo único que sigue siendo verdad: el marco cerrado se dibuja del
+  // marco de núcleo y ahí la lectura por LETRA (A/C = ancho, B/D = alto) es la
+  // correcta. Todo lo demás que tenga tramos se traza como CADENA en la sección
+  // (`_cadenaSeccion`), así que su 'auto' tiene que leer el TRAZO — que es
+  // exactamente lo que hace esta función.
+  function ejesCadenaSeccion(figura, rol, angOvr) {   // `rol`: ignorado, ver arriba
     var f = (figura || '').toUpperCase();
-    if (familiaDeDibujo(f, rol || 'estribo') !== 'cadena') return null;
+    if (familiaDeDibujo(f) === 'estribo') return null;
     var tr = tramosDeFigura(f, angOvr);
     if (!tr) return null;
     var heading = 0, out = {}, i, t, g, a;
@@ -1818,6 +1869,18 @@
     // (arcos incluidos). Sigue siendo afín en t: las direcciones salen de los
     // GIROS y el radio es constante (sin clamp), así que cada punto del arco es
     // el vértice (afín) más un desplazamiento fijo.
+    // LARGO DE LA MUESTRA — TIENE QUE ESTAR EN EL RÉGIMEN DEL TRAZO RESUELTO (22-ago).
+    // `_conGanchosRadio` retranquea el codo R sobre el CUERPO: con un cuerpo más corto
+    // que `_cuerpoMinimoCodo` el punto de tangencia se sale del lado y aparece un
+    // SEGUNDO codo que la figura no tiene, o sea la muestra describe OTRA figura.
+    // MEDIDO en la 102C φ8 (2 tramos, gancho de 135° de recorrido, R = 2.0): con las
+    // muestras en t = 1 y t = 2 el modelo veía v = 12.89 y v = 9.07 —dos figuras
+    // distintas— y la recta afín reconstruida resolvía u = 4.51 mientras el trazo
+    // dibujaba 6.24 en un marco útil de 24. Con las muestras en el régimen bueno
+    // resuelve y dibuja el mismo número.
+    // Hasta hoy no se veía porque el único camino a esta función eran las cadenas de
+    // 4+ lados: sus lados 'auto' nunca quedaban solos con el codo.
+    var t0 = Math.max(1, _cuerpoMinimoCodo(diamCm || 0));
     function coords(eje, t) {
       var d = {}, k;
       for (k in dimsBase) {
@@ -1825,12 +1888,12 @@
       }
       for (k in ejes) {
         if (!Object.prototype.hasOwnProperty.call(ejes, k) || d[k] != null) continue;
-        // Los autos del eje MEDIDO valen t. Los del OTRO eje valen 1, NO 0: sobre
+        // Los autos del eje MEDIDO valen t. Los del OTRO eje valen t0, NO 0: sobre
         // esta coordenada no mueven nada (corren perpendicular), pero con largo 0
         // degeneran su tramo y el pase de ganchos NO vería ese doblez — el arco
         // aparecería en el dibujo real y no en este modelo (medido: el auto
         // resolvía 24 y el trazo real ocupaba 25.99, un radio entero más).
-        d[k] = (ejes[k] === eje) ? t : 1;
+        d[k] = (ejes[k] === eje) ? t : t0;
       }
       var c = _cadena2D(tr.tramos, d, 0);
       var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true);
@@ -1839,11 +1902,13 @@
       return out;
     }
     function resolver(eje, ut) {
-      // Se muestrea en t = 1 y t = 2 (NUNCA en t = 0: un lado auto de largo 0
-      // degenera su tramo y el pase de ganchos no vería el doblez en esa muestra
-      // — las dos listas quedarían desalineadas). a se reconstruye por afinidad.
-      var c1 = coords(eje, 1), c2 = coords(eje, 2), a = [], b = [], i;
-      for (i = 0; i < c1.length; i++) { b.push(c2[i] - c1[i]); a.push(c1[i] - b[i]); }
+      // Se muestrea en t0 y 2·t0 (NUNCA en t = 0: un lado auto de largo 0 degenera su
+      // tramo y el pase de ganchos no vería el doblez en esa muestra — las dos listas
+      // quedarían desalineadas). a se reconstruye por afinidad.
+      var c1 = coords(eje, t0), c2 = coords(eje, 2 * t0), a = [], b = [], i, bi;
+      for (i = 0; i < c1.length; i++) {
+        bi = (c2[i] - c1[i]) / t0; b.push(bi); a.push(c1[i] - bi * t0);
+      }
       var iv = _intervaloCabe(a, b, ut);
       // Sin cota superior no hay lados auto en ese eje (nadie pregunta por su
       // valor) → se devuelve el útil, como antes.
@@ -2944,7 +3009,15 @@
     // ANTES caía en la rama ABIERTA (o directamente en ninguna, porque el llamador
     // sólo anidaba lo que se dibuja como marco) y el corchete no le sirve: sus
     // puntas libres son patas de gancho y sus quiebres no son de 90°.
-    if (rol === 'estribo' && familiaDeDibujo(f, rol) === 'cadena') {
+    // LA PREGUNTA ES «¿ENCUADRA LA SECCIÓN?», NO «¿QUÉ FAMILIA ES?» (22-ago). Antes
+    // exigía familia 'cadena', que con la rama del rol viva significaba «cadena de
+    // 4+ lados». Ahora lo decide `esPiezaDeSeccion` (la colocación) y el CÓMO lo
+    // resuelve `insetCadenaSeccion`, que devuelve null justo donde no aplica: el
+    // marco cerrado (que sigue abajo, con su −2δ de anillo) y la figura sin tramos.
+    // Así una 101A/102A/103x colocada como ES anida su capa k como anillo —lados
+    // retirados lo que haga falta para entrar δ por lado— en vez de trasladarse por
+    // la normal, que es lo que la sacaba 1.7–2 cm del hormigón en la capa 3.
+    if (esPiezaDeSeccion(f, rol)) {
       if (!(dSep > 0)) { res.delta = 0; return res; }   // δ nulo = marcos superpuestos
       // opts.angulos = el ángulo POR BARRA del componente: el retiro se resuelve
       // sobre el MISMO trazo que se va a dibujar (si leyera el del catálogo, la capa
@@ -3019,8 +3092,19 @@
     // misma medida sin tener que enterarse. Ver sobresCresta.
     var dimsV = dimsAVertice(figura, rol, dims, diamCm, anchor && anchor.angulos);
     if (familia === 'estribo') return _estriboPerimetral(figura, dimsV, host, anchor, diamCm);
-    if (familia === 'cadena') return _cadenaGenerica(figura, dimsV, host, anchor, diamCm, rol);
-    return _cabezalLongitudinal(figura, dimsV, host, anchor, diamCm);   // recta | cabezal
+    // DOS COSAS DISTINTAS, DOS DUEÑOS (22-ago): la FORMA la trae `familia` (la
+    // figura), el PLANO DE TRABAJO lo trae `rol` (la colocación) y lo resuelve
+    // `_cadenaGenerica` — sección ⊥ al rumbo para el estribo, longitudinal para el
+    // resto. Por eso la RECTA entra también acá y ya no por `_cabezalLongitudinal`:
+    // ese constructor sólo sabe del plano longitudinal, y una 101A colocada como ES
+    // es una barra que cruza la SECCIÓN. En el plano longitudinal las dos rutas dan
+    // la MISMA polilínea punto a punto — es el piloto de convención que fija
+    // tests/test_trazador_generico.js (101A/102A/103A byte-idénticas) —, así que
+    // esto no mueve un solo cabezal.
+    // `_cadenaGenerica` cae sola a `_cabezalLongitudinal` cuando la figura no tiene
+    // tramos trazables (familia 'cabezal': fuera del catálogo o geometría en arco),
+    // que es la red de seguridad de siempre.
+    return _cadenaGenerica(figura, dimsV, host, anchor, diamCm, rol);
   }
 
   // Rol cuando la tipología no lo dice: perímetro cerrado = estribo; el resto

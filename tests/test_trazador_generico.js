@@ -204,10 +204,26 @@ ok(FP.familiaDeDibujo('101A', null) === 'recta' && FP.familiaDeDibujo('102A', nu
     '103C: el gancho de 45° que declara el catálogo SÍ se dibuja, y el otro extremo sigue a 90° (=' +
     gC.map(a => a.toFixed(0)).join('/') + '°)');
 })();
+// ASSERT CAMBIADO (22-ago) — EL ROL YA NO MANDA NADA SOBRE LA FAMILIA.
+// Antes este assert exigía `familiaDeDibujo('103E','estribo') === 'estribo'` y con eso
+// congelaba el defecto: la rama `rol === 'estribo'` de familiaDeDibujo terminaba en un
+// `return 'estribo'` que se comía cualquier figura que no fuera marco ni cadena de 4+.
+// MEDIDO sobre el catálogo: 17 de las 63 figuras (101A · 102A/B/C · 103A–L · 201A)
+// salían con los MISMOS 35 puntos y el MISMO perímetro de 170.214 cm al colocarlas con
+// ES/EC/ESC — un 103B, un 103A y un 102A eran la misma barra dígito a dígito. Es el bug
+// que reportó el usuario («puse un estribo de confinamiento con figura 103B y me
+// insertó una 106A») y el mismo que se mató para la traba el 14-ago: la TIPOLOGÍA
+// pisando la TOPOLOGÍA (el rol ES la tipología: reglas.rolDeComponente traduce
+// ES/EC/ESC → 'estribo').
+// Lo que este assert protege AHORA es lo que sigue siendo verdad: el MARCO CERRADO es
+// marco venga el rol que venga, y la familia no depende del rol.
 ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('104D', 'traba') === 'estribo' &&
-   FP.familiaDeDibujo('103E', 'estribo') === 'estribo',
-  'el ROL sigue mandando sobre la familia cuando la FIGURA es un marco (104D, con ' +
-  'CUALQUIER rol de sección) o no tiene cadena que la reemplace (103E con rol estribo)');
+   FP.familiaDeDibujo('104D', null) === 'estribo',
+  'la FIGURA manda: un marco de 4 lados es marco con rol estribo, con rol traba y sin rol');
+ok(FP.familiaDeDibujo('103E', 'estribo') === 'cadena' && FP.familiaDeDibujo('103E', null) === 'cadena' &&
+   FP.familiaDeDibujo('101A', 'estribo') === 'recta',
+  '…y una 103E/101A colocada como estribo se dibuja como lo que ES (cadena/recta), no ' +
+  'como el marco que dibujaba antes');
 // FEEDBACK 13-ago — la TRABA con figura de 3+ lados también se traza como CADENA
 // (mismo criterio que el 305A del estribo): `_traba` dibuja una única forma fija
 // que sólo aproxima 101x/102x; con una 104B la ignoraba y el 'auto' resolvía las
