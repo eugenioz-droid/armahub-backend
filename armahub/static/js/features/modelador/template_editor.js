@@ -6131,6 +6131,13 @@
     var n = _nOcultos();
     b.classList.toggle('on', !!ST.modoLuz);
     b.classList.toggle('hay', n > 0);
+    // QUE SE NOTE QUE ESTAMOS EN OTRO MODO (25-ago: «al presionarla debería tener un
+    // aviso más claro de que estamos en otro modo»). Un modo que sólo se delata por un
+    // botón encendido es un modo en el que uno se queda sin darse cuenta. Se marca la
+    // TIRA ENTERA —que es donde el modo cambia lo que hace el clic— y se le pone
+    // arriba una banda que dice qué hacer, no cómo se llama el modo.
+    var grid = $('te_grid');
+    if (grid) grid.classList.toggle('te-luz-on', !!ST.modoLuz);
     b.title = (n > 0)
       ? (n + ' componente(s) apagado(s) — no se dibujan, pero siguen contando en medidas y kilos. Clic para entrar/salir del modo.')
       : 'Prender y apagar componentes: apagados dejan de dibujarse (las medidas y los kilos no cambian).';
@@ -7087,6 +7094,14 @@
     var cont = $('te_compList'); if (!cont || !ST.receta) return;
     var cnt = $('te_compCount'); if (cnt) cnt.textContent = ST.receta.componentes.length;
     cont.innerHTML = '';
+    // La banda del modo va DENTRO de la tira, arriba de las tejas: es donde el usuario
+    // está mirando cuando el modo cambia lo que hace su clic.
+    if (ST.modoLuz) {
+      var banda = _div('te-luzbar');
+      banda.textContent = 'Clic en el color para apagar';
+      banda.title = 'Una barra apagada deja de dibujarse. Sus medidas y sus kilos no cambian.';
+      cont.appendChild(banda);
+    }
     // GRILLA VACÍA: se dice qué hacer AHÍ, que es donde el usuario está mirando, y
     // se va sola con la primera barra. Reemplaza a la nota fija que vivía bajo el
     // botón y que seguía ahí con el template lleno.
@@ -7488,6 +7503,22 @@
     top.appendChild(asa);
     var swEl = document.createElement('span');
     swEl.className = 'te-sw'; swEl.style.background = col;
+    // EL COLOR ES EL INTERRUPTOR (25-ago, idea del usuario). La primera versión ponía
+    // una ampolleta por teja y él la descartó bien: «hay un cuadrado con el color del
+    // componente, bastaría que el usuario pueda marcar ese color y con eso cambie a
+    // gris». Es mejor por dos razones. Una, la teja mide 100 px y ya lleva el asa de
+    // arrastre y la papelera: un tercer control le come el nombre a la barra. Y dos,
+    // el gris del cuadradito NO es un icono que haya que interpretar — es la misma
+    // cosa que se apaga, apagada.
+    // Sólo actúa CON EL MODO PUESTO: si no, un clic en el color al ir a seleccionar
+    // apagaría la barra sin que nadie lo pidiera. Fuera del modo el clic sigue de
+    // largo a la teja, que selecciona.
+    swEl.title = 'Color de la tipología';
+    swEl.addEventListener('click', function (ev) {
+      if (!ST.modoLuz) return;
+      ev.stopPropagation();
+      _alternarLuz(ci);
+    });
     top.appendChild(swEl);
     // LA MARCA DE ESPEJO SE FUE DE LA TEJA (21-ago, pedido del usuario): en 70 px de
     // ancho competía con la tipología, que es lo que de verdad identifica la barra.
@@ -7545,21 +7576,6 @@
     });
     wrap.appendChild(del);
 
-    // AMPOLLETA de la teja. Sólo aparece con el modo encendido (la tira es angosta y
-    // un tercer control permanente le comería el nombre de la barra), pero el GRIS de
-    // lo apagado se ve siempre: si no, saldrías del modo y no sabrías qué falta.
-    var luz = document.createElement('button');
-    luz.type = 'button'; luz.className = 'te-tjluz';
-    luz.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
-      'aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .9 1.6h5.4c.1-.6.4-1.2.9-1.6A6 6 0 0 0 12 3z"/></svg>';
-    luz.title = apagado ? 'Encender: vuelve a dibujarse' : 'Apagar: deja de dibujarse (no cambia medidas ni kilos)';
-    luz.setAttribute('aria-label', luz.title);
-    luz.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      _alternarLuz(ci);
-    });
-    wrap.appendChild(luz);
 
     wrap.addEventListener('click', function (ev) {
       // BUG 6B — la teja es un TOGGLE: si el componente ya está seleccionado, volver a
