@@ -480,6 +480,22 @@
      si las cuatro tejas se vieran iguales no habria como saber cual se esta
      editando. Mismo color, borde punteado y sin el halo. */
   #te_modal .te-comp.selx{border-color:var(--te-acero);border-style:dashed}
+  /* CORTE: el boton lleva su valor y el slider vive detras, desplegado. Asi el ajuste
+     es continuo -el usuario pidio "mas medidas" que tres botones fijos- sin ocupar
+     media barra de herramientas. */
+  #te_modal .te-cortewrap{position:relative;display:inline-flex}
+  #te_modal #te_btnCorte b{font-weight:700;color:var(--te-acero-t)}
+  #te_modal .te-cortepop{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:40;
+    width:250px;padding:10px 11px 11px;border:1px solid var(--te-line);border-radius:10px;
+    background:var(--te-panel);box-shadow:0 8px 24px rgba(15,20,28,.18);
+    flex-direction:column;gap:6px}
+  #te_modal .te-cortepop.on{display:flex}
+  #te_modal .te-cortepop label{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;
+    color:var(--te-muted)}
+  #te_modal .te-cortepop input[type=range]{width:100%;accent-color:var(--te-acero-d)}
+  #te_modal .te-corteval{font-weight:700;font-size:12.5px;color:var(--te-ink);
+    font-variant-numeric:tabular-nums}
+  #te_modal .te-cortenota{font-size:10.5px;line-height:1.35;color:var(--te-faint)}
   /* MUESTRA de tema: mitad lienzo (--a), mitad panel (--b). El boton sigue siendo el
      mismo del segmento; lo unico nuevo es que su contenido es color y no un simbolo. */
   #te_modal #te_3dTema button i{display:block;width:15px;height:15px;border-radius:4px;
@@ -1548,6 +1564,20 @@
         <span class="te-divv"></span>
         <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
         <button class="te-ctool" data-toggle="cotas" title="Cotas del elemento + medidas por lado de la barra seleccionada (atajo: SHIFT)">📐 Cotas</button>
+        <span class="te-divv"></span>
+        <!-- CORTE — boton con su valor a la vista + slider desplegable. El DONDE se
+             corta es de cada cuadrante (cada uno tiene su slider); el CUANTO se ve es
+             una sola decision para las tres vistas, por eso vive aca y no repetido en
+             cada canvas. -->
+        <span class="te-cortewrap">
+          <button class="te-ctool" id="te_btnCorte">⬍ Corte <b class="te-cortelbl">auto</b></button>
+          <span class="te-cortepop" id="te_cortePop">
+            <label for="te_corteRange">Profundidad de la rebanada</label>
+            <input type="range" id="te_corteRange" min="1" max="200" step="1" value="200">
+            <span class="te-corteval" id="te_corteVal">auto</span>
+            <span class="te-cortenota">Al tope = sin corte. Aplica a las tres vistas; cada cuadrante conserva su propio slider de posición.</span>
+          </span>
+        </span>
         <span class="te-divv"></span>
         <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
         <!-- ESPEJAR (24-ago, pedido del usuario): "en muros el lado derecho sera igual

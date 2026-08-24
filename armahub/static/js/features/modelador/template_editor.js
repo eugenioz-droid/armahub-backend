@@ -191,6 +191,17 @@
     // ejeRot: 'libre' | 'x' | 'y' | 'z' — restringe el arrastre de la órbita a un
     //   solo eje (portado del Enfierrador).
     tema3d: 'claro', ejeRot: 'libre',
+    // ESPESOR DEL CORTE, en cm de rebanada COMPLETA (25-ago, pedido del usuario).
+    // null = AUTOMÁTICO, que es como se comportó siempre: fino en la sección (aísla
+    // un estribo) y grueso en las demás vistas. En cuanto el usuario mueve el
+    // control, este número manda en LAS TRES vistas.
+    //
+    // POR QUÉ UNO SOLO Y NO UNO POR CUADRANTE: el DÓNDE corto es de cada vista —por
+    // eso cada una tiene su slider—, pero CUÁNTO dejo ver es una sola decisión: si
+    // abro el corte para ver el conjunto, lo quiero ver en las tres. Un control por
+    // cuadrante serían tres mandos para una decisión, que fue justo lo que el usuario
+    // rechazó de la primera propuesta.
+    corteEspesor: null,
     // --- Estado de interacción 2D ---
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
     // (20-ago) `contorno` SE FUE con su check: nadie leía el dato salvo el ghost de
@@ -2211,6 +2222,7 @@
     // se apaga cuando no hay cambios). Cada regeneración es un cambio potencial, así
     // que el estado se recalcula aquí y no en veinte llamadores sueltos.
     _actualizarBtnGuardar();
+    _sincronizarCorteUI();   // el tope del slider sale del hormigón, que pudo cambiar
     // Las medidas por lado de la ficha muestran lo que ACABA de salir del motor. Va
     // acá —en el punto único por el que pasa toda mutación— y no en cada llamador:
     // así ninguna forma de cambiar la barra puede dejar el número viejo en pantalla.
@@ -2555,6 +2567,44 @@
   // escaparse al tab del Catálogo ni al resto de la plataforma.
   // Es lo que evita que oscurecer el fondo deje texto oscuro sobre oscuro. Se llama
   // también al abrir el modal, no sólo al tocar el radial.
+  // SEMI-espesor del corte cuando el usuario lo fijó, o null si sigue en automático.
+  // `corteGrosor` es SEMI (el clip abre [c−gr .. c+gr]) mientras que el control habla
+  // en rebanada COMPLETA, que es lo que se ve: de ahí la mitad. Y se acota al propio
+  // elemento — pedir más profundidad que el hormigón no enseña nada nuevo.
+  // Está aparte para poder congelarla en la suite: dentro de _calcOrto haría falta
+  // three.js y tres cámaras para probar una regla de una línea.
+  function _semiEspesorCorte(half) {
+    var e = ST.corteEspesor;
+    if (e == null || !isFinite(e) || !(e > 0)) return null;
+    if (!isFinite(half) || !(half > 0)) return Number(e) / 2;
+    return Math.min(Number(e) / 2, half);
+  }
+
+  // Pone al día el botón, el slider y el número. El TOPE del slider es el elemento:
+  // más rebanada que el propio hormigón no enseña nada nuevo.
+  function _sincronizarCorteUI() {
+    var bc = $('te_btnCorte'), rc = $('te_corteRange'), et = $('te_corteVal');
+    var g = ST.receta && ST.receta.geometria;
+    var maxCm = 200;
+    if (g) {
+      maxCm = Math.max(20, Math.ceil(Math.max(Number(g.largo) || 0, Number(g.alto) || 0,
+                                              Number(g.ancho) || 0)));
+    }
+    if (rc) {
+      rc.max = String(maxCm);
+      rc.value = String(ST.corteEspesor != null ? Math.min(ST.corteEspesor, maxCm) : maxCm);
+    }
+    var txt = (ST.corteEspesor == null) ? 'auto' : (Math.round(ST.corteEspesor) + ' cm');
+    if (et) et.textContent = txt;
+    if (bc) {
+      var lbl = bc.querySelector('.te-cortelbl');
+      if (lbl) lbl.textContent = txt;
+      bc.title = (ST.corteEspesor == null)
+        ? 'Espesor de la rebanada que muestran los cortes. Ahora en automático: fino en la sección, completo en las demás. Clic para fijarlo.'
+        : 'La rebanada muestra ' + Math.round(ST.corteEspesor) + ' cm de profundidad, en las tres vistas. Clic para cambiarlo.';
+    }
+  }
+
   function _marcarTemaEnQuad() {
     var nodos = [$('te_quad'), $('te_modal')];
     // Las clases van por TODAS las claves de TEMAS3D: agregar un tema es agregar su
@@ -10068,6 +10118,45 @@
     // La marca en el DOM se repone en cada apertura del modal: #te_quad puede venir
     // sin clase (primera vez) y el tema vive en memoria entre aperturas.
     _marcarTemaEnQuad();
+    // CORTE — un BOTÓN que despliega su slider (25-ago). La primera propuesta eran
+    // tres botones fijos (fino/medio/todo) y el usuario los descartó con razón: «a
+    // veces los espaciamientos varían mucho entre elementos y es necesario tener más
+    // medidas». Así que el ajuste es CONTINUO, pero no ocupa la barra: vive detrás de
+    // un botón que además muestra el valor vigente, así se sabe en qué está sin
+    // abrirlo.
+    var bc = $('te_btnCorte'), pc = $('te_cortePop'), rc = $('te_corteRange');
+    if (bc && !bc._teBound) {
+      bc._teBound = true;
+      bc.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var abierto = pc && pc.classList.toggle('on');
+        bc.classList.toggle('on', !!abierto);
+        if (abierto) _sincronizarCorteUI();
+      });
+    }
+    if (rc && !rc._teBound) {
+      rc._teBound = true;
+      rc.addEventListener('input', function () {
+        var v = Number(rc.value);
+        // El tope del recorrido significa TODO: sin corte. Se guarda como null para
+        // que la vista vuelva a su automático en vez de quedar con un número enorme.
+        ST.corteEspesor = (v >= Number(rc.max)) ? null : v;
+        _sincronizarCorteUI();
+        _marcarSucio();
+        _sincronizarOverlayOrto();
+      });
+    }
+    // Clic fuera → se cierra. Un desplegable que sólo se cierra con su propio botón
+    // se queda abierto tapando media barra.
+    if (pc && !pc._teDoc) {
+      pc._teDoc = true;
+      document.addEventListener('mousedown', function (e) {
+        if (!pc.classList.contains('on')) return;
+        if (pc.contains(e.target) || (bc && bc.contains(e.target))) return;
+        pc.classList.remove('on');
+        if (bc) bc.classList.remove('on');
+      });
+    }
     var tema = $('te_3dTema');
     if (tema && !tema._teBound) {
       tema._teBound = true;
@@ -10257,6 +10346,12 @@
     // cuadrante SECCIÓN es el que corta como cuchillo, en el eje que le toque a
     // cada elemento (PLANOS_POR_ELEMENTO). Para la viga (seccion.depth='x') el
     // comportamiento es idéntico al de siempre.
+    // ESPESOR A MANO: si el usuario lo fijó, manda sobre el automático en las TRES
+    // vistas. `corteGrosor` es SEMI-espesor (el clip abre [c−gr .. c+gr]), así que la
+    // mitad de lo que dice el control — que habla en rebanada completa, que es lo que
+    // se ve. Se acota al elemento: pedir más que el propio hormigón no muestra nada
+    // nuevo y dejaría el slider con la mitad del recorrido muerto.
+    var espManual = _semiEspesorCorte(half);
     if (o.plano === 'seccion') {
       var slices = _slicesEnProfundidad(d);
       var target = -frac * (2 * half) + half;     // frac→posición cruda en [-half..half]
@@ -10284,6 +10379,7 @@
       o.corteGrosor = Math.max(half, 5);
       o.cortePos = -frac * (2 * half) + half;
     }
+    if (espManual != null) o.corteGrosor = espManual;
     // El corte lo hacen 2 CLIPPING PLANES en _renderVistasOrto; near/far amplios.
     o.cam.near = -6000; o.cam.far = 6000;
     o.cam.updateProjectionMatrix();
@@ -13164,6 +13260,7 @@
     _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
     _caraDeEje: _caraDeEje,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
+    _sincronizarCorteUI: _sincronizarCorteUI, _semiEspesorCorte: _semiEspesorCorte,
     // ESPEJAR: la suite maneja el gesto entero (armar, elegir cara, soltar).
     _armarEspejo: _armarEspejo, _salirEspejo: _salirEspejo, _espejarEnCara: _espejarEnCara,
     _ejeDistDe: _ejeDistDe,                                     // eje de reparto (x | z si volteada)

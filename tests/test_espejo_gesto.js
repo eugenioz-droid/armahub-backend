@@ -410,5 +410,31 @@ console.log('O . la vista manda, la tipologia no');
     'una malla tambien (' + rumboDe('MH', 'seccion') + ' vs ' + rumboDe('MH', 'planta') + ')');
 }
 
+// ================== P . EL ESPESOR DEL CORTE (la rebanada del slider)
+// (25-ago) "Los sliders funcionan super bien y hoy muestran exactamente el corte de
+// cuchillo, sin embargo a veces se me pierden detalles por que tenemos elementos que
+// no quedan en la misma linea: seria ideal poder proponer que ese slider tenga una
+// profundidad." El corte YA era una banda de dos planos; lo que faltaba era dar su
+// espesor como control. Un solo valor para las tres vistas: el DONDE se corta es de
+// cada cuadrante, el CUANTO se ve es una sola decision.
+console.log('');
+console.log('P . el espesor del corte');
+{
+  ST.corteEspesor = null;
+  ok(TE._semiEspesorCorte(30) === null, 'sin fijar nada sigue el automatico de siempre');
+
+  ST.corteEspesor = 20;
+  ok(TE._semiEspesorCorte(30) === 10,
+    'el control habla en rebanada COMPLETA y el motor en semi: 20 -> 10 (=' + TE._semiEspesorCorte(30) + ')');
+
+  ST.corteEspesor = 500;
+  ok(TE._semiEspesorCorte(30) === 30,
+    'pedir mas profundidad que el elemento se acota a el (=' + TE._semiEspesorCorte(30) + ')');
+
+  ST.corteEspesor = 0;
+  ok(TE._semiEspesorCorte(30) === null, 'un cero no deja el corte en nada: vuelve al automatico');
+  ST.corteEspesor = null;
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);
