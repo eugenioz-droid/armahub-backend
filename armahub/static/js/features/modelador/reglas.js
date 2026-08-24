@@ -1291,12 +1291,32 @@
       TM: { cara: 'sup', lado: 1, rumbo: 'z' },
       CB: { cara: 'extremo', lado: 1, rumbo: 'y' }
     },
+    // COLUMNA — se mira como el MURO (instrucción del usuario 25-ago), así que sus
+    // poses de partida son las del muro traducidas: los cabezales corren en alto
+    // pegados a una cara, el estribo encuadra la sección y la traba CRUZA la sección
+    // igual que la del muro (ver la nota larga de TC/TR/TM: una traba corre por el
+    // eje que cose, y ese eje no lo elige la vista).
     COLUMNA: {
       CB: { cara: 'lateral', lado: 1, rumbo: 'y' },
       CB2: { cara: 'lateral', lado: 1, rumbo: 'y' },
       CBN: { cara: 'lateral', lado: 1, rumbo: 'y' },
       ESC: { cara: 'lateral', lado: 1, rumbo: 'y' },
-      TRC: { cara: 'extremo', lado: 1, rumbo: 'z' }
+      TRC: { cara: 'sup', lado: 1, rumbo: 'z' }
+    },
+    // FUNDACIÓN y GEN — se miran como una VIGA. Las mallas se apoyan en la cara que
+    // dice su nombre y corren a lo largo; los soportes y trabas cruzan.
+    FUNDACION: {
+      Fi: { cara: 'inf', lado: -1, rumbo: 'x' },
+      Fs: { cara: 'inf', lado: -1, rumbo: 'z' },
+      "F'i": { cara: 'sup', lado: 1, rumbo: 'x' },
+      "F's": { cara: 'sup', lado: 1, rumbo: 'z' },
+      SPF: { cara: 'inf', lado: -1, rumbo: 'x' },
+      TRF: { cara: 'sup', lado: 1, rumbo: 'z' }
+    },
+    GEN: {
+      CB: { cara: 'sup', lado: 1, rumbo: 'x' },
+      F: { cara: 'inf', lado: -1, rumbo: 'x' },
+      "F'": { cara: 'sup', lado: 1, rumbo: 'x' }
     },
     LOSA: {
       FI: { cara: 'inf', lado: -1, rumbo: 'x' },

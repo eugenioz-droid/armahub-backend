@@ -1469,6 +1469,23 @@
       x: { min: 'extremo inicio', max: 'extremo fin' },
       y: { min: 'borde inferior', max: 'borde superior' },
       z: { min: 'cara posterior', max: 'cara frontal' }
+    },
+    // COLUMNA: se mira como el muro, pero en obra sus extremos son el ARRANQUE y la
+    // CABEZA (abajo y arriba), no "inicio y fin" de un largo horizontal.
+    columna: {
+      x: { min: 'cara oeste', max: 'cara este' },
+      y: { min: 'arranque', max: 'cabeza' },
+      z: { min: 'cara posterior', max: 'cara frontal' }
+    },
+    fundacion: {
+      x: { min: 'testero inicio', max: 'testero fin' },
+      y: { min: 'sello', max: 'cara superior' },
+      z: { min: 'costado posterior', max: 'costado frontal' }
+    },
+    gen: {
+      x: { min: 'testero inicio', max: 'testero fin' },
+      y: { min: 'cara inferior', max: 'cara superior' },
+      z: { min: 'lateral posterior', max: 'lateral frontal' }
     }
   };
   // Cómo se llama el EJE en la ficha (tampoco por su letra: por lo que recorre).
@@ -2974,8 +2991,31 @@
       seccion: { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'supinf', H: 'lat' } },
       largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'supinf', H: 'supinf' } },
       planta:  { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } }
+    },
+    // LOS TRES QUE FALTABAN (25-ago). Instrucción del usuario, literal: «Columna
+    // debería ser exactamente igual a Muro. Gen déjalo igual al de vigas. El de fund
+    // también lo puedes implementar igual al de vigas». No hay nada que inventar: un
+    // elemento es una CAJA de hormigón y lo único que cambia entre ellos es por dónde
+    // se mira y cómo se llaman las caras. Se copian los planos, no se derivan, para
+    // que el día que una columna necesite los suyos propios se toque sólo su entrada.
+    //
+    // LOSA queda fuera a propósito, también decisión suya: «va a ser difícil sacarle
+    // provecho a ese elemento, capaz que nunca lo implementemos». No se deja a medias.
+    columna: {
+      seccion: { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'supinf', H: 'lat' } },
+      largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'supinf', H: 'supinf' } },
+      planta:  { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } }
+    },
+    fundacion: {
+      seccion: { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
+      largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
+      planta:  { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'lat', H: 'lat' } }
+    },
+    gen: {
+      seccion: { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
+      largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
+      planta:  { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'lat', H: 'lat' } }
     }
-    // columna: { seccion: {...}, largo: {...}, planta: {...} }    // TODO tanda 3
   };
 
   // Elemento activo (por ahora fijo 'viga'; muro/columna cambian solo esta clave).
@@ -2994,7 +3034,12 @@
     viga: { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' },
     // muro: la "planta" ES la sección del muro (corte horizontal, cuadrante 1);
     // el canto es una segunda elevación (se distinguen por las letras de eje).
-    muro: { seccion: 'SECCIÓN', largo: 'ELEVACIÓN',  planta: 'ELEVACIÓN' }
+    muro: { seccion: 'SECCIÓN', largo: 'ELEVACIÓN',  planta: 'ELEVACIÓN' },
+    // La columna se mira como el muro (su "largo" es la elevación); la fundación y el
+    // elemento genérico, como una viga.
+    columna:   { seccion: 'SECCIÓN', largo: 'ELEVACIÓN',  planta: 'ELEVACIÓN' },
+    fundacion: { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' },
+    gen:       { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' }
   };
   function _titulosSemanticos() {
     return _TITULO_POR_ELEMENTO[_tipoElemento()] || _TITULO_POR_ELEMENTO.viga;
@@ -9666,6 +9711,25 @@
       { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del muro (cm)' },
       { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del muro (cm)' },
       { id: 'te_geoAncho', k: 'ancho', lbl: 'Espesor', min: 1, title: 'Espesor del muro (cm) — geometria.ancho' }
+    ],
+    // TODOS escriben las MISMAS TRES CLAVES canónicas (largo/alto/ancho): es lo único
+    // que el motor entiende, y tener claves propias por elemento fue justamente lo que
+    // dejó a columna, fundación y gen sin poder abrirse. Lo que cambia es la ETIQUETA,
+    // que es lo que el usuario lee.
+    columna: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'b', min: 1, title: 'Lado b de la sección (cm) — geometria.largo' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto de la columna (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'h', min: 1, title: 'Lado h de la sección (cm) — geometria.ancho' }
+    ],
+    fundacion: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo de la fundación (cm)' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto de la fundación (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'Ancho', min: 1, title: 'Ancho de la fundación (cm)' }
+    ],
+    gen: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del elemento (cm)' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del elemento (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'Ancho', min: 1, title: 'Ancho del elemento (cm)' }
     ]
   };
   function _geoCampos() {
@@ -12380,24 +12444,32 @@
       recubs: [{ k: 'recub_lat', ks: ['recub_lat', 'recub_sup', 'recub_inf'], lbl: 'Recub', def: 2.5 }],
       checks: [['recub_lat', 'recub_lat', 'ancho'], ['recub_sup', 'recub_inf', 'alto']]
     },
+    // COLUMNA — igual que el muro (instrucción del usuario). Sus lados de sección se
+    // llaman b y h en obra, pero se GUARDAN como largo y ancho: el motor no conoce
+    // otras claves, y las claves propias que tenía antes ('b'/'h'/'recub') eran la
+    // razón por la que este elemento nunca llegó a abrirse.
     COLUMNA: {
-      dims:   [{ k: 'alto', lbl: 'Alto', def: 300 }, { k: 'b', lbl: 'b', def: 40 }, { k: 'h', lbl: 'h', def: 40 }],
-      recubs: [{ k: 'recub', lbl: 'Recub', def: 4 }],
-      checks: [['recub', 'recub', 'b'], ['recub', 'recub', 'h']]
+      dims:   [{ k: 'largo', lbl: 'b', def: 40 }, { k: 'alto', lbl: 'Alto', def: 300 }, { k: 'ancho', lbl: 'h', def: 40 }],
+      recubs: [{ k: 'recub_lat', ks: ['recub_lat', 'recub_sup', 'recub_inf'], lbl: 'Recub', def: 4 }],
+      checks: [['recub_lat', 'recub_lat', 'ancho'], ['recub_lat', 'recub_lat', 'largo']]
     },
     LOSA: {
       dims:   [{ k: 'largo', lbl: 'Largo', def: 500 }, { k: 'ancho', lbl: 'Ancho', def: 400 }, { k: 'espesor', lbl: 'Espesor', def: 15 }],
       recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 2.5 }, { k: 'recub_inf', lbl: 'Inf', def: 2.5 }],
       checks: [['recub_sup', 'recub_inf', 'espesor']]
     },
+    // FUNDACIÓN — igual que la viga (instrucción del usuario). Recubrimientos por cara
+    // como la viga: el sello suele ir con más recubrimiento que el resto.
     FUNDACION: {
-      dims:   [{ k: 'largo', lbl: 'Largo', def: 300 }, { k: 'ancho', lbl: 'Ancho', def: 100 }, { k: 'alto', lbl: 'Alto', def: 80 }],
-      recubs: [{ k: 'recub', lbl: 'Recub', def: 5 }],
-      checks: [['recub', 'recub', 'alto'], ['recub', 'recub', 'ancho']]
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 300 }, { k: 'alto', lbl: 'Alto', def: 80 }, { k: 'ancho', lbl: 'Ancho', def: 100 }],
+      recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 5 }, { k: 'recub_inf', lbl: 'Sello', def: 7 }, { k: 'recub_lat', lbl: 'Lat', def: 5 }],
+      checks: [['recub_sup', 'recub_inf', 'alto'], ['recub_lat', 'recub_lat', 'ancho']]
     },
+    // GEN — igual que la viga (instrucción del usuario). Es el comodín: lo que no es
+    // ninguno de los otros y sigue siendo una caja de hormigón.
     GEN: {
       dims:   [{ k: 'largo', lbl: 'Largo', def: 300 }, { k: 'alto', lbl: 'Alto', def: 100 }, { k: 'ancho', lbl: 'Ancho', def: 100 }],
-      recubs: [{ k: 'recub', lbl: 'Recub', def: 4 }],
+      recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 4 }, { k: 'recub_inf', lbl: 'Inf', def: 4 }, { k: 'recub_lat', lbl: 'Lat', def: 4 }],
       checks: [['recub', 'recub', 'alto'], ['recub', 'recub', 'ancho']]
     }
   };
@@ -13396,6 +13468,7 @@
     _tipAjenaAlElemento: _tipAjenaAlElemento,
     // SELECTOR DE ELEMENTO dentro del editor (viga ⇄ muro sin salir ni recrear)
     _elementoConDatos: _elementoConDatos, _renderElemSel: _renderElemSel,
+    _TPL_DIMS_POR_ELEMENTO: TPL_DIMS_POR_ELEMENTO,   // la suite verifica sus claves
     _bindElemSel: _bindElemSel, _cambiarElemento: _cambiarElemento,
     // FICHA POR FAMILIA (contorno cerrado ⇒ sin patas ni empalme)
     _familiaDibujo: _familiaDibujo, _esContornoCerrado: _esContornoCerrado,
