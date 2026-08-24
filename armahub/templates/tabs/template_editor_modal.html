@@ -421,10 +421,9 @@
      Y el sitio ya estaba reservado: la esquina de la teja queda vacia igual. Asi que
      se ve siempre, tenue, y sube al pasar por encima. La teja no crece: sigue
      superpuesta, fuera del flujo. */
-  #te_modal .te-tjdel{position:absolute;top:2px;right:2px;border:1px solid var(--te-line);
-    background:var(--te-panel);color:var(--te-ink);line-height:0;padding:2px 3px;border-radius:6px;
-    cursor:pointer;opacity:.85;z-index:2;display:flex;align-items:center;
-    transition:opacity .12s,background .12s,border-color .12s,color .12s}
+  #te_modal .te-tjdel{position:absolute;top:3px;right:3px;border:none;background:none;
+    color:var(--te-ink);line-height:0;padding:0;cursor:pointer;opacity:.8;z-index:2;
+    display:flex;align-items:center;transition:opacity .12s,color .12s}
   /* SE VE, NO SE ADIVINA (24-ago). Estaba en .55 en los dos casos y el usuario
      -que la habia pedido- la dio por no implementada: a ese gris, en 11 px y sobre
      una teja chica, no se lee. En la teja SELECCIONADA sube a opaca (es la unica
@@ -432,7 +431,13 @@
      cursor por cualquier otra queda a .7. La teja no crece: la papelera sigue
      superpuesta en la esquina, fuera del flujo. */
   #te_modal .te-comp:hover .te-tjdel,#te_modal .te-comp.sel .te-tjdel{opacity:1}
-  #te_modal .te-tjdel:hover{opacity:1;background:var(--te-err-b,rgba(198,40,40,.14));border-color:#c62828;color:#c62828}
+  /* SIN CAJA (25-ago, pedido del usuario: "tiene un borde que no es necesario, el
+     ideal seria que tome como margen del boton el icono"). El recuadro se puso para
+     que el boton se leyera como boton mientras el glifo no se dibujaba; con el icono
+     ya visible sobra, y en una teja de 100 px cada pixel de marco es ruido. El
+     boton pasa a ser EL ICONO: sin borde, sin fondo, sin padding. La respuesta al
+     cursor la da el color, no una caja que agrandaria el blanco. */
+  #te_modal .te-tjdel:hover{opacity:1;color:#c62828}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
   /* ACOMPANANTE de una seleccion multiple (ctrl+clic). Se marca DISTINTO de la
