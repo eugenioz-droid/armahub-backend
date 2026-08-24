@@ -52,8 +52,22 @@ function casi(a, b, tol, m) { ok(Math.abs(Number(a) - Number(b)) <= tol, m + ' (
 // anteriores): 400 de largo × 250 de alto × 20 de espesor, recub 2.5.
 const MURO = { largo: 400, alto: 250, ancho: 20, recub_sup: 2.5, recub_inf: 2.5, recub_lat: 2.5 };
 
-// Componente de muro. `rumbo` = el eje ⊥ al plano de la pieza (la POSE manda el
-// plano de trabajo y, con él, los dos ejes sobre los que se puede repartir).
+// Componente de muro. `rumbo` = EL EJE POR EL QUE CORRE LA PIEZA.
+// ---------------------------------------------------------------------------
+// 24-AGO · ESTE COMENTARIO DECÍA «el eje ⊥ al plano de la pieza», Y ESO ERA LA RAMA
+// POR TIPOLOGÍA ESCRITA EN UN TEST. Valía sólo mientras un chip ES/EC/ESC convirtiera
+// la barra en «pieza de sección»: ahí el rumbo era el eje por el que la pieza se
+// REPETÍA y su plano era el perpendicular. Con la rama fuera (rolDeComponente ya no
+// mira la tipología), el rumbo significa lo MISMO para todos: el eje que la pieza
+// recorre. Los estribos de este archivo son 305A —una cadena ABIERTA— y el marco que
+// describen (30 a lo largo × 14 en el espesor) corre por el LARGO del muro, así que
+// su rumbo es 'x'. MEDIDO con las mismas recetas de los bloques C–E: con rumbo 'x'
+// salen exactamente los números de antes (span 29.2 en x · 0 en y · 14 en z, columnas
+// en −184.6/−169.6, alturas en −115/0/115, 0 fierro fuera); con rumbo 'y' la pieza se
+// pone DE PIE —29.2 cm de alto— y a ±115 asoma 5 cm por el borde superior del muro,
+// que es un dato correcto para otra receta, no para ésta.
+// Un CONTORNO CERRADO (104D, 106A) no tiene eje que recorrer: para él el rumbo sigue
+// siendo el eje por el que se repite, y ahí no cambió nada.
 function comp(tip, fig, dist, rumbo, dimsFijas, diam) {
   const sp = CAT.get(fig) || {};
   const dims = {};
@@ -166,12 +180,19 @@ console.log('\nC — estribo de confinamiento en 2 y 3 columnas cargadas a un co
 {
   // LA PIEZA. El estribo del elemento de borde es un marco CHICO (no el que encuadra
   // toda la sección): por eso va con dims FIJAS y con una figura que se dibuja CON
-  // SUS DIMS — la 305A, cadena de sección de 5 tramos cuyos lados miden alternando
-  // ancho ('u') y alto ('v'). Un 104D no sirve para esto y no es un olvido: su forma
-  // la manda el marco de núcleo, así que siempre ocuparía la sección entera.
-  ok(JSON.stringify(FP.ejesCadenaSeccion('305A', 'estribo')) ===
-     JSON.stringify({ A: 'u', B: 'v', C: 'u', D: 'v', E: 'u' }),
-    '305A: sus lados miden alternando espesor (u) y largo (v) — es un marco de 14 × 30');
+  // SUS DIMS — la 305A, cadena de 5 tramos que alterna la dirección en que corre y
+  // la perpendicular. Un 104D no sirve para esto y no es un olvido: su forma la manda
+  // el marco de núcleo, así que siempre ocuparía la sección entera.
+  // 24-AGO · SE PREGUNTA POR `ejesCadenaLong` Y NO POR `ejesCadenaSeccion`. La segunda
+  // clasificaba los lados en el plano de la SECCIÓN y a ese plano sólo se llegaba por
+  // el chip ES/EC/ESC: murió con la rama. La que vale para cualquier figura es la
+  // clasificación RELATIVA AL DOMINANTE, que es la misma lectura girada — 'u' = el
+  // eje por el que corre la pieza (B y D, los lados de 30) y 'v' = la perpendicular
+  // (A, C y E, los de 14). El marco sigue siendo el de 14 × 30.
+  ok(JSON.stringify(FP.ejesCadenaLong('305A')) ===
+     JSON.stringify({ A: 'v', B: 'u', C: 'v', D: 'u', E: 'v' }),
+    '305A: alterna lados a lo largo (u = B/D, los de 30) y cruzados (v = A/C/E, ' +
+    'los de 14) — es un marco de 14 × 30');
 
   // "Cargadas a un costado" = las 2 o 3 columnas juntas en un extremo del muro. El
   // primer centro va a −184.6 y no a −190 porque la pieza OCUPA 30 cm en ese eje
@@ -182,7 +203,7 @@ console.log('\nC — estribo de confinamiento en 2 y 3 columnas cargadas a un co
       rango:  { eje: 'y', from: -115, to: 115, sep: 115 },   // en ALTURA (el @ del confinamiento)
       rango2: { eje: 'x', from: from, to: to, sep: 15 }      // las COLUMNAS, al costado
     };
-    const c = comp('EC', '305A', dist, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
+    const c = comp('EC', '305A', dist, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
     const pls = R.expandirComponente(c, MURO);
     ok(pls.length === 3 * nCol,
       nCol + ' columnas × 3 alturas = ' + (3 * nCol) + ' estribos (' + pls.length + ')');
@@ -206,7 +227,7 @@ console.log('\nD — tramos (zonas con @ distinto) en LAS DOS líneas');
   // (305A ocupa 30 cm en x: el rango parte donde la pieza CABE, como en el bloque C)
   const r1 = { eje: 'x', from: -184.6, to: 184.6, sep: 95, tramos: [{ long: 100, sep: 50 }, { long: 200, sep: 100 }] };
   const r2 = { eje: 'y', from: -115, to: 115, sep: 115, tramos: [{ long: 60, sep: 30 }] };
-  const c = comp('EC', '305A', { modo: 'arreglo', rango: r1, rango2: r2 }, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
+  const c = comp('EC', '305A', { modo: 'arreglo', rango: r1, rango2: r2 }, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const pls = R.expandirComponente(c, MURO);
 
   // EL GUARD FUERTE: las posiciones tienen que ser EXACTAMENTE las de
@@ -241,7 +262,7 @@ console.log('\nE — la pieza ocupa su ancho también en el 2º eje, y si no cab
       rango:  { eje: 'y', from: -115, to: 115, sep: 115 },
       rango2: { eje: 'x', from: from, to: from + 30, sep: 15 }
     };
-    const c = comp('EC', '305A', dist, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
+    const c = comp('EC', '305A', dist, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
     return { c: c, pls: R.expandirComponente(c, MURO) };
   };
   // 20-AGO · MEDIDA HASTA LA CRESTA: las dims FIJAS de esta 305A (30 en el eje x) ya
@@ -269,11 +290,19 @@ console.log('\nE — la pieza ocupa su ancho también en el 2º eje, y si no cab
 // ================================================================ F · GUARDAS
 console.log('\nF — guardas: dos rangos no son un área si apuntan al mismo eje');
 {
+  // 24-AGO · LAS DIMS DE ESTE ESTRIBO SE FIJAN Y SU RUMBO ES 'x' — ver la nota de
+  // `comp`. En 'auto' la 305A ahora se estira a lo largo de la cara con la que hizo
+  // match (la regla universal, sin excepción por chip), o sea 394 cm de muro, y un
+  // rango sobre ESE eje ya no es un reparto sino la barra apilada sobre sí misma: el
+  // motor lo corta con 1 barra + aviso y el guard que este bloque prueba —el de los
+  // DOS rangos por el mismo eje— nunca llegaría a evaluarse. Con el marco de 30 × 14
+  // (el estribo de confinamiento real de los bloques C–E) el reparto existe y el
+  // guard se puede ver.
   const c = comp('EC', '305A', {
     modo: 'arreglo',
-    rango:  { eje: 'x', from: -190, to: 190, sep: 190 },
+    rango:  { eje: 'x', from: -184.6, to: 184.6, sep: 184.6 },
     rango2: { eje: 'x', from: -100, to: 100, sep: 100 }
-  }, 'y');
+  }, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const pls = R.expandirComponente(c, MURO);
   ok(pls.length === 3, 'los dos rangos por el mismo eje: se ignora el 2º y queda el reparto de siempre (3)');
   ok((c._avisos || []).some(a => a.indexOf('2º rango ignorado') === 0 && /MISMO eje/.test(a)),
@@ -282,13 +311,18 @@ console.log('\nF — guardas: dos rangos no son un área si apuntan al mismo eje
 
   const c2 = comp('EC', '305A', {
     modo: 'arreglo', n_capas: 3, sep_capas: 5, eje_capas: 'z',
-    rango:  { eje: 'x', from: -190, to: 190, sep: 190 },
+    rango:  { eje: 'x', from: -184.6, to: 184.6, sep: 184.6 },
     rango2: { eje: 'y', from: -100, to: 100, sep: 100 }
-  }, 'y');
+  }, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const pls2 = R.expandirComponente(c2, MURO);
   ok(pls2.length === 9, 'capas + rango2: manda el área (3 × 3 = 9), las capas no multiplican');
-  ok(JSON.stringify(centros(pls2, 'z')) === JSON.stringify([0]),
-    '…y nada se apiló en el eje de las capas');
+  // UN SOLO z = nada se apiló. Se cuenta, no se compara contra 0: la pieza ahora
+  // corre en x pegada a su cara LATERAL, así que el centro de su marco en z es el
+  // que le deja el recubrimiento (0.5 con φ8 y recub 2.5), no el eje del muro. Lo
+  // que este assert protege es que las capas NO multiplicaron, y eso es "hay un
+  // solo plano en z", no "el plano está en z = 0".
+  ok(centros(pls2, 'z').length === 1,
+    '…y nada se apiló en el eje de las capas (z = ' + JSON.stringify(centros(pls2, 'z')) + ')');
   ok((c2._avisos || []).some(a => a.indexOf('Capas ignoradas') === 0),
     '…con el aviso de que la 2ª línea YA es el arreglo por área');
 }
@@ -296,11 +330,14 @@ console.log('\nF — guardas: dos rangos no son un área si apuntan al mismo eje
 // ============================================================ G · TECHO DURO
 console.log('\nG — el producto de las dos líneas se corta en el mismo techo de siempre');
 {
+  // (dims fijas + rumbo 'x', por lo mismo que en F: en 'auto' el rango a lo largo
+  // del propio eje de la pieza se corta antes con 1 barra y no habría producto que
+  // topar.)
   const c = comp('EC', '305A', {
     modo: 'arreglo',
     rango:  { eje: 'x', from: -190, to: 190, sep: 5 },
     rango2: { eje: 'y', from: -115, to: 115, sep: 3 }
-  }, 'y');
+  }, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const pls = R.expandirComponente(c, MURO);
   ok(pls.length === R.TOPE_PLACEMENTS_COMP,
     'la receta pide 77 × 78 = 6006 barras y el motor corta en ' + R.TOPE_PLACEMENTS_COMP);
@@ -321,7 +358,7 @@ console.log('\nH — los ejes del arreglo se declaran en el MUNDO y los traduce 
     rango2: { eje: 'y', from: -100, to: 100, sep: 100 }
   });
   ['y', 'x'].forEach(rumbo => {
-    const c = comp('EC', '305A', dist(), rumbo);
+    const c = comp('EC', '305A', dist(), rumbo, { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
     const pls = R.expandirComponente(c, MURO);
     ok(JSON.stringify(centros(pls, 'x')) === JSON.stringify([-150, 0, 150]),
       'rumbo ' + rumbo + ': la 1ª línea reparte en el eje x del MUNDO');
@@ -337,12 +374,13 @@ console.log('\nH — los ejes del arreglo se declaran en el MUNDO y los traduce 
     modo: 'arreglo',
     rango:  { eje: 'x', from: -150, to: 150, sep: 150 },
     rango2: { from: -100, to: 100, sep: 100 }
-  }, 'y');
+  }, 'x', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const pSin = R.expandirComponente(cSin, MURO);
   ok(JSON.stringify(centros(pSin, 'y')) === JSON.stringify([-100, 0, 100]),
     'sin eje declarado, la 2ª línea cae en y (la traba se desarrolla en z: ahí no se reparte)');
-  ok(JSON.stringify(centros(pSin, 'z')) === JSON.stringify([0]),
-    '…y el eje del desarrollo de la barra queda sin repartir, como debe');
+  ok(centros(pSin, 'z').length === 1,
+    '…y el eje del desarrollo de la barra queda sin repartir, como debe (z = ' +
+    JSON.stringify(centros(pSin, 'z')) + ')');
 }
 
 // ============================================================================

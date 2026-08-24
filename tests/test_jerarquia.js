@@ -320,12 +320,12 @@ ok(close(e3.pls[1].dims.A, 4) && close(e3.pls[1].dims.B, 32),
   e3.pls[1].dims.A + '/' + e3.pls[1].dims.B + ')');
 ok(!e3.pls.some(p => Number(p.dims.A) <= 0 || Number(p.dims.B) <= 0),
   'NINGÚN placement sale con una dim ≤ 0 (el payload dim_a=0 que el backend rechaza)');
-ok((e3.comp._avisos || []).length === 1 && /^Capa 3 anidada no cabe \(Sep 20\): omitida/.test(e3.comp._avisos[0]),
+ok((e3.comp._avisos || []).length === 1 && /^Capa 3 no cabe \(Sep 20\): omitida/.test(e3.comp._avisos[0]),
   'comp._avisos registra la capa omitida con su Sep efectivo (=' + JSON.stringify(e3.comp._avisos) + ')');
 // El mismo inset 20 llegando por el campo Sep: 2 capas @ Sep 20 → la 2ª se omite.
 const e20 = estriboNCapas(2, 20);
 ok(e20.pls.length === 1 && (e20.comp._avisos || []).length === 1 &&
-  /^Capa 2 anidada no cabe \(Sep 20\)/.test(e20.comp._avisos[0]),
+  /^Capa 2 no cabe \(Sep 20\)/.test(e20.comp._avisos[0]),
   'Sep 20 → la capa 2 (0/12 con el clamp viejo) se omite y avisa (=' +
   e20.pls.length + ' placement · ' + JSON.stringify(e20.comp._avisos) + ')');
 // Y el aviso NO ensucia la receta: _avisos es NO ENUMERABLE (el editor compara la
@@ -376,7 +376,7 @@ const cArr = {
 };
 const plArr = R.expandirComponente(cArr, host);
 ok(plArr.length === 3 && (cArr._avisos || []).length === 1 &&
-  /^Capa 2 anidada no cabe \(Sep 20\)/.test(cArr._avisos[0]),
+  /^Capa 2 no cabe \(Sep 20\)/.test(cArr._avisos[0]),
   'arreglo: 3 posiciones × capa 1; la capa 2 (Sep 20) se omite con el mismo aviso (=' +
   plArr.length + ' · ' + JSON.stringify(cArr._avisos) + ')');
 

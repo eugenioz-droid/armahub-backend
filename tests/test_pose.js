@@ -734,28 +734,43 @@ ok(es305.length === 3 && es305[0].puntos.length === 6,
   es305[0].puntos.length + ' puntos)');
 ok(!es305[0].puntos.some(p => p.esArco),
   'y sin los arcos del gancho sísmico: esta figura no tiene ganchos que dibujar');
-// EL ROL SIGUE MANDANDO lo suyo: la pieza vive en el plano de la SECCIÓN (⊥ rumbo)
-// y se reparte a lo largo, como cualquier estribo.
-ok(close(lim(es305[0], 'x').lo, lim(es305[0], 'x').hi),
-  'la cadena se traza EN LA SECCIÓN (un solo plano X), que es el plano ⊥ al rumbo');
+// ===========================================================================
+// 24-AGO · EL PLANO DE TRABAJO LO MANDA LA POSE, YA NO EL CHIP
+// ===========================================================================
+// AQUÍ VIVÍA «EL ROL SIGUE MANDANDO lo suyo: la pieza vive en el plano de la SECCIÓN
+// (⊥ rumbo)». Ésa era la TERCERA rama por tipología —la que quedaba— escrita como
+// aserción: un chip ES/EC/ESC convertía la barra en pieza de sección y le cambiaba
+// el plano, el 'auto' y el anidado. MEDIDO en el muro 600×250×20 rec 2.5, φ8, MISMA
+// pose {lateral, lado 1, rumbo x}, todo en auto y cambiando SÓLO la etiqueta:
+//     103B → B = 595 con MH · B = 11 con EC
+//     102A → B = 595 con MH · B = 244 con EC
+//     101A → A = 595 con MH · A = 14 con EC
+// El dominante era el mismo en las dos columnas; lo que cambiaba era CONTRA QUÉ se
+// estiraba. Con la rama fuera (rolDeComponente es topología pura) las dos columnas
+// son idénticas: el dominante se estira a lo largo de la cara con la que hizo match
+// y los demás 'auto' cruzan por la cara contigua.
+// Con esta pose {cara lateral, rumbo x} la 305A corre por la X y sus patas cruzan el
+// ESPESOR (z, la normal de su cara): es el mismo plano de trabajo que tendría con
+// MH, que es de lo que se trata.
+ok(close(lim(es305[0], 'y').lo, lim(es305[0], 'y').hi),
+  'la cadena es PLANA en Y: su plano es el de la pose (x = por donde corre · z = la ' +
+  'normal de su cara lateral) (=' + JSON.stringify(lim(es305[0], 'y')) + ')');
 ok(JSON.stringify(unicos(es305, 'x')) === JSON.stringify([-50, 0, 50]),
-  'y el reparto lineal es el del rol estribo (3 piezas @50) (=' + JSON.stringify(unicos(es305, 'x')) + ')');
-// SIN TRANSPONER (defecto D1 del verificador). La cadena se traza en su frame
-// NATIVO: el primer tramo (A) corre en +u = Z = el ANCHO de la viga, y el
-// siguiente (B, tras el giro de 90°) en +v = Y = el ALTO. Es la misma lectura con
-// la que el 'auto' del rol estribo mide (A/C contra el ancho útil, B/D contra el
-// alto útil), y por eso las dos coinciden.
-// La versión anterior de este test asertaba lo CONTRARIO (B = 52 a lo ancho) y
-// congelaba el bug: en una viga de 30 de ancho eso son 11 cm de fierro FUERA del
-// hormigón, con el test en verde.
-// 20-AGO: las dims son de CRESTA (24 y 52 = el ancho y el alto ÚTILES) y el TRAZO va
-// por vértices, o sea cada lado dibujado mide su dim menos el sobre del codo.
-const sob305 = FP.sobresCresta('305A', 'estribo', 0.8, null);
-ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
-  close(lim(es305[0], 'y').hi - lim(es305[0], 'y').lo, 52 - (sob305.B || 0)),
-  'sus lados miden sus dims menos el sobre de cresta, SIN TRANSPONER (A a lo ancho/Z · B de alto/Y) (=' +
-  r3(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo) + ' × ' +
-  r3(lim(es305[0], 'y').hi - lim(es305[0], 'y').lo) + ')');
+  'y el rango la reparte de verdad: 3 piezas en x = −50/0/50 (=' + JSON.stringify(unicos(es305, 'x')) + ')');
+// LAS DIMS SIGUEN SIENDO DE CRESTA y el TRAZO va por vértices, así que cada lado
+// dibujado mide su dim menos el sobre de su codo. Lo que cambió respecto de la
+// versión anterior de este assert es CONTRA QUÉ EJE se mide cada uno:
+//   antes (pieza de sección, plano ⊥ rumbo): A → z (ancho) · B → y (alto)
+//   ahora (pose: corre en x, cara lateral):  B → x (por donde corre) · A → z (la
+//                                            profundidad que cruza)
+// Los NÚMEROS de los lados no se movieron —52 − 0.8 y 24 − 0.4—, sólo el eje sobre
+// el que caen, que es exactamente lo que la pose declaraba desde el principio.
+const sob305 = FP.sobresCresta('305A', 'cabezal', 0.8, null);
+ok(close(lim(es305[0], 'x').hi - lim(es305[0], 'x').lo, 52 - (sob305.B || 0)) &&
+  close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)),
+  'sus lados miden sus dims menos el sobre de cresta, en los ejes que dice la pose ' +
+  '(B a lo largo/X = ' + r3(lim(es305[0], 'x').hi - lim(es305[0], 'x').lo) +
+  ' · A en el espesor/Z = ' + r3(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo) + ')');
 // GUARDA DE REGRESIÓN del defecto D1 — Y DE LAS REGRESIONES QUE SUS FIXES FUERON
 // DESTAPANDO (N1 · N2 · F1 · F2). Con las dims en 'auto' —que es como nace una pieza
 // colocada desde el editor— NINGUNA pieza de sección puede salirse del hormigón NI
@@ -825,48 +840,79 @@ ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
     '…y ninguna invade el RECUBRIMIENTO: la cara del fierro se queda en el marco que se midió (' +
     (marco.length ? marco.join(' · ') : n + '/' + n + ' dentro del recub') + ')');
 })();
-// F1 · UNA PIEZA DE SECCIÓN ANIDA, NO SE TRASLADA. El anidado lo decidía
-// `_dibujaMarcoCerrado` ("¿se dibuja como marco cerrado?") y una CADENA de sección
-// contestaba "no": sus dims quedaban idénticas capa a capa y el k·gap entero se iba
-// a la POSICIÓN, o sea la pieza se corría por la NORMAL. Medido en la viga con una
-// 305A φ10 y Sep 3: capa 2 en y[−29, 23] (3 cm dentro del recub) y capa 3 en
-// y[−32, 20] — 2 cm FUERA del hormigón, con avisos = [].
-// La referencia de lo correcto estaba viva al lado: la 104D, que se dibuja como
-// marco, anidaba bien. Las dos son la misma clase de pieza (encuadran la sección) y
-// ahora las dos dan el MISMO anillo concéntrico.
+// ===========================================================================
+// F1 · LAS CAPAS: EL "ANIDADO" DEJA DE SER UNA PREGUNTA (24-ago)
+// ===========================================================================
+// AQUÍ DECÍA «UNA PIEZA DE SECCIÓN ANIDA, NO SE TRASLADA», y la pieza de sección la
+// definía el CHIP. Era la misma rama por tipología de P6, ahora en el eje de las
+// capas. Se reemplaza por la consecuencia natural de los datos, que es lo que el
+// usuario pidió:
+//   · lados en AUTO  → la capa k resuelve su 'auto' contra el marco que dejó la
+//     capa k−1: se achica sola, sin que nadie la achique;
+//   · lados FIJOS    → no hay nada que achicar: la capa k es la MISMA pieza
+//     desplazada la separación, alejándose del borde del que vino.
+// LO QUE NO SE MOVIÓ: el CONTORNO CERRADO (104D). No tiene lado que estirar, su
+// forma entera la fija el marco de núcleo, y sus tres capas siguen dando el anillo
+// concéntrico 25.5 / 22.5 / 19.5 de siempre — mismo número, mismo trazo. Ése es el
+// contrato: las cerradas no cambian.
+// LA 305A (cadena ABIERTA) sí cambia, y por eso hay que medirlo: ya no finge ser un
+// anillo. Se queda en el plano de su pose (plana en y), sus capas entran 3 cm hacia
+// el núcleo por la normal de su cara y sus lados 'auto' se achican SOLOS los mismos
+// 3 cm por capa (A: 23 → 20 → 17 · C: 24 → 21 → 18 · E: 23 → 20 → 17), así que la
+// punta de la pata sigue tocando la cara opuesta en las tres. El dominante B (592) y
+// el retorno paralelo D (13) no se mueven: no cruzan la profundidad.
 (function () {
-  function capas(fig) {
+  function comp305(fig, gap) {
     const dims = {};
     (CAT.get(fig).parciales || []).forEach(k => { dims[k] = { modo: 'auto' }; });
-    return R.expandirComponente({
+    return {
       tipologia: 'ES', figura: fig, diam: 10, cara: 'lateral', dims: dims,
-      distribucion: { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 3 }
-    }, viga).map(pl => lim(pl, 'y'));
+      distribucion: { modo: 'layered', n_capas: 3, barras_capa: 1, gap: gap }
+    };
   }
-  const cad = capas('305A'), mrc = capas('104D');
+  const mrc = R.expandirComponente(comp305('104D', 3), viga).map(pl => lim(pl, 'y'));
   const esperado = [{ lo: -25.5, hi: 25.5 }, { lo: -22.5, hi: 22.5 }, { lo: -19.5, hi: 19.5 }];
-  ok(JSON.stringify(cad) === JSON.stringify(esperado),
-    '305A con 3 capas @3: anillos CONCÉNTRICOS 25.5/22.5/19.5, no una pila que se ' +
-    'corre (=' + JSON.stringify(cad.map(l => l.hi)) + ')');
-  ok(JSON.stringify(cad) === JSON.stringify(mrc),
-    '…exactamente lo mismo que la 104D, que se dibuja como marco: la FORMA cambia el ' +
-    'trazo, no el anidado (=' + JSON.stringify(mrc.map(l => l.hi)) + ')');
-  // Y la capa que ya no cabe se OMITE CON AVISO (no se dibuja fuera ni se manda con
-  // dims imposibles) — el mismo mecanismo que la cerrada, por el mismo camino.
-  const comp = {
-    tipologia: 'ES', figura: '305A', diam: 10, cara: 'lateral',
-    dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' }, E: { modo: 'auto' } },
-    distribucion: { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 20 }
-  };
+  ok(JSON.stringify(mrc) === JSON.stringify(esperado),
+    'el CONTORNO CERRADO (104D) sigue dando el anillo concéntrico 25.5/22.5/19.5: una ' +
+    'figura cerrada no cambia (=' + JSON.stringify(mrc.map(l => l.hi)) + ')');
+
+  const plsC = R.expandirComponente(comp305('305A', 3), viga);
+  const cadZ = plsC.map(pl => lim(pl, 'z')), cadY = plsC.map(pl => lim(pl, 'y'));
+  ok(cadY.every(l => close(l.lo, 0) && close(l.hi, 0)),
+    'la 305A se queda en el plano de su pose (plana en y) en las 3 capas (=' +
+    JSON.stringify(cadY) + ')');
+  ok(close(cadZ[0].hi - cadZ[1].hi, 3) && close(cadZ[1].hi - cadZ[2].hi, 3),
+    '…y cada capa entra 3 cm hacia el núcleo por la normal de su cara (z.hi = ' +
+    JSON.stringify(cadZ.map(l => l.hi)) + ')');
+  ok(cadZ.every(l => close(l.lo, cadZ[0].lo)),
+    '…mientras su lado en AUTO se achica SOLO lo mismo, así que la punta sigue ' +
+    'tocando la cara opuesta (z.lo = ' + JSON.stringify(cadZ.map(l => l.lo)) + ')');
+  ok(JSON.stringify(plsC.map(p => p.dims.A)) === JSON.stringify([23, 20, 17]),
+    '…lo que en la ficha se lee como A: 23 → 20 → 17 (=' +
+    JSON.stringify(plsC.map(p => p.dims.A)) + ')');
+  // Y LA CAPA QUE SE QUEDA SIN MARCO NO SE GENERA — la regla de siempre (hallazgo A),
+  // ahora también por este camino: con Sep 20 en una viga que da 24 cm útiles de
+  // ancho, la capa 2 todavía cabe (A = 3) y la 3 pediría A = −17. Antes ese caso
+  // dibujaba las tres y sacaba 31.5 cm de fierro fuera del hormigón.
+  const comp = comp305('305A', 20);
   const pocas = R.expandirComponente(comp, viga);
-  ok(pocas.length === 1 && (comp._avisos || []).length === 2,
-    'con Sep 20 sólo cabe la 1ª capa: las otras dos se omiten CON aviso (=' +
-    pocas.length + ' pieza · ' + JSON.stringify(comp._avisos) + ')');
+  ok(pocas.length === 2 && (comp._avisos || []).length === 1 &&
+    /^Capa 3 no cabe/.test(comp._avisos[0]),
+    'con Sep 20 la capa 3 se queda sin marco y se OMITE con aviso (=' +
+    pocas.length + ' piezas · ' + JSON.stringify(comp._avisos) + ')');
 })();
-// F2 · UN SOLO RECUBRIMIENTO PARA LAS DOS PIEZAS DE SECCIÓN. La cadena resolvía su
-// 'auto' contra la luz LIBRE y lo dibujaba como EJE; el estribo descuenta φ/2 vía
-// _marcoNucleo. Dos piezas vecinas quedaban con recubrimientos distintos, y la
-// diferencia CRECÍA con el diámetro (φ32: 2.40 vs 4.00 vertical).
+// F2 · EL RECUBRIMIENTO DECLARADO SE CUMPLE CON CUALQUIER φ. El defecto original: la
+// cadena resolvía su 'auto' contra la luz LIBRE y lo dibujaba como EJE, así que su
+// cara quedaba φ/2 metida en el recubrimiento y dos piezas vecinas daban recubs
+// distintos — la diferencia CRECÍA con el diámetro (φ32: 2.40 donde el estribo daba
+// 4.00). El 'auto' tiene que resolver el EJE contra el marco de núcleo (útil − φ).
+// 24-AGO · EL EJE QUE SE MIDE ES EL DE LA POSE. Antes se comprobaban las dos
+// fronteras del plano de SECCIÓN (3 lateral y 4 vertical), porque el chip ES metía
+// la barra en ese plano. Con el rol fuera del chip esta 305A corre por la X pegada a
+// su cara LATERAL: la frontera que su 'auto' promete es la del ESPESOR (los 3 cm de
+// recub_lat en las dos caras z), y en el eje vertical la pieza es plana —su y la fija
+// el reparto de la cara, no un 'auto'—. Lo que el bloque protege es lo mismo: el
+// número que el solver promete es el que el trazo deja, con cualquier φ.
 (function () {
   const malas = [];
   [8, 16, 25, 32].forEach(phi => {
@@ -877,12 +923,13 @@ ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
       tipologia: 'ES', figura: '305A', diam: phi, cara: 'lateral', dims: dims,
       distribucion: { modo: 'linear', rango: { eje: 'x', from: 0, to: 0, sep: 50 } }
     }, viga)[0];
-    const rLat = r3(15 - lim(pl, 'z').hi - r), rVert = r3(30 - lim(pl, 'y').hi - r);
-    if (!close(rLat, 3) || !close(rVert, 4)) malas.push('φ' + phi + ' → ' + rLat + '/' + rVert);
+    const rPos = r3(15 - lim(pl, 'z').hi - r), rNeg = r3(15 + lim(pl, 'z').lo - r);
+    if (!close(rPos, 3) || !close(rNeg, 3)) malas.push('φ' + phi + ' → ' + rPos + '/' + rNeg);
   });
   ok(malas.length === 0,
-    'la cadena de sección deja el recub DECLARADO (3 lat / 4 vert) medido a la cara ' +
-    'del fierro, con cualquier φ (' + (malas.length ? malas.join(' · ') : 'φ8/16/25/32 exactos') + ')');
+    'la cadena deja el recub_lat DECLARADO (3 cm) en las DOS caras del espesor, medido ' +
+    'a la cara del fierro y con cualquier φ (' +
+    (malas.length ? malas.join(' · ') : 'φ8/16/25/32 exactos') + ')');
 })();
 // N1 · EL ANCHOR DE UNA PIEZA DE SECCIÓN NO LA CORRE. `_cadenaSeccion` sumaba
 // anchor.y/anchor.z como DESPLAZAMIENTOS y son COORDENADAS: con 'layered' el anchor
@@ -920,55 +967,77 @@ ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
     'barras_capa=2 sobre una cadena que ocupa el ancho: las dos quedan en el marco (z=' +
     JSON.stringify(lim(dos[1], 'z')) + ')');
 })();
-// N2 · MEDIR = DIBUJAR, EXACTO. El 'auto' de una cadena de sección resolvía la
-// reserva de los quiebres con una RECTA DE DOS PUNTOS sobre una extensión que es
-// lineal A TROZOS: la 104C resolvía u = 24 y dibujaba 29.30, la 105I 42.70, la 106A
-// 48.00 (el doble del marco) y la 105C fallaba además en v. 16 de las 36 cadenas
-// rompían el marco útil por eso. Acá se compara, figura por figura, lo que el motor
-// RESUELVE contra lo que el trazador DIBUJA.
+// N2 · MEDIR = DIBUJAR, EXACTO — AHORA SOBRE EL SOLVER QUE QUEDA (24-ago)
+// ---------------------------------------------------------------------------
+// El bloque original comparaba `autosCadenaSeccion` (lo que el motor RESUELVE) con
+// `extensionCadenaSeccion` (lo que el trazador DIBUJA) para las 36 cadenas: el
+// defecto era que el solver aproximaba la reserva de los quiebres con una recta de
+// dos puntos sobre una extensión lineal A TROZOS, y 16 de 36 rompían el marco útil
+// (la 104C resolvía u = 24 y dibujaba 29.30; la 105I, 42.70).
+// Esas tres funciones vivían en el plano de la SECCIÓN, al que sólo se llegaba por el
+// chip ES/EC/ESC, y se fueron con la rama. El contrato NO se va: el solver vivo es
+// `autoProfundidadLong` —el lado 'v' de cualquier figura con dominante, medido contra
+// la profundidad útil de su pose— y se comprueba igual, sólo que de punta a punta:
+// se expande la figura con TODO en auto y se mide lo que el trazo ocupa sobre la
+// normal de su cara contra lo que el marco promete.
+// MEDIDO al escribirlo (viga 600×60×30 rec 3 lat, φ8 → útil eje a eje 24 − 0.8 =
+// 23.2): de las 40 figuras abiertas con lado 'v', NINGUNA se pasa, y la que menos
+// aprovecha se queda 0.6 cm corta — que es el redondeo al centímetro hacia abajo, el
+// único hueco permitido (redondear hacia arriba metería la barra en el recub).
 (function () {
-  const SEC = CAT.codigos().filter(f => FP.familiaDeDibujo(f, 'estribo') === 'cadena');
-  // Un útil cualquiera: lo que se verifica es el CONTRATO de la función (resolver
-  // = dibujar), no de dónde sale el número. Quien lo llama de verdad (reglas
-  // ._dimsEfectivas) le pasa el marco de núcleo EJE A EJE —anchoUtil − φ por
-  // altoUtil − φ, ver defecto F2—, no la luz libre.
-  const util = { u: 24, v: 52 };
-  const gancho = FP.extGancho(0.8);         // φ8 → 7.5 (6φ mín 7.5)
-  const malas = [];
-  SEC.forEach(f => {
-    const ejes = FP.ejesCadenaSeccion(f, 'estribo');
-    const base = {};
-    Object.keys(ejes).forEach(k => { if (ejes[k] === 'd') base[k] = gancho; });
-    // TANDA V: el diámetro viaja también al solver — el 'auto' hace caber el
-    // trazo CON sus ganchos de radio, que es el que la extensión mide y el que
-    // se dibuja. Sin él, el solver modelaba la cadena de vértices y "resolver =
-    // dibujar" se rompía por un radio entero en las figuras con gancho >90°.
-    const t = FP.autosCadenaSeccion(f, base, ejes, util, 0.8);
+  const PHI = 8, phi = PHI / 10, utilV = (30 - 2 * 3) - phi;   // 23.2
+  const abiertas = CAT.codigos().filter(f =>
+    FP.familiaDeDibujo(f) !== 'estribo' && FP.tramosDeFigura(f));
+  const pasan = [], cortas = [];
+  let conV = 0;
+  abiertas.forEach(f => {
+    const ejes = FP.ejesCadenaLong(f);
+    if (!ejes || !Object.keys(ejes).some(k => ejes[k] === 'v')) return;
+    conV++;
     const dims = {};
-    Object.keys(ejes).forEach(k => { dims[k] = (ejes[k] === 'd') ? gancho : t[ejes[k]]; });
-    const ext = FP.extensionCadenaSeccion(f, dims, 0.8);
-    ['u', 'v'].forEach(e => {
-      if (!Object.keys(ejes).some(k => ejes[k] === e)) return;   // sin lados auto en ese eje
-      if (Math.abs(ext[e] - util[e]) > 1e-6) {
-        malas.push(f + '·' + e + ' resuelve ' + r3(t[e]) + ' y dibuja ' + r3(ext[e]) + ' (útil ' + util[e] + ')');
-      }
-    });
+    (CAT.get(f).parciales || []).forEach(k => { dims[k] = { modo: 'auto' }; });
+    const pl = R.expandirComponente({
+      tipologia: 'MH', figura: f, diam: PHI, cara: 'lateral',
+      pose: { cara: 'lateral', lado: 1, rumbo: 'x' }, dims: dims,
+      distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0 }
+    }, viga)[0];
+    const zs = pl.puntos.map(p => p.z);
+    const span = Math.max(...zs) - Math.min(...zs);
+    if (span > utilV + 1e-9) pasan.push(f + ' ocupa ' + r3(span) + ' de ' + utilV);
+    if (span < utilV - 1) cortas.push(f + ' ocupa ' + r3(span) + ' de ' + utilV);
   });
-  ok(malas.length === 0,
-    'el AUTO de las ' + SEC.length + ' cadenas de sección dibuja EXACTAMENTE el marco útil (' +
-    (malas.length ? malas.slice(0, 4).join(' · ') + (malas.length > 4 ? ' · +' + (malas.length - 4) : '') : SEC.length + '/' + SEC.length + ' exactas') + ')');
+  ok(conV === 40, 'el barrido es de verdad: 40 figuras abiertas tienen un lado que ' +
+    'cruza la profundidad (=' + conV + ')');
+  ok(pasan.length === 0,
+    'el AUTO de la profundidad NUNCA se pasa del marco útil (' +
+    (pasan.length ? pasan.slice(0, 4).join(' · ') : conV + '/' + conV + ' dentro de ' + utilV) + ')');
+  ok(cortas.length === 0,
+    '…y tampoco se queda corto más allá del redondeo al centímetro (' +
+    (cortas.length ? cortas.slice(0, 4).join(' · ') : 'holgura máxima 0.6 cm') + ')');
 })();
-// F1 EN EL OTRO DISTRIBUIDOR (22-ago) — ASSERT CORREGIDO, ERA EL MISMO DEFECTO.
-// Este bloque decía: «una cadena abierta no anida como anillo concéntrico, así que sus
-// capas se separan con Sep (y no se quedan encimadas)», y comprobaba que la 2ª capa se
-// CORRÍA 3 cm en z. Eso es literalmente el defecto F1 —la pieza de sección que se
-// TRASLADA por la normal en vez de anidar— sobreviviendo en `distribuidorArreglo`,
-// que se quedó preguntando `_dibujaMarcoCerrado` cuando layered ya había migrado a
-// `esPiezaDeSeccion`. MEDIDO con arreglo de 3 capas @3 y todo en 'auto': las 32
-// cadenas de sección del catálogo sacaban entre 1.6 y 3.8 cm de fierro FUERA del
-// hormigón en la viga y en el muro, con avisos = []. La misma pieza no puede anidar en
-// 'layered' y trasladarse en 'arreglo': encuadrar la sección no depende del modo de
-// reparto. Ahora las dos rutas dan el MISMO anillo concéntrico.
+// ===========================================================================
+// LA CAPA DE LADOS FIJOS SE DESPLAZA — Y NO SE ACHICA (24-ago)
+// ===========================================================================
+// Este bloque ha cambiado de assert dos veces y conviene dejar por qué la de hoy no
+// es otra vuelta más:
+//   · hasta el 22-ago pedía que la 2ª capa se CORRIERA 3 cm en z. Con la 305A
+//     tratada como pieza de sección eso era el defecto F1 (la pieza que se traslada
+//     por la normal en vez de anidar): 32 cadenas sacaban de 1.6 a 3.8 cm de fierro
+//     fuera del hormigón, sin un aviso.
+//   · del 22 al 23-ago pidió el ANILLO CONCÉNTRICO. Correcto mientras el chip ES
+//     convirtiera la barra en pieza de sección.
+//   · hoy el chip no convierte nada y esta 305A es una cadena abierta que corre por
+//     la X. Sus cinco dims están FIJAS —las escribió el usuario—, así que no hay
+//     nada que achicar y la regla es la que el usuario dictó para el estribo de
+//     confinamiento: «una segunda capa debiera generar un elemento exactamente
+//     igual pero desplazado en la distancia de separación en dirección contraria al
+//     borde del que viene».
+// Y NO ES EL DEFECTO F1 OTRA VEZ, aunque el movimiento se parezca: entonces la pieza
+// se trasladaba MINTIENDO —su 'auto' estaba resuelto contra el marco de la capa 1 y
+// nadie lo re-resolvía—, y ahora el 'auto' se re-resuelve capa a capa (bloque F1
+// arriba: A 23 → 20 → 17) y la capa que se queda sin marco se OMITE con aviso. Lo
+// que se traslada aquí es una pieza de medidas FIJAS, que es el único caso en que
+// trasladar es la respuesta correcta. El barrido de abajo lo vigila: 0 cm fuera.
 const arr305 = R.expandirComponente({
   tipologia: 'ES', figura: '305A', diam: 8, cara: 'lateral',
   dims: {
@@ -979,15 +1048,15 @@ const arr305 = R.expandirComponente({
 }, viga);
 (function () {
   const c1 = lim(arr305[0], 'z'), c2 = lim(arr305[arr305.length - 1], 'z');
-  const y1 = lim(arr305[0], 'y'), y2 = lim(arr305[arr305.length - 1], 'y');
-  ok(arr305.length === 6 && close(c1.hi - c2.hi, 3) && close(c2.lo - c1.lo, 3) &&
-     close(y1.hi - y2.hi, 3) && close(y2.lo - y1.lo, 3),
-    'en arreglo, la 2ª capa es un ANILLO 3 cm más chico por lado (no se traslada por ' +
-    'el eje de capas hasta salirse) (z ' + JSON.stringify(c1) + ' → ' + JSON.stringify(c2) +
-    ' · y ' + JSON.stringify(y1) + ' → ' + JSON.stringify(y2) + ')');
-  ok(close(centro(arr305[arr305.length - 1], 'z'), centro(arr305[0], 'z')),
-    '…y CONCÉNTRICO: los dos anillos comparten centro (=' +
-    r3(centro(arr305[0], 'z')) + ' / ' + r3(centro(arr305[arr305.length - 1], 'z')) + ')');
+  ok(arr305.length === 6 && close(c1.hi - c1.lo, c2.hi - c2.lo),
+    'en arreglo, la 2ª capa es EXACTAMENTE la misma pieza: mismo ancho en z (' +
+    r3(c1.hi - c1.lo) + ' vs ' + r3(c2.hi - c2.lo) + ')');
+  ok(close(c1.hi - c2.hi, 3) && close(c1.lo - c2.lo, 3),
+    '…DESPLAZADA los 3 cm del Sep, alejándose del borde del que viene (z ' +
+    JSON.stringify(c1) + ' → ' + JSON.stringify(c2) + ')');
+  ok(JSON.stringify(arr305[0].dims) === JSON.stringify(arr305[arr305.length - 1].dims),
+    '…y con las MISMAS dims: lo que el usuario fijó no se achica (=' +
+    JSON.stringify(arr305[arr305.length - 1].dims) + ')');
 })();
 // Y el barrido que lo vigila: ninguna figura del catálogo, en ARREGLO de 3 capas @3,
 // puede sacar fierro del hormigón. Es la misma guarda que arriba para linear/layered,

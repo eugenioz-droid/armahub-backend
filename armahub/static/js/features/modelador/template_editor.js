@@ -5753,9 +5753,22 @@
       // el catalogo: cambia exactamente las 17 figuras que estaban rotas (101A a 201A)
       // y deja intactas 104D, 106A, 305A, 104B y 105A, que son las que este camino
       // existe para sostener.
+      // (24-ago) …Y LA SEGUNDA MITAD, `esCadenaDeSeccion`, TAMBIÉN SE VA. Decía «una
+      // cadena de 4+ lados trazable en sección también se muestra de frente», y eso
+      // sólo tenía sentido mientras una cadena abierta pudiera ser pieza de sección
+      // —o sea mientras el chip la convirtiera—. Hoy el rol es topología pura: una
+      // cadena ABIERTA tiene lado dominante y CORRE por él, así que nacer «de frente»
+      // significa nacer con el rumbo apuntando al FONDO de la vista. MEDIDO en la
+      // elevación de un muro: 104B, 105A y 305A nacían con pose {sup, rumbo z}, o sea
+      // corriendo por el espesor (15 cm útiles) y viéndose como un punto en la vista
+      // donde se acababa de clicar — exactamente el defecto que el bloque de arriba
+      // arregló para las 17 figuras de 1–3 lados. Con la mitad quitada nacen como el
+      // 103B: en el plano de la vista.
+      // Queda la pregunta que sigue siendo verdad: sólo el CONTORNO CERRADO se ve de
+      // frente, porque no tiene ningún lado que recorrer — su forma entera la fija el
+      // marco de la sección. 104D y 106A no se mueven.
       var esSeccionV = !!(fpV && fpV.familiaDeDibujo &&
-        (fpV.familiaDeDibujo(sel.figura, null) === 'estribo' ||
-         (fpV.esCadenaDeSeccion && fpV.esCadenaDeSeccion(sel.figura))));
+        fpV.familiaDeDibujo(sel.figura, null) === 'estribo');
       // AQUI VIVIO UN OVERRIDE PARA LA TRABA, Y ESTUVO MAL (25-ago). Se le hizo
       // ignorar esta regla para que cruzara el espesor viniera de donde viniera. El
       // usuario lo corto de raiz: «la tipologia NO DECIDE LA COLOCACION. La logica de

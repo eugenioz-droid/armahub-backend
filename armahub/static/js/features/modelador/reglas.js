@@ -2371,6 +2371,16 @@
     var start = (cfg && cfg.start_offset) || (base.anchorBase && base.anchorBase.recubExtremo) || 0;
     var xcur = -host.largo / 2 + start;   // arranca tras el recubrimiento
     var x1 = host.largo / 2 - start;
+    // …Y LA PIEZA QUE CORRE POR ESTE MISMO EJE NO SE MUEVE DE SITIO (24-ago). Las
+    // zonas reparten a lo largo del eje longitudinal local, que es donde vive un
+    // ESTRIBO (plano ⊥, span x = 0: la coordenada es su posición) pero también donde
+    // CORRE un longitudinal (span x = el largo útil: ahí no hay posición que
+    // repartir). Escribirle la x a éste lo saca del hormigón — medido en la viga
+    // 600×60×30, 101A con zonas 600@40: la última copia a x = 292.4 dibuja la barra
+    // de 292.4 a 884.4, o sea 292.4 cm fuera. Es la MISMA pregunta que el rango ya
+    // hacía (_recorreSuPropioEje) y ahora la hacen las dos: la pieza se queda
+    // centrada y las copias salen donde salían.
+    var quieta = _recorreSuPropioEje(base, host);
     for (var zi = 0; zi < zonas.length; zi++) {
       var z = zonas[zi];
       var n = redondeoCantidadZona(z.long, z.sep);
@@ -2382,7 +2392,7 @@
         }
         var xx = xcur + k * (Number(z.sep) || 0);
         if (xx > x1 + 1e-6) break;
-        var anchor = _mezclarAnchor(base.anchorBase, { x: xx });
+        var anchor = _mezclarAnchor(base.anchorBase, quieta ? {} : { x: xx });
         var puntos = _fp().figuraAPuntos(base.figura, base.dims, host, anchor,
           { rol: base.rol || 'estribo', diamCm: base.diam });
         placements.push(_placement(base, puntos, { zona: zi + 1 }));
@@ -2758,6 +2768,25 @@
     return (hi > lo) ? (hi - lo) : 0;
   }
 
+  // ¿LA PIEZA RECORRE PRÁCTICAMENTE TODO EL EJE EN QUE CORRE? — pregunta ÚNICA
+  // ---------------------------------------------------------------------------
+  // Sobre su eje longitudinal local, una pieza así no tiene POSICIÓN que repartir:
+  // su lugar lo fija su propia geometría (el 'auto' la estiró de borde a borde) y
+  // cualquier coordenada que se le escriba la saca del hormigón o apila copias una
+  // sobre otra. Una pieza CORTA sí tiene posición libre ahí — suples, columnas de
+  // un estribo de confinamiento — y ésa se reparte como cualquier otra.
+  // Lo preguntan los DOS repartos que escriben coordenadas sobre ese eje: el rango
+  // (_ejeRangoReparto, que responde con 1 barra + aviso) y las ZONAS legadas de
+  // distribuidorLinear (que dejan la pieza en su sitio). Una sola pregunta: con dos
+  // copias del criterio, el día que una cambie la otra saca fierro del hormigón —
+  // medido al escribirlo: con el reparto de zonas escribiendo x a ciegas, 98 de las
+  // 63 figuras × 7 tipologías salían hasta 292.4 cm fuera de la viga.
+  function _recorreSuPropioEje(base, host) {
+    var dimX = Number(host && host.largo);
+    if (!isFinite(dimX) || dimX <= 0) return false;
+    return _spanEnEje(base, host, 'x') >= 0.9 * dimX;
+  }
+
   // Eje LOCAL sobre el que el rango puede repartir; null = es el eje de la NORMAL de
   // la cara en la que un cabezal SE APOYA (tiene pata), y esa coordenada no es un
   // dato libre: la fija el recubrimiento + las pilas (_marcoCara).
@@ -2782,8 +2811,7 @@
     // traba volteada legacy con rango sin eje → 3 barras idénticas encimadas en
     // silencio. Ahí: null → 1 barra + aviso, como el guard de la cara.
     if (eje === 'x') {
-      var dimX = Number(host.largo);
-      if (isFinite(dimX) && dimX > 0 && _spanEnEje(base, host, 'x') >= 0.9 * dimX) return '__propio';
+      if (_recorreSuPropioEje(base, host)) return '__propio';
       return eje;
     }
     if (eje !== _marcoCara(base, host).eje) return eje;   // otro eje: nada que decidir
@@ -2912,6 +2940,25 @@
   // son la MISMA clase de pieza —encuadran el marco de núcleo— y las dos tienen que
   // anidar sus capas hacia adentro en vez de trasladarse por la normal. Fuente única
   // en figura_puntos (esPiezaDeSeccion), que es donde vive el plano de trabajo.
+  // ¿ALGÚN LADO SE QUEDÓ SIN SITIO AL RE-RESOLVER EL 'AUTO' DE ESTA CAPA?
+  // ---------------------------------------------------------------------------
+  // → texto del motivo (para el aviso) o null. Compara el resultado de la capa k
+  // contra el de la capa 1: sólo cuenta el lado que ERA positivo y ahora no lo es,
+  // o sea el que se achicó hasta desaparecer. Un lado que ya venía en cero o en
+  // negativo desde la capa 1 es otra cosa —una medida imposible del usuario— y ésa
+  // se genera igual, con su propio aviso: la regla del proyecto es que el dato malo
+  // se VEA, y omitir el componente entero lo escondería.
+  function _ladoSinSitio(dimsCapa, dimsBase) {
+    for (var L in dimsCapa) {
+      if (!Object.prototype.hasOwnProperty.call(dimsCapa, L)) continue;
+      var v = Number(dimsCapa[L]), v0 = Number(dimsBase && dimsBase[L]);
+      if (isFinite(v0) && v0 > 0 && isFinite(v) && v <= 0) {
+        return 'dim ' + L + ' = ' + (Math.round(v * 100) / 100);
+      }
+    }
+    return null;
+  }
+
   function _esPiezaDeSeccion(base) {
     var fp = _fp();
     if (!fp || !fp.esPiezaDeSeccion) return base.rol === 'estribo';
@@ -2982,8 +3029,24 @@
       // inset del marco) y su encogimiento lo resuelve anidarFigura.
       var dimsBase = base.dims;
       if (!seccion && offPos > 0 && base._comp) {
-        var dRe = _dimsEfectivas(base._comp, host, base.jerarquia, offPos, base.avisos);
+        // Los avisos de ESTA capa van a una lista aparte y sólo se cosechan si la
+        // capa llega a existir: si se omite, decir además «esa barra no es
+        // construible, el despiece la va a rechazar» sería hablar de una barra que
+        // no se generó — dos mensajes contradictorios sobre el mismo hecho.
+        var avCapa = [];
+        var dRe = _dimsEfectivas(base._comp, host, base.jerarquia, offPos, avCapa);
         if (dRe) dimsBase = dRe;
+        // …Y CUANDO YA NO QUEDA MARCO, ESA CAPA NO EXISTE. Es la MISMA regla que el
+        // anillo aplica desde el 12-ago (hallazgo A: `an.cabe === false` → se omite
+        // con aviso), leída sobre el resultado del 'auto' en vez de sobre la resta
+        // del inset: si el lado que se achicaba solo llega a 0 o menos, la capa se
+        // quedó sin sitio. Dibujarla es inventar una barra imposible — MEDIDO en la
+        // viga 600×60×30 con ES 305A φ10 y Sep 20 (3 capas = 40 cm de apilado en 24
+        // útiles): la capa 3 salía con A = −17 · C = −16 · E = −17 y 31.5 cm de
+        // fierro fuera del hormigón.
+        var sinSitio = _ladoSinSitio(dimsBase, base.dims);
+        if (sinSitio) { _avisar(base, _avisoCapa(c, offPos, sinSitio)); continue; }
+        for (var iAv = 0; iAv < avCapa.length; iAv++) _avisar(base, avCapa[iAv]);
       }
       // δ de DIMS del anidado = k·φ_propio (holgura lateral contra el fierro de la
       // capa de afuera). En las CERRADAS manda el campo Sep (anillos concéntricos
@@ -3265,15 +3328,46 @@
       // δ del APILADO = k·sep_capas, EJE A EJE (misma semántica que el `gap` de
       // layered: el número configurado ES la distancia entre ejes, sin sumarle φ).
       var off = c * sepCapas;
+      // EL 'AUTO' DE LA CAPA k SE RESUELVE CONTRA EL MARCO QUE DEJÓ LA CAPA k−1
+      // (24-ago). Es la MISMA cuenta que layered ya hacía desde el 13-ago
+      // (defecto E) y que aquí faltaba: el arreglo resolvía el 'auto' contra el
+      // marco de la capa 1 y después TRASLADABA la capa k con esas mismas medidas,
+      // así que el lado que el 'auto' había estirado a la profundidad útil COMPLETA
+      // salía por la cara opuesta. MEDIDO (φ8, arreglo 3 capas @3 en el eje de la
+      // cara, todo en 'auto'): 40 figuras del catálogo × viga y muro sacaban de 2.9
+      // a 3.5 cm de fierro fuera del hormigón — 80 componentes por tipología, 560 en
+      // el barrido de 7 tipologías. Con la misma receta en 'layered' salían 0 (ahí
+      // las dims bajan 23→20→17 en vez de quedarse en 23/23/23).
+      // Un lado FIJO no se toca: sigue midiendo lo que dice la ficha y asoma si no
+      // cabe. Es la otra mitad de la regla del usuario para las capas — el 'auto' se
+      // achica solo, lo fijo se desplaza tal cual.
+      // SÓLO CUANDO LAS CAPAS ENTRAN POR LA NORMAL DE LA CARA (eje_capas === el eje
+      // del marco de cara): ahí el k·sep_capas ES profundidad consumida. Con las
+      // capas por CUALQUIER OTRO eje la pieza no se acerca a la cara opuesta y no
+      // hay nada que descontar — descontarlo sería acortar una barra por un
+      // movimiento que no la mueve hacia el fondo.
+      var dimsBaseA = base.dims;
+      if (!marcoA && !unaCapa && off > 0 && base._comp && mcA && eje === mcA.eje) {
+        var avCapaA = [];
+        var dReA = _dimsEfectivas(base._comp, host, base.jerarquia, off, avCapaA);
+        if (dReA) dimsBaseA = dReA;
+        // …y la capa que se quedó sin marco NO se genera: misma regla que en
+        // layered y que en el anillo (ver _ladoSinSitio). Sus avisos sólo se
+        // cosechan si la capa existe (ver la nota de layered).
+        var sinSitioA = _ladoSinSitio(dimsBaseA, base.dims);
+        if (sinSitioA) { _avisar(base, _avisoCapa(c, off, sinSitioA)); continue; }
+        for (var iAvA = 0; iAvA < avCapaA.length; iAvA++) _avisar(base, avCapaA[iAvA]);
+      }
       // δ de DIMS del anidado = k·φ_propio; la separación entre MARCOS (anillos
       // concéntricos) la manda sep_capas → viaja en opts.sep (v3: el campo del
       // usuario manda la posición también con anidar activo).
       var an = ((anidaCerr || anidaAb) && !unaCapa && c > 0)
-        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol,
+        ? _fp().anidarFigura(base.figura, dimsBaseA, c * base.diam, base.rol,
           { sep: off, diamCm: base.diam, angulos: base.anchorBase && base.anchorBase.angulos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
-      var dimsCapaA = usaAn ? an.dims : base.dims;
+      var dimsCapaA = usaAn ? an.dims : dimsBaseA;
+      var dimsPropiasA = usaAn || (dimsBaseA !== base.dims);
       // MISMO criterio que layered (hallazgo A): la capa cuyo inset deja dims ≤ 0
       // — o cruza el marco del anillo — NO se genera; se omite con aviso.
       if (usaAn && an.cabe === false) {
@@ -3315,7 +3409,7 @@
         var puntosA = _fp().figuraAPuntos(base.figura, dimsCapaA, host, anchorA,
           { rol: base.rol || 'estribo', diamCm: base.diam });
         var plA = _placement(base, puntosA, unaCapa ? { rango: 1 } : { rango: 1, capa: c + 1 });
-        if (usaAn) plA.dims = _clonDims(dimsCapaA);   // ítem propio (dims reales de corte)
+        if (dimsPropiasA) plA.dims = _clonDims(dimsCapaA);   // ítem propio (dims reales de corte)
         placements.push(plA);
       }
     }
@@ -4011,46 +4105,18 @@
       : Math.max(10 * phiCm, 7.5) + 3 * phiCm;
     function ganchoAutoDe(k) { return ganchoCresta - dC(k); }
 
-    // EL 'AUTO' DE UNA PIEZA DE SECCIÓN LO DECIDE EL TRAZO, NO LA LETRA.
-    // A/C = ancho, B/D = alto es la lectura del RECTÁNGULO de 4 lados y vale para
-    // las figuras que dibuja `_estriboPerimetral`. Para las que se trazan como
-    // CADENA (305A de 5 tramos, 104B con quiebres de 45°) la letra no dice nada:
-    // `ejesCadenaSeccion` devuelve, tramo por tramo, si corre en el ANCHO ('u'),
-    // en el ALTO ('v') o en diagonal ('d' → pata, extensión de gancho). Es el
-    // MISMO trazo que dibuja figura_puntos._cadenaSeccion — medir y dibujar no
-    // pueden leer dos cosas distintas (hallazgo D1 del verificador: la 305A se
-    // medía contra el alto y se dibujaba contra el ancho, 11 cm fuera del
-    // hormigón). null = no es cadena de sección → sigue la regla por letra.
-    var ejesSec = (fpD && fpD.ejesCadenaSeccion && comp._rol === 'estribo')
-      ? fpD.ejesCadenaSeccion(comp.figura, comp._rol, angOvr) : null;
-    // Y el valor de ese 'auto' RESERVA los quiebres, igual que el auto-largo del
-    // longitudinal reserva los sobres de las puntas (fpD.sobresCadena).
-    var autoSec = null;
-    if (ejesSec) {
-      var baseSec = {};
-      Object.keys(g).forEach(function (k) {
-        var d = g[k];
-        if (d && d.modo === 'fija') baseSec[k] = fijaVert(k, d.valor);
-        else if (ejesSec[k] === 'd') baseSec[k] = ganchoAutoDe(k);   // diagonal = pata
-      });
-      // …CONTRA EL MARCO DE NÚCLEO, NO CONTRA LA LUZ LIBRE (defecto F2).
-      // El recubrimiento se mide a la CARA del fierro: por eso el eje de una pieza
-      // de sección va a recub + φ/2, que es exactamente lo que hace el estribo
-      // (figura_puntos._marcoNucleo descuenta φ/2 en las tres fronteras) y lo que el
-      // usuario validó cuando se calibró el estribo. La cadena de sección resolvía
-      // su 'auto' contra la medida LIBRE (anchoUtil × altoUtil) y después se DIBUJA
-      // como EJE: su cara quedaba φ/2 metida en el recubrimiento y dos piezas de
-      // sección vecinas daban recubrimientos distintos — medido en la viga
-      // 600×60×30 (4/4/3): φ8 cadena 3.60/2.60 vs estribo 4.00/3.00; φ32 cadena
-      // 2.40/1.40 vs estribo 4.00/3.00.
-      // El marco de núcleo eje-a-eje es (anchoUtil − φ) × (altoUtil − φ): la MISMA
-      // cuenta que _marcoNucleo (2·w2 y ySup−yInf), leída desde acá. Medir y dibujar
-      // siguen siendo lo mismo — el 'auto' resuelve el EJE y el eje es lo que se
-      // traza —, y ahora las dos piezas de sección tienen un solo recubrimiento.
-      var phiSec = Number(comp.diam) / 10 || 0;
-      autoSec = fpD.autosCadenaSeccion(comp.figura, baseSec, ejesSec,
-        { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec }, phiSec, angOvr);
-    }
+    // AQUÍ VIVÍA EL 'AUTO' DE LA PIEZA DE SECCIÓN (`ejesCadenaSeccion` +
+    // `autosCadenaSeccion`), RETIRADO EL 24-ago CON SU RAMA. Entraba con
+    // `comp._rol === 'estribo'` —o sea con el chip ES/EC/ESC— y resolvía los lados
+    // contra el ANCHO y el ALTO de la sección. Ésa era la tercera rama por tipología:
+    // MEDIDO en el muro 600×250×20 rec 2.5, φ8, misma pose {lateral, 1, x} y todo en
+    // auto, un 103B daba B = 595 con MH y B = 11 con EC; un 102A, 595 y 244; una
+    // 101A, 595 y 14. Hoy TODA figura con lado dominante resuelve su 'auto' por el
+    // bloque de abajo —el universal por dirección-en-pose—: el dominante se estira a
+    // lo largo de la cara con la que hizo match y los lados 'v' cruzan por la cara
+    // contigua. Lo único que sigue midiendo contra el ancho y el alto de la sección es
+    // el CONTORNO CERRADO, que no tiene lado que recorrer y lo resuelve `autoDeLado`
+    // con la regla del rectángulo (A/C = ancho · B/D = alto) y `dimsEstriboGanchos`.
     // AUTO UNIVERSAL DEL LONGITUDINAL (feedback de raíz 13-ago): el lado de un
     // cabezal que corre PERPENDICULAR al dominante cruza la PROFUNDIDAD de la
     // pieza (en un muro, el espesor): su 'auto' es la profundidad ÚTIL eje a
@@ -4116,12 +4182,6 @@
       if (dimsRomboVals && dimsRomboVals[k] != null) {
         dirRed[k] = (gTerm && (gTerm.ini === k || gTerm.fin === k)) ? 'arriba' : 'abajo';
         return dimsRomboVals[k];
-      }
-      if (ejesSec) {
-        var e = ejesSec[k];
-        if (e === 'u') { dirRed[k] = 'abajo'; return autoSec.u; }
-        if (e === 'v') { dirRed[k] = 'abajo'; return autoSec.v; }
-        if (e === 'd') { dirRed[k] = 'arriba'; return ganchoAutoDe(k); }
       }
       dirRed[k] = 'abajo';
       if (comp._rol === 'estribo') return (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
@@ -4689,17 +4749,42 @@
   }
 
   // ==========================================================================
-  // ROL DE UN COMPONENTE — FUENTE ÚNICA (consolidación 15-ago)
+  // ROL DE UN COMPONENTE = UNA PROPIEDAD DE LA FIGURA (24-ago)
   // ==========================================================================
-  // La tipología PROPONE y la TOPOLOGÍA de la figura MANDA:
-  //   · figura CERRADA (marco 104x, 106x con ganchos) → 'estribo' (pieza de
-  //     sección), venga el chip que venga. Un 106A escrito bajo MH entraba al
-  //     pipeline de cortina y salía sin sentido.
-  //   · 'traba' NO EXISTE (Modelo A, 14-ago): «toda figura entra con su forma de
-  //     catálogo; el plano de entrada, el dominante y el borde dan control
-  //     absoluto; si dejas reglas, el control se pierde». Una figura ABIERTA bajo
-  //     TR/TC/TRV es un longitudinal más; el cruce se logra girando la pieza.
-  //   · el resto → 'cabezal' (longitudinal).
+  // LA TIPOLOGÍA SALE DE ACÁ, Y ÉSTA ERA LA TERCERA Y ÚLTIMA RAMA. Hasta hoy esta
+  // función abría con `_rolDeTipologia(comp.tipologia)`: ES/EC/ESC → 'estribo'. O
+  // sea que el `rol` ERA la tipología disfrazada, y como media docena de sitios
+  // ramifican por `rol` —el 'auto' de las dims (_dimsEfectivas), el plano de
+  // trabajo del trazo (_cadenaGenerica) y el anidado de las capas
+  // (esPiezaDeSeccion)—, ramificar por rol seguía siendo ramificar por tipología
+  // aunque las dos ramas explícitas ya se hubieran quitado (22-ago colocación,
+  // 23-ago forma).
+  //
+  // MEDIDO, que es lo que lo cierra (muro 600×250×20 rec 2.5, φ8, MISMA pose
+  // {cara:'lateral', lado:1, rumbo:'x'}, TODO en auto — sólo cambia la etiqueta):
+  //     figura   dominante      dims con MH      dims con EC
+  //     103B     B en las dos   B = 595          B = 11
+  //     102A     B en las dos   B = 595          B = 244
+  //     101A     A en las dos   A = 595          A = 14
+  // El lado dominante NO cambiaba: cambiaba CONTRA QUÉ se estiraba. Con MH seguía
+  // la cara con la que hizo match (595 = el largo útil); con EC se medía contra la
+  // sección — contradiciendo la propia pose, que dice que la pieza corre en x.
+  //
+  // AHORA LA PREGUNTA ES TOPOLÓGICA Y NADA MÁS: ¿la figura es un CONTORNO CERRADO?
+  //   · SÍ (marco 104A/D/E/F/G/M/N/O/P/Q y estribo con ganchos 106A–D) → 'estribo':
+  //     no tiene lado dominante que estirar (ladoLongitudinalCadena devuelve null),
+  //     su forma entera la fija el marco de núcleo y la traza _estriboPerimetral.
+  //     Esas 14 figuras YA contestaban 'estribo' bajo cualquier chip, así que no se
+  //     mueve un dígito de ellas.
+  //   · NO (todo lo demás: 101x, 102x, 103x, 104B/C/H…, 105x, 201A, 305A) →
+  //     'cabezal': tiene dominante, y el dominante se estira a lo largo de la cara
+  //     con la que hizo match, con los demás 'auto' por las caras contiguas. Eso es
+  //     lo que ya hacía con MH y ahora hace SIEMPRE.
+  // Se pregunta por `familiaDeDibujo(figura) === 'estribo'` —y no por una segunda
+  // lista— porque ÉSA es la pregunta que ya decide quién traza la barra: así
+  // rol 'estribo' ⟺ la dibuja _estriboPerimetral, sin dos criterios que puedan
+  // desincronizarse.
+  //
   // Se RE-DERIVA en cada pasada (no se cachea): la figura puede cambiar en la
   // ficha y un rol pegado dibujaría la figura nueva con el tren de la vieja.
   //
@@ -4710,16 +4795,13 @@
   // que el motor SÍ se los aplica. Una sola tabla, un solo lugar.
   function rolDeComponente(comp) {
     if (!comp) return 'cabezal';
-    var rol = _rolDeTipologia(comp.tipologia, comp.cara);
-    if (rol === 'traba') rol = 'cabezal';
-    if (rol === 'cabezal') {
-      var fpR = _fp();
-      if (fpR && ((fpR.esEstriboConGanchos && fpR.esEstriboConGanchos(comp.figura)) ||
-        (fpR.familiaDeDibujo && fpR.familiaDeDibujo(comp.figura, null) === 'estribo'))) {
-        rol = 'estribo';
-      }
-    }
-    return rol;
+    var fpR = _fp();
+    // Sin figura_puntos cargado no hay topología que consultar: 'cabezal' es la
+    // respuesta de la cadena abierta, que es lo que es cualquier figura mientras
+    // no se demuestre que su contorno cierra. (Antes acá caía la tabla por
+    // tipología; volver a ponerla sería reabrir la rama por la puerta de atrás.)
+    if (!fpR || !fpR.familiaDeDibujo) return 'cabezal';
+    return (fpR.familiaDeDibujo(comp.figura, null) === 'estribo') ? 'estribo' : 'cabezal';
   }
 
   // opts.recubExtremo: recubrimiento de las caras que cierran el eje LONGITUDINAL
@@ -4917,10 +4999,10 @@
     // igual para sup/inf y para la cara CORTINA lateral).
     // Una pieza de SECCIÓN no se pega a ninguna cara: su pose natural es el CENTRO
     // de su marco de núcleo, y por eso el anchorBase no le escribe y/z — sin
-    // coordenada, cada constructor de sección se centra en su marco
-    // (figura_puntos._estriboPerimetral / _traba / _cadenaSeccion). Lo que sí le
-    // escriben los distribuidores es la coordenada del REPARTO, y ésa la respetan
-    // los tres tal cual: son coordenadas del host, nunca desplazamientos.
+    // coordenada, el constructor de sección se centra en su marco
+    // (figura_puntos._estriboPerimetral). Lo que sí le escriben los distribuidores es
+    // la coordenada del REPARTO, y ésa la respeta tal cual: son coordenadas del host,
+    // nunca desplazamientos.
     if (base.rol === 'cabezal') {
       // LADO de la cara lateral (z+ / z−) = DATO PROPIO del componente (`comp.lado`,
       // 1 | −1, default 1). Sólo pinta en cara lateral; las patas se espejan solas
@@ -5008,9 +5090,14 @@
   }
 
   // Texto del aviso de una capa omitida. Formato ÚNICO (layered y arreglo):
-  //   "Capa 3 anidada no cabe (Sep 20): omitida — dim A = -6"
+  //   "Capa 3 no cabe (Sep 20): omitida — dim A = -6"
+  // (24-ago) DECÍA «Capa k ANIDADA no cabe». La palabra sobraba y además mentía en
+  // la mitad de los casos: la capa que se queda sin sitio ya no es sólo la del
+  // anillo — también lo es la del longitudinal cuyo 'auto' se achicó hasta cero
+  // contra el marco que dejó la capa anterior. El aviso es el mismo hecho, sin la
+  // etiqueta del mecanismo.
   function _avisoCapa(c, sep, motivo) {
-    return 'Capa ' + (c + 1) + ' anidada no cabe (Sep ' + (Math.round(Number(sep) * 100) / 100) +
+    return 'Capa ' + (c + 1) + ' no cabe (Sep ' + (Math.round(Number(sep) * 100) / 100) +
       '): omitida' + (motivo ? ' — ' + motivo : '');
   }
 
