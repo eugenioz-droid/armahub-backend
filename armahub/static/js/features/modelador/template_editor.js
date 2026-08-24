@@ -12734,7 +12734,8 @@
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
       '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
       '<th ' + thN + '>Comp.</th><th ' + thN + '>Barras</th><th ' + thN + '>Peso est.</th><th ' + thN + '>φ prom</th>' +
-      '<th ' + th + '>Obra</th><th ' + th + '>Última edición</th><th></th></tr>' +
+      '<th ' + th + '>Obra</th><th ' + th + '>Última edición</th>' +
+      '<th ' + thN + '>Administrar</th></tr>' +
       _tplOrdenar(_tplLista).map(function (t) {
         var tipo = String(t.tipo || '').toUpperCase();
         var col = TPL_ELEM_COLORES[tipo] || '#607d8b';
@@ -12765,13 +12766,22 @@
           '<td style="padding:4px 6px;">' + _esc(t.obra_nombre || (t.obra ? t.obra : 'General')) + '</td>' +
           '<td style="padding:4px 6px;">' + _esc(_tplFecha(edit)) +
             (quien ? '<div class="muted" style="font-size:10.5px;">' + _esc(quien) + '</div>' : '') + '</td>' +
+          // ADMINISTRAR EL TEMPLATE — RENOMBRAR y ELIMINAR, con palabra y no sólo
+          // con icono (25-ago, pedido del usuario: «me falta un botón para eliminar y
+          // administrar templates, ya que hoy no los puedo eliminar»). El basurero
+          // ESTABA, pero al 35% de opacidad y encendiéndose sólo al pasar el cursor
+          // por la fila: para el usuario no existía. Es la tercera vez en la semana
+          // que un control escondido tras un hover se reporta como «no está», así que
+          // acá se ven los dos, siempre.
+          // Sólo a quien el BACKEND dijo que puede (puede_modificar): un botón que
+          // siempre termina en 403 no es un botón, es una trampa.
           '<td style="padding:4px 6px; text-align:right; white-space:nowrap;">' +
-            // Eliminar sólo a quien el BACKEND dijo que puede (puede_modificar): un
-            // botón que siempre termina en 403 no es un botón, es una trampa.
             '<button data-id="' + _esc(t.id) + '"' + (puedo ? '' : ' disabled') +
-            ' class="tplBorrar" onclick="event.stopPropagation(); tplEliminarTemplate(this.getAttribute(\'data-id\'))"' +
-            ' title="' + (puedo ? 'Eliminar este template' : 'Sólo su autor (o un administrador) puede eliminarlo') + '"' +
-            ' style="' + (puedo ? '' : 'opacity:.25; cursor:default;') + '">🗑</button>' +
+            ' class="tplAccion tplRenombrar" onclick="event.stopPropagation(); tplRenombrarTemplate(this.getAttribute(\'data-id\'))"' +
+            ' title="' + (puedo ? 'Cambiarle el nombre' : 'Sólo su autor (o un administrador) puede editarlo') + '">Renombrar</button>' +
+            '<button data-id="' + _esc(t.id) + '"' + (puedo ? '' : ' disabled') +
+            ' class="tplAccion tplBorrar" onclick="event.stopPropagation(); tplEliminarTemplate(this.getAttribute(\'data-id\'))"' +
+            ' title="' + (puedo ? 'Eliminar este template' : 'Sólo su autor (o un administrador) puede eliminarlo') + '">🗑 Eliminar</button>' +
           '</td></tr>';
       }).join('') +
       '</table>' +
@@ -12849,6 +12859,37 @@
         var msg = (e && e.message) || 'No se pudo abrir el template.';
         if (e && e.status === 404) msg += ' Actualiza la lista.';
         _tplMsg('No se pudo abrir el template: ' + msg, true);
+      });
+  };
+
+  // RENOMBRAR desde la lista. El PUT es no destructivo —sólo escribe los campos que
+  // viajan—, así que mandar el nombre solo no toca la receta, ni la obra, ni el tipo.
+  // Es la otra mitad de «administrar templates»: hasta hoy, un nombre mal puesto
+  // obligaba a guardar una copia y borrar el original.
+  global.tplRenombrarTemplate = function (id) {
+    var t = _tplPorId(id);
+    var actual = (t && t.nombre) ? t.nombre : '';
+    _tplMsg('');
+    var nuevo = global.prompt('Nombre del template:', actual);
+    if (nuevo == null) return;                       // canceló
+    nuevo = String(nuevo).trim();
+    if (!nuevo || nuevo === actual) return;
+    _tplFetch('/templates/' + encodeURIComponent(id), {
+      method: 'PUT',
+      headers: _tplHeaders(true),
+      body: JSON.stringify({ nombre: nuevo })
+    })
+      .then(function () {
+        // Si el editor tiene ABIERTO ese template, su título ya no dice la verdad.
+        if (ST.templateId != null && String(ST.templateId) === String(id)) {
+          ST.nombre = nuevo;      // el campo del editor, que es de donde sale el titulo
+          _actualizarTitulos();
+        }
+        _tplMsg('Ahora se llama «' + nuevo + '».');
+        global.tplCargarGuardados();
+      })
+      .catch(function (e) {
+        _tplMsg((e && e.message) || 'No se pudo renombrar el template.', true);
       });
   };
 

@@ -257,11 +257,18 @@
      dentro de una fila clicable se leía como una caja suelta) y sólo se enciende
      cuando el cursor está en su fila. */
   #tplGuardadosLista tr.tplFila:hover{background:#f3f8ec;}
-  #tplGuardadosLista .tplBorrar{border:none;background:none;font-size:15px;line-height:1;
-    padding:4px 6px;border-radius:6px;cursor:pointer;opacity:.35;transition:opacity .12s,background .12s;}
-  #tplGuardadosLista tr.tplFila:hover .tplBorrar{opacity:.75;}
-  #tplGuardadosLista .tplBorrar:hover{opacity:1;background:#fdecea;}
-  #tplGuardadosLista .tplBorrar[disabled]{cursor:default;}
+  /* ACCIONES DE LA FILA — SE VEN SIEMPRE (25-ago). Estaban al 35% de opacidad y se
+     encendian solo al pasar el cursor por la fila; el usuario reporto que "no puedo
+     eliminar" teniendo el boton delante. Un control que hay que descubrir con el
+     mouse no existe. Van con PALABRA ademas del icono, porque "administrar" tiene
+     que leerse sin adivinar. */
+  #tplGuardadosLista .tplAccion{border:1px solid #dbe1e8;background:#fff;font-size:11px;
+    line-height:1;padding:5px 9px;border-radius:7px;cursor:pointer;color:#5b6b7d;
+    margin-left:5px;transition:background .12s,border-color .12s,color .12s;}
+  #tplGuardadosLista .tplAccion:hover{border-color:#b9c4d0;background:#f7f9fb;color:#33414f;}
+  #tplGuardadosLista .tplBorrar:hover{border-color:#e6a9a2;background:#fdecea;color:#b3261e;}
+  #tplGuardadosLista .tplAccion[disabled]{cursor:default;opacity:.35;}
+  #tplGuardadosLista .tplAccion[disabled]:hover{background:#fff;border-color:#dbe1e8;color:#5b6b7d;}
   .tplOrdenBtn { border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px;
                      padding:6px 12px; cursor:pointer; color:#6b7a8d; }
       .tplOrdenBtn.on { border-color:#558B2F; background:#f7fbf2; color:#33691e; font-weight:700; }
