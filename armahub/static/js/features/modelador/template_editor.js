@@ -12936,6 +12936,7 @@
     _seleccionar: _seleccionar, _alternarSeleccion: _alternarSeleccion,
     _selTodos: _selTodos, _estaSeleccionado: _estaSeleccionado, _duplicar: _duplicar,
     _seleccionarTramo: _seleccionarTramo, _detalleMultiple: _detalleMultiple,
+    _compEl: _compEl,   // la teja, para poder verificar que trae su papelera
     _anidadoCambiaAlgo: _anidadoCambiaAlgo,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
