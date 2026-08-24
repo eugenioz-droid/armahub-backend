@@ -326,5 +326,30 @@ console.log('L . el resaltado no toma las barras sin componente');
   ok(TE._estaSeleccionado(0) === false, 'y sin seleccion no hay ninguna marcada');
 }
 
+// ================== M . CON VARIAS ELEGIDAS LA FICHA NO SE ABRE
+// (25-ago) El usuario: "el panel de la izquierda me muestra una tipologia, pero
+// tengo 2 seleccionadas. A cual le hara los cambios? Ahi deberia aparecer algo
+// distinto para no ponerme a editar sin control". La ficha edita SIEMPRE a la
+// principal, asi que con varias elegidas se cambia el panel entero por la lista de
+// lo que hay elegido y las acciones que si son plurales.
+console.log('');
+console.log('M . el panel de la seleccion multiple');
+{
+  montar(4);
+  TE._seleccionar(0);
+  TE._alternarSeleccion(2);
+  TE._alternarSeleccion(3);
+  const panel = TE._detalleMultiple(TE._selTodos());
+  ok(!!panel, 'se arma sin reventar');
+  const filas = [];
+  (function hojas(n) {
+    (n.children || []).forEach(function (h) {
+      if (h.className === 'te-multi-fila') filas.push(h);
+      hojas(h);
+    });
+  })(panel);
+  ok(filas.length === 3, 'una fila por barra elegida (=' + filas.length + ')');
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);

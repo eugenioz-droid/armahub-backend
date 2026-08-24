@@ -6957,10 +6957,71 @@
       host.appendChild(vac);
       return;
     }
+    // ==================================================================
+    // CON VARIAS ELEGIDAS, LA FICHA NO SE ABRE (25-ago, pedido del usuario)
+    // ------------------------------------------------------------------
+    // «El panel de la izquierda me muestra una tipología, pero tengo 2
+    // seleccionadas. ¿A cuál le hará los cambios? Ahí debería aparecer algo distinto
+    // para no ponerme a editar sin control».
+    //
+    // Tenía razón y el riesgo es real: la ficha edita SIEMPRE a la principal, así
+    // que con cuatro barras elegidas el usuario tocaba un campo creyendo que iba a
+    // las cuatro y le cambiaba una sola. No hay forma de que la ficha mienta menos
+    // —los campos son de UNA barra: su figura, su φ, su recubrimiento propio—, así
+    // que directamente NO se abre: en su lugar va la lista de lo que hay elegido y
+    // las dos acciones que sí son plurales, espejar y borrar.
+    //
+    // SE SALE CLICANDO una de la lista: esa queda sola y su ficha se abre. Es el
+    // camino de vuelta más corto y no hay que explicarlo.
+    var todos = _selTodos();
+    if (todos.length > 1) {
+      if (tag) tag.textContent = todos.length + ' barras';
+      if (bDup) bDup.style.display = 'none';   // duplicar es de UNA (ver _duplicar)
+      host.appendChild(_detalleMultiple(todos));
+      return;
+    }
     if (sw) sw.style.background = _colorComp(c);
     if (tag) tag.textContent = (c.tipologia || '') + ' · ' + (c.figura || '—') +
       (_poseDe(c).espejo ? ' ⇋' : '');
     host.appendChild(_compBody(c, ST.selCi, _rolComp(c)));
+  }
+
+  // El panel de la selección múltiple. Dice CUÁNTAS, CUÁLES, y qué se puede hacer
+  // con todas — nada de campos editables, que es justo lo que hay que evitar.
+  function _detalleMultiple(todos) {
+    var box = _div('te-multi');
+    var t1 = _div('te-multi-tit');
+    t1.textContent = todos.length + ' barras seleccionadas';
+    box.appendChild(t1);
+
+    var t2 = _div('te-multi-sub');
+    t2.textContent = 'La ficha edita una sola barra, así que no se abre con varias elegidas. ' +
+      'Lo que sí se aplica a todas: Espejar y Borrar.';
+    box.appendChild(t2);
+
+    var lista = _div('te-multi-lista');
+    // De menor a mayor para que se lea en el orden de la tira (_selTodos las trae al
+    // revés porque quien borra necesita ese orden).
+    todos.slice().sort(function (a, b) { return a - b; }).forEach(function (ci) {
+      var c = ST.receta.componentes[ci];
+      if (!c) return;
+      var fila = _div('te-multi-fila');
+      var sw2 = _div('te-multi-sw');
+      sw2.style.background = _colorComp(c);
+      fila.appendChild(sw2);
+      var txt = _span((c.tipologia || '') + ' · ' + (c.figura || '—') +
+        (c.diam ? ' ø' + c.diam : '') + (ci === ST.selCi ? '  (principal)' : ''));
+      fila.appendChild(txt);
+      fila.title = 'Dejar sólo esta seleccionada y abrir su ficha';
+      fila.addEventListener('click', function () { _seleccionar(ci); });
+      lista.appendChild(fila);
+    });
+    box.appendChild(lista);
+
+    var pie = _div('te-multi-pie');
+    pie.textContent = 'Clic en una de la lista para dejarla sola y editarla.';
+    box.appendChild(pie);
+    return box;
   }
 
   // Duplicar y Quitar: viven en la barra del detalle y actúan sobre la selección
@@ -12792,7 +12853,7 @@
     // no una imitacion de lo que el gesto deja escrito.
     _seleccionar: _seleccionar, _alternarSeleccion: _alternarSeleccion,
     _selTodos: _selTodos, _estaSeleccionado: _estaSeleccionado, _duplicar: _duplicar,
-    _seleccionarTramo: _seleccionarTramo,
+    _seleccionarTramo: _seleccionarTramo, _detalleMultiple: _detalleMultiple,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
     // PALETA ÚNICA — la consume panel_3d, que tenía su propia tabla ya divergida

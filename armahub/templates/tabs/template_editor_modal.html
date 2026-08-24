@@ -434,6 +434,18 @@
      si las cuatro tejas se vieran iguales no habria como saber cual se esta
      editando. Mismo color, borde punteado y sin el halo. */
   #te_modal .te-comp.selx{border-color:var(--te-acero);border-style:dashed}
+  /* PANEL DE SELECCION MULTIPLE. Reemplaza a la ficha cuando hay mas de una barra
+     elegida: la ficha edita UNA y con varias el usuario creia estar tocando todas. */
+  #te_modal .te-multi{padding:6px 2px 2px}
+  #te_modal .te-multi-tit{font-weight:700;font-size:12.5px;color:var(--te-ink);margin-bottom:3px}
+  #te_modal .te-multi-sub{font-size:11px;line-height:1.35;color:var(--te-faint);margin-bottom:7px}
+  #te_modal .te-multi-lista{display:flex;flex-direction:column;gap:2px}
+  #te_modal .te-multi-fila{display:flex;align-items:center;gap:6px;cursor:pointer;
+    padding:3px 5px;border-radius:6px;font-size:11.5px;color:var(--te-ink);
+    border:1px solid transparent}
+  #te_modal .te-multi-fila:hover{border-color:var(--te-acero);background:var(--te-panel2)}
+  #te_modal .te-multi-sw{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+  #te_modal .te-multi-pie{font-size:10.5px;color:var(--te-faint);margin-top:7px}
   #te_modal .te-comp .te-tjtop{display:flex;align-items:center;gap:3px;min-width:0}
   #te_modal .te-comp .te-sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
   /* MARCA DE ESPEJO junto al swatch. Existe porque la línea de descripción dejó de
