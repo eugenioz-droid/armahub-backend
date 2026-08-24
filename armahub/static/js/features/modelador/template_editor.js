@@ -202,6 +202,11 @@
     // cuadrante serían tres mandos para una decisión, que fue justo lo que el usuario
     // rechazó de la primera propuesta.
     corteEspesor: null,
+    // MODO AMPOLLETA (25-ago, pedido del usuario). Mientras está encendido, cada teja
+    // muestra su ampolleta y se pueden apagar componentes. Apagado NO significa
+    // "vuelve todo": lo que quedó apagado sigue apagado y su teja sigue gris — si no,
+    // saldrías del modo y se te encenderían barras sin haberlo pedido.
+    modoLuz: false,
     // --- Estado de interacción 2D ---
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
     // (20-ago) `contorno` SE FUE con su check: nadie leía el dato salvo el ghost de
@@ -2698,6 +2703,10 @@
       ST.world.add(box); ST.world.add(edges);
     }
     (out.placements || []).forEach(function (pl) {
+      // APAGADO = NO SE CONSTRUYE. No basta con `mesh.visible = false`: eso ahorra la
+      // llamada de dibujo pero no el tubo ni la memoria de video, que es lo caro. La
+      // barra sigue existiendo en el despiece; lo único que no existe es su malla.
+      if (pl.meta && _ocultoCi(pl.meta.ci)) return;
       var mat = _matDeComp(pl);   // color por barra: override de la receta o el de su tipología
       var mesh = geom.barraSolida(pl.puntos, pl.diam, mat, { segmentosRadiales: 10 });
       if (!mesh) return;
@@ -4207,9 +4216,13 @@
     // Barras: halo de selección + HIT invisible SIEMPRE; el trazo sólido sólo cuando
     // el SVG es el que dibuja (sin render orto detrás).
     placements.forEach(function (pl) {
+      var ci0 = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+      // Apagado: ni trazo ni zona de clic. Que una barra invisible siguiera siendo
+      // clicable en el cuadrante sería lo peor de los dos mundos.
+      if (_ocultoCi(ci0)) return;
       var color = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
       var rol = _rolComp(pl);
-      var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+      var ci = ci0;
       var sel = (ci >= 0) && _estaSeleccionado(ci);
       var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
       if (!pts.length) return;
@@ -6021,6 +6034,65 @@
   // repetidos y sin índices que ya no existen. Es la lista que consumen el espejo y
   // el borrado; ordenada de mayor a menor para poder recorrerla haciendo splice sin
   // que se corran los índices de atrás.
+  // APAGAR UN COMPONENTE ES UNA DECISIÓN DE VISTA, NO DE LA RECETA (25-ago).
+  // ------------------------------------------------------------------------
+  // Se guarda en el componente como campo NO ENUMERABLE, igual que `_pose` o
+  // `_avisos`: así viaja mientras el editor está abierto —sobrevive a reordenar, a
+  // seleccionar, a regenerar— pero NO entra en el JSON del template. Apagar una barra
+  // para mirar otra no puede quedar guardado y llegarle apagada al que abra el
+  // template mañana.
+  //
+  // Y LO MÁS IMPORTANTE: apagar NO toca la generación. La receta se expande completa
+  // siempre. Si se saltara la generación, las jerarquías se recalcularían sin esa
+  // barra y las demás se MOVERÍAN — medido en una viga 600×60×30: apagar el cabezal
+  // de nivel 1 sube al de nivel 2 de y=23,6 a y=24,4, y con eso cambian los kilos.
+  // La ampolleta apaga el DIBUJO, nunca el cálculo.
+  function _ocultoComp(c) { return !!(c && c._oculto); }
+  function _setOcultoComp(c, v) {
+    if (!c) return;
+    try {
+      Object.defineProperty(c, '_oculto', {
+        value: !!v, writable: true, enumerable: false, configurable: true
+      });
+    } catch (e) { c._oculto = !!v; }   // navegador raro: peor guardarlo que perderlo
+  }
+  function _ocultoCi(ci) {
+    var c = (ci >= 0 && ST.receta && ST.receta.componentes) ? ST.receta.componentes[ci] : null;
+    return _ocultoComp(c);
+  }
+  function _nOcultos() {
+    var n = 0;
+    ((ST.receta && ST.receta.componentes) || []).forEach(function (c) { if (_ocultoComp(c)) n++; });
+    return n;
+  }
+  function _alternarLuz(ci) {
+    var c = (ST.receta && ST.receta.componentes) ? ST.receta.componentes[ci] : null;
+    if (!c) return;
+    _setOcultoComp(c, !_ocultoComp(c));
+    _refrescarTeja(ci);
+    _marcarBotonLuz();
+    _regenerar();                       // vuelve a armar el 3D sin (o con) esa barra
+    _actualizarStatus(_ocultoComp(c)
+      ? 'Componente apagado: se deja de dibujar. Las medidas y los kilos no cambian.'
+      : 'Componente encendido.');
+  }
+  function _encenderTodas() {
+    ((ST.receta && ST.receta.componentes) || []).forEach(function (c) { _setOcultoComp(c, false); });
+    _marcarBotonLuz();
+    _regenerar(); _renderPanel();
+  }
+  function _marcarBotonLuz() {
+    var b = $('te_btnLuz'); if (!b) return;
+    var n = _nOcultos();
+    b.classList.toggle('on', !!ST.modoLuz);
+    b.classList.toggle('hay', n > 0);
+    b.title = (n > 0)
+      ? (n + ' componente(s) apagado(s) — no se dibujan, pero siguen contando en medidas y kilos. Clic para entrar/salir del modo.')
+      : 'Prender y apagar componentes: apagados dejan de dibujarse (las medidas y los kilos no cambian).';
+    var cont = $('te_compList');
+    if (cont) cont.classList.toggle('te-luz', !!ST.modoLuz);
+  }
+
   function _selTodos() {
     var n = (ST.receta && ST.receta.componentes) ? ST.receta.componentes.length : 0;
     var out = [], vistos = {};
@@ -7340,8 +7412,9 @@
     // propósito. La ficha de la derecha muestra UNA barra —la principal—, y si las
     // cuatro tejas se vieran iguales no habría forma de saber cuál se está editando.
     var extra = !sel && (ST.selExtra || []).indexOf(ci) >= 0;
+    var apagado = _ocultoComp(c);
     var wrap = document.createElement('div');
-    wrap.className = 'te-comp' + (sel ? ' sel' : (extra ? ' selx' : ''));
+    wrap.className = 'te-comp' + (sel ? ' sel' : (extra ? ' selx' : '')) + (apagado ? ' off' : '');
     wrap.setAttribute('data-ci', ci);
     // El texto largo que la línea chica ya no muestra (modo, separación) vive acá: la
     // teja no lo dice, pero sigue a un hover de distancia.
@@ -7426,6 +7499,22 @@
       _borrarSeleccion();
     });
     wrap.appendChild(del);
+
+    // AMPOLLETA de la teja. Sólo aparece con el modo encendido (la tira es angosta y
+    // un tercer control permanente le comería el nombre de la barra), pero el GRIS de
+    // lo apagado se ve siempre: si no, saldrías del modo y no sabrías qué falta.
+    var luz = document.createElement('button');
+    luz.type = 'button'; luz.className = 'te-tjluz';
+    luz.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+      'aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .9 1.6h5.4c.1-.6.4-1.2.9-1.6A6 6 0 0 0 12 3z"/></svg>';
+    luz.title = apagado ? 'Encender: vuelve a dibujarse' : 'Apagar: deja de dibujarse (no cambia medidas ni kilos)';
+    luz.setAttribute('aria-label', luz.title);
+    luz.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      _alternarLuz(ci);
+    });
+    wrap.appendChild(luz);
 
     wrap.addEventListener('click', function (ev) {
       // BUG 6B — la teja es un TOGGLE: si el componente ya está seleccionado, volver a
@@ -9828,6 +9917,19 @@
     // cuadrantes; plegada deja una pestaña de 18 px y los devuelve enteros. El 3D vive
     // de su tamaño en píxeles, así que hay que avisarle: sin el resize se queda con el
     // viewport viejo y la escena aparece estirada hasta el siguiente gesto.
+    var luzB = $('te_btnLuz');
+    if (luzB && !luzB._teBound) {
+      luzB._teBound = true;
+      luzB.addEventListener('click', function (e) {
+        e.stopPropagation();
+        // Con el modo encendido y algo apagado, un clic con ALT prende todo de una:
+        // el atajo se dice en el título, no se descubre.
+        if (e.altKey && _nOcultos()) { _encenderTodas(); return; }
+        ST.modoLuz = !ST.modoLuz;
+        _marcarBotonLuz();
+        _renderGrilla();
+      });
+    }
     var plg = $('te_gridPlegar');
     if (plg && !plg._teBound) {
       plg._teBound = true;
@@ -13261,6 +13363,9 @@
     _caraDeEje: _caraDeEje,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
     _sincronizarCorteUI: _sincronizarCorteUI, _semiEspesorCorte: _semiEspesorCorte,
+    // AMPOLLETA: apagar es de VISTA, no de la receta (ver su nota).
+    _ocultoComp: _ocultoComp, _setOcultoComp: _setOcultoComp, _ocultoCi: _ocultoCi,
+    _alternarLuz: _alternarLuz, _nOcultos: _nOcultos, _encenderTodas: _encenderTodas,
     // ESPEJAR: la suite maneja el gesto entero (armar, elegir cara, soltar).
     _armarEspejo: _armarEspejo, _salirEspejo: _salirEspejo, _espejarEnCara: _espejarEnCara,
     _ejeDistDe: _ejeDistDe,                                     // eje de reparto (x | z si volteada)

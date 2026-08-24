@@ -436,5 +436,48 @@ console.log('P . el espesor del corte');
   ST.corteEspesor = null;
 }
 
+// ============== Q . LA AMPOLLETA APAGA EL DIBUJO, NUNCA EL CALCULO
+// (25-ago) El usuario pregunto lo correcto antes de que existiera: "si tengo
+// jerarquias y apago un componente, eso no va a generar una modificacion de la
+// posicion de esa componente?". MEDIDO en una viga 600x60x30: sacar de la RECETA el
+// cabezal de nivel 1 sube al de nivel 2 de y=23,6 a y=24,4 -medio diametro de fi16-,
+// y con eso cambian los kilos. Por eso apagar no toca la generacion: la receta se
+// expande completa y lo unico que se salta es construir la malla.
+//
+// Y apagar es de VISTA, no de la receta: el campo es NO ENUMERABLE para que no se
+// guarde en el template. Apagar una barra para mirar otra no puede llegarle apagada
+// al que abra el template manana.
+console.log('');
+console.log('Q . la ampolleta');
+{
+  montar(3);
+  const c = ST.receta.componentes[1];
+  ok(TE._ocultoComp(c) === false, 'una barra nace encendida');
+
+  TE._setOcultoComp(c, true);
+  ok(TE._ocultoComp(c) === true, 'se apaga');
+  ok(TE._ocultoCi(1) === true, 'y se sabe por indice, que es como lo pregunta el dibujo');
+  ok(TE._nOcultos() === 1, 'la tira sabe cuantas hay apagadas (=' + TE._nOcultos() + ')');
+
+  // LO QUE NO PUEDE PASAR: que viaje al template guardado.
+  const guardado = JSON.parse(JSON.stringify(ST.receta));
+  ok(guardado.componentes[1]._oculto === undefined,
+    'apagada NO se guarda en la receta: es estado de vista');
+
+  // …y la generacion sigue emitiendo TODAS las barras, apagadas incluidas: apagar no
+  // toca la receta, asi que el motor emite exactamente lo mismo.
+  regen();
+  const conApagada = (ST.ultimoOut.placements || []).length;
+  TE._setOcultoComp(c, false);
+  regen();
+  const conEncendida = (ST.ultimoOut.placements || []).length;
+  ok(conApagada === conEncendida && conApagada > 0,
+    'el motor emite las mismas barras con el componente apagado y encendido (=' + conApagada + ')');
+  TE._setOcultoComp(c, true);
+
+  TE._encenderTodas();
+  ok(TE._nOcultos() === 0, 'y se pueden prender todas de una');
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);

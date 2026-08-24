@@ -480,6 +480,28 @@
      si las cuatro tejas se vieran iguales no habria como saber cual se esta
      editando. Mismo color, borde punteado y sin el halo. */
   #te_modal .te-comp.selx{border-color:var(--te-acero);border-style:dashed}
+  /* AMPOLLETA (25-ago). El boton de la tira enciende el MODO; la ampolleta de cada
+     teja aparece solo entonces, porque la tira es angosta y un tercer control
+     permanente le comeria el nombre a la barra. El GRIS de lo apagado, en cambio, se
+     ve SIEMPRE: si no, saldrias del modo y no sabrias que falta. */
+  #te_modal .te-gluz{border:none;background:none;color:var(--te-muted);line-height:0;
+    padding:2px;border-radius:6px;cursor:pointer;opacity:.75;
+    transition:opacity .12s,color .12s}
+  #te_modal .te-gluz:hover{opacity:1;color:var(--te-ink)}
+  #te_modal .te-gluz.on{opacity:1;color:var(--te-acero-d)}
+  /* Con algo apagado el boton lo dice aunque el modo este cerrado. */
+  #te_modal .te-gluz.hay{color:var(--te-warn)}
+  #te_modal .te-tjluz{position:absolute;top:3px;right:21px;border:none;background:none;
+    color:var(--te-ink);line-height:0;padding:0;cursor:pointer;opacity:0;z-index:2;
+    display:none;align-items:center;transition:opacity .12s,color .12s}
+  #te_modal #te_compList.te-luz .te-tjluz{display:flex;opacity:.8}
+  #te_modal #te_compList.te-luz .te-tjluz:hover{opacity:1;color:var(--te-acero-d)}
+  /* APAGADA: la teja entera se va al gris. El swatch de color tambien -si no, el
+     unico punto de color de la teja seguiria gritando que la barra esta ahi-. */
+  #te_modal .te-comp.off{opacity:.5}
+  #te_modal .te-comp.off .te-sw{filter:grayscale(1)}
+  #te_modal .te-comp.off .te-nm,#te_modal .te-comp.off .te-de{color:var(--te-faint)}
+  #te_modal #te_compList.te-luz .te-comp.off .te-tjluz{opacity:1;color:var(--te-warn)}
   /* CORTE: el boton lleva su valor y el slider vive detras, desplegado. Asi el ajuste
      es continuo -el usuario pidio "mas medidas" que tres botones fijos- sin ocupar
      media barra de herramientas. */
@@ -1817,7 +1839,7 @@
            izquierdo queda entero para la ficha y los cuadrantes solo ceden el ancho de una
            teja. Las tejas NO cambian: son exactamente las mismas. -->
       <div id="te_grid">
-        <div class="te-sh"><button type="button" id="te_gridPlegar" class="te-gplegar" title="Plegar la tira de componentes">›</button><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
+        <div class="te-sh"><button type="button" id="te_gridPlegar" class="te-gplegar" title="Plegar la tira de componentes">›</button><button type="button" id="te_btnLuz" class="te-gluz" title="Prender y apagar componentes"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .9 1.6h5.4c.1-.6.4-1.2.9-1.6A6 6 0 0 0 12 3z"/></svg></button><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
 
         <!-- Grilla dinámica de componentes (3 tejas por fila con el panel en 360px) -->
         <div id="te_compList"></div>
