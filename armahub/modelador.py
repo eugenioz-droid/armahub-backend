@@ -219,7 +219,7 @@ def _validar_receta(cur, params) -> list:
     """Devuelve la lista de motivos por los que esta receta NO podría generar barras.
     Lista vacía = receta generable. Mensajes en castellano y accionables (dicen QUÉ
     falta y en qué barra)."""
-    from .catalogo import get_figura
+    from .catalogo import cargar_figuras, get_figura
 
     if not isinstance(params, dict) or not params:
         return ["El template no trae receta."]
@@ -234,6 +234,14 @@ def _validar_receta(cur, params) -> list:
         errores.append("El template no tiene ninguna barra: agrega al menos un componente antes de guardar.")
         return errores
 
+    # EL CATÁLOGO, UNA VEZ (antes: un SELECT a figuras_catalogo POR COMPONENTE, así que
+    # guardar un template de 40 barras eran 40 round-trips a Supabase de las 44 consultas
+    # del request; ahora 5). El conjunto sale de los MISMOS componentes que se recorren
+    # abajo, así que no puede faltar ninguno. Ver catalogo.CatalogoFiguras.
+    figuras = cargar_figuras(cur, {
+        str(c.get("figura") or "").strip() for c in comps if isinstance(c, dict)
+    })
+
     for i, comp in enumerate(comps, start=1):
         etq = _etiqueta_componente(i, comp)
         if not isinstance(comp, dict):
@@ -244,7 +252,7 @@ def _validar_receta(cur, params) -> list:
         if not figura:
             errores.append(f"La {etq} no tiene figura asignada.")
             continue
-        fig = get_figura(cur, figura)
+        fig = get_figura(figuras, figura)
         if fig is None:
             errores.append(f"La {etq} usa la figura «{figura}», que no existe en el catálogo de figuras.")
             continue

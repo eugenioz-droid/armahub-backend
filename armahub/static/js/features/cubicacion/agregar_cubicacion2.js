@@ -448,11 +448,20 @@ function ac2EstiloFila(b, val){
     titEstr = 'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con el botón 3D de la fila.';
     return { bg:'', tit:titEstr };
   }
-  // "Guardada" va SIN título propio: en un despiece retomado lo están casi todas, y un
-  // tooltip que salta en cada fila es ruido. Lo explica la leyenda fija del pie de la
-  // grilla. (El del Enfierrador SÍ va, porque no describe un color: describe qué hacer.)
-  if (b._guardada)
-    return { bg:'#f1f8e9', tit:titEstr };
+  // EL FONDO ES ÚNICO: BLANCO (decisión del usuario, 25-ago). «Creo que está bien que
+  // ese fondo sea siempre el mismo… no necesitamos más ruido.»
+  // Acá vivía el verde #f1f8e9 de "ya guardada". Se retira, y con él la última marca de
+  // ESTADO en el fondo: lo que queda pintando fila son sólo dos cosas, y las dos son
+  // TRANSITORIAS y accionables —el rosado de una barra con la geometría mal y el celeste
+  // de lo que el usuario tiene marcado en masiva—. El origen de la barra lo dice su
+  // DIBUJO (teal a mano, azul del 3D) y su insignia; el estado de guardado lo dice el
+  // contador del botón 💾 («N barras por guardar»), que es donde el usuario ya mira
+  // antes de guardar.
+  // LO QUE SE PIERDE, dicho para que no se descubra tarde: mientras se teclean barras
+  // nuevas, el verde era el único indicador POR FILA de cuál ya entró a la base. Si eso
+  // hace falta, la forma de reponerlo SIN volver a pintar fondos es marcar la que está
+  // PENDIENTE (una franja al borde izquierdo), que además es la que pide atención —
+  // marcar lo normal y dejar sin marcar lo excepcional es al revés.
   return { bg:'', tit:titEstr };
 }
 

@@ -234,13 +234,90 @@ _SLOT_A_DIM = {L: f"dim_{L.lower()}" for L in "ABCDEFGHI"}
 _ANG_COLS = ["ang1", "ang2", "ang3", "ang4"]
 
 
-def get_figura(cur, codigo: str):
+class CatalogoFiguras:
+    """El catálogo de figuras LEÍDO DE UNA VEZ, para pasárselo a las operaciones que
+    validan MUCHAS barras seguidas en lugar del cursor.
+
+    POR QUÉ EXISTE (medido el 25-ago sobre el muro de 825 barras del usuario):
+    `get_figura` hace UNA consulta por llamada, y cada barra que se carga al despiece
+    la llama DOS veces — `validar_geometria` y `largo_desde_lados`. O sea 2 SELECT a
+    figuras_catalogo POR BARRA: 1.650 de las 2.483 consultas del request (66%), y cada
+    una es un round-trip Render→Supabase por la red. Con este snapshot el mismo request
+    baja a 833 consultas y el catálogo se lee UNA vez.
+
+    NO es un caché global ni con TTL A PROPÓSITO: vive lo que dura la llamada que lo
+    creó, se lee dentro de la MISMA transacción que las barras (misma foto, misma
+    consistencia que consultando barra por barra) y muere con ella. Por eso editar el
+    catálogo (POST /figuras-catalogo, DELETE) no tiene NADA que invalidar: la carga
+    siguiente lo vuelve a leer. Un caché entre requests sí habría necesitado
+    invalidación, y en Render son varios workers: no habría forma de propagarla.
+
+    Devuelve EXACTAMENTE lo mismo que get_figura contra la BD, None incluido para una
+    figura que no está.
+    """
+
+    __slots__ = ("_figs",)
+
+    def __init__(self, figs: dict):
+        self._figs = figs
+
+    def get(self, codigo):
+        if not codigo:
+            return None
+        return self._figs.get(codigo)
+
+    def __len__(self):
+        return len(self._figs)
+
+    def __contains__(self, codigo):
+        return codigo in self._figs
+
+
+def cargar_figuras(cur, codigos=None) -> CatalogoFiguras:
+    """Lee en UNA consulta las figuras cuyos códigos se piden (o el catálogo entero si
+    `codigos` es None) y devuelve el snapshot que consumen get_figura /
+    largo_desde_lados / validar_geometria.
+
+    OJO: hay que pasarle TODOS los códigos que se van a consultar después — un código
+    ausente de la lista se comporta como "figura inexistente". Los call sites arman el
+    conjunto recorriendo la MISMA lista de barras/componentes que después validan.
+
+    Mismas columnas y mismo criterio que get_figura: NO filtra por `activo` (validar
+    una barra mira la figura que la barra DICE tener, esté activa o no)."""
+    figs = {}
+    if codigos is None:
+        cur.execute("SELECT codigo, parciales, angulos, radio FROM figuras_catalogo")
+    else:
+        pedidos = sorted({c for c in codigos if c})
+        if not pedidos:
+            return CatalogoFiguras(figs)
+        cur.execute(
+            "SELECT codigo, parciales, angulos, radio FROM figuras_catalogo WHERE codigo = ANY(%s)",
+            (pedidos,),
+        )
+    for row in cur.fetchall():
+        # dict_row → acceso por clave; tupla → por índice (mismo criterio que get_figura).
+        if isinstance(row, dict):
+            cod, p, a, r = row.get("codigo"), row.get("parciales"), row.get("angulos"), row.get("radio")
+        else:
+            cod, p, a, r = row[0], row[1], row[2], row[3]
+        figs[cod] = {"parciales": p or [], "angulos": a or [], "radio": bool(r)}
+    return CatalogoFiguras(figs)
+
+
+def get_figura(fuente, codigo: str):
     """Devuelve {parciales, angulos, radio} de una figura, o None si no existe.
+
+    `fuente` es un CURSOR (lee esa figura de la BD: 1 consulta) o un CatalogoFiguras ya
+    leído (no toca la BD). Lo segundo es lo que usan las cargas de muchas barras — ver
+    CatalogoFiguras para el porqué y los números.
     Robusto al tipo de cursor (tupla o dict_row): accede por nombre de columna."""
     if not codigo:
         return None
-    cur.execute("SELECT parciales, angulos, radio FROM figuras_catalogo WHERE codigo = %s", (codigo,))
-    row = cur.fetchone()
+    if isinstance(fuente, CatalogoFiguras):
+        return fuente.get(codigo)
+    fuente.execute("SELECT parciales, angulos, radio FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+    row = fuente.fetchone()
     if not row:
         return None
     # dict_row → acceso por clave; tupla → por índice.
@@ -264,10 +341,11 @@ def _tiene_valor_real(v):
         return False
 
 
-def largo_desde_lados(cur, codigo_figura: str, valores: dict):
+def largo_desde_lados(fuente, codigo_figura: str, valores: dict):
     """Largo = suma de los lados (dims) que la figura USA (5M.4). None si no hay
-    figura o falta algún lado usado."""
-    fig = get_figura(cur, codigo_figura)
+    figura o falta algún lado usado.
+    `fuente`: cursor o CatalogoFiguras ya leído (ver get_figura)."""
+    fig = get_figura(fuente, codigo_figura)
     if fig is None:
         return None
     total = 0.0
@@ -286,8 +364,10 @@ def largo_desde_lados(cur, codigo_figura: str, valores: dict):
     return total
 
 
-def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
+def validar_geometria(fuente, codigo_figura: str, valores: dict) -> dict:
     """Valida la geometría de una barra contra el catálogo (5M.4).
+    `fuente`: cursor o CatalogoFiguras ya leído (ver get_figura). La validación es la
+    MISMA en los dos casos — lo único que cambia es de dónde sale la figura.
     `valores`: dict con dim_a..dim_i, ang1..ang4, radio (los valores EFECTIVOS tras editar).
     Reglas:
       - La figura debe existir en el catálogo.
@@ -298,7 +378,7 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
       - Radio: si la figura NO usa radio, radio debe estar vacío; si lo usa, con valor.
     Retorna {ok, errores, slots_sobran, slots_faltan} donde los slots incluyen
     dim_x, angN y 'radio' (columnas a resaltar en el front)."""
-    fig = get_figura(cur, codigo_figura)
+    fig = get_figura(fuente, codigo_figura)
     if fig is None:
         return {"ok": False, "errores": [f"La figura '{codigo_figura}' no existe en el catálogo."],
                 "slots_sobran": [], "slots_faltan": []}

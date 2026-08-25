@@ -49,19 +49,28 @@ def _peso_teorico(diam, largo):
     return peso_unitario_kg(diam, largo)
 
 
-def _largo_desde_figura(cur, figura, dims):
+def _largo_desde_figura(fuente, figura, dims):
     """largo_total AUTOMÁTICO = suma de los lados (dims) que la figura USA. El radio NO
     suma; sin desarrollo real de dobleces (5N.7). HOOK: aislado para ampliar a barras
     redondas/estribos circulares a futuro sin tocar el resto. Reusa largo_desde_lados
-    del catálogo (la fuente de verdad de qué lados usa cada figura)."""
+    del catálogo (la fuente de verdad de qué lados usa cada figura).
+    `fuente`: cursor o CatalogoFiguras ya leído (ver catalogo.get_figura)."""
     from .catalogo import largo_desde_lados
     if not figura:
         # Sin figura del catálogo: no se puede derivar → 0 (el front puede exigir figura).
         return None
-    return largo_desde_lados(cur, figura, dims)
+    return largo_desde_lados(fuente, figura, dims)
 
 
-def _valores_barra(cur, b, i, factor):
+def _figuras_del_lote(cur, barras):
+    """El catálogo que necesita ESTA tanda, en UNA consulta (ver catalogo.CatalogoFiguras).
+    El conjunto sale de la MISMA lista que después se valida barra por barra, así que no
+    puede faltar ninguno."""
+    from .catalogo import cargar_figuras
+    return cargar_figuras(cur, {b.figura for b in barras if b.figura})
+
+
+def _valores_barra(cur, b, i, factor, figuras=None):
     """Valida UNA barra del payload y devuelve todo lo que se DERIVA de ella
     (dims, largo, peso unitario y total, cantidad total, PROD).
 
@@ -71,8 +80,14 @@ def _valores_barra(cur, b, i, factor):
     lados, mismo factor de peso de la obra), y copiarlas habría garantizado que los dos
     caminos se separaran con el tiempo. Lanza las MISMAS HTTPException que antes: el
     mensaje que ve el usuario no cambia.
+
+    `figuras`: el catálogo YA leído para toda la tanda (_figuras_del_lote). Sin él cae
+    al cursor y consulta la figura de esta barra — que es lo que hacía siempre, y lo que
+    costaba 2 SELECT por barra. La VALIDACIÓN es idéntica en los dos casos: lo único que
+    cambia es de dónde sale la figura (ver catalogo.CatalogoFiguras).
     """
     from .catalogo import validar_geometria
+    fuente = figuras if figuras is not None else cur
     # UBICACIÓN OBLIGATORIA (defensa server-side, fuente de verdad): ninguna barra
     # manual se guarda sin ciclo, eje y sector. Antes eran Optional y se insertaba
     # NULL en silencio → lotes "corruptos" sin contexto. Se rechaza TODA la tanda.
@@ -91,7 +106,7 @@ def _valores_barra(cur, b, i, factor):
     # rechaza TODA la tanda (transaccional) con detalle de qué barra/slots fallan
     # → no se crean barras con geometría inválida (data siempre buena).
     if b.figura:
-        v = validar_geometria(cur, b.figura, dims)
+        v = validar_geometria(fuente, b.figura, dims)
         if not v.get("ok"):
             raise HTTPException(status_code=400, detail={
                 "msg": "Geometría inválida en la barra " + str(i + 1) + " (figura " + str(b.figura) + ").",
@@ -100,7 +115,7 @@ def _valores_barra(cur, b, i, factor):
                 "slots_faltan": v.get("slots_faltan", []),
                 "errores": v.get("errores", []),
             })
-    largo = _largo_desde_figura(cur, b.figura, dims)
+    largo = _largo_desde_figura(fuente, b.figura, dims)
     peso_u = _peso_teorico(b.diam, largo)
     if peso_u is not None:
         peso_u = peso_u * (1 + factor / 100.0)
@@ -505,12 +520,17 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                     (ei[0], nuevo_id, params_txt, email, now, ei[2], ei[3], ei[4],
                      ei[5], ei[6], ciclo, eje, now, email))
                 mapa_inst[iid] = cur.fetchone()[0]
+            # El catálogo de figuras, UNA vez para todo el duplicado: aquí también era
+            # un SELECT por barra (vía _largo_desde_figura). Ver catalogo.CatalogoFiguras.
+            from .catalogo import cargar_figuras as _cargar_figuras
+            figuras = _cargar_figuras(cur, {b.get("figura") for b in origen if b.get("figura")})
             n = 0
+            params_dup = []
             for b in origen:
                 dims = {f"dim_{L}": b.get(f"dim_{L}") for L in "abcdefghi"}
                 dims.update({a: b.get(a) for a in ("ang1", "ang2", "ang3", "ang4")})
                 dims["radio"] = b.get("radio")
-                largo = _largo_desde_figura(cur, b.get("figura"), dims)
+                largo = _largo_desde_figura(figuras, b.get("figura"), dims)
                 peso_u = _peso_teorico(b.get("diam"), largo)
                 if peso_u is not None:
                     peso_u = peso_u * (1 + factor / 100.0)
@@ -524,18 +544,7 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                 # la COPIA de la instancia hecha arriba (nunca a la del lote origen) y
                 # origen_ref viaja para que el sync pueda cruzar generaciones.
                 iid_nuevo = mapa_inst.get(b.get("template_instancia_id"))
-                cur.execute(
-                    """INSERT INTO barras
-                       (id_unico, id_proyecto, sector, piso, ciclo, eje, diam, largo_total,
-                        mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
-                        dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
-                        ang1, ang2, ang3, ang4, radio, suf_tipo, nombre_plano,
-                        origen, template_instancia_id, origen_ref,
-                        import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
-                               %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,
-                               %s, %s, %s,
-                               NULL, %s, 'borrador', %s, %s, %s, %s)""",
+                params_dup.append(
                     (idu, id_proyecto, b.get("sector"), b.get("piso"), ciclo, eje, b.get("diam"), largo,
                      b.get("mult"), b.get("cant"), cant_total, peso_u, peso_t, b.get("marca"), b.get("figura"), cod_prod,
                      b.get("dim_a"), b.get("dim_b"), b.get("dim_c"), b.get("dim_d"), b.get("dim_e"),
@@ -548,6 +557,23 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                      (b.get("origen_ref") or None),
                      nuevo_id, now, email, email, now))   # creado_por = quien duplica
                 n += 1
+            # Las barras del duplicado, EN BLOQUE (antes: un execute por barra → un
+            # round-trip a Supabase por barra). Todas nacen con id_unico nuevo, así que
+            # ninguna choca con otra: agruparlas no cambia el resultado. Misma transacción.
+            if params_dup:
+                cur.executemany(
+                    """INSERT INTO barras
+                       (id_unico, id_proyecto, sector, piso, ciclo, eje, diam, largo_total,
+                        mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
+                        dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                        ang1, ang2, ang3, ang4, radio, suf_tipo, nombre_plano,
+                        origen, template_instancia_id, origen_ref,
+                        import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
+                               %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,
+                               %s, %s, %s,
+                               NULL, %s, 'borrador', %s, %s, %s, %s)""",
+                    params_dup)
             cur.execute("UPDATE lotes SET n_barras = %s WHERE id = %s", (n, nuevo_id))
             try:
                 from .sector_estado import marcar_sector_modificado
@@ -656,7 +682,7 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
     email = user.get("email", "?")
     if not body.barras:
         raise HTTPException(status_code=400, detail="No hay barras para crear.")
-    creadas = []
+    creadas = []   # [{id, id_unico}] por barra, en el orden del payload (se llena al escribir)
     instancia_id = None
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -689,9 +715,55 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             factor = _factor_peso(cur, id_proyecto)
             now = _now_iso()
             sectores_tocados = set()
+            # EL CATÁLOGO DE FIGURAS, UNA VEZ POR CARGA (no dos por barra). Ver
+            # _figuras_del_lote / catalogo.CatalogoFiguras: con el muro de 825 barras
+            # del usuario esto sacó 1.650 SELECT del request (2.483 → 833).
+            figuras = _figuras_del_lote(cur, body.barras)
+            # UPSERT sobre (id_unico, id_proyecto): la barra que YA entró en un
+            # intento anterior (respuesta perdida / doble clic) no se duplica — se
+            # RE-ESCRIBE con el contenido de ESTE envío (el usuario pudo haberla
+            # editado entre el intento perdido y el reintento) y devuelve su id de
+            # siempre. El WHERE acota el upsert al MISMO lote: un conflicto con una
+            # barra de otro lote NO se pisa (cae al manejo de colisión de abajo).
+            # RETURNING trae también el id_unico: es la llave con la que se cruza cada
+            # fila devuelta con la barra que la pidió (ver la escritura en bloque).
+            sql_ins = """INSERT INTO barras
+                   (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
+                    mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
+                    dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                    ang1, ang2, ang3, ang4, radio,
+                    revisada, revisada_por, revisada_fecha, suf_tipo,
+                    origen, template_instancia_id, origen_ref, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
+                           %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
+                           %s,%s,%s,%s,
+                           %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)
+                   ON CONFLICT (id_unico, id_proyecto) DO UPDATE SET
+                     sector=EXCLUDED.sector, piso=EXCLUDED.piso, ciclo=EXCLUDED.ciclo,
+                     eje=EXCLUDED.eje, nombre_plano=EXCLUDED.nombre_plano,
+                     diam=EXCLUDED.diam, largo_total=EXCLUDED.largo_total,
+                     mult=EXCLUDED.mult, cant=EXCLUDED.cant, cant_total=EXCLUDED.cant_total,
+                     peso_unitario=EXCLUDED.peso_unitario, peso_total=EXCLUDED.peso_total,
+                     marca=EXCLUDED.marca, figura=EXCLUDED.figura, cod_proyecto=EXCLUDED.cod_proyecto,
+                     dim_a=EXCLUDED.dim_a, dim_b=EXCLUDED.dim_b, dim_c=EXCLUDED.dim_c,
+                     dim_d=EXCLUDED.dim_d, dim_e=EXCLUDED.dim_e, dim_f=EXCLUDED.dim_f,
+                     dim_g=EXCLUDED.dim_g, dim_h=EXCLUDED.dim_h, dim_i=EXCLUDED.dim_i,
+                     ang1=EXCLUDED.ang1, ang2=EXCLUDED.ang2, ang3=EXCLUDED.ang3,
+                     ang4=EXCLUDED.ang4, radio=EXCLUDED.radio,
+                     revisada=EXCLUDED.revisada, revisada_por=EXCLUDED.revisada_por,
+                     revisada_fecha=EXCLUDED.revisada_fecha, suf_tipo=EXCLUDED.suf_tipo,
+                     origen=EXCLUDED.origen, template_instancia_id=EXCLUDED.template_instancia_id,
+                     origen_ref=EXCLUDED.origen_ref,
+                     editado_por=EXCLUDED.editado_por, editado_fecha=EXCLUDED.editado_fecha
+                   WHERE barras.lote_id = EXCLUDED.lote_id
+                   RETURNING id, id_unico"""
+            # PRIMERO se valida y se arma TODO (sin escribir nada), y recién después se
+            # escribe en bloque. La validación es la misma de siempre y sigue rechazando
+            # la tanda ENTERA en la primera barra mala, con el mismo `detail` de objeto.
+            filas = []   # [id_unico, params] por barra, EN EL ORDEN DEL PAYLOAD
             for i, b in enumerate(body.barras):
                 # Validación + derivados: MISMA función que usa el sync del modelador.
-                v = _valores_barra(cur, b, i, factor)
+                v = _valores_barra(cur, b, i, factor, figuras)
                 largo, peso_u, peso_t = v["largo"], v["peso_u"], v["peso_t"]
                 cant_total, cod_prod = v["cant_total"], v["cod_prod"]
                 # IDEMPOTENCIA (ver BarraManual.id_unico): si el front mandó su id 'M-…'
@@ -715,71 +787,64 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 # si alguien mandara otro, sería una barra colgada de una estructura
                 # ajena — el dueño de estas barras es la instancia de ESTE mismo POST.
                 inst_barra = instancia_id if instancia_id is not None else b.template_instancia_id
-                # UPSERT sobre (id_unico, id_proyecto): la barra que YA entró en un
-                # intento anterior (respuesta perdida / doble clic) no se duplica — se
-                # RE-ESCRIBE con el contenido de ESTE envío (el usuario pudo haberla
-                # editado entre el intento perdido y el reintento) y devuelve su id de
-                # siempre. El WHERE acota el upsert al MISMO lote: un conflicto con una
-                # barra de otro lote NO se pisa (cae al manejo de colisión de abajo).
-                sql_ins = """INSERT INTO barras
-                       (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
-                        mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
-                        dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
-                        ang1, ang2, ang3, ang4, radio,
-                        revisada, revisada_por, revisada_fecha, suf_tipo,
-                        origen, template_instancia_id, origen_ref, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
-                               %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
-                               %s,%s,%s,%s,
-                               %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)
-                       ON CONFLICT (id_unico, id_proyecto) DO UPDATE SET
-                         sector=EXCLUDED.sector, piso=EXCLUDED.piso, ciclo=EXCLUDED.ciclo,
-                         eje=EXCLUDED.eje, nombre_plano=EXCLUDED.nombre_plano,
-                         diam=EXCLUDED.diam, largo_total=EXCLUDED.largo_total,
-                         mult=EXCLUDED.mult, cant=EXCLUDED.cant, cant_total=EXCLUDED.cant_total,
-                         peso_unitario=EXCLUDED.peso_unitario, peso_total=EXCLUDED.peso_total,
-                         marca=EXCLUDED.marca, figura=EXCLUDED.figura, cod_proyecto=EXCLUDED.cod_proyecto,
-                         dim_a=EXCLUDED.dim_a, dim_b=EXCLUDED.dim_b, dim_c=EXCLUDED.dim_c,
-                         dim_d=EXCLUDED.dim_d, dim_e=EXCLUDED.dim_e, dim_f=EXCLUDED.dim_f,
-                         dim_g=EXCLUDED.dim_g, dim_h=EXCLUDED.dim_h, dim_i=EXCLUDED.dim_i,
-                         ang1=EXCLUDED.ang1, ang2=EXCLUDED.ang2, ang3=EXCLUDED.ang3,
-                         ang4=EXCLUDED.ang4, radio=EXCLUDED.radio,
-                         revisada=EXCLUDED.revisada, revisada_por=EXCLUDED.revisada_por,
-                         revisada_fecha=EXCLUDED.revisada_fecha, suf_tipo=EXCLUDED.suf_tipo,
-                         origen=EXCLUDED.origen, template_instancia_id=EXCLUDED.template_instancia_id,
-                         origen_ref=EXCLUDED.origen_ref,
-                         editado_por=EXCLUDED.editado_por, editado_fecha=EXCLUDED.editado_fecha
-                       WHERE barras.lote_id = EXCLUDED.lote_id
-                       RETURNING id"""
-                nuevo_bid = None
-                for _rein in range(2):
-                    cur.execute(
-                        sql_ins,
-                        (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje,
-                         ((b.nombre_plano or "").strip() or plano_lote), b.diam, largo,
-                         b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
-                         b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
-                         b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
-                         bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
-                         origen_barra, inst_barra, ((b.origen_ref or "").strip() or None),
-                         lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
-                    )
-                    fila = cur.fetchone()
-                    if fila is not None:
-                        nuevo_bid = fila[0]
-                        break
-                    # Sin fila devuelta = conflicto con una barra de OTRO lote (el
-                    # upsert de arriba ya resolvió el caso "mismo lote"). Es una
-                    # colisión real de ids — p. ej. una fila clonada en el front que
-                    # arrastró el id de su original —: id nuevo del servidor e insertar
-                    # de verdad.
-                    idu = _id_unico_manual()
-                if nuevo_bid is None:
-                    # Dos colisiones seguidas con uuid nuevo: prácticamente imposible;
-                    # mejor abortar (transacción completa) que responder a medias.
-                    raise HTTPException(status_code=409, detail="Conflicto de ids al guardar. Reintenta.")
-                creadas.append({"id": nuevo_bid, "id_unico": idu})   # id numérico + id_unico
+                filas.append([idu, [
+                    idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje,
+                    ((b.nombre_plano or "").strip() or plano_lote), b.diam, largo,
+                    b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
+                    b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
+                    b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
+                    bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
+                    origen_barra, inst_barra, ((b.origen_ref or "").strip() or None),
+                    lote_id, now, email, email, now,   # creado_por = editado_por = quien cubica
+                ]])
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))
+
+            # ESCRITURA EN BLOQUE. Antes esto era un cur.execute() POR BARRA: 825 barras
+            # = 825 idas y vueltas a Supabase, cada una pagando la latencia de red entera
+            # (Render y la base son dos servicios distintos). executemany manda todas las
+            # sentencias en modo pipeline —una sola descarga a la red— y devuelve los
+            # RETURNING en orden; el ON CONFLICT se sigue evaluando POR FILA, así que la
+            # idempotencia sobre (id_unico, id_proyecto) es exactamente la de antes: una
+            # barra que ya entró se re-escribe y devuelve su id de siempre, no se duplica.
+            # Medido: 833 → 11 consultas para 825 barras.
+            ids = [None] * len(filas)
+            pendientes = list(range(len(filas)))
+            for _rein in range(2):
+                cur.executemany(sql_ins, [filas[k][1] for k in pendientes], returning=True)
+                # Las filas devueltas se cruzan POR id_unico, no por posición: así el
+                # cruce no depende de que el driver emita un result set vacío por cada
+                # fila que no devolvió nada (las que chocan con otro lote).
+                devueltos = {}
+                while True:
+                    for fila in cur.fetchall():
+                        devueltos[fila[1]] = fila[0]
+                    if not cur.nextset():
+                        break
+                faltan = []
+                for k in pendientes:
+                    bid = devueltos.get(filas[k][0])
+                    if bid is None:
+                        faltan.append(k)
+                    else:
+                        ids[k] = bid
+                pendientes = faltan
+                if not pendientes:
+                    break
+                # Sin fila devuelta = conflicto con una barra de OTRO lote (el
+                # upsert de arriba ya resolvió el caso "mismo lote"). Es una
+                # colisión real de ids — p. ej. una fila clonada en el front que
+                # arrastró el id de su original —: id nuevo del servidor e insertar
+                # de verdad, y sólo esas filas vuelven a intentarse.
+                for k in pendientes:
+                    nuevo_idu = _id_unico_manual()
+                    filas[k][0] = nuevo_idu
+                    filas[k][1][0] = nuevo_idu
+            if pendientes:
+                # Dos colisiones seguidas con uuid nuevo: prácticamente imposible;
+                # mejor abortar (transacción completa) que responder a medias.
+                raise HTTPException(status_code=409, detail="Conflicto de ids al guardar. Reintenta.")
+            # id numérico + id_unico, EN EL ORDEN DEL PAYLOAD (el front asocia por posición).
+            creadas = [{"id": ids[k], "id_unico": filas[k][0]} for k in range(len(filas))]
             # Actualizar contador del lote.
             cur.execute(
                 "UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s",
@@ -867,9 +932,40 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
                 else:
                     sobrantes.append(bid)
 
+            # El catálogo de figuras, UNA vez para toda la regeneración (ver
+            # _figuras_del_lote): antes eran 2 SELECT por barra, 1.650 en un muro de 825.
+            figuras = _figuras_del_lote(cur, body.barras)
+            # Las dos sentencias que escribe esta regeneración. Se arman una vez y se
+            # ejecutan EN BLOQUE al final del recorrido (executemany): antes era un
+            # execute por barra — 825 idas y vueltas a Supabase por un muro. Cada
+            # sentencia toca UNA fila distinta (el UPDATE va por id, el INSERT nace con
+            # id_unico nuevo), así que agruparlas no cambia el resultado; y todo sigue
+            # dentro de la MISMA transacción, o entra todo o no entra nada.
+            SQL_UPD = """UPDATE barras SET sector=%s, piso=%s, ciclo=%s, eje=%s, nombre_plano=%s,
+                               diam=%s, largo_total=%s, mult=%s, cant=%s, cant_total=%s,
+                               peso_unitario=%s, peso_total=%s, marca=%s, figura=%s, cod_proyecto=%s,
+                               dim_a=%s, dim_b=%s, dim_c=%s, dim_d=%s, dim_e=%s, dim_f=%s,
+                               dim_g=%s, dim_h=%s, dim_i=%s,
+                               ang1=%s, ang2=%s, ang3=%s, ang4=%s, radio=%s, suf_tipo=%s,
+                               editado_por=%s, editado_fecha=%s
+                             WHERE id = %s"""
+            SQL_INS = """INSERT INTO barras
+                           (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
+                            mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
+                            dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                            ang1, ang2, ang3, ang4, radio,
+                            revisada, suf_tipo,
+                            origen, template_instancia_id, origen_ref, import_id, lote_id, estado,
+                            fecha_carga, creado_por, editado_por, editado_fecha)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
+                                   %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
+                                   FALSE,%s,
+                                   %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)"""
+            params_upd, params_ins = [], []
+
             vistas = set()
             for i, b in enumerate(body.barras):
-                v = _valores_barra(cur, b, i, factor)
+                v = _valores_barra(cur, b, i, factor, figuras)
                 ref = (b.origen_ref or "").strip() or None
                 np_val = (b.nombre_plano or "").strip() or plano_lote
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))
@@ -881,47 +977,29 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
                     # ACTUALIZAR. NO se tocan: id, id_unico, creado_por, fecha_carga ni
                     # `revisada` — la marca del cubicador es SUYA, y una regeneración no
                     # es motivo para borrarle el trabajo de revisión.
-                    cur.execute(
-                        """UPDATE barras SET sector=%s, piso=%s, ciclo=%s, eje=%s, nombre_plano=%s,
-                               diam=%s, largo_total=%s, mult=%s, cant=%s, cant_total=%s,
-                               peso_unitario=%s, peso_total=%s, marca=%s, figura=%s, cod_proyecto=%s,
-                               dim_a=%s, dim_b=%s, dim_c=%s, dim_d=%s, dim_e=%s, dim_f=%s,
-                               dim_g=%s, dim_h=%s, dim_i=%s,
-                               ang1=%s, ang2=%s, ang3=%s, ang4=%s, radio=%s, suf_tipo=%s,
-                               editado_por=%s, editado_fecha=%s
-                             WHERE id = %s""",
+                    params_upd.append(
                         (b.sector, b.piso, b.ciclo, b.eje, np_val,
                          b.diam, v["largo"], b.mult, b.cant, v["cant_total"],
                          v["peso_u"], v["peso_t"], b.marca, b.figura, v["cod_prod"]) +
-                        dim_vals + ang_vals + ((b.suf_tipo or "").strip() or None, email, now, barra_id),
-                    )
-                    actualizadas += 1
+                        dim_vals + ang_vals + ((b.suf_tipo or "").strip() or None, email, now, barra_id))
                 else:
                     # CREAR. Nace igual que por el alta normal (mismo origen, mismo estado).
-                    cur.execute(
-                        """INSERT INTO barras
-                           (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
-                            mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
-                            dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
-                            ang1, ang2, ang3, ang4, radio,
-                            revisada, suf_tipo,
-                            origen, template_instancia_id, origen_ref, import_id, lote_id, estado,
-                            fecha_carga, creado_por, editado_por, editado_fecha)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
-                                   %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
-                                   FALSE,%s,
-                                   %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)""",
+                    params_ins.append(
                         (_id_unico_manual(), id_proyecto, b.sector, b.piso, b.ciclo, b.eje, np_val,
                          b.diam, v["largo"], b.mult, b.cant, v["cant_total"],
                          v["peso_u"], v["peso_t"], b.marca, b.figura, v["cod_prod"]) +
                         dim_vals + ang_vals +
                         ((b.suf_tipo or "").strip() or None,
                          _origen_valido(b.origen), body.instancia_id, ref,
-                         lote_id, now, email, email, now),
-                    )
-                    creadas += 1
+                         lote_id, now, email, email, now))
                     if ref:
                         vistas.add(ref)
+            if params_upd:
+                cur.executemany(SQL_UPD, params_upd)
+                actualizadas = len(params_upd)
+            if params_ins:
+                cur.executemany(SQL_INS, params_ins)
+                creadas = len(params_ins)
 
             # BORRAR lo que dejó de existir. Borrado REAL (sin barras fantasma), pero NO
             # sin rastro: antes se copia a `barras_eliminadas` con quién y cuándo, igual

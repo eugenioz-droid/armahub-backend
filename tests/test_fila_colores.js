@@ -1,7 +1,12 @@
 // Test de LÓGICA (sin navegador) para dos invariantes de la grilla del creador de despieces:
 //
 //   1) El FONDO de una fila sale de UNA sola escala de prioridades (ac2EstiloFila):
-//        inválida > seleccionada (masiva) > barra del Enfierrador > barra guardada > blanco.
+//        inválida > seleccionada (masiva) > blanco.
+//      Desde el 25-ago el fondo NO dice ni origen ni estado: el azul del Enfierrador y el
+//      verde de "guardada" se retiraron a pedido del usuario («que ese fondo sea siempre
+//      el mismo… no necesitamos mas ruido»). Quedan solo dos, y las dos son transitorias
+//      y accionables. El origen lo dice el DIBUJO de la barra; el estado de guardado, el
+//      contador del boton de guardar.
 //      Existe porque la fila la pintan TRES caminos distintos (render completo, edición de una
 //      medida y marcado masivo). Cuando cada uno traía su propia lista, uno se quedaba atrás y
 //      el fondo mentía: el rosado "inválida" quedaba pegado tras corregir la barra. Si alguien
@@ -65,8 +70,13 @@ AC2.masiva = false; AC2.seleccion = {};
 
 check('barra nueva (nada especial) → sin fondo',
       bg(Object.assign({ _id: 1 }, VALIDA)) === '');
-check('barra guardada → verde #f1f8e9',
-      bg(Object.assign({ _id: 2, _guardada: true }, VALIDA)) === '#f1f8e9');
+// EL FONDO ES UNICO: BLANCO (25-ago). Aca se exigia el verde #f1f8e9 de "ya
+// guardada"; el usuario lo retiro: «creo que esta bien que ese fondo sea siempre el
+// mismo… no necesitamos mas ruido». Lo que queda pintando fila son solo cosas
+// TRANSITORIAS y accionables (geometria mal, seleccion en masiva); el ESTADO de
+// guardado lo dice el contador del boton de guardar, no un color por fila.
+check('barra guardada → tambien BLANCA: el fondo ya no dice estado',
+      bg(Object.assign({ _id: 2, _guardada: true }, VALIDA)) === '');
 // LA BARRA DEL 3D NO PINTA SU FILA (cambio del 25-ago). Antes se llevaba un #e1f5fe
 // propio; el usuario lo probó y lo sacó: «el fondo azul de la fila eso sí no me gusta,
 // déjalo blanco nomás». Y tiene razón de fondo: la fila ya lleva TRES marcas para lo
@@ -87,7 +97,7 @@ check('barra inválida → rosado #fff5f5 aunque venga del Enfierrador y esté g
       bg(Object.assign({ _id: 5, _instanciaId: 77, _guardada: true }, INVALIDA)) === '#fff5f5');
 
 AC2.masiva = true; AC2.seleccion = { 6: true, 7: true };
-check('seleccionada en masiva → celeste #e3f2fd, por sobre el verde',
+check('seleccionada en masiva → celeste #e3f2fd (lo que el usuario tiene marcado SI se ve)',
       bg(Object.assign({ _id: 6, _instanciaId: 77, _guardada: true }, VALIDA)) === '#e3f2fd');
 check('seleccionada PERO inválida → manda el rosado (el error no se esconde)',
       bg(Object.assign({ _id: 7, _instanciaId: 77 }, INVALIDA)) === '#fff5f5');
