@@ -1517,6 +1517,107 @@
     return h;
   }
 
+  // ==========================================================================
+  // OFFSET DEL COMPONENTE = MARCO ÚTIL RECORTADO, NO TRASLACIÓN (25-ago)
+  // --------------------------------------------------------------------------
+  // EL DEFECTO (palabras del usuario): «al usar un offset este debiera mover el
+  // punto de inicio y de término. En realidad debiera ajustarse la medida». Hasta
+  // hoy los seis campos de Offset de la ficha escribían `pos_hint`, o sea TRASLADABAN
+  // la pieza entera. MEDIDO sobre la 101A de una viga 600×60×30 (rec 4/4/3, A en
+  // auto): los huecos nacían en x[4, 4] con span 592 y 11.8 kg; al pedir 9 cm al
+  // testero inicio quedaban en x[9, −1] — mismo span 592, mismos 11.8 kg y 1 cm de
+  // fierro FUERA del hormigón por el otro lado. La barra no se ajustó: se corrió.
+  //
+  // LA REGLA (cerrada con el usuario): si el lado que toca ese offset está en AUTO,
+  // el offset ajusta la MEDIDA — recorta el marco útil contra el que ese lado
+  // resuelve, así que la barra empieza más allá y mide menos, y el offset del lado
+  // contrario queda como estaba. Si el lado tiene un valor ESCRITO manda el número
+  // escrito: la barra no puede achicarse y entonces se TRASLADA (lo de siempre).
+  // Quién es cada caso lo decide la UI MIDIENDO el motor (_ladoAjustable), no una
+  // tabla por tipología ni por rol.
+  //
+  // POR QUÉ ACÁ Y NO UN CONCEPTO NUEVO: el motor YA sabe recortar el marco — es
+  // exactamente lo que hace el recubrimiento (marcoUtilNivel: host − 2·(recub + Σφ))
+  // y lo que hace la permutación con `_hostPermutado`, que le arma a cada componente
+  // el host contra el que se expande. El offset es lo mismo un escalón más adentro:
+  // un host RECORTADO por componente. Los 'auto' lo consumen sin enterarse, las dims
+  // fijas siguen midiendo lo suyo, el redondeo de lados ocurre después como siempre y
+  // el 3D, el 2D, el listado y los kilos salen del mismo número.
+  //
+  // EL DATO: comp.off_caras = { x:{min,max}, y:{min,max}, z:{min,max} } en cm que
+  // ESTE componente le cede a cada cara, POR ENCIMA del recubrimiento (0 / ausente =
+  // receta byte-idéntica a la de antes). Es del COMPONENTE, así que vale por igual
+  // para todas sus capas. Como el recorte de los dos lados de un eje puede ser
+  // distinto, además de acortar el host hay que DESPLAZAR su centro la mitad de la
+  // diferencia: eso es _centroRecorte, y se aplica ANTES del post-transform para que
+  // forme parte de la BASE (la posición sin traslación manual) y el ancla del
+  // pos_hint siga describiendo lo que se ve.
+  //
+  // SE MIDE CONTRA EL RECUBRIMIENTO, IGUAL QUE EL ANCLA DEL RANGO: el número que la
+  // ficha rotula es el hueco a la CARA (recub + offset), pero lo guardado es el
+  // offset. Es la misma convención que ya rige las distribuciones —«si modifico el
+  // recubrimiento no se me ajusta el abanico; las dimensiones de la barra sí»—, así
+  // que al cambiar el recubrimiento la pieza se recoloca con él.
+  // ==========================================================================
+  var _EJES_OFF = ['x', 'y', 'z'];
+
+  // Offset CANÓNICO del componente, o null si no cede nada (ruta idéntica a la de
+  // antes: sin offsets no se arma ningún host nuevo ni se traslada nada).
+  function offCarasDe(comp) {
+    var o = comp && comp.off_caras;
+    if (!o || typeof o !== 'object') return null;
+    var out = { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } };
+    var hay = false;
+    for (var i = 0; i < _EJES_OFF.length; i++) {
+      var e = _EJES_OFF[i], par = o[e];
+      if (!par || typeof par !== 'object') continue;
+      for (var j = 0; j < 2; j++) {
+        var ref = j ? 'max' : 'min', v = Number(par[ref]);
+        // Un offset ilegible NO se adivina ni se pone en 0 en silencio: se ignora,
+        // que es lo mismo que no haberlo escrito (mismo criterio que el Δ).
+        if (!isFinite(v) || v === 0) continue;
+        out[e][ref] = v; hay = true;
+      }
+    }
+    return hay ? out : null;
+  }
+
+  // Host RECORTADO: el mismo hormigón con cada eje acortado por sus dos offsets.
+  // Copia TODO el resto del host (recubrimientos, pilas por cara, phi_est) porque el
+  // offset no cambia ninguno de esos: sólo el hueco que le queda a ESTE componente.
+  function _hostRecortado(host, off) {
+    var h = {}, k;
+    for (k in host) { if (Object.prototype.hasOwnProperty.call(host, k)) h[k] = host[k]; }
+    h.largo = Number(host.largo) - off.x.min - off.x.max;
+    h.alto = Number(host.alto) - off.y.min - off.y.max;
+    h.ancho = Number(host.ancho) - off.z.min - off.z.max;
+    return h;
+  }
+
+  // Dónde queda el CENTRO del host recortado respecto del real. Recortar `a` por el
+  // lado 'min' y `b` por el 'max' acorta el eje (a+b) y mueve su centro (a−b)/2.
+  function _centroRecorte(off) {
+    return {
+      x: (off.x.min - off.x.max) / 2,
+      y: (off.y.min - off.y.max) / 2,
+      z: (off.z.min - off.z.max) / 2
+    };
+  }
+
+  // Traslación RÍGIDA de una lista de placements (puntos NUEVOS: los de entrada
+  // pueden venir compartidos con la expansión de referencia del volteo).
+  function _trasladarPlacements(pls, d) {
+    if (!pls || !d || (!d.x && !d.y && !d.z)) return pls;
+    for (var i = 0; i < pls.length; i++) {
+      pls[i].puntos = (pls[i].puntos || []).map(function (p) {
+        var q = { x: p.x + d.x, y: p.y + d.y, z: p.z + d.z };
+        if (p.esArco) q.esArco = true;
+        return q;
+      });
+    }
+    return pls;
+  }
+
   // Punto del marco LOCAL → mundo (y viceversa: la permutación es involutiva).
   // Conserva el flag `esArco` (perf del motor geométrico: no re-filetear arcos).
   function _permPunto(p, P) {
@@ -3886,9 +3987,17 @@
     // ORIENTACIÓN = permutación de ejes REAL: se expande contra el host permutado
     // y se devuelven los puntos al mundo. 'acostada' → ruta idéntica a la anterior.
     var P = _permDe(comp);
+    // OFFSET DEL COMPONENTE (ver «MARCO ÚTIL RECORTADO»): se expande contra el hueco
+    // que él mismo declara —no contra el hormigón pelado— y después se lleva al sitio
+    // de ese hueco. El hormigón REAL sigue siendo `host` para lo que habla de él: el
+    // aviso de fierro fuera y el ancla del pos_hint.
+    var off = offCarasDe(comp);
+    var hostU = off ? _hostRecortado(host, off) : host;
+    var dRec = off ? _centroRecorte(off) : null;
     if (!P) {
-      var baseAc = _baseDeComponente(comp, host);
-      var plsAc = _despachar(comp, baseAc, dist, host);
+      var baseAc = _baseDeComponente(comp, hostU);
+      var plsAc = _despachar(comp, baseAc, dist, hostU);
+      if (dRec) _trasladarPlacements(plsAc, dRec);
       var finAc = _aplicarPostTransform(plsAc, comp, host);
       // El chequeo va sobre los puntos FINALES (los que se ven), y ANTES de
       // cosechar: los avisos viajan al componente en un solo lugar.
@@ -3896,16 +4005,19 @@
       _cosecharAvisos(comp, baseAc);   // capas omitidas → visibles en la UI
       return finAc;
     }
-    var hostEf = _hostPermutado(host, P);
+    var hostEf = _hostPermutado(hostU, P);
     // recubExtremo = el recub de las caras del MUNDO que ahora cierran el eje
     // longitudinal local (volteada → las laterales; de pie → las de borde).
-    var base = _baseDeComponente(comp, hostEf, { recubExtremo: _recubDeEje(host, P.x) });
+    var base = _baseDeComponente(comp, hostEf, { recubExtremo: _recubDeEje(hostU, P.x) });
     var placements = _despachar(comp, base, _cfgLocal(dist, P), hostEf);
     // REFERENCIA para restituir el centro: LA MISMA PIEZA ACOSTADA, o sea lo que
     // el usuario tenía en pantalla justo antes de apretar el botón. Se expande
     // en crudo (sin post-transform: orient/pos_hint se aplican después e igual a
     // las dos). Sólo se paga en componentes reorientados.
-    var ref = _despachar(comp, _baseDeComponente(comp, host), dist, host);
+    // Contra el MISMO host recortado que la permutada: si una comparara contra el
+    // hormigón pelado y la otra contra el hueco, la restitución del volteo movería la
+    // pieza el offset entero por el solo hecho de girarla.
+    var ref = _despachar(comp, _baseDeComponente(comp, hostU), dist, hostU);
     _permutarPlacements(placements, P, orientacionPieza(comp));
     // EJE DE ANCLAJE: el de la NORMAL de la cara, y SÓLO cuando la pieza se apoya
     // de verdad contra una cara (rol cabezal: su coordenada en ese eje la DERIVA
@@ -3917,7 +4029,11 @@
     // restitución sigue exactamente como estaba.
     var ejeAncla = (base.rol === 'cabezal') ? derivarPose(poseDe(comp)).N.eje : null;
     var ejeRango = (dist && dist.rango && dist.rango.eje) || null;   // eje MUNDO del reparto
-    _restituirCentroVolteo(placements, ref, comp, host, ejeAncla, ejeRango);
+    _restituirCentroVolteo(placements, ref, comp, hostU, ejeAncla, ejeRango);
+    // El recorte se aplica ANTES del post-transform a propósito: así forma parte de
+    // la BASE (dónde nace la pieza sin traslación manual) y el ancla del pos_hint
+    // sigue describiendo la barra que se ve, en vez de una que nunca existió.
+    if (dRec) _trasladarPlacements(placements, dRec);
     var fin = _aplicarPostTransform(placements, comp, host);
     // Los avisos SON los de la expansión REAL (la permutada), no los de `ref`:
     // la referencia acostada es un cálculo auxiliar que no se dibuja. Y el chequeo
@@ -5238,6 +5354,9 @@
     nivelJerarquiaEfectivo: nivelJerarquiaEfectivo,
     JER_DEFAULT_POR_ROL: JER_DEFAULT_POR_ROL,
     marcoUtilNivel: marcoUtilNivel,
+    // OFFSET DEL COMPONENTE, canónico ({x:{min,max},…} o null). Lo lee la ficha para
+    // saber qué le está cediendo el componente a cada cara sin re-parsear el crudo.
+    offCarasDeComponente: offCarasDe,
     // PILAS DE OCUPACIÓN POR CARA — generar.js las construye con esto.
     CARAS: ['sup', 'inf', 'lat', 'ext'],
     profundidadCara: profundidadCara,

@@ -128,7 +128,11 @@
   // sin alabeo. Los mismos dos números los usaban el literal de ST y el botón ⟳
   // escritos a mano en los dos sitios; ahora salen de acá (una sola vez).
   var CAM0 = { elev: 0.55, azim: 0.9 };
-  var DIST_MIN = 15, DIST_MAX = 6000;
+  // DIST_MIN = a que distancia MINIMA puede acercarse la camara del 3D. Baja de 15 a
+  // 11.5 (un 30% mas cerca) a la par del tope de las vistas 2D: si solo se subiera uno
+  // de los dos, el mismo gesto de acercar se quedaria corto en unos cuadrantes y no en
+  // otros, que es peor que quedarse corto en todos.
+  var DIST_MIN = 11.5, DIST_MAX = 6000;
   function _clampDist(d) {
     d = Number(d);
     if (!isFinite(d)) return DIST_MIN;
@@ -1641,9 +1645,84 @@
     return (ref === 'max') ? (D / 2 - bb[eje].hiB) : (bb[eje].loB + D / 2);
   }
 
-  // ESCRIBIR el desplazamiento: «déjame `cm` entre esta pieza y esta cara». Se
-  // traduce a un delta de traslación y se suma a pos_hint —LA MISMA PUERTA que usa
-  // _dragMover— y se invalida el ancla para que el motor la re-estampe al expandir.
+  // ==========================================================================
+  // EL OFFSET AJUSTA LA MEDIDA CUANDO EL LADO ESTÁ EN AUTO (25-ago)
+  // --------------------------------------------------------------------------
+  // EL DEFECTO (palabras del usuario): «al usar un offset este debiera mover el
+  // punto de inicio y de término. En realidad debiera ajustarse la medida». Escribir
+  // un offset TRASLADABA la pieza entera, así que conservaba su largo y el offset
+  // del lado contrario cambiaba solo. MEDIDO sobre la 101A de una viga 600×60×30
+  // (rec 4/4/3, A en auto): x[4, 4] span 592 y 11.8 kg; al pedir 9 al testero inicio
+  // quedaba x[9, −1] con el MISMO span y los MISMOS kilos — un centímetro de fierro
+  // fuera del hormigón por el otro lado.
+  //
+  // LA REGLA (cerrada con el usuario):
+  //   · lado en AUTO  → el offset ajusta la MEDIDA. Recorta el marco útil contra el
+  //     que ese lado resuelve (comp.off_caras, ver reglas.js): la barra empieza más
+  //     allá y mide menos, y el offset del lado contrario queda como estaba.
+  //   · lado con VALOR ESCRITO → manda el número escrito: la barra no se puede
+  //     achicar, así que se TRASLADA (lo de siempre) y es el offset del lado
+  //     contrario el que se acomoda solo.
+  //
+  // QUIÉN ES CADA CASO SE MIDE, NO SE DEDUCE. Nada de una tabla por tipología ni por
+  // rol (el rol es la tipología disfrazada) ni de leer `dims[L].modo`: qué LADO de la
+  // figura toca una cara del mundo depende de la pose, del dominante y del ángulo, y
+  // esa cuenta ya la hace el motor. Se le pregunta a él: se expande un clon con el
+  // marco de esa cara recortado 5 cm y se mira si la pieza se ACORTA. Si se acorta,
+  // el lado consume el marco (auto); si sólo se corre o no se inmuta, está fijo.
+  // Es el mismo sondeo con clones que ya usa el tirador del marco (_iniciarDragMarco)
+  // y por la misma razón.
+  // ==========================================================================
+  var _PROBE_OFF = 5;   // cm del sondeo: grande contra el redondeo al centímetro
+
+  // Span del componente sobre un eje del mundo, expandiendo un CLON con `extra` cm de
+  // recorte en una cara. null = no se pudo medir. Expande un clon —y con el ancla de
+  // posición invalidada— por lo mismo que _bordesEjeMundo: expandir MUTA (estampa el
+  // ancla y re-deriva el hint), y sondear no puede moverle el fierro al usuario.
+  function _spanConRecorte(c, eje, ref, extra) {
+    var R = global.ModeladorReglas, host = ST.receta && ST.receta.geometria;
+    if (!R || !R.expandirComponente || !host || !c) return null;
+    var pls;
+    try {
+      var clon = JSON.parse(JSON.stringify(c, function (k, v) {
+        return (String(k).charAt(0) === '_') ? undefined : v;
+      }));
+      _sinAnclaVieja(clon, host);
+      if (extra) {
+        clon.off_caras = clon.off_caras || {};
+        var par = clon.off_caras[eje];
+        if (!par || typeof par !== 'object') par = clon.off_caras[eje] = { min: 0, max: 0 };
+        par[ref] = (Number(par[ref]) || 0) + extra;
+      }
+      pls = R.expandirComponente(clon, host) || [];
+    } catch (e) { return null; }
+    var lo = Infinity, hi = -Infinity;
+    pls.forEach(function (pl) {
+      (pl.puntos || []).forEach(function (q) {
+        var v = Number(q[eje]);
+        if (!isFinite(v)) return;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      });
+    });
+    return isFinite(lo) ? (hi - lo) : null;
+  }
+
+  // ¿El lado que toca esta cara AJUSTA su medida contra el marco? (ver el bloque de
+  // arriba). El umbral es medio sondeo: un lado auto devuelve el recorte completo
+  // —5 cm, ±1 por el redondeo al centímetro— y uno fijo devuelve 0.
+  function _ladoAjustable(c, eje, ref) {
+    var s0 = _spanConRecorte(c, eje, ref, 0);
+    var s1 = _spanConRecorte(c, eje, ref, _PROBE_OFF);
+    if (s0 == null || s1 == null) return false;
+    return (s0 - s1) > _PROBE_OFF / 2;
+  }
+
+  // ESCRIBIR el desplazamiento: «déjame `cm` entre esta pieza y esta cara».
+  //   · lado AJUSTABLE → se recorta el marco útil de esa cara (comp.off_caras).
+  //   · lado FIJO      → se traduce a un delta de traslación y se suma a pos_hint
+  //     —LA MISMA PUERTA que usa _dragMover— y se invalida el ancla para que el motor
+  //     la re-estampe al expandir.
   // NO regenera: eso lo hace quien llama (_mut), igual que el resto de los campos.
   // Devuelve true si escribió (o si ya estaba ahí), false si no había con qué medir.
   function _setHuecoACara(ci, eje, ref, cm) {
@@ -1653,6 +1732,7 @@
     if (!isFinite(n)) return false;
     var hoy = _huecoACara(_bboxCompMundo(ci), eje, ref);
     if (hoy == null) return false;
+    if (_ladoAjustable(c, eje, ref)) return _cederMarcoACara(c, eje, ref, n - hoy);
     // El delta es la diferencia entre el hueco que se pide y el que hay: mover la
     // pieza ESE tanto la deja exactamente ahí (el bbox se traslada rígido con ella).
     // Contra la cara 'max' el signo se invierte: acercarse a ella es ir hacia +.
@@ -1662,6 +1742,33 @@
     c.pos_hint = c.pos_hint || {};
     c.pos_hint[eje] = (Number(c.pos_hint[eje]) || 0) + delta;
     _anclarHintUI(c);
+    return true;
+  }
+
+  // Cederle `mas` cm más de hueco a una cara: es la MISMA cuenta del hueco (pedido −
+  // actual), pero escrita donde el 'auto' la consume en vez de en la traslación.
+  //
+  // LA TRASLACIÓN QUE HUBIERA SE ABSORBE, Y ES EXACTA. `pos_hint` guarda una POSICIÓN
+  // anclada a una cara: si se dejara viva, el motor re-derivaría el hint contra la
+  // base NUEVA y devolvería la pieza a donde estaba — la barra se acortaría pero el
+  // hueco no llegaría al número tecleado. Un hint de h cm en este eje es exactamente
+  // el mismo cuerpo rígido que recortar h por la cara 'min' y −h por la 'max' (el
+  // marco se traslada h y conserva su largo), así que se convierte y se borra: el
+  // dibujo no se mueve ni un milímetro y desde acá el eje lo gobierna el offset.
+  function _cederMarcoACara(c, eje, ref, mas) {
+    if (!isFinite(Number(mas))) return false;
+    var o = c.off_caras;
+    if (!o || typeof o !== 'object') o = c.off_caras = {};
+    var par = o[eje];
+    if (!par || typeof par !== 'object') par = o[eje] = { min: 0, max: 0 };
+    var h = (c.pos_hint && isFinite(Number(c.pos_hint[eje]))) ? Number(c.pos_hint[eje]) : 0;
+    if (h) {
+      par.min = (Number(par.min) || 0) + h;
+      par.max = (Number(par.max) || 0) - h;
+      delete c.pos_hint[eje];
+      if (c.pos_ancla) delete c.pos_ancla[eje];
+    }
+    par[ref] = (Number(par[ref]) || 0) + Number(mas);
     return true;
   }
 
@@ -10991,7 +11098,12 @@
     });
     host.addEventListener('wheel', function (e) {
       e.preventDefault(); o.zoom /= _factorZoomRueda(e);
-      o.zoom = Math.max(0.15, Math.min(12, o.zoom));
+      // TOPE DE ACERCAMIENTO, 30% MAS CERCA (25-ago, pedido del usuario: "me queda
+      // corto muchas veces"). En una vista ortografica `zoom` ESCALA EL ENCUADRE, asi
+      // que acercarse es BAJARLO: el minimo es el limite de cuanto se puede ampliar.
+      // 0.15 / 1.3 = 0.115. El tope de ALEJARSE (12) no se toca: encuadrar el
+      // elemento entero ya funcionaba.
+      o.zoom = Math.max(0.115, Math.min(12, o.zoom));
       _marcarSucio();
       _sincronizarOverlayOrto();
     }, { passive: false });
@@ -14146,6 +14258,7 @@
     _caraDeEje: _caraDeEje,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
     _sincronizarCorteUI: _sincronizarCorteUI, _semiEspesorCorte: _semiEspesorCorte,
+    _DIST_MIN: DIST_MIN,   // la suite comprueba contra el tope real, no contra un literal
     // AMPOLLETA: apagar es de VISTA, no de la receta (ver su nota).
     _ocultoComp: _ocultoComp, _setOcultoComp: _setOcultoComp, _ocultoCi: _ocultoCi,
     _alternarLuz: _alternarLuz, _nOcultos: _nOcultos, _encenderTodas: _encenderTodas,

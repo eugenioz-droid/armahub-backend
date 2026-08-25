@@ -834,31 +834,47 @@ console.log('\nC8 — qué pivote se acepta y qué se rechaza (y el rechazo no m
 {
   // SE ACEPTA TODO LO QUE ESTÉ DELANTE DEL OJO, aunque quede más cerca que el mínimo de
   // la cámara. Hubo un piso de 15 cm y lo quitó la auditoría del 20-ago: con la cámara
-  // en el máximo acercamiento (dist 15) la ventana mide 10 cm de alto, así que casi
+  // en el máximo acercamiento la ventana mide unos centímetros de alto, así que casi
   // cualquier barra que uno señale está a menos de 15 cm del ojo — y quedaba rechazada.
   // O sea: el ctrl no clavaba nada JUSTO en el zoom donde más falta hace (mirando un
   // doblez). Medido entonces: 18,7 px de deriva por paso. Ahora, 0.
   const w = sesion(), TE = w.TemplateEditor;
   montar(TE, BARRA, 0, null, null);
-  TE._st.dist = 15;                                   // el máximo acercamiento
+  // EL MÁXIMO ACERCAMIENTO SE PREGUNTA, NO SE ESCRIBE (25-ago): este bloque tenía el
+  // 15 literal y al subir el zoom un 30% -pedido del usuario- el test se cayó sin que
+  // nada estuviera roto. Lo que se prueba es el COMPORTAMIENTO en el tope, sea cual sea.
+  const DMIN = TE._DIST_MIN;
+  TE._st.dist = DMIN;                                 // el máximo acercamiento
   const b = TE._baseCam();
-  const cerca = { x: b.atras.x * 8, y: b.atras.y * 8, z: b.atras.z * 8 };   // 8 cm del ojo
+  // LA SONDA SE DERIVA DEL TOPE, no es un 8 fijo (25-ago). El 8 estaba calibrado
+  // contra DIST_MIN = 15 y dejaba la cámara a 7 cm del pivote; al acercar el tope un
+  // 30% ese mismo 8 la dejaba a 3,5 y los testigos de más abajo caían DETRÁS del ojo
+  // (proyección infinita) — el test fallaba por su propia calibración, no por el
+  // código. Se elige la sonda para que el estado resultante sea el MISMO de siempre:
+  // cámara a 7 cm del pivote, que es lo que este bloque valida.
+  const SONDA = DMIN - 7;
+  const cerca = { x: b.atras.x * SONDA, y: b.atras.y * SONDA, z: b.atras.z * SONDA };
   const antesC = proyectar(TE, cerca);
-  ok(TE._girarPorArrastre(2, 1, cerca) === 'pivote', 'un punto a 8 cm del ojo (dist 15) SÍ sirve de pivote');
+  ok(TE._girarPorArrastre(2, 1, cerca) === 'pivote', 'un punto a ' + f1(SONDA) + ' cm del ojo (más cerca que el tope) SÍ sirve de pivote');
   ok(dist2(proyectar(TE, cerca), antesC) < 1e-6,
     'y queda clavado: ' + f6(dist2(proyectar(TE, cerca), antesC)) + ' px (antes del arreglo, 18,7 px por paso)');
-  // (el punto está 8 cm por delante del pivote viejo, o sea a 15−8 = 7 del ojo)
+  // (el punto queda por delante del pivote viejo: la cámara termina a 7 del ojo)
   ok(Math.abs(TE._st.dist - 7) < 1e-6, 'la distancia pasa a ser la del pivote (' + f1(TE._st.dist) +
     '), que es lo que significa: dura lo que dura el gesto');
   // …y al soltar vuelve a un estado usable SIN MOVER LA IMAGEN (es lo que corre en el
   // mouseup). Sin esto, `dist` quedaría en 7 —o peor: el centro del elemento acá cae a
   // 0,6 cm del ojo— y el pan y la rueda, que se escalan con ella, se vuelven inservibles.
-  const testigos = [{ x: 0, y: 0, z: 0 }, { x: 0, y: 15, z: 12 }];
+  // LOS TESTIGOS TAMBIÉN SE DERIVAN DEL TOPE. El segundo era (0,15,12) —el 15 otra
+  // vez— y con la cámara restaurada más cerca caía DETRÁS del ojo: su proyección daba
+  // infinito y el test acusaba un movimiento que no existía. Lo que se comprueba es
+  // que al soltar la imagen no se mueve, así que el testigo tiene que estar VISIBLE
+  // en el encuadre restaurado, sea cual sea el tope.
+  const testigos = [{ x: 0, y: 0, z: 0 }, { x: 0, y: DMIN, z: DMIN * 0.8 }];
   const antesR = testigos.map((P) => proyectar(TE, P));
   ok(TE._restaurarPivoteGuardado() === true, 'al soltar, el pivote guardado se restaura');
   const peorR = Math.max.apply(Math, testigos.map((P, k) => dist2(proyectar(TE, P), antesR[k])));
   ok(peorR < 1e-9, 'sin mover la imagen (' + f6(peorR) + ' px)');
-  ok(TE._st.dist >= 15 - 1e-9, 'y con una distancia con la que el pan y la rueda funcionan (' + f1(TE._st.dist) + ')');
+  ok(TE._st.dist >= DMIN - 1e-9, 'y con una distancia con la que el pan y la rueda funcionan (' + f1(TE._st.dist) + ')');
 
   // LO QUE SÍ SE RECHAZA: detrás del ojo (haberse pasado de largo) y lejísimos.
   const w3 = sesion(), T3 = w3.TemplateEditor;
