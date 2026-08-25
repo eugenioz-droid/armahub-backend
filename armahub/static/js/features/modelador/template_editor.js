@@ -131,6 +131,9 @@
   // DIST_MIN = a que distancia MINIMA puede acercarse la camara del 3D. Baja de 15 a
   // 11.5 (30% mas cerca) el 25-ago y de ahi a 9.2 el mismo dia, cuando el usuario probo
   // el primer tramo y pidio otro poco. En total un 39% mas cerca que el original.
+  // ESTE de los dos SI estaba bien desde el principio: es una DISTANCIA de camara, asi
+  // que menos distancia = mas cerca. El de las vistas 2D es un factor de ESCALA y va al
+  // reves -- se movio dos veces en el sentido equivocado antes de darse cuenta.
   // SIEMPRE A LA PAR del tope de las vistas 2D (el clamp de `o.zoom` en la rueda): si
   // solo se moviera uno de los dos, el mismo gesto de acercar se quedaria corto en unos
   // cuadrantes y no en otros, que es peor que quedarse corto en todos.
@@ -11169,13 +11172,17 @@
     host.addEventListener('wheel', function (e) {
       e.preventDefault(); o.zoom /= _factorZoomRueda(e);
       // TOPE DE ACERCAMIENTO (25-ago, pedido del usuario: "me queda corto muchas
-      // veces", y despues de probarlo: "si pudiera aumentarse un poco mas no me quejo").
-      // En una vista ortografica `zoom` ESCALA EL ENCUADRE, asi que acercarse es
-      // BAJARLO: el minimo es el limite de cuanto se puede ampliar.
-      // 0.15 -> 0.115 (30%) -> 0.092 (39% en total sobre el original).
+      // veces"). CUAL DE LOS DOS NUMEROS ES, porque estuvo mal dos veces seguidas:
+      // _encuadrarOrto hace `halfU = ancho * margen / 2 / o.zoom`, o sea el encuadre es
+      // INVERSAMENTE proporcional a `zoom`. Subir `zoom` achica el encuadre = ACERCA.
+      // Por lo tanto el tope de ACERCARSE es el MAXIMO (12) y el de ALEJARSE el minimo.
+      // El comentario que vivia aca decia lo contrario y por eso los dos primeros
+      // intentos bajaron el minimo: lo unico que consiguieron fue dejar alejarse mas,
+      // y el usuario reporto -- con razon -- que el zoom "no mejoro".
+      // 12 -> 16.7 (39% mas de acercamiento) y el minimo vuelve a su 0.15 de siempre:
+      // encuadrar el elemento entero ya funcionaba y nadie pidio alejarse mas.
       // Va SIEMPRE junto con DIST_MIN del 3D, por la razon que se explica alla arriba.
-      // El tope de ALEJARSE (12) no se toca: encuadrar el elemento entero ya funcionaba.
-      o.zoom = Math.max(0.092, Math.min(12, o.zoom));
+      o.zoom = Math.max(0.15, Math.min(16.7, o.zoom));
       _marcarSucio();
       _sincronizarOverlayOrto();
     }, { passive: false });
