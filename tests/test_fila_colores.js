@@ -67,20 +67,26 @@ check('barra nueva (nada especial) → sin fondo',
       bg(Object.assign({ _id: 1 }, VALIDA)) === '');
 check('barra guardada → verde #f1f8e9',
       bg(Object.assign({ _id: 2, _guardada: true }, VALIDA)) === '#f1f8e9');
-check('barra del Enfierrador → azul #e1f5fe',
-      bg(Object.assign({ _id: 3, _instanciaId: 77, _guardada: true }, VALIDA)) === '#e1f5fe');
-check('el azul del Enfierrador gana al verde de guardada',
-      bg(Object.assign({ _id: 4, _instanciaId: 77, _guardada: true }, VALIDA)) !== '#f1f8e9');
+// LA BARRA DEL 3D NO PINTA SU FILA (cambio del 25-ago). Antes se llevaba un #e1f5fe
+// propio; el usuario lo probó y lo sacó: «el fondo azul de la fila eso sí no me gusta,
+// déjalo blanco nomás». Y tiene razón de fondo: la fila ya lleva TRES marcas para lo
+// mismo —el DIBUJO en azul, la insignia 3D y los campos deshabilitados— sobre una
+// escala de fondos que ya tenía rosado, celeste y verde. Lo que se queda es el TÍTULO,
+// que es el que dice CÓMO se edita.
+check('barra del Enfierrador → SIN fondo propio (se distingue por el dibujo y el 3D)',
+      bg(Object.assign({ _id: 3, _instanciaId: 77 }, VALIDA)) === '');
+check('…y si está guardada se lleva el verde de guardada, como cualquier otra',
+      bg(Object.assign({ _id: 4, _instanciaId: 77, _guardada: true }, VALIDA)) === '#f1f8e9');
+check('pero sigue explicando en su título que se edita reabriendo su estructura',
+      /reabriendo su estructura/.test(ac2EstiloFila(Object.assign({ _id: 4, _instanciaId: 77 }, VALIDA)).tit));
 check('barra inválida → rosado #fff5f5 aunque venga del Enfierrador y esté guardada',
       bg(Object.assign({ _id: 5, _instanciaId: 77, _guardada: true }, INVALIDA)) === '#fff5f5');
 
 AC2.masiva = true; AC2.seleccion = { 6: true, 7: true };
-check('seleccionada en masiva → celeste #e3f2fd, por sobre azul y verde',
+check('seleccionada en masiva → celeste #e3f2fd, por sobre el verde',
       bg(Object.assign({ _id: 6, _instanciaId: 77, _guardada: true }, VALIDA)) === '#e3f2fd');
 check('seleccionada PERO inválida → manda el rosado (el error no se esconde)',
       bg(Object.assign({ _id: 7, _instanciaId: 77 }, INVALIDA)) === '#fff5f5');
-check('el celeste de selección y el azul del Enfierrador NO son el mismo color',
-      '#e3f2fd' !== '#e1f5fe');
 AC2.masiva = false; AC2.seleccion = {};
 
 check('la fila con problema explica el problema en su título',
@@ -125,6 +131,23 @@ check('el azul va NOMBRADO (TINTA_3D), no escrito como hex suelto en la grilla',
 // puede no dibujar (un 🗑 invisible costó tres rondas). Ahora es una insignia de texto.
 check('el botón que abre el 3D dice "3D" con letras, no un emoji de ladrillo',
       src3.indexOf('🧱') < 0 && /class="b3d/.test(src3));
+
+// ── 4. La línea que separa filas se ve ──────────────────────────────────────
+// Estaba en #f0f0f0 y el usuario reportó que «está demasiado tenue». Se congela que
+// no vuelva a un gris casi blanco.
+// (Planteó una segmentada en negro como primera opción; se descartó: en una grilla de
+// ~30 columnas los guiones repetidos fila a fila vibran al recorrerla con la vista, y
+// una línea discontinua se lee como «provisional / cortar por aquí». Lo que faltaba
+// era CONTRASTE, no textura.)
+console.log('\n4. El separador de filas tiene contraste');
+const mSep = src3.match(/var AC2_TDS='[^']*border-top:1px solid (#[0-9a-fA-F]{6})/);
+check('AC2_TDS define el borde de la fila', !!mSep);
+if (mSep) {
+  const hexSep = mSep[1].toLowerCase();
+  // Un gris casi blanco no se ve sobre blanco: #f0f0f0 es 0.94 de claridad.
+  const claridad = parseInt(hexSep.slice(1, 3), 16) / 255;
+  check('y NO es un gris casi blanco como el #f0f0f0 de antes (=' + hexSep + ')', claridad < 0.85);
+}
 
 console.log(fallos ? '\n❌ ' + fallos + ' fallo(s)' : '\n✅ Todo OK');
 process.exit(fallos ? 1 : 0);

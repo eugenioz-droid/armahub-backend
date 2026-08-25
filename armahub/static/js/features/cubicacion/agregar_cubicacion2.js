@@ -351,7 +351,14 @@ function ac2Thead(){
 }
 
 // Estilos de celda reutilizables.
-var AC2_TDS='padding:2px 5px; border-top:1px solid #f0f0f0;';
+// SEPARADOR DE FILAS — gris OSCURO y solido (25-ago: «esta demasiado tenue»).
+// El #f0f0f0 de antes practicamente no se veia sobre blanco. Se subio a #b0bec5, que
+// se lee sin pelear con el contenido.
+// SE DESCARTO LA SEGMENTADA EN NEGRO que el usuario planteaba como primera opcion: en
+// una grilla de ~30 columnas, una linea de guiones repetida fila a fila genera un
+// patron que vibra al recorrerla con la vista, y ademas una linea discontinua se lee
+// como "provisional / cortar por aqui". Lo que hacia falta era CONTRASTE, no textura.
+var AC2_TDS='padding:2px 5px; border-top:1px solid #b0bec5;';
 // input numérico editable en celda (clase .ac2cell = estilo Bar Manager). class ac2nav marca
 // las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). data-col/data-row para que
 // ↑↓ vayan a la MISMA columna de la fila de arriba/abajo (robusto aunque las filas difieran).
@@ -409,9 +416,10 @@ window.ac2NavKey=function(ev, el){
 // ac2ActualizarGeom y marcado masivo ac2PintarFilaSel); mientras cada uno traía su propia lista
 // de colores, uno se quedaba atrás y el fondo terminaba MINTIENDO (el rosado "pegado" tras
 // corregir una barra ya costó un fix). Con esta función los tres dicen lo mismo por construcción.
-// Prioridad: el ERROR manda sobre el foco del usuario, el foco sobre el ORIGEN de la barra, y el
-// origen sobre "ya está guardada" — una barra inválida tiene que verse aunque venga del
-// Enfierrador y ya esté en la BD. Devuelve el título en CRUDO: quien lo meta en un atributo HTML
+// Prioridad: el ERROR manda sobre el foco del usuario, y el foco sobre "ya está guardada" — una
+// barra inválida tiene que verse aunque venga del Enfierrador y ya esté en la BD. (El ORIGEN
+// estaba en medio de esa escala con un azul propio hasta el 25-ago; ver la nota de abajo.)
+// Devuelve el título en CRUDO: quien lo meta en un atributo HTML
 // es el que lo escapa (asignado a tr.title no se escapa nada).
 function ac2EstiloFila(b, val){
   val = val || ac2Validar(b);
@@ -419,13 +427,26 @@ function ac2EstiloFila(b, val){
     return { bg:'#fff5f5', tit:'Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+(b.figura||'')+')' };
   if (AC2.masiva && AC2.seleccion[b._id])
     return { bg:'#e3f2fd', tit:'' };
-  if (ac2BarraDeEstructura(b))
-    return { bg:'#e1f5fe', tit:'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con el botón 3D de la fila.' };
-  // "Guardada" va SIN título: en un despiece retomado lo están casi todas, y un tooltip que
-  // salta en cada fila es ruido. Lo explica la leyenda fija del pie de la grilla.
+  // LA BARRA DEL 3D YA NO PINTA SU FILA (25-ago). El usuario probó el dibujo en azul y
+  // dijo: «el fondo azul de la fila eso sí no me gusta, déjalo blanco nomás como
+  // siempre». Y tiene razón de fondo: la fila ya lleva TRES marcas de lo mismo —el
+  // DIBUJO en azul, la insignia 3D y los campos deshabilitados— sobre una escala de
+  // fondos que ya tenía rosado, celeste y verde.
+  // Lo que sí se queda es el TÍTULO, que es el que dice CÓMO se edita.
+  // Y NO corta la cascada: el fondo pasa a significar UNA sola cosa —¿está guardada?—
+  // para todas las barras por igual. Una barra del 3D siempre está guardada, así que
+  // sale verde como cualquier otra guardada; dejarla blanca la habría convertido en la
+  // única fila guardada sin su color, o sea un caso especial nuevo justo donde acabamos
+  // de sacar uno.
+  var titEstr = ac2BarraDeEstructura(b)
+    ? 'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con el botón 3D de la fila.'
+    : '';
+  // "Guardada" va SIN título propio: en un despiece retomado lo están casi todas, y un
+  // tooltip que salta en cada fila es ruido. Lo explica la leyenda fija del pie de la
+  // grilla. (El del Enfierrador SÍ va, porque no describe un color: describe qué hacer.)
   if (b._guardada)
-    return { bg:'#f1f8e9', tit:'' };
-  return { bg:'', tit:'' };
+    return { bg:'#f1f8e9', tit:titEstr };
+  return { bg:'', tit:titEstr };
 }
 
 function ac2Fila(b){
