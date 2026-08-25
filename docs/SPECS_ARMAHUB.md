@@ -1346,4 +1346,108 @@ centralizado en `reglas.js::redondeoCantidadZona`).
 
 ---
 
+## 11. MODELADOR 3D — REGLAS DEL MOTOR QUE NO SE PUEDEN PERDER
+
+Esta sección existe porque son reglas que **una figura nueva tiene que heredar sola**. Si alguien
+pregunta en el futuro «¿por qué esta figura se comporta así?» o «¿puedo cambiar X?», la respuesta
+y las opciones están acá.
+
+### 11.1 La tipología NO decide nada del motor
+
+La lógica de inserción y de colocación es **una sola para todas las barras**. La tipología aporta
+únicamente la **pose de partida** (la dirección en que corre la barra: es lo único que distingue MH
+de MV). No aporta posición, no aporta descuentos, no aporta excepciones.
+
+**No puede haber ramas por tipología ni por rol.** `rolDeComponente` / `_rolDe` parecen
+discriminantes legítimos —se derivan, no dicen «tipología» por ninguna parte— pero **llevan la
+tipología adentro**: ramificar por rol es ramificar por tipología con otro nombre.
+
+Criterio para saber si una condición es legítima: **¿la condición es un HECHO o una ETIQUETA?**
+`¿la cadena cierra sobre sí misma?` es un hecho que la figura contesta sola → vale.
+`¿es un estribo?` es una etiqueta → no vale.
+
+Discriminantes topológicos disponibles: `familiaDeDibujo(fig, null)`, `esCadenaDeSeccion(fig)`,
+`paresEspejoFigura(fig)`, `figuraCerrada(fig)`, `extremosQueCierran(fig, dims)`.
+
+### 11.2 Autoajuste de capas anidadas (check «Ajustar capas anidadas»)
+
+**La regla (decidida con el usuario, 25-ago-2026):**
+
+> Un extremo del cuerpo **CIERRA** cuando de él sale un lado **PERPENDICULAR** que va hacia el
+> núcleo. El descuento de la capa *k* es `(k − 1) × diámetro × (nº de extremos que cierran)`, y el
+> **retiro sale por la punta que cierra** — el extremo libre no se mueve.
+
+Vive en `figura_puntos.extremosQueCierran` (el predicado) y `figura_puntos.anidarFigura` (lo
+aplica). Lo consumen `reglas.distribuidorLayered` y `reglas.distribuidorArreglo`.
+
+Consecuencias que hay que respetar:
+
+- **No hay tabla por figura.** Todo sale de `tramosDeFigura` leído en el marco del trazador. Una
+  figura nueva trae su respuesta en su propia geometría el día que se dibuja o se siembra.
+- **El redondeo va DESPUÉS del descuento y hacia abajo.** 588,8 no es medida de taller; sobrar
+  hormigón es un dato, faltar es una barra que no entra.
+- **El sesgo lo aplica el trazo, no la pose.** La dirección se lee de la propia polilínea que se
+  está dibujando. Razonar por `cara`/`lado`/`rumbo` es donde se cometen los errores de signo.
+- **Es OPT-IN en figuras abiertas** (`cfg.anidar === true`) y viene puesto en las cerradas
+  (`anidar !== false`). El usuario elige cuándo aplicarlo.
+- **El despiece separa las capas solas**: `_claveBarra` incluye todas las dims, así que dos capas
+  con cuerpos distintos son ítems distintos. No hay que separar por número de capa.
+
+**POR QUÉ «PERPENDICULAR» Y NO «cualquier vecino» — y cuál es la opción abierta.**
+
+Sale de una regla anterior del mismo usuario: *«al ajustar capas anidadas no debe considerar el
+Sep, debe ajustar SOLO la medida de B»*. Si el descuento no puede depender del gap, sólo un vecino
+perpendicular lo produce: baja recto, así que a cualquier profundidad sigue en la misma coordenada
+longitudinal y el retiro es exactamente φ. Un vecino **diagonal**, a profundidad *gap*, está en
+`u ∓ gap·cot(θ)`: su retiro **sí depende del Sep**.
+
+Por eso hoy una pata diagonal **no se descuenta y se AVISA** (`reglas._avisoDiagonalAnidado`).
+Son 38 figuras (103B, 103E, 103F, 103H, 103J, 103L con los dos extremos diagonales; el resto con
+uno).
+
+> **Esto es lo importante para el futuro: esa frontera existe por una RESTRICCIÓN, no porque la
+> geometría no sepa contestar.** El número de la diagonal es derivable — sólo que lleva el Sep
+> adentro. Las opciones son dos:
+>
+> 1. **Como está hoy** — regla general + frontera declarada. El usuario ve el aviso y ajusta esa
+>    medida a mano si quiere.
+> 2. **Levantar la restricción del Sep sólo para este cálculo** — el descuento de la diagonal se
+>    deriva de θ y del gap, la regla cubre las 63 figuras y la frontera desaparece. Cuesta una
+>    excepción menos y una dependencia más.
+>
+> No hay una tercera que no sea inventar un número.
+
+**Contornos cerrados**: quedan fuera de este movimiento. Su capa no se traslada, se **insetá** —
+cada lado se retira por su propia normal, o sea cierra por sus dos extremos. Es la misma frase
+leída sobre otro movimiento, no un caso especial: la condición es «¿la cadena cierra?», que es un
+hecho geométrico.
+
+**Deuda anotada**: si la figura no tiene geometría en el catálogo, el predicado cae a un criterio
+viejo (contar posiciones en la lista de dims), que es exactamente la regla equivocada que esto
+reemplazó. En la app el catálogo siempre carga, así que no se ejecuta. Lo correcto es que una
+figura desconocida reciba el mismo trato que la diagonal: **no se descuenta y se dice por qué.**
+
+### 11.3 El Δ por lado y su flecha
+
+El Δ de un lado se suma al largo de corte y a los kilos. La **flecha** dice por dónde crece o se
+acorta, con **tres estados en toda figura**: `fin` (→) · `ini` (←) · `centro` (↔, mitad por cada
+borde). El largo de corte es el mismo en los tres; lo único que cambia es dónde queda la barra.
+El default es `centro` en un marco cerrado (crece centrado por naturaleza) y `fin` en una cadena
+abierta.
+
+**La flecha sólo manda en el lado que CORRE.** `reglas._deltaDelDominante` sesga un solo lado: el
+longitudinal. En una pata el Δ alarga, pero la flecha no mueve nada — una pata tiene un extremo
+soldado a la esquina del cuerpo y el otro libre, así que no hay elección. Por eso se muestra
+apagada con el motivo.
+
+**Dos ampliaciones legítimas, no hechas:**
+
+1. En una figura de 5+ lados, los lados **interiores** también tienen los dos extremos amarrados y
+   ahí la flecha sí tendría sentido. Hoy el motor sólo sesga el lado longitudinal.
+2. El **tirador** escribe `extremo` al arrastrar un borde, así que pisa un `centro` puesto a mano.
+   Lo correcto sería que arrastrando en modo centrado la barra crezca a los dos lados a la vez
+   (el borde arrastrado sigue al mouse igual y el opuesto se abre lo mismo).
+
+---
+
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
