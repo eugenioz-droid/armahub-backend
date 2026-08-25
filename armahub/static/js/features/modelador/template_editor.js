@@ -129,10 +129,14 @@
   // escritos a mano en los dos sitios; ahora salen de acá (una sola vez).
   var CAM0 = { elev: 0.55, azim: 0.9 };
   // DIST_MIN = a que distancia MINIMA puede acercarse la camara del 3D. Baja de 15 a
-  // 11.5 (un 30% mas cerca) a la par del tope de las vistas 2D: si solo se subiera uno
-  // de los dos, el mismo gesto de acercar se quedaria corto en unos cuadrantes y no en
-  // otros, que es peor que quedarse corto en todos.
-  var DIST_MIN = 11.5, DIST_MAX = 6000;
+  // 11.5 (30% mas cerca) el 25-ago y de ahi a 9.2 el mismo dia, cuando el usuario probo
+  // el primer tramo y pidio otro poco. En total un 39% mas cerca que el original.
+  // SIEMPRE A LA PAR del tope de las vistas 2D (el clamp de `o.zoom` en la rueda): si
+  // solo se moviera uno de los dos, el mismo gesto de acercar se quedaria corto en unos
+  // cuadrantes y no en otros, que es peor que quedarse corto en todos.
+  // El test lo lee de aqui (TemplateEditor._DIST_MIN) en vez de repetir el numero, asi
+  // que el proximo ajuste de zoom no lo rompe.
+  var DIST_MIN = 9.2, DIST_MAX = 6000;
   function _clampDist(d) {
     d = Number(d);
     if (!isFinite(d)) return DIST_MIN;
@@ -11136,12 +11140,14 @@
     });
     host.addEventListener('wheel', function (e) {
       e.preventDefault(); o.zoom /= _factorZoomRueda(e);
-      // TOPE DE ACERCAMIENTO, 30% MAS CERCA (25-ago, pedido del usuario: "me queda
-      // corto muchas veces"). En una vista ortografica `zoom` ESCALA EL ENCUADRE, asi
-      // que acercarse es BAJARLO: el minimo es el limite de cuanto se puede ampliar.
-      // 0.15 / 1.3 = 0.115. El tope de ALEJARSE (12) no se toca: encuadrar el
-      // elemento entero ya funcionaba.
-      o.zoom = Math.max(0.115, Math.min(12, o.zoom));
+      // TOPE DE ACERCAMIENTO (25-ago, pedido del usuario: "me queda corto muchas
+      // veces", y despues de probarlo: "si pudiera aumentarse un poco mas no me quejo").
+      // En una vista ortografica `zoom` ESCALA EL ENCUADRE, asi que acercarse es
+      // BAJARLO: el minimo es el limite de cuanto se puede ampliar.
+      // 0.15 -> 0.115 (30%) -> 0.092 (39% en total sobre el original).
+      // Va SIEMPRE junto con DIST_MIN del 3D, por la razon que se explica alla arriba.
+      // El tope de ALEJARSE (12) no se toca: encuadrar el elemento entero ya funcionaba.
+      o.zoom = Math.max(0.092, Math.min(12, o.zoom));
       _marcarSucio();
       _sincronizarOverlayOrto();
     }, { passive: false });
