@@ -42,8 +42,8 @@ BEGIN
     EXECUTE format(
       'INSERT INTO elementos_template (lote_id, %s) SELECT $1, %s FROM elementos_template WHERE id = $2 RETURNING id',
       cols, cols)
-      USING r.lote_destino, r.inst_vieja
-      INTO nuevo_id;
+      INTO nuevo_id
+      USING r.lote_destino, r.inst_vieja;
 
     UPDATE barras
        SET template_instancia_id = nuevo_id
