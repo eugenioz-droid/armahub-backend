@@ -10,7 +10,8 @@ Router de la biblioteca de templates y de la traza de instancias:
   POST   /elementos/instancia                -> guarda la RECETA instanciada (trazabilidad)
   PUT    /elementos/instancia/{id}           -> ACTUALIZA esa estructura (no la reemplaza)
   GET    /elementos/instancia/{id}           -> la estructura completa, para REABRIRLA
-  GET    /lotes/{id}/elementos               -> estructuras de un despiece + nº de barras
+  GET    /lotes/{id}/elementos               -> estructuras de un despiece + nº de barras + kg
+  GET    /elementos/estructuras?proyecto=&elemento= -> estructuras BANDERADAS de una obra
 
 IMPORTANTE: la INSERCIÓN de las barras generadas NO pasa por aquí — se reusa el
 endpoint existente POST /lotes/{id}/barras (lotes.py, extendido en T1.1 con
@@ -733,7 +734,9 @@ def listar_instancias_lote(lote_id: int, user=Depends(get_current_user)):
             cur.execute(
                 """SELECT e.id, e.nombre, e.elemento, e.piso, e.estado, e.template_id,
                           e.creado_por, e.fecha, e.updated_at,
-                          (SELECT COUNT(*) FROM barras b WHERE b.template_instancia_id = e.id) AS n_barras
+                          (SELECT COUNT(*) FROM barras b WHERE b.template_instancia_id = e.id) AS n_barras,
+                          (SELECT COALESCE(SUM(b.peso_total), 0)
+                             FROM barras b WHERE b.template_instancia_id = e.id) AS kg
                      FROM elementos_template e
                     WHERE e.lote_id = %s
                     ORDER BY e.id""",
@@ -741,9 +744,72 @@ def listar_instancias_lote(lote_id: int, user=Depends(get_current_user)):
             )
             filas = cur.fetchall()
     campos = ["id", "nombre", "elemento", "piso", "estado", "template_id",
-              "creado_por", "fecha", "updated_at", "n_barras"]
-    return {"ok": True, "lote_id": lote_id,
-            "elementos": [dict(zip(campos, f)) for f in filas]}
+              "creado_por", "fecha", "updated_at", "n_barras", "kg"]
+    elementos = []
+    for f in filas:
+        d = dict(zip(campos, f))
+        # kg como float con 1 decimal: peso_total es NUMERIC en la BD (Decimal en
+        # Python) y el JSON debe salir plano para que el front lo muestre tal cual.
+        d["kg"] = round(float(d["kg"] or 0), 1)
+        elementos.append(d)
+    return {"ok": True, "lote_id": lote_id, "elementos": elementos}
+
+
+@router.get("/elementos/estructuras")
+def listar_estructuras_obra(proyecto: str, elemento: Optional[str] = None,
+                            user=Depends(get_current_user)):
+    """Estructuras CONSOLIDADAS de una obra (el tab Muros y sus pares futuros).
+    Solo instancias vivas cuyo despiece ya fue banderado (lotes.estado='terminada'):
+    antes de la bandera la estructura es material de trabajo del despiece — recién
+    al terminar el lote pasa a ser un dato de la obra (misma regla con la que el
+    Bar Manager excluye borradores). El path es literal, así que no colisiona con
+    /elementos/instancia/{id}."""
+    _check_permiso_lectura(user)
+    # La obra se resuelve por el LOTE (l.id_proyecto), no por e.id_proyecto: las
+    # instancias pre-107 tienen la traza NULL y el lote es la fuente que nunca falta.
+    # Por lo mismo, sector/ciclo/eje caen al dato del lote cuando la instancia no
+    # los trae (no se inventa data: el lote ES el contexto donde se creó).
+    sql = """SELECT e.id, e.nombre, e.elemento, e.piso, e.lote_id, l.num_obra,
+                    COALESCE(e.sector, l.sector) AS sector,
+                    COALESCE(e.ciclo,  l.ciclo)  AS ciclo,
+                    COALESCE(e.eje,    l.eje)    AS eje,
+                    COUNT(b.id) AS n_barras,
+                    COALESCE(SUM(b.peso_total), 0) AS kg,
+                    e.creado_por, e.fecha, e.updated_at
+               FROM elementos_template e
+               JOIN lotes l ON l.id = e.lote_id
+               LEFT JOIN barras b ON b.template_instancia_id = e.id
+              WHERE l.id_proyecto = %s
+                AND l.estado = 'terminada'
+                AND COALESCE(e.estado, %s) = %s"""
+    # COALESCE en el estado: las filas pre-107 lo tienen NULL y siguen vivas.
+    args = [proyecto, ESTADO_ACTIVA, ESTADO_ACTIVA]
+    if elemento:
+        # Filtro de LISTADO, jamás del motor: la tipología no decide nada en
+        # generación — aquí solo acota qué se muestra en el tab.
+        sql += " AND LOWER(e.elemento) = LOWER(%s)"
+        args.append(elemento)
+    sql += """ GROUP BY e.id, e.nombre, e.elemento, e.piso, e.lote_id, l.num_obra,
+                        e.sector, l.sector, e.ciclo, l.ciclo, e.eje, l.eje,
+                        e.creado_por, e.fecha, e.updated_at
+               ORDER BY e.piso, e.nombre"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(args))
+            filas = cur.fetchall()
+    campos = ["id", "nombre", "elemento", "piso", "lote_id", "num_obra",
+              "sector", "ciclo", "eje", "n_barras", "kg",
+              "creado_por", "fecha", "updated_at"]
+    estructuras = []
+    for f in filas:
+        d = dict(zip(campos, f))
+        # Mismo trato que en el listado por lote: NUMERIC → float plano, 1 decimal.
+        d["kg"] = round(float(d["kg"] or 0), 1)
+        d["n_barras"] = int(d["n_barras"] or 0)
+        estructuras.append(d)
+    # Obra sin resultados = lista vacía con 200 (no es un error: simplemente aún
+    # no hay estructuras banderadas ahí).
+    return {"ok": True, "proyecto": proyecto, "estructuras": estructuras}
 
 
 @router.get("/elementos/instancia/{instancia_id}")

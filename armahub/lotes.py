@@ -112,9 +112,13 @@ def _origen_valido(origen):
     """Sólo se aceptan los orígenes propios de ESTE canal. Cualquier otro cae a
     'manual': no se permite inyectar 'csv'/'pedido' desde aquí (invariante de canales).
     'template' = barra nacida del editor 3D — su clasificación propia, la que permite
-    distinguirla en un despiece donde también hay barras del CSV y del ingreso manual."""
+    distinguirla en un despiece donde también hay barras del CSV y del ingreso manual.
+    'enfierrador' = la etiqueta NUEVA que estampa el Template Editor en modo obra;
+    convive con 'template' (histórico, que NO se migra: no se reescribe data del
+    usuario). El vínculo de raíz sigue siendo template_instancia_id — el origen es
+    solo la etiqueta del canal."""
     o = (origen or "manual").strip().lower()
-    return o if o in ("manual", "template") else "manual"
+    return o if o in ("manual", "template", "enfierrador") else "manual"
 
 
 def _id_unico_manual():
