@@ -171,6 +171,13 @@ class FakeCursor(object):
         if s.startswith("SELECT nombre_proyecto FROM proyectos"):
             nom = STORE["proyectos"].get(p[0])
             self._filas = [(nom,)] if nom is not None else []
+        elif s.startswith("SELECT codigo, parciales, angulos, radio FROM figuras_catalogo"):
+            # catalogo.cargar_figuras: el catálogo se lee de UNA para toda la receta
+            # (antes era una consulta por componente). Devuelve las figuras pedidas
+            # con su código adelante; las que no están simplemente no vienen.
+            pedidos = list(p[0] or []) if p else []
+            self._filas = [(c,) + tuple(STORE["figuras"][c]) for c in pedidos
+                           if c in STORE["figuras"]]
         elif s.startswith("SELECT parciales, angulos, radio FROM figuras_catalogo"):
             fig = STORE["figuras"].get(p[0])
             self._filas = [fig] if fig else []

@@ -2,7 +2,11 @@ fastapi
 uvicorn
 pandas
 python-multipart
-psycopg[binary]
+# >=3.1 NO es decorativo: la carga de barras al despiece usa
+# cur.executemany(..., returning=True), que existe desde psycopg 3.1 (2022) y manda el
+# lote en modo pipeline — un viaje a la base en vez de uno por barra (825 barras pasaron
+# de 2.483 consultas a 10). Con psycopg < 3.1 esa llamada no existe y el guardado se cae.
+psycopg[binary]>=3.1
 psycopg_pool
 PyJWT
 passlib

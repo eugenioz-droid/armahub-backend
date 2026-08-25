@@ -70,7 +70,7 @@ def _figuras_del_lote(cur, barras):
     return cargar_figuras(cur, {b.figura for b in barras if b.figura})
 
 
-def _valores_barra(cur, b, i, factor, figuras=None):
+def _valores_barra(fuente, b, i, factor):
     """Valida UNA barra del payload y devuelve todo lo que se DERIVA de ella
     (dims, largo, peso unitario y total, cantidad total, PROD).
 
@@ -81,13 +81,14 @@ def _valores_barra(cur, b, i, factor, figuras=None):
     caminos se separaran con el tiempo. Lanza las MISMAS HTTPException que antes: el
     mensaje que ve el usuario no cambia.
 
-    `figuras`: el catálogo YA leído para toda la tanda (_figuras_del_lote). Sin él cae
-    al cursor y consulta la figura de esta barra — que es lo que hacía siempre, y lo que
-    costaba 2 SELECT por barra. La VALIDACIÓN es idéntica en los dos casos: lo único que
-    cambia es de dónde sale la figura (ver catalogo.CatalogoFiguras).
+    `fuente`: DE DÓNDE SALE LA FIGURA — el catálogo ya leído para toda la tanda
+    (_figuras_del_lote) o, para una barra suelta, el cursor. No recibe el cursor
+    A PROPÓSITO cuando trabaja sobre una tanda: así el bucle por barra no tiene con qué
+    consultar la BD, que es exactamente el N+1 que costaba 2 SELECT por barra (ver
+    catalogo.CatalogoFiguras). La VALIDACIÓN es idéntica en los dos casos: lo único que
+    cambia es de dónde sale la figura.
     """
     from .catalogo import validar_geometria
-    fuente = figuras if figuras is not None else cur
     # UBICACIÓN OBLIGATORIA (defensa server-side, fuente de verdad): ninguna barra
     # manual se guarda sin ciclo, eje y sector. Antes eran Optional y se insertaba
     # NULL en silencio → lotes "corruptos" sin contexto. Se rechaza TODA la tanda.
@@ -716,8 +717,9 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             now = _now_iso()
             sectores_tocados = set()
             # EL CATÁLOGO DE FIGURAS, UNA VEZ POR CARGA (no dos por barra). Ver
-            # _figuras_del_lote / catalogo.CatalogoFiguras: con el muro de 825 barras
-            # del usuario esto sacó 1.650 SELECT del request (2.483 → 833).
+            # _figuras_del_lote / catalogo.CatalogoFiguras: con el muro de 825 barras del
+            # usuario esto solo sacó 1.650 SELECT del request (2.483 → 833); las 825
+            # restantes las saca la escritura en bloque de más abajo.
             figuras = _figuras_del_lote(cur, body.barras)
             # UPSERT sobre (id_unico, id_proyecto): la barra que YA entró en un
             # intento anterior (respuesta perdida / doble clic) no se duplica — se
@@ -763,7 +765,7 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             filas = []   # [id_unico, params] por barra, EN EL ORDEN DEL PAYLOAD
             for i, b in enumerate(body.barras):
                 # Validación + derivados: MISMA función que usa el sync del modelador.
-                v = _valores_barra(cur, b, i, factor, figuras)
+                v = _valores_barra(figuras, b, i, factor)
                 largo, peso_u, peso_t = v["largo"], v["peso_u"], v["peso_t"]
                 cant_total, cod_prod = v["cant_total"], v["cod_prod"]
                 # IDEMPOTENCIA (ver BarraManual.id_unico): si el front mandó su id 'M-…'
@@ -801,12 +803,14 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
 
             # ESCRITURA EN BLOQUE. Antes esto era un cur.execute() POR BARRA: 825 barras
             # = 825 idas y vueltas a Supabase, cada una pagando la latencia de red entera
-            # (Render y la base son dos servicios distintos). executemany manda todas las
-            # sentencias en modo pipeline —una sola descarga a la red— y devuelve los
-            # RETURNING en orden; el ON CONFLICT se sigue evaluando POR FILA, así que la
-            # idempotencia sobre (id_unico, id_proyecto) es exactamente la de antes: una
-            # barra que ya entró se re-escribe y devuelve su id de siempre, no se duplica.
-            # Medido: 833 → 11 consultas para 825 barras.
+            # (Render y la base son dos servicios distintos, no hay socket local que
+            # valga). psycopg manda el executemany en modo pipeline —todas las sentencias
+            # en un solo viaje— cuando el servidor y libpq son ≥14; Supabase lo es.
+            # El ON CONFLICT se sigue evaluando POR FILA (executemany ejecuta una
+            # sentencia por juego de parámetros, no una sentencia multi-VALUES), así que
+            # la idempotencia sobre (id_unico, id_proyecto) es EXACTAMENTE la de antes:
+            # una barra que ya entró se re-escribe y devuelve su id de siempre, no se
+            # duplica. Medido: cargar 825 barras pasó de 2.483 idas a la BD a 10.
             ids = [None] * len(filas)
             pendientes = list(range(len(filas)))
             for _rein in range(2):
@@ -965,7 +969,7 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
 
             vistas = set()
             for i, b in enumerate(body.barras):
-                v = _valores_barra(cur, b, i, factor, figuras)
+                v = _valores_barra(figuras, b, i, factor)
                 ref = (b.origen_ref or "").strip() or None
                 np_val = (b.nombre_plano or "").strip() or plano_lote
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))

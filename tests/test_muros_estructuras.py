@@ -52,6 +52,208 @@ def _funcion_real(src_path, nombre):
     return None
 
 
+def _nodos_reales(src_path, nombres):
+    """Como _funcion_real pero para VARIOS nodos de nivel superior (clases, funciones y
+    constantes) que dependen entre sí: se compilan JUNTOS, en el orden del archivo, y se
+    devuelve el namespace. Así se ejercita el código REAL de catalogo.py sin importar el
+    módulo (que arrastraría fastapi/psycopg)."""
+    with open(src_path, "r", encoding="utf-8") as f:
+        arbol = ast.parse(f.read())
+    quiero, cuerpo = set(nombres), []
+    for nodo in arbol.body:
+        if isinstance(nodo, (ast.FunctionDef, ast.ClassDef)) and nodo.name in quiero:
+            cuerpo.append(nodo)
+        elif isinstance(nodo, ast.Assign):
+            if any(isinstance(t, ast.Name) and t.id in quiero for t in nodo.targets):
+                cuerpo.append(nodo)
+    ns = {}
+    exec(compile(ast.Module(body=cuerpo, type_ignores=[]), src_path, "exec"), ns)
+    return ns
+
+
+class CursorQueCuenta(object):
+    """Cursor de mentira que CUENTA sus consultas. Sin base de datos, contar es la
+    única forma de medir un N+1: si el catálogo se lee por barra, el contador sube
+    con las barras; si se lee una vez, se queda en 1."""
+
+    def __init__(self, figuras):
+        self.figuras = figuras     # codigo -> (parciales, angulos, radio)
+        self.n = 0
+        self._filas = []
+
+    def execute(self, sql, params=()):
+        self.n += 1
+        s = " ".join(str(sql).split())
+        p = list(params or ())
+        if "= ANY(" in s:          # cargar_figuras: el catálogo de una
+            self._filas = [(c,) + tuple(self.figuras[c]) for c in (p[0] or [])
+                           if c in self.figuras]
+        else:                      # get_figura: una figura suelta
+            f = self.figuras.get(p[0])
+            self._filas = [tuple(f)] if f else []
+
+    def fetchone(self):
+        return self._filas[0] if self._filas else None
+
+    def fetchall(self):
+        return list(self._filas)
+
+
+def _usos_del_cursor(nodo):
+    """Nombres de las llamadas que, DENTRO de `nodo`, usan el cursor: o son métodos de
+    `cur` (cur.execute/…) o le pasan `cur` como argumento. Es lo que no puede aparecer
+    dentro de un bucle por barra."""
+    usos = []
+    for n in ast.walk(nodo):
+        if not isinstance(n, ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "cur":
+            usos.append("cur." + f.attr)
+        elif any(isinstance(a, ast.Name) and a.id == "cur" for a in n.args):
+            usos.append(getattr(f, "id", getattr(f, "attr", "?")) + "(cur, …)")
+    return usos
+
+
+def _funcion_ast(src_path, nombre):
+    with open(src_path, "r", encoding="utf-8") as f:
+        arbol = ast.parse(f.read())
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.FunctionDef) and nodo.name == nombre:
+            return nodo
+    return None
+
+
+def _bucle_sobre(fn, texto_iter):
+    """El `for` de `fn` que recorre `texto_iter` (p.ej. 'body.barras')."""
+    for nodo in ast.walk(fn):
+        if isinstance(nodo, ast.For) and texto_iter in ast.unparse(nodo.iter):
+            return nodo
+    return None
+
+
+def _seccion_catalogo_una_vez():
+    catalogo = os.path.join(ROOT, "armahub", "catalogo.py")
+
+    # 7.1 — El catálogo entero en UNA consulta, y consultarlo después no vuelve a la BD.
+    ns = _nodos_reales(catalogo, [
+        "_SLOT_A_DIM", "_ANG_COLS", "_tiene_valor_real", "CatalogoFiguras",
+        "cargar_figuras", "get_figura", "largo_desde_lados", "validar_geometria"])
+    figs = {
+        "101A": (["A"], [], False),
+        "102B": (["A", "B"], [135], False),
+        "201A": (["B", "G", "H"], [], True),
+    }
+    cur = CursorQueCuenta(figs)
+    cat = ns["cargar_figuras"](cur, {"101A", "102B", "201A"})
+    check("cargar_figuras lee las 3 figuras en UNA sola consulta", cur.n == 1)
+    check("…y las trae todas", len(cat) == 3)
+    n_tras_cargar = cur.n
+    for _ in range(50):
+        ns["get_figura"](cat, "102B")
+    check("consultar el catálogo ya leído NO vuelve a la BD (50 lecturas, 0 consultas)",
+          cur.n == n_tras_cargar)
+    check("una figura que no está sigue devolviendo None",
+          ns["get_figura"](cat, "999Z") is None)
+
+    # 7.2 — MISMO RESULTADO por cursor que por catálogo leído. Esto es lo que hace
+    # legítimo el atajo: la validación no se relajó, sólo cambió de dónde sale la figura.
+    casos = [
+        ("101A", {"dim_a": 100}),                                          # correcta
+        ("101A", {"dim_a": 100, "dim_b": 50}),                             # sobra un lado
+        ("102B", {"dim_a": 100, "dim_b": 50}),                             # falta el ángulo
+        ("102B", {"dim_a": 100, "dim_b": 50, "ang1": 135}),                # correcta
+        ("102B", {"dim_a": -1, "dim_b": 50, "ang1": 135}),                 # lado negativo
+        ("102B", {"dim_a": 0, "dim_b": 50, "ang1": 135}),                  # 0 = lado faltante
+        ("201A", {"dim_b": 10, "dim_g": 5, "dim_h": 5}),                   # falta el radio
+        ("201A", {"dim_b": 10, "dim_g": 5, "dim_h": 5, "radio": 2}),       # correcta
+        ("999Z", {"dim_a": 1}),                                            # figura inexistente
+    ]
+    iguales_val = iguales_largo = True
+    for cod, vals in casos:
+        if ns["validar_geometria"](cur, cod, vals) != ns["validar_geometria"](cat, cod, vals):
+            iguales_val = False
+        if ns["largo_desde_lados"](cur, cod, vals) != ns["largo_desde_lados"](cat, cod, vals):
+            iguales_largo = False
+    check("validar_geometria da lo MISMO con cursor que con catálogo leído (9 casos)",
+          iguales_val)
+    check("largo_desde_lados da lo MISMO con cursor que con catálogo leído (9 casos)",
+          iguales_largo)
+
+    # 7.3 — Los bucles por barra NO pueden tocar la base. Es el candado del N+1: si
+    # alguien vuelve a meter un validar_geometria(cur, …) o un cur.execute() dentro del
+    # recorrido de barras, esto falla.
+    for fn_nombre, iter_txt in (("agregar_barras", "body.barras"),
+                                ("sincronizar_barras_estructura", "body.barras"),
+                                ("duplicar_lote", "origen")):
+        fn = _funcion_ast(LOTES, fn_nombre)
+        bucle = _bucle_sobre(fn, iter_txt) if fn else None
+        check(f"{fn_nombre}: se encuentra el bucle por barra", bucle is not None)
+        if bucle is not None:
+            usos = _usos_del_cursor(bucle)
+            check(f"{fn_nombre}: el bucle por barra NO consulta la BD ({', '.join(sorted(set(usos))) or 'ninguna'})",
+                  not usos)
+    val = _funcion_ast(MODELADOR, "_validar_receta")
+    bucle_comp = _bucle_sobre(val, "comps") if val else None
+    check("_validar_receta: se encuentra el bucle por componente", bucle_comp is not None)
+    if bucle_comp is not None:
+        check("_validar_receta: el bucle por componente NO consulta la BD",
+              not _usos_del_cursor(bucle_comp))
+
+    # 7.4 — La escritura de barras es UNA ida a la BD por tanda (executemany), y la
+    # idempotencia que impide duplicar barras al reintentar sigue siendo la MISMA:
+    # el índice único (id_unico, id_proyecto), acotado al mismo lote.
+    with open(LOTES, "r", encoding="utf-8") as f:
+        src = f.read()
+    alta = src.split('@router.post("/lotes/{lote_id}/barras")')[1].split("@router.")[0]
+    check("el alta escribe las barras en bloque (executemany), no una por una",
+          "cur.executemany(sql_ins" in alta and "cur.execute(\n                        sql_ins" not in alta)
+    check("…conservando el UPSERT por (id_unico, id_proyecto)",
+          "ON CONFLICT (id_unico, id_proyecto) DO UPDATE" in alta)
+    check("…acotado al MISMO lote (un choque con otro lote no se pisa)",
+          "WHERE barras.lote_id = EXCLUDED.lote_id" in alta)
+    check("…y devolviendo id + id_unico (el front asocia por posición)",
+          "RETURNING id, id_unico" in alta)
+    check("el reintento por colisión sigue siendo como mucho 2, con id nuevo del servidor",
+          "for _rein in range(2):" in alta and "_id_unico_manual()" in alta
+          and "status_code=409" in alta)
+    sync = src.split('@router.post("/lotes/{lote_id}/barras/sync")')[1].split("@router.")[0]
+    check("la regeneración también escribe en bloque (UPDATE e INSERT por executemany)",
+          sync.count("cur.executemany(") == 2)
+    check("y el rechazo por barra conserva su forma ({msg, barra_idx, …}) para el front",
+          '"barra_idx": i' in src)
+
+    # 7.5 — El INSERT de barras cuadra: columnas == placeholders == valores. (El
+    # chequeo equivalente de test_modelador_backend.py quedó obsoleto con su propio
+    # regex; éste lee la sentencia por ast, así que no depende de dónde caiga el
+    # RETURNING.)
+    fn = _funcion_ast(LOTES, "agregar_barras")
+    sql = None
+    for nodo in ast.walk(fn):
+        if (isinstance(nodo, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == "sql_ins" for t in nodo.targets)
+                and isinstance(nodo.value, ast.Constant)):
+            sql = nodo.value.value
+    check("se encuentra el INSERT INTO barras del alta", bool(sql))
+    if sql:
+        cols_txt = sql[sql.index("(") + 1:sql.index(")")]
+        n_cols = len([c for c in cols_txt.split(",") if c.strip()])
+        vals_txt = sql[sql.index("VALUES"):sql.index("ON CONFLICT")]
+        n_ph = vals_txt.count("%s")
+        n_null = vals_txt.count("NULL")
+        n_lit = vals_txt.count("'borrador'")
+        valores = None
+        for nodo in ast.walk(fn):
+            if (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)
+                    and nodo.func.attr == "append"
+                    and isinstance(nodo.func.value, ast.Name) and nodo.func.value.id == "filas"):
+                valores = nodo.args[0].elts[1].elts
+        check(f"columnas ({n_cols}) == placeholders+literales ({n_ph + n_null + n_lit})",
+              n_cols == n_ph + n_null + n_lit)
+        check(f"placeholders ({n_ph}) == valores que se le pasan ({len(valores or [])})",
+              valores is not None and n_ph == len(valores))
+
+
 def main():
     # --- 1. _origen_valido: comportamiento real ---
     ov = _funcion_real(LOTES, "_origen_valido")
@@ -155,6 +357,16 @@ def main():
     check("permiso: el mismo de cargar barras al lote",
           "_check_permiso_instancia(cur, user)" in borra)
     check("y queda auditado (quién borró qué)", 'audit(email, "eliminar_instancia_vacia"' in borra)
+
+    # --- 7. EL CATÁLOGO SE LEE UNA VEZ POR CARGA, Y EL BUCLE DE BARRAS NO TOCA LA BD ---
+    # Medido el 25-ago con un doble de cursor que cuenta consultas: cargar el muro de
+    # 825 barras del usuario hacía 2.483 consultas, de las cuales 1.650 (66%) eran
+    # SELECT a figuras_catalogo — 2 por barra, una desde validar_geometria y otra desde
+    # largo_desde_lados, sobre un catálogo de 63 figuras que no cambia durante la carga.
+    # Cada una es una ida y vuelta Render→Supabase por la red. Después del arreglo: 10
+    # idas a la BD para las mismas 825 barras. Esta sección congela las dos mitades:
+    # que el catálogo se lea de una, y que el bucle no pueda volver a consultar por barra.
+    _seccion_catalogo_una_vez()
 
     print()
     if fallos:
