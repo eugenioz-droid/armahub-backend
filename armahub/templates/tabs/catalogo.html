@@ -291,6 +291,21 @@
   #tplChips .tplLimpiar[disabled] { cursor:default; opacity:.35; }
   #tplChips .tplLimpiar[disabled]:hover { background:#fff; border-color:#dbe1e8; }
 
+  /* MINIATURA DE SECCION de la fila. El SVG lo arma seccion_mini.js desde el resumen
+     compacto que manda GET /templates; aca solo se le reserva el sitio y se le pone
+     marco, para que una fila sin miniatura (backend viejo, receta sin medidas) no
+     descuadre la tabla. 110x80 es el tamano que el usuario pidio: en 64x46 la seccion
+     con fierro no se leia. */
+  #tplGuardadosLista .tplMini { display:inline-block; line-height:0; border-radius:5px;
+    border:1px solid #eceff1; background:#fff; }
+  #tplGuardadosLista .tplMini svg { display:block; width:110px; height:80px; }
+  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:120px; }
+  /* El GUION del que no hay miniatura: mismo trato que el resto de los datos que el
+     servidor no manda (ver _tplKpi). Ocupa el mismo alto para no saltar la fila. */
+  #tplGuardadosLista .tplMiniSin { display:flex; align-items:center; justify-content:center;
+    width:110px; height:80px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
+    font-size:11px; }
+
   /* INSIGNIA DE USO de la fila. El template que nadie cargó todavía lo DICE con
      palabra ("sin usar"): un guion es un hueco, y un hueco no informa. */
   #tplGuardadosLista .tplUso { display:inline-block; font-size:11px; line-height:1;
@@ -315,7 +330,13 @@
            chips — no había cómo volver.
            Cada fila muestra el USO (n_usos / n_obras del backend), que es lo que
            sirve para elegir con 80 templates: el que ya funcionó, no el último
-           tocado. Abrir = clic en la fila (GET /templates/{id} → modal);
+           tocado. Y abre con la SECCIÓN: un esquema del corte con su fierro y sus
+           cotas, dibujado por seccion_mini.js desde el resumen compacto que viene en
+           la misma respuesta (campo `seccion`, ~50-120 bytes por fila; NO la receta).
+           Es lo único que distingue cinco templates que se llaman «Muro …» y miden lo
+           mismo. La cabecera dice «esquema» siempre: el dibujo no va a escala —las
+           posiciones las calcula el motor, que no corre acá—, pero las COTAS sí son
+           las medidas del template. Abrir = clic en la fila (GET /templates/{id} → modal);
            Renombrar y Eliminar van con palabra al final (DELETE con confirmación
            que nombra el template; 409 = está en uso y NO se borra).
            La lógica vive en template_editor.js. -->

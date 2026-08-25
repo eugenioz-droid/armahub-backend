@@ -14289,6 +14289,32 @@
       _esc(txt) + '</span>';
   }
 
+  // MINIATURA DE SECCIÓN de la fila. El dibujo lo hace ModeladorSeccionMini
+  // (features/modelador/seccion_mini.js) desde el resumen compacto que manda el
+  // backend en `t.seccion` (~50-120 bytes): acá sólo se decide QUÉ va en la celda.
+  // Tres huecos distintos, y CADA UNO dice lo suyo (mezclarlos era mandar al usuario a
+  // arreglar lo que no está roto):
+  //   · el backend no manda `seccion` (servidor viejo) → guion, el mismo trato que
+  //     cualquier dato que no viaja (ver _tplKpi);
+  //   · el dibujante no cargó → guion, pero diciendo que el que falta es el script.
+  //     No se improvisa un SVG acá: el dibujo vive en un solo sitio;
+  //   · `seccion` en null → el HUECO del dibujante, que dice que con ESTA receta no
+  //     hay sección. Un template cuya receta no se puede dibujar no recibe una silueta
+  //     inventada.
+  // El tooltip sale del dibujante (`titulo`), que es quien dice —con esa palabra— que
+  // el dibujo es un ESQUEMA y que las COTAS, en cambio, son las medidas del template.
+  function _tplMini(t) {
+    var M = global.ModeladorSeccionMini;
+    if (!M) {
+      return '<span class="tplMiniSin" title="El dibujante de la sección no llegó a cargar: recarga la página">—</span>';
+    }
+    if (!t || t.seccion === undefined) {
+      return '<span class="tplMiniSin" title="Este servidor no manda todavía el resumen de la sección">—</span>';
+    }
+    return '<span class="tplMini" title="' + _esc(M.titulo(t.seccion)) + '">' +
+      M.svg(t.seccion) + '</span>';
+  }
+
   // Pinta la card entera desde el estado: _tplLista (lo que mandó el servidor) +
   // _tplFiltros + _tplOrden. NO recibe la lista ni la guarda — antes recibía
   // `templates` y de paso escribía _tplLista, y con filtros locales eso habría
@@ -14330,8 +14356,14 @@
     //     junto al nombre (ver .tplObra). Una columna que dice lo mismo en todas
     //     las filas no ordena nada.
     // Entró USO, que es la pregunta real de la pantalla: cuál ya funcionó.
+    // Y entró SECCIÓN (25-ago): con cinco templates que se llaman «Muro …» el nombre
+    // no distingue nada y el hormigón tampoco (varios miden lo mismo) — lo que cambia
+    // es el FIERRO. La cabecera dice «esquema» con todas sus letras y siempre visible,
+    // porque el dibujo NO es una sección a escala (ver seccion_mini.js): eso no se
+    // deja para un asterisco al pie.
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
-      '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
+      '<tr><th ' + th + '>Sección · esquema</th>' +
+      '<th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
       '<th ' + thN + '>Comp.</th><th ' + th + '>Uso</th>' +
       '<th ' + th + '>Última edición</th>' +
       '<th ' + thN + '>Administrar</th></tr>' +
@@ -14353,6 +14385,7 @@
           ' onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
           ' title="Abrir este template para seguir editandolo"' +
           ' style="border-bottom:1px solid #eee; cursor:pointer;">' +
+          '<td class="tplMiniCel">' + _tplMini(t) + '</td>' +
           '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) +
             // La obra SÓLO aparece cuando el template está colgado de una:
             // repetir "General" en cada fila era ruido, pero perder el dato en las
@@ -14529,7 +14562,7 @@
   global.TemplateEditor = {
     // GESTOR DE TEMPLATES (card del tab): orden, filtros locales y celdas de la fila.
     _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
-    _tplUso: _tplUso, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
+    _tplUso: _tplUso, _tplMini: _tplMini, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
     _tplTiposPresentes: _tplTiposPresentes, _tplEsMio: _tplEsMio,
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,

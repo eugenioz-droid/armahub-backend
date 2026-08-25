@@ -398,6 +398,16 @@
         'modelador-semilla',
         '[ArmaHub] No se pudo cargar modelador/semilla_viga.js'
       ),
+      // Miniatura de SECCION del Gestor de templates: convierte el resumen compacto
+      // que manda GET /templates en un <svg>. No depende del motor (no lo corre: por
+      // eso el dibujo es un esquema y lo dice), asi que carga suelto como el resto.
+      loadScript(
+        'script[data-armahub-feature="modelador-seccion-mini"]',
+        '/static/js/features/modelador/seccion_mini.js' + suffix,
+        'armahubFeature',
+        'modelador-seccion-mini',
+        '[ArmaHub] No se pudo cargar modelador/seccion_mini.js'
+      ),
       // (Aquí se cargaba modelador/panel_3d.js, el panel del modal "3D Template".
       // Se retiró con el modal el 25-ago; el Template Editor hace ese trabajo.)
       // Template Editor (Colocador por proyecciones) — sub-tab del Catálogo.
