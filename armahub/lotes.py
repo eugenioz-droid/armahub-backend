@@ -1174,8 +1174,18 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
+            # UBICACIÓN DEL LOTE (ciclo/eje/sector/estructura) — se devuelve desde la
+            # PROPIA fila del lote (columnas de la migración 101, que además rellenó
+            # las de los lotes viejos desde sus barras). Antes no viajaba, y el front
+            # la deducía de la PRIMERA BARRA: en un despiece VACÍO no había primera
+            # barra y el contexto quedaba en blanco. Eso rompía el editor 3D — abría
+            # igual, dejaba modelar el muro entero y recién al cargar el backend
+            # rechazaba las barras por "falta ubicación obligatoria" (25-ago, 400 con
+            # el muro ya hecho). El dato existe desde que se crea el despiece; lo que
+            # faltaba era mandarlo.
             cur.execute(
-                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra, snap_barras, plano "
+                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra, snap_barras, plano, "
+                "ciclo, eje, sector, estructura "
                 "FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
@@ -1184,7 +1194,8 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
             estado = r[2]
             lote = {"id": r[0], "id_proyecto": r[1], "estado": estado, "creado_por": r[3],
                     "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6], "num_obra": num_obra,
-                    "plano": r[9]}
+                    "plano": r[9],
+                    "ciclo": r[10], "eje": r[11], "sector": r[12], "estructura": r[13]}
             if estado == "eliminado":
                 # Lote ELIMINADO: sus barras ya no están en la tabla; se leen del snapshot congelado
                 # (solo lectura). El front las muestra bloqueadas/en gris.

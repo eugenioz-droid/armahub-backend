@@ -1,5 +1,7 @@
 // ═════════════════════════════════════════════════════════════════════════════
-// TAB «Muros» — los muros CONSOLIDADOS de una obra.
+// TAB «Element Manager» — los ELEMENTOS CONSOLIDADOS de una obra.
+// (se llamó «Muros» hasta el 25-ago, cuando el 3D sólo paría muros; hoy modela viga,
+//  columna, fundación y genérico. Los nombres internos siguen diciendo `muros`.)
 //
 // POR QUÉ EXISTE: un muro modelado en el Enfierrador se disuelve en 30 barras dentro
 // de un despiece; una vez terminado el despiece no había ninguna pantalla que dijera
@@ -40,7 +42,7 @@ window.murosPintar = function(lista){
   lista = lista || [];
   if (res){
     var kg=lista.reduce(function(a,e){ return a + Number(e.kg||0); }, 0);
-    res.textContent = lista.length ? (lista.length+' muro(s) · '+_murosNum(kg,1)+' kg') : '';
+    res.textContent = lista.length ? (lista.length+' elemento(s) · '+_murosNum(kg,1)+' kg') : '';
   }
   cuerpo.innerHTML = lista.map(function(e){
     var ciclo=(e.ciclo||'—'), eje=(e.eje||'—');
@@ -64,14 +66,14 @@ window.murosPintar = function(lista){
 // instancia los trae en NULL — las filas pre-107).
 async function _murosCargar(){
   _murosLista = [];
-  if (!_murosProyecto){ window.murosPintar([]); _murosMsg('Elige una obra para ver sus muros.'); return; }
-  _murosMsg('Cargando muros…');
+  if (!_murosProyecto){ window.murosPintar([]); _murosMsg('Elige una obra para ver sus elementos.'); return; }
+  _murosMsg('Cargando elementos…');
   var d = await apiGet('/elementos/estructuras?proyecto='+encodeURIComponent(_murosProyecto)+'&elemento=muro');
-  if (!d){ window.murosPintar([]); _murosMsg('No se pudieron cargar los muros de esta obra.'); return; }
+  if (!d){ window.murosPintar([]); _murosMsg('No se pudieron cargar los elementos de esta obra.'); return; }
   _murosLista = d.estructuras || [];
   window.murosPintar(_murosLista);
   // Obra sin muros banderados NO es un error: se dice por qué está vacío.
-  _murosMsg(_murosLista.length ? '' : 'Esta obra aún no tiene muros en despieces terminados. Un muro aparece acá cuando su despiece se bandera 🚩.');
+  _murosMsg(_murosLista.length ? '' : 'Esta obra aún no tiene elementos en despieces terminados. Un elemento aparece acá cuando su despiece se bandera 🚩.');
 }
 
 window.murosRecargar = function(){ _murosCargar(); };

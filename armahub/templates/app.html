@@ -119,9 +119,14 @@
            del v2. Ver docs/diseno_editor_cubicacion.md §"Limpieza del v1". No re-exponer este
            botón: el v1 quedó obsoleto. -->
       <button class="tab-btn mod-cubicacion" onclick="switchTab('agregar2')">📋 Agregar Despiece</button>
-      <!-- Muros CONSOLIDADOS de la obra (despiece ya banderado). Va junto al creador porque es
-           su continuación natural: lo que allí se modela, acá se consulta. -->
-      <button class="tab-btn mod-cubicacion" onclick="switchTab('muros')">🧱 Muros</button>
+      <!-- ELEMENTOS CONSOLIDADOS de la obra (despiece ya banderado). Va junto al creador porque
+           es su continuación natural: lo que allí se modela, acá se consulta.
+           NOMBRE: «Element Manager», hermano del «Bar Manager» — uno administra barras sueltas,
+           éste los elementos que las agrupan. Se llamó «Muros» mientras el 3D sólo paría muros;
+           el editor ya modela viga, columna, fundación y genérico, así que el nombre mentía por
+           defecto. El id interno del tab sigue siendo 'muros' a propósito: renombrarlo tocaría el
+           router, el js y los enlaces guardados sin cambiarle nada al usuario. -->
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('muros')">🧱 Element Manager</button>
       <button class="tab-btn mod-cubicacion" onclick="switchTab('pedidos')">📝 Pedidos</button>
       <button class="tab-btn mod-cubicacion" onclick="switchTab('export')">📥 Exportación</button>
       <!-- Reclamos tabs (Nivel 1 — patrón shell estándar) -->

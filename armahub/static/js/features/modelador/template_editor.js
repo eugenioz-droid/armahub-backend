@@ -12769,10 +12769,33 @@
     if (motivo) _abrirPopPisos(false);
   }
 
+  // POSICION DEL DESPLEGABLE — SE CALCULA, NO SE HEREDA (fix 25-ago).
+  // El ribbon es una fila que se desplaza sola cuando no cabe: lleva overflow-x:auto
+  // con overflow-y:hidden, y ESO RECORTA a cualquier hijo que salga por abajo. El
+  // desplegable colgaba del boton con position:absolute, o sea vivia dentro de esa
+  // caja: se veia cortado y por debajo de la barra de herramientas y de los canvas.
+  // No es un problema de z-index (ya estaba en 40, mas alto que todo lo demas): un
+  // recorte por overflow no se gana subiendo capas. Con position:fixed el desplegable
+  // sale del flujo del ribbon y se ancla al boton por coordenadas de pantalla.
+  // Se recoloca al abrir, y se cierra al hacer scroll o al cambiar el tamaño de la
+  // ventana en vez de quedarse flotando lejos de su boton.
+  function _ubicarPopPisos() {
+    var pop = $('te_pisosPop'), btn = $('te_pisosBtn');
+    if (!pop || !btn || !btn.getBoundingClientRect) return;
+    var r = btn.getBoundingClientRect();
+    pop.style.top = (r.bottom + 6) + 'px';
+    // Si el desplegable se saldria por la derecha de la ventana, se alinea por su
+    // borde derecho al del boton (el ribbon empuja este grupo hacia el centro).
+    var ancho = pop.offsetWidth || 240;
+    var izq = Math.max(6, Math.min(r.left, (global.innerWidth || 1280) - ancho - 6));
+    pop.style.left = izq + 'px';
+  }
+
   function _abrirPopPisos(on) {
     var pop = $('te_pisosPop'); if (!pop) return;
     if (on) { _renderListaPisos(); _cargarPisosObra(); }
     pop.style.display = on ? '' : 'none';
+    if (on) _ubicarPopPisos();
     var btn = $('te_pisosBtn');
     if (btn && btn.setAttribute) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
   }
@@ -12786,6 +12809,11 @@
         if (btn.disabled) return;
         _abrirPopPisos(!(pop && pop.style.display !== 'none'));
       });
+      // Con position:fixed el desplegable ya no viaja con su boton: si el ribbon se
+      // desplaza o la ventana cambia de tamaño, se cierra en vez de quedar suelto.
+      global.addEventListener('resize', function () { _abrirPopPisos(false); });
+      var rib = $('te_ribbon');
+      if (rib) rib.addEventListener('scroll', function () { _abrirPopPisos(false); });
     }
     if (host && !host._teBound) {
       host._teBound = true;
@@ -13654,6 +13682,33 @@
     return 'Error inesperado (HTTP ' + status + ').';
   }
 
+  // EL `detail` DEL BACKEND NO SIEMPRE ES UN TEXTO (fix 25-ago). Los rechazos que más
+  // le importan al usuario —"falta ubicación obligatoria", "geometría inválida en la
+  // barra N"— viajan como OBJETO: {msg, barra_idx, faltan|slots_faltan|slots_sobran}.
+  // Acá había un String(detail) a secas, así que esos dos casos —justo los que traen
+  // la explicación buena— se mostraban como "[object Object]" y el usuario quedaba
+  // ciego frente a un error que el servidor había explicado bien. Reportado con un
+  // muro completo ya modelado y un 400 imposible de leer.
+  // Se traduce lo que hay: texto → tal cual · objeto → su `msg` (+ los slots, que son
+  // la mitad accionable) · lista (validación de FastAPI) → el primer mensaje.
+  function _detalleHttp(data, status) {
+    var d = data ? data.detail : null;
+    if (d == null || d === '') return _msgHttp(status);
+    if (typeof d === 'string') return d;
+    if (Object.prototype.toString.call(d) === '[object Array]') {
+      var uno = d[0];
+      if (!uno) return _msgHttp(status);
+      if (typeof uno === 'string') return uno;
+      return String(uno.msg || JSON.stringify(uno));
+    }
+    var txt = d.msg ? String(d.msg) : '';
+    var faltan = d.faltan || d.slots_faltan, sobran = d.slots_sobran;
+    if (faltan && faltan.length) txt += ' Falta: ' + faltan.join(', ') + '.';
+    if (sobran && sobran.length) txt += ' Sobra: ' + sobran.join(', ') + '.';
+    if (d.errores && d.errores.length) txt += ' ' + d.errores.join(' ');
+    return txt.trim() || JSON.stringify(d);
+  }
+
   // fetch con el error ya traducido. Rechaza con un Error que lleva `.status` para
   // que el llamador pueda distinguir los casos que necesitan otra acción (404 al
   // actualizar → ofrecer copia; 409 al eliminar → NO borrar).
@@ -13661,8 +13716,9 @@
     return fetch(_tplUrl(path), opts || {}).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (res.ok) return data;
-        var e = new Error((data && data.detail) ? String(data.detail) : _msgHttp(res.status));
+        var e = new Error(_detalleHttp(data, res.status));
         e.status = res.status;
+        e.detalle = (data && data.detail != null) ? data.detail : null;
         throw e;
       });
     }, function () {
@@ -14188,6 +14244,9 @@
     _renderListaPisos: _renderListaPisos, _cargarPisosObra: _cargarPisosObra,
     _barrasPayload: _barrasPayload, _nombreEstructura: _nombreEstructura,
     _trazaInstancia: _trazaInstancia,
+    // El traductor de errores del backend: lo prueba tests/test_ubicacion_despiece.js
+    // (el bug del "[object Object]" que dejó al usuario ciego frente a un 400).
+    _detalleHttp: _detalleHttp,
     // TANDA 3 · no perder trabajo + capeo del @
     _hayCambiosSinGuardar: _hayCambiosSinGuardar,
     _guardarBorradorAhora: _guardarBorradorAhora, _programarBorrador: _programarBorrador,

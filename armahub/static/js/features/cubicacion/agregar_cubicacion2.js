@@ -1983,6 +1983,20 @@ window.ac2AbrirEditor3D=async function(instanciaId){
   if (typeof window.templateEditorAbrirEnObra!=='function'){
     alert('El editor aún se está cargando. Reintenta en un momento.'); return;
   }
+  // UBICACIÓN COMPLETA ANTES DE MODELAR (25-ago). Cada barra que salga del 3D se
+  // estampa con sector/ciclo/eje y el backend las exige; sin ellos el "Cargar al
+  // despiece" falla — y falla al FINAL, con el elemento ya modelado. Se dice acá,
+  // que es la única puerta donde el usuario todavía no ha invertido nada.
+  // Con el lote devolviendo su propia ubicación esto no debería saltar nunca; queda
+  // para el despiece antiguo que la tenga en null, y para que si vuelve a faltar se
+  // sepa DÓNDE falta en vez de descubrirlo con un rechazo del servidor.
+  var faltaUbic=[['sector',AC2.sector],['ciclo',AC2.ciclo],['eje',AC2.eje]]
+    .filter(function(p){ return !String(p[1]||'').trim(); }).map(function(p){ return p[0]; });
+  if (faltaUbic.length && !soloVista){
+    alert('A este despiece le falta '+faltaUbic.join(', ')+'.\n\nCada barra del 3D se guarda con esa '+
+          'ubicación, así que el despiece la rechazaría al cargar. Complétala arriba y vuelve a entrar.');
+    return;
+  }
   var opts={};
   if (instanciaId!=null){
     var d=await _ac2Get('/elementos/instancia/'+instanciaId);
@@ -2073,10 +2087,26 @@ window.ac2RetomarLote=async function(id, forzar){
     var _io2=document.getElementById('ac2_obra');
     AC2._nombreObra=(_io2 && _io2.value || '').trim() || AC2._nombreObra;
   }
-  // Contexto del lote (de su primera barra): sector, estructura (se infiere de la marca), ciclo, eje.
+  // CONTEXTO DEL LOTE — manda EL LOTE, no su primera barra (fix 25-ago).
+  // Sector/ciclo/eje se estampan en CADA barra y el backend los exige, así que este
+  // dato no es decorativo: es lo que hace válida una barra. Antes salía de bs[0], la
+  // primera barra guardada, y por eso un despiece VACÍO —recién creado, o reabierto
+  // antes de guardar nada— dejaba el contexto en blanco. En la grilla no se notaba
+  // (el alta pide Sector y Estructura antes de dejar agregar), pero el editor 3D sí
+  // abría: el usuario modelaba un muro completo y al "Cargar al despiece" el backend
+  // lo rechazaba con 400 por ubicación faltante. El lote GUARDA su ubicación desde que
+  // se crea (columnas de la migración 101, con los viejos ya rellenados desde sus
+  // barras); la primera barra queda sólo como respaldo por si algún lote antiguo
+  // llegara con las columnas en null.
   var b0=bs[0]||{};
-  AC2.sector=b0.sector||''; AC2.ciclo=b0.ciclo||''; AC2.eje=b0.eje||'';
-  AC2.estructura=ac2EstructuraDeMarca(b0.marca)||AC2.estructura;
+  AC2.sector=L.sector||b0.sector||''; AC2.ciclo=L.ciclo||b0.ciclo||''; AC2.eje=L.eje||b0.eje||'';
+  AC2.estructura=L.estructura||ac2EstructuraDeMarca(b0.marca)||AC2.estructura;
+  // La OBRA del despiece también sale del lote: hasta ahora sólo la ponía el selector
+  // de obra, así que cualquier camino que llegue a un lote sin pasar por él dejaba
+  // AC2.proyecto en null — y ese campo viaja en el contexto del editor 3D igual que
+  // sector/ciclo/eje. Es el mismo error de fondo: leer el dato de quien lo trajo en
+  // vez de leerlo del registro que lo tiene.
+  if (!AC2.proyecto && L.id_proyecto) AC2.proyecto=L.id_proyecto;
   // Reconstruir las barras (todas ya guardadas → _guardada=true).
   _ac2Seq=1; ac2LimpiarSeleccion();
   AC2.barras=bs.map(function(x){

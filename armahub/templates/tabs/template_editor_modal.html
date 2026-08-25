@@ -1439,7 +1439,12 @@
   #te_modal .te-pisosbtn:disabled{opacity:.5;cursor:not-allowed}
   #te_modal .te-pisosres{font-size:11px;color:var(--te-acero-t);font-weight:700;
     max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #te_modal .te-pisospop{position:absolute;top:calc(100% + 6px);left:0;z-index:40;
+  /* FIXED, no absolute: el ribbon lleva overflow-y:hidden (para que la fila se
+     desplace de lado cuando no cabe) y eso RECORTABA el desplegable, que quedaba
+     cortado y por debajo de la barra de herramientas y de los canvas. Un recorte por
+     overflow no se arregla con z-index —ya estaba en 40, sobre todo lo demas—: hay
+     que sacar el desplegable de esa caja. Lo ancla al boton _ubicarPopPisos(). */
+  #te_modal .te-pisospop{position:fixed;z-index:9900;
     display:flex;flex-direction:column;gap:6px;min-width:196px;
     padding:9px;border:1px solid var(--te-line);border-radius:9px;
     background:var(--te-panel);box-shadow:0 10px 26px rgba(0,0,0,.22)}

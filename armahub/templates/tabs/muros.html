@@ -1,6 +1,9 @@
-<!-- TAB «Muros» — los muros CONSOLIDADOS de una obra: los que viven en un despiece ya
-     banderado 🚩. Antes de la bandera el muro es material de trabajo del despiece y se ve
-     desde el creador; recién al terminar el lote pasa a ser un dato de la obra y aparece acá.
+<!-- TAB «Element Manager» — los ELEMENTOS CONSOLIDADOS de una obra: los que viven en un
+     despiece ya banderado 🚩. Antes de la bandera el elemento es material de trabajo del despiece
+     y se ve desde el creador; recién al terminar el lote pasa a ser un dato de la obra y aparece acá.
+     Se llamó «Muros» hasta el 25-ago: el 3D sólo paría muros y el nombre era honesto. Hoy modela
+     viga, columna, fundación y genérico, así que el nombre pasó a ser el del hermano del Bar
+     Manager. Los ids internos siguen diciendo `muros` a propósito (ver app.html).
      Es un tab de CONSULTA: lista y abre el 3D en solo-visualización. No edita nada — las
      barras de un despiece terminado se corrigen en Bar Manager.
      Markup; la lógica vive en features/cubicacion/muros.js. -->
@@ -9,8 +12,8 @@
 
     <!-- Cabecera -->
     <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
-      <h3 style="margin:0; color:#0277bd;">🧱 Muros</h3>
-      <span class="muted" style="font-size:12px;">Muros de la obra cuyo despiece ya fue terminado 🚩 — ábrelos en 3D para ver cómo quedaron.</span>
+      <h3 style="margin:0; color:#0277bd;">🧱 Element Manager</h3>
+      <span class="muted" style="font-size:12px;">Elementos de la obra cuyo despiece ya fue terminado 🚩 — ábrelos en 3D para ver cómo quedaron.</span>
     </div>
 
     <!-- Obra: MISMO componente que el Bar Manager y el creador de despieces
@@ -28,13 +31,13 @@
       <span id="muros_resumen" style="font-size:12px; color:#0277bd; font-weight:600;"></span>
     </div>
 
-    <!-- Tabla de muros. Mismo formato que el repositorio de despieces del creador. -->
+    <!-- Tabla de elementos. Mismo formato que el repositorio de despieces del creador. -->
     <table style="width:100%; font-size:11px; border-collapse:collapse;">
       <thead><tr style="color:#666; background:#fafafa;">
-        <th style="text-align:left; padding:4px 8px;">Muro</th>
+        <th style="text-align:left; padding:4px 8px;">Elemento</th>
         <th style="text-align:left; padding:4px 8px;">Piso</th>
         <th style="text-align:left; padding:4px 8px;">Ciclo · Eje</th>
-        <th style="text-align:right; padding:4px 8px;" title="Barras vivas de este muro en el despiece">Barras</th>
+        <th style="text-align:right; padding:4px 8px;" title="Barras vivas de este elemento en el despiece">Barras</th>
         <th style="text-align:right; padding:4px 8px;">Kg</th>
         <th style="text-align:left; padding:4px 8px;" title="Despiece donde se cargó">Despiece</th>
         <th style="text-align:left; padding:4px 8px;">Creado</th>
@@ -42,7 +45,7 @@
       </tr></thead>
       <tbody id="muros_body"></tbody>
     </table>
-    <!-- Mensaje de estado (sin obra / sin muros / cargando). Siempre visible cuando aplica:
+    <!-- Mensaje de estado (sin obra / sin elementos / cargando). Siempre visible cuando aplica:
          una tabla vacía sin explicación se lee como "se rompió". -->
     <div id="muros_msg" class="muted" style="padding:14px 8px;">Elige una obra para ver sus muros.</div>
 
