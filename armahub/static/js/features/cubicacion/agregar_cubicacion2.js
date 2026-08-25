@@ -352,13 +352,15 @@ function ac2Thead(){
 
 // Estilos de celda reutilizables.
 // SEPARADOR DE FILAS — gris OSCURO y solido (25-ago: «esta demasiado tenue»).
-// El #f0f0f0 de antes practicamente no se veia sobre blanco. Se subio a #b0bec5, que
-// se lee sin pelear con el contenido.
+// El #f0f0f0 de antes practicamente no se veia sobre blanco. Primer intento: #b0bec5.
+// El usuario lo probo y siguio corto («siguen estando un poco tenues»), asi que va a
+// #78909c — blue grey 400, que sobre blanco se lee de corrido sin convertirse en una
+// reja. Si aun asi queda corto, el siguiente escalon es #546e7a.
 // SE DESCARTO LA SEGMENTADA EN NEGRO que el usuario planteaba como primera opcion: en
 // una grilla de ~30 columnas, una linea de guiones repetida fila a fila genera un
 // patron que vibra al recorrerla con la vista, y ademas una linea discontinua se lee
 // como "provisional / cortar por aqui". Lo que hacia falta era CONTRASTE, no textura.
-var AC2_TDS='padding:2px 5px; border-top:1px solid #b0bec5;';
+var AC2_TDS='padding:2px 5px; border-top:1px solid #78909c;';
 // input numérico editable en celda (clase .ac2cell = estilo Bar Manager). class ac2nav marca
 // las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). data-col/data-row para que
 // ↑↓ vayan a la MISMA columna de la fila de arriba/abajo (robusto aunque las filas difieran).
@@ -433,14 +435,19 @@ function ac2EstiloFila(b, val){
   // DIBUJO en azul, la insignia 3D y los campos deshabilitados— sobre una escala de
   // fondos que ya tenía rosado, celeste y verde.
   // Lo que sí se queda es el TÍTULO, que es el que dice CÓMO se edita.
-  // Y NO corta la cascada: el fondo pasa a significar UNA sola cosa —¿está guardada?—
-  // para todas las barras por igual. Una barra del 3D siempre está guardada, así que
-  // sale verde como cualquier otra guardada; dejarla blanca la habría convertido en la
-  // única fila guardada sin su color, o sea un caso especial nuevo justo donde acabamos
-  // de sacar uno.
-  var titEstr = ac2BarraDeEstructura(b)
-    ? 'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con el botón 3D de la fila.'
-    : '';
+  //
+  // Y VA BLANCA SIEMPRE, no verde. Al sacar el azul se dejó caer a la cascada y la fila
+  // aterrizaba en el verde de "guardada" (una barra del 3D siempre lo está). El usuario
+  // lo vio y lo corrigió: «el color verde no me encantó, antes era blanco y me parece
+  // que está bien que ese fondo sea siempre el mismo». Tiene sentido: el verde le sirve
+  // al cubicador para saber qué alcanzó a guardar de lo que está tecleando, y una barra
+  // del 3D nunca se teclea — nace guardada. Pintarla verde no le informa nada y le mete
+  // ruido a la única pregunta que ese color contesta.
+  var titEstr = '';
+  if (ac2BarraDeEstructura(b)) {
+    titEstr = 'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con el botón 3D de la fila.';
+    return { bg:'', tit:titEstr };
+  }
   // "Guardada" va SIN título propio: en un despiece retomado lo están casi todas, y un
   // tooltip que salta en cada fila es ruido. Lo explica la leyenda fija del pie de la
   // grilla. (El del Enfierrador SÍ va, porque no describe un color: describe qué hacer.)

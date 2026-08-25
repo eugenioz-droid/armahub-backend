@@ -75,8 +75,12 @@ check('barra guardada → verde #f1f8e9',
 // que es el que dice CÓMO se edita.
 check('barra del Enfierrador → SIN fondo propio (se distingue por el dibujo y el 3D)',
       bg(Object.assign({ _id: 3, _instanciaId: 77 }, VALIDA)) === '');
-check('…y si está guardada se lleva el verde de guardada, como cualquier otra',
-      bg(Object.assign({ _id: 4, _instanciaId: 77, _guardada: true }, VALIDA)) === '#f1f8e9');
+// …Y BLANCA TAMBIÉN CUANDO ESTÁ GUARDADA. Al sacar el azul se dejó caer a la cascada y
+// aterrizaba en el verde de "guardada"; el usuario lo vio y lo corrigió: «el color verde
+// no me encantó, antes era blanco». Tiene sentido: ese verde contesta «¿alcancé a
+// guardar lo que estoy tecleando?», y una barra del 3D nunca se teclea — nace guardada.
+check('…y sigue BLANCA aunque esté guardada (el verde no le informa nada: nace guardada)',
+      bg(Object.assign({ _id: 4, _instanciaId: 77, _guardada: true }, VALIDA)) === '');
 check('pero sigue explicando en su título que se edita reabriendo su estructura',
       /reabriendo su estructura/.test(ac2EstiloFila(Object.assign({ _id: 4, _instanciaId: 77 }, VALIDA)).tit));
 check('barra inválida → rosado #fff5f5 aunque venga del Enfierrador y esté guardada',
