@@ -1967,6 +1967,8 @@
       // Ahora el modo estrena `rango2`, que es lo que el motor prefiere; las
       // capas sólo sobreviven en recetas que YA venían con ellas.
       if (!d.rango2 && !(Number(d.n_capas) > 1)) d.rango2 = _rango2Default(c, d);
+      // rango2 legado sin eje: se repara ACÁ (puerta de mutación), no en la ficha.
+      else if (d.rango2 && d.rango2.eje == null) d.rango2.eje = _rango2Default(c, d).eje;
       d.activa = true;
       if (c.pos_hint) delete c.pos_hint[ejeD];
       if (c.pos_ancla) delete c.pos_ancla[ejeD];
@@ -5827,28 +5829,21 @@
     // resto de esta función (y el motor) ya leen el estado NUEVO.
     _setPose(comp, pose);
     var cara = comp.cara;
-    // DISTRIBUCIÓN AL NACER — LA DECIDE EL MODO, NO EL ROL.
-    // Una barra cuyo MODO default es 'lineal' nace ya REPARTIDA (distribución
-    // activa + rango útil de SU eje), no como 1 barra suelta: nadie quiere un
-    // estribo solo ni una malla de un fierro, y así la flecha con handles aparece
-    // de inmediato al quedar seleccionada y el reparto se ajusta arrastrándola.
-    // Antes la condición era `rol === 'estribo' || rol === 'traba'`, o sea una
-    // segunda tabla de tipologías escrita acá: las tipologías nuevas que el motor
-    // presetea en 'lineal' (MH/MV de muro) nacían puntuales aunque el motor dijera
-    // lo contrario. Ahora la autoridad es una sola: modoDefaultDeTipologia.
-    // Los cabezales (CB*/LT preset 'puntual') no entran acá: su reparto son capas.
-    if (meta.modo === 'lineal') {
-      var d = comp.distribucion;
-      // _distDefault(tipologia) ya devuelve la forma lineal cuando corresponde (esta
-      // rama es idempotente en ellos); un rol cabezal con preset lineal llega con
-      // la forma layered y hay que completarle los campos que el rango necesita.
-      d.modo = MODO_A_DIST.lineal;
-      if (!(Number(d.sep) > 0)) d.sep = 20;
-      if (!Array.isArray(d.zonas) || !d.zonas.length) d.zonas = [{ long: 0, sep: d.sep }];
-      if (!(Number(d.start_offset) >= 0)) d.start_offset = 4;
-      d.activa = true;
-      d.rango = _rangoDefault(d.sep, _ejeDistDe(comp));
-    }
+    // DISTRIBUCIÓN AL NACER — EL MISMO SEMBRADOR QUE LOS BOTONES DE MODO (25-ago).
+    // Acá vivía una copia a medias de _setModoComp que sólo cubría 'lineal'. Con el
+    // preset 'arreglo' (que la CONFIG guardada puede dictar por tipología: TC del
+    // muro del usuario) no corría NADA: la barra nacía con comp.modo='arreglo' y una
+    // distribución {modo:'linear', activa:false, sin rango ni rango2}. El generador
+    // despacha por comp.modo → arreglo → sin rangos → CERO barras. El usuario la
+    // insertaba y no aparecía nada («Cantidad en el elemento: 0»), y el preview caía
+    // al esquema genérico —un punto— porque no había placements que dibujar.
+    // Lo que la hacía APARECER al editar cualquier campo era otro defecto encima:
+    // la ficha sembraba los rangos que faltaban AL PINTARSE (ver _camposArreglo),
+    // así que la siguiente regeneración —cualquier edición— ya tenía los datos.
+    // Una rama a medias + un panel que muta mientras pinta = el bug del día.
+    // Ahora el nacimiento pasa por _setModoComp, la ÚNICA función que sabe dejar
+    // completa una distribución para su modo — la misma de los 3 botones del panel.
+    _setModoComp(comp, meta.modo);
     // pos_hint desde el click (los ejes que el plano define). El motor ancla por
     // cara y offset; el pos_hint corre la barra al punto clicado en los ejes libres.
     comp.pos_hint = _posHintDeClick(plano, host, rol, cara, _poseDe(comp));
@@ -8793,7 +8788,15 @@
   // ARREGLO — rango en un sentido + n_capas + sep_capas (rango × capas). El eje de
   // profundidad de las capas lo fija el plano de trabajo (eje_capas).
   function _camposArreglo(box, c, ci, rol, d) {
-    if (!d.rango) d.rango = _rangoDefault(d.sep || 20, _ejeDistDe(c));
+    // ACÁ NO SE ESCRIBE (25-ago). Esta función sembraba d.rango y d.rango2 si
+    // faltaban — pintando, sin regenerar. Eso ENMASCARÓ el bug del nacimiento a
+    // medias: la barra nacía sin rangos (0 barras en pantalla), la ficha los
+    // sembraba en silencio al dibujarse, y la SIGUIENTE edición del usuario —
+    // cualquiera: un @, el φ— regeneraba con los datos ya puestos y la barra
+    // «aparecía sola». Los datos se completan en las puertas de MUTACIÓN
+    // (_setModoComp: nacimiento, botones de modo, apertura de receta); un panel
+    // que muta el estado mientras lo pinta convierte cada bug de datos en uno
+    // «que se arregla solo al tocar cualquier cosa», que es el peor tipo.
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
     if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _syncN(d, 'rango'); _mut(ci, true); })));
@@ -8824,13 +8827,11 @@
       conv.onclick = function () { d.rango2 = _rango2Default(c, d); _mut(ci); _renderPanel(); };
       box.appendChild(conv);
     } else {
-      if (!d.rango2) d.rango2 = _rango2Default(c, d);
-      // EJE DE LA 2ª LÍNEA: AUTOMÁTICO (pedido 17-ago — «hay espacio para
-      // mejora ahí»). Es el único eje que queda: el plano de la pieza tiene
-      // dos, la 1ª línea reparte por la normal, así que la 2ª corre por el
-      // otro eje del plano. Un desplegable ofrecía elegir entre 3 ejes de los
-      // cuales 2 estaban mal — se deriva y se DICE en el label.
-      if (!d.rango2.eje) d.rango2.eje = _rango2Default(c, d).eje;
+      // (25-ago) Los `if (!d.rango2) …` que vivían acá se fueron con la regla de
+      // arriba: pintar no escribe. rango2 lo garantizan las puertas de mutación.
+      // EJE DE LA 2ª LÍNEA: AUTOMÁTICO (pedido 17-ago). Es el único eje que queda:
+      // el plano de la pieza tiene dos, la 1ª línea reparte por la normal, así que
+      // la 2ª corre por el otro eje del plano.
       var nomEje2 = ({ x: 'largo', y: 'alto', z: 'ancho' })[d.rango2.eje] || d.rango2.eje;
       var g2b = _div('te-grid2');
       g2b.appendChild(_fld('@ sep (2ª) cm', _inputSep(d.rango2.sep || 20, function (v) {
@@ -12156,6 +12157,14 @@
     (ST.receta.componentes || []).forEach(function (c) {
       var rol = _rolComp(c);
       if (rol !== 'cabezal' && c.distribucion && c.distribucion.zonas && c.distribucion.activa == null) c.distribucion.activa = true;
+      // ARREGLO INCOMPLETO EN LA PUERTA (25-ago): una receta guardada mientras el
+      // nacimiento estuvo roto —o editada por un cliente viejo— puede traer modo
+      // 'arreglo' sin sus rangos. Se completa AQUÍ, al abrir, por el mismo
+      // sembrador de siempre; la ficha ya no lo hace al pintarse.
+      if (_modoDe(c) === 'arreglo' && c.distribucion &&
+          (!c.distribucion.rango || (!c.distribucion.rango2 && !(Number(c.distribucion.n_capas) > 1)))) {
+        _setModoComp(c, 'arreglo');
+      }
     });
     // Dirty-tracking: el baseline NO se puede sellar aquí. _regenerar() (más abajo)
     // NORMALIZA la receta al generar — rellena sep/zonas/rango/activa —, así que un

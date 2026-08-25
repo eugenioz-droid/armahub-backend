@@ -519,5 +519,34 @@ console.log('R . el borde clicado manda igual en todas las tipologias');
   ok(cerrada2.rumbo === cerrada.rumbo, '…y con EC exactamente igual: lo decide la figura');
 }
 
+// ========= S . LA BARRA NACE COMPLETA (el bug del 'Cantidad: 0')
+// (25-ago) Con la CONFIG guardada preseteando una tipologia en 'arreglo', la barra
+// nacia con comp.modo='arreglo' pero una distribucion linear inactiva SIN rangos:
+// el generador despachaba por comp.modo -> arreglo -> 0 barras. El usuario la
+// insertaba y no aparecia NADA; el preview caia al esquema generico (un punto). Y
+// la ficha sembraba los rangos AL PINTARSE, asi que cualquier edicion la hacia
+// aparecer 'sola'. El nacimiento ahora pasa por _setModoComp -el sembrador de los
+// botones de modo- y la ficha ya no escribe mientras pinta.
+console.log('');
+console.log('S . la barra nace completa con el preset arreglo de la config');
+{
+  win.ModeladorConfig = { cargada: function () { return true; },
+    modo: function () { return 'arreglo'; } };
+  ST.elemento = 'muro';
+  ST.receta = { tipo: 'muro', geometria: Object.assign({}, MURO), componentes: [] };
+  ST.selCi = -1; ST.selExtra = []; ST.caraHi = null; ST.espejoColoc = false;
+  const c = TE._compDesdeClick('largo', { x: 0, y: 0, z: 8 }, { tipologia: 'TC', figura: '103B', diam: 8 });
+  ok(c.modo === 'arreglo' && c.distribucion.modo === 'arreglo',
+    'modo del componente y de la distribucion coinciden (=' + c.modo + '/' + c.distribucion.modo + ')');
+  ok(!!c.distribucion.rango && !!c.distribucion.rango2, 'nace con sus DOS rangos sembrados');
+  ok(c.distribucion.activa === true, 'y activa');
+  ST.receta.componentes = [c];
+  R.normalizarReceta(ST.receta);
+  regen();
+  const n = (ST.ultimoOut.placements || []).length;
+  ok(n > 0, 'genera barras INMEDIATAMENTE, sin esperar una edicion (=' + n + ')');
+  win.ModeladorConfig = undefined;
+}
+
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — el gesto de espejar está congelado');
 process.exit(fallos ? 1 : 0);
