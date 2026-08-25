@@ -136,11 +136,17 @@ ok(close(lim(plOvr[0], 'z').hi, 15 - 5 - 0.8),
 
 // ANIDADO × CARA LATERAL: el anidado sólo toca DIMS; la posición de la capa la
 // manda Sep, también contra una cara cortina (aquí las capas entran en Z).
+// FIGURA 103A (patas PERPENDICULARES) y no la 103B del resto del bloque: con la
+// regla v4 el descuento vale un φ por cada EXTREMO QUE CIERRA, y un extremo cierra
+// cuando de él sale un lado PERPENDICULAR — las patas a 45° de la 103B no cierran
+// ninguno (ver test_jerarquia J3f). Lo que este assert protege es la COMPOSICIÓN
+// (anidado × cara cortina), no la figura.
 const plAn = R.expandirComponente(cabLateral({
+  figura: '103A', angulos: [],
   distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: 5, anidar: true }
 }), viga);
-ok(close(plAn[1].dims.B, plAn[0].dims.B - 2 * 1.6) && close(plAn[1].dims.A, 10),
-  'anidado en cara lateral: B − 2·φ y patas intactas (=' + plAn[1].dims.B + ' / ' + plAn[1].dims.A + ')');
+ok(close(plAn[1].dims.B, Math.floor(plAn[0].dims.B - 2 * 1.6)) && close(plAn[1].dims.A, 10),
+  'anidado en cara lateral: B − 2·φ (redondeado abajo) y patas intactas (=' + plAn[1].dims.B + ' / ' + plAn[1].dims.A + ')');
 ok(close(lim(plAn[1], 'z').hi, lim(plAn[0], 'z').hi - 5),
   'y la capa 2 entra EXACTAMENTE Sep (5) en Z, no un φ (=' +
   r3(lim(plAn[0], 'z').hi - lim(plAn[1], 'z').hi) + ')');
@@ -384,8 +390,26 @@ const capaT1 = mvT.filter(p => p.meta.capa === 1), capaT2 = mvT.filter(p => p.me
 // lo mueve porque ya es entero.)
 ok(close(capaT1[0].dims.B, 244) && close(capaT1[0].dims.A, 5),
   'la dim auto de pie se mide contra los BORDES: 244 exactos, y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
-ok(close(capaT2[0].dims.B, 244 - 2 * 1.0) && close(capaT2[0].dims.A, 5),
-  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 242) y no toca las patas (=' + capaT2[0].dims.B + ')');
+// REGLA v4 (25-ago): la 103B dobla a 45°, o sea que de los extremos de su cuerpo NO
+// sale ningún lado PERPENDICULAR → no hay descuento que calcular sin meter el Sep
+// dentro de la dim (lo que el usuario prohibió). Las dos capas salen iguales y el
+// motor lo AVISA en vez de cobrar los −2φ de antes, que no tenían física detrás.
+ok(close(capaT2[0].dims.B, 244) && close(capaT2[0].dims.A, 5),
+  'anidado × de pie con patas a 45°: las dos capas van iguales (=' + capaT2[0].dims.B + ')');
+// …y con patas PERPENDICULARES (103A) la misma receta SÍ ajusta: −2φ = −2 → 242.
+const mvT90 = R.expandirComponente({
+  tipologia: 'MA', figura: '103A', diam: 10, cara: 'lateral', angulos: [],
+  plano_pieza: { orientacion: 'de_pie' },
+  dims: { A: { modo: 'fija', valor: 5 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 5 } },
+  distribucion: {
+    modo: 'arreglo', n_capas: 2, sep_capas: 1.0, eje_capas: 'z', anidar: true,
+    rango: { eje: 'x', from: -190, to: 190, sep: 25 }
+  }
+}, muro);
+const cap90 = mvT90.filter(p => p.meta.capa === 2);
+ok(close(cap90[0].dims.B, mvT90.filter(p => p.meta.capa === 1)[0].dims.B - 2 * 1.0) &&
+  close(cap90[0].dims.A, 5),
+  'anidado × de pie con patas rectas (103A): la capa 2 ajusta SOLO B (−2·φ) (=' + cap90[0].dims.B + ')');
 ok(close(lim(capaT1[0], 'z').hi, Z_CORTINA) && close(lim(capaT2[0], 'z').hi, Z_CORTINA - 1),
   'y la posición la puso sep_capas (1 cm hacia el núcleo), no el anidado (=' +
   lim(capaT1[0], 'z').hi + ' / ' + lim(capaT2[0], 'z').hi + ')');

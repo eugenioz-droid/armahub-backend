@@ -8952,28 +8952,66 @@
   // son). Mismo criterio que el sondeo del tirador del marco.
   //
   // POR QUÉ HACE FALTA (25-ago, reportado por el usuario: «ajustar las capas
-  // anidadas no hace nada»). Y era cierto EN SU CASO: el anidado acorta las PATAS de
-  // la capa interior para que no choquen con la de afuera, y una barra recta (101A)
-  // no tiene patas que acortar. MEDIDO: 101A con dos capas da A=595 con el check
-  // marcado y sin marcar; una 103B en cambio pasa de B=592 a 588,8 en la 2ª capa
-  // (−3,2 = dos diámetros de ø16). El check no estaba roto: estaba ofrecido donde no
-  // aplica, que para el usuario es lo mismo que roto.
+  // anidadas no hace nada»). Y era cierto EN SU CASO: el ajuste acorta el CUERPO de
+  // la capa interior para que no choque con las patas de la de afuera, y una barra
+  // recta (101A) no tiene ninguna pata que la encajone. MEDIDO: 101A con dos capas
+  // da A=595 con el check marcado y sin marcar.
+  // REGLA v4 (25-ago) — lo que decide es la TOPOLOGÍA, no "tener patas": el cuerpo
+  // pierde un diámetro por CADA EXTREMO QUE CIERRA, y un extremo cierra cuando de él
+  // sale un lado PERPENDICULAR. MEDIDO en viga 600×60×30, φ16, 2 capas gap 6, auto:
+  //   101A → 0 extremos → el check NO se ofrece (igual que antes).
+  //   102A → 1 extremo  → B 592 → 590. ANTES NO SE OFRECÍA y sí corresponde.
+  //   103A → 2 extremos → B 592 → 588.
+  //   103B → 0 extremos (sus patas van a 45°, no perpendiculares) → no se ofrece,
+  //          y el motor deja dicho POR QUÉ (ver _porQueNoAnida).
   function _anidadoCambiaAlgo(c) {
     var R = global.ModeladorReglas, host = _hostDeReceta();
     if (!R || !R.expandirComponente || !host || !c) return true;   // ante la duda, se ofrece
-    function firma(valor) {
-      var clon = JSON.parse(JSON.stringify(c, function (k, v) {
-        return (String(k).charAt(0) === '_') ? undefined : v;
-      }));
-      clon.distribucion = clon.distribucion || {};
-      clon.distribucion.anidar = valor;
-      var pls;
-      try { pls = R.expandirComponente(clon, host) || []; } catch (e) { return null; }
-      return pls.length + '|' + pls.map(function (p) { return JSON.stringify(p.dims || {}); }).join(';');
-    }
-    var a = firma(false), b = firma(true);
+    var a = _firmaAnidado(c, false), b = _firmaAnidado(c, true);
     if (a == null || b == null) return true;
     return a !== b;
+  }
+
+  // Clon del componente con el anidado forzado + expansión → { firma, avisos }.
+  // Un clon por llamada y SIN campos '_': el sondeo no puede tocar la receta viva
+  // (los render no mutan estado) ni arrastrar los avisos de la expansión anterior.
+  function _expandirSondeo(c, valor) {
+    var R = global.ModeladorReglas, host = _hostDeReceta();
+    if (!R || !R.expandirComponente || !host || !c) return null;
+    var clon = JSON.parse(JSON.stringify(c, function (k, v) {
+      return (String(k).charAt(0) === '_') ? undefined : v;
+    }));
+    clon.distribucion = clon.distribucion || {};
+    clon.distribucion.anidar = valor;
+    var pls;
+    try { pls = R.expandirComponente(clon, host) || []; } catch (e) { return null; }
+    return {
+      firma: pls.length + '|' + pls.map(function (p) { return JSON.stringify(p.dims || {}); }).join(';'),
+      avisos: clon._avisos || []
+    };
+  }
+
+  function _firmaAnidado(c, valor) {
+    var r = _expandirSondeo(c, valor);
+    return r ? r.firma : null;
+  }
+
+  // POR QUÉ ESTA FIGURA NO SE AJUSTA — LO CONTESTA EL MOTOR, NO LA UI.
+  // Cuando el ajuste no cambiaría nada hay dos razones distintas y el usuario tiene
+  // derecho a saber cuál es la suya: o de este cuerpo no sale ningún lado (101A), o
+  // el que sale es DIAGONAL y entonces cuánto estorba depende del Sep y no del
+  // diámetro (103B/103E/103H…). La segunda la explica el propio motor al expandir
+  // (reglas._avisoDiagonalAnidado), así que se lee de ahí en vez de reescribirla acá
+  // — una frase, un dueño.
+  function _porQueNoAnida(c) {
+    var r = _expandirSondeo(c, true);
+    var av = (r && r.avisos) || [];
+    for (var i = 0; i < av.length; i++) {
+      if (String(av[i]).indexOf('capas anidadas') >= 0) return av[i];
+    }
+    return 'El ajuste acorta el cuerpo de la capa de adentro un diámetro por cada ' +
+      'extremo del que salga un lado perpendicular; de esta figura no sale ninguno, ' +
+      'así que las capas van iguales.';
   }
 
   function _filaAnidar(box, c, ci, rol, d) {
@@ -8986,7 +9024,7 @@
     // una viga de 60 no cabe anidada y el motor no la emite).
     if (!esEstribo && !_anidadoCambiaAlgo(c)) {
       var nota = _div('te-note');
-      nota.textContent = 'El anidado acorta las patas de la capa de adentro; esta figura no tiene patas que acortar, así que las capas van iguales.';
+      nota.textContent = _porQueNoAnida(c);
       box.appendChild(nota);
       return;
     }
@@ -14120,6 +14158,7 @@
     _compEl: _compEl,   // la teja, para poder verificar que trae su papelera
     _medidaLadoReal: _medidaLadoReal, _refrescarMedidasLados: _refrescarMedidasLados,
     _anidadoCambiaAlgo: _anidadoCambiaAlgo,
+    _porQueNoAnida: _porQueNoAnida,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
     // PALETA ÚNICA — la consume panel_3d, que tenía su propia tabla ya divergida

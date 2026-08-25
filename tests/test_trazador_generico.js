@@ -373,17 +373,26 @@ function compCadena(fig, extra) {
   ok(Math.abs((y1 - y2) - 5) < 1e-6, fig + ': la 2ª capa entra 5 cm al núcleo (=' + (y1 - y2).toFixed(2) + ')');
 });
 
-// C2 · ANIDADO topológico (vecinos) sobre una cadena abierta de 5 lados: los lados
-// INTERIORES se achican 2δ y los EXTREMOS quedan intactos. No se tocó nada de esa
-// maquinaria: la cadena entra por la misma puerta que el corchete.
+// C2 · ANIDADO topológico sobre una cadena abierta de 5 lados. REGLA v4 (25-ago):
+// el descuento NO es "interior de la cadena" sino EXTREMOS QUE CIERRAN — un extremo
+// cierra cuando de él sale un lado PERPENDICULAR (único caso en que el retiro vale
+// un φ y no depende del Sep). Sobre la 105C eso da:
+//   A(diagonal, 45°) · B(cuerpo) · C(perpendicular) · D(cuerpo) · E(diagonal)
+//   → sólo B cierra, y por UN extremo (el de C): 300 − 1.6 = 298.4 → 298.
+// Antes B, C y D se llevaban −2δ cada uno por ser "interiores", incluida C — que
+// corre EN LA DIRECCIÓN del apilado y por lo tanto se desliza sobre sí misma.
 (function () {
   const dims = { A: 30, B: 300, C: 30, D: 30, E: 30 };
   const an = FP.anidarFigura('105C', dims, 1.6, 'cabezal', {});
   ok(an.criterio === 'abierta', '105C anida como cadena ABIERTA (=' + an.criterio + ')');
-  ok(an.dims.A === 30 && an.dims.E === 30, 'los lados EXTREMO (A/E) quedan intactos');
-  ok(Math.abs(an.dims.B - (300 - 3.2)) < 1e-9 && Math.abs(an.dims.C - (30 - 3.2)) < 1e-9,
-    'los INTERIORES (B/C/D) se achican 2δ (=' + an.dims.B + '/' + an.dims.C + ')');
-  ok(an.vecinos.A === 1 && an.vecinos.C === 2 && an.vecinos.E === 1, 'vecinos: A=1 · C=2 · E=1');
+  ok(an.dims.A === 30 && an.dims.E === 30, 'las PATAS diagonales (A/E) quedan intactas');
+  ok(an.dims.C === 30 && an.dims.D === 30,
+    'C corre CON el apilado y D no cierra por ningún extremo: intactos (=' + an.dims.C + '/' + an.dims.D + ')');
+  ok(an.dims.B === 298, 'B cierra por UN extremo (la C perpendicular): 300 − φ = 298.4 → 298 (=' + an.dims.B + ')');
+  ok(an.cierres.A === 0 && an.cierres.B === 1 && an.cierres.C === 0 && an.cierres.E === 0,
+    'extremos que cierran: A=0 · B=1 · C=0 · E=0');
+  ok(an.dudosos.indexOf('B') >= 0,
+    'y el otro extremo de B lo cierra una DIAGONAL: queda declarado dudoso para que reglas lo avise');
   ok(FP.figuraCerrada('104A') === true && FP.figuraCerrada('104B') === false,
     'figuraCerrada: 104A (marco) sí · 104B (cadena con quiebres) no');
 })();

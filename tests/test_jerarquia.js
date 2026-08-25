@@ -205,17 +205,46 @@ ok(close(anCerr2.inset, 3) && close(anCerr2.dims.A, 18) && close(anCerr2.dims.B,
   anCerr2.dims.A + '/' + anCerr2.dims.B + ')');
 
 // ABIERTA: sólo se AJUSTAN DIMS (v3: el anidado ya no posiciona nada).
-const anAb = FP.anidarFigura('103B', { A: 30, B: 592, C: 30 }, 1.6, 'cabezal');
+// ---------------------------------------------------------------------------
+// REGLA v4 (25-ago, decisión del usuario). «Un extremo del cuerpo CIERRA cuando de
+// él sale un lado PERPENDICULAR», y el descuento de la capa k es (k−1)·φ·(nº de
+// extremos que cierran). Antes se contaban VECINOS EN LA CADENA (interior = 2), y
+// por eso TODA figura abierta se llevaba el mismo −2δ: la 102A (un solo doblez) se
+// quedaba en 0 y la 103B (patas a 45°) cobraba lo mismo que la 103A (patas rectas).
+// El REDONDEO a entero va DESPUÉS del descuento y HACIA ABAJO («ajustamos la barra
+// hacia abajo y listo»): 588.8 no es una medida de taller.
+const anAb = FP.anidarFigura('103A', { A: 30, B: 592, C: 30 }, 1.6, 'cabezal');
 ok(anAb.criterio === 'abierta', '103x con 2 patas → criterio abierta (corchete)');
-ok(close(anAb.dims.B, 592 - 2 * 1.6), 'corchete: B (interior, 2 vecinos) − 2δ = 588.8 (=' + anAb.dims.B + ')');
+ok(close(anAb.dims.B, Math.floor(592 - 2 * 1.6)),
+  'corchete 103A: cierra por DOS extremos → B − 2φ = 588.8 → 588 (=' + anAb.dims.B + ')');
 // SEMÁNTICA v2 QUE SE CONSERVA: «asumiste que las patas deben alinearse con las de
 // la capa de afuera, y eso no es correcto» — las patas tienen punta LIBRE.
+// Ahora además tiene el POR QUÉ general: una pata corre EN LA DIRECCIÓN del apilado,
+// así que al bajar la capa se desliza sobre sí misma; nada se le pone delante.
 ok(close(anAb.dims.A, 30) && close(anAb.dims.C, 30),
-  'corchete: LAS PATAS (1 vecino, punta libre) NO SE TOCAN (30 / 30) (=' + anAb.dims.A + '/' + anAb.dims.C + ')');
-ok(anAb.vecinos.A === 1 && anAb.vecinos.B === 2 && anAb.vecinos.C === 1,
-  'y el criterio es la CUENTA DE VECINOS (1/2/1), no la letra ni la figura');
+  'corchete: LAS PATAS (corren con el apilado) NO SE TOCAN (30 / 30) (=' + anAb.dims.A + '/' + anAb.dims.C + ')');
+ok(anAb.cierres.A === 0 && anAb.cierres.B === 2 && anAb.cierres.C === 0,
+  'y el criterio son los EXTREMOS QUE CIERRAN (0/2/0), no la letra ni la figura');
 ok(anAb.anchorDelta === undefined,
   'v3: anidarFigura YA NO devuelve anchorDelta — la posición la manda el campo Sep');
+
+// UN SOLO EXTREMO QUE CIERRA → UN SOLO DIÁMETRO. Es el defecto que abrió la v4: la
+// 102A tiene UNA pata perpendicular y NO se le ajustaba nada (sus dos lados eran
+// "extremo de la cadena"). 592 − 1·1.6 = 590.4 → 590.
+const an102 = FP.anidarFigura('102A', { A: 30, B: 592 }, 1.6, 'cabezal');
+ok(an102.cierres.B === 1 && close(an102.dims.B, 590),
+  '102A: cierra por UN extremo → B − 1φ = 590.4 → 590 (=' + an102.dims.B + ')');
+ok(close(an102.dims.A, 30), '102A: su pata (corre con el apilado) queda intacta');
+
+// PATAS DIAGONALES → NO SE INVENTA UN NÚMERO, SE DECLARA DUDOSO. La 103B dobla a
+// 45°: sus patas SÍ estorban, pero cuánto depende del Sep, y el usuario prohibió
+// que el Sep entre en la dim («debe ajustar SOLO la medida de B»). Antes cobraba
+// −2φ, el MISMO número que la 103A, sin ninguna justificación física.
+const an103B = FP.anidarFigura('103B', { A: 30, B: 592, C: 30 }, 1.6, 'cabezal');
+ok(an103B.cierres.B === 0 && close(an103B.dims.B, 592),
+  '103B (patas a 45°): ningún extremo cierra → B intacto en 592 (=' + an103B.dims.B + ')');
+ok(an103B.dudosos.length === 1 && an103B.dudosos[0] === 'B',
+  '…y B queda marcado como DUDOSO para que reglas.js lo avise (=' + an103B.dudosos.join(',') + ')');
 // CADENA MÁS LARGA (dims sintéticas A..E): la misma regla, sin un solo caso por
 // figura. Los INTERIORES B, C y D se achican 2δ; los EXTREMOS A y E quedan.
 // (La v2 usaba la PARIDAD del índice y dejaba C — un interior — sin achicar.)
@@ -225,29 +254,32 @@ ok(anLarga.criterio === 'abierta' &&
   close(anLarga.dims.B, 98) && close(anLarga.dims.C, 38) && close(anLarga.dims.D, 98),
   'cadena A..E: interiores B/C/D −2δ (98/38/98) y extremos A/E intactos (20/20) (=' +
   [anLarga.dims.A, anLarga.dims.B, anLarga.dims.C, anLarga.dims.D, anLarga.dims.E].join('/') + ')');
-ok(anLarga.vecinos.A === 1 && anLarga.vecinos.C === 2 && anLarga.vecinos.E === 1,
-  'vecinos de la cadena larga: 1/2/2/2/1');
-// CADENA DE 2 LADOS (L): los DOS lados son extremos (punta libre) → nada se achica.
-// Cambio respecto de la v2, que le restaba δ al tramo. Es la consecuencia directa
-// de la regla que pidió el usuario ("extremos intactos") y queda fijada acá.
+ok(anLarga.cierres.A === 0 && anLarga.cierres.C === 2 && anLarga.cierres.E === 0,
+  'cierres de la cadena larga sin catálogo: 0/2/2/2/0');
+// CADENA DE 2 LADOS (L): el cuerpo cierra por UN extremo (del otro no sale nada) →
+// −1δ. La v3 dejaba los dos lados intactos porque contaba vecinos de cadena y los
+// dos eran "extremo"; una L es geométricamente una 102A y tiene que contestar igual.
 const anL = FP.anidarFigura('103A', { A: 20, B: 100 }, 1, 'cabezal');
-ok(close(anL.dims.A, 20) && close(anL.dims.B, 100),
-  'figura en L: los 2 lados son EXTREMO (1 vecino) → intactos (20/100) (=' + anL.dims.B + ')');
+ok(close(anL.dims.A, 20) && close(anL.dims.B, 99),
+  'figura en L: la pata queda (20) y el cuerpo cierra por UN extremo → 99 (=' + anL.dims.B + ')');
 const anRec = FP.anidarFigura('101A', { A: 592 }, 1.6, 'cabezal');
 ok(anRec.criterio === 'recta' && anRec.dims.A === 592, '101x recta → sin cambio (nada que anidar)');
 
 console.log('\nJ3b — corchete ANIDADO en el distribuidor: SOLO dims, la posición la manda Sep:');
+// FIGURA 103A (patas PERPENDICULARES) — el corchete que de verdad se ajusta. Antes
+// esto usaba una 103B, que dobla a 45° y por lo tanto NO cierra ningún extremo: el
+// −2δ que se le cobraba era un número inventado (ver J3f).
 function corcheteCapas(gap) {
   return R.expandirComponente({
-    tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
+    tipologia: 'CBS', figura: '103A', diam: 16, cara: 'sup', angulos: [],
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
     distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: gap, anidar: true }
   }, host);
 }
 const plCor = corcheteCapas(0);
 ok(plCor.length === 2, '2 capas → 2 placements');
-ok(close(plCor[1].dims.B, plCor[0].dims.B - 2 * 1.6) && close(plCor[1].dims.A, plCor[0].dims.A),
-  'la capa 2 estampa SUS dims: B−2δ (δ=φ=1.6) y las PATAS IGUALES (=' + plCor[1].dims.B + ' / ' + plCor[1].dims.A + ')');
+ok(close(plCor[1].dims.B, Math.floor(plCor[0].dims.B - 2 * 1.6)) && close(plCor[1].dims.A, plCor[0].dims.A),
+  'la capa 2 estampa SUS dims: B−2φ redondeado abajo (592→588) y las PATAS IGUALES (=' + plCor[1].dims.B + ' / ' + plCor[1].dims.A + ')');
 // «Al ajustar capas anidadas no debe considerar esta altura: debe ajustar SOLO la
 // medida de B» (usuario, 12-ago). Con Sep 0 las dos capas comparten eje: el
 // anidado NO mueve nada por su cuenta. Antes bajaba la capa 2 un φ.
@@ -257,10 +289,35 @@ const plCor5 = corcheteCapas(5);
 ok(close(plCor5[0].puntos[1].y - plCor5[1].puntos[1].y, 5, 1e-9),
   'con Sep 5 la capa 2 baja EXACTAMENTE 5 (el campo manda, anide o no) (=' +
   (plCor5[0].puntos[1].y - plCor5[1].puntos[1].y).toFixed(4) + ')');
-ok(close(plCor5[1].dims.B, plCor5[0].dims.B - 2 * 1.6) && close(plCor5[1].dims.A, 30),
-  'y el ajuste de dims sigue siendo 2·φ = 3.2, INDEPENDIENTE de Sep (=' + plCor5[1].dims.B + ')');
+ok(close(plCor5[1].dims.B, plCor[1].dims.B) && close(plCor5[1].dims.A, 30),
+  'y el ajuste de dims sigue siendo 2·φ = 3.2, INDEPENDIENTE de Sep (Sep 0 y Sep 5 dan el mismo B = ' + plCor5[1].dims.B + ')');
 ok(close(plCor5[1].puntos[0].y, plCor5[0].puntos[0].y - 5, 1e-9),
   'las PUNTAS bajan con la pieza (patas iguales, la barra entera corrida Sep)');
+// FIDELIDAD GRÁFICA (innegociable): el TRAZO sigue a la dim ajustada, no sólo el
+// listado. El cuerpo DIBUJADO de la capa 2 baja exactamente lo mismo que la dim.
+function anchoX(pl) {
+  var xs = pl.puntos.map(function (q) { return q.x; });
+  return Math.max.apply(null, xs) - Math.min.apply(null, xs);
+}
+ok(close(anchoX(plCor[0]) - anchoX(plCor[1]), plCor[0].dims.B - plCor[1].dims.B, 1e-9),
+  'el TRAZO acompaña a la dim: el ancho dibujado baja lo mismo que la dim (=' +
+  (anchoX(plCor[0]) - anchoX(plCor[1])).toFixed(4) + ')');
+
+console.log('\nJ3f — PATAS DIAGONALES: no se ajusta nada y se AVISA (no se inventa un número):');
+// La 103B dobla a 45°: sus patas estorban a la capa de adentro, pero CUÁNTO depende
+// del Sep, y meter el Sep en la dim es justo lo que el usuario prohibió («debe
+// ajustar SOLO la medida de B»). Antes cobraba −2φ — el MISMO número que la 103A,
+// sin ninguna justificación física — y en silencio.
+var comp45 = {
+  tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
+  dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
+  distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: 5, anidar: true }
+};
+var pl45 = R.expandirComponente(comp45, host);
+ok(pl45.length === 2 && close(pl45[1].dims.B, pl45[0].dims.B),
+  '103B: las dos capas salen con el MISMO cuerpo (=' + pl45[0].dims.B + ' / ' + pl45[1].dims.B + ')');
+ok((comp45._avisos || []).some(function (a) { return /DIAGONAL/.test(a) && /103B/.test(a); }),
+  '…y queda el aviso que lo explica, en vez del silencio');
 
 console.log('\nJ3c — estribo ANIDADO: anillos concéntricos separados por el campo Sep:');
 function estriboCapas(gap) {
@@ -387,7 +444,7 @@ console.log('\nJ3d — POSICIÓN = k·Sep SIEMPRE (anide o no); DIMS = asunto ap
 // dos responsabilidades: el campo posiciona SIEMPRE, el anidado sólo ajusta dims.
 function capasCorchete(anidar, gap) {
   return R.expandirComponente({
-    tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
+    tipologia: 'CBS', figura: '103A', diam: 16, cara: 'sup', angulos: [],
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
     distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: gap, anidar: anidar }
   }, host);
@@ -398,8 +455,8 @@ ok(close(anGap[0].puntos[1].y - anGap[1].puntos[1].y, 4, 1e-9) &&
   close(apGap[0].puntos[1].y - apGap[1].puntos[1].y, 4, 1e-9),
   'gap 4: la capa 2 baja 4 CON anidar y SIN anidar — la posición no depende del anidado (=' +
   (anGap[0].puntos[1].y - anGap[1].puntos[1].y).toFixed(4) + ')');
-ok(close(anGap[1].dims.B, anGap[0].dims.B - 2 * 1.6) && close(apGap[1].dims.B, apGap[0].dims.B),
-  'y lo ÚNICO que cambia el anidado son las dims: B−3.2 anidando, B intacto sin anidar (=' +
+ok(close(anGap[1].dims.B, Math.floor(anGap[0].dims.B - 2 * 1.6)) && close(apGap[1].dims.B, apGap[0].dims.B),
+  'y lo ÚNICO que cambia el anidado son las dims: B−3.2 (→588) anidando, B intacto sin anidar (=' +
   anGap[1].dims.B + ' vs ' + apGap[1].dims.B + ')');
 // gap 0 → ejes SUPERPUESTOS, sin clamp: el motor no inventa una separación mínima.
 const apCero = capasCorchete(false, 0);

@@ -2669,11 +2669,123 @@
     return _esPerimetro(_spec(f), f);
   }
 
+  // ---------------------------------------------------------------------------
+  // ¿CUÁNTOS EXTREMOS DE ESTE LADO **CIERRAN**? — v4 (regla del usuario, 25-ago)
+  // ---------------------------------------------------------------------------
+  // «Un extremo del cuerpo CIERRA cuando de él sale un lado PERPENDICULAR», y el
+  // descuento de la capa k es (k−1) · φ · (nº de extremos que cierran).
+  //
+  // POR QUÉ PERPENDICULAR Y NO "cualquier vecino" — SALE DE UNA REGLA ANTERIOR DEL
+  // MISMO USUARIO, no de una preferencia: «al ajustar capas anidadas no debe
+  // considerar esta altura (Sep), debe ajustar SOLO la medida de B». O sea: el
+  // descuento de DIMS no puede depender del gap. Y esa exigencia SELECCIONA la
+  // perpendicular ella sola:
+  //   La capa k es la MISMA figura corrida k·gap hacia el núcleo (+v). Lo que
+  //   estorba a su cuerpo es el fierro que la capa de afuera dejó A ESA
+  //   PROFUNDIDAD. Un vecino PERPENDICULAR baja recto: a cualquier profundidad
+  //   sigue en la MISMA coordenada longitudinal del vértice → el cuerpo se retira
+  //   exactamente φ (eje a eje), un número que NO depende del gap.
+  //   Un vecino DIAGONAL, a profundidad gap, está en u ∓ gap·cot(θ): el retiro que
+  //   haría falta depende del gap. No es representable con esta regla → no se
+  //   descuenta a ojo: se DEVUELVE EN `dudosos` para que el llamador lo AVISE.
+  //   Un vecino PARALELO al cuerpo (repliegue de 180°) no cruza nada → 0.
+  //
+  // Y POR ESO TAMBIÉN LOS LADOS 'v' QUEDAN INTACTOS: un lado que corre EN LA
+  // DIRECCIÓN DEL APILADO se desliza sobre sí mismo al bajar la capa; no hay nada
+  // delante suyo que lo obligue a acortarse. (Su punta libre entrando más adentro
+  // del hormigón es otro asunto, y lo resuelve el re-cálculo del 'auto' de la capa
+  // en reglas.distribuidorLayered — eje ORTOGONAL a éste, ver la nota de allí.)
+  //
+  // NO HAY TABLA POR FIGURA NI RAMA POR TIPOLOGÍA, Y ÉSE ES EL PUNTO: todo sale de
+  // `tramosDeFigura` (lo que el Diseñador dibujó, o la derivación del seed) leído en
+  // el MISMO marco que usa el trazador (`_orientarCadena`: dominante sobre +u,
+  // figura doblando hacia +v = el núcleo). Una figura NUEVA trae su respuesta en su
+  // topología el día que se siembra o se dibuja.
+  //
+  // CONTORNO CERRADO (opts.cerrada): su capa k NO se traslada, se INSETA — es un
+  // anillo concéntrico y cada lado se retira por SU PROPIA normal hacia adentro.
+  // Leída así, la misma frase da 2 en TODOS los lados (los dos extremos de cada
+  // lado tienen enfrente al lado vecino, que es perpendicular), que es exactamente
+  // lo que el anillo ya hacía. Una sola regla, dos movimientos.
+  //
+  // Devuelve { cierres: {LADO: 0|1|2}, dudosos: [LADO…], fuente }.
+  // `dims` manda sobre la topología para la EXISTENCIA del vecino: si el lado que
+  // cerraría ese extremo no viene en las dims (o viene ≤ 0), ese extremo NO cierra
+  // — un 103A al que le falta la pata C es un 102A y tiene que contestar como tal.
+  var EPS_DIR = 1e-9;
+
+  function extremosQueCierran(figura, dims, opts) {
+    opts = opts || {};
+    var f = (figura || '').toUpperCase();
+    var lados = _ladosDeDims(dims);
+    var out = { cierres: {}, dudosos: [], fuente: 'topologia' };
+    var i, L;
+    for (i = 0; i < lados.length; i++) out.cierres[lados[i]] = 0;
+    if (opts.cerrada) {
+      for (i = 0; i < lados.length; i++) out.cierres[lados[i]] = 2;
+      out.fuente = 'anillo';
+      return out;
+    }
+    var tr = tramosDeFigura(f, opts.angulos);
+    if (!tr) {
+      // FIGURA SIN CATÁLOGO (no sembrada, o llamada directa de un test con un
+      // código inventado): no hay geometría que leer. Red de seguridad histórica
+      // —la misma convención que `_esPerimetro` usa sin catálogo—: se cuenta por
+      // POSICIÓN en la cadena de dims, interior = 2 · extremo = 0.
+      out.fuente = 'sin-catalogo';
+      for (i = 0; i < lados.length; i++) {
+        out.cierres[lados[i]] = (i > 0 && i < lados.length - 1) ? 2 : 0;
+      }
+      return out;
+    }
+    var T = tr.tramos, n = T.length;
+    var or = _orientarCadena(_cadena2D(T, {}, 1), T, ladoDominanteFigura(f, opts.ladoDom));
+    var pts = or.pts;
+    if (!pts || pts.length < n + 1) return out;
+    var dir = [], eje = [], m, j;
+    for (i = 0; i < n; i++) {
+      var du = pts[i + 1].u - pts[i].u, dv = pts[i + 1].v - pts[i].v;
+      m = Math.sqrt(du * du + dv * dv) || 1;
+      dir.push({ du: du / m, dv: dv / m });
+      eje.push((Math.abs(dv / m) < EPS_DIR) ? 'u'
+        : ((Math.abs(du / m) < EPS_DIR) ? 'v' : 'd'));
+    }
+    var cierraCadena = _cadenaCierra(pts);
+    var hay = {};
+    for (i = 0; i < lados.length; i++) hay[lados[i]] = true;
+    // `sale` = componente v con la que el vecino ABANDONA la esquina compartida.
+    // > 0 = se va HACIA EL NÚCLEO, o sea hacia donde va la capa siguiente: eso es
+    // lo que estorba. < 0 = se va hacia el recubrimiento: no hay nadie delante.
+    for (i = 0; i < n; i++) {
+      L = T[i].lado;
+      if (L == null || !hay[L] || eje[i] !== 'u') continue;
+      var c = 0, dudoso = false;
+      // extremo INICIO (esquina pts[i]): el vecino es el tramo anterior, recorrido
+      // al revés. extremo FIN (esquina pts[i+1]): el vecino es el siguiente, tal cual.
+      var vecinos = [];
+      j = (i > 0) ? (i - 1) : (cierraCadena ? (n - 1) : -1);
+      if (j >= 0) vecinos.push({ j: j, sale: -dir[j].dv });
+      j = (i < n - 1) ? (i + 1) : (cierraCadena ? 0 : -1);
+      if (j >= 0) vecinos.push({ j: j, sale: dir[j].dv });
+      for (var q = 0; q < vecinos.length; q++) {
+        var vj = vecinos[q].j;
+        if (T[vj].lado == null || !hay[T[vj].lado]) continue;   // ese lado no existe en esta barra
+        if (!(vecinos[q].sale > EPS_DIR)) continue;             // se va hacia afuera: no estorba
+        if (eje[vj] === 'v') c++;
+        else if (eje[vj] === 'd') dudoso = true;
+      }
+      out.cierres[L] = c;
+      if (dudoso && out.dudosos.indexOf(L) < 0) out.dudosos.push(L);
+    }
+    return out;
+  }
+
   function anidarFigura(figura, dims, delta, rol, opts) {
     opts = opts || {};
     var dDim = Number(delta) || 0;                                   // δ de dims (k·φ)
     var dSep = (opts.sep != null && isFinite(opts.sep)) ? Number(opts.sep) : dDim;  // δ del marco (k·gap)
-    var res = { dims: dims, delta: 0, inset: 0, criterio: 'recta', vecinos: {}, cabe: true, motivo: null };
+    var res = { dims: dims, delta: 0, inset: 0, criterio: 'recta', cierres: {}, dudosos: [],
+      vecinos: {}, cabe: true, motivo: null };
     var lados = _ladosDeDims(dims);
     var f = (figura || '').toUpperCase();
     // CRITERIO: manda la FORMA QUE SE DIBUJA, no el código de la figura.
@@ -2728,17 +2840,36 @@
     }
     var nd = {};
     for (var k in dims) if (dims.hasOwnProperty(k)) nd[k] = dims[k];
+    // CUÁNTOS EXTREMOS CIERRAN — fuente ÚNICA y TOPOLÓGICA (ver extremosQueCierran).
+    // Antes esto era la CUENTA DE VECINOS EN LA CADENA (interior = 2, extremo = 1) y
+    // por eso le daba el MISMO −2δ a todas las figuras abiertas: una 103A (dos patas
+    // perpendiculares) y una 103B (dos patas a 45° replegadas) salían con el mismo
+    // descuento, y una 102A (UNA pata perpendicular) salía con CERO — sus dos lados
+    // eran "extremo". Medido en viga 600×60×30, CBS φ16, 2 capas gap 6, todo auto:
+    //   102A  B = 592 → 592 (0 φ)     …y le corresponde 1 φ
+    //   103A  B = 592 → 588.8 (2 φ)   …acertaba
+    //   103B  B = 592 → 588.8 (2 φ)   …sus patas no son perpendiculares
+    var ec = extremosQueCierran(f, dims, {
+      cerrada: cerrada, angulos: opts.angulos, ladoDom: opts.ladoDom
+    });
+    res.cierres = ec.cierres;
+    res.dudosos = ec.dudosos;
     for (var i = 0; i < lados.length; i++) {
       var L = lados[i];
-      // VECINOS PERPENDICULARES del lado en la cadena. En una figura CERRADA la
-      // cadena da la vuelta → todo lado tiene 2. En una ABIERTA los extremos
-      // tienen 1 (su otra punta es libre) y el resto 2.
-      var v = cerrada ? 2 : ((i > 0 ? 1 : 0) + (i < lados.length - 1 ? 1 : 0));
-      res.vecinos[L] = v;
-      // REGLA ÚNICA: encajonado (2 vecinos) → −2δ; con punta libre → INTACTO.
+      var v = Number(ec.cierres[L]) || 0;
+      res.vecinos[L] = v;   // alias histórico: hoy son los extremos que CIERRAN
+      // REGLA ÚNICA: cada extremo que cierra retira δ; el que no cierra, nada.
       // SIN CLAMP: si la resta deja ≤ 0, la capa NO CABE (el llamador la omite).
-      if (v === 2) {
-        var nuevo = Number(nd[L]) - 2 * d;
+      if (v > 0) {
+        var nuevo = Number(nd[L]) - v * d;
+        // REDONDEO A MEDIDA DE TALLER, DESPUÉS DEL DESCUENTO (regla del usuario:
+        // «ajustamos la barra hacia abajo y listo»). 588.8 no se corta en obra.
+        // Va HACIA ABAJO: sobrar hormigón es un dato, faltar es una barra que no
+        // entra. Y sólo donde la DIM ES LA FUENTE DEL TRAZO (`canalDelTrazo` ===
+        // 'dims'): en el anillo cerrado la forma la manda el marco de núcleo y
+        // redondear la dim listada dejaría el despiece diciendo un número que el
+        // 3D no dibuja — el defecto "medir ≠ dibujar" que este motor persigue.
+        if (canalDelTrazo(f, rol, L) === 'dims') nuevo = Math.floor(nuevo);
         nd[L] = nuevo;
         if (!(nuevo > 0) && res.cabe) {
           res.cabe = false;
@@ -2873,6 +3004,11 @@
     // ANIDADO: fuente ÚNICA del criterio "figura dentro de figura" (la usan
     // distribuidorLayered/distribuidorArreglo de reglas.js).
     anidarFigura: anidarFigura,
+    // ¿CUÁNTOS EXTREMOS DE CADA LADO CIERRAN? — el predicado TOPOLÓGICO del anidado
+    // («un extremo del cuerpo cierra cuando de él sale un lado perpendicular»).
+    // Lo consume anidarFigura y lo consulta reglas.js para AVISAR de las diagonales
+    // que estorban y que esta regla no puede cuantificar sin meter el gap dentro.
+    extremosQueCierran: extremosQueCierran,
     figuraCerrada: figuraCerrada,
     // ¿el marco del anillo anidado sigue existiendo con estos insets? (lo consulta
     // reglas.js antes de generar una capa cerrada: si no cabe, la omite y avisa).

@@ -134,6 +134,16 @@
   // AGRUPACIÓN por item/etiqueta: barras IDÉNTICAS (misma figura/diam/dims/marca/
   // suf/ángulos) se colapsan a 1 fila con cant = N (lógica cant/mult de barras).
   // Espeja la regla de fabricación (§0-5ter): capas iguales → 1 etiqueta ×N.
+  //
+  // …Y POR ESO LAS CAPAS ANIDADAS YA SALEN COMO ÍTEMS DISTINTOS, SIN NADA EXTRA
+  // (verificado 25-ago). La clave incluye dim_a…dim_i, y el autoajuste de capas le
+  // da a la capa k un cuerpo distinto (reglas.distribuidorLayered estampa
+  // `pl.dims` propias cuando el anidado o el re-cálculo del 'auto' las cambian).
+  // MEDIDO en viga 600×60×30, CBS 103A φ16, 3 capas gap 6, todo auto: sin el
+  // ajuste el despiece da 1 ítem × 9 barras; con el ajuste, 3 ítems (B = 592 · 588
+  // · 585) × 3 barras cada uno. Si algún día dos capas volvieran a medir lo mismo
+  // se agruparían — y eso es lo correcto: son la MISMA barra, y el enfierrador
+  // corta una sola etiqueta ×N. No hay que separar por número de capa.
   function _claveBarra(b) {
     return [b.figura, b.diam, b.marca, b.suf_tipo,
       b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
@@ -292,6 +302,33 @@
   //  - Simplificación explícita: se retranquea la barra COMPLETA (los 4 lados por
   //    igual) cuando depende de una prioritaria que va por fuera; NO se hace el
   //    análisis lado-por-lado fino (queda como límite del MVP → 'pendientes').
+  //
+  // ESTO **NO** ES LA MISMA FÍSICA QUE EL AUTOAJUSTE DE CAPAS ANIDADAS (medido
+  // 25-ago; la pregunta se hizo explícitamente y ésta es la respuesta, con números).
+  // Viga 600×60×30 rec 4/4/3, CBS 103A φ16, A/C fijas 30:
+  //   RETRANQUEO (ES φ10 con prioridad 1, CBS con prioridad 2, offset = 1):
+  //       A 30 → 29 · C 30 → 29 · **B 592 → 592** · la barra baja 1 en Y ·
+  //       ancho dibujado 590.4 → 590.4
+  //   ANIDADO (3 capas, gap 6, sin prioridades):
+  //       **A 30 → 30 · C 30 → 30** · B 592 → 588 → 585 ·
+  //       ancho dibujado 590.4 → 586.4 → 583.4
+  // Son ejes ORTOGONALES: el retranqueo corre por la NORMAL de la cara (Y) y por
+  // eso acorta las PATAS —que van por ese eje— dejando el cuerpo intacto; el
+  // anidado corre por el eje LONGITUDINAL (X) y por eso acorta el CUERPO —que va
+  // por ese eje— dejando las patas intactas. Colgar el anidado de este mecanismo
+  // tocaría exactamente las dims equivocadas.
+  //
+  // LO QUE SÍ ES DUPLICADO (y no con el anidado, sino con este mismo bloque):
+  // `_acortarPatas` de aquí y `reglas._dimsEfectivas(comp, host, jer, offPos)` del
+  // bucle de capas resuelven LA MISMA física por el MISMO eje. Medido: con las
+  // patas en 'auto' y gap 6, las capas salen con A = 51 → 45 → 39, o sea −gap por
+  // capa, que es lo que `_acortarPatas` hace con el offset de prioridad. Y NO
+  // contestan igual: `_dimsEfectivas` re-resuelve sólo los lados en 'auto' y
+  // respeta el FIJO (la regla del proyecto: «el auto se achica solo, lo fijo se
+  // desplaza tal cual»), mientras `_acortarPatas` le resta el offset también a una
+  // pata FIJA, o sea le cambia al usuario un número que él escribió. Unificar los
+  // dos por el lado de `_dimsEfectivas` es deuda REAL y pendiente — pero es de este
+  // bloque, no del anidado.
 
   // Orientación dominante de un placement: 'X' (longitudinal, corre en el largo)
   // o 'YZ' (transversal: estribo/traba en el plano de sección).

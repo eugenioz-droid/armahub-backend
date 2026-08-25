@@ -353,9 +353,14 @@ console.log('M . el panel de la seleccion multiple');
 
 // ============ N . EL CHECK DE CAPAS ANIDADAS SOLO SE OFRECE DONDE HACE ALGO
 // (25-ago) El usuario: "ajustar las capas anidadas no hace nada". Y era cierto EN
-// SU CASO: el anidado acorta las PATAS de la capa de adentro para que no choquen
-// con la de afuera, y una barra recta no tiene patas que acortar. El check no
-// estaba roto: estaba ofrecido donde no aplica, que para el usuario es lo mismo.
+// SU CASO: el ajuste acorta el CUERPO de la capa de adentro para que no choque con
+// las patas de la de afuera, y una barra recta no tiene ninguna pata que la
+// encajone. El check no estaba roto: estaba ofrecido donde no aplica, que para el
+// usuario es lo mismo.
+// REGLA v4: el cuerpo pierde un diametro por cada EXTREMO QUE CIERRA, y un extremo
+// cierra cuando de el sale un lado PERPENDICULAR. El sondeo le pregunta al MOTOR
+// (expande un clon con el ajuste apagado y otro encendido), asi que no hay tabla
+// por figura: cuando el motor cambie, el check se ofrece o se retira solo.
 console.log('');
 console.log('N . el anidado se ofrece donde cambia algo');
 {
@@ -367,14 +372,31 @@ console.log('N . el anidado se ofrece donde cambia algo');
       distribucion: { modo: 'layered', n_capas: 2, barras_capa: 2, gap: 30, sentido: 'nucleo' }
     };
   }
+  const auto3 = { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' } };
   const recta = capas('101A', { A: { modo: 'auto' } });
-  const conPatas = capas('103B', { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' } });
-  ST.receta.componentes = [recta, conPatas];
+  const unaPata = capas('102A', { A: { modo: 'auto' }, B: { modo: 'auto' } });
+  const dosPatas = capas('103A', JSON.parse(JSON.stringify(auto3)));
+  const patas45 = capas('103B', JSON.parse(JSON.stringify(auto3)));
+  ST.receta.componentes = [recta, unaPata, dosPatas, patas45];
   R.normalizarReceta(ST.receta);
   ok(TE._anidadoCambiaAlgo(ST.receta.componentes[0]) === false,
-    'una barra recta no tiene patas que acortar: el check no se ofrece');
+    '101A: de una recta no sale ningun lado -> el check no se ofrece');
+  // REGRESION FIJADA (25-ago): la 102A NO se ofrecia. Cierra por UN extremo (de su
+  // unico doblez sale una pata perpendicular) y por lo tanto SI se ajusta: -1 phi.
   ok(TE._anidadoCambiaAlgo(ST.receta.componentes[1]) === true,
-    'una figura con patas si anida: el check se ofrece');
+    '102A: cierra por UN extremo -> el check SI se ofrece');
+  ok(TE._anidadoCambiaAlgo(ST.receta.componentes[2]) === true,
+    '103A: cierra por DOS extremos -> el check se ofrece');
+  // 103B: sus dos patas van a 45 grados. Estorban, pero cuanto depende del Sep y no
+  // del diametro, asi que la regla no lo puede cuantificar: no se ajusta NADA y el
+  // motor deja dicho por que. El check no se ofrece, pero la razon si se muestra.
+  ok(TE._anidadoCambiaAlgo(ST.receta.componentes[3]) === false,
+    '103B: patas a 45 (diagonales) -> el ajuste no cambia nada, el check no se ofrece');
+  const porQue = TE._porQueNoAnida(ST.receta.componentes[3]);
+  ok(/DIAGONAL/.test(porQue) && /Sep/.test(porQue),
+    '...y la nota explica que el lado es DIAGONAL y depende del Sep (=' + porQue.slice(0, 60) + '...)');
+  ok(/perpendicular/.test(TE._porQueNoAnida(ST.receta.componentes[0])),
+    '...mientras que la recta recibe la otra razon (no sale ningun lado perpendicular)');
 }
 
 // ============ O . LA COLOCACION NO DEPENDE DE LA TIPOLOGIA

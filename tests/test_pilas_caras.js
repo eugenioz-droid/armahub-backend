@@ -202,8 +202,11 @@ ok(close(co[0].dims.B, 592) && close(co[0].dims.A, 30),
 ok(close(co[0].puntos[1].y, 24.4), 'capa 1: eje del tramo = 30 − (4 + 0.8) − 0.8 = 24.4 (=' + co[0].puntos[1].y + ')');
 ok(close(maxE(esA, 'y') - co[0].puntos[1].y, PHI_ES / 2 + 1.6 / 2),
   'capa 1 TANGENTE al estribo: separación de ejes = φest/2 + φ/2 = 1.2');
-ok(close(co[1].dims.B, 592 - 3.2) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
-  'capa 2 anidada: B − 2·φ = 588.8 y PATAS INTACTAS 30/30 (antes 28.4)');
+// 25-AGO · EL REDONDEO A ENTERO VA DESPUÉS DEL DESCUENTO y HACIA ABAJO («ajustamos
+// la barra hacia abajo y listo»): 588.8 no es una medida de taller. La 103A cierra
+// por sus DOS extremos (de cada uno sale una pata perpendicular) → −2φ → 588.
+ok(close(co[1].dims.B, Math.floor(592 - 3.2)) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
+  'capa 2 anidada: B − 2·φ = 588.8 → 588 y PATAS INTACTAS 30/30 (=' + co[1].dims.B + ')');
 ok(close(co[1].puntos[1].y, 22.8), 'capa 2 más adentro: 24.4 − Sep(1.6) = 22.8 (=' + co[1].puntos[1].y + ')');
 ok(close(co[0].puntos[0].y, -4.8) && close(co[1].puntos[0].y, -6.4),
   'las PUNTAS bajan con la pieza: −4.8 y −6.4 (NO se alinean; la pata fija de 30 ya lleva ' +
@@ -211,7 +214,7 @@ ok(close(co[0].puntos[0].y, -4.8) && close(co[1].puntos[0].y, -6.4),
 // El campo Sep manda la POSICIÓN también acá, y el ajuste de dims no lo mira:
 // con Sep 5 la capa 2 baja 5 y sigue midiendo B − 2·φ.
 const coSep5 = plsDe(run([estribo(), corchete(false, 5)]), 'CO');
-ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 592 - 3.2),
+ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, Math.floor(592 - 3.2)),
   'con Sep 5: capa 2 a 19.4 (el campo manda) y B sigue en 588.8 (el anidado sólo ajusta dims) (=' +
   coSep5[1].puntos[1].y + ' / ' + coSep5[1].dims.B + ')');
 
@@ -255,8 +258,8 @@ ok(close(maxE(unaDe(oAv, 'ES'), 'z') - maxE(cov[0], 'z'), PHI_ES / 2 + 1.6 / 2 +
   'volteado: punta y pierna del estribo a 1.4 — el 1.2 tangente más los 0.2 que sobran del ' +
   'redondeo a la baja, que siempre sobra hacia el núcleo');
 ok(close(maxE(cov[0], 'x'), 0) && close(minE(cov[0], 'x'), 0), 'volteado: ya no corre en X');
-ok(close(cov[1].dims.B, 18.8) && close(cov[1].dims.A, 30),
-  'volteado capa 2 anidada: B − 2·φ = 22 − 3.2 = 18.8, patas intactas 30');
+ok(close(cov[1].dims.B, 18) && close(cov[1].dims.A, 30),
+  'volteado capa 2 anidada: B − 2·φ = 22 − 3.2 = 18.8 → 18 (redondeo abajo), patas intactas 30');
 ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -6.4),
   'volteado capa 2: y = 24.4 − Sep = 22.8 y la punta baja con la pieza (−6.4)');
 

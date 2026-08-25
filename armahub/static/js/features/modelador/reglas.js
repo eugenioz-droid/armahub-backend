@@ -3157,6 +3157,9 @@
           { sep: offPos, diamCm: base.diam, angulos: base.anchorBase && base.anchorBase.angulos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
+      if (usaAn && an.dudosos && an.dudosos.length) {
+        _avisar(base, _avisoDiagonalAnidado(base.figura, an.dudosos));
+      }
       var dimsCapa = usaAn ? an.dims : dimsBase;
       var dimsPropias = usaAn || (dimsBase !== base.dims);
       // CAPA QUE NO CABE → NO SE GENERA (hallazgo A). El inset k·gap dejó alguna
@@ -3467,6 +3470,9 @@
           { sep: off, diamCm: base.diam, angulos: base.anchorBase && base.anchorBase.angulos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
+      if (usaAn && an.dudosos && an.dudosos.length) {
+        _avisar(base, _avisoDiagonalAnidado(base.figura, an.dudosos));
+      }
       var dimsCapaA = usaAn ? an.dims : dimsBaseA;
       var dimsPropiasA = usaAn || (dimsBaseA !== base.dims);
       // MISMO criterio que layered (hallazgo A): la capa cuyo inset deja dims ≤ 0
@@ -5215,6 +5221,23 @@
   function _avisoCapa(c, sep, motivo) {
     return 'Capa ' + (c + 1) + ' no cabe (Sep ' + (Math.round(Number(sep) * 100) / 100) +
       '): omitida' + (motivo ? ' — ' + motivo : '');
+  }
+
+  // LO QUE EL AUTOAJUSTE NO PUEDE CALCULAR, SE DICE (contrato del motor).
+  // El descuento por capa vale (k−1)·φ por cada extremo que CIERRA, y sólo un
+  // vecino PERPENDICULAR da un número independiente del Sep (ver
+  // figura_puntos.extremosQueCierran). Cuando el lado que sale del cuerpo es
+  // DIAGONAL y va hacia el núcleo —las patas a 45° de una 103B, 103E, 103H…— sí
+  // estorba, pero cuánto depende del Sep, y meter el Sep dentro de la dim es
+  // justo lo que el usuario prohibió («debe ajustar SOLO la medida de B»).
+  // Antes de esto ese caso se llevaba −2φ a ojo, con el mismo número que una
+  // figura de patas rectas: un dato inventado y mudo. Ahora no se descuenta nada
+  // y se DICE, que es lo que deja decidir al usuario.
+  function _avisoDiagonalAnidado(figura, lados) {
+    return 'Figura ' + figura + ': en las capas anidadas, el lado que sale de un ' +
+      'extremo de ' + lados.join('/') + ' es DIAGONAL y no perpendicular. Ese ' +
+      'extremo NO se ajusta: cuánto estorba depende del Sep y no del diámetro, y ' +
+      'el Sep no entra en la medida. Revisa esa medida a mano.';
   }
 
   function _insetsAnidados(anchorBase, d) {
