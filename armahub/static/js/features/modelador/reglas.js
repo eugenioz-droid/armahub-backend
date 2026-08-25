@@ -1948,10 +1948,12 @@
   // template la barra saltaba de y = 45.2 a y = 20 —25.2 cm— en silencio. Con la
   // marca, un ancla sin ella no la acepta NINGÚN lector y el motor la re-deriva de
   // `pos_hint` + base contra la geometría que la receta trae: misma coordenada, cero
-  // movimiento. Va en el ancla y no en el normalizador de apertura a propósito: hay
-  // consumidores que generan sin pasar por él (el "Abrir template" del Enfierrador
-  // arma la receta con los `params` crudos del backend y llama a generarViga), y la
-  // migración no puede depender de por qué puerta entró la receta.
+  // movimiento. Va en el ancla y no en el normalizador de apertura a propósito: se
+  // puede generar sin pasar por él —el "Abrir template" del Enfierrador MVP armaba la
+  // receta con los `params` crudos del backend y llamaba derecho a generarViga— y la
+  // migración no puede depender de por qué puerta entró la receta. Ese cliente ya no
+  // existe, pero la puerta sí: generarViga es pública y nada obliga a normalizar
+  // antes (tests/test_anclaje_distribucion.js lo congela generando en crudo).
   //
   // NO se clampea (igual que hoy, ver la nota de _aplicarPostTransform): una barra
   // que asoma se VE y el aviso de "fierro fuera del hormigón" ya lo dice con sus

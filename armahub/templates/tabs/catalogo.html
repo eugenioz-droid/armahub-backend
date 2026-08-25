@@ -239,7 +239,7 @@
               listo y CERO componentes), buscar, ordenar y abrir los guardados
               (GET /templates). La lógica (tplValidar, tplCrearTemplate,
               tplCargarGuardados, tplSetOrden, tplAbrirTemplate, tplEliminarTemplate,
-              tplFiltrarGuardados, tplLimpiarFiltros) vive en
+              tplFiltrarGuardados, tplChipSet, tplLimpiarFiltros) vive en
               static/js/features/modelador/template_editor.js.
          Los 6 botones de ELEMENTO ya no están aquí: el elemento se elige DENTRO del
          editor (selector del ribbon, _cambiarElemento) y se puede cambiar sin salir.
@@ -272,16 +272,53 @@
   .tplOrdenBtn { border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px;
                      padding:6px 12px; cursor:pointer; color:#6b7a8d; }
       .tplOrdenBtn.on { border-color:#558B2F; background:#f7fbf2; color:#33691e; font-weight:700; }
+
+  /* CHIPS DE FILTRO. Mismo lenguaje que .tplOrdenBtn (borde + fondo, no sólo color
+     de texto: gris sobre gris no se distingue) y con PALABRA — nada de iconos ni de
+     controles que aparecen al pasar el cursor. */
+  .tplChipGrupo { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+  .tplChipLbl { font-size:10px; text-transform:uppercase; letter-spacing:.5px;
+                color:#98a4b2; font-weight:700; margin-right:1px; }
+  .tplChip { border:1px solid #dbe1e8; background:#fff; border-radius:999px; font-size:11.5px;
+             line-height:1; padding:5px 11px; cursor:pointer; color:#6b7a8d; }
+  .tplChip:hover { border-color:#b9c4d0; background:#f7f9fb; }
+  .tplChip.on { border-color:#558B2F; background:#f1f7e8; color:#33691e; font-weight:700; }
+  /* "Limpiar" se ve SIEMPRE; cuando no hay nada que limpiar va apagado en vez de
+     desaparecer, así el usuario sabe que existe y por qué ahora no hace nada. */
+  #tplChips .tplLimpiar { border:1px solid #dbe1e8; background:#fff; border-radius:7px;
+    font-size:11.5px; line-height:1; padding:5px 11px; cursor:pointer; color:#5b6b7d; }
+  #tplChips .tplLimpiar:hover { border-color:#b9c4d0; background:#f7f9fb; }
+  #tplChips .tplLimpiar[disabled] { cursor:default; opacity:.35; }
+  #tplChips .tplLimpiar[disabled]:hover { background:#fff; border-color:#dbe1e8; }
+
+  /* INSIGNIA DE USO de la fila. El template que nadie cargó todavía lo DICE con
+     palabra ("sin usar"): un guion es un hueco, y un hueco no informa. */
+  #tplGuardadosLista .tplUso { display:inline-block; font-size:11px; line-height:1;
+    padding:3px 8px; border-radius:999px; border:1px solid #cfe0b8; background:#f4f9ec;
+    color:#3f6c1f; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #tplGuardadosLista .tplUso.cero { border-color:#e3e8ee; background:#f7f9fb; color:#8a97a6; }
+  /* La obra sólo aparece cuando el template está COLGADO de una obra (hoy sólo los
+     que dejó el Enfierrador). Los generales no dicen nada: repetir "General" en
+     todas las filas era ancho gastado en un dato que no distingue a nadie. */
+  #tplGuardadosLista .tplObra { display:inline-block; font-size:10px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.3px; padding:1px 6px; border-radius:8px;
+    border:1px solid #d3c4a8; background:#fbf6ec; color:#8a6d3b; margin-left:6px; }
     </style>
     <div id="catSubTemplates" style="display:none;">
       <!-- CARD 2 — Gestor de templates.
            Crear (nombre → modal) + biblioteca. La lista es LIVIANA (GET /templates
-           sin `params`) con buscador por nombre y filtro por elemento: los dos los
-           resuelve el BACKEND (?nombre= / ?tipo=). El ORDEN, en cambio, es local
-           (elemento o fecha) porque la lista ya está entera en el navegador.
-           Cada fila: Abrir (GET /templates/{id} → modal) y 🗑 Eliminar (DELETE, con
-           confirmación que nombra el template; si responde 409 el template está en
-           uso y NO se borra). La lógica vive en template_editor.js. -->
+           sin `params`) y viene ENTERA: buscador, chips y orden se resuelven todos
+           en el navegador. Antes el buscador y el filtro de elemento los resolvía
+           el backend (?nombre= / ?tipo=), y eso rompía los chips: como los chips de
+           elemento se derivan de lo que HAY en la lista, filtrar por 'viga' en el
+           servidor dejaba la lista con puras vigas y hacía desaparecer los demás
+           chips — no había cómo volver.
+           Cada fila muestra el USO (n_usos / n_obras del backend), que es lo que
+           sirve para elegir con 80 templates: el que ya funcionó, no el último
+           tocado. Abrir = clic en la fila (GET /templates/{id} → modal);
+           Renombrar y Eliminar van con palabra al final (DELETE con confirmación
+           que nombra el template; 409 = está en uso y NO se borra).
+           La lógica vive en template_editor.js. -->
       <div class="card" id="tplGuardadosCard" style="border-top:3px solid #558B2F;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <h3 style="margin:0; color:#558B2F;">📂 Gestor de templates</h3>
@@ -304,22 +341,30 @@
 
         <div style="border-top:1px dashed #e6eaef; margin-bottom:12px;"></div>
 
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
           <input id="tplBuscar" maxlength="80" placeholder="🔎 Buscar por nombre…"
                  oninput="tplFiltrarGuardados()"
                  style="flex:1; min-width:180px; max-width:280px; border:1px solid #dbe1e8; border-radius:7px; padding:6px 10px; font-size:12.5px;">
-          <!-- VACÍO a propósito: las opciones las renderiza _tplRenderFiltroTipo()
-               desde TPL_DIMS_POR_ELEMENTO (misma tabla que el selector del editor). -->
-          <select id="tplFiltroTipo" onchange="tplFiltrarGuardados()"
-                  style="border:1px solid #dbe1e8; border-radius:7px; padding:6px 8px; font-size:12.5px; cursor:pointer;"></select>
           <!-- ORDEN: el estado (cuál está `on`) lo pinta _tplPintarOrden() al
-               cargar la lista, para que no se desincronice con _tplOrden. -->
+               cargar la lista, para que no se desincronice con _tplOrden.
+               "Por uso" arranca activo: con la biblioteca llena, el que se busca es
+               el que YA FUNCIONÓ, no el que alguien tocó ayer. -->
           <span class="muted" style="font-size:11px; margin-left:auto;">Ordenar:</span>
+          <button id="tplOrdenUso" class="tplOrdenBtn" onclick="tplSetOrden('uso')"
+                  title="Los más cargados a un despiece arriba">Por uso</button>
           <button id="tplOrdenElemento" class="tplOrdenBtn" onclick="tplSetOrden('elemento')"
                   title="Agrupa por tipo de elemento (muro, losa, viga…)">Por elemento</button>
           <button id="tplOrdenFecha" class="tplOrdenBtn" onclick="tplSetOrden('fecha')"
                   title="Los editados más recientemente arriba">Por fecha</button>
         </div>
+
+        <!-- FILTROS RÁPIDOS. Vacío a propósito: los pinta _tplPintarChips() desde
+             la lista que YA está en el navegador — los chips de elemento salen de
+             lo que HAY, no de una lista escrita a mano que se desincroniza en
+             cuanto exista un tipo nuevo. Se ven siempre, con palabra, y se
+             combinan entre sí y con el buscador. El filtrado es LOCAL: la lista
+             viene entera del servidor, así que un chip no cuesta un viaje. -->
+        <div id="tplChips" style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:10px;"></div>
 
         <!-- Resultado de eliminar / abrir: verde si salió, rojo con el motivo del
              backend si no (409 = en uso, 403 = sin permiso). Lo pinta _tplMsg(). -->

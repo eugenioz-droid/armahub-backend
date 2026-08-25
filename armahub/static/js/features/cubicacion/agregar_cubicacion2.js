@@ -27,7 +27,11 @@ var AC2 = {
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
   // barra (decisión de producto CERRADA). AC2.tipo = valor de `marca` que se asignará a las
   // barras nuevas. NO es un campo nuevo; el guardado (sub-paso siguiente) estampará marca=tipo.
-  barras: []   // vacío: se llena al agregar barras (＋ barra / ＋ barras M) o al cargar un lote
+  barras: [],  // vacío: se llena al agregar barras (＋ barra / ＋ barras M) o al cargar un lote
+  // Estructuras del despiece abierto, tal como las devolvió GET /lotes/{id}/elementos
+  // (las llena _ac2CargarEstructuras). No es una copia decorativa del listado: es de
+  // donde la confirmación de borrado saca CUÁNTAS barras y CUÁNTOS kilos se van.
+  _estructuras: []
 };
 var AC2_LADOS=['A','B','C','D','E','F','G','H','I'];
 // Sectores constructivos (enum fijo, orden canónico de barras.py) — sin endpoint.
@@ -2104,25 +2108,43 @@ window.ac2PintarEstructuras=function(lista){
   // La insignia va en TEXTO (.b3d) y no en emoji: un glifo que la fuente del sistema no
   // dibuja deja el control mudo, y eso ya costó tres rondas.
   var eliminado = (AC2.loteEstado==='eliminado');
+  var terminado = (AC2.loteEstado==='terminada');
   var verTxt = (AC2.loteEstado==='borrador') ? '<span class="b3d">3D</span> Abrir' : '<span class="b3d">3D</span> Ver';
   cuerpo.innerHTML = lista.map(function(e){
     var retirada = (e.estado==='retirada');
-    // ESTRUCTURA VACÍA. Hoy sólo pueden serlo las que quedaron de cuando la carga se hacía
-    // en dos transacciones (la estructura entraba y sus barras no): 0 items y 0 kg. Ya no
-    // se pueden crear —nacen junto con sus barras—, pero las que existen NO son basura:
-    // guardan la receta del elemento que se modeló. Por eso la fila sigue ofreciendo
+    var sinBarras = !(Number(e.n_barras)>0) && !(Number(e.n_items)>0);
+    // AVISO ÁMBAR "sin barras". Sólo pueden serlo las que quedaron de cuando la carga se
+    // hacía en dos transacciones (la estructura entraba y sus barras no): 0 items y 0 kg.
+    // Ya no se pueden crear —nacen junto con sus barras—, pero las que existen NO son
+    // basura: guardan la receta del elemento que se modeló, y la fila sigue ofreciendo
     // ABRIRLA (reabrir + "Actualizar en el despiece" recupera el trabajo y esta vez las
-    // barras entran) y ADEMÁS ofrece borrarla. La decisión es del usuario; nada se elimina
-    // a su espalda.
-    var vacia = !retirada && !eliminado && !(Number(e.n_barras)>0) && !(Number(e.n_items)>0);
+    // barras entran). El aviso se queda porque es información, no porque sea la única
+    // que se puede borrar — eso dejó de ser cierto.
+    var vacia = !retirada && !eliminado && sinBarras;
+    // ELIMINAR: CUALQUIER estructura, no sólo la vacía. El elemento es la RECETA y sus
+    // barras son el RESULTADO (por eso están bloqueadas en la grilla y con la papelera
+    // apagada), así que borrar el elemento se lleva sus barras en la misma transacción y
+    // ése es el único camino. El control se ofrece SÓLO donde el backend lo va a aceptar
+    // —un control que sólo puede responder con un alert es un control muerto—:
+    //   · despiece ELIMINADO: nunca (lápida, su contenido es histórico);
+    //   · despiece TERMINADO: sólo la que no tiene barras que quitar, porque quitar
+    //     barras de un terminado es cosa del Bar Manager (misma regla que la papelera).
+    var puedeBorrar = !eliminado && (!terminado || sinBarras);
     var accion;
     if (eliminado) accion='<span style="color:#9e9e9e; font-size:10px;" title="Despiece eliminado: su contenido es histórico y no se abre en 3D.">— histórico</span>';
     else if (retirada) accion='<span style="color:#9e9e9e; font-size:10px;" title="Estructura retirada: sus barras ya no están en el despiece.">— retirada</span>';
     else accion='<span onclick="ac2AbrirEditor3D('+e.id+')" title="Ver esta estructura en 3D" style="color:#0277bd; cursor:pointer; font-weight:600;">'+verTxt+'</span>';
     if (vacia){
-      accion='<span title="Una carga que no llegó a entrar: la estructura quedó sin barras. Su diseño SÍ está guardado — ábrela y vuelve a cargarla, o elimínala." style="color:#ef6c00; font-size:10px; margin-right:10px;">⚠ sin barras</span>'+
-        accion+
-        '<span onclick="ac2EliminarEstructura('+e.id+')" title="Eliminar del despiece esta estructura vacía (se pierde su diseño; el despiece no cambia porque no tiene barras)" style="color:#c62828; cursor:pointer; font-weight:600; margin-left:10px;">🗑 Eliminar</span>';
+      accion='<span title="Una carga que no llegó a entrar: la estructura quedó sin barras. Su diseño SÍ está guardado — ábrela y vuelve a cargarla, o elimínala." style="color:#ef6c00; font-size:10px; margin-right:10px;">⚠ sin barras</span>'+accion;
+    }
+    if (puedeBorrar){
+      // El título DICE LOS NÚMEROS de esta fila, igual que la confirmación: "eliminar"
+      // significa cosas muy distintas con 0 barras y con 148. Y va en TEXTO, no en un
+      // emoji de papelera: un glifo que la fuente no dibuja deja el control mudo.
+      var tit = sinBarras
+        ? 'Eliminar del despiece esta estructura sin barras (se pierde su diseño; el despiece no cambia)'
+        : ('Eliminar esta estructura y las '+ac2Num(e.n_barras||0)+' barra(s) que generó ('+ac2Num(e.kg,1)+' kg salen del despiece)');
+      accion+='<span onclick="ac2EliminarEstructura('+e.id+')" title="'+ac2Esc(tit)+'" style="color:#c62828; cursor:pointer; font-weight:700; margin-left:10px; text-decoration:underline;">Eliminar</span>';
     }
     return '<tr style="border-top:1px solid #f0f0f0;'+(retirada?' color:#9e9e9e;':(vacia?' background:#fff8e1;':''))+'">'+
       '<td style="padding:5px 8px; font-weight:600;'+(retirada?'':' color:#0277bd;')+'" title="'+ac2Esc(e.nombre||'')+'">'+ac2Esc(ac2NombreEstructura(e))+'</td>'+
@@ -2136,31 +2158,56 @@ window.ac2PintarEstructuras=function(lista){
   }).join('');
 };
 
-// ELIMINAR una estructura VACÍA. El backend sólo la borra si de verdad tiene 0 barras
-// (si tuviera, responde 409 y dice por dónde se quitan): la guarda de los datos vive
-// allá, aquí se pregunta antes — borrar algo del despiece nunca es silencioso.
+// ELIMINAR una estructura del despiece — CON o SIN barras. El backend borra el elemento
+// y las barras que generó en la MISMA transacción (las copia antes a barras_eliminadas,
+// el mismo registro histórico del Bar Manager), así que aquí no hay nada que encadenar:
+// una llamada, o entra todo o no entra nada.
+//
+// LA CONFIRMACIÓN DICE EL NÚMERO REAL, no una advertencia genérica: "N barras y NN,N kg"
+// sale de la MISMA fila que el usuario está mirando (AC2._estructuras, lo que devolvió
+// GET /lotes/{id}/elementos). Un aviso que no dice cuánto se pierde no es un aviso.
 window.ac2EliminarEstructura=async function(instanciaId){
-  if (!confirm('Se eliminará esta estructura VACÍA del despiece.\n\n'+
-               'No tiene barras, así que el despiece no cambia. Lo que SÍ se pierde es su '+
-               'diseño guardado: si quieres recuperar el elemento, ábrelo con el botón 3D y '+
-               'vuelve a cargarlo en vez de borrarlo.\n\n¿Eliminar igual?')) return;
+  var e=(AC2._estructuras||[]).filter(function(x){ return x.id===instanciaId; })[0];
+  // Sin la fila no hay números que mostrar, y preguntar "¿seguro?" a ciegas sobre algo
+  // que puede llevarse 148 barras no es preguntar. Se recarga el listado y no se borra.
+  if (!e){ _ac2CargarEstructuras(AC2.loteId); return; }
+  var conBarras=(Number(e.n_barras)>0)||(Number(e.n_items)>0);
+  var msg='Se eliminará «'+ac2NombreEstructura(e)+'» de este despiece.\n\n';
+  msg += conBarras
+    ? ('Se eliminarán '+ac2Num(e.n_barras||0)+' barras ('+(e.n_items||0)+' ítem(s)) y '+
+       ac2Num(e.kg,1)+' kg de este despiece.\n\n')
+    : 'No tiene barras, así que el despiece no cambia de kilos.\n\n';
+  msg+='También se pierde su DISEÑO guardado: si quieres conservar el elemento, ábrelo '+
+       'con el botón 3D y edítalo en vez de borrarlo.\n\n¿Eliminar igual?';
+  if (!confirm(msg)) return;
   var r=await _ac2Delete('/elementos/instancia/'+instanciaId);
   if (!r.ok){
     var d=r.data&&r.data.detail;
     alert('No se pudo eliminar: '+((d && (d.msg||d)) || ('error '+r.status))+'.');
+    // Falló: nada se borró, pero los números de la fila pueden estar viejos (por eso
+    // falló). Se recarga la lista para que se vea lo que hay de verdad en la BD.
+    _ac2CargarEstructuras(AC2.loteId);
+    return;
   }
-  // Se recarga igual haya salido bien o mal: si el 409 fue porque SÍ tenía barras, la
-  // lista tiene que mostrar el número real y no el cero con el que se pintó.
-  _ac2CargarEstructuras(AC2.loteId);
+  // SALIÓ BIEN. Si se llevó barras, la GRILLA también cambió: recargar el despiece
+  // entero (ac2CargarLote recarga barras y, al final, el listado de estructuras). Si no
+  // se llevó ninguna, la grilla es la misma y basta con el listado — recargar el lote de
+  // más dispararía el aviso de "despiece terminado", que es justo el caso sin barras.
+  if (Number((r.data&&r.data.barras_eliminadas)||0)>0) window.ac2CargarLote(AC2.loteId);
+  else _ac2CargarEstructuras(AC2.loteId);
 };
 // Trae las estructuras del despiece y las pinta. Falla en SILENCIO VISIBLE: si el GET no
 // responde, la lista queda vacía (el bloque se esconde) y el error real sale por consola —
 // no se inventa contenido ni se bloquea la carga del despiece, que es lo importante.
+// GUARDA la lista en AC2._estructuras: es el dato con el que la confirmación de borrado
+// dice cuántas barras y cuántos kilos se van. Se guarda AQUÍ y no en ac2PintarEstructuras
+// porque un render no muta estado.
 async function _ac2CargarEstructuras(loteId){
-  if (loteId==null){ window.ac2PintarEstructuras([]); return; }
+  if (loteId==null){ AC2._estructuras=[]; window.ac2PintarEstructuras([]); return; }
   var d=await _ac2Get('/lotes/'+loteId+'/elementos');
   if (!d){ console.error('[AC2] No se pudieron cargar las estructuras del despiece '+loteId); }
-  window.ac2PintarEstructuras((d && d.elementos) || []);
+  AC2._estructuras=(d && d.elementos) || [];
+  window.ac2PintarEstructuras(AC2._estructuras);
 }
 
 // RECARGAR el despiece abierto. El editor 3D llama a esto tras cargar barras. NO

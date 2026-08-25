@@ -212,8 +212,8 @@ class BarraManual(BaseModel):
     # mismo guardado llega dos veces — doble clic con el primer POST aún en vuelo, o
     # reintento tras perderse la respuesta de un INSERT que SÍ se commiteó — cada
     # barra trae el MISMO id y el índice único (id_unico, id_proyecto) la reconoce:
-    # no se inserta de nuevo. Sin id (TE, panel_3d, clientes viejos) el backend lo
-    # genera como siempre.
+    # no se inserta de nuevo. Sin id (TE, clientes viejos) el backend lo genera como
+    # siempre.
     id_unico: Optional[str] = None
 
 

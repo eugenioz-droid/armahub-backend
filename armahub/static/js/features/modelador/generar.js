@@ -600,7 +600,8 @@
   var API = {
     // Spec de UNA figura del catálogo vigente (null si no existe). Es lo que hay
     // que usar; `FIGURAS` queda como acceso al mapa completo por compatibilidad
-    // (lo lee panel_3d.js) y ahora son las 63 del catálogo, no 5 a mano.
+    // (lo leía panel_3d.js, ya retirado; hoy sólo los tests) y ahora son las 63 del
+    // catálogo, no 5 a mano.
     specFigura: specFigura,
     generarViga: generarViga,
     generarElemento: generarElemento,

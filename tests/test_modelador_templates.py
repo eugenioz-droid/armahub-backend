@@ -100,15 +100,52 @@ def _instalar_stubs_libs():
 STORE = {
     "templates": [],       # filas de templates_catalogo
     "instancias": [],      # filas de elementos_template
+    "lotes": {},           # lote_id -> id_proyecto (la obra la sabe el LOTE)
     "proyectos": {},       # id_proyecto -> nombre_proyecto
     "figuras": {},         # codigo -> (parciales, angulos, radio)
     "seq": {"templates": 0, "instancias": 0},
 }
 AUDITORIA = []
+# Todo SQL que pasó por el cursor. Sirve para CONTAR consultas: es la única forma
+# de que un N+1 (una consulta por template) falle un test en vez de descubrirse en
+# producción con la biblioteca llena.
+CONSULTAS = []
 
 
 def _norm(sql):
     return " ".join(str(sql).split())
+
+
+def _idx_top(texto, aguja):
+    """Posición de `aguja` a NIVEL 0 de paréntesis, o -1.
+
+    Hace falta desde que el listado trae el LEFT JOIN agregado del uso: ese
+    subselect tiene su PROPIO ` WHERE ` y su propio ` GROUP BY `, y un split crudo
+    agarraba los del subquery creyendo que eran los de la consulta de afuera."""
+    prof = 0
+    for i, ch in enumerate(texto):
+        if ch == "(":
+            prof += 1
+        elif ch == ")":
+            prof -= 1
+        elif prof == 0 and texto.startswith(aguja, i):
+            return i
+    return -1
+
+
+def _uso_de(template_id):
+    """Lo mismo que calcula el LEFT JOIN agregado del router: cuántas instancias
+    apuntan a este template y en cuántas OBRAS distintas. La obra sale de la propia
+    instancia y, si no la trae (filas pre-107), del lote — el COALESCE del SQL."""
+    usos, obras = 0, set()
+    for i in STORE["instancias"]:
+        if i.get("template_id") != template_id:
+            continue
+        usos += 1
+        obra = i.get("id_proyecto") or STORE["lotes"].get(i.get("lote_id"))
+        if obra:                      # COUNT(DISTINCT ...) ignora los NULL
+            obras.add(obra)
+    return usos, len(obras)
 
 
 def _split_top(texto, sep=","):
@@ -149,6 +186,10 @@ def _eval_col(expr, fila):
             d = comps[0].get("dims")
             return d if isinstance(d, dict) else None
         return None
+    if e.startswith("COALESCE(u.n_usos"):               # del LEFT JOIN agregado
+        return _uso_de(fila.get("id"))[0]
+    if e.startswith("COALESCE(u.n_obras"):
+        return _uso_de(fila.get("id"))[1]
     if e.endswith("nombre_proyecto"):                   # del LEFT JOIN proyectos
         return STORE["proyectos"].get(fila.get("obra"))
     return fila.get(e.split(".")[-1])
@@ -167,6 +208,7 @@ class FakeCursor(object):
     def execute(self, sql, params=()):
         s = _norm(sql)
         p = list(params or ())
+        CONSULTAS.append(s)
         self._filas = []
         if s.startswith("SELECT nombre_proyecto FROM proyectos"):
             nom = STORE["proyectos"].get(p[0])
@@ -218,15 +260,19 @@ class FakeCursor(object):
                     fila[col] = val
 
     def _select_templates(self, s, p):
-        cols = _split_top(s[len("SELECT "):s.index(" FROM ")])
-        resto = s[s.index(" FROM "):]
+        # Todos los cortes son a NIVEL 0 de paréntesis: el LEFT JOIN agregado del
+        # uso mete un subselect con su propio WHERE/GROUP BY que no es de aquí.
+        i_from = _idx_top(s, " FROM ")
+        cols = _split_top(s[len("SELECT "):i_from])
+        resto = s[i_from:]
+        i_where = _idx_top(resto, " WHERE ")
+        i_order = _idx_top(resto, " ORDER BY ")
         where, order = "", ""
-        if " WHERE " in resto:
-            where = resto.split(" WHERE ", 1)[1]
-            if " ORDER BY " in where:
-                where, order = where.split(" ORDER BY ", 1)
-        elif " ORDER BY " in resto:
-            order = resto.split(" ORDER BY ", 1)[1]
+        if i_where >= 0:
+            fin = i_order if i_order > i_where else len(resto)
+            where = resto[i_where + len(" WHERE "):fin]
+        if i_order >= 0:
+            order = resto[i_order + len(" ORDER BY "):]
 
         filas = list(STORE["templates"])
         i = 0
@@ -312,7 +358,9 @@ CLIENTE = {"email": "cli@constructora.cl", "role": "cliente"}
 def _reset():
     STORE["templates"] = []
     STORE["instancias"] = []
+    STORE["lotes"] = {}
     STORE["seq"] = {"templates": 0, "instancias": 0}
+    del CONSULTAS[:]
     STORE["proyectos"] = {"OB-1": "Edificio Explora", "OB-2": "Torre Norte"}
     STORE["figuras"] = {
         "101A": (["A"], [], False),
@@ -440,6 +488,69 @@ def t_get_lista_sin_params():
     # Prioridad de obra en el orden.
     orden = [t["nombre"] for t in listar_templates(obra="OB-1", user=MIEMBRO)["templates"]]
     check("GET lista prioriza la obra pedida", orden[0] == "Viga tipo A", orden)
+
+
+def t_uso_por_template():
+    """CUÁNTO SE HA USADO cada template (n_usos / n_obras) — el dato con el que se
+    ordena la biblioteca desde el 25-ago.
+
+    Por qué existe: el gestor ordenaba por última edición, que responde "quién
+    estuvo trabajando", no "cuál ya funcionó". El dato ya estaba en
+    elementos_template y nadie lo leía. Y por qué se cuentan las CONSULTAS: la
+    forma natural de equivocarse aquí es un COUNT por template dentro del for."""
+    _reset()
+    crear_template(TemplateCrear(nombre="Viga que funciona", tipo="viga", params=receta_editor()), user=MIEMBRO)
+    crear_template(TemplateCrear(nombre="Viga recién nacida", tipo="viga", params=receta_editor()), user=MIEMBRO)
+    STORE["lotes"] = {10: "OB-1", 11: "OB-1", 12: "OB-2"}
+    STORE["instancias"] = [
+        # Tres estructuras del template 1: dos en OB-1 y una en OB-2 → 2 obras.
+        {"id": 1, "template_id": 1, "lote_id": 10, "id_proyecto": None},
+        {"id": 2, "template_id": 1, "lote_id": 11, "id_proyecto": None},
+        {"id": 3, "template_id": 1, "lote_id": 12, "id_proyecto": None},
+        # Sin lote ni traza de obra: cuenta como USO pero no puede sumar una obra.
+        {"id": 4, "template_id": 1, "lote_id": None, "id_proyecto": None},
+        # Del OTRO template: no debe filtrarse al primero.
+        {"id": 5, "template_id": 2, "lote_id": 10, "id_proyecto": None},
+    ]
+    por = {t["nombre"]: t for t in listar_templates(user=MIEMBRO)["templates"]}
+    usado, nuevo = por["Viga que funciona"], por["Viga recién nacida"]
+    check("GET lista cuenta las veces usado", usado["n_usos"] == 4, usado["n_usos"])
+    check("GET lista cuenta las OBRAS distintas (no las instancias)",
+          usado["n_obras"] == 2, usado["n_obras"])
+    check("una instancia sin obra rastreable suma uso y NO suma obra",
+          usado["n_usos"] == 4 and usado["n_obras"] == 2)
+    check("el conteo no se cruza entre templates", nuevo["n_usos"] == 1, nuevo["n_usos"])
+
+    # Un template SIN NINGUNA instancia sale en 0, no en None: "sin usar" es un dato
+    # que el front tiene que poder decir con palabra, no un hueco.
+    STORE["instancias"] = []
+    sin_uso = listar_templates(user=MIEMBRO)["templates"][0]
+    check("un template nunca usado sale en 0 (no en null)",
+          sin_uso["n_usos"] == 0 and sin_uso["n_obras"] == 0,
+          (sin_uso["n_usos"], sin_uso["n_obras"]))
+
+    # La obra estampada en la instancia (post-107) le gana a la del lote.
+    STORE["instancias"] = [{"id": 1, "template_id": 1, "lote_id": 10, "id_proyecto": "OB-2"}]
+    r = {t["nombre"]: t for t in listar_templates(user=MIEMBRO)["templates"]}
+    check("la obra de la instancia manda sobre la del lote (COALESCE)",
+          r["Viga que funciona"]["n_obras"] == 1, r["Viga que funciona"]["n_obras"])
+
+    # --- N+1: el listado entero tiene que costar UNA consulta ---
+    n = len(CONSULTAS)
+    listar_templates(user=MIEMBRO)
+    check("el listado entero cuesta UNA sola consulta", len(CONSULTAS) - n == 1, len(CONSULTAS) - n)
+    for i in range(6):
+        crear_template(TemplateCrear(nombre="Extra %d" % i, tipo="muro", params=receta_editor()), user=MIEMBRO)
+    n = len(CONSULTAS)
+    filas = listar_templates(user=MIEMBRO)["templates"]
+    check("y sigue costando UNA con 8 templates (no crece con la lista)",
+          len(CONSULTAS) - n == 1, len(CONSULTAS) - n)
+    check("los 8 traen su conteo", all(("n_usos" in t and "n_obras" in t) for t in filas), len(filas))
+
+    # El filtro por tipo sigue funcionando con el JOIN nuevo (el WHERE de afuera no
+    # se puede confundir con el del subselect agregado).
+    check("el filtro por tipo convive con el JOIN del uso",
+          len(listar_templates(tipo="muro", user=MIEMBRO)["templates"]) == 6)
 
 
 def t_get_detalle_trae_receta():
@@ -570,12 +681,14 @@ def t_lo_que_hoy_SI_se_guarda():
     r = receta_editor(); del r["componentes"][0]["dims"]["B"]
     guarda("un parcial sin declarar NO bloquea (es 'auto', el default del motor)", r)
 
-    # 2) EL CASO REAL DEL ENFIERRADOR: se cambia la figura de un componente desde el
-    #    input de texto del panel (panel_3d.js) y las dims NO se reconcilian — una
-    #    101A (sólo A) pasa a 104D (A,B,C,D) con sólo el lado A declarado. Hoy eso se
-    #    guarda y genera barras.
+    # 2) CAMBIAR LA FIGURA SIN RECONCILIAR LAS DIMS. El caso lo destapó el panel del
+    #    Enfierrador MVP (panel_3d.js, retirado el 25-ago), donde la figura se escribía
+    #    a mano y las dims no se tocaban: una 101A (sólo A) pasaba a 104D (A,B,C,D) con
+    #    sólo el lado A declarado. La regla que se congela NO es de aquel panel sino
+    #    del backend —un parcial sin declarar es 'auto', no un error—, y las recetas
+    #    guardadas así siguen en la tabla y se reabren.
     r = receta_editor(); r["componentes"][1]["figura"] = "104D"   # nació 101A con dims {A: auto}
-    guarda("cambiar la figura sin reconciliar dims sigue guardando (flujo del Enfierrador)", r)
+    guarda("cambiar la figura sin reconciliar dims sigue guardando", r)
 
     # 3-4) ASSERTS INVERTIDOS (15-ago): aquí se congelaba «un 0 es DATO, no un
     #    hueco» — pero el DESPIECE (catalogo._tiene_valor_real) trata el 0 como
@@ -667,7 +780,8 @@ def t_deduccion_shape_unitaria():
 
 def main():
     for t in (t_post_crea, t_permiso_escritura_unificado, t_lectura_cerrada,
-              t_get_lista_sin_params, t_get_detalle_trae_receta, t_put_edita,
+              t_get_lista_sin_params, t_uso_por_template,
+              t_get_detalle_trae_receta, t_put_edita,
               t_put_de_otro_rechazado, t_delete, t_receta_invalida_422,
               t_lo_que_hoy_SI_se_guarda,
               t_enfierrador_shape_viejo, t_filas_legacy_sin_schema_version,

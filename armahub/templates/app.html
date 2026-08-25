@@ -158,12 +158,12 @@
     {% include 'tabs/admin.html' %}
   </div>
 
-  <!-- MODAL: Modelador 3D (3D Template). Fuera del moduleContainer (overlay a pantalla completa);
-       lo abre modelador3dAbrir() desde el botón del Fabricator. -->
-  {% include 'tabs/modelador3d_modal.html' %}
-
   <!-- MODAL: Template Editor (Colocador por proyecciones). Overlay a pantalla completa;
-       lo abre templateEditorAbrir() desde el sub-tab "Template Editor" del Catálogo. -->
+       lo abre templateEditorAbrir() desde el sub-tab "Template Editor" del Catálogo.
+       (Aquí también se incluía tabs/modelador3d_modal.html, el modal "3D Template" del
+       Enfierrador MVP. Se retiró el 25-ago: el Template Editor en modo obra lo reemplazó
+       —un solo modal, un solo motor— y aquel creaba la estructura y sus barras en dos
+       llamadas, que es de donde salían las estructuras huérfanas con 0 barras.) -->
   {% include 'tabs/template_editor_modal.html' %}
 
   <!-- MODAL: Nuevo proyecto detectado al importar -->

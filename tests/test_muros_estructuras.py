@@ -14,9 +14,11 @@ test_modelador_backend.py), se valida sin levantar la app:
   5. FIN DE LAS ESTRUCTURAS HUÉRFANAS: la estructura y sus barras se escriben en la
      MISMA transacción (POST /lotes/{id}/barras con `instancia`). Antes eran dos
      llamadas y una carga que fallaba dejaba la estructura vacía en el despiece.
-  6. Las huérfanas que ya existen las borra el USUARIO desde el listado
-     (DELETE /elementos/instancia/{id}, sólo con cero barras). Sin migración que
-     borre filas a su espalda.
+  6. DELETE /elementos/instancia/{id} borra la estructura Y SUS BARRAS en la misma
+     transacción (el elemento es la receta, las barras su resultado), copiándolas
+     antes a barras_eliminadas y dejando coherentes lotes.n_barras y el estado del
+     sector. Lo pide siempre el USUARIO desde el listado; sin migración que borre
+     filas a su espalda. Un despiece eliminado o terminado se respeta.
 
 Correr con: python tests/test_muros_estructuras.py
 """
@@ -343,20 +345,52 @@ def main():
     check("y el endpoint suelto reusa esa misma función (un solo INSERT en modelador.py)",
           mod.count("INSERT INTO elementos_template") == 1)
 
-    # --- 6. LIMPIEZA DE LAS HUÉRFANAS QUE YA EXISTEN: la borra el usuario ---
-    # No hay migración que borre filas a espaldas del usuario: el listado las muestra
-    # como lo que son y ofrece el botón. La guarda del backend es el CERO de barras.
+    # --- 6. ELIMINAR UNA ESTRUCTURA SE LLEVA SUS BARRAS (25-ago) ---
+    # Nació sólo para las HUÉRFANAS (0 barras) y respondía 409 con cualquier barra
+    # ("quítalas reabriendo la estructura"). Botar un elemento entero costaba cinco
+    # pasos con el mismo resultado. La regla de fondo — el elemento es la RECETA y sus
+    # barras el RESULTADO, que es por lo que esas barras están bloqueadas en la grilla
+    # y su papelera apagada — obliga a lo contrario: borrar la receta se lleva su
+    # resultado, en UNA transacción, o el borrado deja barras que nadie sabe regenerar.
+    # No hay migración que borre filas a espaldas del usuario: sigue pidiéndolo él.
     check("existe DELETE /elementos/instancia/{id}",
           '@router.delete("/elementos/instancia/{instancia_id}")' in mod)
     borra = mod.split('@router.delete("/elementos/instancia/{instancia_id}")')[-1].split("@router.")[0]
-    check("sólo borra si tiene CERO barras (409 si tiene)",
-          "if n_barras:" in borra and "status_code=409" in borra
-          and "DELETE FROM elementos_template" in borra)
+    check("borra la estructura Y sus barras",
+          "DELETE FROM barras WHERE id = ANY(%s)" in borra
+          and "DELETE FROM elementos_template WHERE id = %s" in borra)
+    check("en UNA sola transacción (un get_conn, los dos DELETE adentro)",
+          borra.count("with get_conn()") == 1)
+    # El snapshot va ANTES del DELETE: al revés no copiaría nada (y el borrado quedaría
+    # sin rastro, que es justo lo que barras_eliminadas existe para impedir).
+    check("las barras se copian antes a barras_eliminadas (registro histórico del Bar Manager)",
+          "INSERT INTO barras_eliminadas" in borra
+          and borra.index("INSERT INTO barras_eliminadas") < borra.index("DELETE FROM barras"))
+    check("…con las MISMAS columnas que usa el Bar Manager (_SNAP_COLS_BARRA), no una lista propia",
+          "_SNAP_COLS_BARRA" in borra and "_SNAP_COLS_DEST" in borra)
+    check("devuelve cuántas barras se borraron (el front lo necesita para saber si recargar la grilla)",
+          '"barras_eliminadas": len(ids)' in borra)
+    # Contador del lote y estado del sector: los MISMOS caminos que el borrado de una
+    # barra suelta (lotes.eliminar_barra_lote). Sin ellos el despiece sigue diciendo que
+    # tiene barras que ya no están y el export no se entera de que el sector cambió.
+    check("recalcula lotes.n_barras (mismo UPDATE que el borrado de una barra suelta)",
+          "UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s"
+          in borra)
+    check("marca el sector modificado (5N.4), no se salta el evento",
+          "from .sector_estado import marcar_sector_modificado" in borra
+          and "marcar_sector_modificado(cur, id_proyecto" in borra)
+    check("e invalida el caché de stats/landing (los kilos de la obra cambiaron)",
+          '_cache.invalidate("stats:", "landing:")' in borra)
+    # El estado del lote sigue mandando: no se inventa una excepción para este endpoint.
     check("no toca el contenido de un despiece eliminado (lápida)",
           'estado_lote == "eliminado"' in borra)
+    check("y en un despiece TERMINADO no quita barras: 409 al Bar Manager, como agregar/sincronizar",
+          'if ids and estado_lote == "terminada"' in borra and "status_code=409" in borra
+          and "Bar Manager" in borra)
     check("permiso: el mismo de cargar barras al lote",
           "_check_permiso_instancia(cur, user)" in borra)
-    check("y queda auditado (quién borró qué)", 'audit(email, "eliminar_instancia_vacia"' in borra)
+    check("y queda auditado (quién borró qué, con el número de barras)",
+          'audit(email, "eliminar_instancia"' in borra and "barra(s)" in borra)
 
     # --- 7. EL CATÁLOGO SE LEE UNA VEZ POR CARGA, Y EL BUCLE DE BARRAS NO TOCA LA BD ---
     # Medido el 25-ago con un doble de cursor que cuenta consultas: cargar el muro de

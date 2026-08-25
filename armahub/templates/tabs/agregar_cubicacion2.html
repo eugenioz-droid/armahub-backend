@@ -23,8 +23,9 @@
       <button id="ac2_eliminarBtn" onclick="ac2EliminarLote()" title="Eliminar este despiece y sus barras (irreversible)" style="display:none; font-size:14px; padding:6px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Eliminar</button>
       <!-- ENFIERRADOR: abre el TEMPLATE EDITOR con contexto de obra (un solo modal,
            un solo motor — lo que cambia es el contexto que entra por la puerta). Solo
-           visible con lote activo (AC2.loteId). El modal viejo (modelador3dAbrir) sigue
-           cargado y funcionando; se retira cuando el usuario verifique este camino. -->
+           visible con lote activo (AC2.loteId). El modal viejo ("3D Template") se retiró
+           el 25-ago tras verificar este camino; el id del botón conserva su nombre
+           histórico para no romper el show/hide que lo referencia. -->
       <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
               style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
     </div>

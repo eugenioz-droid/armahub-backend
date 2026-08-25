@@ -158,6 +158,8 @@ function bloqueB() {
 //      en el listado. Ya no pueden nacer -- la estructura entra en la misma
 //      transaccion que sus barras -- pero las que quedaron son datos del usuario:
 //      la fila las MUESTRA por lo que son y ofrece borrarlas. Nada se borra solo.
+//      (El aviso ambar sigue siendo informacion; desde el 25-ago ya NO es la unica
+//      que se puede borrar -- ver el bloque D.)
 //  C2. La fila decia el CODIGO de la obra (PROY-A192D913). Ahora dice su NOMBRE, y
 //      la etiqueta se DERIVA de obra/ciclo/piso/eje en vez de recortar el nombre
 //      guardado (que es la traza persistida y lleva el id a proposito).
@@ -235,8 +237,9 @@ async function bloqueC() {
   // --- C1: la huerfana se ve por lo que es y se puede eliminar
   ok(/sin barras/.test(html), 'la estructura vacia se marca "sin barras" (no se disimula)');
   ok(/ac2EliminarEstructura\(12\)/.test(html), 'y ofrece eliminarla');
-  ok(!/ac2EliminarEstructura\(11\)/.test(html),
-    'la que SI tiene barras no ofrece borrarse: eso se hace reabriendo la estructura');
+  // (Que la que SI tiene barras TAMBIEN se pueda borrar es lo que mide el bloque D.
+  // Hasta el 25-ago esta linea congelaba lo contrario -- "eso se hace reabriendo la
+  // estructura" -- y el usuario pidio que el eliminar sirviera para cualquiera.)
   ok(/ac2AbrirEditor3D\(11\)/.test(html), 'y sigue abriendo su 3D como siempre');
   // La huerfana NO es basura: guarda la receta del elemento que el usuario modelo.
   // Borrarla no puede ser la unica salida — reabrirla y recargarla RECUPERA el trabajo.
@@ -258,9 +261,113 @@ async function bloqueC() {
     'y al confirmar borra por DELETE /elementos/instancia/{id}');
   ok(s._llamadas.some(function (l) { return /\/lotes\/148\/elementos$/.test(l.url); }),
     'y refresca el listado despues (el numero que se ve es el de la BD)');
+  // La vacia no se llevo ninguna barra, asi que la GRILLA no cambio: recargar el lote
+  // entero de mas volveria a disparar el aviso de "despiece terminado / eliminado".
+  ok(!s._llamadas.some(function (l) { return /\/lotes\/148$/.test(l.url); }),
+    'y NO recarga el lote entero cuando no se llevo ninguna barra (la grilla es la misma)');
 }
 
-bloqueA().then(bloqueB).then(bloqueC).then(function () {
+// ============================================================================
+// D - ELIMINAR CUALQUIER ESTRUCTURA, NO SOLO LA VACIA (25-ago)
+// ----------------------------------------------------------------------------
+// El listado ofrecia "Eliminar" SOLO en las estructuras de 0 barras, y el backend
+// respondia 409 si tenia alguna ("quitalas reabriendo la estructura"). Para botar un
+// elemento entero eso obligaba a un rodeo de cinco pasos con el mismo resultado.
+//
+// LA REGLA DE FONDO: el elemento es la RECETA y sus barras son el RESULTADO -- por eso
+// esas barras estan bloqueadas en la grilla y su papelera apagada. La consecuencia es
+// que borrar el elemento se lleve sus barras, en la misma transaccion, y que ese sea el
+// unico camino. Lo que este bloque congela:
+//   D1. La fila CON barras ofrece el borrado, en TEXTO (un emoji que la fuente no
+//       dibuja deja el control mudo) y con los numeros de ESA fila en el title.
+//   D2. La confirmacion dice el NUMERO REAL ("6 barras y 47.7 kg"), no una advertencia
+//       generica: un aviso que no dice cuanto se pierde no es un aviso.
+//   D3. Tras borrar con barras se recarga la GRILLA ademas del listado: esas barras
+//       desaparecieron de ella.
+//   D4. El estado del lote sigue mandando: TERMINADO no deja quitar barras (eso es del
+//       Bar Manager) y ELIMINADO no se toca (lapida).
+// ============================================================================
+const RESP_DELETE = { ok: true, id: 11, lote_id: 148, barras_eliminadas: 2, n_barras: 6, kg: 47.7 };
+
+function ac2ConLote(lote) {
+  return ac2Con(function (url, o) {
+    if (((o && o.method) || 'GET').toUpperCase() === 'DELETE') return RESP_DELETE;
+    if (/\/elementos$/.test(url)) return ELEMENTOS;
+    return lote;
+  });
+}
+async function correr(s, fn) {
+  const r = fn();
+  for (let i = 0; i < 12; i++) await new Promise(function (x) { setImmediate(x); });
+  return r;
+}
+
+async function bloqueD() {
+  console.log('');
+  console.log('D - ELIMINAR CUALQUIER ESTRUCTURA (SE LLEVA SUS BARRAS)');
+  const s = ac2ConLote(LOTE_CON_ESTRUCTURAS);
+  const w = s.window;
+  w.AC2._nombreObra = 'Edificio Explora';
+  await correr(s, function () { return w.ac2RetomarLote(148, true); });
+
+  // --- D1: el control esta, y esta en texto
+  const html = String(s.document.getElementById('ac2_estructurasBody').innerHTML);
+  ok(/ac2EliminarEstructura\(11\)/.test(html),
+    'la estructura CON barras ofrece Eliminar (antes solo la vacia)');
+  ok(/ac2EliminarEstructura\(12\)/.test(html), 'y la vacia lo sigue ofreciendo');
+  ok(/sin barras/.test(html), 'el aviso ambar de la vacia se mantiene: sigue siendo informacion');
+  ok(html.indexOf('🗑') < 0, 'el control NO es un emoji de papelera');
+  ok(/>Eliminar</.test(html), 'se lee la palabra Eliminar');
+  // El title de la fila con barras trae SUS numeros (no un texto generico).
+  ok(/6 barra\(s\) que gener/.test(html) && /47\.7 kg/.test(html),
+    'y el title dice las 6 barras y los 47.7 kg de ESA fila');
+
+  // --- D2: la confirmacion dice el numero real
+  s._llamadas.length = 0; s._confirms.length = 0; s._confirmar = false;
+  await w.ac2EliminarEstructura(11);
+  ok(s._confirms.length === 1, 'eliminar pregunta antes');
+  ok(/6 barras/.test(s._confirms[0]),
+    'y la pregunta dice CUANTAS barras se van (=' + s._confirms[0].replace(/\n/g, ' ') + ')');
+  ok(/47\.7 kg/.test(s._confirms[0]), 'y cuantos kilos salen del despiece');
+  ok(/Edificio Explora/.test(s._confirms[0]), 'y de que estructura habla');
+  ok(s._llamadas.length === 0, 'si el usuario dice que no, no se llama a nadie');
+
+  // --- D3: al confirmar borra, y recarga GRILLA + listado
+  s._confirmar = true; s._llamadas.length = 0;
+  await correr(s, function () { return w.ac2EliminarEstructura(11); });
+  const del = s._llamadas.filter(function (l) { return l.metodo === 'DELETE'; });
+  ok(del.length === 1 && /\/elementos\/instancia\/11$/.test(del[0].url),
+    'borra por DELETE /elementos/instancia/{id} (una sola llamada: el backend es atomico)');
+  ok(s._llamadas.some(function (l) { return /\/lotes\/148$/.test(l.url); }),
+    'y recarga la GRILLA (GET /lotes/148): esas barras ya no estan en ella');
+  ok(s._llamadas.some(function (l) { return /\/lotes\/148\/elementos$/.test(l.url); }),
+    'y el listado de estructuras tambien');
+
+  // --- D4: el estado del lote sigue mandando
+  const term = ac2ConLote(Object.assign({}, LOTE_CON_ESTRUCTURAS,
+    { lote: Object.assign({}, LOTE_CON_ESTRUCTURAS.lote, { estado: 'terminada' }) }));
+  await correr(term, function () { return term.window.ac2RetomarLote(148, true); });
+  const htmlT = String(term.document.getElementById('ac2_estructurasBody').innerHTML);
+  ok(!/ac2EliminarEstructura\(11\)/.test(htmlT),
+    'en un despiece TERMINADO la que tiene barras no ofrece borrarse (eso es Bar Manager)');
+  ok(/ac2EliminarEstructura\(12\)/.test(htmlT),
+    'pero la vacia si: no mueve un kilo del despiece terminado');
+
+  const elim = ac2ConLote(Object.assign({}, LOTE_CON_ESTRUCTURAS,
+    { lote: Object.assign({}, LOTE_CON_ESTRUCTURAS.lote, { estado: 'eliminado' }) }));
+  await correr(elim, function () { return elim.window.ac2RetomarLote(148, true); });
+  const htmlE = String(elim.document.getElementById('ac2_estructurasBody').innerHTML);
+  ok(!/ac2EliminarEstructura\(/.test(htmlE),
+    'y en un despiece ELIMINADO no se ofrece en ninguna: es una lapida');
+
+  // --- La confirmacion NO se hace a ciegas: sin la fila (numeros) no se borra nada.
+  s._llamadas.length = 0; s._confirms.length = 0; s._confirmar = true;
+  await correr(s, function () { return w.ac2EliminarEstructura(999); });
+  ok(s._confirms.length === 0 && !s._llamadas.some(function (l) { return l.metodo === 'DELETE'; }),
+    'una estructura que no esta en el listado no se borra "por si acaso": sin numeros no hay aviso');
+}
+
+bloqueA().then(bloqueB).then(bloqueC).then(bloqueD).then(function () {
   console.log('');
   console.log(fallos ? (fallos + ' FALLO(S)') : 'TODO OK');
   if (fallos) process.exit(1);

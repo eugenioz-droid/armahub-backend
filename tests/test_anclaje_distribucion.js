@@ -274,10 +274,12 @@ const yVieja = r4(G.generarViga(recVieja, {}).placements[0].puntos[0].y);
 ok(yVieja === 45.2,
   'la 101A guardada el 19-ago reabre en y = 45.2, donde el usuario la dejó — no en ' +
   'y = 20, que es lo que decía su ancla del delta leída como posición (=' + yVieja + ')');
-// …Y SIN PASAR POR EL NORMALIZADOR. No todos los consumidores abren por esa puerta:
-// el "Abrir template" del Enfierrador (panel_3d) arma la receta con los `params`
-// crudos del backend y llama derecho a generarViga. Por eso la marca vive en el
-// ANCLA y no en el normalizador: la migración no puede depender de por dónde entró.
+// …Y SIN PASAR POR EL NORMALIZADOR. generarViga es pública y nada obliga a normalizar
+// antes: el "Abrir template" del Enfierrador MVP (panel_3d, retirado el 25-ago) armaba
+// la receta con los `params` crudos del backend y llamaba derecho a generarViga. Por
+// eso la marca vive en el ANCLA y no en el normalizador — la migración no puede
+// depender de por dónde entró la receta. La aserción se queda: es la regla del MOTOR,
+// no la de aquel cliente, y este generar en crudo es hoy quien la ejerce.
 const yCrudo = r4(G.generarViga(receta(600, [clon(guardadaVieja)]), {}).placements[0].puntos[0].y);
 ok(yCrudo === 45.2,
   'y generando en crudo (sin normalizarReceta) da lo mismo: 45.2 (=' + yCrudo + ')');

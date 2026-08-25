@@ -33,7 +33,12 @@
 //
 // REGLA CRÍTICA (bug histórico "0 barras / canvas negro"): NUNCA capturar THREE ni
 // los módulos globales en 'var' al cargar — se resuelven DENTRO de cada función.
-// NO toca panel_3d.js ni modelador3d_modal.html (otro modal).
+//
+// ÚNICO MODAL 3D desde el 25-ago. Convivió con el modal "3D Template" del
+// Enfierrador MVP (panel_3d.js + tabs/modelador3d_modal.html), que este editor en
+// modo obra reemplazó: aquél creaba la estructura y sus barras en dos llamadas y
+// dejaba huérfanas con 0 barras. Se retiró; lo que se le portó (temas de fondo,
+// cuadro de stats, resumen de barras) queda anotado donde está.
 // =============================================================================
 (function (global) {
   'use strict';
@@ -44,10 +49,10 @@
   // para que la escena y el selector de fondo no tengan dos tablas que puedan
   // divergir. Los colores por tipología viven en COL2D, fuente única 2D + 3D.)
 
-  // TEMAS DEL FONDO (portados del Enfierrador, panel_3d.js TEMAS). SÓLO fondo y
-  // grilla: el color de cada barra es DATO DEL USUARIO (tipología o color propio del
-  // componente) y el tema no lo pisa — allá sí lo hacía, y cambiar de fondo te
-  // cambiaba el color de las barras que habías elegido.
+  // TEMAS DEL FONDO (portados de la tabla TEMAS del Enfierrador MVP, panel_3d.js,
+  // ya retirado). SÓLO fondo y grilla: el color de cada barra es DATO DEL USUARIO
+  // (tipología o color propio del componente) y el tema no lo pisa — allá sí lo
+  // hacía, y cambiar de fondo te cambiaba el color de las barras que habías elegido.
   //
   // AHORA SON LOS 4 CUADRANTES (18-ago, pedido del usuario). Antes el fondo se
   // aplicaba POR PASE: el 3D con su tema y las 3 vistas 2D fijas en BG_ORTO. La razón
@@ -361,7 +366,9 @@
       reglas: global.ModeladorReglas
       // `semilla` salió de acá con la puerta de entrada única: la semilla de viga
       // era el contenido de la apertura sin argumentos, que ya no existe. El módulo
-      // sigue cargado porque lo usa el Enfierrador (panel_3d.js).
+      // (semilla_viga.js) sigue cargado, pero desde que se retiró el Enfierrador MVP
+      // ya no lo consume nadie en el navegador: hoy sólo lo usan los tests del motor
+      // como receta de referencia. Sacarlo del bootstrap es una decisión aparte.
     };
   }
 
@@ -14012,8 +14019,11 @@
   // Los filtros los resuelve el BACKEND (?nombre= contiene · ?tipo=) — no se
   // filtra una copia local que se desincroniza en cuanto alguien guarda algo.
   // ==========================================================================
-  var _tplLista = [];          // última lista pintada (para nombrar en el confirm de borrado)
-  var _tplFiltroTimer = null;  // debounce del buscador (no una petición por tecla)
+  // La lista COMPLETA tal como la mandó el servidor. Nunca se le aplican los
+  // filtros encima: los filtros se aplican al PINTAR (_tplVisibles). Si esta
+  // variable guardara lo filtrado, el primer chip dejaría fuera para siempre a los
+  // que ocultó — y los chips, que se derivan de aquí, se irían con ellos.
+  var _tplLista = [];
 
   function _tplPorId(id) {
     for (var i = 0; i < _tplLista.length; i++) {
@@ -14033,17 +14043,113 @@
     box.textContent = texto;
   }
 
-  // Opciones del filtro de ELEMENTO. Salen de TPL_DIMS_POR_ELEMENTO (la misma
-  // tabla que ofrece el selector del editor): una lista escrita a mano en el HTML
-  // se desincroniza en cuanto se agregue un elemento.
-  function _tplRenderFiltroTipo() {
-    var sel = $('tplFiltroTipo'); if (!sel || sel._teBound) return;
-    sel._teBound = true;
-    sel.innerHTML = '<option value="">Todos los elementos</option>' +
-      Object.keys(TPL_DIMS_POR_ELEMENTO).map(function (k) {
-        // value en MINÚSCULA: así se guarda `tipo` en templates_catalogo.
-        return '<option value="' + _esc(k.toLowerCase()) + '">' + _esc(_capitalizar(k)) + '</option>';
-      }).join('');
+  // ---------------------------------------------------------------------------
+  // FILTROS DE LA BIBLIOTECA (chips) — TODOS locales
+  // ---------------------------------------------------------------------------
+  // Hasta aquí el buscador y el filtro de elemento los resolvía el BACKEND
+  // (?nombre= / ?tipo=). Con chips eso ya no se sostiene: los chips de elemento se
+  // derivan de lo que HAY en la lista, así que filtrar 'viga' en el servidor
+  // dejaba la lista con puras vigas y borraba los demás chips — el filtro se comía
+  // su propio control y no había cómo volver.
+  // Ahora la lista viene ENTERA (una sola petición) y filtra el navegador: los
+  // filtros se COMBINAN, se limpian de un clic y ninguno cuesta un viaje. Los
+  // parámetros del backend siguen existiendo (los usa el selector interno del
+  // editor); lo que dejó de usarlos es esta card.
+  // Si algún día la biblioteca crece hasta que traerla entera pese, esto vuelve al
+  // servidor — pero entonces los chips tienen que salir de un endpoint de facetas,
+  // no de la lista ya filtrada.
+  var _tplFiltros = { autor: '', tipo: '' };   // '' = ese grupo no filtra
+
+  // Quién está mirando. Sin sesión conocida no se puede decidir "míos" y el grupo
+  // de autor NO se pinta: un chip que no sabe filtrar miente.
+  function _tplYo() {
+    var e = global.currentUserEmail;
+    if (!e && global.localStorage) {
+      try { e = global.localStorage.getItem('armahub_email'); } catch (x) { e = ''; }
+    }
+    return String(e || '').trim().toLowerCase();
+  }
+  function _tplEsMio(t) {
+    var yo = _tplYo();
+    return !!yo && String((t && t.creado_por) || '').trim().toLowerCase() === yo;
+  }
+
+  // Tipos PRESENTES en la biblioteca, en el orden canónico del tab. Se derivan de
+  // la lista y no de TPL_DIMS_POR_ELEMENTO: si mañana alguien guarda una losa el
+  // chip aparece solo, y un tipo de la tabla que no tiene ni un template no se
+  // ofrece como chip que sólo puede devolver una lista vacía.
+  function _tplTiposPresentes(lista) {
+    var vistos = {};
+    (lista || []).forEach(function (t) {
+      var k = String((t && t.tipo) || '').toLowerCase();
+      if (k) vistos[k] = true;
+    });
+    var canon = TPL_ORDEN_ELEM.map(function (k) { return k.toLowerCase(); });
+    return Object.keys(vistos).sort(function (a, b) {
+      var ia = canon.indexOf(a), ib = canon.indexOf(b);
+      if (ia < 0) ia = canon.length;
+      if (ib < 0) ib = canon.length;
+      return (ia !== ib) ? (ia - ib) : a.localeCompare(b, 'es');
+    });
+  }
+
+  function _tplChipHtml(grupo, valor, texto, activo, titulo) {
+    return '<button type="button" class="tplChip' + (activo ? ' on' : '') + '"' +
+      ' data-g="' + _esc(grupo) + '" data-v="' + _esc(valor) + '"' +
+      (titulo ? ' title="' + _esc(titulo) + '"' : '') +
+      ' onclick="tplChipSet(this.getAttribute(\'data-g\'), this.getAttribute(\'data-v\'))">' +
+      _esc(texto) + '</button>';
+  }
+
+  // Pinta la barra de chips. LEE _tplFiltros, no lo escribe: pintar no decide (ya
+  // hubo un bug de un render que mutaba justo lo que estaba dibujando).
+  function _tplPintarChips(lista) {
+    var cont = $('tplChips'); if (!cont) return;
+    var partes = [];
+    if (_tplYo()) {
+      partes.push('<span class="tplChipGrupo"><span class="tplChipLbl">Autor</span>' +
+        _tplChipHtml('autor', '', 'Todos', _tplFiltros.autor === '') +
+        _tplChipHtml('autor', 'mios', 'Míos', _tplFiltros.autor === 'mios', 'Los que creaste tú') +
+        _tplChipHtml('autor', 'equipo', 'Del equipo', _tplFiltros.autor === 'equipo', 'Los que creó otra persona') +
+        '</span>');
+    }
+    // ELEMENTO — con UN solo tipo en la biblioteca el grupo NO se pinta: todos sus
+    // chips seleccionarían el 100% de las filas, así que no separa nada y gasta una
+    // línea entera. Reaparece solo en cuanto exista un segundo tipo.
+    var tipos = _tplTiposPresentes(lista);
+    if (tipos.length > 1) {
+      partes.push('<span class="tplChipGrupo"><span class="tplChipLbl">Elemento</span>' +
+        _tplChipHtml('tipo', '', 'Todos', _tplFiltros.tipo === '') +
+        tipos.map(function (k) {
+          return _tplChipHtml('tipo', k, _capitalizar(k), _tplFiltros.tipo === k);
+        }).join('') + '</span>');
+    }
+    // "Limpiar" se ve SIEMPRE: apagado cuando no hay nada que limpiar, en vez de
+    // desaparecer y dejar al usuario buscando dónde estaba.
+    var hay = _tplHayFiltro();
+    partes.push('<button type="button" class="tplLimpiar"' + (hay ? '' : ' disabled') +
+      ' onclick="tplLimpiarFiltros()" title="' +
+      (hay ? 'Quita el buscador y los chips' : 'No hay ningún filtro puesto') +
+      '">Limpiar filtros</button>');
+    cont.innerHTML = partes.join('');
+  }
+
+  // Texto del buscador, normalizado. Uno solo, para filtrar y para _tplHayFiltro.
+  function _tplBusqueda() {
+    var b = $('tplBuscar');
+    return String((b && b.value) || '').trim().toLowerCase();
+  }
+
+  // Las filas que se ven = los tres filtros COMBINADOS (chips + buscador).
+  function _tplVisibles(lista) {
+    var q = _tplBusqueda();
+    return (lista || []).filter(function (t) {
+      if (_tplFiltros.tipo && String(t.tipo || '').toLowerCase() !== _tplFiltros.tipo) return false;
+      if (_tplFiltros.autor === 'mios' && !_tplEsMio(t)) return false;
+      if (_tplFiltros.autor === 'equipo' && _tplEsMio(t)) return false;
+      if (q && String(t.nombre || '').toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -14053,14 +14159,33 @@
   // ayuda a encontrar nada cuando hay 30 templates. Se reordena ACÁ y no en el
   // servidor porque la lista completa ya está en el navegador: pedirla de nuevo
   // sólo para cambiar el orden sería un viaje al servidor por un click.
-  //   'elemento' (default) — agrupa por tipo, en el orden canónico del tab, y
-  //                          dentro de cada tipo por nombre.
-  //   'fecha'              — lo editado más recientemente arriba.
+  //   'uso' (default) — los más cargados a un despiece arriba.
+  //   'elemento'      — agrupa por tipo, en el orden canónico del tab, y dentro de
+  //                     cada tipo por nombre.
+  //   'fecha'         — lo editado más recientemente arriba.
+  // POR QUÉ EL DEFAULT ES EL USO y ya no la fecha: con la biblioteca llena, lo que
+  // se busca es EL QUE YA FUNCIONÓ, no el que alguien tocó ayer. "Editado
+  // recientemente" ordena por quién estuvo trabajando, que no es la pregunta.
   var TPL_ORDEN_ELEM = ['MURO', 'LOSA', 'VIGA', 'COLUMNA', 'FUNDACION', 'GEN'];
-  var _tplOrden = 'elemento';
+  var _tplOrden = 'uso';
 
   function _tplOrdenar(lista) {
     var copia = (lista || []).slice();   // slice: no se reordena el array del llamador
+    if (_tplOrden === 'uso') {
+      // Desempata por nº de OBRAS distintas: 12 usos repartidos en 4 obras valen
+      // más que 12 en una sola (ese es el que de verdad se reutiliza). Y al final
+      // por nombre, para que dos templates sin usar no se turnen el puesto entre
+      // recargas. Un backend que todavía no mande n_usos deja todo en 0 y el orden
+      // cae al nombre — no revienta ni inventa un ranking.
+      copia.sort(function (a, b) {
+        var d = (Number(b.n_usos) || 0) - (Number(a.n_usos) || 0);
+        if (d) return d;
+        d = (Number(b.n_obras) || 0) - (Number(a.n_obras) || 0);
+        if (d) return d;
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+      });
+      return copia;
+    }
     if (_tplOrden === 'fecha') {
       // La MISMA fecha que muestra la columna "Última edición": updated_at, o la de
       // creación en los templates anteriores a la migración 105. Son ISO, así que
@@ -14086,20 +14211,20 @@
   // Qué botón del toggle se ve activo. Se pinta desde _tplOrden (y no al hacer
   // click) para que no pueda quedar marcado uno y aplicado el otro.
   function _tplPintarOrden() {
-    [['elemento', 'tplOrdenElemento'], ['fecha', 'tplOrdenFecha']].forEach(function (par) {
+    [['uso', 'tplOrdenUso'], ['elemento', 'tplOrdenElemento'], ['fecha', 'tplOrdenFecha']].forEach(function (par) {
       var b = $(par[1]);
       if (b && b.classList) b.classList.toggle('on', _tplOrden === par[0]);
     });
   }
 
   global.tplSetOrden = function (orden) {
-    _tplOrden = (orden === 'fecha') ? 'fecha' : 'elemento';
-    _tplPintarLista(_tplLista);   // la lista ya está en memoria: no se vuelve a pedir
+    _tplOrden = (orden === 'fecha' || orden === 'elemento') ? orden : 'uso';
+    _tplPintarLista();   // la lista ya está en memoria: no se vuelve a pedir
   };
 
-  // KPI de una fila. `valor` null/undefined = el backend NO manda ese dato: se
-  // pinta un guion, NO un 0 ni una estimación calculada de la nada. Un 0 haría
-  // creer que el template está vacío y un número inventado es peor todavía.
+  // KPI numérica de una fila. `valor` null/undefined = el backend NO manda ese
+  // dato: se pinta un guion, NO un 0 ni una estimación calculada de la nada. Un 0
+  // haría creer que el template está vacío y un número inventado es peor todavía.
   function _tplKpi(valor, sufijo) {
     if (valor == null || valor === '') {
       return '<span class="muted" title="Este dato todavía no se calcula para la lista: se ve al abrir el template">—</span>';
@@ -14107,15 +14232,49 @@
     return _esc(valor) + (sufijo ? ' <span class="muted" style="font-size:10px;">' + _esc(sufijo) + '</span>' : '');
   }
 
-  function _tplPintarLista(templates) {
+  // INSIGNIA DE USO — cuántas estructuras salieron de este template y en cuántas
+  // obras distintas (n_usos / n_obras del backend).
+  // "sin usar" va con PALABRA y no con un guion: que nadie lo haya cargado todavía
+  // es un dato (recién creado, o no le sirve a nadie), no la ausencia de un dato.
+  // El guion se reserva para lo que el servidor no manda, que es otra cosa.
+  function _tplUso(t) {
+    if (!t || t.n_usos == null) {
+      return '<span class="muted" title="Este servidor todavía no informa el uso de cada template">—</span>';
+    }
+    var n = Number(t.n_usos) || 0;
+    if (n <= 0) {
+      return '<span class="tplUso cero" title="Ningún despiece lo ha cargado todavía">sin usar</span>';
+    }
+    var obras = Number(t.n_obras) || 0;
+    // Sin obras identificables se dice sólo el uso: inventar "1 obra" para tapar el
+    // hueco sería afirmar algo que la traza no dice (instancias sin lote).
+    var txt = 'usado ' + n + '×' + (obras > 0 ? (' · ' + obras + ' obra' + (obras === 1 ? '' : 's')) : '');
+    return '<span class="tplUso" title="Estructuras cargadas a un despiece con este template">' +
+      _esc(txt) + '</span>';
+  }
+
+  // Pinta la card entera desde el estado: _tplLista (lo que mandó el servidor) +
+  // _tplFiltros + _tplOrden. NO recibe la lista ni la guarda — antes recibía
+  // `templates` y de paso escribía _tplLista, y con filtros locales eso habría
+  // dejado la lista completa reemplazada por la filtrada en el primer clic.
+  function _tplPintarLista() {
     var cont = $('tplGuardadosLista'); if (!cont) return;
-    _tplLista = templates || [];
     _tplPintarOrden();
+    // Los chips salen de la lista COMPLETA, nunca de la filtrada: derivarlos de lo
+    // que ya está filtrado los haría desaparecer al usarlos.
+    _tplPintarChips(_tplLista);
+    var filas = _tplVisibles(_tplLista);
     var cnt = $('tplGuardadosCount');
-    if (cnt) cnt.textContent = _tplLista.length + ' template' + (_tplLista.length === 1 ? '' : 's');
-    if (!_tplLista.length) {
+    if (cnt) {
+      // Con filtro puesto se dicen los DOS números: si no, "3 templates" con 20
+      // guardados se lee como si se hubieran perdido 17.
+      cnt.textContent = (filas.length === _tplLista.length)
+        ? (_tplLista.length + ' template' + (_tplLista.length === 1 ? '' : 's'))
+        : (filas.length + ' de ' + _tplLista.length + ' template' + (_tplLista.length === 1 ? '' : 's'));
+    }
+    if (!filas.length) {
       cont.innerHTML = _tplHayFiltro()
-        ? '<div class="muted">Ningún template coincide con la búsqueda.</div>'
+        ? '<div class="muted">Ningún template coincide con los filtros puestos.</div>'
         : '<div class="muted">Aún no hay templates guardados. Crea el primero aquí arriba.</div>';
       return;
     }
@@ -14123,12 +14282,24 @@
     var thN = 'style="padding:5px 6px; font-size:10.5px; text-transform:uppercase; text-align:right;" class="muted"';
     var tdN = 'style="padding:4px 6px; text-align:right; font-variant-numeric:tabular-nums;"';
     var btnCss = 'border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:11.5px; padding:4px 12px; cursor:pointer;';
+    // COLUMNAS (25-ago). Salieron cuatro:
+    //   Barras · Peso est. · φ prom  — el GET liviano NO manda n_barras,
+    //     kg_estimado ni diam_promedio (ni los calcula nadie): salían en '—' en
+    //     TODAS las filas, con una nota al pie admitiéndolo. Tres columnas de
+    //     guiones se llevaban el ancho que necesita lo que sí informa.
+    //   Obra — el Template Editor guarda siempre templates GENERALES (obra NULL) y
+    //     el único cliente que colgaba un template de una obra (el Enfierrador) se
+    //     retiró: la columna decía "General" en todas las filas. El dato NO se
+    //     perdió: las filas históricas que sí tienen obra la muestran como insignia
+    //     junto al nombre (ver .tplObra). Una columna que dice lo mismo en todas
+    //     las filas no ordena nada.
+    // Entró USO, que es la pregunta real de la pantalla: cuál ya funcionó.
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
       '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
-      '<th ' + thN + '>Comp.</th><th ' + thN + '>Barras</th><th ' + thN + '>Peso est.</th><th ' + thN + '>φ prom</th>' +
-      '<th ' + th + '>Obra</th><th ' + th + '>Última edición</th>' +
+      '<th ' + thN + '>Comp.</th><th ' + th + '>Uso</th>' +
+      '<th ' + th + '>Última edición</th>' +
       '<th ' + thN + '>Administrar</th></tr>' +
-      _tplOrdenar(_tplLista).map(function (t) {
+      _tplOrdenar(filas).map(function (t) {
         var tipo = String(t.tipo || '').toUpperCase();
         var col = TPL_ELEM_COLORES[tipo] || '#607d8b';
         // updated_at sólo existe desde la migración 105: en los templates viejos se
@@ -14136,10 +14307,8 @@
         var edit = t.updated_at || t.fecha;
         var quien = t.editado_por || t.creado_por || '';
         var puedo = (t.puede_modificar !== false);
-        // n_componentes es LO ÚNICO que manda el GET liviano. Antes esta cifra se
-        // rotulaba "N barras", que es falso: un componente en distribución genera
-        // muchas barras. Las tres KPI que faltan van en '—' hasta que el backend
-        // las mande (n_barras, kg estimados y φ promedio de la receta).
+        // Antes esta cifra se rotulaba "N barras", que es falso: un componente en
+        // distribución genera muchas barras. Es el nº de COMPONENTES de la receta.
         var comps = (t.n_componentes == null) ? null : Number(t.n_componentes);
         // LA FILA ENTERA ABRE EL TEMPLATE (19-ago). Antes habia un boton "Abrir" al final
         // que competia con el basurero en la misma celda y se leia como dos cajas sueltas.
@@ -14149,13 +14318,15 @@
           ' title="Abrir este template para seguir editandolo"' +
           ' style="border-bottom:1px solid #eee; cursor:pointer;">' +
           '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) +
+            // La obra SÓLO aparece cuando el template está colgado de una:
+            // repetir "General" en cada fila era ruido, pero perder el dato en las
+            // filas que sí la tienen habría sido borrar información.
+            (t.obra ? '<span class="tplObra" title="Este template pertenece a una obra">' +
+              _esc(t.obra_nombre || t.obra) + '</span>' : '') +
             (t.creado_por ? '<div class="muted" style="font-weight:400; font-size:10.5px;">' + _esc(t.creado_por) + '</div>' : '') + '</td>' +
           '<td style="padding:4px 6px;"><span style="font-size:10px; text-transform:uppercase; font-weight:700; color:#fff; background:' + col + '; border-radius:8px; padding:1px 7px;">' + _esc(tipo) + '</span></td>' +
           '<td ' + tdN + '>' + _tplKpi(comps) + '</td>' +
-          '<td ' + tdN + '>' + _tplKpi(t.n_barras) + '</td>' +
-          '<td ' + tdN + '>' + _tplKpi(t.kg_estimado, 'kg') + '</td>' +
-          '<td ' + tdN + '>' + _tplKpi(t.diam_promedio, 'mm') + '</td>' +
-          '<td style="padding:4px 6px;">' + _esc(t.obra_nombre || (t.obra ? t.obra : 'General')) + '</td>' +
+          '<td style="padding:4px 6px;">' + _tplUso(t) + '</td>' +
           '<td style="padding:4px 6px;">' + _esc(_tplFecha(edit)) +
             (quien ? '<div class="muted" style="font-size:10.5px;">' + _esc(quien) + '</div>' : '') + '</td>' +
           // ADMINISTRAR EL TEMPLATE — RENOMBRAR y ELIMINAR, con palabra y no sólo
@@ -14173,61 +14344,63 @@
             ' title="' + (puedo ? 'Cambiarle el nombre' : 'Sólo su autor (o un administrador) puede editarlo') + '">Renombrar</button>' +
             '<button data-id="' + _esc(t.id) + '"' + (puedo ? '' : ' disabled') +
             ' class="tplAccion tplBorrar" onclick="event.stopPropagation(); tplEliminarTemplate(this.getAttribute(\'data-id\'))"' +
-            ' title="' + (puedo ? 'Eliminar este template' : 'Sólo su autor (o un administrador) puede eliminarlo') + '">🗑 Eliminar</button>' +
+            // SIN EMOJI (25-ago): el 🗑 que llevaba delante es exactamente el
+            // carácter que no dibuja en algunos equipos y que ya costó tres rondas
+            // en otras pantallas. La palabra ES el control; el icono no aportaba
+            // nada que "Eliminar" no diga.
+            ' title="' + (puedo ? 'Eliminar este template' : 'Sólo su autor (o un administrador) puede eliminarlo') + '">Eliminar</button>' +
           '</td></tr>';
       }).join('') +
-      '</table>' +
-      // Pendiente A LA VISTA, no escondido en un comentario: mientras GET /templates
-      // no traiga estos tres campos, las columnas quedan en '—'. Dicho SIN nombrar el
-      // endpoint: quien lee esta pantalla cubica fierro, no llama a la API.
-      '<div class="muted" style="font-size:10.5px; margin-top:8px;">Barras, peso y φ promedio ' +
-      '<b>todavía no se calculan para la lista</b>: se ven al abrir el template. El peso, cuando ' +
-      'llegue acá, es <b>estimado</b> (depende del hormigón contra el que se genere).</div>';
+      '</table>';
   }
 
   function _tplHayFiltro() {
-    var b = $('tplBuscar'), s = $('tplFiltroTipo');
-    return !!((b && b.value && b.value.trim()) || (s && s.value));
+    return !!(_tplBusqueda() || _tplFiltros.autor || _tplFiltros.tipo);
   }
 
   // Al entrar al sub-tab (switchCatSubTab → aquí), tras guardar y tras eliminar:
-  // GET /templates con los filtros puestos.
+  // GET /templates ENTERO. Sin ?nombre= ni ?tipo=: filtrar en el servidor rompía
+  // los chips (se derivan de la lista) y además obligaba a un viaje por tecla.
   global.tplCargarGuardados = function () {
     global.tplValidar();
-    _tplRenderFiltroTipo();
     // El toggle de orden se pinta ya, antes del fetch: si no, al entrar al sub-tab
-    // los dos botones se ven apagados hasta que responda el servidor.
+    // los botones se ven todos apagados hasta que responda el servidor.
     _tplPintarOrden();
     var cont = $('tplGuardadosLista'); if (!cont) return;
-    var b = $('tplBuscar'), s = $('tplFiltroTipo');
-    var q = [];
-    if (b && b.value && b.value.trim()) q.push('nombre=' + encodeURIComponent(b.value.trim()));
-    if (s && s.value) q.push('tipo=' + encodeURIComponent(s.value));
     cont.innerHTML = '<div class="muted">Cargando templates…</div>';
-    _tplFetch('/templates' + (q.length ? ('?' + q.join('&')) : ''), { headers: _tplHeaders(false) })
-      .then(function (data) { _tplPintarLista((data && data.templates) || []); })
+    _tplFetch('/templates', { headers: _tplHeaders(false) })
+      .then(function (data) {
+        _tplLista = (data && data.templates) || [];
+        _tplPintarLista();
+      })
       .catch(function (e) {
         var cnt = $('tplGuardadosCount'); if (cnt) cnt.textContent = '';
         _tplLista = [];
+        // Los chips se vacían con la lista: si sobrevivieran a un error de carga
+        // ofrecerían filtrar por elementos que ya no hay nada que filtrar.
+        _tplPintarChips(_tplLista);
         cont.innerHTML = '<div class="muted">' + _esc((e && e.message) || 'No se pudieron cargar los templates.') +
           ' <a onclick=tplCargarGuardados() style="cursor:pointer; text-decoration:underline;">Reintentar</a></div>';
       });
   };
 
-  // Buscador y filtro: se recarga desde el servidor con un respiro de 250 ms para
-  // no disparar una petición por tecla.
-  global.tplFiltrarGuardados = function () {
-    if (_tplFiltroTimer) global.clearTimeout(_tplFiltroTimer);
-    _tplFiltroTimer = global.setTimeout(function () {
-      _tplFiltroTimer = null;
-      global.tplCargarGuardados();
-    }, 250);
+  // Buscador: repinta y ya. Se acabó el debounce de 250 ms porque se acabó la
+  // petición — filtrar una lista que ya está en memoria es instantáneo.
+  global.tplFiltrarGuardados = function () { _tplPintarLista(); };
+
+  // Un chip. Volver a clicar el que ya está activo lo APAGA (equivale a "Todos"):
+  // el mismo control pone y quita, sin ir a buscar otro botón.
+  global.tplChipSet = function (grupo, valor) {
+    if (!Object.prototype.hasOwnProperty.call(_tplFiltros, grupo)) return;
+    _tplFiltros[grupo] = (_tplFiltros[grupo] === String(valor || '')) ? '' : String(valor || '');
+    _tplPintarLista();
   };
 
   global.tplLimpiarFiltros = function () {
     var b = $('tplBuscar'); if (b) b.value = '';
-    var s = $('tplFiltroTipo'); if (s) s.value = '';
-    global.tplCargarGuardados();
+    _tplFiltros.autor = '';
+    _tplFiltros.tipo = '';
+    _tplPintarLista();   // local: la lista no cambió, no hay nada que volver a pedir
   };
 
   // Click "Abrir" en la lista → GET /templates/{id} → abre el modal con la receta.
@@ -14318,8 +14491,10 @@
 
   // Exponer para tests / depuración.
   global.TemplateEditor = {
-    // GESTOR DE TEMPLATES (card del tab): orden de la biblioteca y KPI de la fila.
+    // GESTOR DE TEMPLATES (card del tab): orden, filtros locales y celdas de la fila.
     _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
+    _tplUso: _tplUso, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
+    _tplTiposPresentes: _tplTiposPresentes, _tplEsMio: _tplEsMio,
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,
     _borrarSeleccion: _borrarSeleccion,
@@ -14334,8 +14509,10 @@
     _porQueNoAnida: _porQueNoAnida,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe, _rolComp: _rolComp,
-    // PALETA ÚNICA — la consume panel_3d, que tenía su propia tabla ya divergida
-    // (LT distinto y sin ninguna tipología de muro/losa/columna).
+    // PALETA ÚNICA — nació para que la consumiera panel_3d, que tenía su propia tabla
+    // ya divergida (LT distinto y sin ninguna tipología de muro/losa/columna). Aquel
+    // panel se retiró, pero la paleta se queda ACÁ y expuesta: es la fuente 2D+3D y
+    // el siguiente que dibuje barras la pide, no se escribe otra.
     colorDeTipologia: _colDe,
     boundaryDeVista: boundaryDeVista, _rectPlano: _rectPlano,   // P2/base task2
     setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null

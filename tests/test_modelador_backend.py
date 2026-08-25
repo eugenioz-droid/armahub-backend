@@ -10,9 +10,11 @@ ANÁLISIS DE FUENTE (sin importar la app):
      default None (comportamiento actual intacto).
   4. La lógica de fallback de origen: cualquier valor fuera de manual/template
      cae a 'manual' (invariante de canales).
-  5. La TRAZA template→instancia está cableada: panel_3d.js manda el template_id
-     REAL en POST /elementos/instancia (antes: null hardcodeado, así que el 409 que
-     protege el DELETE nunca se disparaba y un template ya usado se borraba mudo).
+  5. La TRAZA template→instancia está cableada: el front manda el template_id REAL
+     al escribir la estructura (antes: null hardcodeado, así que el 409 que protege
+     el DELETE nunca se disparaba y un template ya usado se borraba mudo). Lo medía
+     sobre panel_3d.js; ese cliente se retiró y hoy se mide sobre template_editor.js
+     (ST.tplOrigen), que es quien escribe la traza.
 
 Correr con: python tests/test_modelador_backend.py
 """
@@ -24,7 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOTES = os.path.join(ROOT, "armahub", "lotes.py")
 MODELADOR = os.path.join(ROOT, "armahub", "modelador.py")
 MAIN = os.path.join(ROOT, "armahub", "main.py")
-PANEL3D = os.path.join(ROOT, "armahub", "static", "js", "features", "modelador", "panel_3d.js")
+EDITOR = os.path.join(ROOT, "armahub", "static", "js", "features", "modelador", "template_editor.js")
 
 fallos = 0
 
@@ -49,13 +51,26 @@ def main():
     # rojos sin que hubiera nada roto en lotes.py).
     # Ahora se parte el archivo POR SENTENCIA: así cada INSERT se mide contra su propio
     # VALUES y agregar columnas a uno no puede volver a contaminar al otro. ---
+    # …Y SE VOLVIÓ A ROMPER DOS VECES MÁS, las dos por cambios sanos de lotes.py:
+    #   · el UPSERT metió un `ON CONFLICT … DO UPDATE SET … WHERE …` ENTRE el VALUES y
+    #     el RETURNING (es lo que impide duplicar barras al reintentar un guardado);
+    #   · el RETURNING pasó a `RETURNING id, id_unico`, porque el alta ahora escribe la
+    #     tanda con executemany y cruza las filas devueltas POR id_unico y no por
+    #     posición.
+    # El ancla exigía `VALUES (…) RETURNING id` pegados y con nada detrás, así que dejó
+    # de encontrar el INSERT y arrastró 3 checks al rojo sin que hubiera NADA roto. Un
+    # test que lleva semanas en rojo por su propio ancla es peor que no tenerlo: enseña
+    # a ignorar el rojo.
+    # Lección: este bloque mide UNA cosa —la correspondencia columnas ↔ valores— así que
+    # el ancla sólo puede exigir lo que esa medición necesita. Lo que haya entre el
+    # VALUES y el RETURNING, y qué devuelva el RETURNING, no le incumbe.
     m = None
     for bloque in lotes.split("INSERT INTO barras")[1:]:
-        cand = re.match(r"\s*\(([^)]*)\)\s*VALUES\s*\((.*?)\)\s*RETURNING id", bloque, re.DOTALL)
+        cand = re.match(r"\s*\(([^)]*)\)\s*VALUES\s*\((.*?)\).*?RETURNING\s+[\w,\s]+", bloque, re.DOTALL)
         if cand and "template_instancia_id" in cand.group(1):
             m = cand
             break
-    check("se encuentra el INSERT INTO barras ... RETURNING id (con template_instancia_id)", bool(m))
+    check("se encuentra el INSERT INTO barras ... RETURNING (con template_instancia_id)", bool(m))
     if m:
         cols_raw, values_raw = m.group(1), m.group(2)
         cols = [c.strip() for c in cols_raw.replace("\n", " ").split(",") if c.strip()]
@@ -78,9 +93,22 @@ def main():
           re.search(r"template_instancia_id:\s*Optional\[int\]\s*=\s*None", lotes) is not None)
 
     # --- Fallback de origen (invariante de canales) ---
-    check("fallback: origen fuera de manual/template cae a 'manual'",
-          'origen_barra not in ("manual", "template")' in lotes and
-          'origen_barra = "manual"' in lotes)
+    # La regla NO cambió: un origen que no sea de este canal cae a 'manual', para que
+    # nadie pueda inyectar 'csv'/'pedido' por aquí. Lo que cambió es DÓNDE vive — se
+    # extrajo a `_origen_valido()` cuando se sumó 'enfierrador' (la etiqueta del Template
+    # Editor en modo obra) — y este check seguía buscando las dos líneas sueltas que la
+    # implementaban antes. O sea: llevaba en rojo por un refactor sano, señalando una
+    # regla que en realidad se sigue cumpliendo.
+    # Ahora se mide la FUNCIÓN: que exista, que su lista blanca contenga los tres
+    # orígenes propios del canal, y que lo que no esté en ella caiga a 'manual'.
+    fn = re.search(r"def _origen_valido\(origen\):(.*?)(?=\ndef |\Z)", lotes, re.DOTALL)
+    check("existe _origen_valido(), la puerta única del origen", fn is not None)
+    if fn:
+        cuerpo = fn.group(1)
+        check("su lista blanca son los 3 orígenes de este canal (manual/template/enfierrador)",
+              all(o in cuerpo for o in ('"manual"', '"template"', '"enfierrador"')))
+        check("fallback: lo que no está en la lista cae a 'manual'",
+              re.search(r"return\s+o\s+if\s+o\s+in\s*\(.*?\)\s*else\s*\"manual\"", cuerpo, re.DOTALL) is not None)
 
     # --- Router modelador montado ---
     with open(MAIN, "r", encoding="utf-8") as f:
@@ -106,21 +134,32 @@ def main():
     # template que ya había generado barras se borraba sin aviso. Se chequea acá, en
     # el mismo test que ya mira el cableado, porque el defecto vive JUSTO entre los
     # dos archivos (el backend estaba bien; el cliente no le daba el dato).
+    #
+    # EL CLIENTE CAMBIÓ, LA REGLA NO. Esto medía a panel_3d.js (Enfierrador MVP),
+    # retirado el 25-ago; quien escribe la traza hoy es el Template Editor en modo
+    # obra, con ST.tplOrigen. Las aserciones se MUEVEN a ese archivo, no se borran:
+    # el 409 sigue dependiendo de que alguien mande el id de verdad.
     check("el DELETE cuenta las instancias por template_id",
           "FROM elementos_template WHERE template_id = %s" in mod)
-    with open(PANEL3D, "r", encoding="utf-8") as f:
-        panel = f.read()
-    m_inst = re.search(r"_post\('/elementos/instancia',\s*\{([^}]*)\}", panel)
-    check("panel_3d manda el POST /elementos/instancia", bool(m_inst))
-    if m_inst:
-        check("…con el template_id REAL, no un null hardcodeado",
-              re.search(r"template_id:\s*ST\.templateId", m_inst.group(1)) is not None)
-    check("ST declara templateId (de qué template salió la receta viva)",
-          re.search(r"^\s*templateId:\s*null", panel, re.MULTILINE) is not None)
-    check("cargar un template estampa ST.templateId",
-          re.search(r"ST\.templateId\s*=\s*\(det\.id", panel) is not None)
-    check("volver a la semilla LIMPIA ST.templateId (la receta ya no es de ese template)",
-          re.search(r"semillaViga\(\);\s*\n(?:\s*//[^\n]*\n)*\s*ST\.templateId\s*=\s*null", panel) is not None)
+    with open(EDITOR, "r", encoding="utf-8") as f:
+        editor = f.read()
+    check("ST declara tplOrigen (de qué template de la biblioteca salió la estructura)",
+          re.search(r"\btplOrigen:\s*null", editor) is not None)
+    check("abrir un template de la biblioteca estampa su id en tplOrigen",
+          re.search(r"templateId:\s*null,\s*tplOrigen:\s*t\.id", editor) is not None)
+    # LOS DOS ESCRITURAS que llevan la traza a la tabla: la PRIMERA carga (la estructura
+    # viaja dentro del POST de barras, misma transacción) y el REGENERAR (PUT de la
+    # receta). Si cualquiera de las dos vuelve a mandar null, el 409 deja de disparar.
+    m_inst = re.search(r"instancia:\s*Object\.assign\(\{\s*template_id:\s*ST\.tplOrigen", editor)
+    check("la primera carga manda la estructura con el template_id REAL", bool(m_inst))
+    check("…y el PUT de regenerar también lo conserva",
+          re.search(r"piso:\s*traza\.piso,\s*template_id:\s*ST\.tplOrigen", editor) is not None)
+    # tplOrigen es SOLO traza: no se reusa como ST.templateId. Si se reusara, "Guardar
+    # cambios" en modo obra pisaría el template de la biblioteca con el hormigón real
+    # de esta estructura (decisión 5 del modo obra).
+    check("en modo obra el template de la biblioteca NO se puede sobrescribir "
+          "(templateId null, tplOrigen aparte)",
+          re.search(r"templateId:\s*null,\s*\n?\s*tplOrigen:", editor) is not None)
 
     if fallos:
         print("\nFALLARON %d chequeos" % fallos)

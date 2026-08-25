@@ -21,15 +21,22 @@
 //        ofrece crear una copia.
 //   L5 · Errores: 422/403 muestran el detail del backend TAL CUAL; un 404 al
 //        actualizar suelta el templateId y dice cómo salvar el trabajo.
-//   L6 · La lista pide el GET liviano con ?nombre=&tipo= y pinta Abrir + 🗑
-//        (🗑 deshabilitado si puede_modificar=false).
+//   L6 · La lista pide el GET liviano ENTERO (sin ?nombre= ni ?tipo=: filtra el
+//        navegador) y pinta Abrir + Eliminar (deshabilitado si puede_modificar=false).
+//        Las 4 columnas muertas (Barras / Peso est. / φ prom / Obra) NO vuelven.
 //   L7 · Eliminar confirma NOMBRANDO el template; un 409 NO borra y muestra cuántos
 //        elementos lo usan.
 //   L8 · Abrir un template cuya figura ya no está en el catálogo lo marca
 //        (normalizador) y lo dice, en vez de abrir en silencio algo que no genera.
-//  L10 · Gestor de templates: el orden (elemento / fecha) se aplica SIN volver a
-//        pedir la lista, y las KPI que el backend NO manda salen como "—" (nunca
-//        un 0 ni un número estimado por el front).
+//  L10 · Gestor de templates: el orden por DEFECTO es el USO (más cargados a un
+//        despiece arriba; desempata el nº de obras), los tres órdenes se aplican
+//        SIN volver a pedir la lista, y "sin usar" se dice con PALABRA — el guion
+//        queda sólo para lo que el backend no manda.
+//  L11 · Chips: se derivan de la lista COMPLETA (no de la ya filtrada, que los
+//        haría desaparecer al usarlos), se combinan entre sí y con el buscador,
+//        el chip activo se apaga volviéndolo a clicar y "Limpiar" se ve siempre.
+//  L12 · Un grupo de chips que no separa nada no se pinta: un solo tipo de
+//        elemento, o una sesión que no sabe quién eres.
 //
 // Corre el template_editor.js REAL sobre un mini-DOM (no hay jsdom en el proyecto),
 // igual que tests/test_te_borrador.js. Correr con: node tests/test_te_biblioteca.js
@@ -367,33 +374,53 @@ function abrirDeBiblioteca(w, extra) {
   }
 
   // ============================================================== L6
-  console.log('\nL6 — la lista pide el GET liviano con filtros y pinta las acciones');
+  console.log('\nL6 — la lista pide el GET liviano ENTERO y pinta las acciones');
   {
     const w = sesion();
     w._el('tplBuscar').value = ' eje ';
-    w._el('tplFiltroTipo').value = 'viga';
     w._responder = () => ({
       status: 200,
       body: {
         ok: true, templates: [
           { id: 42, nombre: 'Viga eje 3', tipo: 'viga', obra: 'OBRA-7', obra_nombre: 'Explora', fecha: '2026-08-01T10:00:00',
-            updated_at: '2026-08-12T09:00:00', editado_por: 'eu@x.cl', creado_por: 'eu@x.cl', n_componentes: 3, puede_modificar: true },
+            updated_at: '2026-08-12T09:00:00', editado_por: 'eu@x.cl', creado_por: 'eu@x.cl', n_componentes: 3,
+            n_usos: 4, n_obras: 2, puede_modificar: true },
           { id: 43, nombre: 'Muro tipo B', tipo: 'muro', obra: null, obra_nombre: null, fecha: '2026-07-20T10:00:00',
-            creado_por: 'otro@x.cl', n_componentes: 5, puede_modificar: false }
+            creado_por: 'otro@x.cl', n_componentes: 5, n_usos: 0, n_obras: 0, puede_modificar: false }
         ]
       }
     });
     w.tplCargarGuardados();
     await tick(); await tick();
     const url = w._llamadas[0].url;
-    ok(/nombre=eje/.test(url), 'manda ?nombre= al backend (' + url + ')');
-    ok(/tipo=viga/.test(url), 'y ?tipo=');
+    // Con el buscador YA ESCRITO la petición sigue siendo la lista entera: filtrar
+    // en el servidor rompía los chips (se derivan de lo que hay en la lista).
+    ok(/\/templates$/.test(url), 'pide la lista ENTERA, sin filtros en la URL (' + url + ')');
+    ok(!/nombre=|tipo=/.test(url), 'no manda ?nombre= ni ?tipo=');
+    ok(w._llamadas.length === 1, 'y con una sola petición (' + w._llamadas.length + ')');
     const html = w._el('tplGuardadosLista').innerHTML;
-    ok(/Viga eje 3/.test(html) && /Muro tipo B/.test(html), 'pinta las dos filas');
-    ok(/Explora/.test(html) && /General/.test(html), 'muestra la obra (y "General" cuando no tiene)');
+    ok(/Viga eje 3/.test(html), 'pinta la fila que coincide con el buscador');
+    ok(!/Muro tipo B/.test(html), 'y filtra localmente la que no coincide');
     ok(/tplAbrirTemplate/.test(html) && /tplEliminarTemplate/.test(html), 'cada fila tiene Abrir y Eliminar');
-    ok(/disabled/.test(html), 'el 🗑 del template ajeno viene deshabilitado');
-    ok(w._el('tplGuardadosCount').textContent === '2 templates', 'el contador dice cuántos hay');
+    ok(/Explora/.test(html), 'el template colgado de una obra la muestra junto al nombre');
+    ok(w._el('tplGuardadosCount').textContent === '1 de 2 templates',
+      'con filtro el contador dice los DOS números (' + w._el('tplGuardadosCount').textContent + ')');
+
+    // Sin filtro: las dos filas, y NINGUNA de las columnas muertas.
+    w._el('tplBuscar').value = '';
+    w.tplFiltrarGuardados();
+    const todo = w._el('tplGuardadosLista').innerHTML;
+    ok(/Viga eje 3/.test(todo) && /Muro tipo B/.test(todo), 'sin filtro se ven las dos');
+    ok(/disabled/.test(todo), 'el botón Eliminar del template ajeno viene deshabilitado');
+    ok(todo.indexOf('🗑') < 0 && /Renombrar<\/button>/.test(todo) && /Eliminar<\/button>/.test(todo),
+      'las dos acciones van con PALABRA y sin emoji de papelera');
+    ok(w._el('tplGuardadosCount').textContent === '2 templates', 'y el contador vuelve a uno solo');
+    // Las 4 columnas que se retiraron el 25-ago: 3 salían en '—' en TODAS las filas
+    // (el backend no las manda ni las calcula) y la de obra decía "General" en todas.
+    ok(!/Peso est/.test(todo) && !/φ prom/i.test(todo) && !/>Barras</.test(todo),
+      'las 3 columnas de guiones (Barras / Peso est. / φ prom) ya no están');
+    ok(!/General/.test(todo), 'ni la columna Obra repitiendo "General" en cada fila');
+    ok(!/todavía no se calculan/.test(todo), 'ni la nota al pie que las excusaba');
   }
 
   // ============================================================== L7
@@ -477,21 +504,23 @@ function abrirDeBiblioteca(w, extra) {
   }
 
   // ============================================================== L10
-  console.log('\nL10 — gestor: orden por elemento/fecha y KPI que el backend no manda');
+  console.log('\nL10 — gestor: el orden por defecto es el USO (no la última edición)');
   {
     const w = sesion();
-    // Tres templates a propósito DESORDENADOS respecto de los dos criterios, para
+    // Tres templates a propósito DESORDENADOS respecto de los TRES criterios, para
     // que el test falle si alguien deja de ordenar y devuelve el orden del backend.
     w._responder = () => ({
       status: 200,
       body: {
         ok: true, templates: [
           { id: 1, nombre: 'Viga eje 3', tipo: 'viga', fecha: '2026-01-01T10:00:00',
-            updated_at: '2026-08-01T10:00:00', creado_por: 'eu@x.cl', n_componentes: 3, puede_modificar: true },
+            updated_at: '2026-08-01T10:00:00', creado_por: 'eu@x.cl', n_componentes: 3,
+            n_usos: 2, n_obras: 2, puede_modificar: true },
           { id: 2, nombre: 'Muro cortina', tipo: 'muro', fecha: '2026-02-01T10:00:00',
-            updated_at: '2026-03-01T10:00:00', creado_por: 'eu@x.cl', n_componentes: 5, puede_modificar: true },
+            updated_at: '2026-03-01T10:00:00', creado_por: 'eu@x.cl', n_componentes: 5,
+            n_usos: 9, n_obras: 1, puede_modificar: true },
           { id: 3, nombre: 'Losa tipo', tipo: 'losa', fecha: '2026-08-15T10:00:00',
-            creado_por: 'eu@x.cl', n_componentes: 2, puede_modificar: true }
+            creado_por: 'eu@x.cl', n_componentes: 2, n_usos: 0, n_obras: 0, puede_modificar: true }
         ]
       }
     });
@@ -500,34 +529,151 @@ function abrirDeBiblioteca(w, extra) {
 
     const orden = (lista) => w.TemplateEditor._tplOrdenar(lista).map(t => t.nombre);
     const lista = [
-      { nombre: 'Viga eje 3', tipo: 'viga', updated_at: '2026-08-01T10:00:00' },
-      { nombre: 'Muro cortina', tipo: 'muro', updated_at: '2026-03-01T10:00:00' },
-      { nombre: 'Losa tipo', tipo: 'losa', fecha: '2026-08-15T10:00:00' }
+      { nombre: 'Viga eje 3', tipo: 'viga', updated_at: '2026-08-01T10:00:00', n_usos: 2, n_obras: 2 },
+      { nombre: 'Muro cortina', tipo: 'muro', updated_at: '2026-03-01T10:00:00', n_usos: 9, n_obras: 1 },
+      { nombre: 'Losa tipo', tipo: 'losa', fecha: '2026-08-15T10:00:00', n_usos: 0, n_obras: 0 }
     ];
-    // Por defecto manda el orden CANÓNICO de elemento (muro · losa · viga …), no el
-    // orden de llegada del backend (id DESC).
-    ok(orden(lista).join('|') === 'Muro cortina|Losa tipo|Viga eje 3',
-      'ordena por elemento en el orden canónico (muro, losa, viga)');
+    // DEFAULT = uso. Antes era 'elemento'; el cambio es el punto de toda la tanda:
+    // con la biblioteca llena se busca el que YA FUNCIONÓ.
+    ok(orden(lista).join('|') === 'Muro cortina|Viga eje 3|Losa tipo',
+      'por defecto ordena por USO, más usados arriba (' + orden(lista).join('|') + ')');
+    ok(w._el('tplOrdenUso').classList.contains('on'), 'y el botón "Por uso" arranca marcado');
+    // Empate en usos → desempata el nº de OBRAS (12 en 4 obras > 12 en 1 obra).
+    const empate = [
+      { nombre: 'Una obra', tipo: 'viga', n_usos: 12, n_obras: 1 },
+      { nombre: 'Cuatro obras', tipo: 'viga', n_usos: 12, n_obras: 4 }
+    ];
+    ok(orden(empate).join('|') === 'Cuatro obras|Una obra',
+      'con los mismos usos gana el que se usó en más obras');
 
-    const llamadasAntes = w._llamadas.length;
-    w.tplSetOrden('fecha');
+    let llamadasAntes = w._llamadas.length;
+    w.tplSetOrden('elemento');
     ok(w._llamadas.length === llamadasAntes, 'cambiar el orden NO vuelve a pedir la lista al backend');
+    ok(orden(lista).join('|') === 'Muro cortina|Losa tipo|Viga eje 3',
+      'por elemento sigue el orden canónico (muro, losa, viga)');
+
+    llamadasAntes = w._llamadas.length;
+    w.tplSetOrden('fecha');
+    ok(w._llamadas.length === llamadasAntes, 'y "por fecha" tampoco pide nada');
     ok(orden(lista).join('|') === 'Losa tipo|Viga eje 3|Muro cortina',
       'por fecha usa updated_at, o la de creación si el template es viejo');
     ok(w._el('tplOrdenFecha').classList.contains('on') &&
-       !w._el('tplOrdenElemento').classList.contains('on'), 'el toggle marca el orden aplicado');
+       !w._el('tplOrdenElemento').classList.contains('on') &&
+       !w._el('tplOrdenUso').classList.contains('on'), 'el toggle marca UN solo orden, el aplicado');
 
-    // KPI: el GET liviano sólo trae n_componentes. Barras, kilos y φ NO vienen del
-    // backend: tienen que salir como guion, jamás como 0 ni como cifra calculada acá.
+    // La insignia de uso: "sin usar" con PALABRA, nunca un guion. El guion queda
+    // reservado para lo que el servidor no manda, que es otra cosa distinta.
+    const uso = w.TemplateEditor._tplUso;
+    ok(/usado 9×/.test(uso({ n_usos: 9, n_obras: 1 })), 'dice cuántas veces se usó');
+    ok(/1 obra</.test(uso({ n_usos: 9, n_obras: 1 })) && /4 obras/.test(uso({ n_usos: 9, n_obras: 4 })),
+      'y en cuántas obras, en singular o plural');
+    ok(/sin usar/.test(uso({ n_usos: 0, n_obras: 0 })), 'el que nadie usó lo DICE ("sin usar")');
+    ok(uso({ n_usos: 0, n_obras: 0 }).indexOf('—') < 0, 'y no con un guion, que es un hueco');
+    ok(uso({}).indexOf('—') >= 0, 'un backend que no manda el uso sí da guion (no un 0 inventado)');
+    const html = w._el('tplGuardadosLista').innerHTML;
+    ok(/usado 9×/.test(html) && /sin usar/.test(html), 'la tabla pinta las dos formas');
+
+    // n_componentes sigue con el trato de siempre.
     const kpi = w.TemplateEditor._tplKpi;
     ok(kpi(undefined).indexOf('—') >= 0, 'un dato que el backend no manda se pinta "—"');
     ok(kpi(0) === '0', 'pero un 0 REAL se pinta 0 (no se confunde con "falta el dato")');
-    const html = w._el('tplGuardadosLista').innerHTML;
-    ok((html.match(/—/g) || []).length >= 9, 'las 3 KPI sin cablear salen en "—" en las 3 filas');
-    // El texto dejó de nombrar el endpoint (19-ago, limpieza de jerga): lo que se
-    // congela es que la tabla SIGA DICIENDO que esos datos faltan, no la frase exacta.
-    ok(/todavía no se calculan para la lista/.test(html),
-      'y la tabla DICE que faltan, en vez de disimularlo');
+  }
+
+  // ============================================================== L11
+  console.log('\nL11 — chips: se derivan de la lista, se combinan y se limpian');
+  {
+    const w = sesion();
+    w.currentUserEmail = 'eu@x.cl';
+    const CUATRO = [
+      { id: 1, nombre: 'Viga eje 3', tipo: 'viga', creado_por: 'eu@x.cl', n_componentes: 3, n_usos: 2, n_obras: 1, puede_modificar: true },
+      { id: 2, nombre: 'Muro cortina', tipo: 'muro', creado_por: 'otro@x.cl', n_componentes: 5, n_usos: 9, n_obras: 3, puede_modificar: false },
+      { id: 3, nombre: 'Viga fundación', tipo: 'viga', creado_por: 'otro@x.cl', n_componentes: 2, n_usos: 0, n_obras: 0, puede_modificar: false },
+      { id: 4, nombre: 'Losa tipo', tipo: 'losa', creado_por: 'eu@x.cl', n_componentes: 4, n_usos: 1, n_obras: 1, puede_modificar: true }
+    ];
+    w._responder = () => ({ status: 200, body: { ok: true, templates: CUATRO } });
+    w.tplCargarGuardados();
+    await tick(); await tick();
+
+    const chips = () => w._el('tplChips').innerHTML;
+    const filas = () => w._el('tplGuardadosLista').innerHTML;
+    const nombres = () => CUATRO.filter(t => filas().indexOf(t.nombre) >= 0).map(t => t.nombre);
+
+    // Los chips de elemento salen de lo que HAY, no de una lista escrita a mano:
+    // hay vigas, muros y losas → tres chips; no hay columnas → no hay chip Columna.
+    ok(/>Viga</.test(chips()) && />Muro</.test(chips()) && />Losa</.test(chips()),
+      'hay un chip por cada elemento presente');
+    ok(!/>Columna</.test(chips()), 'y ninguno para un elemento que no está en la lista');
+    ok(/>Míos</.test(chips()) && />Del equipo</.test(chips()), 'y los chips de autor');
+
+    // Un chip filtra; DOS chips se COMBINAN; el buscador se suma a los dos.
+    w.tplChipSet('tipo', 'viga');
+    ok(nombres().join('|') === 'Viga eje 3|Viga fundación', 'el chip de elemento filtra (' + nombres().join('|') + ')');
+    w.tplChipSet('autor', 'mios');
+    ok(nombres().join('|') === 'Viga eje 3', 'y se COMBINA con el de autor');
+    w.tplChipSet('autor', 'equipo');
+    ok(nombres().join('|') === 'Viga fundación', '"Del equipo" es el complemento de "Míos"');
+    w._el('tplBuscar').value = 'zzz';
+    w.tplFiltrarGuardados();
+    ok(nombres().length === 0 && /Ningún template coincide/.test(filas()),
+      'el buscador se suma y el vacío se explica');
+    ok(w._llamadas.length === 1, 'nada de esto costó una segunda petición (' + w._llamadas.length + ')');
+
+    // Los chips NO se derivan de lo ya filtrado: si lo hicieran, filtrar por viga
+    // habría hecho desaparecer los chips Muro y Losa y no habría cómo volver.
+    ok(/>Muro</.test(chips()) && />Losa</.test(chips()),
+      'con el filtro puesto los demás chips SIGUEN estando');
+
+    // Limpiar de un clic deja todo como al principio.
+    w.tplLimpiarFiltros();
+    ok(nombres().length === 4, 'limpiar filtros devuelve las 4 filas');
+    ok(w._el('tplBuscar').value === '', 'y vacía el buscador');
+    ok(w._llamadas.length === 1, 'sin volver a pedir la lista');
+
+    // Volver a clicar el chip activo lo apaga (el mismo control pone y quita).
+    w.tplChipSet('tipo', 'muro');
+    ok(nombres().join('|') === 'Muro cortina', 'el chip filtra');
+    w.tplChipSet('tipo', 'muro');
+    ok(nombres().length === 4, 'y volver a clicarlo lo apaga');
+
+    // "Limpiar" se ve SIEMPRE; apagado cuando no hay nada que limpiar.
+    ok(/Limpiar filtros/.test(chips()), 'el botón de limpiar se ve siempre, con palabra');
+    ok(/tplLimpiar[^>]*disabled/.test(chips()), 'y sin filtros puestos viene deshabilitado, no escondido');
+    w.tplChipSet('tipo', 'losa');
+    ok(!/tplLimpiar[^>]*disabled/.test(chips()), 'con un filtro puesto se habilita');
+  }
+
+  // ============================================================== L12
+  console.log('\nL12 — el grupo de chips que no separa nada no se pinta');
+  {
+    const w = sesion();
+    w.currentUserEmail = 'eu@x.cl';
+    // Biblioteca de UN solo tipo: un grupo "Elemento" con Todos + Viga selecciona el
+    // 100% de las filas en cualquiera de sus dos estados — no filtra, sólo ocupa.
+    w._responder = () => ({
+      status: 200,
+      body: { ok: true, templates: [
+        { id: 1, nombre: 'Viga A', tipo: 'viga', creado_por: 'eu@x.cl', n_componentes: 1, n_usos: 1, n_obras: 1, puede_modificar: true },
+        { id: 2, nombre: 'Viga B', tipo: 'viga', creado_por: 'eu@x.cl', n_componentes: 1, n_usos: 0, n_obras: 0, puede_modificar: true }
+      ] }
+    });
+    w.tplCargarGuardados();
+    await tick(); await tick();
+    ok(!/Elemento/.test(w._el('tplChips').innerHTML), 'con un solo tipo el grupo Elemento no se pinta');
+    ok(/Míos/.test(w._el('tplChips').innerHTML), 'pero el de autor sí (ese sí separa)');
+    ok(w.TemplateEditor._tplTiposPresentes([{ tipo: 'losa' }, { tipo: 'viga' }, { tipo: 'losa' }]).join('|') === 'losa|viga',
+      'los tipos presentes salen sin repetir y en el orden canónico del tab');
+
+    // Sin sesión conocida "Míos" no significa nada: el grupo de autor tampoco se pinta.
+    const w2 = sesion();
+    w2.currentUserEmail = '';
+    w2._responder = () => ({ status: 200, body: { ok: true, templates: [
+      { id: 1, nombre: 'Viga A', tipo: 'viga', creado_por: 'eu@x.cl', n_componentes: 1, n_usos: 0, n_obras: 0, puede_modificar: true },
+      { id: 2, nombre: 'Muro B', tipo: 'muro', creado_por: 'otro@x.cl', n_componentes: 1, n_usos: 0, n_obras: 0, puede_modificar: false }
+    ] } });
+    w2.tplCargarGuardados();
+    await tick(); await tick();
+    ok(!/Míos/.test(w2._el('tplChips').innerHTML), 'sin saber quién eres no se ofrece "Míos"');
+    ok(/>Muro</.test(w2._el('tplChips').innerHTML), 'y los de elemento siguen ahí');
   }
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');

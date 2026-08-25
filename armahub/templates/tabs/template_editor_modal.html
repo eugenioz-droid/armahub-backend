@@ -12,7 +12,8 @@
      generar + reglas + semilla) — lo cablea template_editor.js. Los otros 3
      cuadrantes y la interacción del panel son COSMÉTICOS (calcan la maqueta).
 
-     OJO: NO tocar modelador3d_modal.html ni panel_3d.js (otro agente).
+     Este es el ÚNICO modal 3D desde el 25-ago: convivió con modelador3d_modal.html
+     (el "3D Template" del Enfierrador MVP), que se retiró al quedar sin entrada.
      ========================================================================== -->
 <style>
   /* ---- TEMA CLARO = EL DE SIEMPRE. NO SE TOCA ----
@@ -1926,7 +1927,8 @@
               </span>
             </div>
           </div>
-          <!-- CUADRO RESUMEN flotante (portado del Enfierrador, #m3d_stats): los mismos
+          <!-- CUADRO RESUMEN flotante (portado del Enfierrador MVP, que lo tenía en
+               #m3d_stats; ese modal ya se retiró): los mismos
                números que ya calculaba el footer, pero DONDE se está mirando. El peso
                va destacado porque es el dato que el usuario busca. Lo llena _regenerar. -->
           <div id="te_3dstats">
@@ -1973,7 +1975,8 @@
                 aria-label="Girar la pieza 90° en la vista activa (R)">↔</button>
 
         <!-- LISTADO DE BARRAS (despiece agrupado) — franja al pie de los cuadrantes,
-             calcando el "Barras a crear" del Enfierrador (#m3d_resumen): mismas
+             calcando el "Barras a crear" del Enfierrador MVP (su #m3d_resumen, hoy
+             retirado con ese modal): mismas
              columnas y mismo subtítulo vivo. Va como OVERLAY absoluto y no como una
              fila más del layout a propósito: si empujara la grilla, abrir/cerrar el
              listado re-dimensionaría los 4 viewports del renderer en cada clic.

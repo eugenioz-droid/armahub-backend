@@ -340,9 +340,9 @@
         'catalogo',
         '[ArmaHub] No se pudo cargar catalogo/index.js'
       ),
-      // Modelador 3D (3D Template) — motor F0 + panel F1. Sin interdependencias al
-      // cargar (cada archivo se registra en window.*); el orden real lo resuelven en
-      // uso. Three.js se carga on-demand desde panel_3d.js.
+      // Modelador 3D — motor F0. Sin interdependencias al cargar (cada archivo se
+      // registra en window.*); el orden real lo resuelven en uso. Three.js se carga
+      // on-demand desde quien dibuja, hoy template_editor.js.
       loadScript(
         'script[data-armahub-feature="modelador-motor-geom"]',
         '/static/js/features/modelador/motor_geom.js' + suffix,
@@ -398,13 +398,8 @@
         'modelador-semilla',
         '[ArmaHub] No se pudo cargar modelador/semilla_viga.js'
       ),
-      loadScript(
-        'script[data-armahub-feature="modelador-panel"]',
-        '/static/js/features/modelador/panel_3d.js' + suffix,
-        'armahubFeature',
-        'modelador-panel',
-        '[ArmaHub] No se pudo cargar modelador/panel_3d.js'
-      ),
+      // (Aquí se cargaba modelador/panel_3d.js, el panel del modal "3D Template".
+      // Se retiró con el modal el 25-ago; el Template Editor hace ese trabajo.)
       // Template Editor (Colocador por proyecciones) — sub-tab del Catálogo.
       // Reusa el motor del modelador (motor_geom/generar/reglas/semilla) para el
       // cuadrante 3D en vivo. Three.js se carga on-demand desde template_editor.js.

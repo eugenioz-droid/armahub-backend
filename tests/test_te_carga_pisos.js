@@ -223,8 +223,9 @@ function backend(win, opts) {
       return { status: 200, body: { pisos: PISOS.map(p => ({ valor: p, tiene_barras: false })) } };
     }
     if (/\/elementos\/instancia$/.test(url) && metodo === 'POST') {
-      // Sigue existiendo (Enfierrador MVP), pero el editor ya NO entra por aquí en su
-      // primera carga: si alguien la revive, los contratos de abajo lo delatan.
+      // El endpoint sigue existiendo (guardar SÓLO la receta), pero ya no lo llama
+      // ningún front: el editor no entra por aquí en su primera carga porque serían
+      // dos transacciones. Si alguien la revive, los contratos de abajo lo delatan.
       const cuerpo = JSON.parse(o.body);
       const id = ++sig;
       win._instancias.push({ id, piso: cuerpo.piso });

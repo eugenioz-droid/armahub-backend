@@ -9,7 +9,7 @@ Router de la biblioteca de templates y de la traza de instancias:
   DELETE /templates/{id}                     -> borra (409 si tiene instancias)
   POST   /elementos/instancia                -> guarda la RECETA instanciada (trazabilidad)
   PUT    /elementos/instancia/{id}           -> ACTUALIZA esa estructura (no la reemplaza)
-  DELETE /elementos/instancia/{id}           -> borra una estructura VACÍA (409 si tiene barras)
+  DELETE /elementos/instancia/{id}           -> borra la estructura Y SUS BARRAS (misma transacción)
   GET    /elementos/instancia/{id}           -> la estructura completa, para REABRIRLA
   GET    /lotes/{id}/elementos               -> estructuras de un despiece + KPIs (items/barras/kg/Ø)
   GET    /elementos/estructuras?proyecto=&elemento= -> estructuras BANDERADAS de una obra
@@ -26,10 +26,12 @@ estructuras vacías cuando las barras se caían.
 Tablas: templates_catalogo, elementos_template (migración 104; migración 105
 agrega schema_version / updated_at / editado_por, aditiva).
 
-DOS CLIENTES, UNA TABLA (no romper ninguno):
-  · Enfierrador MVP (panel_3d.js): guarda desde el Fabricator, con la obra del lote.
+DOS SHAPES DE params, UNA TABLA (no romper ninguno):
+  · Enfierrador MVP (panel_3d.js): shape PLANO (dims como números sueltos). Ese
+    cliente se retiró el 25-ago, pero sus filas siguen en la tabla y hay que poder
+    leerlas y regenerarlas: el shape es un contrato con los DATOS, no con el front.
   · Template Editor (template_editor.js): vive en el CATÁLOGO, guarda templates
-    generales (sin obra) y usa dims {modo, valor}.
+    generales (sin obra) y usa dims {modo, valor}. Hoy es el único que escribe.
 El shape de params se identifica con schema_version (ver _deducir_schema_version):
 se estampa al escribir y se deduce al leer para las filas viejas — la tabla NO se
 reescribe.
@@ -274,10 +276,11 @@ def _validar_receta(cur, params) -> list:
                 # DOCUMENTADO de una dim y lo que el normalizador del front ya hace
                 # (reglas.js _dimsCanon: los parciales del spec que la receta no trae
                 # se rellenan con {modo:'auto'} y el motor los resuelve contra el
-                # hormigón). Rechazarlos rompía el flujo REAL del Enfierrador: al
+                # hormigón). Rechazarlos rompía el flujo REAL del Enfierrador MVP: al
                 # cambiar la figura de un componente desde el panel (panel_3d.js) las
-                # dims no se reconcilian, así que una 101A que pasa a 104D queda con
-                # sólo el lado A declarado — y hoy eso se guarda y genera barras bien.
+                # dims no se reconcilian, así que una 101A que pasa a 104D quedaba con
+                # sólo el lado A declarado — y eso se guarda y genera barras bien. Ese
+                # panel se retiró, pero sus recetas siguen guardadas y se reabren.
                 # Se valida SÓLO lo DECLARADO, que es donde el dato puede estar mal.
                 continue
             if isinstance(d, dict):
@@ -383,8 +386,10 @@ class TemplateActualizar(BaseModel):
 
 class InstanciaCrear(BaseModel):
     """La ESTRUCTURA que el editor cargó a un despiece. Los campos de traza son
-    OPCIONALES a propósito: el Enfierrador MVP (panel_3d.js) manda sólo los tres de
-    siempre y tiene que seguir funcionando igual."""
+    OPCIONALES a propósito: nacieron con la migración 107 y el Enfierrador MVP
+    (panel_3d.js, ya retirado) mandaba sólo los tres de siempre. Se quedan opcionales
+    porque las filas escritas así siguen vivas y se leen con COALESCE contra el lote:
+    exigirlos ahora convertiría cada una de esas estructuras en un dato inválido."""
     lote_id: Optional[int] = None
     template_id: Optional[int] = None
     params: dict
@@ -475,11 +480,20 @@ def crear_template(body: TemplateCrear, user=Depends(get_current_user)):
 @router.get("/templates")
 def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
                      nombre: Optional[str] = None, user=Depends(get_current_user)):
-    """Lista LIVIANA para ELEGIR un template: id, nombre, tipo, obra, fecha, autor y
-    cuántos componentes tiene. NO trae `params`: la receta completa puede pesar
-    cientos de KB por template y la lista solo sirve para escoger — se pide con
-    GET /templates/{id} al abrir. Filtros: tipo, obra (prioriza esa obra pero incluye
-    los generales/de otras) y nombre (contiene, sin distinguir mayúsculas)."""
+    """Lista LIVIANA para ELEGIR un template: id, nombre, tipo, obra, fecha, autor,
+    cuántos componentes tiene y CUÁNTO SE HA USADO. NO trae `params`: la receta
+    completa puede pesar cientos de KB por template y la lista solo sirve para
+    escoger — se pide con GET /templates/{id} al abrir. Filtros: tipo, obra
+    (prioriza esa obra pero incluye los generales/de otras) y nombre (contiene, sin
+    distinguir mayúsculas).
+
+    POR QUÉ VIAJA EL USO (n_usos / n_obras)
+    Con 80 templates en la biblioteca lo que se busca es EL QUE YA FUNCIONÓ, no el
+    que alguien tocó ayer: la fecha de edición no ordena nada. El dato ya existía y
+    nadie lo leía — cada estructura cargada a un despiece deja su fila en
+    elementos_template apuntando al template del que salió. n_obras separa el
+    template que se usó 12 veces en UNA obra del que se usó 12 veces en CUATRO
+    (ese segundo es el que de verdad es reutilizable)."""
     _check_permiso_lectura(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -497,9 +511,17 @@ def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
                        CASE WHEN jsonb_typeof(t.params->'componentes') = 'array'
                             THEN jsonb_array_length(t.params->'componentes') ELSE 0 END,
                        t.params->'componentes'->0->'dims',
-                       p.nombre_proyecto
+                       p.nombre_proyecto,
+                       COALESCE(u.n_usos, 0), COALESCE(u.n_obras, 0)
                 FROM templates_catalogo t
                 LEFT JOIN proyectos p ON p.id_proyecto = t.obra
+                LEFT JOIN (SELECT e.template_id AS tid,
+                                  COUNT(*) AS n_usos,
+                                  COUNT(DISTINCT COALESCE(e.id_proyecto, l.id_proyecto)) AS n_obras
+                             FROM elementos_template e
+                             LEFT JOIN lotes l ON l.id = e.lote_id
+                            WHERE e.template_id IS NOT NULL
+                            GROUP BY e.template_id) u ON u.tid = t.id
             """
             if where:
                 sql += " WHERE " + " AND ".join(where)
@@ -525,6 +547,17 @@ def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
             "updated_at": r[7], "editado_por": r[8],
             "n_componentes": int(r[9] or 0),
             "obra_nombre": r[11],
+            # USO REAL. Sale del LEFT JOIN agregado de arriba — UNA consulta para toda
+            # la lista, no una por template: contar dentro del for era el N+1 clásico.
+            # n_usos cuenta estructuras VIVAS: al borrar una se borra su fila de
+            # elementos_template, así que el número baja solo. Una estructura
+            # 'retirada' (se le borraron las barras pero la fila sigue) SÍ cuenta:
+            # el template igual generó trabajo real ahí.
+            "n_usos": int(r[12] or 0),
+            # Obras DISTINTAS donde se usó. Una instancia sin lote ni traza de obra
+            # suma en n_usos y no en n_obras (COUNT DISTINCT ignora NULL): se cuenta
+            # lo que se sabe, no se inventa una obra.
+            "n_obras": int(r[13] or 0),
             # Igual que en constructoras: el front muestra editar/eliminar con esto,
             # sin recalcular el criterio de permiso por su cuenta.
             "puede_modificar": _puede_modificar_template(r[4], user),
@@ -673,7 +706,8 @@ def insertar_instancia(cur, email, lote_id, params, template_id=None, nombre=Non
     """El INSERT de una estructura, SOBRE UN CURSOR QUE YA EXISTE. Vive suelto (y no
     dentro del endpoint) porque hay DOS transacciones que lo necesitan y la fila tiene
     que escribirse igual en las dos:
-      · POST /elementos/instancia — la traza suelta (Enfierrador MVP de panel_3d.js).
+      · POST /elementos/instancia — la traza suelta (la puerta que usaba el Enfierrador
+        MVP; hoy no la llama ningún front, ver el docstring de crear_instancia).
       · POST /lotes/{id}/barras con `instancia` — la estructura y SUS barras naciendo
         JUNTAS. Ese es el caso que obliga a compartir el cursor: si el INSERT viviera
         en su propio endpoint serían dos transacciones, y una carga que falla en las
@@ -706,10 +740,11 @@ def crear_instancia(body: InstanciaCrear, user=Depends(get_current_user)):
     (POST /lotes/{id}/barras). Opcional en el MVP: el flujo funciona sin él.
 
     OJO: crear la estructura por AQUÍ y cargarle las barras después son DOS
-    transacciones — si las barras fallan, la estructura queda vacía. El editor 3D ya
-    no entra por esta puerta en su primera carga (manda `instancia` dentro del POST
-    de barras, que las escribe juntas); esto queda para el cliente MVP y para quien
-    de verdad quiera guardar sólo la receta."""
+    transacciones — si las barras fallan, la estructura queda vacía. Por eso NINGÚN
+    front entra ya por esta puerta: el editor manda `instancia` dentro del POST de
+    barras, que las escribe juntas, y el Enfierrador MVP —el único que la usaba en dos
+    pasos— se retiró el 25-ago. Queda para guardar SÓLO la receta, sin barras: es la
+    única forma legítima de nacer vacía."""
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -827,27 +862,39 @@ def listar_instancias_lote(lote_id: int, user=Depends(get_current_user)):
 
 @router.delete("/elementos/instancia/{instancia_id}")
 def eliminar_instancia(instancia_id: int, user=Depends(get_current_user)):
-    """Borra una estructura VACÍA (cero barras) del despiece.
+    """Borra una estructura del despiece Y LAS BARRAS QUE GENERÓ, en una transacción.
 
-    POR QUÉ EXISTE: hasta hoy la primera carga escribía la estructura y sus barras en
-    dos transacciones, así que una carga que fallaba a mitad (el 400 por ubicación
-    faltante, p. ej.) dejaba la fila colgando — 0 barras, 0 kg, y el nombre a medias.
-    Eso ya no puede volver a pasar (las dos cosas nacen juntas), pero las que quedaron
-    de antes son datos del usuario y las borra ÉL desde el listado, no una migración a
-    su espalda.
+    EL ELEMENTO ES LA RECETA, LAS BARRAS SON EL RESULTADO. Es la misma regla que ya
+    apaga la papelera de esas barras en la grilla (eliminar_barra_lote responde 409
+    para una barra con template_instancia_id): no se editan sueltas porque dejarían a
+    la estructura diciendo una cosa y al despiece otra. La consecuencia natural es que
+    borrar la receta se lleve su resultado — si no, borrarla dejaría barras sin nadie
+    que sepa de dónde salieron ni cómo regenerarlas, que es exactamente el huérfano
+    inverso al que este endpoint nació a limpiar.
 
-    LA GUARDA ES EL CERO, no el estado del lote: mientras la estructura no tenga barras
-    no hay cubicación que perder — borrarla no cambia ni un kilo del despiece. Con
-    barras se responde 409 y se dice por dónde (reabrir la estructura, que es donde el
-    sync sabe borrarlas de verdad). Un despiece ELIMINADO sí se respeta entero: es una
-    lápida, su contenido no se toca."""
+    ANTES SÓLO BORRABA LAS VACÍAS (409 con barras, "quítalas reabriendo la estructura").
+    Ese camino existe y sigue siendo el bueno para cambiar barras; pero para BOTAR el
+    elemento entero obligaba a un rodeo —abrir el editor, vaciar el elemento, cargar,
+    volver, borrar— con el mismo resultado y cuatro pasos más.
+
+    LAS BARRAS NO SE PIERDEN SIN RASTRO: se copian a `barras_eliminadas` con quién y
+    cuándo, el MISMO registro histórico que usa el Bar Manager y que ya usa el sync al
+    borrar las que dejaron de existir.
+
+    LO QUE SÍ SIGUE MANDANDO ES EL ESTADO DEL LOTE (no se inventa una excepción para
+    este endpoint):
+      · ELIMINADO → 409 siempre. Es una lápida: su contenido es histórico.
+      · TERMINADA → 409 sólo si hay barras que quitar, con el mismo mensaje que dan
+        agregar/sincronizar/borrar barra: eso se corrige en el Bar Manager. Una
+        estructura VACÍA se sigue pudiendo borrar en un lote terminado, igual que
+        antes de este cambio, porque no mueve ni un kilo del despiece."""
+    from .barras import _SNAP_COLS_BARRA, _SNAP_COLS_DEST
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso_instancia(cur, user)
             cur.execute(
-                """SELECT e.nombre, e.lote_id, l.estado,
-                          (SELECT COUNT(*) FROM barras b WHERE b.template_instancia_id = e.id)
+                """SELECT e.nombre, e.lote_id, l.estado, l.id_proyecto
                      FROM elementos_template e
                      LEFT JOIN lotes l ON l.id = e.lote_id
                     WHERE e.id = %s""",
@@ -856,20 +903,64 @@ def eliminar_instancia(instancia_id: int, user=Depends(get_current_user)):
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Esa estructura ya no existe.")
-            nombre, lote_id, estado_lote, n_barras = r[0], r[1], r[2], int(r[3] or 0)
+            nombre, lote_id, estado_lote, id_proyecto = r[0], r[1], r[2], r[3]
             if estado_lote == "eliminado":
                 raise HTTPException(status_code=409,
                                     detail="Ese despiece está eliminado: su contenido es histórico y no se toca.")
-            if n_barras:
+            # Las barras de ESTA estructura, con el sector al que pertenecen: el mismo
+            # dato que necesita marcar_sector_modificado después de borrarlas.
+            cur.execute(
+                "SELECT id, sector, piso, ciclo, cant_total, peso_total FROM barras "
+                "WHERE template_instancia_id = %s",
+                (instancia_id,),
+            )
+            filas = cur.fetchall()
+            ids = [f[0] for f in filas]
+            sectores = {(f[1], f[2], f[3]) for f in filas}
+            fisicas = float(sum(float(f[4] or 0) for f in filas))
+            kg = round(float(sum(float(f[5] or 0) for f in filas)), 1)
+            if ids and estado_lote == "terminada":
                 raise HTTPException(status_code=409, detail={
-                    "msg": (f"«{nombre or instancia_id}» tiene {n_barras} barra(s) en el despiece. "
-                            "Se quitan reabriéndola en el Enfierrador; sólo se puede borrar vacía."),
-                    "n_barras": n_barras,
+                    "msg": (f"«{nombre or instancia_id}» tiene barras en un despiece TERMINADO; "
+                            "edítalas desde el Bar Manager."),
+                    "n_barras": fisicas, "n_items": len(ids), "kg": kg,
                 })
+            now = _now_iso()
+            if ids:
+                cols_src = ", ".join(_SNAP_COLS_BARRA)
+                cols_dst = ", ".join(_SNAP_COLS_DEST)
+                cur.execute(
+                    f"""INSERT INTO barras_eliminadas (eliminada_por, eliminada_fecha, {cols_dst})
+                        SELECT %s, %s, {cols_src} FROM barras WHERE id = ANY(%s)""",
+                    (email, now, ids),
+                )
+                cur.execute("DELETE FROM barras WHERE id = ANY(%s)", (ids,))
             cur.execute("DELETE FROM elementos_template WHERE id = %s", (instancia_id,))
-    audit(email, "eliminar_instancia_vacia", f"{nombre or ''} · lote {lote_id}",
+            if ids:
+                # El contador del lote y el estado del sector son los MISMOS caminos que
+                # usa el borrado de una barra suelta (lotes.eliminar_barra_lote): si no
+                # se recorren, el despiece queda diciendo que tiene barras que ya no
+                # están y el sector no se entera de que cambió.
+                cur.execute(
+                    "UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s",
+                    (lote_id, lote_id),
+                )
+                try:
+                    from .sector_estado import marcar_sector_modificado
+                    for sec, pis, cic in sectores:
+                        marcar_sector_modificado(cur, id_proyecto, sec, pis, cic, por=email)
+                except Exception:
+                    pass
+    if ids:
+        # Los kilos de la obra cambiaron: la landing y las stats no pueden seguir
+        # sirviendo el total de antes desde caché.
+        from . import cache as _cache
+        _cache.invalidate("stats:", "landing:")
+    audit(email, "eliminar_instancia",
+          f"{nombre or ''} · lote {lote_id} · {len(ids)} item(s) · {fisicas:g} barra(s) · {kg} kg",
           "elemento_template", str(instancia_id))
-    return {"ok": True, "id": instancia_id, "lote_id": lote_id}
+    return {"ok": True, "id": instancia_id, "lote_id": lote_id,
+            "barras_eliminadas": len(ids), "n_barras": fisicas, "kg": kg}
 
 
 @router.get("/elementos/estructuras")
