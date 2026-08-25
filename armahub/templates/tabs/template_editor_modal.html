@@ -239,6 +239,11 @@
      "no existe" para el usuario) y con su motivo en el tooltip: "próximamente" o
      "hay barras colocadas". */
   #te_modal .te-elembtn:disabled{opacity:.5;cursor:default}
+  /* MODO OBRA: el elemento lo trae el despiece. Los botones quedan a la vista pero
+     apagados, y esta etiqueta dice POR QUÉ sin que haya que pasar el mouse — el
+     tooltip solo la amplía. Mismo criterio que el resumen del selector de pisos. */
+  #te_modal .te-elemfijo{font-size:10px;font-weight:700;letter-spacing:.3px;
+    color:var(--te-acero-t);white-space:nowrap;cursor:help}
 
   /* ---- PANTALLA INICIAL DE UN TEMPLATE NUEVO (26-ago) ----
      Al crear, los 4 cuadrantes y las herramientas NO aparecen: primero se elige el
@@ -2022,7 +2027,7 @@
            POST /lotes/{id}/barras, el canal que ya existia. -->
       <button class="te-btn primary" id="te_btnCargarDespiece" style="display:none"
               onclick="templateEditorCargarAlDespiece()"
-              title="Guarda esta estructura en el despiece (barras con origen 3D)">🧱 Cargar al despiece</button>
+              title="Guarda esta estructura en el despiece (barras con origen 3D)"><span class="b3d">3D</span> Cargar al despiece</button>
       <button class="te-btn ghost" id="te_btnGuardarNuevo" style="display:none"
               onclick="templateEditorGuardarComoNuevo()"
               title="Crea una COPIA nueva en la biblioteca y deja el original intacto">🧬 Guardar como nuevo</button>

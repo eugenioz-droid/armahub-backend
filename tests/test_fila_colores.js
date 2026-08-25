@@ -103,5 +103,28 @@ check('barra manual → no es de estructura',
 check('sin barra → false (no revienta)',
       ac2BarraDeEstructura(null) === false);
 
+// ── 3. El DIBUJO también es azul, no sólo el fondo de la fila ───────────────
+// Pedido del usuario (25-ago): «lo que dejaste en azul es el fondo pero me refería
+// al RENDER». El color entra al motor de dibujo por parámetro —el dibujante no sabe
+// de dónde salió la barra— y quien decide es esta grilla. Se congela que:
+//   · el criterio es el MISMO que el del fondo de fila (ac2BarraDeEstructura, que
+//     mira el vínculo y no la etiqueta): dos definiciones de "barra del 3D" en la
+//     misma pantalla serían dos verdades;
+//   · el hex no está escrito acá sino NOMBRADO (disenadorMotor.TINTA_3D), porque el
+//     usuario avisó que va a querer probar otros tonos y eso tiene que ser una línea.
+console.log('\n3. La tinta del dibujo sigue al mismo criterio que el fondo');
+const fs3 = require('fs');
+const src3 = fs3.readFileSync(SRC, 'utf8');
+const lineaTinta = src3.split(/\r?\n/).filter(function (l) { return /color:\s*\(ac2BarraDeEstructura/.test(l); });
+check('la grilla le pasa una tinta al motor de dibujo', lineaTinta.length === 1);
+check('y la elige con ac2BarraDeEstructura, el MISMO predicado que pinta el fondo',
+      lineaTinta.length === 1 && /ac2BarraDeEstructura\(b\)/.test(lineaTinta[0]));
+check('el azul va NOMBRADO (TINTA_3D), no escrito como hex suelto en la grilla',
+      lineaTinta.length === 1 && /TINTA_3D/.test(lineaTinta[0]) && !/#[0-9a-fA-F]{6}/.test(lineaTinta[0]));
+// Y el ladrillo se fue: era un emoji que hay que adivinar, y que la fuente del sistema
+// puede no dibujar (un 🗑 invisible costó tres rondas). Ahora es una insignia de texto.
+check('el botón que abre el 3D dice "3D" con letras, no un emoji de ladrillo',
+      src3.indexOf('🧱') < 0 && /class="b3d/.test(src3));
+
 console.log(fallos ? '\n❌ ' + fallos + ' fallo(s)' : '\n✅ Todo OK');
 process.exit(fallos ? 1 : 0);

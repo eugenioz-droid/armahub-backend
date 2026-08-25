@@ -217,6 +217,38 @@ console.log('D · botones de elemento');
   ok(/data-elem="MURO"[^>]*\bdisabled\b/.test(html2), 'con barras, muro queda deshabilitado');
   ok(html2.indexOf('receta vacía') >= 0, '…con el motivo de siempre en el tooltip');
   ok(!/data-elem="VIGA"[^>]*\bdisabled\b/.test(html2), 'el activo nunca se deshabilita');
+
+  // ---- EN MODO OBRA EL ELEMENTO NO SE ELIGE (pedido del usuario, 25-ago) ----
+  // «cuando abro el enfierrador, el despiece ya sabe si el elemento que estamos
+  // haciendo es un muro, una viga u otro. No debo poder elegir en esta parte.»
+  // El dato vive en el lote (lotes.estructura) y llega por la puerta como elementoFijo.
+  ST.receta.componentes = [];
+  ST.elemento = 'muro';
+  ST.receta.tipo = 'muro';
+  ST.elemFijo = 'MURO';
+  TE._renderElemSel();
+  const html3 = String(fila.innerHTML);
+  ['VIGA', 'MURO', 'COLUMNA', 'FUNDACION', 'GEN', 'LOSA'].forEach(function (k) {
+    ok(new RegExp('data-elem="' + k + '"[^>]*\\bdisabled\\b').test(html3),
+      k + ': apagado — lo fija el despiece (el activo TAMBIÉN: aquí no lo elige el editor)');
+    ok(html3.indexOf('data-elem="' + k + '"') >= 0, k + ': …pero sigue a la vista, no se esconde');
+  });
+  ok(html3.indexOf('te-elemfijo') >= 0,
+    'y el porqué se LEE al lado de los botones, sin tener que pasar el mouse');
+  ok(html3.indexOf(TE._motivoElemFijo()) >= 0, 'con el motivo completo en el tooltip');
+  ok(/Muro/.test(TE._motivoElemFijo()), 'que NOMBRA de qué es el despiece');
+  // La traba se pregunta donde ocurre el cambio, no sólo en el botón: llamar a la
+  // función a mano (consola, otro handler) tampoco cambia el elemento.
+  TE._cambiarElemento('VIGA');
+  ok(String(ST.elemento).toLowerCase() === 'muro', 'y cambiarlo POR CÓDIGO tampoco funciona');
+
+  // Sin dato del despiece (lote antiguo, sin estructura) NO hay traba: ahí sí se elige.
+  ST.elemFijo = null;
+  TE._renderElemSel();
+  const html4 = String(fila.innerHTML);
+  ok(html4.indexOf('te-elemfijo') < 0, 'sin estructura en el lote la etiqueta desaparece');
+  ok(!/data-elem="VIGA"[^>]*\bdisabled\b/.test(html4),
+    'y los botones vuelven: un despiece sin estructura no puede dejar al usuario encerrado');
 }
 
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — los cinco elementos abren y colocan');

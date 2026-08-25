@@ -223,11 +223,25 @@ ok(!/stroke-width="(NaN|Infinity)"/.test(
 console.log('F · el fuente no puede volver al stroke-width clavado:');
 var srcMotor = fs.readFileSync(SRC_MOTOR, 'utf8');
 var lineaPath = srcMotor.split('\n').filter(function (l) {
-  return l.indexOf('_pathDesdePuntos(tpts') !== -1 && l.indexOf('stroke="#00695c"') !== -1;
+  // La línea se identifica por el path del trazo. El COLOR ya no sirve de marca: dejó de
+  // estar clavado ahí y entra por opts.color (ver "LA TINTA DE LA FIGURA" en disenador.js),
+  // porque las barras del editor 3D se dibujan en azul y el motor no puede ramificar por
+  // "¿de dónde salió esta barra?" — eso lo decide quien llama.
+  return l.indexOf('_pathDesdePuntos(tpts') !== -1 && l.indexOf('stroke="') !== -1;
 });
 ok(lineaPath.length === 1, 'sigue habiendo UNA sola línea que pinta el trazo de la barra en el render');
 ok(lineaPath.length === 1 && !/stroke-width="[\d.]+"/.test(lineaPath[0]),
   'esa línea NO tiene un stroke-width literal (si alguien vuelve a clavarlo, este test falla)');
+ok(lineaPath.length === 1 && !/stroke="#[0-9a-fA-F]{3,8}"/.test(lineaPath[0]),
+  'ni un color literal: la tinta entra por parámetro (un solo sitio donde cambiarla)');
+// Y que el parámetro haga lo que dice: sin él, el teal de siempre; con él, el color pedido
+// en el trazo Y en los rótulos (que en la grilla SON las medidas), sin restos del default.
+var _svgDef = MOTOR.dibujarFigura(ESTRIBO, null, { width: 220, height: 160, pad: 20 });
+var _svgAzul = MOTOR.dibujarFigura(ESTRIBO, null, { width: 220, height: 160, pad: 20, color: MOTOR.TINTA_3D });
+ok(_svgDef.indexOf('stroke="' + MOTOR.TINTA + '"') !== -1 && MOTOR.TINTA === '#00695c',
+  'sin opts.color el render sale con la tinta de siempre (nadie movió el default)');
+ok(_svgAzul.indexOf('stroke="' + MOTOR.TINTA_3D + '"') !== -1 && _svgAzul.indexOf(MOTOR.TINTA) === -1,
+  'con opts.color el trazo y sus rótulos salen con esa tinta, sin restos del default');
 ok(/function _grosorTrazo\(/.test(srcMotor),
   'el grosor lo decide _grosorTrazo (un solo sitio que lo calcula)');
 ok((srcMotor.match(/diamMM \/ 10/g) || []).length === 1,
@@ -244,6 +258,12 @@ ok(/diam_mm:\s*b\.diam/.test(srcAC2) && /metrico:\s*\(?escalable\s*&&\s*todoCm\)
   'agregar_cubicacion2.js (creador de despieces) exige lo mismo');
 ok(/todoCm\s*=\s*false/.test(srcBM) && /todoCm\s*=\s*false/.test(srcAC2),
   'los dos apagan todoCm cuando un lado cae a su largo de grilla');
+// LA MISMA DEFINICIÓN DE "BARRA DEL 3D" EN TODA LA APP. El azul del dibujo se decide por
+// template_instancia_id —el dato de RAÍZ, el mismo con que la grilla del despiece les pinta
+// el fondo de fila— y no por `origen`, que es sólo la etiqueta y ya cambió de valor por el
+// camino ('template' histórico, 'enfierrador' nuevo). Dos definiciones = dos verdades.
+ok(/template_instancia_id\s*!=\s*null/.test(srcBM) && !/b\.origen\s*===?\s*['"]enfierrador/.test(srcBM),
+  'barmanager.js elige la tinta por template_instancia_id, no por `origen`');
 ok(srcBM.indexOf('_bmMiniFigura') === -1,
   '_bmMiniFigura (código muerto: 0 llamadas en todo el repo) no volvió a aparecer');
 

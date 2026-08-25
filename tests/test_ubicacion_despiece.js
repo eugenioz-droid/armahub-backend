@@ -34,8 +34,17 @@ const fakeEl = { style: {}, textContent: '', value: '', checked: false, indeterm
   getAttribute: function () { return null; }, focus: noop, select: noop, remove: noop,
   getBoundingClientRect: function () { return { left: 0, top: 0, right: 0, bottom: 0 }; },
   classList: { add: noop, remove: noop, toggle: noop, contains: function () { return false; } } };
+// getElementById devuelve SIEMPRE el mismo elemento por id (no null y no uno nuevo
+// cada vez): los bloques que pintan tabla —ac2PintarEstructuras— escriben en uno y el
+// test lee del mismo. Sin esto no hay forma de mirar lo que se pintó.
 function doc() {
-  return { getElementById: function () { return null; }, querySelector: function () { return null; },
+  const byId = {};
+  return { _byId: byId,
+    getElementById: function (id) {
+      if (!byId[id]) byId[id] = Object.assign({}, fakeEl, { id: id, style: {} });
+      return byId[id];
+    },
+    querySelector: function () { return null; },
     querySelectorAll: function () { return []; }, addEventListener: noop,
     createElement: function () { return Object.assign({}, fakeEl); },
     body: Object.assign({}, fakeEl) };
@@ -45,16 +54,22 @@ function doc() {
 const SRC_AC2 = path.join(__dirname, '..', 'armahub', 'static', 'js', 'features', 'cubicacion', 'agregar_cubicacion2.js');
 const CODE_AC2 = fs.readFileSync(SRC_AC2, 'utf8');
 
+// `respuesta` = cuerpo fijo, o funcion (url, opts) -> cuerpo (para responder distinto
+// por endpoint). Las llamadas quedan anotadas en sandbox._llamadas.
 function ac2Con(respuesta) {
   const d = doc();
   const sandbox = { console: { log: noop, warn: noop, error: noop }, document: d,
     setTimeout: function (fn) { return fn && fn(); }, clearTimeout: noop,
-    alert: noop, confirm: function () { return true; },
+    alert: function (m) { sandbox._alerts.push(String(m)); },
+    confirm: function (m) { sandbox._confirms.push(String(m)); return sandbox._confirmar; },
     authHeaders: function () { return {}; }, apiUrl: function (u) { return u; },
-    fetch: function () {
+    fetch: function (url, opts) {
+      sandbox._llamadas.push({ url: String(url), metodo: ((opts && opts.method) || 'GET').toUpperCase() });
+      const body = (typeof respuesta === 'function') ? respuesta(String(url), opts) : respuesta;
       return Promise.resolve({ ok: true, status: 200,
-        json: function () { return Promise.resolve(respuesta); } });
+        json: function () { return Promise.resolve(body); } });
     } };
+  sandbox._llamadas = []; sandbox._alerts = []; sandbox._confirms = []; sandbox._confirmar = true;
   // window ES el global, como en el navegador: el modulo define sus funciones con
   // `window.ac2X = ...` y despues las llama SIN prefijo (`ac2SetTipo(...)`). Con un
   // window aparte esas llamadas no resuelven y el test moriria por el andamio, no
@@ -135,7 +150,117 @@ function bloqueB() {
   ok(D({ detail: {} }, 400) !== '', 'un objeto sin msg no devuelve vacio: algo dice siempre');
 }
 
-bloqueA().then(bloqueB).then(function () {
+// ============================================================================
+// C - EL INDICE DE ESTRUCTURAS DEL DESPIECE (secuela del mismo bug)
+// ----------------------------------------------------------------------------
+// Aquel 400 dejaba TRES cosas rotas a la vista, y las tres se congelan aca:
+//  C1. Las cargas que fallaron dejaron ESTRUCTURAS VACIAS (0 barras, 0 kg) colgando
+//      en el listado. Ya no pueden nacer -- la estructura entra en la misma
+//      transaccion que sus barras -- pero las que quedaron son datos del usuario:
+//      la fila las MUESTRA por lo que son y ofrece borrarlas. Nada se borra solo.
+//  C2. La fila decia el CODIGO de la obra (PROY-A192D913). Ahora dice su NOMBRE, y
+//      la etiqueta se DERIVA de obra/ciclo/piso/eje en vez de recortar el nombre
+//      guardado (que es la traza persistida y lleva el id a proposito).
+//  C3. El bloque muestra los MISMOS KPIs que el repositorio de despieces
+//      (Items/Barras/Kg/O prom/PPB/PPI) y con la MISMA formula: una sola funcion
+//      (ac2KpisTd) para las dos tablas, y los numeros en UNA sola consulta.
+// ============================================================================
+const LOTE_CON_ESTRUCTURAS = { lote: { id: 148, id_proyecto: 'PROY-A192D913', estado: 'borrador',
+  num_obra: 3, plano: '', ciclo: 'C1', eje: '12(G-E)', sector: 'ELEV', estructura: 'MURO' },
+  barras: [] };
+// Lo que devuelve GET /lotes/{id}/elementos: una estructura sana y una HUERFANA
+// (justo la del reporte: sin ciclo ni eje propios, 0 barras, 0 kg).
+const ELEMENTOS = { ok: true, lote_id: 148, elementos: [
+  { id: 11, nombre: 'PROY-A192D913 · C1 · P3 · 12(G-E)', elemento: 'muro', piso: 'P3',
+    estado: 'activa', n_items: 2, n_barras: 6, kg: 47.7, diam_prom: 12,
+    id_proyecto: 'PROY-A192D913', ciclo: 'C1', eje: '12(G-E)' },
+  { id: 12, nombre: 'PROY-A192D913 · P5', elemento: 'muro', piso: 'P5',
+    estado: 'activa', n_items: 0, n_barras: 0, kg: 0, diam_prom: 0,
+    id_proyecto: 'PROY-A192D913', ciclo: 'C1', eje: '12(G-E)' }
+] };
+
+async function bloqueC() {
+  console.log('');
+  console.log('C - EL LISTADO DE ESTRUCTURAS: HUERFANAS, NOMBRE DE OBRA Y KPIs');
+  const s = ac2Con(function (url) {
+    if (/\/elementos$/.test(url)) return ELEMENTOS;
+    return LOTE_CON_ESTRUCTURAS;
+  });
+  const w = s.window;
+  w.AC2._nombreObra = 'Edificio Explora';
+  await w.ac2RetomarLote(148, true);
+  // El indice de estructuras se pide SIN await (la grilla no espera por el): hay que
+  // dejar correr las microtareas antes de mirar lo que pinto.
+  for (let i = 0; i < 8; i++) await new Promise(function (r) { setImmediate(r); });
+
+  // --- una sola consulta para toda la tabla (no una por estructura)
+  const pedidos = s._llamadas.filter(function (l) { return /\/lotes\/148\/elementos$/.test(l.url); });
+  ok(pedidos.length === 1,
+    'las estructuras y sus KPIs se piden en UNA consulta, no una por fila (hay ' + pedidos.length + ')');
+
+  const html = String(s.document.getElementById('ac2_estructurasBody').innerHTML);
+  ok(html !== '', 'el listado se pinto');
+
+  // --- C2: el nombre de la OBRA, no su codigo
+  ok(html.indexOf('Edificio Explora') >= 0, 'la fila dice el NOMBRE de la obra');
+  ok(html.indexOf('>PROY-A192D913 ·') < 0, 'y ya no el codigo interno');
+  ok(w.ac2NombreEstructura(ELEMENTOS.elementos[0]) === 'Edificio Explora · C1 · P3 · 12(G-E)',
+    'la etiqueta se arma obra · ciclo · piso · eje (=' + w.ac2NombreEstructura(ELEMENTOS.elementos[0]) + ')');
+  // El nombre guardado NO se toca: es la traza que leera el element manager.
+  ok(html.indexOf('PROY-A192D913 · C1 · P3 · 12(G-E)') >= 0,
+    'el nombre PERSISTIDO sigue disponible (en el title de la celda), no se reescribe');
+  // Sin nombre de obra cargado se cae al codigo antes que a nada: siempre dice algo.
+  w.AC2._nombreObra = '';
+  ok(w.ac2NombreEstructura(ELEMENTOS.elementos[0]).indexOf('PROY-A192D913') === 0,
+    'sin nombre de obra en memoria cae al codigo, no a un hueco');
+  w.AC2._nombreObra = 'Edificio Explora';
+
+  // --- C3: los KPIs, con la MISMA formula que el repositorio de despieces
+  ok(/PPB|Peso Por Barra/.test(html), 'la fila trae la celda de PPB');
+  ok(/Peso Por Item/.test(html), 'y la de PPI');
+  ok(/ponderado por peso/.test(html), 'y la del O promedio');
+  // 47.7 kg / 6 barras = 7.95 · 47.7 / 2 items = 23.85
+  ok(html.indexOf('7.95') >= 0, 'PPB = kg / barras fisicas (47.7/6 = 7.95)');
+  ok(html.indexOf('23.85') >= 0, 'PPI = kg / items (47.7/2 = 23.85)');
+  // UNA sola fuente: el mismo objeto pintado por la funcion compartida da lo mismo
+  // en las dos tablas (si alguien duplica la formula, esto deja de cuadrar).
+  ok(w.ac2KpisTd(ELEMENTOS.elementos[0], '6px 8px').replace(/6px 8px/g, '5px 8px') ===
+     w.ac2KpisTd(ELEMENTOS.elementos[0], '5px 8px'),
+    'las dos tablas pintan por la MISMA funcion (ac2KpisTd), no por dos calculos');
+  // Sin dato va '—', nunca 0: la huerfana no puede parecer una estructura de 0 kg reales.
+  const kpiVacio = w.ac2KpisTd(ELEMENTOS.elementos[1], '5px 8px');
+  ok(kpiVacio.indexOf('—') >= 0 && !/>0<|>0\.00</.test(kpiVacio),
+    'la estructura sin barras muestra "—" en sus KPIs, no ceros');
+
+  // --- C1: la huerfana se ve por lo que es y se puede eliminar
+  ok(/sin barras/.test(html), 'la estructura vacia se marca "sin barras" (no se disimula)');
+  ok(/ac2EliminarEstructura\(12\)/.test(html), 'y ofrece eliminarla');
+  ok(!/ac2EliminarEstructura\(11\)/.test(html),
+    'la que SI tiene barras no ofrece borrarse: eso se hace reabriendo la estructura');
+  ok(/ac2AbrirEditor3D\(11\)/.test(html), 'y sigue abriendo su 3D como siempre');
+  // La huerfana NO es basura: guarda la receta del elemento que el usuario modelo.
+  // Borrarla no puede ser la unica salida — reabrirla y recargarla RECUPERA el trabajo.
+  ok(/ac2AbrirEditor3D\(12\)/.test(html),
+    'la vacia TAMBIEN se puede abrir: su receta esta guardada y recargarla recupera el elemento');
+
+  // Borrar PREGUNTA antes (nada se elimina en silencio) y va por el DELETE del backend,
+  // que es el que comprueba el cero de verdad.
+  s._llamadas.length = 0;
+  s._confirmar = false;
+  await w.ac2EliminarEstructura(12);
+  ok(s._confirms.length === 1, 'eliminar pregunta antes');
+  ok(/dise/i.test(s._confirms[0]), 'y avisa que lo que se pierde es el DISENO guardado');
+  ok(s._llamadas.length === 0, 'y si el usuario dice que no, no llama a nadie');
+  s._confirmar = true;
+  await w.ac2EliminarEstructura(12);
+  const del = s._llamadas.filter(function (l) { return l.metodo === 'DELETE'; });
+  ok(del.length === 1 && /\/elementos\/instancia\/12$/.test(del[0].url),
+    'y al confirmar borra por DELETE /elementos/instancia/{id}');
+  ok(s._llamadas.some(function (l) { return /\/lotes\/148\/elementos$/.test(l.url); }),
+    'y refresca el listado despues (el numero que se ve es el de la BD)');
+}
+
+bloqueA().then(bloqueB).then(bloqueC).then(function () {
   console.log('');
   console.log(fallos ? (fallos + ' FALLO(S)') : 'TODO OK');
   if (fallos) process.exit(1);

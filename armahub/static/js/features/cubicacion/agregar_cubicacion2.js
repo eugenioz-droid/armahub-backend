@@ -268,7 +268,11 @@ function ac2FigSvg(b){
       // Trazo = φ real solo si los puntos se reconstruyeron en cm (escalable); si no, el motor
       // cae al nominal (`scale` no sería px/cm). φ en mm, como lo guarda la barra.
       window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22),
-        diam_mm:b.diam, metrico:(escalable && todoCm) }) + '</span>'; }
+        diam_mm:b.diam, metrico:(escalable && todoCm),
+        // TINTA: la barra nacida del Enfierrador se DIBUJA azul, no sólo su fila. El criterio es
+        // el VÍNCULO a la instancia (ac2BarraDeEstructura), el mismo del candado y del fondo de
+        // fila — no el campo `origen`, que es una etiqueta y ya convive en dos versiones.
+        color:(ac2BarraDeEstructura(b) ? window.disenadorMotor.TINTA_3D : window.disenadorMotor.TINTA) }) + '</span>'; }
     catch(e){}
   }
   // Fallback: la figura NO tiene geometría dibujada en el catálogo (o el motor no cargó). Antes
@@ -416,7 +420,7 @@ function ac2EstiloFila(b, val){
   if (AC2.masiva && AC2.seleccion[b._id])
     return { bg:'#e3f2fd', tit:'' };
   if (ac2BarraDeEstructura(b))
-    return { bg:'#e1f5fe', tit:'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con 🧱.' };
+    return { bg:'#e1f5fe', tit:'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con el botón 3D de la fila.' };
   // "Guardada" va SIN título: en un despiece retomado lo están casi todas, y un tooltip que
   // salta en cada fila es ruido. Lo explica la leyenda fija del pie de la grilla.
   if (b._guardada)
@@ -503,7 +507,10 @@ function ac2Fila(b){
   // quita suelta: su única acción es REABRIR la estructura que la generó.
   if (bloq){
     h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
-       '<span onclick="ac2AbrirEditor3D('+b._instanciaId+')" title="Abrir la estructura que generó esta barra" style="cursor:pointer; margin-right:6px;">🧱</span>'+
+       // INSIGNIA DE TEXTO, NO EMOJI: un emoji lo dibuja la fuente del sistema, y uno que no
+       // renderiza deja el control mudo (ya costó tres rondas). Dos letras en un recuadro
+       // (.b3d, app.css) se leen en cualquier máquina.
+       '<span class="b3d click" onclick="ac2AbrirEditor3D('+b._instanciaId+')" title="Abrir la estructura 3D que generó esta barra" style="margin-right:6px; color:#01579b;">3D</span>'+
        '<span title="Barra generada por el Enfierrador: se modifica reabriendo su estructura" style="color:#90a4ae;">🔒</span></td></tr>';
   } else {
     h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
@@ -605,7 +612,7 @@ function ac2SoloLectura(){ return AC2.loteEstado==='eliminado'; }
 // BARRA DE UNA ESTRUCTURA DEL MODELADOR: se ve, no se toca. Es el resultado de una
 // receta — editarla suelta dejaría la estructura diciendo una cosa y el despiece otra,
 // y la próxima regeneración pisaría el cambio sin avisar. Se modifica REABRIENDO la
-// estructura en el Enfierrador (el botón 🧱 de la fila). El backend hace lo mismo:
+// estructura en el Enfierrador (el botón 3D de la fila). El backend hace lo mismo:
 // DELETE /lotes/{id}/barras/{id} responde 409 para estas barras.
 // NO cubre el check de REVISADA: esa marca es del cubicador y el sync la conserva.
 // EL DATO DE RAÍZ ES EL VÍNCULO A LA INSTANCIA (_instanciaId), no la etiqueta _origen: en la
@@ -757,7 +764,7 @@ function ac2ActualizarCabecera(){
   show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
   show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
   show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
-  // 🧱 3D Template (Modelador): visible en un despiece BORRADOR (donde se pueden agregar barras).
+  // Botón "3D Enfierrador" (Modelador): visible en un despiece BORRADOR (donde se pueden agregar barras).
   show('ac2_modelador3dBtn', hayLote && !eliminado && !terminado);
   // Editar ciclo/eje: en un despiece BORRADOR (con o sin barras) se puede corregir la ubicación. Con
   // barras es más delicado (reasigna todas), pero también sin barras (recién creado). En
@@ -1241,7 +1248,7 @@ window.ac2Duplicar=function(id){
 window.ac2Quitar=async function(id){
   var b=ac2BarraPorId(id);
   if (ac2BarraDeEstructura(b)){
-    alert('Esta barra viene de una estructura del Enfierrador. Ábrela con 🧱 para quitarla:\nal regenerar, las barras que dejan de existir se borran solas.');
+    alert('Esta barra viene de una estructura del Enfierrador. Ábrela con el botón 3D de la fila para quitarla:\nal regenerar, las barras que dejan de existir se borran solas.');
     return;
   }
   // Si la barra YA está guardada en BD, hay que borrarla también allá; si no, quedaría huérfana y
@@ -1840,6 +1847,28 @@ function _ac2ResetTanda(){
 }
 
 
+// ── KPIs (Ø prom · PPB · PPI) — UNA sola fórmula y UN solo formato ─────────────────
+// Los pintan DOS tablas: el repositorio de despieces y el índice de estructuras del
+// despiece. Se escriben acá una vez para que no puedan decir cosas distintas del mismo
+// número (que es exactamente lo que pasa cuando cada tabla calcula lo suyo).
+//   Ø prom = ponderado POR PESO, Σ(φ·kg)/Σkg → lo calcula el SQL (backend), no el front:
+//            desde una fila ya agregada no se puede reconstruir.
+//   PPB    = Kg / Barras FÍSICAS (Σ cant×mult).
+//   PPI    = Kg / Items (entradas).
+// Sin dato va '—', nunca 0: un 0 se lee como "pesa cero", no como "no hay dato".
+// `o` = {kg, n_barras, n_items, diam_prom} — el shape que devuelven GET /lotes y
+// GET /lotes/{id}/elementos (los dos usan la MISMA nomenclatura a propósito).
+function ac2KpisTd(o, pad){
+  var td=function(txt,tit){ return '<td style="padding:'+pad+'; text-align:right; color:#0d47a1; font-weight:600;" title="'+tit+'">'+txt+'</td>'; };
+  var kg=Number((o&&o.kg)||0);
+  var dp=Number((o&&o.diam_prom)||0);
+  var ppb=(Number(o&&o.n_barras)>0)?(kg/Number(o.n_barras)):null;
+  var ppi=(Number(o&&o.n_items)>0)?(kg/Number(o.n_items)):null;
+  return td(dp?ac2Num(dp,1):'—','Ø promedio ponderado por peso')+
+         td(ppb!=null?ac2Num(ppb,2):'—','Peso Por Barra física = Kg / Barras')+
+         td(ppi!=null?ac2Num(ppi,2):'—','Peso Por Item = Kg / Items');
+}
+
 // Carga TODOS los lotes de la obra en el repositorio (GET /lotes?proyecto=X, con n_barras/kg
 // reales). Permite ver que los lotes guardados SIGUEN existiendo entre sesiones y (a futuro)
 // retomarlos. Los datos viven en BD; esta lista los muestra aunque recargues la página.
@@ -1865,17 +1894,9 @@ async function ac2CargarLotes(){
         ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
         : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>');
     var fecha=(l.creado_fecha||'').slice(0,10);
-    // KPIs del despiece (azul fuerte). El Ø prom viene ponderado por peso desde el
-    // backend; PPB (kg/barra física) y PPI (kg/item) se derivan aquí — mismo criterio
-    // que el KPI de obra (barras.py). Sin datos → '—' (no 0, que se leería como dato).
-    var _kpiTd=function(txt,tit){ return '<td style="padding:6px 8px; text-align:right; color:#0d47a1; font-weight:600;" title="'+tit+'">'+txt+'</td>'; };
-    var _kg=Number(l.kg||0);
-    var _dp=Number(l.diam_prom||0);
-    var _ppb=(Number(l.n_barras)>0)?(_kg/Number(l.n_barras)):null;
-    var _ppi=(Number(l.n_items)>0)?(_kg/Number(l.n_items)):null;
-    var kpis=_kpiTd(_dp?ac2Num(_dp,1):'—','Ø promedio ponderado por peso')+
-             _kpiTd(_ppb!=null?ac2Num(_ppb,2):'—','Peso Por Barra física = Kg / Barras')+
-             _kpiTd(_ppi!=null?ac2Num(_ppi,2):'—','Peso Por Item = Kg / Items');
+    // KPIs del despiece (azul fuerte). Fórmula y formato en ac2KpisTd — los mismos que
+    // usa el índice de estructuras, para que las dos tablas se lean igual.
+    var kpis=ac2KpisTd(l,'6px 8px');
     // LÁPIDA (eliminado): fila en gris, CLICKEABLE para VER su contenido en solo-lectura (desde el
     // snapshot congelado). Muestra quién/cuándo lo eliminó.
     if (eliminado){
@@ -2013,8 +2034,22 @@ window.ac2AbrirEditor3D=async function(instanciaId){
 // ── ESTRUCTURAS DEL DESPIECE (listado compacto) ──────────────────────────────────
 // Para qué existe: en la grilla se ven BARRAS, y un muro son 30 barras repartidas entre
 // las demás; no había forma de preguntar "¿cómo quedó ese muro?" sin cazar una de sus
-// filas. Esta lista es el índice de las estructuras que hay dentro del despiece y su
-// única acción es ABRIR el 3D. No mueve ni reordena los listados de barras.
+// filas. Esta lista es el índice de las estructuras que hay dentro del despiece.
+// Acciones: ABRIR el 3D y —sólo si quedó VACÍA— eliminarla. No mueve ni reordena los
+// listados de barras.
+
+// ETIQUETA de la estructura: OBRA · CICLO · PISO · EJE, con el NOMBRE de la obra y no
+// su código. Se DERIVA de los campos (el backend los manda, cayendo a los del lote
+// cuando la instancia no los trae) en vez de recortar el `nombre` guardado: ese nombre
+// es la traza persistida —lo que leerá el element manager— y lleva el id_proyecto
+// porque un id no cambia; el que se muestra es para LEER. Sin partes se cae al nombre
+// guardado, que siempre dice algo.
+function ac2NombreEstructura(e){
+  var obra=AC2._nombreObra || e.id_proyecto || '';
+  var partes=[obra, e.ciclo, e.piso, e.eje].filter(function(x){ return !!String(x==null?'':x).trim(); });
+  return partes.length ? partes.join(' · ') : (e.nombre || ('#'+e.id));
+}
+
 window.ac2PintarEstructuras=function(lista){
   var wrap=document.getElementById('ac2_estructurasWrap'); if(!wrap) return;
   var cuerpo=document.getElementById('ac2_estructurasBody');
@@ -2025,26 +2060,61 @@ window.ac2PintarEstructuras=function(lista){
   wrap.style.display = lista.length ? '' : 'none';
   if (cnt) cnt.textContent = lista.length ? ('('+lista.length+')') : '';
   if (!cuerpo) return;
-  // El 🧱 abre editable o en solo-vista según el estado del lote: esa decisión ya vive en
-  // ac2AbrirEditor3D (un solo lugar), aquí solo se nombra. En un despiece ELIMINADO el 3D no
+  // El botón 3D abre editable o en solo-vista según el estado del lote: esa decisión ya vive
+  // en ac2AbrirEditor3D (un solo lugar), aquí solo se nombra. En un despiece ELIMINADO el 3D no
   // se abre, así que no se ofrece el botón: un control que solo puede responder con un alert
   // es un control muerto (se deja el texto explicando por qué, no se esconde la fila).
+  // La insignia va en TEXTO (.b3d) y no en emoji: un glifo que la fuente del sistema no
+  // dibuja deja el control mudo, y eso ya costó tres rondas.
   var eliminado = (AC2.loteEstado==='eliminado');
-  var verTxt = (AC2.loteEstado==='borrador') ? '🧱 Abrir' : '👁 Ver 3D';
+  var verTxt = (AC2.loteEstado==='borrador') ? '<span class="b3d">3D</span> Abrir' : '<span class="b3d">3D</span> Ver';
   cuerpo.innerHTML = lista.map(function(e){
     var retirada = (e.estado==='retirada');
+    // ESTRUCTURA VACÍA. Hoy sólo pueden serlo las que quedaron de cuando la carga se hacía
+    // en dos transacciones (la estructura entraba y sus barras no): 0 items y 0 kg. Ya no
+    // se pueden crear —nacen junto con sus barras—, pero las que existen NO son basura:
+    // guardan la receta del elemento que se modeló. Por eso la fila sigue ofreciendo
+    // ABRIRLA (reabrir + "Actualizar en el despiece" recupera el trabajo y esta vez las
+    // barras entran) y ADEMÁS ofrece borrarla. La decisión es del usuario; nada se elimina
+    // a su espalda.
+    var vacia = !retirada && !eliminado && !(Number(e.n_barras)>0) && !(Number(e.n_items)>0);
     var accion;
     if (eliminado) accion='<span style="color:#9e9e9e; font-size:10px;" title="Despiece eliminado: su contenido es histórico y no se abre en 3D.">— histórico</span>';
     else if (retirada) accion='<span style="color:#9e9e9e; font-size:10px;" title="Estructura retirada: sus barras ya no están en el despiece.">— retirada</span>';
     else accion='<span onclick="ac2AbrirEditor3D('+e.id+')" title="Ver esta estructura en 3D" style="color:#0277bd; cursor:pointer; font-weight:600;">'+verTxt+'</span>';
-    return '<tr style="border-top:1px solid #f0f0f0;'+(retirada?' color:#9e9e9e;':'')+'">'+
-      '<td style="padding:5px 8px; font-weight:600;'+(retirada?'':' color:#0277bd;')+'">'+ac2Esc(e.nombre||('#'+e.id))+'</td>'+
+    if (vacia){
+      accion='<span title="Una carga que no llegó a entrar: la estructura quedó sin barras. Su diseño SÍ está guardado — ábrela y vuelve a cargarla, o elimínala." style="color:#ef6c00; font-size:10px; margin-right:10px;">⚠ sin barras</span>'+
+        accion+
+        '<span onclick="ac2EliminarEstructura('+e.id+')" title="Eliminar del despiece esta estructura vacía (se pierde su diseño; el despiece no cambia porque no tiene barras)" style="color:#c62828; cursor:pointer; font-weight:600; margin-left:10px;">🗑 Eliminar</span>';
+    }
+    return '<tr style="border-top:1px solid #f0f0f0;'+(retirada?' color:#9e9e9e;':(vacia?' background:#fff8e1;':''))+'">'+
+      '<td style="padding:5px 8px; font-weight:600;'+(retirada?'':' color:#0277bd;')+'" title="'+ac2Esc(e.nombre||'')+'">'+ac2Esc(ac2NombreEstructura(e))+'</td>'+
       '<td style="padding:5px 8px;">'+ac2Esc(e.elemento||'—')+'</td>'+
       '<td style="padding:5px 8px;">'+ac2Esc(e.piso||'—')+'</td>'+
-      '<td style="padding:5px 8px; text-align:right;">'+(e.n_barras||0)+'</td>'+
+      '<td style="padding:5px 8px; text-align:right;">'+(e.n_items||0)+'</td>'+
+      '<td style="padding:5px 8px; text-align:right;">'+ac2Num(e.n_barras||0)+'</td>'+
       '<td style="padding:5px 8px; text-align:right;">'+ac2Num(e.kg,1)+'</td>'+
+      ac2KpisTd(e,'5px 8px')+
       '<td style="padding:5px 8px; text-align:right; white-space:nowrap;">'+accion+'</td></tr>';
   }).join('');
+};
+
+// ELIMINAR una estructura VACÍA. El backend sólo la borra si de verdad tiene 0 barras
+// (si tuviera, responde 409 y dice por dónde se quitan): la guarda de los datos vive
+// allá, aquí se pregunta antes — borrar algo del despiece nunca es silencioso.
+window.ac2EliminarEstructura=async function(instanciaId){
+  if (!confirm('Se eliminará esta estructura VACÍA del despiece.\n\n'+
+               'No tiene barras, así que el despiece no cambia. Lo que SÍ se pierde es su '+
+               'diseño guardado: si quieres recuperar el elemento, ábrelo con el botón 3D y '+
+               'vuelve a cargarlo en vez de borrarlo.\n\n¿Eliminar igual?')) return;
+  var r=await _ac2Delete('/elementos/instancia/'+instanciaId);
+  if (!r.ok){
+    var d=r.data&&r.data.detail;
+    alert('No se pudo eliminar: '+((d && (d.msg||d)) || ('error '+r.status))+'.');
+  }
+  // Se recarga igual haya salido bien o mal: si el 409 fue porque SÍ tenía barras, la
+  // lista tiene que mostrar el número real y no el cero con el que se pintó.
+  _ac2CargarEstructuras(AC2.loteId);
 };
 // Trae las estructuras del despiece y las pinta. Falla en SILENCIO VISIBLE: si el GET no
 // responde, la lista queda vacía (el bloque se esconde) y el error real sale por consola —

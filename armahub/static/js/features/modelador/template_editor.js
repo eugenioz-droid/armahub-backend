@@ -12476,6 +12476,11 @@
     ST.ctxObra = (cfg.ctxObra && cfg.ctxObra.loteId) ? cfg.ctxObra : null;
     ST.piso = (cfg.piso != null) ? String(cfg.piso) : '';
     ST.instanciaId = (cfg.instanciaId != null) ? cfg.instanciaId : null;
+    // ELEMENTO FIJADO POR EL DESPIECE. Se guarda NORMALIZADO y solo si el editor
+    // conoce ese elemento: lo que no se puede pintar tampoco se puede trabar. Vale
+    // para el cromo (_renderElemSel) y para el cambio por codigo (_cambiarElemento).
+    ST.elemFijo = (cfg.elementoFijo && TPL_DIMS_POR_ELEMENTO[_figKey(cfg.elementoFijo)])
+      ? _figKey(cfg.elementoFijo) : null;
     // De que template de la biblioteca salio esta estructura (solo TRAZA). NO se
     // reusa como ST.templateId: en modo obra el hormigon se ajusta a lo REAL y un
     // PUT con esa geometria corromperia el template de la biblioteca.
@@ -12955,7 +12960,15 @@
       return;
     }
     opts = opts || {};
-    var elem = String(opts.elemento || ctx.estructura || 'VIGA').toUpperCase();
+    // EL ELEMENTO LO DICE EL DESPIECE, NO EL EDITOR. El lote guarda su estructura
+    // (columna `estructura`, migracion 101) desde que se crea: cuando el usuario abre
+    // el enfierrador, el despiece YA sabe si lo que se esta armando es un muro o una
+    // viga. Se normaliza con _figKey ('muro' / 'Muro ' / 'MURO' son el mismo dato) y
+    // solo cuenta si el editor conoce ese elemento — un valor que no reconoce no puede
+    // fijar nada.
+    var fijo = _figKey(ctx.estructura);
+    if (!TPL_DIMS_POR_ELEMENTO[fijo]) fijo = '';
+    var elem = _figKey(opts.elemento || fijo || 'VIGA');
     if (!TPL_DIMS_POR_ELEMENTO[elem]) elem = 'VIGA';
     global.templateEditorAbrir({
       elemento: elem,
@@ -12965,6 +12978,10 @@
       templateId: null,
       tplOrigen: (opts.tplOrigen != null) ? opts.tplOrigen : null,
       ctxObra: ctx,
+      // TRABA del elemento. Depende de que HAYA dato, no del modo: un despiece antiguo
+      // sin estructura entra sin traba y ahi si hay que elegir — dejarlo bloqueado sin
+      // salida seria encerrar al usuario en el elemento que adivinemos por defecto.
+      elementoFijo: fijo || null,
       piso: opts.piso || '',
       instanciaId: (opts.instanciaId != null) ? opts.instanciaId : null,
       // SOLO VISTA — lo pide el despiece (lote banderado) y el tab de estructuras.
@@ -13026,11 +13043,22 @@
   // CARGAR / ACTUALIZAR EN EL DESPIECE.
   // --------------------------------------------------------------------------
   // La PRIMERA vez crea la estructura y sus barras por POST /lotes/{id}/barras (el
-  // canal del ingreso manual). Cuando la estructura YA existe, regenerar no la
-  // reemplaza: se ACTUALIZA (PUT de la receta + POST .../barras/sync), y el backend
-  // cruza las barras por su origen_ref para actualizar lo que cambio, crear lo nuevo y
-  // borrar lo que dejo de existir. Asi la barra conserva su id, su historia y su marca
-  // de revision en vez de nacer de cero en cada pasada.
+  // canal del ingreso manual), en UN SOLO POST: la estructura viaja DENTRO del cuerpo
+  // de las barras y el backend escribe las dos cosas en la misma transaccion.
+  //
+  // POR QUE UNA SOLA LLAMADA (fix de las estructuras huerfanas): antes esto eran dos
+  // pasos — POST /elementos/instancia y despues POST .../barras—, o sea dos
+  // transacciones. Cuando el segundo fallaba (el 400 por ubicacion faltante de esta
+  // manana, una figura invalida, la red) la estructura YA estaba escrita y quedaba en
+  // el despiece con 0 barras y 0 kg. Un catch que la borrara habria sido otro paso mas
+  // que tambien puede fallar (y que no corre si el navegador se cierra en el medio):
+  // lo unico atomico de verdad es que nazcan juntas.
+  //
+  // Cuando la estructura YA existe, regenerar no la reemplaza: se ACTUALIZA (PUT de la
+  // receta + POST .../barras/sync), y el backend cruza las barras por su origen_ref
+  // para actualizar lo que cambio, crear lo nuevo y borrar lo que dejo de existir. Asi
+  // la barra conserva su id, su historia y su marca de revision en vez de nacer de cero
+  // en cada pasada. Ahi no hay huerfana posible: la fila ya estaba antes del PUT.
   global.templateEditorCargarAlDespiece = function () {
     if (!_modoObra()) return;
     // SOLO VISTA: no hay nada que cargar. La guarda vive aca ademas del boton
@@ -13065,6 +13093,12 @@
 
     function _unPiso(p) {
       var traza = _trazaInstancia(p);
+      // PRIMERA CARGA: nada que preparar. La estructura viaja en el mismo cuerpo que
+      // las barras y el backend le estampa su id a cada una (por eso _barrasPayload va
+      // con instId null: ese id todavia NO EXISTE, y el unico que puede saberlo es
+      // quien acaba de escribir la fila).
+      // REGENERAR: la estructura ya existe, asi que primero se le actualiza la receta
+      // y despues se sincronizan sus barras contra ella.
       var paso1 = regenera
         ? _tplFetch('/elementos/instancia/' + encodeURIComponent(ST.instanciaId), {
             method: 'PUT', headers: _tplHeaders(true),
@@ -13073,26 +13107,34 @@
               piso: traza.piso, template_id: ST.tplOrigen
             })
           }).then(function () { return ST.instanciaId; })
-        : _tplFetch('/elementos/instancia', {
-            method: 'POST', headers: _tplHeaders(true),
-            body: JSON.stringify(Object.assign({
-              lote_id: ctx.loteId, template_id: ST.tplOrigen, params: ST.receta
-            }, traza))
-          }).then(function (ri) { return (ri && ri.id != null) ? ri.id : null; });
+        : Promise.resolve(null);
 
       return paso1.then(function (instId) {
-        if (instId == null) {
+        if (regenera && instId == null) {
           // Sin estructura no hay a que colgar las barras: mejor no cargarlas que
           // dejarlas huerfanas y sin forma de reabrirlas.
           throw new Error('no se pudo guardar la estructura');
         }
         var url = '/lotes/' + encodeURIComponent(ctx.loteId) + '/barras' + (regenera ? '/sync' : '');
         var lote = _barrasPayload(instId, p);
-        var cuerpo = regenera ? { instancia_id: instId, barras: lote } : { barras: lote };
+        var cuerpo = regenera
+          ? { instancia_id: instId, barras: lote }
+          : { barras: lote, instancia: Object.assign({
+              template_id: ST.tplOrigen, params: ST.receta
+            }, traza) };
         return _tplFetch(url, {
           method: 'POST', headers: _tplHeaders(true), body: JSON.stringify(cuerpo)
         }).then(function (r) {
-          hechos.push({ piso: p, instanciaId: instId });
+          // En la primera carga el id de la estructura lo DEVUELVE el POST: es la fila
+          // que acaba de nacer con estas barras.
+          var idFinal = regenera ? instId : ((r && r.instancia_id != null) ? r.instancia_id : null);
+          if (idFinal == null) {
+            // El servidor respondio 2xx sin id: las barras entraron colgadas de nada.
+            // Se DICE, no se sigue como si nada (y no se apunta el editor a una
+            // estructura que no se sabe cual es).
+            throw new Error('el despiece no devolvio la estructura creada');
+          }
+          hechos.push({ piso: p, instanciaId: idFinal });
           creadas += ((r && r.creadas) || 0);
           ultima = r;
           return r;
@@ -13159,9 +13201,14 @@
           ? (' Ya entraron: ' + hechos.map(function (h) { return h.piso; }).join(', ') +
              ' (esos NO se repiten si reintentas).')
           : '';
+        // Y que el piso fallido NO dejo basura: la estructura entra con sus barras o no
+        // entra. Decirlo evita que el usuario vaya a buscar una fila a medias.
+        var limpio = (!regenera && quedo)
+          ? (' Ese piso no dej\u00f3 nada en el despiece (la estructura entra con sus barras o no entra).')
+          : '';
         _errObra((regenera ? 'No se actualizo la estructura: ' : 'No se cargaron las barras: ') +
                  ((e && e.message) || 'error desconocido') +
-                 (quedo ? (' Fall\u00f3 en el piso ' + quedo + '.') : '') + entraron);
+                 (quedo ? (' Fall\u00f3 en el piso ' + quedo + '.') : '') + limpio + entraron);
       });
   };
 
@@ -13468,6 +13515,13 @@
   // se pueden usar). El elemento ACTIVO nunca se deshabilita aunque le falten
   // datos: se puede abrir un template guardado de un tipo todavía incompleto, y
   // dejarlo bloqueado ahí sería encerrar al usuario.
+  // MOTIVO de la traba del despiece. Uno solo: lo dicen el tooltip de CADA botón, la
+  // etiqueta que se ve al lado y la guarda de _cambiarElemento.
+  function _motivoElemFijo() {
+    return 'Lo fija el despiece: este despiece es de ' + _capitalizar(ST.elemFijo || '') +
+      '. El elemento se elige al crear el despiece, no aquí.';
+  }
+
   function _renderElemSel() {
     var fila = $('te_elemBtns'), centro = $('te_elegirBtns');
     if (!fila && !centro) return;
@@ -13478,20 +13532,34 @@
     // a receta poblada terminaba en error. Cada botón ajeno se DESHABILITA con el
     // porqué en el tooltip; el flujo más orgánico se definirá con el usuario.
     var conBarras = !!(ST.receta && ST.receta.componentes && ST.receta.componentes.length);
+    // EL DESPIECE YA ELIGIÓ. En modo obra el elemento no es una decisión del editor:
+    // viene con el despiece (lote.estructura). Se apagan TODOS los botones —incluido
+    // el activo, que aquí tampoco es "el de este template" sino el que manda el
+    // despiece— y no se esconde ninguno: el usuario tiene que poder VER de qué es el
+    // despiece que abrió. Sin dato (lote antiguo) no hay traba y se elige como siempre.
+    var fijo = ST.elemFijo || null;
     var html = Object.keys(TPL_DIMS_POR_ELEMENTO).map(function (k) {
       var listo = _elementoConDatos(k);
       var esAct = (k === act);
       // El motivo VIVE en el tooltip (como vivía en el title del select): el botón
-      // no tiene dónde decirlo sin romper el formato del chip.
-      var motivo = esAct ? 'Elemento de este template.'
+      // no tiene dónde decirlo sin romper el formato del chip. La traba del despiece
+      // lo dice ADEMÁS en la etiqueta de al lado, que se lee sin pasar el mouse.
+      var motivo = fijo ? _motivoElemFijo()
+        : esAct ? 'Elemento de este template.'
         : !listo ? (_capitalizar(k) + ' todavía no está disponible (próximamente).')
         : conBarras ? 'El elemento se elige con la receta vacía: elimina las barras colocadas para cambiarlo.'
         : ('Cambiar el elemento a ' + _capitalizar(k) + ': se rehacen tipologías, hormigón y las 3 vistas. Las barras ya colocadas se conservan.');
       return '<button type="button" class="te-elembtn' + (esAct ? ' on' : '') + '"' +
         ' data-elem="' + _esc(k) + '" style="--elc:' + (TPL_ELEM_COLORES[k] || '#607d8b') + '"' +
-        ((esAct || (listo && !conBarras)) ? '' : ' disabled') +
+        ((!fijo && (esAct || (listo && !conBarras))) ? '' : ' disabled') +
         ' title="' + _esc(motivo) + '">' + _esc(k) + '</button>';
     }).join('');
+    // La etiqueta va DENTRO de la misma fila (mismo innerHTML) para que no pueda
+    // quedarse encendida de una apertura anterior: se repinta con los botones.
+    if (fijo) {
+      html += '<span class="te-elemfijo" title="' + _esc(_motivoElemFijo()) + '">' +
+        '🔒 lo fija el despiece</span>';
+    }
     if (fila) fila.innerHTML = html;
     if (centro) centro.innerHTML = html;
   }
@@ -13564,6 +13632,14 @@
     var may = _figKey(elem), min = may.toLowerCase();
     if (!may || !TPL_DIMS_POR_ELEMENTO[may]) { _renderElemSel(); return; }
     if (min === String(_tipoElemento()).toLowerCase()) return;
+    // La traba del despiece se pregunta DONDE OCURRE el cambio, no solo en el botón:
+    // esta función es el punto por el que pasa todo (gesto, código, un handler futuro),
+    // igual que _bloqueadoSoloVista. Y DICE por qué en vez de no hacer nada.
+    if (ST.elemFijo) {
+      _renderElemSel();
+      _actualizarStatus(_motivoElemFijo());
+      return;
+    }
     if (!_elementoConDatos(may)) {
       // El botón ya viene disabled; esto cubre el cambio por código.
       _renderElemSel();
@@ -14435,6 +14511,8 @@
     _TPL_DIMS_POR_ELEMENTO: TPL_DIMS_POR_ELEMENTO,   // la suite verifica sus claves
     _bindElemSel: _bindElemSel, _cambiarElemento: _cambiarElemento,
     _marcarEligiendo: _marcarEligiendo, _confirmarElemento: _confirmarElemento,
+    // TRABA DEL DESPIECE: la suite comprueba el motivo REAL, no un literal copiado.
+    _motivoElemFijo: _motivoElemFijo,
     // FICHA POR FAMILIA (contorno cerrado ⇒ sin patas ni empalme)
     _familiaDibujo: _familiaDibujo, _esContornoCerrado: _esContornoCerrado,
     // ficha del componente (el panel de dims dinámico sale de los parciales del catálogo)

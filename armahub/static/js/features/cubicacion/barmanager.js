@@ -55,6 +55,18 @@ const BM_TAM = { s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160
 const BM_MIN_LADO_REL = 0.28;
 const BM_LADOS = ['A','B','C','D','E','F','G','H','I'];
 
+// COLOR DEL DIBUJO: azul si la barra nació del editor 3D, la tinta de siempre si no.
+// El criterio es `template_instancia_id` —el dato de RAÍZ, el mismo que usa la grilla del
+// despiece para pintarles el fondo de fila— y NO el campo `origen`, que es sólo la
+// etiqueta y cambió de valor por el camino ('template' histórico, 'enfierrador' nuevo).
+// La decisión vive acá, en el llamador: el motor sólo recibe un color (ver disenador.js,
+// "LA TINTA DE LA FIGURA"), así que el dibujante no sabe de dónde salió la barra.
+// El azul concreto tampoco se escribe acá: se nombra, para que probar otro sea una línea.
+function _bmTinta(b) {
+  var M = window.disenadorMotor || {};
+  return (b && b.template_instancia_id != null) ? M.TINTA_3D : M.TINTA;
+}
+
 // SVG de la figura ESCALADA a las medidas reales de la barra (A,B,C… reales), igual
 // criterio que ac2FigSvg del editor: si la geometría trae `tramos` + `puntos` dibujados,
 // sin radio y sin etiquetas-manda, se reconstruyen los puntos conservando la ORIENTACIÓN
@@ -121,7 +133,8 @@ function _bmFiguraSvg(b) {
       // El trazo crece con el φ SOLO si los puntos se reconstruyeron en cm (escalable); si
       // no, `scale` no es px/cm y el motor cae al trazo nominal. φ va en mm (b.diam).
       window.disenadorMotor.dibujarFigura(geoUse, dims,
-        { width: t.w, height: t.h, pad: 20, diam_mm: b.diam, metrico: escalable && todoCm }) +
+        { width: t.w, height: t.h, pad: 20, diam_mm: b.diam, metrico: escalable && todoCm,
+          color: _bmTinta(b) }) +
       '</span>';
   } catch (e) { return ''; }
 }

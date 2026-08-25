@@ -21,12 +21,12 @@
       <button id="ac2_descartarBtn" onclick="ac2Descartar()" title="Descartar lo no guardado" style="display:none; font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
       <!-- 🗑 ELIMINAR LOTE: única forma de borrar un lote (pide escribir ELIMINAR). Aplica incluso a terminados. -->
       <button id="ac2_eliminarBtn" onclick="ac2EliminarLote()" title="Eliminar este despiece y sus barras (irreversible)" style="display:none; font-size:14px; padding:6px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Eliminar</button>
-      <!-- 🧱 ENFIERRADOR: abre el TEMPLATE EDITOR con contexto de obra (un solo modal,
+      <!-- ENFIERRADOR: abre el TEMPLATE EDITOR con contexto de obra (un solo modal,
            un solo motor — lo que cambia es el contexto que entra por la puerta). Solo
            visible con lote activo (AC2.loteId). El modal viejo (modelador3dAbrir) sigue
            cargado y funcionando; se retira cuando el usuario verifique este camino. -->
       <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
-              style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">🧱 Enfierrador 3D</button>
+              style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
     </div>
 
     <!-- ── LANDING (etapas 0-1): gráfico de kilos + lista de obras con despieces. Se rellenan en la
@@ -264,16 +264,24 @@
          barras no se tocan. Oculto mientras el despiece no tenga ninguna (ac2PintarEstructuras). -->
     <div id="ac2_estructurasWrap" style="display:none; margin-top:14px;">
       <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin:0 0 6px;">
-        <h4 style="margin:0; color:#0277bd; font-size:14px;">🧱 Estructuras de este despiece <span id="ac2_estructurasCnt" style="color:#90a4ae; font-weight:400; font-size:12px;"></span></h4>
+        <h4 style="margin:0; color:#0277bd; font-size:14px;"><span class="b3d">3D</span> Estructuras de este despiece <span id="ac2_estructurasCnt" style="color:#90a4ae; font-weight:400; font-size:12px;"></span></h4>
         <span style="font-size:11px; color:#90a4ae;">sus barras están en la grilla con fondo azul; se modifican reabriendo la estructura</span>
       </div>
       <table style="width:100%; font-size:11px; border-collapse:collapse;">
+        <!-- MISMAS columnas y MISMOS KPIs que el repositorio de despieces de abajo
+             (Items · Barras · Kg · Ø prom · PPB · PPI): las dos tablas hablan del mismo
+             acero, así que se leen igual. Los números vienen de GET /lotes/{id}/elementos
+             y los tres KPIs los pinta ac2KpisTd, que es el mismo de allá. -->
         <thead><tr style="color:#666; background:#f5fbff;">
           <th style="text-align:left; padding:4px 8px;">Estructura</th>
           <th style="text-align:left; padding:4px 8px;">Elemento</th>
           <th style="text-align:left; padding:4px 8px;">Piso</th>
-          <th style="text-align:right; padding:4px 8px;" title="Barras vivas que esta estructura tiene en el despiece">Barras</th>
+          <th style="text-align:right; padding:4px 8px;" title="Entradas / filas de esta estructura en el despiece">Items</th>
+          <th style="text-align:right; padding:4px 8px;" title="Barras físicas = Σ (cantidad × multiplicador)">Barras</th>
           <th style="text-align:right; padding:4px 8px;">Kg</th>
+          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Diámetro promedio ponderado por peso: Σ(φ×kg)/Σkg">Ø prom</th>
+          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Peso Por Barra física = Kg / Barras">PPB</th>
+          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Peso Por Item (entrada/fila) = Kg / Items">PPI</th>
           <th style="padding:4px 8px;"></th>
         </tr></thead>
         <tbody id="ac2_estructurasBody"></tbody>

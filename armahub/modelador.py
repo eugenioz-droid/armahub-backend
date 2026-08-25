@@ -9,14 +9,19 @@ Router de la biblioteca de templates y de la traza de instancias:
   DELETE /templates/{id}                     -> borra (409 si tiene instancias)
   POST   /elementos/instancia                -> guarda la RECETA instanciada (trazabilidad)
   PUT    /elementos/instancia/{id}           -> ACTUALIZA esa estructura (no la reemplaza)
+  DELETE /elementos/instancia/{id}           -> borra una estructura VACÍA (409 si tiene barras)
   GET    /elementos/instancia/{id}           -> la estructura completa, para REABRIRLA
-  GET    /lotes/{id}/elementos               -> estructuras de un despiece + nº de barras + kg
+  GET    /lotes/{id}/elementos               -> estructuras de un despiece + KPIs (items/barras/kg/Ø)
   GET    /elementos/estructuras?proyecto=&elemento= -> estructuras BANDERADAS de una obra
 
 IMPORTANTE: la INSERCIÓN de las barras generadas NO pasa por aquí — se reusa el
 endpoint existente POST /lotes/{id}/barras (lotes.py, extendido en T1.1 con
 origen/template_instancia_id). Este router SOLO persiste la definición del
 template y la receta instanciada (elementos_template) para trazabilidad.
+Y por eso mismo la PRIMERA carga de una estructura tampoco pasa por aquí: la fila de
+elementos_template y sus barras se escriben en la MISMA transacción, desde ese POST,
+llamando a insertar_instancia() (ver su docstring). Dos transacciones dejaban
+estructuras vacías cuando las barras se caían.
 
 Tablas: templates_catalogo, elementos_template (migración 104; migración 105
 agrega schema_version / updated_at / editado_por, aditiva).
@@ -654,31 +659,57 @@ def eliminar_template(template_id: int, user=Depends(get_current_user)):
     return {"ok": True, "id": template_id}
 
 
+def insertar_instancia(cur, email, lote_id, params, template_id=None, nombre=None,
+                       elemento=None, piso=None, id_proyecto=None, sector=None,
+                       ciclo=None, eje=None) -> int:
+    """El INSERT de una estructura, SOBRE UN CURSOR QUE YA EXISTE. Vive suelto (y no
+    dentro del endpoint) porque hay DOS transacciones que lo necesitan y la fila tiene
+    que escribirse igual en las dos:
+      · POST /elementos/instancia — la traza suelta (Enfierrador MVP de panel_3d.js).
+      · POST /lotes/{id}/barras con `instancia` — la estructura y SUS barras naciendo
+        JUNTAS. Ese es el caso que obliga a compartir el cursor: si el INSERT viviera
+        en su propio endpoint serían dos transacciones, y una carga que falla en las
+        barras dejaría la estructura vacía colgando en el despiece (el bug de las
+        estructuras huérfanas con 0 barras).
+    La tabla la sigue conociendo SOLO este módulo: lotes.py llama a esta función, no
+    escribe el SQL por su cuenta."""
+    if not isinstance(params, dict) or not params:
+        raise HTTPException(status_code=400, detail="La instancia no tiene parámetros (receta) válidos.")
+    ahora = _now_iso()
+    cur.execute(
+        """INSERT INTO elementos_template
+             (template_id, lote_id, params, creado_por, fecha,
+              nombre, elemento, piso, estado, id_proyecto, sector, ciclo, eje,
+              updated_at, editado_por)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           RETURNING id""",
+        (template_id, lote_id, json.dumps(params), email, ahora,
+         _texto(nombre), _texto(elemento), _texto(piso), ESTADO_ACTIVA,
+         _texto(id_proyecto), _texto(sector), _texto(ciclo), _texto(eje),
+         ahora, email),
+    )
+    return cur.fetchone()[0]
+
+
 @router.post("/elementos/instancia")
 def crear_instancia(body: InstanciaCrear, user=Depends(get_current_user)):
     """Guarda la RECETA instanciada en elementos_template (trazabilidad). Devuelve
     su id, que puede viajar como template_instancia_id de las barras generadas
-    (POST /lotes/{id}/barras). Opcional en el MVP: el flujo funciona sin él."""
+    (POST /lotes/{id}/barras). Opcional en el MVP: el flujo funciona sin él.
+
+    OJO: crear la estructura por AQUÍ y cargarle las barras después son DOS
+    transacciones — si las barras fallan, la estructura queda vacía. El editor 3D ya
+    no entra por esta puerta en su primera carga (manda `instancia` dentro del POST
+    de barras, que las escribe juntas); esto queda para el cliente MVP y para quien
+    de verdad quiera guardar sólo la receta."""
     email = user.get("email", "?")
-    if not isinstance(body.params, dict) or not body.params:
-        raise HTTPException(status_code=400, detail="La instancia no tiene parámetros (receta) válidos.")
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso_instancia(cur, user)
-            ahora = _now_iso()
-            cur.execute(
-                """INSERT INTO elementos_template
-                     (template_id, lote_id, params, creado_por, fecha,
-                      nombre, elemento, piso, estado, id_proyecto, sector, ciclo, eje,
-                      updated_at, editado_por)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                   RETURNING id""",
-                (body.template_id, body.lote_id, json.dumps(body.params), email, ahora,
-                 _texto(body.nombre), _texto(body.elemento), _texto(body.piso), ESTADO_ACTIVA,
-                 _texto(body.id_proyecto), _texto(body.sector), _texto(body.ciclo), _texto(body.eje),
-                 ahora, email),
-            )
-            new_id = cur.fetchone()[0]
+            new_id = insertar_instancia(
+                cur, email, body.lote_id, body.params, template_id=body.template_id,
+                nombre=body.nombre, elemento=body.elemento, piso=body.piso,
+                id_proyecto=body.id_proyecto, sector=body.sector, ciclo=body.ciclo, eje=body.eje)
     audit(email, "crear_instancia_template", f"lote {body.lote_id} · template {body.template_id}",
           "elemento_template", str(new_id))
     return {"ok": True, "id": new_id}
@@ -725,34 +756,112 @@ def actualizar_instancia(instancia_id: int, body: InstanciaActualizar, user=Depe
 
 @router.get("/lotes/{lote_id}/elementos")
 def listar_instancias_lote(lote_id: int, user=Depends(get_current_user)):
-    """Estructuras cargadas a un despiece, con cuántas barras VIVAS tiene cada una.
+    """Estructuras cargadas a un despiece, con los MISMOS KPIs que el repositorio de
+    despieces (GET /lotes): items, barras físicas, kg y Ø promedio ponderado por peso.
     Es lo que necesita el creador de despieces para ofrecer "reabrir", y es la misma
-    consulta sobre la que se apoyará el element manager cuando exista."""
+    consulta sobre la que se apoyará el element manager cuando exista.
+
+    NOMENCLATURA (la misma de listar_lotes, para que las dos tablas se lean igual):
+      n_items  = ENTRADAS/filas de la estructura (COUNT).
+      n_barras = BARRAS FÍSICAS = Σ cant_total.  ← antes esta clave traía el COUNT;
+                 se corrigió para que "Barras" signifique lo mismo en las dos tablas
+                 y para que PPB (kg/barra) y PPI (kg/item) se puedan derivar de aquí.
+    Los cuatro salen de UNA sola pasada (LEFT JOIN + GROUP BY, como
+    listar_estructuras_obra): pedirlos por estructura serían N consultas para pintar
+    una tabla de N filas.
+
+    ciclo/eje/id_proyecto caen al dato del LOTE cuando la instancia no los trae (filas
+    pre-107): mismo criterio que listar_estructuras_obra — no se inventa nada, el lote
+    ES el contexto donde se creó la estructura. El front arma con ellos la etiqueta que
+    se ve (obra · ciclo · piso · eje); `nombre` sigue siendo la traza persistida."""
     _check_permiso_lectura(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT e.id, e.nombre, e.elemento, e.piso, e.estado, e.template_id,
                           e.creado_por, e.fecha, e.updated_at,
-                          (SELECT COUNT(*) FROM barras b WHERE b.template_instancia_id = e.id) AS n_barras,
-                          (SELECT COALESCE(SUM(b.peso_total), 0)
-                             FROM barras b WHERE b.template_instancia_id = e.id) AS kg
+                          COALESCE(SUM(b.cant_total), 0) AS n_barras,
+                          COUNT(b.id) AS n_items,
+                          COALESCE(SUM(b.peso_total), 0) AS kg,
+                          -- Ø PROMEDIO PONDERADO POR PESO: Σ(φ·kg)/Σkg. Mismo criterio
+                          -- (y misma fórmula) que el KPI del repositorio de despieces.
+                          COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) /
+                                   NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) AS diam_prom,
+                          COALESCE(e.id_proyecto, l.id_proyecto) AS id_proyecto,
+                          COALESCE(e.ciclo, l.ciclo) AS ciclo,
+                          COALESCE(e.eje,   l.eje)   AS eje
                      FROM elementos_template e
+                     JOIN lotes l ON l.id = e.lote_id
+                     LEFT JOIN barras b ON b.template_instancia_id = e.id
                     WHERE e.lote_id = %s
+                    GROUP BY e.id, e.nombre, e.elemento, e.piso, e.estado, e.template_id,
+                             e.creado_por, e.fecha, e.updated_at,
+                             e.id_proyecto, l.id_proyecto, e.ciclo, l.ciclo, e.eje, l.eje
                     ORDER BY e.id""",
                 (lote_id,),
             )
             filas = cur.fetchall()
     campos = ["id", "nombre", "elemento", "piso", "estado", "template_id",
-              "creado_por", "fecha", "updated_at", "n_barras", "kg"]
+              "creado_por", "fecha", "updated_at", "n_barras", "n_items", "kg",
+              "diam_prom", "id_proyecto", "ciclo", "eje"]
     elementos = []
     for f in filas:
         d = dict(zip(campos, f))
         # kg como float con 1 decimal: peso_total es NUMERIC en la BD (Decimal en
         # Python) y el JSON debe salir plano para que el front lo muestre tal cual.
         d["kg"] = round(float(d["kg"] or 0), 1)
+        d["n_barras"] = float(d["n_barras"] or 0)   # cant_total puede ser fraccionario
+        d["n_items"] = int(d["n_items"] or 0)
+        d["diam_prom"] = float(d["diam_prom"] or 0)
         elementos.append(d)
     return {"ok": True, "lote_id": lote_id, "elementos": elementos}
+
+
+@router.delete("/elementos/instancia/{instancia_id}")
+def eliminar_instancia(instancia_id: int, user=Depends(get_current_user)):
+    """Borra una estructura VACÍA (cero barras) del despiece.
+
+    POR QUÉ EXISTE: hasta hoy la primera carga escribía la estructura y sus barras en
+    dos transacciones, así que una carga que fallaba a mitad (el 400 por ubicación
+    faltante, p. ej.) dejaba la fila colgando — 0 barras, 0 kg, y el nombre a medias.
+    Eso ya no puede volver a pasar (las dos cosas nacen juntas), pero las que quedaron
+    de antes son datos del usuario y las borra ÉL desde el listado, no una migración a
+    su espalda.
+
+    LA GUARDA ES EL CERO, no el estado del lote: mientras la estructura no tenga barras
+    no hay cubicación que perder — borrarla no cambia ni un kilo del despiece. Con
+    barras se responde 409 y se dice por dónde (reabrir la estructura, que es donde el
+    sync sabe borrarlas de verdad). Un despiece ELIMINADO sí se respeta entero: es una
+    lápida, su contenido no se toca."""
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso_instancia(cur, user)
+            cur.execute(
+                """SELECT e.nombre, e.lote_id, l.estado,
+                          (SELECT COUNT(*) FROM barras b WHERE b.template_instancia_id = e.id)
+                     FROM elementos_template e
+                     LEFT JOIN lotes l ON l.id = e.lote_id
+                    WHERE e.id = %s""",
+                (instancia_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Esa estructura ya no existe.")
+            nombre, lote_id, estado_lote, n_barras = r[0], r[1], r[2], int(r[3] or 0)
+            if estado_lote == "eliminado":
+                raise HTTPException(status_code=409,
+                                    detail="Ese despiece está eliminado: su contenido es histórico y no se toca.")
+            if n_barras:
+                raise HTTPException(status_code=409, detail={
+                    "msg": (f"«{nombre or instancia_id}» tiene {n_barras} barra(s) en el despiece. "
+                            "Se quitan reabriéndola en el Enfierrador; sólo se puede borrar vacía."),
+                    "n_barras": n_barras,
+                })
+            cur.execute("DELETE FROM elementos_template WHERE id = %s", (instancia_id,))
+    audit(email, "eliminar_instancia_vacia", f"{nombre or ''} · lote {lote_id}",
+          "elemento_template", str(instancia_id))
+    return {"ok": True, "id": instancia_id, "lote_id": lote_id}
 
 
 @router.get("/elementos/estructuras")
@@ -763,7 +872,13 @@ def listar_estructuras_obra(proyecto: str, elemento: Optional[str] = None,
     antes de la bandera la estructura es material de trabajo del despiece — recién
     al terminar el lote pasa a ser un dato de la obra (misma regla con la que el
     Bar Manager excluye borradores). El path es literal, así que no colisiona con
-    /elementos/instancia/{id}."""
+    /elementos/instancia/{id}.
+
+    OJO con n_barras: aquí sigue siendo el COUNT de filas (lo que el tab Muros muestra
+    hoy bajo esa etiqueta), mientras que en /lotes/{id}/elementos pasó a ser Σ
+    cant_total —barras FÍSICAS— para hablar el mismo idioma que el repositorio de
+    despieces. Homologar este endpoint implica cambiar también lo que dice la columna
+    del tab Muros, así que se deja ANOTADO en vez de cambiarlo a medias."""
     _check_permiso_lectura(user)
     # La obra se resuelve por el LOTE (l.id_proyecto), no por e.id_proyecto: las
     # instancias pre-107 tienen la traza NULL y el lote es la fuente que nunca falta.

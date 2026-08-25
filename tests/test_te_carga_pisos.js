@@ -209,7 +209,10 @@ const CTX = {
 const PISOS = ['S1', 'P1', 'P2', 'P3'];
 
 // Backend de mentira: instancias con id correlativo (para poder distinguirlas) y
-// pisos de la obra. `falla` corta el POST de instancia del piso que se le diga.
+// pisos de la obra. `fallaEnPiso` corta la carga del piso que se le diga — y la corta
+// en el POST de barras, que es el que de verdad falla en producción (400 por ubicación,
+// figura inválida, red) y el que dejaba estructuras huérfanas cuando eran dos llamadas.
+// Este backend las escribe JUNTAS: si la carga falla, NO se registra instancia.
 function backend(win, opts) {
   opts = opts || {};
   let sig = 100;
@@ -220,10 +223,9 @@ function backend(win, opts) {
       return { status: 200, body: { pisos: PISOS.map(p => ({ valor: p, tiene_barras: false })) } };
     }
     if (/\/elementos\/instancia$/.test(url) && metodo === 'POST') {
+      // Sigue existiendo (Enfierrador MVP), pero el editor ya NO entra por aquí en su
+      // primera carga: si alguien la revive, los contratos de abajo lo delatan.
       const cuerpo = JSON.parse(o.body);
-      if (opts.fallaEnPiso && cuerpo.piso === opts.fallaEnPiso) {
-        return { status: 500, body: { detail: 'la BD dijo que no' } };
-      }
       const id = ++sig;
       win._instancias.push({ id, piso: cuerpo.piso });
       return { status: 200, body: { ok: true, id } };
@@ -232,12 +234,24 @@ function backend(win, opts) {
     if (/\/barras\/sync$/.test(url)) {
       return { status: 200, body: { ok: true, actualizadas: 7, creadas: 1, eliminadas: 2 } };
     }
-    if (/\/lotes\/42\/barras$/.test(url)) return { status: 200, body: { ok: true, creadas: 9 } };
+    if (/\/lotes\/42\/barras$/.test(url)) {
+      const cuerpo = JSON.parse(o.body);
+      const piso = cuerpo.instancia ? cuerpo.instancia.piso : null;
+      if (opts.fallaEnPiso && piso === opts.fallaEnPiso) {
+        // TRANSACCIÓN: la estructura se va con las barras. No se registra nada.
+        return { status: 500, body: { detail: 'la BD dijo que no' } };
+      }
+      const id = ++sig;
+      win._instancias.push({ id, piso });
+      return { status: 200, body: { ok: true, creadas: 9, instancia_id: id } };
+    }
     return { status: 200, body: {} };
   };
 }
 
 const postsA = (win, re) => win._llamadas.filter(l => l.metodo === 'POST' && re.test(l.url));
+// ST.elemento se guarda en minúscula o mayúscula según de dónde venga: se compara normalizado.
+const _figLow = (v) => String(v == null ? '' : v).trim().toLowerCase();
 
 (async function () {
   // ============================================================== P0
@@ -318,14 +332,16 @@ const postsA = (win, re) => win._llamadas.filter(l => l.metodo === 'POST' && re.
 
     const inst = postsA(w, /\/elementos\/instancia$/);
     const carga = postsA(w, /\/lotes\/42\/barras$/);
-    ok(inst.length === 3, 'se crean 3 estructuras, una por piso (hay ' + inst.length + ')');
-    ok(carga.length === 3, 'y 3 cargas de barras, una por estructura (hay ' + carga.length + ')');
-    ok(inst.map(l => l.body.piso).join(',') === 'S1,P1,P2',
+    ok(inst.length === 0,
+      'NINGÚN POST suelto de estructura: cada una entra con SUS barras, en una transacción');
+    ok(carga.length === 3, 'se hacen 3 cargas, una por piso (hay ' + carga.length + ')');
+    ok(carga.every(c => !!c.body.instancia), 'y las 3 llevan su estructura en el mismo cuerpo');
+    ok(carga.map(l => l.body.instancia.piso).join(',') === 'S1,P1,P2',
       'en el orden de la obra, cada una con SU piso');
-    ok(inst.map(l => l.body.nombre).join(' | ') ===
+    ok(carga.map(l => l.body.instancia.nombre).join(' | ') ===
        'EXPLORA · C1 · S1 · E3 | EXPLORA · C1 · P1 · E3 | EXPLORA · C1 · P2 · E3',
       'y con el nombre DERIVADO de obra · ciclo · SU piso · eje');
-    ok(inst.every(l => JSON.stringify(l.body.params) === JSON.stringify(ST.receta)),
+    ok(carga.every(l => JSON.stringify(l.body.instancia.params) === JSON.stringify(ST.receta)),
       'las 3 guardan la MISMA receta (es una repetición, no tres diseños)');
     ok(carga.every(c => c.body.barras.length > 0), 'las 3 mandan barras');
     ok(carga[0].body.barras.every(b => b.piso === 'S1') &&
@@ -334,9 +350,11 @@ const postsA = (win, re) => win._llamadas.filter(l => l.metodo === 'POST' && re.
       'y CADA barra viaja con el piso de SU estructura');
     ok(carga.every(c => c.body.barras.every(b => b.origen === 'enfierrador')),
       "todas con origen='enfierrador'");
-    const ids = carga.map(c => c.body.barras[0].template_instancia_id);
+    ok(carga.every(c => c.body.barras.every(b => b.template_instancia_id === null)),
+      'sin id de instancia inventado por el front: lo estampa quien escribe la fila');
+    const ids = w._instancias.map(i => i.id);
     ok(new Set(ids).size === 3 && ids.every(i => i != null),
-      'cada carga trazada contra SU instancia (tres ids distintos)');
+      'y el backend devolvió tres estructuras distintas, una por carga');
     ok(carga.every(c => c.body.barras.every(b => !!b.origen_ref)),
       'con su identificador de origen (los origen_ref se repiten entre instancias: el cruce es POR instancia)');
 
@@ -363,9 +381,15 @@ const postsA = (win, re) => win._llamadas.filter(l => l.metodo === 'POST' && re.
     w.templateEditorCargarAlDespiece();
     await reposo();
 
-    ok(postsA(w, /\/elementos\/instancia$/).length === 2,
-      'se intentaron S1 y P1 y ahí paró: P2 no se llegó a crear');
-    ok(postsA(w, /\/lotes\/42\/barras$/).length === 1, 'sólo entraron las barras de S1');
+    ok(postsA(w, /\/elementos\/instancia$/).length === 0,
+      'no hay POST suelto de estructura que pueda quedar escrito sin sus barras');
+    ok(postsA(w, /\/lotes\/42\/barras$/).length === 2,
+      'se intentaron S1 y P1 y ahí paró: P2 no se llegó a mandar');
+    // ESTE es el contrato de las huérfanas: el piso que falla no deja NADA. Antes de
+    // esto, P1 dejaba su fila de elementos_template creada (0 barras, 0 kg) porque la
+    // estructura se escribía en una llamada anterior a la de las barras.
+    ok(w._instancias.length === 1 && w._instancias[0].piso === 'S1',
+      'y el piso fallido NO dejó estructura: sólo existe la de S1 (hay ' + w._instancias.length + ')');
     const err = w._el('te_saveErr').textContent;
     ok(/P1/.test(err), 'el error nombra el piso que falló');
     ok(/Ya entraron: S1/.test(err), 'y dice cuáles SÍ entraron (media carga en silencio es lo peor)');
@@ -453,11 +477,58 @@ const postsA = (win, re) => win._llamadas.filter(l => l.metodo === 'POST' && re.
     await reposo();
     const inst = postsA(w, /\/elementos\/instancia$/);
     const carga = postsA(w, /\/lotes\/42\/barras$/);
-    ok(inst.length === 1 && carga.length === 1, 'una estructura y una carga, como siempre');
-    ok(inst[0].body.piso === 'P4' && inst[0].body.nombre === 'EXPLORA · C1 · P4 · E3',
+    ok(inst.length === 0 && carga.length === 1, 'una sola llamada: la estructura va dentro de ella');
+    ok(carga[0].body.instancia.piso === 'P4' &&
+       carga[0].body.instancia.nombre === 'EXPLORA · C1 · P4 · E3',
       'con el piso del campo y el nombre derivado de siempre');
     ok(carga[0].body.barras.every(b => b.piso === 'P4'), 'y sus barras con ese piso');
     ok(ST.instanciaId === w._instancias[0].id, 'el editor queda sobre la estructura creada');
+  }
+
+  // ============================================================== P6
+  // EL ELEMENTO LO TRAE EL DESPIECE (25-ago). El lote guarda su `estructura` desde que
+  // se crea y viaja en el contexto: al abrir el enfierrador ya está decidido si lo que
+  // se arma es un muro o una viga. Lo que se congela acá es la PUERTA — que el dato
+  // llegue normalizado y que la traba dependa de que HAYA dato, no del modo a secas.
+  console.log('P6 — el elemento viene del despiece: en obra no se elige');
+  {
+    const w = sesion(); backend(w);
+    // 'muro' en minúscula A PROPÓSITO: la estructura del lote puede venir 'MURO',
+    // 'muro' o 'Muro' y las tres son el mismo dato.
+    const ctxMuro = Object.assign({}, CTX, { estructura: 'muro' });
+    w.templateEditorAbrirEnObra(ctxMuro, { piso: 'P4' });
+    const TE = w.TemplateEditor, ST = TE._st;
+    await reposo();
+    ok(ST.elemFijo === 'MURO', "la estructura del lote llega normalizada (elemFijo = " + ST.elemFijo + ')');
+    ok(_figLow(ST.elemento) === 'muro', 'y el editor abre en ESE elemento, no en la viga por defecto');
+    const html = String(w._el('te_elemBtns').innerHTML);
+    ok(/data-elem="VIGA"[^>]*\bdisabled\b/.test(html) && /data-elem="MURO"[^>]*\bdisabled\b/.test(html),
+      'los botones de elemento quedan apagados (ninguno se ofrece)');
+    ok(html.indexOf('data-elem="VIGA"') >= 0 && html.indexOf('te-elemfijo') >= 0,
+      'sin esconder ninguno y diciendo por qué al lado');
+    TE._cambiarElemento('VIGA');
+    ok(_figLow(ST.elemento) === 'muro', 'y el cambio por código muere en la guarda');
+
+    // Sin estructura (lote antiguo): NO hay traba. La condición es el DATO.
+    const w2 = sesion(); backend(w2);
+    const ctxViejo = Object.assign({}, CTX); delete ctxViejo.estructura;
+    w2.templateEditorAbrirEnObra(ctxViejo, { piso: 'P4' });
+    const TE2 = w2.TemplateEditor, ST2 = TE2._st;
+    await reposo();
+    ok(ST2.elemFijo === null, 'un despiece SIN estructura no traba nada');
+    const html2 = String(w2._el('te_elemBtns').innerHTML);
+    ok(!/data-elem="MURO"[^>]*\bdisabled\b/.test(html2) && html2.indexOf('te-elemfijo') < 0,
+      'y ahí sí se elige: quedarse bloqueado sin salida sería encerrar al usuario');
+    TE2._cambiarElemento('MURO');
+    ok(_figLow(ST2.elemento) === 'muro', 'el cambio funciona como siempre');
+
+    // Una estructura que el editor NO conoce tampoco puede trabar: lo que no se puede
+    // pintar no se puede imponer.
+    const w3 = sesion(); backend(w3);
+    w3.templateEditorAbrirEnObra(Object.assign({}, CTX, { estructura: 'ESCALERA' }), { piso: 'P4' });
+    await reposo();
+    ok(w3.TemplateEditor._st.elemFijo === null,
+      'una estructura desconocida deja la elección abierta en vez de fijar un elemento inventado');
   }
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');

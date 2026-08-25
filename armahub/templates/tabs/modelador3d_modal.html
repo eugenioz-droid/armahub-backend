@@ -25,7 +25,10 @@
 
   /* Barra de título del modal */
   #m3d_titlebar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
-  #m3d_titlebar .dot{width:26px;height:26px;border-radius:7px;background:var(--acero);display:flex;align-items:center;justify-content:center;font-size:15px}
+  #m3d_titlebar .dot{width:26px;height:26px;border-radius:7px;background:var(--acero);display:flex;align-items:center;justify-content:center;
+    /* Dice 3D con LETRAS: el 🧱 que estaba antes había que adivinarlo, y un emoji lo
+       dibuja la fuente del sistema. La tinta oscura del modal da 7:1 sobre el verde. */
+    font-size:11px;font-weight:800;letter-spacing:.3px}
   #m3d_titlebar h1{font-size:15px;font-weight:600;letter-spacing:.2px;margin:0}
   #m3d_titlebar .sub{font-size:11.5px;color:var(--muted)}
   #m3d_titlebar .spacer{flex:1}
@@ -175,7 +178,7 @@
 
   <!-- ===== TÍTULO ===== -->
   <div id="m3d_titlebar">
-    <div class="dot">🧱</div>
+    <div class="dot">3D</div>
     <div>
       <h1>Enfierrador 3D — Viga</h1>
       <div class="sub" id="m3d_ctxSub">Despiece activo</div>

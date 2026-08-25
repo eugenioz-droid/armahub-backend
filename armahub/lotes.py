@@ -7,7 +7,10 @@ lote_id, y sobreviven a cualquier reimport (invariante de canales, 5N.1).
 Endpoints:
   POST /lotes                     -> crea un lote 'borrador' para una obra
   POST /lotes/{id}/terminar       -> cierra el lote ('terminada'); bloquea edición desde acá
-  POST /lotes/{id}/barras         -> agrega 1..N barras al lote (transaccional)
+  POST /lotes/{id}/barras         -> agrega 1..N barras al lote (transaccional). Con
+                                     `instancia` en el cuerpo, crea además la ESTRUCTURA
+                                     del modelador en la MISMA transacción y cuelga las
+                                     barras de ella (o entran las dos cosas, o ninguna).
   GET  /lotes/{id}                -> estado del lote + sus barras
 
 Reglas:
@@ -198,8 +201,33 @@ class BarraManual(BaseModel):
     id_unico: Optional[str] = None
 
 
+class InstanciaConBarras(BaseModel):
+    """La ESTRUCTURA del modelador que nace JUNTO con sus barras (ver BarrasBatch).
+    Mismos campos que InstanciaCrear (modelador.py) menos lote_id, que es el de la
+    URL: no puede haber dos opiniones sobre a qué despiece entra la carga."""
+    params: dict
+    template_id: Optional[int] = None
+    nombre: Optional[str] = None
+    elemento: Optional[str] = None
+    piso: Optional[str] = None
+    id_proyecto: Optional[str] = None
+    sector: Optional[str] = None
+    ciclo: Optional[str] = None
+    eje: Optional[str] = None
+
+
 class BarrasBatch(BaseModel):
     barras: List[BarraManual]
+    # ESTRUCTURA Y BARRAS, UNA SOLA TRANSACCIÓN (fix de las estructuras huérfanas).
+    # El editor 3D creaba la estructura por POST /elementos/instancia y recién después
+    # mandaba las barras acá: dos transacciones, y cuando las barras se caían (el 400
+    # por ubicación faltante, una figura inválida, la red) la estructura ya estaba
+    # escrita — quedaba en el despiece con 0 barras y 0 kg, sin forma de reabrirla ni
+    # de saber qué era. Mandándola AQUÍ las dos cosas entran o no entra ninguna: no hay
+    # ventana en la que exista una sin la otra, y no hace falta ningún catch que borre
+    # a posteriori (un compensador que también puede fallar).
+    # OPCIONAL: sin ella este endpoint es exactamente el ingreso manual de siempre.
+    instancia: Optional[InstanciaConBarras] = None
 
 
 class BarrasSync(BaseModel):
@@ -620,11 +648,16 @@ def marcar_revisadas(lote_id: int, body: RevisadaBody, user=Depends(get_current_
 
 @router.post("/lotes/{lote_id}/barras")
 def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_user)):
-    """Agrega 1..N barras al lote. Transaccional: o entran todas o ninguna."""
+    """Agrega 1..N barras al lote. Transaccional: o entran todas o ninguna.
+
+    Con `instancia` en el cuerpo, la ESTRUCTURA del modelador entra en esa misma
+    transacción y todas las barras salen estampadas con su id (ver InstanciaConBarras).
+    """
     email = user.get("email", "?")
     if not body.barras:
         raise HTTPException(status_code=400, detail="No hay barras para crear.")
     creadas = []
+    instancia_id = None
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
@@ -635,6 +668,19 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             id_proyecto, estado_lote = r[0], r[1]
             if estado_lote == "terminada":
                 raise HTTPException(status_code=409, detail="El lote está terminado; edita las barras desde el Bar Manager.")
+            if body.instancia is not None:
+                # La estructura, ANTES que las barras y en el MISMO cursor: su id es lo
+                # que cada barra necesita para colgar de ella. El INSERT lo escribe
+                # modelador.py, que es el dueño de elementos_template — aquí sólo se le
+                # presta la transacción. Si cualquier barra de más abajo revienta, esta
+                # fila se va con ella (rollback) y el despiece no se entera.
+                from .modelador import insertar_instancia
+                inst = body.instancia
+                instancia_id = insertar_instancia(
+                    cur, email, lote_id, inst.params, template_id=inst.template_id,
+                    nombre=inst.nombre, elemento=inst.elemento, piso=inst.piso,
+                    id_proyecto=(inst.id_proyecto or id_proyecto), sector=inst.sector,
+                    ciclo=inst.ciclo, eje=inst.eje)
             # PLANO DEL DESPIECE = dato del LOTE (fuente única). El front no lo manda
             # por barra, así que toda barra agregada DESPUÉS de fijar el plano entraba
             # con nombre_plano NULL y la columna PLANO del export salía en blanco
@@ -664,6 +710,11 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 rev_fecha = now if b.revisada else None
                 # Modelador 3D (T1.1): origen OPCIONAL (default 'manual' → intacto) + template_instancia_id.
                 origen_barra = _origen_valido(b.origen)
+                # La estructura recién creada MANDA sobre lo que traiga la barra: su id
+                # no existía cuando el front armó el payload, así que llegan en null. Y
+                # si alguien mandara otro, sería una barra colgada de una estructura
+                # ajena — el dueño de estas barras es la instancia de ESTE mismo POST.
+                inst_barra = instancia_id if instancia_id is not None else b.template_instancia_id
                 # UPSERT sobre (id_unico, id_proyecto): la barra que YA entró en un
                 # intento anterior (respuesta perdida / doble clic) no se duplica — se
                 # RE-ESCRIBE con el contenido de ESTE envío (el usuario pudo haberla
@@ -710,7 +761,7 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                          b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                          b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
                          bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
-                         origen_barra, b.template_instancia_id, ((b.origen_ref or "").strip() or None),
+                         origen_barra, inst_barra, ((b.origen_ref or "").strip() or None),
                          lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
                     )
                     fila = cur.fetchone()
@@ -743,9 +794,14 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 pass
     _cache.invalidate("stats:", "landing:")
     audit(email, "crear_barras_manual", f"{len(creadas)} barras · lote {lote_id}", "lote", str(lote_id))
+    if instancia_id is not None:
+        audit(email, "crear_instancia_template", f"lote {lote_id} · {len(creadas)} barras",
+              "elemento_template", str(instancia_id))
     # Devolvemos id numérico + id_unico de cada barra creada (en orden), para que el front asocie
     # cada barra del formulario con su id de BD y pueda luego marcarla revisada (/revisar) sin re-insertar.
+    # instancia_id: el id de la estructura que se creó con ellas (null si no venía).
     return {"ok": True, "lote_id": lote_id, "creadas": len(creadas),
+            "instancia_id": instancia_id,
             "ids": [c["id"] for c in creadas], "id_unicos": [c["id_unico"] for c in creadas]}
 
 

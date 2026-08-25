@@ -183,11 +183,28 @@
     return Math.min(_offsetRotulo(sw) + ext + ROT_AIRE, Math.min(W, H) / 3);
   }
 
+  // ---- LA TINTA DE LA FIGURA: UN SOLO SITIO PARA EL COLOR ----
+  // El motor dibuja siempre con la misma tinta y NO sabe —ni tiene por qué saber— de dónde
+  // salió la barra que le pasan: el color entra por `opts.color` y lo decide QUIEN LLAMA.
+  // Sin ese parámetro, pintar distinto una barra obligaba a ramificar acá adentro por
+  // "¿esta viene del 3D?", o sea a meterle al dibujante una pregunta de negocio, y el mismo
+  // render lo comparten catálogo, diseñador, Bar Manager y el editor de despiece.
+  // Los dos tonos viven JUNTOS acá para poder probar otros sin cazarlos por el repo.
+  var TINTA = '#00695c';        // por defecto (teal): catálogo, diseñador, cubicación a mano
+  // Barras nacidas del editor 3D. Es el 900 de la MISMA familia Material (Light Blue) cuyo
+  // 50 es el #e1f5fe con que la grilla ya les pinta el fondo de fila: dibujo y fila dicen lo
+  // mismo. Y es el 900 y no el 800 (#0277bd, el azul de los títulos del Enfierrador) porque
+  // acá el color lo llevan un trazo fino y números de 11 px: el 900 da 7.4:1 sobre blanco y
+  // 6.6:1 sobre la fila azul —por encima del teal que reemplaza (6.6 / 5.9), así que las
+  // cotas no pierden legibilidad—, mientras el 800 se queda en 4.8 / 4.3.
+  var TINTA_3D = '#01579b';
+
   // ---- Render: puntos → <svg> string ----
   // Escala y centra la polilínea en un viewBox fijo, con margen. Dibuja los
   // vértices y etiqueta cada lado con su letra.
   function svgDesdePuntos(pts, opts) {
     opts = opts || {};
+    var tinta = opts.color || TINTA;        // ver "LA TINTA DE LA FIGURA" arriba
     var W = opts.width || 320, H = opts.height || 240;
     // Pad PROPORCIONAL al tamaño del SVG (no fijo): ~14% del lado menor, acotado.
     // Un pad fijo grande achicaba la figura en miniaturas pequeñas. Deja aire para
@@ -321,7 +338,7 @@
     // puntas. Con el codo tangente ya casi no se ve, pero sigue haciendo falta donde el
     // codo no se dibuja —vuelta en U, codo sub-píxel, vértice contra un arco declarado—
     // y ahí `miter` sacaría el pico de flecha que el codo vino justamente a matar.
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet) + '" fill="none" stroke="#00695c" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="butt" />';
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet) + '" fill="none" stroke="' + tinta + '" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="butt" />';
     // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
     //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas
     //    (cotas_arco_iso, en coords de la proyección) → se mapean con tx().
@@ -364,8 +381,11 @@
           var lox = mx - (svy/sl) * lOff, loy = my + (svx/sl) * lOff;
           // fs y dy salen de las MISMAS constantes con las que el encuadre le reservó
           // sitio (_padRotulo): si alguien agranda la letra acá, el margen crece con ella.
+          // El rótulo va con la MISMA tinta que el trazo (en la grilla el rótulo ES la
+          // medida del lado): son la figura, no una anotación sobre ella. Los α rojos y
+          // las cotas de arco sí conservan su color, porque ahí el color significa algo.
           svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + ROT_DY).toFixed(1) +
-            '" text-anchor="middle" fill="#00695c" font-size="' + ROT_FS + '" font-weight="700">' + lbl + '</text>';
+            '" text-anchor="middle" fill="' + tinta + '" font-size="' + ROT_FS + '" font-weight="700">' + lbl + '</text>';
         }
       }
     }
@@ -460,7 +480,9 @@
               cotas_arco_iso: (geometria && geometria.cotas_arco_iso) || null,
               // Grosor real: φ en mm + "los puntos están en cm". Si falta cualquiera de
               // los dos, el motor usa el trazo nominal (ver _grosorTrazo).
-              diam_mm: opts.diam_mm, metrico: opts.metrico };
+              diam_mm: opts.diam_mm, metrico: opts.metrico,
+              // Tinta: pasa tal cual; sin ella manda TINTA (ver "LA TINTA DE LA FIGURA").
+              color: opts.color };
     return svgDesdePuntos(pts, o);
   }
 
@@ -1939,5 +1961,8 @@
   // Exponer al scope global.
   global.disenadorInit = disenadorInit;
   // Motor reutilizable (SVG 2D; base para 3D TubeGeometry y export BVBS futuros).
-  global.disenadorMotor = { geometriaAPuntos: geometriaAPuntos, svgDesdePuntos: svgDesdePuntos, dibujarFigura: dibujarFigura, puntosAGeometria: _puntosAGeometria };
+  // TINTA/TINTA_3D se exportan para que el llamador NOMBRE el color en vez de repetir el
+  // hex: cambiar el azul de las barras del 3D se hace en una línea, no cazando #01579b.
+  global.disenadorMotor = { geometriaAPuntos: geometriaAPuntos, svgDesdePuntos: svgDesdePuntos, dibujarFigura: dibujarFigura, puntosAGeometria: _puntosAGeometria,
+                            TINTA: TINTA, TINTA_3D: TINTA_3D };
 })(window);

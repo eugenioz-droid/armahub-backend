@@ -327,7 +327,8 @@ function sinComentariosJs(src) {
                   eje: 'E3', nombre_plano: 'P-101', estructura: 'VIGA' };
     w._responder = (url) => {
       if (/\/elementos\/instancia/.test(url)) return { status: 200, body: { ok: true, id: 55 } };
-      if (/\/lotes\/42\/barras/.test(url)) return { status: 200, body: { ok: true, creadas: 9 } };
+      // La primera carga devuelve la estructura que nació CON las barras.
+      if (/\/lotes\/42\/barras/.test(url)) return { status: 200, body: { ok: true, creadas: 9, instancia_id: 55 } };
       return { status: 200, body: {} };
     };
     w.templateEditorAbrirEnObra(ctx, { receta: w.ModeladorSemilla.semillaViga() });
@@ -361,11 +362,21 @@ function sinComentariosJs(src) {
     const post = w._llamadas.filter(l => l.metodo === 'POST');
     const inst = post.find(l => /\/elementos\/instancia$/.test(l.url));
     const carga = post.find(l => /\/lotes\/42\/barras$/.test(l.url));
-    ok(!!inst, 'primero se guarda la traza de la estructura (elementos_template)');
-    ok(!!carga, 'y las barras entran por POST /lotes/{id}/barras — el canal que ya existía');
+    // ATOMICIDAD (fix de las estructuras huérfanas): la estructura y sus barras entran
+    // en UN solo POST. Cuando eran dos, una carga que fallaba en las barras dejaba la
+    // estructura ya escrita — 0 barras, 0 kg — colgando en el despiece.
+    ok(!inst, 'NO hay un POST aparte de estructura: iría en otra transacción');
+    ok(!!carga, 'las barras entran por POST /lotes/{id}/barras — el canal que ya existía');
     ok(carga && carga.body.barras.length > 0, 'con barras adentro');
-    ok(carga && carga.body.barras.every(b => b.template_instancia_id === 55),
-      'todas trazadas contra esa instancia');
+    ok(!!(carga && carga.body.instancia), 'y la estructura viaja en el MISMO cuerpo');
+    ok(carga && carga.body.instancia && carga.body.instancia.nombre === 'EXPLORA · C1 · P4 · E3',
+      'con su traza derivada (obra · ciclo · piso · eje)');
+    ok(carga && carga.body.instancia && !!carga.body.instancia.params,
+      'y con la receta, que es lo que hace reabrible a la estructura');
+    ok(carga && carga.body.barras.every(b => b.template_instancia_id === null),
+      'las barras van con template_instancia_id null: ese id no existe hasta que el backend la escribe');
+    ok(ST.instanciaId === 55,
+      'y el editor queda apuntando a la estructura que el POST devolvió (instancia_id)');
     ok(carga && carga.body.barras.every(b => !Object.keys(b).some(k => k.charAt(0) === '_')),
       'y sin las claves de trabajo del front (largo y peso los calcula el backend)');
   }
