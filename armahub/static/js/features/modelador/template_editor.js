@@ -298,7 +298,8 @@
     dirty: true,
     // barras3D: meshes del último _redibujar. Desde el 24-ago hay UNO POR COMPONENTE
     //   (todas sus barras fusionadas, ver _gruposMalla3D), con userData.ci,
-    //   userData.span (extensión por eje del componente ENTERO) y
+    //   userData.span (extensión por eje del componente ENTERO — hoy dato
+    //   INFORMATIVO: el clipping dejó de leerlo, ver la nota de _spanDeGrupo) y
     //   userData.matBase/matClip → clipping LOCAL por vista (B2).
     barras3D: [],
     // luzFrontal: DirectionalLight extra que se coloca en el eye de cada vista orto
@@ -2687,12 +2688,11 @@
     if (obj.traverse) obj.traverse(limpiar); else limpiar(obj);
   }
 
-  // B2·(a) — SPAN de una barra por eje. Un longitudinal corre a lo largo de X → su
-  // span en X es grande; un estribo vive en YZ → span X ≈ 0. Ese span es lo que
-  // decide, por VISTA, si la barra es una "rebanada" (la corta el cuchillo) o si
-  // CRUZA el corte de lado a lado (y entonces NO se debe clipear — ver
-  // _clipLocalPorVista). Mismo criterio que _slicesEnProfundidad, calculado una sola
-  // vez al construir la malla y guardado en mesh.userData.
+  // B2·(a) — SPAN por eje de un conjunto de puntos. Un longitudinal corre a lo
+  // largo de X → span X grande; un estribo vive en YZ → span X ≈ 0. Lo usan
+  // _slicesEnProfundidad (las rebanadas del cuchillo) y el span informativo del
+  // mesh (_spanDeGrupo). El clipping por vista ya NO decide con esto: desde «PATAS
+  // DE PUNTA — SIN EXCEPCIÓN» clipea todo (ver _clipLocalPorVista).
   function _spanDePuntos(pts) {
     var s = { x: 0, y: 0, z: 0 };
     if (!pts || pts.length < 2) return s;
@@ -2761,11 +2761,14 @@
     });
   }
 
-  // Span del COMPONENTE ENTERO. userData.span es lo que el clipping por vista lee
-  // para decidir si la pieza es una "rebanada" o si CRUZA el corte; desde la fusión
-  // el mesh ya no es una barra sino todas las del componente, así que el span tiene
-  // que ser el de la UNIÓN —con el de la primera barra, una cortina de 46 barras
-  // repartido en 9 m se declararía del ancho de UNA.
+  // Span del COMPONENTE ENTERO (la unión de todas sus barras: con el de la primera,
+  // una cortina de 46 barras repartida en 9 m se declararía del ancho de UNA).
+  // OJO (25-ago, hallazgo de la auditoría de la fusión): el clipping YA NO LO LEE —
+  // desde «PATAS DE PUNTA — SIN EXCEPCIÓN», _clipLocalPorVista clipea todo sin mirar
+  // span. Se conserva como dato informativo del mesh (y la suite congela que sea el
+  // de la unión) porque describir el componente que el mesh ES sigue siendo verdad;
+  // pero que nadie vuelva a escribir «lo lee el clipping»: mentía, y un comentario
+  // que miente es peor que ninguno.
   function _spanDeGrupo(pls) {
     var todos = [];
     for (var i = 0; i < pls.length; i++) {
@@ -12068,7 +12071,7 @@
     if (ST._uiOk) return;
     var root = $('te_modal'); if (!root) return;
     ST._uiOk = true;
-    _bindElemSel();              // selector de ELEMENTO del titlebar
+    _bindElemSel();              // botones de ELEMENTO (titlebar + pantalla inicial)
     _bindNombre();               // campo NOMBRE editable del titlebar
     _bindRibbon();
     _bindHerramientas();
@@ -12176,8 +12179,13 @@
     ST._guardando = false;    // una apertura cancela cualquier "Guardando…" colgado
     _ocultarBarraBorrador();
     bd.classList.add('on');
+    // TEMPLATE NUEVO (sin receta) → pantalla inicial: se elige el elemento y se
+    // CONFIRMA antes de ver cuadrantes y herramientas. Con receta (abrir de la
+    // biblioteca, recuperar borrador) o en modo obra (el elemento lo trae el
+    // lote) se entra directo, como siempre.
+    _marcarEligiendo(!cfg.receta && !ST.ctxObra);
     _actualizarTitulos();
-    _renderElemSel();   // el selector del titlebar apunta al elemento de ESTE template
+    _renderElemSel();   // los botones de elemento apuntan al de ESTE template
     _renderRibbonTips();
     _renderFigsRapidas();   // matriz 2×5 del ribbon (se repinta cuando llega el catálogo real)
     _actualizarBtnGuardar();
@@ -12216,7 +12224,9 @@
     // ¿Quedó un borrador sin guardar de una sesión anterior? Se ofrece recuperarlo.
     _ofrecerBorrador();
     global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
-      _iniciar3dEnVivo();
+      // En la pantalla inicial el cuadrante 3D está tapado (ancho 0): el arranque
+      // del 3D lo hace _confirmarElemento cuando el área de trabajo ya se ve.
+      if (!ST.eligiendo) _iniciar3dEnVivo();
     }); });
   };
 
@@ -12771,7 +12781,7 @@
   }
 
   // ==========================================================================
-  // SELECTOR DE ELEMENTO DENTRO DEL EDITOR
+  // ELECCIÓN DE ELEMENTO DENTRO DEL EDITOR (botones por tipo)
   // --------------------------------------------------------------------------
   // Antes el elemento se fijaba FUERA (pantalla previa del sub-tab) y para pasar
   // de viga a muro había que cerrar, crear otro template y volver a colocar todo.
@@ -12794,46 +12804,101 @@
       TPL_TIPOLOGIAS[may] && TPL_DIMS_POR_ELEMENTO[may]);
   }
 
-  // Pinta las opciones del <select> del titlebar y lo deja apuntando al elemento
-  // activo. El ORDEN sale de TPL_DIMS_POR_ELEMENTO (VIGA y MURO primero, que son
-  // los que se pueden usar). El elemento ACTIVO nunca se deshabilita aunque le
-  // falten datos: se puede abrir un template guardado de un tipo todavía
-  // incompleto, y dejarlo bloqueado ahí sería encerrar al usuario.
+  // Pinta las filas de BOTONES DE ELEMENTO: la del titlebar (#te_elemBtns) y la
+  // grande de la pantalla inicial (#te_elegirBtns). Son EL MISMO control pintado
+  // dos veces, así que salen de UN solo render y no pueden desincronizarse.
+  // Reemplazan al <select> #te_elemSel (26-ago, pedido del usuario: un botón por
+  // tipo, con el formato del chip de color de la biblioteca — TPL_ELEM_COLORES).
+  // El ORDEN sale de TPL_DIMS_POR_ELEMENTO (VIGA y MURO primero, que son los que
+  // se pueden usar). El elemento ACTIVO nunca se deshabilita aunque le falten
+  // datos: se puede abrir un template guardado de un tipo todavía incompleto, y
+  // dejarlo bloqueado ahí sería encerrar al usuario.
   function _renderElemSel() {
-    var sel = $('te_elemSel'); if (!sel) return;
+    var fila = $('te_elemBtns'), centro = $('te_elegirBtns');
+    if (!fila && !centro) return;
     var act = _figKey(_tipoElemento());
-    sel.innerHTML = Object.keys(TPL_DIMS_POR_ELEMENTO).map(function (k) {
-      var listo = _elementoConDatos(k);
-      return '<option value="' + _esc(k) + '"' +
-        ((listo || k === act) ? '' : ' disabled') + (k === act ? ' selected' : '') + '>' +
-        _esc(_capitalizar(k)) + (listo ? '' : ' (próximamente)') + '</option>';
-    }).join('');
-    sel.value = act;
     // CON BARRAS COLOCADAS EL ELEMENTO NO SE CAMBIA (decisión del usuario 14-ago:
     // "si ya tengo barras no es razonable que cambie de tipo de elemento"). Las
     // poses/tipologías de una viga no significan lo mismo en un muro y el cambio
-    // a receta poblada terminaba en error. El selector se DESHABILITA con el
+    // a receta poblada terminaba en error. Cada botón ajeno se DESHABILITA con el
     // porqué en el tooltip; el flujo más orgánico se definirá con el usuario.
     var conBarras = !!(ST.receta && ST.receta.componentes && ST.receta.componentes.length);
-    sel.disabled = conBarras;
-    sel.title = conBarras
-      ? 'El elemento se elige con la receta vacía: elimina las barras colocadas para cambiarlo.'
-      : 'Tipo de elemento de hormigón de este template.';
+    var html = Object.keys(TPL_DIMS_POR_ELEMENTO).map(function (k) {
+      var listo = _elementoConDatos(k);
+      var esAct = (k === act);
+      // El motivo VIVE en el tooltip (como vivía en el title del select): el botón
+      // no tiene dónde decirlo sin romper el formato del chip.
+      var motivo = esAct ? 'Elemento de este template.'
+        : !listo ? (_capitalizar(k) + ' todavía no está disponible (próximamente).')
+        : conBarras ? 'El elemento se elige con la receta vacía: elimina las barras colocadas para cambiarlo.'
+        : ('Cambiar el elemento a ' + _capitalizar(k) + ': se rehacen tipologías, hormigón y las 3 vistas. Las barras ya colocadas se conservan.');
+      return '<button type="button" class="te-elembtn' + (esAct ? ' on' : '') + '"' +
+        ' data-elem="' + _esc(k) + '" style="--elc:' + (TPL_ELEM_COLORES[k] || '#607d8b') + '"' +
+        ((esAct || (listo && !conBarras)) ? '' : ' disabled') +
+        ' title="' + _esc(motivo) + '">' + _esc(k) + '</button>';
+    }).join('');
+    if (fila) fila.innerHTML = html;
+    if (centro) centro.innerHTML = html;
   }
 
-  // El listener va UNA vez sobre el <select> (no sobre las <option>, que mueren en
-  // cada _renderElemSel): patrón _teBound del resto del módulo.
+  // El listener va UNA vez sobre CADA contenedor, DELEGADO (no botón por botón:
+  // los botones mueren con el innerHTML en cada _renderElemSel): patrón _teBound
+  // del resto del módulo. El clic hace EXACTAMENTE lo que hacía el change del
+  // <select> retirado: _cambiarElemento. La pantalla inicial no tiene camino
+  // propio — elegir ahí es el mismo gesto, y Confirmar sólo destapa el trabajo.
   function _bindElemSel() {
-    var sel = $('te_elemSel'); if (!sel || sel._teBound) return;
-    sel._teBound = true;
-    sel.addEventListener('change', function () {
-      _cambiarElemento(sel.value);
-      // SOLTAR EL FOCO. El teclado del editor (Ctrl+Z, R, ESPACIO, Supr) se
-      // ignora mientras el foco está en un input/select (_bindTeclado), y el
-      // <select> nativo no tiene undo propio: si el foco se quedaba acá, el
-      // reflejo "me equivoqué de elemento → Ctrl+Z" no disparaba nada.
-      if (sel.blur) sel.blur();
+    ['te_elemBtns', 'te_elegirBtns'].forEach(function (id) {
+      var cont = $(id); if (!cont || cont._teBound) return;
+      cont._teBound = true;
+      cont.addEventListener('click', function (e) {
+        var b = (e.target && e.target.closest) ? e.target.closest('button[data-elem]') : null;
+        if (!b || b.disabled) return;
+        _cambiarElemento(b.getAttribute('data-elem'));
+        // SOLTAR EL FOCO. El teclado del editor (_bindTeclado) no filtra botones:
+        // con el foco acá, ESPACIO re-clicaría este botón (click nativo del
+        // navegador) además de disparar el atajo de rotar/espejo. Mismo reflejo
+        // que ya tenía el <select>.
+        if (b.blur) b.blur();
+      });
     });
+    // CONFIRMAR de la pantalla inicial: recién ahí aparecen los canvas y se
+    // activan las herramientas.
+    var ok = $('te_elegirOk');
+    if (ok && !ok._teBound) { ok._teBound = true; ok.addEventListener('click', _confirmarElemento); }
+  }
+
+  // ==========================================================================
+  // PANTALLA INICIAL DE UN TEMPLATE NUEVO — elegir elemento y CONFIRMAR (26-ago)
+  // --------------------------------------------------------------------------
+  // Pedido del usuario, calcado del flujo del creador de despieces: al CREAR un
+  // template los cuadrantes y las herramientas no aparecen; primero se elige el
+  // elemento (botones grandes del centro) y se confirma. Un template EXISTENTE
+  // ya trae elemento y entra directo. El modo obra también entra directo aunque
+  // venga sin receta: ahí el elemento lo manda la ESTRUCTURA del lote, no una
+  // elección del usuario. Lo visual lo hace la clase te-eligiendo (CSS del
+  // modal); acá sólo se pone/quita y se difiere el arranque del 3D, que no puede
+  // medir canvas ocultos (ancho 0).
+  // ==========================================================================
+  function _marcarEligiendo(on) {
+    ST.eligiendo = !!on;
+    var m = $('te_modal'); if (!m) return;
+    m.classList[on ? 'add' : 'remove']('te-eligiendo');
+  }
+
+  function _confirmarElemento() {
+    if (!ST.eligiendo) return;
+    _marcarEligiendo(false);
+    // Lo que se pintó con el área tapada se midió sobre cajas de ancho 0: con el
+    // layout ya real se re-mide el ribbon y se regenera todo, para que vistas y
+    // overlays queden posicionados sobre tamaños verdaderos.
+    _ajustarRibbonUnaLinea();
+    _marcarSucio();
+    _regenerar();
+    // El MISMO arranque diferido del 3D que hace templateEditorAbrir al entrar
+    // directo (doble rAF: el layout del cuadrante tiene que existir antes).
+    global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
+      _iniciar3dEnVivo();
+    }); });
   }
 
   // Cambio de elemento. NO borra la receta: las barras ya colocadas se quedan con
@@ -12845,7 +12910,7 @@
     if (!may || !TPL_DIMS_POR_ELEMENTO[may]) { _renderElemSel(); return; }
     if (min === String(_tipoElemento()).toLowerCase()) return;
     if (!_elementoConDatos(may)) {
-      // El <option> ya viene disabled; esto cubre el cambio por código.
+      // El botón ya viene disabled; esto cubre el cambio por código.
       _renderElemSel();
       _actualizarStatus(_capitalizar(may) + ' todavía no está disponible en el editor.');
       return;
@@ -13654,10 +13719,12 @@
     _iniciarDragMarco: _iniciarDragMarco, _dragMarcoMove: _dragMarcoMove,
     // TIPOLOGÍA vs ELEMENTO (marca PERSISTENTE: sobrevive al primer clic)
     _tipAjenaAlElemento: _tipAjenaAlElemento,
-    // SELECTOR DE ELEMENTO dentro del editor (viga ⇄ muro sin salir ni recrear)
+    // BOTONES DE ELEMENTO dentro del editor (viga ⇄ muro sin salir ni recrear) +
+    // pantalla inicial "elegir y confirmar" de un template nuevo
     _elementoConDatos: _elementoConDatos, _renderElemSel: _renderElemSel,
     _TPL_DIMS_POR_ELEMENTO: TPL_DIMS_POR_ELEMENTO,   // la suite verifica sus claves
     _bindElemSel: _bindElemSel, _cambiarElemento: _cambiarElemento,
+    _marcarEligiendo: _marcarEligiendo, _confirmarElemento: _confirmarElemento,
     // FICHA POR FAMILIA (contorno cerrado ⇒ sin patas ni empalme)
     _familiaDibujo: _familiaDibujo, _esContornoCerrado: _esContornoCerrado,
     // ficha del componente (el panel de dims dinámico sale de los parciales del catálogo)

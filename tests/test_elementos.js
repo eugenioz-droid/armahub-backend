@@ -58,7 +58,10 @@ Object.defineProperty(El.prototype, 'firstChild', { get() { return this.children
 Object.defineProperty(El.prototype, 'parentNode', { get() { return this._padre || null; } });
 
 const SVGS = {
-  te_svgSeccion: new El('svg'), te_svgLargo: new El('svg'), te_svgPlanta: new El('svg')
+  te_svgSeccion: new El('svg'), te_svgLargo: new El('svg'), te_svgPlanta: new El('svg'),
+  // Contenedores de los BOTONES DE ELEMENTO (titlebar + pantalla inicial): la
+  // sección D inspecciona el HTML que _renderElemSel les escribe.
+  te_elemBtns: new El('div'), te_elegirBtns: new El('div')
 };
 
 const win = {};
@@ -181,6 +184,39 @@ console.log('C · el gesto completo en los tres elementos nuevos');
       ok(span > 1, '…con recorrido real (' + Math.round(span) + ' cm)');
     }
   });
+}
+
+// ==================== D · LOS BOTONES DE ELEMENTO (titlebar + pantalla inicial)
+// El <select> del titlebar se reemplazó por UN BOTÓN POR ELEMENTO (26-ago, pedido
+// del usuario: el mismo chip del creador de despieces). Lo que se congela: qué
+// botones se OFRECEN lo sigue mandando _elementoConDatos (losa deshabilitada con su
+// porqué), y CON BARRAS COLOCADAS no se cambia de elemento — todos deshabilitados
+// menos el activo, con el motivo de siempre en el tooltip.
+console.log('');
+console.log('D · botones de elemento');
+{
+  const fila = win.document.getElementById('te_elemBtns');
+  ST.elemento = 'viga';
+  ST.receta = { tipo: 'viga', geometria: {}, componentes: [] };
+  TE._renderElemSel();
+  const html = String(fila.innerHTML);
+  ['VIGA', 'MURO', 'COLUMNA', 'FUNDACION', 'GEN', 'LOSA'].forEach(function (k) {
+    ok(html.indexOf('data-elem="' + k + '"') >= 0, k + ': tiene su botón');
+  });
+  ok(/data-elem="LOSA"[^>]*\bdisabled\b/.test(html), 'losa sale deshabilitada');
+  ok(/data-elem="LOSA"[^>]*próximamente/.test(html), '…y dice por qué (próximamente, en el tooltip)');
+  ok(/class="te-elembtn on"[^>]*data-elem="VIGA"/.test(html), 'el activo (viga) va marcado');
+  ok(!/data-elem="MURO"[^>]*\bdisabled\b/.test(html), 'muro se ofrece con la receta vacía');
+  ok(String(win.document.getElementById('te_elegirBtns').innerHTML) === html,
+    'la pantalla inicial pinta LOS MISMOS botones (un solo render, no dos verdades)');
+
+  // Con una barra colocada: nadie más que el activo, y con el motivo de siempre.
+  ST.receta.componentes = [{ tipologia: 'CBS', figura: '101A' }];
+  TE._renderElemSel();
+  const html2 = String(fila.innerHTML);
+  ok(/data-elem="MURO"[^>]*\bdisabled\b/.test(html2), 'con barras, muro queda deshabilitado');
+  ok(html2.indexOf('receta vacía') >= 0, '…con el motivo de siempre en el tooltip');
+  ok(!/data-elem="VIGA"[^>]*\bdisabled\b/.test(html2), 'el activo nunca se deshabilita');
 }
 
 console.log(fallos ? (fallos + ' FALLO(S)') : 'OK — los cinco elementos abren y colocan');

@@ -21,8 +21,9 @@
 //      algo que impide juntarlas (material 3D, color 2D, redonda vs de perfil) caen
 //      en grupos separados solas. Si mañana el color deja de ser por componente,
 //      esto NO pierde un color por el camino: emite dos mallas.
-//   D. EL SPAN ES DEL COMPONENTE ENTERO — userData.span alimenta el clipping por
-//      vista; con el span de UNA barra, un abanico de 46 barras repartido en 9 m se
+//   D. EL SPAN ES DEL COMPONENTE ENTERO — userData.span es hoy dato INFORMATIVO
+//      (el clipping dejó de leerlo); se congela igual porque describe el mesh, y
+//      con el span de UNA barra, un abanico de 46 barras repartido en 9 m se
 //      declararía del ancho de una sola y el cuchillo decidiría mal por todas.
 //   E. CUÁNTOS NODOS SVG — 984 → 36, contados sobre el camino de dibujo REAL
 //      (_dibujarVista2D contra un SVG que graba), en los tres cuadrantes.

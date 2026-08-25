@@ -217,17 +217,59 @@
   #te_modal #te_nombre:hover{border-color:var(--te-line);background:var(--te-field)}
   #te_modal #te_nombre:focus{border-color:var(--te-acero);background:var(--te-field);outline:none}
   #te_modal #te_nombre::placeholder{font-weight:400;color:var(--te-muted)}
-  /* SELECTOR DE ELEMENTO (viga / muro / …) — vive DENTRO del editor: cambiar de
-     elemento ya no obliga a salir a la pantalla previa y crear otro template.
-     Las opciones las renderiza _renderElemSel(); las que no tienen datos completos
-     salen deshabilitadas ("próximamente") y el navegador ya las pinta en gris. */
-  #te_modal .te-elemsel{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;
-    font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
-  #te_modal #te_elemSel{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:8px;
-    padding:5px 8px;font-size:12px;font-weight:700;color:var(--te-ink);cursor:pointer;text-transform:none;letter-spacing:0}
-  #te_modal #te_elemSel option:disabled{color:var(--te-faint)}
+  /* BOTONES DE ELEMENTO (viga / muro / …) — viven DENTRO del editor: cambiar de
+     elemento no obliga a salir a la pantalla previa y crear otro template.
+     El <select> #te_elemSel que hacía esto SE RETIRÓ con su CSS (26-ago, pedido del
+     usuario: «un botón por tipo de elemento, el mismo botón que usas en el creador
+     de despieces»): un desplegable esconde las opciones y el chip de color de la
+     biblioteca ya es como el usuario reconoce cada elemento. El botón ACTIVO es
+     exactamente ese chip (relleno con TPL_ELEM_COLORES, texto blanco); los demás son
+     su versión de contorno. Los pinta _renderElemSel() (template_editor.js), que
+     estampa --elc con el color de cada elemento y deshabilita —con el porqué en el
+     tooltip— los que no tienen datos o los ajenos cuando hay barras colocadas. */
+  #te_modal .te-elembtns{display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap}
+  #te_modal .te-elembtn{border:1px solid var(--elc,#607d8b);background:var(--te-field);
+    color:var(--elc,#607d8b);border-radius:8px;padding:4px 10px;font-size:10.5px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;line-height:1.2}
+  #te_modal .te-elembtn:not(:disabled):not(.on):hover{background:var(--te-hover)}
+  /* El ACTIVO calca el chip "Tipo" de la lista de templates guardados: mismo color,
+     mismo relleno. Así el editor y la biblioteca hablan el mismo idioma visual. */
+  #te_modal .te-elembtn.on{background:var(--elc,#607d8b);border-color:var(--elc,#607d8b);color:#fff}
+  /* Deshabilitado A LA VISTA (nunca bajo .45 de opacidad: un control que no se ve
+     "no existe" para el usuario) y con su motivo en el tooltip: "próximamente" o
+     "hay barras colocadas". */
+  #te_modal .te-elembtn:disabled{opacity:.5;cursor:default}
+
+  /* ---- PANTALLA INICIAL DE UN TEMPLATE NUEVO (26-ago) ----
+     Al crear, los 4 cuadrantes y las herramientas NO aparecen: primero se elige el
+     elemento (los mismos botones, en grande y centrados) y se CONFIRMA — el flujo
+     que pidió el usuario, calcado del creador de despieces: «usuario elige, confirma
+     y recién ahí aparecen los canvas». Un template EXISTENTE ya trae elemento y
+     entra directo (la clase nunca se pone). te-eligiendo la pone/quita
+     _marcarEligiendo (template_editor.js); acá el CSS tapa el área de trabajo y
+     destapa #te_elegir. #te_bigwarn lleva su .on A PROPÓSITO: la regla que lo
+     muestra (#te_modal #te_bigwarn.on, más abajo) tiene 2 ids + 1 clase, y sin el
+     .on esta lista empataría y perdería por venir antes en el archivo. */
+  #te_modal #te_elegir{display:none}
+  #te_modal.te-eligiendo #te_ribbon,
+  #te_modal.te-eligiendo #te_bigwarn.on,
+  #te_modal.te-eligiendo #te_body,
+  #te_modal.te-eligiendo #te_footer{display:none}
+  /* La fila del titlebar se esconde SÓLO mientras se elige: el control es UNO y está
+     en el centro de la pantalla — dos filas vivas del mismo selector serían dos
+     verdades. Al confirmar, la del titlebar queda siempre visible. */
+  #te_modal.te-eligiendo #te_elemBtns{display:none}
+  #te_modal.te-eligiendo #te_elegir{display:flex;flex:1;min-height:0;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;padding:24px}
+  #te_modal #te_elegir h2{margin:0;font-size:17px;font-weight:700;color:var(--te-ink)}
+  #te_modal #te_elegir .te-elegir-sub{font-size:12px;color:var(--te-muted)}
+  /* Los MISMOS botones, en grande (los pinta el mismo _renderElemSel: un solo
+     render para las dos filas, que no pueden desincronizarse). */
+  #te_modal #te_elegir .te-elembtns{flex-wrap:wrap;justify-content:center;gap:10px}
+  #te_modal #te_elegir .te-elembtn{font-size:14px;padding:14px 26px;border-radius:10px;letter-spacing:.8px}
+  #te_modal #te_elegir .te-btn{margin-top:8px;font-size:13.5px;padding:10px 26px}
   /* .te-seg (el segmentado Viga|Muro|Columna que vivía en el titlebar) se retiró
-     junto con su CSS: el elemento se elige en #te_elemSel, aquí arriba. */
+     junto con su CSS: el elemento se elige en los botones de #te_elemBtns. */
   #te_modal .te-btn{border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
   #te_modal .te-btn.primary{background:var(--te-acero);color:#fff}
   #te_modal .te-btn.primary:hover{background:var(--te-acero-d)}
@@ -1399,19 +1441,20 @@
           <span id="te_subRuta">· nuevo · Catálogo › Templates</span>
         </div>
       </div>
-      <div class="te-spacer"></div>
-      <!-- ELEMENTO — se elige AQUÍ DENTRO (pedido del usuario: antes había que salir
-           a la pantalla previa y crear otro template para pasar de viga a muro).
-           VACÍO a propósito: las opciones las renderiza _renderElemSel()
+      <!-- ELEMENTO — UN BOTÓN POR TIPO, pegado al nombre (26-ago, pedido del usuario:
+           «un botón por tipo de elemento, el mismo botón que usas en el creador de
+           despieces»). Reemplaza al <select> #te_elemSel: mismos datos y mismo
+           handler (_cambiarElemento), sólo cambió la forma — chips con el color de
+           la biblioteca. Va a la IZQUIERDA, en la franja del título junto al nombre,
+           donde el usuario pidió que viviera la elección.
+           VACÍO a propósito: los botones los renderiza _renderElemSel()
            (template_editor.js) desde TPL_DIMS_POR_ELEMENTO, y deshabilita los
-           elementos sin datos completos (vistas + campos de hormigón + tipologías).
-           El badge de al lado queda como identidad de color (mismo tono que la
+           elementos sin datos completos y —con barras colocadas— todos menos el
+           activo (mismo motivo de siempre, en el tooltip). -->
+      <div id="te_elemBtns" class="te-elembtns"></div>
+      <div class="te-spacer"></div>
+      <!-- El badge queda como identidad de color junto a la ✕ (mismo tono que la
            lista de templates guardados); lo actualiza _actualizarTitulos(). -->
-      <label class="te-elemsel" for="te_elemSel"
-             title="Elemento del template. Al cambiarlo se rehacen tipologías, hormigón y las 3 vistas. Las barras ya colocadas se conservan.">
-        Elemento
-        <select id="te_elemSel"></select>
-      </label>
       <span class="te-chip" id="te_elemBadge">VIGA</span>
       <!-- El botón "📂 Abrir" del titlebar SE ELIMINÓ (21-ago). Al editor se entra por
            la lista del tab y sólo por ahí (esa puerta única se cerró hace poco): un
@@ -1527,6 +1570,21 @@
       <span id="te_bigwarnTxt"></span>
       <span class="te-bwsp"></span>
       <button class="te-bwx" id="te_bigwarnX" title="Ocultar aviso" aria-label="Ocultar aviso">✕</button>
+    </div>
+
+    <!-- PANTALLA INICIAL de un template NUEVO (26-ago): primero se elige el elemento
+         y se CONFIRMA; recién entonces aparecen ribbon, cuadrantes y herramientas
+         (la clase te-eligiendo de #te_modal tapa el resto — ver el CSS arriba). Con
+         un template EXISTENTE esta pantalla no se muestra: ya trae su elemento.
+         VACÍO el contenedor de botones a propósito: son LOS MISMOS del titlebar y
+         los pinta el mismo _renderElemSel() (template_editor.js). Confirmar lo
+         cablea _bindElemSel → _confirmarElemento. -->
+    <div id="te_elegir">
+      <h2>¿Qué elemento vas a modelar?</h2>
+      <div class="te-elegir-sub">El hormigón y las barras se definen después, dentro del editor.</div>
+      <div id="te_elegirBtns" class="te-elembtns"></div>
+      <button type="button" class="te-btn primary" id="te_elegirOk"
+              title="Entrar al editor con el elemento elegido">✓ Confirmar</button>
     </div>
 
     <div id="te_body">
