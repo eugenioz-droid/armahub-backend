@@ -11,6 +11,7 @@
     obras: 'Obras',
     buscar: 'Bar Manager',
     agregar2: 'Agregar Despiece',
+    muros: 'Muros',
     pedidos: 'Pedidos',
     export: 'Exportacion',
     reclamos: 'Reclamos',
@@ -98,7 +99,8 @@
     rec_settings: 'loadRecSettings',
     clientes: 'loadClientesModule',
     catalogo: 'loadCatalogoModule',
-    agregar2: 'loadAgregarCubicacion2' // 5N.20: creador de lotes v2 (contexto real)
+    agregar2: 'loadAgregarCubicacion2', // 5N.20: creador de lotes v2 (contexto real)
+    muros: 'loadMurosTab'               // muros consolidados de la obra (despiece banderado)
   };
 
   window.switchTab = function switchTab(tabName) {
@@ -135,7 +137,10 @@
     });
 
     if (mod === 'cubicacion' && window.currentRole === 'cliente') {
-      var hiddenTabs = ['obras', 'buscar', 'pedidos', 'export'];
+      // 'muros' entra acá porque el backend NIEGA la lectura de estructuras a los roles
+      // cliente/externo (_ROLES_SIN_LECTURA_TEMPLATES): dejar el botón sería ofrecerle al
+      // cliente un tab que solo puede devolverle un 403.
+      var hiddenTabs = ['obras', 'buscar', 'pedidos', 'export', 'muros'];
       document.querySelectorAll('.tab-btn.mod-cubicacion').forEach(function(button) {
         var onclick = button.getAttribute('onclick') || '';
         var match = onclick.match(/switchTab\('(\w+)'\)/);

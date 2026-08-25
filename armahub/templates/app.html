@@ -119,6 +119,9 @@
            del v2. Ver docs/diseno_editor_cubicacion.md §"Limpieza del v1". No re-exponer este
            botón: el v1 quedó obsoleto. -->
       <button class="tab-btn mod-cubicacion" onclick="switchTab('agregar2')">📋 Agregar Despiece</button>
+      <!-- Muros CONSOLIDADOS de la obra (despiece ya banderado). Va junto al creador porque es
+           su continuación natural: lo que allí se modela, acá se consulta. -->
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('muros')">🧱 Muros</button>
       <button class="tab-btn mod-cubicacion" onclick="switchTab('pedidos')">📝 Pedidos</button>
       <button class="tab-btn mod-cubicacion" onclick="switchTab('export')">📥 Exportación</button>
       <!-- Reclamos tabs (Nivel 1 — patrón shell estándar) -->
@@ -138,6 +141,7 @@
     {% include 'tabs/obras.html' %}
     {% include 'tabs/bar_manager.html' %}
     {% include 'tabs/agregar_cubicacion2.html' %}
+    {% include 'tabs/muros.html' %}
     {% include 'tabs/pedidos.html' %}
     {% include 'tabs/exportacion.html' %}
     {% include 'tabs/reclamos.html' %}

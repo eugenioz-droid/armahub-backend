@@ -253,6 +253,7 @@
   #te_modal #te_elegir{display:none}
   #te_modal.te-eligiendo #te_ribbon,
   #te_modal.te-eligiendo #te_bigwarn.on,
+  #te_modal.te-eligiendo #te_soloVistaBar.on,
   #te_modal.te-eligiendo #te_body,
   #te_modal.te-eligiendo #te_footer{display:none}
   /* La fila del titlebar se esconde SÓLO mientras se elige: el control es UNO y está
@@ -1406,6 +1407,53 @@
     line-height:1;color:inherit;opacity:.6;padding:2px 5px;border-radius:5px}
   #te_modal #te_bigwarn .te-bwx:hover{opacity:1;background:rgba(0,0,0,.06)}
 
+  /* ---- SOLO VISUALIZACIÓN (opts.soloVista) ----
+     El editor abierto para MIRAR: el despiece ya está banderado y sus barras se
+     editan en Bar Manager. Banda AZUL de ancho completo — el ámbar y el rojo de
+     #te_bigwarn ya significan "algo salió mal", y esto no es un error: es un MODO.
+     Las zonas de abajo se apagan por CLASE y no por lista de ids a propósito: se
+     REPINTAN solas (campos del hormigón, ficha de la barra, tejas), así que una
+     lista de ids las volvería a encender en el siguiente render. Siguen VISIBLES y
+     legibles —es lo que se viene a leer—; el banner explica por qué no aplican. */
+  #te_modal #te_soloVistaBar{display:none;align-items:center;gap:9px;padding:7px 18px;
+    font-size:11.5px;font-weight:600;border-bottom:1px solid var(--te-line);
+    background:var(--te-azul-b);color:var(--te-azul-t)}
+  #te_modal #te_soloVistaBar.on{display:flex}
+  #te_modal #te_soloVistaBar .te-svico{font-size:14px;line-height:1}
+  #te_modal.te-solovista #te_hormRows,
+  #te_modal.te-solovista #te_tipbtns,
+  #te_modal.te-solovista #te_figQuick,
+  #te_modal.te-solovista #te_elemBtns,
+  #te_modal.te-solovista #te_colocBloque,
+  #te_modal.te-solovista #te_detBody input,
+  #te_modal.te-solovista #te_detBody select,
+  #te_modal.te-solovista #te_detBody button,
+  #te_modal.te-solovista .te-tjdel{pointer-events:none;opacity:.55;filter:grayscale(1)}
+
+  /* ---- SELECTOR DE PISOS (carga multi-piso) ----
+     Vive en el grupo DESPIECE, pegado al campo Piso, porque lo que hace es repetir
+     ESA carga en N pisos. Nunca se esconde en modo obra: regenerando o en solo-vista
+     queda apagado y el title dice por qué (_sincronizarSelectorPisos). */
+  #te_modal .te-pisoswrap{position:relative;display:inline-flex;align-items:center;gap:6px}
+  #te_modal .te-pisosbtn{padding:6px 10px;font-size:12px;white-space:nowrap}
+  #te_modal .te-pisosbtn:disabled{opacity:.5;cursor:not-allowed}
+  #te_modal .te-pisosres{font-size:11px;color:var(--te-acero-t);font-weight:700;
+    max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #te_modal .te-pisospop{position:absolute;top:calc(100% + 6px);left:0;z-index:40;
+    display:flex;flex-direction:column;gap:6px;min-width:196px;
+    padding:9px;border:1px solid var(--te-line);border-radius:9px;
+    background:var(--te-panel);box-shadow:0 10px 26px rgba(0,0,0,.22)}
+  #te_modal .te-pisoshd{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--te-muted)}
+  #te_modal .te-pisoshd b{flex:1;color:var(--te-ink);font-size:11.5px}
+  #te_modal .te-pisoshd button{border:1px solid var(--te-line);background:var(--te-ghost);
+    color:var(--te-ghost-ink);border-radius:6px;padding:3px 7px;font-size:10.5px;cursor:pointer}
+  #te_modal .te-pisoshd button:hover{background:var(--te-hover)}
+  #te_modal .te-pisoslista{display:flex;flex-direction:column;gap:2px;overflow:auto;max-height:210px}
+  #te_modal .te-pisoit{display:flex;align-items:center;gap:7px;padding:3px 4px;border-radius:6px;
+    font-size:12px;color:var(--te-ink);cursor:pointer}
+  #te_modal .te-pisoit:hover{background:var(--te-hover)}
+  #te_modal .te-pisovacio{font-size:11px;color:var(--te-muted);line-height:1.35;padding:2px 1px}
+
   /* ---- BORRADOR SIN GUARDAR (TANDA 3 · no perder trabajo) ----
      Barra DISCRETA bajo el título. Sólo aparece al ABRIR el editor si quedó un
      borrador de menos de 48 h distinto de lo que se está abriendo (F5 / cierre del
@@ -1548,6 +1596,30 @@
         <input id="te_ribPiso" maxlength="20" placeholder="P4"
                title="Piso de esta estructura. Se estampa igual en TODAS sus barras."
                style="width:64px;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
+        <!-- CARGA MULTI-PISO — un muro de eje se repite igual piso a piso. Marcando N
+             pisos, "Cargar al despiece" crea UNA estructura por piso con la MISMA
+             receta (el nombre derivado ya lleva el piso, así que cada una se
+             identifica sola). El campo Piso de al lado SIGUE valiendo: sin nada
+             marcado manda él, que es el flujo de siempre. Sólo tiene sentido en la
+             PRIMERA carga: regenerando, el piso es el de la instancia abierta y el
+             botón queda apagado DICIENDO eso (_sincronizarSelectorPisos). -->
+        <span class="te-pisoswrap" id="te_pisosWrap" style="display:none">
+          <button type="button" class="te-btn ghost te-pisosbtn" id="te_pisosBtn" aria-expanded="false"
+                  title="Carga esta MISMA receta en varios pisos: se crea una estructura por piso.">🏢 Pisos ▾</button>
+          <span class="te-pisosres" id="te_pisosResumen"></span>
+          <span class="te-pisospop" id="te_pisosPop" style="display:none">
+            <span class="te-pisoshd">
+              <b>Cargar en varios pisos</b>
+              <button type="button" id="te_pisosTodos" title="Marcar todos los pisos de la obra">Todos</button>
+              <button type="button" id="te_pisosNinguno" title="Desmarcar todo y volver al campo Piso">Ninguno</button>
+            </span>
+            <!-- VACÍO a propósito: lo llena _renderListaPisos() con los pisos REALES de
+                 la obra (GET /proyectos/{id}/pisos-combinados, el mismo que usa la
+                 grilla del despiece). Una lista escrita a mano acá mentiría en cuanto
+                 la obra cambiara sus pisos. -->
+            <span class="te-pisoslista" id="te_pisosLista"></span>
+          </span>
+        </span>
         <span class="te-lbl">Template</span>
         <select id="te_ribTemplate"
                 title="Templates del elemento en curso. Al elegir uno se carga su receta en este despiece."
@@ -1570,6 +1642,17 @@
       <span id="te_bigwarnTxt"></span>
       <span class="te-bwsp"></span>
       <button class="te-bwx" id="te_bigwarnX" title="Ocultar aviso" aria-label="Ocultar aviso">✕</button>
+    </div>
+
+    <!-- SOLO VISUALIZACIÓN (opts.soloVista de templateEditorAbrirEnObra) — el
+         despiece ya está banderado: la estructura se abre para MIRARLA y sus barras
+         se editan en Bar Manager. Lo enciende _aplicarSoloVista() con la clase .on.
+         NO lleva ✕: no es un aviso descartable, es el modo en el que está el editor,
+         y es lo único que explica por qué los controles de edición están apagados. -->
+    <div id="te_soloVistaBar">
+      <span class="te-svico">👁</span>
+      <span>Solo visualización — este despiece ya está banderado: la estructura se ve,
+            pero sus barras se editan en Bar Manager.</span>
     </div>
 
     <!-- PANTALLA INICIAL de un template NUEVO (26-ago): primero se elige el elemento

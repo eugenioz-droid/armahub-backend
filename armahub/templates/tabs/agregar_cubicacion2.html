@@ -245,8 +245,39 @@
     <!-- VALIDACIÓN / rollup -->
     <div id="ac2_rollupWrap" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:8px 12px; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:6px;">
       <span id="ac2_revcount" style="font-size:12px; color:#2e7d32; font-weight:600;"></span>
+      <!-- LEYENDA de los fondos de fila. El color de una fila DICE algo (ya guardada / vino del
+           Enfierrador / le faltan o sobran medidas) y sin esta leyenda hay que adivinarlo.
+           Estática: no depende de ningún estado, por eso vive en el markup y no en el render. -->
+      <span style="font-size:11px; color:#607d8b; display:inline-flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span><span style="display:inline-block; width:10px; height:10px; background:#f1f8e9; border:1px solid #c5e1a5; vertical-align:middle; margin-right:4px;"></span>guardada</span>
+        <span><span style="display:inline-block; width:10px; height:10px; background:#e1f5fe; border:1px solid #81d4fa; vertical-align:middle; margin-right:4px;"></span>del Enfierrador (solo lectura)</span>
+        <span><span style="display:inline-block; width:10px; height:10px; background:#fff5f5; border:1px solid #ef9a9a; vertical-align:middle; margin-right:4px;"></span>medidas inválidas</span>
+      </span>
       <div style="flex:1;"></div>
       <span id="ac2_rollup" style="font-size:11px; color:#666;"></span>
+    </div>
+
+    <!-- ── ESTRUCTURAS DEL DESPIECE (Enfierrador) ───────────────────────────────────────────
+         Índice de los muros/vigas que hay DENTRO de este despiece. En la grilla se ven BARRAS
+         sueltas y un muro son 30 filas repartidas entre las demás: acá se ve de qué estructura
+         salieron y se abre su 3D para revisar cómo quedó. Solo abre el 3D — los listados de
+         barras no se tocan. Oculto mientras el despiece no tenga ninguna (ac2PintarEstructuras). -->
+    <div id="ac2_estructurasWrap" style="display:none; margin-top:14px;">
+      <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin:0 0 6px;">
+        <h4 style="margin:0; color:#0277bd; font-size:14px;">🧱 Estructuras de este despiece <span id="ac2_estructurasCnt" style="color:#90a4ae; font-weight:400; font-size:12px;"></span></h4>
+        <span style="font-size:11px; color:#90a4ae;">sus barras están en la grilla con fondo azul; se modifican reabriendo la estructura</span>
+      </div>
+      <table style="width:100%; font-size:11px; border-collapse:collapse;">
+        <thead><tr style="color:#666; background:#f5fbff;">
+          <th style="text-align:left; padding:4px 8px;">Estructura</th>
+          <th style="text-align:left; padding:4px 8px;">Elemento</th>
+          <th style="text-align:left; padding:4px 8px;">Piso</th>
+          <th style="text-align:right; padding:4px 8px;" title="Barras vivas que esta estructura tiene en el despiece">Barras</th>
+          <th style="text-align:right; padding:4px 8px;">Kg</th>
+          <th style="padding:4px 8px;"></th>
+        </tr></thead>
+        <tbody id="ac2_estructurasBody"></tbody>
+      </table>
     </div>
 
     <!-- REPOSITORIO / histórico de lotes -->

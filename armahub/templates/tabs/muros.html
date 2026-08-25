@@ -1,0 +1,50 @@
+<!-- TAB «Muros» — los muros CONSOLIDADOS de una obra: los que viven en un despiece ya
+     banderado 🚩. Antes de la bandera el muro es material de trabajo del despiece y se ve
+     desde el creador; recién al terminar el lote pasa a ser un dato de la obra y aparece acá.
+     Es un tab de CONSULTA: lista y abre el 3D en solo-visualización. No edita nada — las
+     barras de un despiece terminado se corrigen en Bar Manager.
+     Markup; la lógica vive en features/cubicacion/muros.js. -->
+<div id="tab-muros" class="tab-content">
+  <div style="padding:4px 2px 12px;">
+
+    <!-- Cabecera -->
+    <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+      <h3 style="margin:0; color:#0277bd;">🧱 Muros</h3>
+      <span class="muted" style="font-size:12px;">Muros de la obra cuyo despiece ya fue terminado 🚩 — ábrelos en 3D para ver cómo quedaron.</span>
+    </div>
+
+    <!-- Obra: MISMO componente que el Bar Manager y el creador de despieces
+         (shared/buscador_obra.js): input + datalist + select oculto con el id real. -->
+    <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px; padding:10px 12px; background:#e1f5fe; border:1px solid #b3e5fc; border-radius:8px;">
+      <div style="display:flex; flex-direction:column; width:260px;">
+        <label style="font-size:11px; color:#0277bd; font-weight:700; margin-bottom:2px;">Obra *</label>
+        <input type="text" id="muros_obra" list="muros_obraDatalist" placeholder="🔍 buscar obra…" style="font-size:13px; height:34px; box-sizing:border-box;" />
+        <datalist id="muros_obraDatalist"></datalist>
+        <select id="muros_obraSel" style="display:none;"></select>
+      </div>
+      <button onclick="murosRecargar()" title="Volver a pedir los muros de esta obra"
+              style="font-size:13px; font-weight:600; height:34px; padding:0 16px; background:#fff; color:#0277bd; border:1px solid #0277bd; border-radius:4px; cursor:pointer;">↻ Actualizar</button>
+      <div style="flex:1;"></div>
+      <span id="muros_resumen" style="font-size:12px; color:#0277bd; font-weight:600;"></span>
+    </div>
+
+    <!-- Tabla de muros. Mismo formato que el repositorio de despieces del creador. -->
+    <table style="width:100%; font-size:11px; border-collapse:collapse;">
+      <thead><tr style="color:#666; background:#fafafa;">
+        <th style="text-align:left; padding:4px 8px;">Muro</th>
+        <th style="text-align:left; padding:4px 8px;">Piso</th>
+        <th style="text-align:left; padding:4px 8px;">Ciclo · Eje</th>
+        <th style="text-align:right; padding:4px 8px;" title="Barras vivas de este muro en el despiece">Barras</th>
+        <th style="text-align:right; padding:4px 8px;">Kg</th>
+        <th style="text-align:left; padding:4px 8px;" title="Despiece donde se cargó">Despiece</th>
+        <th style="text-align:left; padding:4px 8px;">Creado</th>
+        <th style="padding:4px 8px;"></th>
+      </tr></thead>
+      <tbody id="muros_body"></tbody>
+    </table>
+    <!-- Mensaje de estado (sin obra / sin muros / cargando). Siempre visible cuando aplica:
+         una tabla vacía sin explicación se lee como "se rompió". -->
+    <div id="muros_msg" class="muted" style="padding:14px 8px;">Elige una obra para ver sus muros.</div>
+
+  </div>
+</div>

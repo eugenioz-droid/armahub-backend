@@ -468,11 +468,18 @@ function sinComentariosJs(src) {
 
     // El modo obra entra por templateEditorAbrirEnObra, NO por templateEditorAbrir:
     // el contexto de obra tiene que pasar por un solo sitio que lo valide.
+    // Consumidores permitidos: el creador de despieces (modela y carga barras) y el tab
+    // Muros (consulta lo ya banderado, siempre con soloVista). La lista es CERRADA a
+    // propósito: cualquier archivo nuevo que quiera abrir el editor con contexto de obra
+    // tiene que declararse acá, para que no vuelva a haber caminos de apertura paralelos.
+    const PUERTA_OBRA = ['agregar_cubicacion2.js', 'muros.js'];
     const abrenEnObra = archivos(path.join(RAIZ, 'static', 'js'), '.js')
       .filter(p => path.basename(p) !== 'template_editor.js')
-      .filter(p => /templateEditorAbrirEnObra\s*\(/.test(sinComentariosJs(fs.readFileSync(p, 'utf8'))));
-    ok(abrenEnObra.length === 1 && /agregar_cubicacion2\.js$/.test(abrenEnObra[0]),
-      'y la puerta del despiece la usa sólo Agregar Cubicación');
+      .filter(p => /templateEditorAbrirEnObra\s*\(/.test(sinComentariosJs(fs.readFileSync(p, 'utf8'))))
+      .map(p => path.basename(p)).sort();
+    ok(abrenEnObra.length === PUERTA_OBRA.length &&
+       abrenEnObra.every(n => PUERTA_OBRA.indexOf(n) !== -1),
+      'y la puerta del despiece la usan sólo Agregar Cubicación y el tab Muros (hay: ' + abrenEnObra.join(', ') + ')');
 
     const otros = archivos(path.join(RAIZ, 'static', 'js'), '.js')
       .filter(p => path.basename(p) !== 'template_editor.js')

@@ -400,6 +400,30 @@ window.ac2NavKey=function(ev, el){
   if (target){ ev.preventDefault(); target.focus(); if(target.select) target.select(); }
 };
 
+// FONDO + TÍTULO de una fila de la grilla — UNA sola escala de prioridades, en un solo lugar.
+// La fila la pintan TRES caminos distintos (render completo ac2Fila, edición de una medida
+// ac2ActualizarGeom y marcado masivo ac2PintarFilaSel); mientras cada uno traía su propia lista
+// de colores, uno se quedaba atrás y el fondo terminaba MINTIENDO (el rosado "pegado" tras
+// corregir una barra ya costó un fix). Con esta función los tres dicen lo mismo por construcción.
+// Prioridad: el ERROR manda sobre el foco del usuario, el foco sobre el ORIGEN de la barra, y el
+// origen sobre "ya está guardada" — una barra inválida tiene que verse aunque venga del
+// Enfierrador y ya esté en la BD. Devuelve el título en CRUDO: quien lo meta en un atributo HTML
+// es el que lo escapa (asignado a tr.title no se escapa nada).
+function ac2EstiloFila(b, val){
+  val = val || ac2Validar(b);
+  if (b.figura && !val.ok)
+    return { bg:'#fff5f5', tit:'Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+(b.figura||'')+')' };
+  if (AC2.masiva && AC2.seleccion[b._id])
+    return { bg:'#e3f2fd', tit:'' };
+  if (ac2BarraDeEstructura(b))
+    return { bg:'#e1f5fe', tit:'Barra generada por el Enfierrador (estructura #'+b._instanciaId+'): se modifica reabriendo su estructura con 🧱.' };
+  // "Guardada" va SIN título: en un despiece retomado lo están casi todas, y un tooltip que
+  // salta en cada fila es ruido. Lo explica la leyenda fija del pie de la grilla.
+  if (b._guardada)
+    return { bg:'#f1f8e9', tit:'' };
+  return { bg:'', tit:'' };
+}
+
 function ac2Fila(b){
   var mostrarTipo=(AC2.tipo==='TODOS');
   var info = b.figura ? ac2DimsDeFigura(b.figura) : {dims:[],angs:0,radio:false};
@@ -410,13 +434,12 @@ function ac2Fila(b){
   var bloq = ac2BarraDeEstructura(b);   // barra nacida del Enfierrador: solo lectura
   var dis = bloq ? ' disabled' : '';
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo],bloq)+'</td>'; };
-  // Fondo de fila: rojo TENUE si la geometría es inválida (prioritario) → el usuario ubica la fila
-  // con problema. Si NO es inválida y está SELECCIONADA en modo masivo, azul suave (resalta lo
-  // marcado sin confundir con el rojo de error).
-  var filaMala = (b.figura && !val.ok);
-  var seleccionada = (AC2.masiva && AC2.seleccion[b._id]);
-  var trStyle = filaMala ? ' style="background:#fff5f5;"' : (seleccionada ? ' style="background:#e3f2fd;"' : '');
-  var trTitle = filaMala ? ' title="Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+ac2Esc(b.figura)+')"' : '';
+  // Fondo/título de la fila: la escala completa vive en ac2EstiloFila (rosado inválida > celeste
+  // seleccionada > azul Enfierrador > verde guardada > blanco). Se reusa la validación ya
+  // calculada arriba para no validar la misma barra dos veces por fila.
+  var est = ac2EstiloFila(b, val);
+  var trStyle = est.bg ? ' style="background:'+est.bg+';"' : '';
+  var trTitle = est.tit ? ' title="'+ac2Esc(est.tit)+'"' : '';
   var h='<tr id="ac2row_'+b._id+'"'+trStyle+trTitle+'>';
   // data-grp = valor del campo por el que se agrupa (piso o marca), para que el maestro del
   // header de grupo encuentre a sus hijos. En "creación" (sin agrupar) no hay maestro, da igual.
@@ -585,7 +608,12 @@ function ac2SoloLectura(){ return AC2.loteEstado==='eliminado'; }
 // estructura en el Enfierrador (el botón 🧱 de la fila). El backend hace lo mismo:
 // DELETE /lotes/{id}/barras/{id} responde 409 para estas barras.
 // NO cubre el check de REVISADA: esa marca es del cubicador y el sync la conserva.
-function ac2BarraDeEstructura(b){ return !!(b && b._origen==='template' && b._instanciaId!=null); }
+// EL DATO DE RAÍZ ES EL VÍNCULO A LA INSTANCIA (_instanciaId), no la etiqueta _origen: en la
+// misma columna conviven 'template' (las históricas) y 'enfierrador' (las nuevas), y mañana
+// puede aparecer otra etiqueta. Mirar el origen dejaba fuera del candado a barras que SÍ
+// pertenecen a una estructura — el candado tiene que seguir al vínculo, que es el que hace
+// que la próxima regeneración las pise.
+function ac2BarraDeEstructura(b){ return !!(b && b._instanciaId!=null); }
 // Reconcilia el TEXTO visible de los comboboxes de ciclo/eje hacia el estado. Necesario porque el
 // combobox solo copia su texto a AC2 en el blur (con delay); si el usuario hace clic en un botón
 // antes del blur, el texto se perdía (causa de lotes guardados sin ciclo/eje). Llamar SIEMPRE
@@ -1105,14 +1133,14 @@ function ac2ActualizarGeom(id){
   if (tr) tr.querySelectorAll('input.ac2nav[data-row="'+id+'"]').forEach(function(inp){
     inp.classList.toggle('rojo', !!val.rojas[inp.getAttribute('data-col')]);
   });
-  // FONDO de la fila según validez (mismo criterio que ac2Fila). Antes solo lo pintaba/quitaba el
-  // re-render completo (ac2Fila) → si el usuario corregía una barra editando una MEDIDA (que no
+  // FONDO de la fila (mismo criterio que ac2Fila, vía ac2EstiloFila). Antes solo lo pintaba/quitaba
+  // el re-render completo (ac2Fila) → si el usuario corregía una barra editando una MEDIDA (que no
   // re-renderiza la fila), el fondo rosado "inválida" quedaba PEGADO aunque la barra ya fuera válida,
   // hasta forzar un re-render (cambiar figura/diám). Ahora el fondo se recalcula aquí también.
   if (tr){
-    var mala=(b.figura && !val.ok);
-    tr.style.background = mala ? '#fff5f5' : ((AC2.masiva && AC2.seleccion[id]) ? '#e3f2fd' : '');
-    tr.title = mala ? ('Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+b.figura+')') : '';
+    var est=ac2EstiloFila(b, val);
+    tr.style.background=est.bg;
+    tr.title=est.tit;
   }
   // El check Rev solo se puede marcar si la barra está completa y válida (ver ac2Fila).
   ac2ActualizarRevHabilitado(id, b);
@@ -1246,13 +1274,15 @@ window.ac2SelTodo=function(el){
   ac2Render();   // re-render: repinta filas y maestros de grupo desde el estado
 };
 // Pinta (o despinta) el FONDO de resaltado de una fila seleccionada, granular (sin re-render, no
-// pierde foco). No pisa el rojo de "inválida" (ese tiene prioridad).
+// pierde foco). Pasa por ac2EstiloFila: al DESMARCAR no se puede dejar la fila en blanco a secas
+// porque debajo del celeste puede haber azul (barra del Enfierrador) o verde (ya guardada) —
+// pintarla blanca borraba esa información hasta el siguiente re-render.
 function ac2PintarFilaSel(id){
   var tr=document.getElementById('ac2row_'+id); if(!tr) return;
   var b=ac2BarraPorId(id); if(!b) return;
-  var mala=(b.figura && !ac2Validar(b).ok);
-  if (mala) return;   // la fila inválida conserva su fondo rojo
-  tr.style.background=(AC2.masiva && AC2.seleccion[id]) ? '#e3f2fd' : '';
+  var est=ac2EstiloFila(b);
+  tr.style.background=est.bg;
+  tr.title=est.tit;
 }
 // Al marcar/desmarcar UNA fila: actualiza el estado + resalta la fila + sincroniza el maestro.
 window.ac2SelFila=function(el){
@@ -1804,6 +1834,9 @@ function _ac2ResetTanda(){
   if (_ac2CbEje)   _ac2CbEje.limpiar();
   ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
   ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2SetTipo('TODOS'); ac2CargarLotes();
+  // Soltamos el lote → el índice de estructuras que se ve en pantalla es del lote anterior.
+  // Se vacía aquí y no en cada llamador para que no quede colgando en ninguna ruta de salida.
+  window.ac2PintarEstructuras([]);
 }
 
 
@@ -1936,10 +1969,16 @@ window.ac2CtxEditor3D=function(){
 // duplicar — cada barra conserva su id, su historia y su revisión.
 window.ac2AbrirEditor3D=async function(instanciaId){
   if (!AC2.loteId){ alert('Crea primero el despiece (Obra + Ciclo + Eje).'); return; }
-  if (AC2.loteEstado!=='borrador'){
-    // El backend responde 409 al agregar barras a un lote terminado: se dice ANTES,
-    // no después de que el usuario modele la estructura completa.
-    alert('Este despiece ya está terminado: sus barras se corrigen en el Bar Manager.'); return;
+  // Despiece TERMINADO: no se puede cargar nada nuevo (el backend responde 409), pero SÍ se
+  // puede mirar una estructura que ya está adentro. Antes se bloqueaban las dos cosas con el
+  // mismo alert y "ver cómo quedó el muro" era imposible después de banderar.
+  var soloVista = (AC2.loteEstado==='terminada' && instanciaId!=null);
+  if (AC2.loteEstado!=='borrador' && !soloVista){
+    // Se dice ANTES, no después de que el usuario modele la estructura completa.
+    alert(AC2.loteEstado==='eliminado'
+      ? 'Este despiece está eliminado: su contenido es histórico y no se puede modelar.'
+      : 'Este despiece ya está terminado: sus barras se corrigen en el Bar Manager.');
+    return;
   }
   if (typeof window.templateEditorAbrirEnObra!=='function'){
     alert('El editor aún se está cargando. Reintenta en un momento.'); return;
@@ -1951,10 +1990,57 @@ window.ac2AbrirEditor3D=async function(instanciaId){
       alert('No se pudo abrir esa estructura (su receta no está disponible).'); return;
     }
     opts={ receta:d.params, piso:d.piso||'', nombre:d.nombre||'', instanciaId:d.id,
-           elemento:(d.elemento||'').toUpperCase()||null, tplOrigen:d.template_id };
+           elemento:(d.elemento||'').toUpperCase()||null, tplOrigen:d.template_id,
+           soloVista:soloVista };
   }
   window.templateEditorAbrirEnObra(ac2CtxEditor3D(), opts);
 };
+
+// ── ESTRUCTURAS DEL DESPIECE (listado compacto) ──────────────────────────────────
+// Para qué existe: en la grilla se ven BARRAS, y un muro son 30 barras repartidas entre
+// las demás; no había forma de preguntar "¿cómo quedó ese muro?" sin cazar una de sus
+// filas. Esta lista es el índice de las estructuras que hay dentro del despiece y su
+// única acción es ABRIR el 3D. No mueve ni reordena los listados de barras.
+window.ac2PintarEstructuras=function(lista){
+  var wrap=document.getElementById('ac2_estructurasWrap'); if(!wrap) return;
+  var cuerpo=document.getElementById('ac2_estructurasBody');
+  var cnt=document.getElementById('ac2_estructurasCnt');
+  lista=lista||[];
+  // Sin estructuras el bloque se esconde entero: un despiece cubicado a mano no tiene por qué
+  // cargar con una tabla vacía.
+  wrap.style.display = lista.length ? '' : 'none';
+  if (cnt) cnt.textContent = lista.length ? ('('+lista.length+')') : '';
+  if (!cuerpo) return;
+  // El 🧱 abre editable o en solo-vista según el estado del lote: esa decisión ya vive en
+  // ac2AbrirEditor3D (un solo lugar), aquí solo se nombra. En un despiece ELIMINADO el 3D no
+  // se abre, así que no se ofrece el botón: un control que solo puede responder con un alert
+  // es un control muerto (se deja el texto explicando por qué, no se esconde la fila).
+  var eliminado = (AC2.loteEstado==='eliminado');
+  var verTxt = (AC2.loteEstado==='borrador') ? '🧱 Abrir' : '👁 Ver 3D';
+  cuerpo.innerHTML = lista.map(function(e){
+    var retirada = (e.estado==='retirada');
+    var accion;
+    if (eliminado) accion='<span style="color:#9e9e9e; font-size:10px;" title="Despiece eliminado: su contenido es histórico y no se abre en 3D.">— histórico</span>';
+    else if (retirada) accion='<span style="color:#9e9e9e; font-size:10px;" title="Estructura retirada: sus barras ya no están en el despiece.">— retirada</span>';
+    else accion='<span onclick="ac2AbrirEditor3D('+e.id+')" title="Ver esta estructura en 3D" style="color:#0277bd; cursor:pointer; font-weight:600;">'+verTxt+'</span>';
+    return '<tr style="border-top:1px solid #f0f0f0;'+(retirada?' color:#9e9e9e;':'')+'">'+
+      '<td style="padding:5px 8px; font-weight:600;'+(retirada?'':' color:#0277bd;')+'">'+ac2Esc(e.nombre||('#'+e.id))+'</td>'+
+      '<td style="padding:5px 8px;">'+ac2Esc(e.elemento||'—')+'</td>'+
+      '<td style="padding:5px 8px;">'+ac2Esc(e.piso||'—')+'</td>'+
+      '<td style="padding:5px 8px; text-align:right;">'+(e.n_barras||0)+'</td>'+
+      '<td style="padding:5px 8px; text-align:right;">'+ac2Num(e.kg,1)+'</td>'+
+      '<td style="padding:5px 8px; text-align:right; white-space:nowrap;">'+accion+'</td></tr>';
+  }).join('');
+};
+// Trae las estructuras del despiece y las pinta. Falla en SILENCIO VISIBLE: si el GET no
+// responde, la lista queda vacía (el bloque se esconde) y el error real sale por consola —
+// no se inventa contenido ni se bloquea la carga del despiece, que es lo importante.
+async function _ac2CargarEstructuras(loteId){
+  if (loteId==null){ window.ac2PintarEstructuras([]); return; }
+  var d=await _ac2Get('/lotes/'+loteId+'/elementos');
+  if (!d){ console.error('[AC2] No se pudieron cargar las estructuras del despiece '+loteId); }
+  window.ac2PintarEstructuras((d && d.elementos) || []);
+}
 
 // RECARGAR el despiece abierto. El editor 3D llama a esto tras cargar barras. NO
 // existía (sólo ac2CargarLotes, que es el REPOSITORIO de despieces de la obra): por eso
@@ -2017,6 +2103,10 @@ window.ac2RetomarLote=async function(id, forzar){
   // disponibles. Si falla la carga, igual se renderiza (los pisos existentes de las barras aparecen).
   try { await _ac2CargarPisos(); } catch(e) {}
   ac2SetTipo('TODOS'); ac2CargarLotes();
+  // Índice de estructuras del despiece: se pide DESPUÉS de tener el lote fijado en AC2, porque
+  // el texto del botón (abrir vs ver) depende de AC2.loteEstado. Sin await, igual que el
+  // repositorio: la grilla no tiene por qué esperar a esta lista.
+  _ac2CargarEstructuras(L.id);
   if (L.estado==='eliminado') alert('Despiece #'+(L.num_obra||L.id)+' ELIMINADO — solo lectura (histórico).\nSe conserva su contenido para consulta; no se puede editar. Usa la ✕ para volver.');
   else if (L.estado==='terminada') alert('Despiece #'+(L.num_obra||L.id)+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
 };
@@ -2081,6 +2171,7 @@ function _ac2InitComboboxes(){
         _ac2CiclosObra=[]; _ac2EjesObra=[];
         ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
         ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
+        window.ac2PintarEstructuras([]);   // el índice visible era del despiece de la obra anterior
         _ac2Pisos=[]; ac2PintarMenuPisos();
         if (AC2.proyecto){ _ac2CargarContexto(AC2.proyecto); _ac2CargarPisos(); }
         if (typeof ac2CargarGrafico==='function') ac2CargarGrafico();   // gráfico → esta obra (o todas si se deseleccionó)

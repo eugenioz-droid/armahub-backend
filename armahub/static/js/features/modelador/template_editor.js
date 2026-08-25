@@ -330,8 +330,15 @@
     //   piso      : UNO por estructura, se estampa igual en todas sus barras. El
     //               backend lo EXIGE no vacio por barra (lotes.py agregar_barras).
     //   instanciaId: fila de elementos_template de ESTA estructura (traza).
-    ctxObra: null, piso: '', instanciaId: null, tplOrigen: null,
-    _tplsObra: null   // templates del elemento, cacheados para el selector de obra
+    //   soloVista : el editor abierto para MIRAR. El despiece ya esta banderado y
+    //               sus barras se editan en Bar Manager: aca se ve la estructura,
+    //               no se toca (ver el bloque MODO SOLO-VISTA, mas abajo).
+    ctxObra: null, piso: '', instanciaId: null, tplOrigen: null, soloVista: false,
+    _tplsObra: null,  // templates del elemento, cacheados para el selector de obra
+    // MULTI-PISO: los pisos de la obra (GET /proyectos/{id}/pisos-combinados) y los
+    // que el usuario marco para cargar de una. Vacio = manda el campo de piso unico,
+    // que es el flujo de siempre.
+    _pisosObra: null, _pisosSel: null
   };
 
   function $(id) { return document.getElementById(id); }
@@ -2207,6 +2214,115 @@
 
   function _modoObra() { return !!(ST.ctxObra && ST.ctxObra.loteId); }
 
+  // ==========================================================================
+  // MODO SOLO-VISTA (opts.soloVista de la puerta del despiece)
+  // --------------------------------------------------------------------------
+  // POR QUE EXISTE: cuando el despiece se BANDERA (lote 'terminada') sus barras
+  // pasan a vivir en el Bar Manager. La estructura 3D sigue siendo la mejor forma
+  // de entender lo que se cubico, asi que hay que poder abrirla — pero para MIRAR.
+  // NO es un visor aparte: un segundo visor seria un segundo editor divergiendo.
+  // Es ESTE modal, con las mutaciones cortadas.
+  //
+  // Se corta en DOS capas, y las dos hacen falta:
+  //   1) CROMO (_aplicarSoloVista) — los controles que mutan quedan DESHABILITADOS
+  //      PERO VISIBLES, con el motivo en el title, y el banner de arriba lo dice en
+  //      palabras. Regla de la casa: un control que desaparece no explica nada.
+  //   2) GUARDAS (_bloqueadoSoloVista) — la pregunta va DONDE OCURRE la mutacion,
+  //      no solo en el boton: las puertas tambien son las teclas (Supr, R, ESPACIO,
+  //      Ctrl+Z), los gestos del cuadrante, la papelera de la teja y los globals.
+  //
+  // Lo que NO se toca porque es MIRAR: navegacion (pan/zoom/giro), cortes, temas,
+  // el listado de barras, la seleccion de una barra para leer su ficha y la
+  // ampolleta (apagar un componente no cambia medidas ni kilos, y en solo-vista
+  // nada se persiste: ni template, ni borrador, ni despiece).
+  // ==========================================================================
+  var _MOTIVO_SOLOVISTA = 'Solo visualizaci\u00f3n: este despiece ya est\u00e1 banderado. ' +
+    'La estructura se ve, pero sus barras se editan en Bar Manager.';
+
+  function _soloVista() { return !!ST.soloVista; }
+
+  // true = la accion esta BLOQUEADA (y ya dijo por que en la barra de estado). Se
+  // llama al PRINCIPIO del mutador, antes de tocar la receta: una tecla muerta y
+  // muda parece un cuelgue.
+  function _bloqueadoSoloVista() {
+    if (!ST.soloVista) return false;
+    _actualizarStatus(_MOTIVO_SOLOVISTA);
+    return true;
+  }
+
+  // CAMPOS QUE SIGUEN VIVOS en solo-vista: son de MIRAR, no de escribir la receta.
+  // Se nombran uno a uno (lista corta y explicita) porque la guarda de abajo corta
+  // POR DEFECTO: un control nuevo nace bloqueado, que es el lado seguro del error.
+  var _CAMPOS_VISTA_SOLOVISTA = ['te_corteRange', 'te_corteIman', 'te_corteIman_largo',
+    'te_corteIman_planta'];
+
+  // GUARDA DE ULTIMA LINEA. Se engancha UNA vez, en CAPTURA y en la RAIZ del modal:
+  // cualquier gesto de escritura sobre un campo (teclear, pegar, cambiar un select)
+  // muere antes de llegar a su handler.
+  // POR QUE hace falta ademas del CSS: apagar una zona con pointer-events no impide
+  // llegar a su campo con TAB, y una lista de ids envejece — manana aparece un
+  // control nuevo y el modo tendria un agujero. Asi el modo vale para el MODAL, no
+  // para los controles que existian el dia que se escribio esto.
+  function _bindGuardaSoloVista() {
+    var m = $('te_modal'); if (!m || m._teSoloVistaBound || !m.addEventListener) return;
+    m._teSoloVistaBound = true;
+    ['keydown', 'keypress', 'beforeinput', 'input', 'change', 'paste'].forEach(function (t) {
+      m.addEventListener(t, function (e) {
+        if (!ST.soloVista) return;                 // fuera del modo no cuesta nada
+        var el = e.target || {};
+        var tag = String(el.tagName || '').toLowerCase();
+        if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return;
+        if (el.readOnly) return;                   // readonly ya no escribe nada
+        if (_CAMPOS_VISTA_SOLOVISTA.indexOf(el.id || '') >= 0) return;
+        e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+        _actualizarStatus(_MOTIVO_SOLOVISTA);
+      }, true);
+    });
+  }
+
+  // CROMO — punto UNICO. Los ids que se apagan son los que MUTAN; los de mirar no
+  // aparecen en la lista. El title anterior se guarda para poder devolverlo: el
+  // modal es el MISMO entre aperturas y sin esto una apertura normal heredaria el
+  // cartel de solo-vista de la anterior.
+  function _aplicarSoloVista() {
+    var on = _soloVista();
+    var modal = $('te_modal');
+    _bindGuardaSoloVista();   // idempotente: se engancha en la primera apertura
+    // La CLASE apaga por CSS las zonas que se repintan solas (campos del hormigon,
+    // ficha de la barra, papelera de la teja, tipologias, figuras rapidas): con una
+    // lista de ids se volverian a encender en el siguiente render.
+    if (modal && modal.classList) modal.classList.toggle('te-solovista', on);
+    var ban = $('te_soloVistaBar');
+    if (ban && ban.classList) ban.classList.toggle('on', on);
+    ['te_btnCargarDespiece', 'te_btnGuardar', 'te_btnGuardarNuevo', 'te_btnAgregarBarra',
+     'te_btnBorrar', 'te_btnEspejar', 'te_detDup', 'te_detDel', 'te_flipBtn',
+     'te_ribTemplate', 'te_ribFigura', 'te_ribDiam', 'te_pisosBtn'
+    ].forEach(function (id) {
+      var el = $(id); if (!el) return;
+      el.disabled = on;
+      if (on) {
+        if (el._teTitPrev == null) el._teTitPrev = (el.title || '');
+        el.title = _MOTIVO_SOLOVISTA;
+      } else if (el._teTitPrev != null) {
+        el.title = el._teTitPrev; el._teTitPrev = null;
+      }
+    });
+    // Los dos campos de TEXTO van readonly, no disabled: el nombre de la estructura
+    // y su piso son justo lo que se viene a leer, y disabled los apaga en gris.
+    ['te_nombre', 'te_ribPiso'].forEach(function (id) {
+      var el = $(id); if (!el) return;
+      el.readOnly = on;
+      if (on) {
+        if (el._teTitPrev == null) el._teTitPrev = (el.title || '');
+        el.title = _MOTIVO_SOLOVISTA;
+      } else if (el._teTitPrev != null) {
+        el.title = el._teTitPrev; el._teTitPrev = null;
+      }
+    });
+    _sincronizarSelectorPisos();
+  }
+
   function _regenerar() {
     var d = _deps();
     if (!d.gen || !ST.receta) return;
@@ -2298,6 +2414,7 @@
   }
 
   function _undo() {
+    if (_bloqueadoSoloVista()) return;   // deshacer REEMPLAZA la receta por otra
     if (!ST.undoStack.length) { _actualizarStatus('Nada que deshacer.'); return; }
     var snap = ST.undoStack.pop();
     ST.receta = snap.receta;
@@ -2371,6 +2488,10 @@
   function _guardarBorradorAhora() {
     if (_borrTimer) { global.clearTimeout(_borrTimer); _borrTimer = null; }
     if (!ST.receta || !_modalAbierto()) return;
+    // SOLO VISTA no deja borrador: no hay trabajo del usuario que proteger, y si lo
+    // dejara, la próxima apertura REAL ofrecería recuperar un borrador fantasma con
+    // la receta de una estructura ajena.
+    if (ST.soloVista) return;
     // Nada que proteger = no se toca la clave (ver cabecera del bloque). Es el ÚNICO
     // escritor, así que la regla vale para el throttle, para el cierre del modal y
     // para el beforeunload por igual.
@@ -2397,6 +2518,7 @@
   // (el timer pendiente escribe el último estado tras el arrastre).
   function _programarBorrador() {
     if (!ST.receta || !_modalAbierto()) return;
+    if (ST.soloVista) return;   // idem _guardarBorradorAhora: mirar no genera borrador
     if (!_hayCambiosSinGuardar()) return;   // ni siquiera se agenda (idem _guardarBorradorAhora)
     if (_borrTimer) return;
     var espera = Math.max(0, BORRADOR_MS - (Date.now() - _borrUltimo));
@@ -2441,6 +2563,9 @@
   // regeneración (receta normalizada) — si no, cualquier apertura mostraría la barra.
   function _ofrecerBorrador() {
     _ocultarBarraBorrador();
+    // Recuperar un borrador REEMPLAZA la receta en pantalla: en solo-vista no aplica
+    // (se vino a ver ESTA estructura) y ademas seria editar por la puerta de atras.
+    if (ST.soloVista) return;
     if (_borrRecuperando) return;                 // recuperar no se re-ofrece a sí mismo
     var b = _leerBorrador(); if (!b) return;
     var s;
@@ -6065,6 +6190,7 @@
   // Snapshot para Ctrl+Z.
   function _rotarPoseSeleccion(plano) {
     if (!ST.receta) return;
+    if (_bloqueadoSoloVista()) return;   // girar la pose es cambiar la receta
     if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a girar (R).'); return; }
     _pushUndo();
     rotarPoseEnVista(ST.receta.componentes[ST.selCi], plano || _vistaActiva());
@@ -6094,6 +6220,7 @@
   // reparto): un estribo gira sin salirse de su plano, da igual qué vista esté
   // activa. Si el motor no puede medirla, cae al giro por vista (como R).
   function _rotarEnPlanoPropio() {
+    if (_bloqueadoSoloVista()) return;
     if (!ST.receta || ST.selCi < 0) { _rotarPoseSeleccion(_vistaActiva()); return; }
     var comp = ST.receta.componentes[ST.selCi];
     // PIEZA DE MARCO (estribo cerrado): girar la pose no mueve NADA visible — el
@@ -6429,6 +6556,8 @@
 
   function _borrarSeleccion() {
     if (!ST.receta) return;
+    // La papelera de la teja entra por aqui tambien, no solo el boton del ribbon.
+    if (_bloqueadoSoloVista()) return;
     // Sin selección el botón parecía "roto" (no pasaba absolutamente nada): ahora lo
     // dice en la barra de estado.
     var borrar = _selTodos();
@@ -6537,6 +6666,22 @@
         if (evt.shiftKey) return;
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
+
+        // SOLO VISTA - el cuadrante pasa a ser de MIRAR. Se corta ACA, en el dispatch,
+        // y no gesto por gesto: todo lo que sigue (tiradores del marco, rotulos de
+        // largo, rango, tramos, colocacion, espejo y el arrastre de la barra) MUTA la
+        // receta. Lo unico que se deja vivo es SELECCIONAR, que es lectura pura: es
+        // como se abre la ficha de una barra para leer su figura, su diametro y sus
+        // medidas, que es justo a lo que se viene.
+        if (ST.soloVista) {
+          var ciSV = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-ci');
+          if (ciSV != null && evt.target.getAttribute('data-hit')) {
+            evt.preventDefault(); _seleccionar(Number(ciSV)); return;
+          }
+          var pkSV = _pickBarra(plano, sp.px, sp.py);
+          _seleccionar(pkSV >= 0 ? pkSV : -1);
+          return;
+        }
 
         // ¿tocó un TIRADOR DEL MARCO de la barra seleccionada?
         var tgtMarco = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-marco');
@@ -9450,6 +9595,7 @@
   // lo que falte: sin barra elegida pide la barra, y en cuanto hay una aparecen las
   // bandas solas (el repintado de la vista las trae, ver _redibujar2D).
   function _armarEspejo() {
+    if (_bloqueadoSoloVista()) return;   // espejar CREA un componente nuevo
     ST.espejoPend = true;
     _marcarBotonEspejo();
     _pintarCarasEspejo();
@@ -9540,6 +9686,7 @@
 
   function _duplicar(ci) {
     var c = ST.receta.componentes[ci]; if (!c) return;
+    if (_bloqueadoSoloVista()) return;
     _pushUndo();
     var copia = JSON.parse(JSON.stringify(c));
     ST.receta.componentes.splice(ci + 1, 0, copia);
@@ -10104,6 +10251,7 @@
   // clic derecho sobre una vista. Sustituye a la vieja herramienta "Colocar" y al
   // antiguo _agregarComponenteManual() (que agregaba al tiro, sin pasar por pantalla).
   function _entrarModoColocacion() {
+    if (_bloqueadoSoloVista()) return;   // colocar = agregar un componente a la receta
     _activarHerramienta('colocar');   // abre el bloque figura/φ/tipología y sella
     // Sin sello (figura vacía/inválida o φ vacío) hay que RE-sellar: el
     // _actualizarStatus() con que termina _activarHerramienta se comió el motivo, y
@@ -10297,6 +10445,11 @@
       // decenas de veces por segundo, y un interruptor que se dispara con cada
       // repetición parpadearía en vez de conmutar.
       if (e.key === 'Shift') { if (!e.repeat) _setCotas(!ST.cotas); return; }
+      // SOLO VISTA - de aqui para abajo TODOS los atajos mutan (Ctrl+Z deshace,
+      // ESPACIO y R giran, Supr borra). Se cortan en el dispatch y se DICE por que:
+      // una tecla muerta y muda parece un cuelgue. SHIFT queda arriba a proposito
+      // porque las cotas son de mirar.
+      if (_bloqueadoSoloVista()) return;
       // Ctrl/Cmd+Z → deshacer (tarea 4). Shift+Ctrl+Z NO se usa (sin redo).
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         e.preventDefault(); _undo(); return;
@@ -12136,6 +12289,14 @@
     // reusa como ST.templateId: en modo obra el hormigon se ajusta a lo REAL y un
     // PUT con esa geometria corromperia el template de la biblioteca.
     ST.tplOrigen = (cfg.tplOrigen != null) ? cfg.tplOrigen : null;
+    // SOLO VISTA — apagado salvo que la puerta lo pida EXPLICITAMENTE. Se fija aca,
+    // junto al resto del contexto, porque el cromo y las guardas lo leen desde el
+    // primer render: encenderlo despues dejaria una ventana editable.
+    ST.soloVista = (cfg.soloVista === true);
+    // La seleccion de pisos es de ESTA apertura: arrastrarla de la anterior cargaria
+    // en pisos que el usuario ya no tiene a la vista.
+    ST._pisosSel = [];
+    ST._pisosObra = null;
     if (cfg.receta) {
       // "Abrir": receta guardada (params del backend), clonada para no mutar la fuente.
       ST.receta = JSON.parse(JSON.stringify(cfg.receta));
@@ -12205,6 +12366,9 @@
     _actualizarTitulosVista(); // títulos (SECCIÓN/ELEVACIÓN/PLANTA) + gizmo de ejes
     _sincronizarRibbonGeo();   // el grupo HORMIGÓN del ribbon refleja la receta
     _aplicarModoObra();        // grupo DESPIECE del ribbon + botón "Cargar al despiece"
+    // DESPUES del modo obra (apaga cosas que aquel acaba de encender) y ANTES del
+    // primer render: el editor nunca llega a verse editable si no lo es.
+    _aplicarSoloVista();
     _marcarSucio();     // PERF (render-on-demand): al abrir siempre hay que pintar
     // Undo limpio por sesión. Se ABRE SIEMPRE en SELECCIONAR: colocar es un modo
     // explícito ("＋ Agregar barra"), nunca el estado inicial.
@@ -12257,9 +12421,13 @@
   // NOMBRE DE LA ESTRUCTURA - se DERIVA, no se pide (decision 3 del usuario: "no
   // debiera haber 2 muros por eje; si un eje tiene 2 muros, el cubicador los
   // subdivide"). Obra + ciclo + piso + eje identifican la estructura sin campo.
-  function _nombreEstructura() {
+  // `piso` OPCIONAL: la carga multi-piso deriva un nombre por cada piso elegido en
+  // la misma pasada, y no puede pisar ST.piso para conseguirlo (ese es el de la
+  // sesion). Sin argumento se comporta exactamente como antes.
+  function _nombreEstructura(piso) {
     var c = ST.ctxObra; if (!c) return '';
-    return [c.id_proyecto, c.ciclo, (ST.piso || '').trim(), c.eje].filter(function (x) {
+    var p = (piso != null) ? String(piso) : (ST.piso || '');
+    return [c.id_proyecto, c.ciclo, p.trim(), c.eje].filter(function (x) {
       return !!(x && String(x).trim());
     }).join(' \u00b7 ');
   }
@@ -12283,6 +12451,10 @@
     var pi = $('te_ribPiso'); if (pi) pi.value = ST.piso || '';
     _bindObra();
     _cargarTemplatesObra();
+    // SELECTOR DE PISOS: _sincronizarSelectorPisos decide si se ve y si esta vivo
+    // (primera carga vs regeneracion vs solo-vista); la lista se pide aparte.
+    _sincronizarSelectorPisos();
+    _cargarPisosObra();
   }
 
   function _bindObra() {
@@ -12309,6 +12481,195 @@
         if (!id) return;
         _cargarRecetaTemplateEnObra(id);
       });
+    }
+    _bindPisos();
+  }
+
+  // ==========================================================================
+  // SELECTOR DE PISOS - CARGAR LA MISMA RECETA EN VARIOS PISOS DE UNA VEZ
+  // --------------------------------------------------------------------------
+  // POR QUE: un muro de eje se repite igual piso a piso. Hasta hoy habia que
+  // cargarlo, cambiar el piso, volver a cargarlo... N veces, y cada pasada era otra
+  // oportunidad de equivocarse de piso. Con el selector se marcan los pisos y se
+  // crea UNA estructura por piso con la MISMA receta; el nombre derivado ya lleva
+  // el piso (_nombreEstructura), asi que cada una se identifica sola.
+  //
+  // Reglas que fija el propio control:
+  //   * Solo en la PRIMERA carga (ST.instanciaId == null). Regenerando, el piso es
+  //     el de la instancia abierta y no hay nada que elegir: el control SE VE pero
+  //     queda apagado diciendo por que (nunca desaparece en silencio).
+  //   * El campo de piso unico (te_ribPiso) SIGUE valiendo: sin nada marcado manda
+  //     el, que es el flujo de siempre.
+  //   * El render NO siembra estado: pinta lo que hay en ST._pisosObra/_pisosSel y
+  //     no escribe ninguno de los dos. Un panel que se llena solo al pintarse
+  //     esconde el defecto de quien tenia que llenarlo.
+  // ==========================================================================
+
+  // Pisos de la obra. Se pide UNA vez por apertura al MISMO endpoint que usa la
+  // grilla del despiece (_ac2CargarPisos): una sola fuente de pisos para los dos.
+  function _cargarPisosObra() {
+    var c = ST.ctxObra;
+    if (!c || !c.id_proyecto) return;
+    if (ST._pisosObra) { _renderListaPisos(); return; }
+    _tplFetch('/proyectos/' + encodeURIComponent(c.id_proyecto) + '/pisos-combinados',
+      { headers: _tplHeaders(false) })
+      .then(function (d) {
+        ST._pisosObra = ((d && d.pisos) || []).map(function (p) {
+          return (p && p.valor != null) ? String(p.valor) : String(p == null ? '' : p);
+        }).filter(function (p) { return !!p; });
+        _renderListaPisos();
+        _sincronizarSelectorPisos();
+      })
+      .catch(function () {
+        // Sin lista NO se inventa una: el campo de piso unico sigue sirviendo y el
+        // desplegable lo DICE, en vez de mostrarse vacio y parecer que la obra no
+        // tiene pisos.
+        ST._pisosObra = [];
+        _renderListaPisos();
+        _sincronizarSelectorPisos();
+      });
+  }
+
+  function _renderListaPisos() {
+    var host = $('te_pisosLista'); if (!host) return;
+    var pisos = ST._pisosObra;
+    if (pisos == null) { host.innerHTML = '<div class="te-pisovacio">cargando pisos\u2026</div>'; return; }
+    if (!pisos.length) {
+      host.innerHTML = '<div class="te-pisovacio">No se pudo leer la lista de pisos de la obra. ' +
+        'Escribe el piso a mano en el campo de al lado.</div>';
+      return;
+    }
+    var sel = ST._pisosSel || [];
+    host.innerHTML = pisos.map(function (p) {
+      var on = (sel.indexOf(p) >= 0) ? ' checked' : '';
+      return '<label class="te-pisoit"><input type="checkbox" value="' + _esc(p) + '"' + on +
+             '><span>' + _esc(p) + '</span></label>';
+    }).join('');
+  }
+
+  // UNA sola puerta para marcar/desmarcar: la usa el gesto (delegacion en la lista)
+  // y la usa la suite. Escribe SOLO ST._pisosSel; el render lo lee.
+  function _togglePisoSel(p, on) {
+    p = String(p == null ? '' : p).trim();
+    if (!p) return;
+    var sel = (ST._pisosSel || []).slice();
+    var i = sel.indexOf(p);
+    if (on && i < 0) sel.push(p);
+    if (!on && i >= 0) sel.splice(i, 1);
+    // Se ordena por el ORDEN DE LA OBRA (subterraneos -> P1..Pn -> salas), no por el
+    // orden en que se fue clicando: las estructuras se crean en ese orden y el aviso
+    // de "hasta que piso entro" tiene que leerse de abajo hacia arriba.
+    var orden = ST._pisosObra || [];
+    sel.sort(function (a, b) {
+      var ia = orden.indexOf(a), ib = orden.indexOf(b);
+      if (ia < 0) ia = 9999;
+      if (ib < 0) ib = 9999;
+      return (ia - ib) || (a < b ? -1 : (a > b ? 1 : 0));
+    });
+    ST._pisosSel = sel;
+    _sincronizarSelectorPisos();
+  }
+
+  function _limpiarSelectorPisos() { ST._pisosSel = []; }
+
+  // Pisos de ESTA carga. Regenerar es siempre de UNO (el de la instancia abierta);
+  // en la primera carga manda lo marcado, y sin nada marcado el campo de piso unico
+  // -- que es el caso de hoy y no cambia.
+  function _pisosACargar() {
+    var uno = (ST.piso || '').trim();
+    if (ST.instanciaId != null) return uno ? [uno] : [];
+    var marcados = (ST._pisosSel || []).filter(function (p) { return !!(p && String(p).trim()); });
+    if (marcados.length) return marcados.slice();
+    return uno ? [uno] : [];
+  }
+
+  // Estado VISIBLE del control: nunca se esconde, se apaga y dice por que.
+  function _sincronizarSelectorPisos() {
+    var wrap = $('te_pisosWrap'); if (!wrap) return;
+    var obra = _modoObra();
+    wrap.style.display = obra ? '' : 'none';
+    if (!obra) return;
+    var regenera = (ST.instanciaId != null);
+    var motivo = ST.soloVista
+      ? _MOTIVO_SOLOVISTA
+      : (regenera
+        ? ('Esta estructura ya existe en el despiece: su piso es ' + (ST.piso || '\u2014') +
+           ' y no se cambia desde aqu\u00ed. Cargar en varios pisos es de la PRIMERA carga.')
+        : '');
+    var sel = ST._pisosSel || [];
+    var btn = $('te_pisosBtn');
+    if (btn) {
+      btn.disabled = !!motivo;
+      btn.title = motivo ||
+        'Carga esta MISMA receta en varios pisos: se crea una estructura por piso.';
+      btn.textContent = sel.length
+        ? ('\ud83c\udfe2 ' + sel.length + ' pisos \u25be')
+        : '\ud83c\udfe2 Pisos \u25be';
+    }
+    // Lo que se va a cargar, ESCRITO: con pisos marcados el campo de al lado deja de
+    // mandar, y eso no se puede adivinar mirando el ribbon.
+    var res = $('te_pisosResumen');
+    if (res) {
+      res.textContent = sel.length ? ('\u2192 ' + sel.join(', ')) : '';
+      res.title = sel.length
+        ? ('Se crear\u00e1 una estructura por piso: ' + sel.join(', ') +
+           '. Desmarca todo para usar el campo Piso.')
+        : '';
+    }
+    if (motivo) _abrirPopPisos(false);
+  }
+
+  function _abrirPopPisos(on) {
+    var pop = $('te_pisosPop'); if (!pop) return;
+    if (on) { _renderListaPisos(); _cargarPisosObra(); }
+    pop.style.display = on ? '' : 'none';
+    var btn = $('te_pisosBtn');
+    if (btn && btn.setAttribute) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  }
+
+  function _bindPisos() {
+    var btn = $('te_pisosBtn'), pop = $('te_pisosPop'), host = $('te_pisosLista');
+    if (btn && !btn._teBound) {
+      btn._teBound = true;
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (btn.disabled) return;
+        _abrirPopPisos(!(pop && pop.style.display !== 'none'));
+      });
+    }
+    if (host && !host._teBound) {
+      host._teBound = true;
+      // DELEGACION: la lista se repinta con innerHTML, asi que un listener por
+      // casilla se iria con el repintado.
+      host.addEventListener('change', function (e) {
+        var t = e.target;
+        if (!t || t.type !== 'checkbox') return;
+        _togglePisoSel(t.value, !!t.checked);
+      });
+    }
+    var todos = $('te_pisosTodos');
+    if (todos && !todos._teBound) {
+      todos._teBound = true;
+      todos.addEventListener('click', function (e) {
+        e.stopPropagation();
+        ST._pisosSel = (ST._pisosObra || []).slice();
+        _renderListaPisos(); _sincronizarSelectorPisos();
+      });
+    }
+    var ning = $('te_pisosNinguno');
+    if (ning && !ning._teBound) {
+      ning._teBound = true;
+      ning.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _limpiarSelectorPisos();
+        _renderListaPisos(); _sincronizarSelectorPisos();
+      });
+    }
+    if (pop && !pop._teBound) {
+      pop._teBound = true;
+      // Los clics DENTRO no cierran (se marcan varios pisos seguidos); el de fuera si.
+      pop.addEventListener('click', function (e) { e.stopPropagation(); });
+      document.addEventListener('click', function () { _abrirPopPisos(false); });
     }
   }
 
@@ -12386,21 +12747,35 @@
       tplOrigen: (opts.tplOrigen != null) ? opts.tplOrigen : null,
       ctxObra: ctx,
       piso: opts.piso || '',
-      instanciaId: (opts.instanciaId != null) ? opts.instanciaId : null
+      instanciaId: (opts.instanciaId != null) ? opts.instanciaId : null,
+      // SOLO VISTA — lo pide el despiece (lote banderado) y el tab de estructuras.
+      // Sin la opcion todo queda EXACTAMENTE como estaba: el editor es el de hoy.
+      soloVista: (opts.soloVista === true)
     });
   };
 
   // Payload de barras: lo que YA genero el motor, sin las claves de trabajo (las que
   // empiezan con "_" son estimaciones del front - largo y peso los calcula el
   // backend) y con la traza de la instancia estampada.
-  function _barrasPayload(instId) {
+  // `piso` OPCIONAL: en la carga multi-piso la MISMA generacion se manda N veces —
+  // una por piso— y cada copia va estampada con el suyo (el motor genero con el de
+  // ST.piso). Cada barra es un objeto nuevo, asi que las copias no se pisan.
+  function _barrasPayload(instId, piso) {
     var out = ST.ultimoOut;
     if (!out || !out.barras) return [];
+    var p = (piso != null) ? String(piso).trim() : null;
     return out.barras.map(function (b) {
       var o = {};
       for (var k in b) if (b.hasOwnProperty(k) && k.charAt(0) !== '_') o[k] = b[k];
-      o.origen = 'template';
+      // ORIGEN 'enfierrador' — etiqueta de las barras nacidas del editor 3D. Se
+      // estampa ACA y no en el motor a proposito: generar.js es comun a los dos
+      // caminos (biblioteca y obra) y lo que define el origen de una barra es POR
+      // DONDE SALE, y sale por esta puerta. Las historicas se quedan con 'template'
+      // (no se reescribe data que ya existe): el front las reconoce igual por
+      // template_instancia_id, que es el dato de raiz — origen es solo la etiqueta.
+      o.origen = 'enfierrador';
       o.template_instancia_id = (instId != null) ? instId : null;
+      if (p) o.piso = p;
       return o;
     });
   }
@@ -12411,11 +12786,12 @@
 
   // TRAZA de la estructura. El NOMBRE va DERIVADO (obra . ciclo . piso . eje): se guarda
   // ya resuelto para que un futuro "element manager" sea LEER la tabla, no recalcular.
-  function _trazaInstancia() {
+  function _trazaInstancia(piso) {
     var c = ST.ctxObra || {};
+    var p = ((piso != null) ? String(piso) : (ST.piso || '')).trim();
     return {
-      nombre: _nombreEstructura(), elemento: (ST.elemento || '').toLowerCase(),
-      piso: (ST.piso || '').trim(),
+      nombre: _nombreEstructura(p), elemento: (ST.elemento || '').toLowerCase(),
+      piso: p,
       id_proyecto: c.id_proyecto || null, sector: c.sector || null,
       ciclo: c.ciclo || null, eje: c.eje || null
     };
@@ -12438,11 +12814,14 @@
   // de revision en vez de nacer de cero en cada pasada.
   global.templateEditorCargarAlDespiece = function () {
     if (!_modoObra()) return;
+    // SOLO VISTA: no hay nada que cargar. La guarda vive aca ademas del boton
+    // apagado porque el global es llamable desde fuera (consola, otro handler).
+    if (ST.soloVista) { _errObra(_MOTIVO_SOLOVISTA); return; }
     var btn = $('te_btnCargarDespiece');
     if (btn && btn.disabled) return;
     _errObra('');
-    var piso = (ST.piso || '').trim();
-    if (!piso) {
+    var pisos = _pisosACargar();
+    if (!pisos.length) {
       // El backend lo rechaza con 400, pero el arreglo esta ACA (campo del ribbon).
       _errObra('Elige el piso de esta estructura (arriba, en el grupo Despiece).');
       var pi = $('te_ribPiso'); if (pi && pi.focus) { pi.focus(); if (pi.select) pi.select(); }
@@ -12456,57 +12835,114 @@
     var ctx = ST.ctxObra;
     var regenera = (ST.instanciaId != null);
     if (btn) { btn.disabled = true; btn.textContent = regenera ? 'Actualizando\u2026' : 'Cargando\u2026'; }
-    var traza = _trazaInstancia();
-    var paso1 = regenera
-      ? _tplFetch('/elementos/instancia/' + encodeURIComponent(ST.instanciaId), {
-          method: 'PUT', headers: _tplHeaders(true),
-          body: JSON.stringify({
-            params: ST.receta, nombre: traza.nombre, elemento: traza.elemento,
-            piso: traza.piso, template_id: ST.tplOrigen
-          })
-        }).then(function () { return ST.instanciaId; })
-      : _tplFetch('/elementos/instancia', {
-          method: 'POST', headers: _tplHeaders(true),
-          body: JSON.stringify(Object.assign({
-            lote_id: ctx.loteId, template_id: ST.tplOrigen, params: ST.receta
-          }, traza))
-        }).then(function (ri) { return (ri && ri.id != null) ? ri.id : null; });
 
-    paso1.then(function (instId) {
-      if (instId == null) {
-        // Sin estructura no hay a que colgar las barras: mejor no cargarlas que
-        // dejarlas huerfanas y sin forma de reabrirlas.
-        throw new Error('no se pudo guardar la estructura');
-      }
-      ST.instanciaId = instId;
-      var url = '/lotes/' + encodeURIComponent(ctx.loteId) + '/barras' + (regenera ? '/sync' : '');
-      var cuerpo = regenera
-        ? { instancia_id: instId, barras: _barrasPayload(instId) }
-        : { barras: _barrasPayload(instId) };
-      return _tplFetch(url, {
-        method: 'POST', headers: _tplHeaders(true), body: JSON.stringify(cuerpo)
+    // MULTI-PISO. Regenerar es SIEMPRE de un piso (el de la instancia abierta); lo
+    // de varios es de la PRIMERA carga. No hay endpoint batch y no hace falta: cada
+    // POST de barras ya es transaccional por si mismo, asi que un piso que falla no
+    // deja a medias a los que ya entraron -- lo unico que hay que hacer es DECIR
+    // cuales entraron. Los origen_ref se repiten entre instancias sin problema: el
+    // cruce del sync es POR instancia.
+    var hechos = [], creadas = 0, ultima = null;
+
+    function _unPiso(p) {
+      var traza = _trazaInstancia(p);
+      var paso1 = regenera
+        ? _tplFetch('/elementos/instancia/' + encodeURIComponent(ST.instanciaId), {
+            method: 'PUT', headers: _tplHeaders(true),
+            body: JSON.stringify({
+              params: ST.receta, nombre: traza.nombre, elemento: traza.elemento,
+              piso: traza.piso, template_id: ST.tplOrigen
+            })
+          }).then(function () { return ST.instanciaId; })
+        : _tplFetch('/elementos/instancia', {
+            method: 'POST', headers: _tplHeaders(true),
+            body: JSON.stringify(Object.assign({
+              lote_id: ctx.loteId, template_id: ST.tplOrigen, params: ST.receta
+            }, traza))
+          }).then(function (ri) { return (ri && ri.id != null) ? ri.id : null; });
+
+      return paso1.then(function (instId) {
+        if (instId == null) {
+          // Sin estructura no hay a que colgar las barras: mejor no cargarlas que
+          // dejarlas huerfanas y sin forma de reabrirlas.
+          throw new Error('no se pudo guardar la estructura');
+        }
+        var url = '/lotes/' + encodeURIComponent(ctx.loteId) + '/barras' + (regenera ? '/sync' : '');
+        var lote = _barrasPayload(instId, p);
+        var cuerpo = regenera ? { instancia_id: instId, barras: lote } : { barras: lote };
+        return _tplFetch(url, {
+          method: 'POST', headers: _tplHeaders(true), body: JSON.stringify(cuerpo)
+        }).then(function (r) {
+          hechos.push({ piso: p, instanciaId: instId });
+          creadas += ((r && r.creadas) || 0);
+          ultima = r;
+          return r;
+        });
       });
-    })
-      .then(function (r) {
+    }
+
+    // La PRIMERA estructura creada es la que queda abierta: el boton pasa a
+    // "Actualizar" sobre ELLA y las demas se reabren desde la grilla del despiece,
+    // que es donde se las ve todas (dejar el editor apuntando a "la ultima" seria
+    // arbitrario y no se veria en pantalla). Se fija TAMBIEN si la cadena se corta:
+    // sin esto, reintentar volveria a crear las que ya entraron.
+    function _fijarPrimera() {
+      if (!hechos.length) return;
+      var cambioPiso = (String(ST.piso || '') !== String(hechos[0].piso));
+      ST.piso = hechos[0].piso;
+      ST.instanciaId = hechos[0].instanciaId;
+      var pi2 = $('te_ribPiso'); if (pi2) pi2.value = ST.piso;
+      _limpiarSelectorPisos();      // la multi-seleccion es de la primera carga
+      _sincronizarSelectorPisos();
+      // Solo si el piso REALMENTE cambio: la generacion en pantalla tiene que ser la
+      // de la instancia que quedo abierta. Con un solo piso no cambia nada y no se
+      // regenera (no se toca el sello de "sin cambios sin guardar").
+      if (cambioPiso) _regenerar();
+    }
+
+    // Cadena SECUENCIAL (no Promise.all): el orden importa para poder decir "entro
+    // hasta el piso k", y N escrituras en paralelo sobre el mismo lote pelearian por
+    // el mismo UPSERT.
+    var cadena = Promise.resolve();
+    pisos.forEach(function (p) { cadena = cadena.then(function () { return _unPiso(p); }); });
+
+    cadena
+      .then(function () {
+        _fijarPrimera();
         if (btn) { btn.disabled = false; btn.textContent = _textoBotonDespiece(); }
         _errObra('');
         var msg;
         if (regenera) {
+          var r = ultima || {};
           msg = '\u2705 ' + (r.actualizadas || 0) + ' actualizada(s) \u00b7 ' + (r.creadas || 0) +
                 ' nueva(s) \u00b7 ' + (r.eliminadas || 0) + ' borrada(s)';
         } else {
-          msg = '\u2705 ' + ((r && r.creadas) || barras.length) + ' item(s) cargados al despiece';
+          msg = '\u2705 ' + (creadas || (barras.length * hechos.length)) + ' item(s) cargados al despiece' +
+                (hechos.length > 1
+                  ? (' en ' + hechos.length + ' pisos: ' +
+                     hechos.map(function (h) { return h.piso; }).join(', '))
+                  : '');
         }
         _actualizarStatus(msg + ' \u00b7 ' + _nombreEstructura());
-        // La grilla del despiece tiene que mostrar lo que acaba de entrar.
+        // La grilla del despiece tiene que mostrar lo que acaba de entrar. UNA vez al
+        // final: recargarla por piso repintaria N veces lo mismo.
         if (typeof global.ac2CargarLote === 'function') {
           try { global.ac2CargarLote(ctx.loteId); } catch (e) { /* la carga ya esta hecha */ }
         }
       })
       .catch(function (e) {
+        _fijarPrimera();
         if (btn) { btn.disabled = false; btn.textContent = _textoBotonDespiece(); }
+        // QUE ENTRO Y QUE NO, con nombre y apellido: media carga silenciosa es peor
+        // que ninguna. Los pisos que faltan se cargan volviendo a abrir el 3D.
+        var quedo = pisos[hechos.length];
+        var entraron = hechos.length
+          ? (' Ya entraron: ' + hechos.map(function (h) { return h.piso; }).join(', ') +
+             ' (esos NO se repiten si reintentas).')
+          : '';
         _errObra((regenera ? 'No se actualizo la estructura: ' : 'No se cargaron las barras: ') +
-                 ((e && e.message) || 'error desconocido'));
+                 ((e && e.message) || 'error desconocido') +
+                 (quedo ? (' Fall\u00f3 en el piso ' + quedo + '.') : '') + entraron);
       });
   };
 
@@ -13023,6 +13459,14 @@
     var nuevo = $('te_btnGuardarNuevo');
     var abierto = (ST.templateId != null);
     if (nuevo) nuevo.style.display = abierto ? '' : 'none';
+    // SOLO VISTA - los dos botones se quedan A LA VISTA pero apagados, y el title
+    // dice por que. Va ANTES del resto porque esta funcion corre en cada render: sin
+    // este corte, _puedeSobrescribir() los volveria a encender y desharia el cromo.
+    if (ST.soloVista) {
+      if (nuevo) { nuevo.disabled = true; nuevo.title = _MOTIVO_SOLOVISTA; }
+      if (b) { b.disabled = true; b.title = _MOTIVO_SOLOVISTA; }
+      return;
+    }
     if (!b) return;
     if (_puedeSobrescribir()) {
       var hay = _hayCambiosSinGuardar();
@@ -13086,6 +13530,10 @@
     var btn = $('te_btnGuardar');
     var err = $('te_saveErr'); if (err) err.textContent = '';
     if (!ST.receta || ST._guardando) return;
+    // SOLO VISTA: el editor esta abierto para MIRAR una estructura del despiece. No
+    // hay template que crear ni que actualizar desde aqui. Guarda unica para los dos
+    // botones (Guardar y Guardar como nuevo), que es por donde entran los dos.
+    if (ST.soloVista) { if (err) err.textContent = _MOTIVO_SOLOVISTA; return; }
     var nombre = _nombreLimpio();
     if (!nombre) {
       // El backend lo rechaza con 400, pero el arreglo está ACÁ: el campo del
@@ -13579,6 +14027,16 @@
     _etiquetarCi: _etiquetarCi,
     _normalizarRecetaViva: _normalizarRecetaViva, _avisarMigracion: _avisarMigracion,
     _migracionDe: _migracionDe,
+    // MODO SOLO-VISTA (opts.soloVista) + carga MULTI-PISO. Expuestos para que la
+    // suite maneje el estado REAL del editor y no una imitacion suya.
+    _soloVista: _soloVista, _aplicarSoloVista: _aplicarSoloVista,
+    _bloqueadoSoloVista: _bloqueadoSoloVista, MOTIVO_SOLOVISTA: _MOTIVO_SOLOVISTA,
+    _pisosACargar: _pisosACargar, _togglePisoSel: _togglePisoSel,
+    _limpiarSelectorPisos: _limpiarSelectorPisos,
+    _sincronizarSelectorPisos: _sincronizarSelectorPisos,
+    _renderListaPisos: _renderListaPisos, _cargarPisosObra: _cargarPisosObra,
+    _barrasPayload: _barrasPayload, _nombreEstructura: _nombreEstructura,
+    _trazaInstancia: _trazaInstancia,
     // TANDA 3 · no perder trabajo + capeo del @
     _hayCambiosSinGuardar: _hayCambiosSinGuardar,
     _guardarBorradorAhora: _guardarBorradorAhora, _programarBorrador: _programarBorrador,

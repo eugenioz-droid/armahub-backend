@@ -253,6 +253,15 @@
         'cubicacion-agregar2',
         '[ArmaHub] No se pudo cargar cubicacion/agregar_cubicacion2.js'
       ),
+      // Tab «Muros»: muros consolidados de la obra (despiece ya banderado). Solo consulta;
+      // abre el 3D reusando el Template Editor en modo solo-visualización.
+      loadScript(
+        'script[data-armahub-feature="cubicacion-muros"]',
+        '/static/js/features/cubicacion/muros.js' + suffix,
+        'armahubFeature',
+        'cubicacion-muros',
+        '[ArmaHub] No se pudo cargar cubicacion/muros.js'
+      ),
       // Admin submodules (E.5) — entidades must load before proyectos and index
       loadScript(
         'script[data-armahub-feature="admin-entidades"]',
