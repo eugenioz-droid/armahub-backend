@@ -7237,6 +7237,37 @@
       _actualizarStatus('Ningún lado de la ' + (c.figura || 'figura') + ' mueve ese borde en esta vista.');
       return;
     }
+    // ↔ CENTRADO: EL TIRADOR YA NO LO PISA (25-ago).
+    // El sondeo de arriba sólo prueba 'fin' e 'ini' —los dos únicos estados que la
+    // flecha del Δ tenía hasta hoy—, así que arrastrar un borde de una pieza puesta
+    // en ↔ le escribía 'fin' y le deshacía el centrado al usuario. Es la mitad que
+    // faltaba del tercer estado: el motor ya sabe repartir, la ficha ya sabe pedirlo,
+    // pero el gesto directo lo borraba.
+    // LO QUE HACE EL GESTO EN ↔: el borde agarrado sigue al cursor igual, y el opuesto
+    // se abre lo mismo. Así se preserva el centrado SIN perder la manipulación directa
+    // —que es lo que se perdería si el borde arrastrado se moviera la mitad—.
+    // LA RAZÓN SALE DEL SONDEO, no de un 2× escrito a mano: se vuelve a medir este
+    // mismo lado con extremo 'centro' y se usa cuánto salió el borde agarrado. Si el
+    // motor NO reparte por este eje (la pieza se apoya de otra forma), el sondeo lo
+    // dice y se sigue como siempre en vez de forzar un número que no se cumple.
+    var dPropia = (c.dims && typeof c.dims[mejor.L] === 'object') ? c.dims[mejor.L] : null;
+    var centrado = !!(dPropia && dPropia.extremo === 'centro');
+    if (centrado) {
+      var b0C = _bboxUVdePls(expandir({ L: mejor.L, delta: 0, extremo: 'centro' }), plano);
+      var b1C = b0C ? _bboxUVdePls(expandir({ L: mejor.L, delta: PROBE, extremo: 'centro' }), plano) : null;
+      var mAgC = null;
+      if (b0C && b1C) {
+        mAgC = (eje === 'u')
+          ? ((ladoUV === '+') ? (b1C.u1 - b0C.u1) : -(b1C.u0 - b0C.u0))
+          : ((ladoUV === '+') ? (b1C.v1 - b0C.v1) : -(b1C.v0 - b0C.v0));
+      }
+      if (mAgC != null && mAgC > 0.1 * PROBE) {
+        mejor = { L: mejor.L, extremo: 'centro', ratio: mAgC / PROBE, score: mejor.score };
+      } else {
+        centrado = false;   // por este eje el motor no reparte: el tirador va como siempre
+      }
+    }
+
     // MEDIDA DE PARTIDA del lado que manda: la que ese lado tiene AHORA según el
     // motor. Es la que el arrastre mueve y la que va a quedar escrita — el gesto
     // dice «que mida esto». `delta0` es el Δ que el usuario haya escrito A MANO en
@@ -7265,7 +7296,11 @@
     // sondeo (0.5 cuando el motor centra) deja de aplicarse al numero.
     var defP = (_defsPlanos() || {})[plano] || null;
     var ejeMundo = defP ? ((eje === 'u') ? defP.u : defP.v) : null;
-    var compensa = !!(ejeMundo && _ejesDesplazables(c).indexOf(ejeMundo) >= 0);
+    // …Y EN ↔ NO SE COMPENSA. La compensación existe para dejar QUIETO el borde
+    // opuesto, que es exactamente lo contrario de lo que pide el centrado: ahí los dos
+    // bordes tienen que abrirse. Si se compensara, el ↔ quedaría escrito en la receta
+    // pero el gesto lo desmentiría en pantalla.
+    var compensa = !centrado && !!(ejeMundo && _ejesDesplazables(c).indexOf(ejeMundo) >= 0);
     var signo = ejeMundo ? _ejeMundoCreceHacia(plano, eje, ejeMundo) : 1;
     ST.dragMarco = {
       plano: plano, ci: ci, eje: eje, ladoUV: ladoUV,
@@ -7369,7 +7404,8 @@
       _anclarHintUI(c);
     }
     _actualizarStatus('Lado ' + dm.L + ' = ' + medida + ' cm (' +
-      (dm.extremo === 'ini' ? '← ini' : 'fin →') + ')' +
+      (dm.extremo === 'centro' ? '↔ centrado'
+        : (dm.extremo === 'ini' ? '← ini' : 'fin →')) + ')' +
       (dm.delta0 ? ' — incluye el Δ ' + dm.delta0 + ' de la ficha' : '') + '.');
     _regenerarDiferido();
   }

@@ -375,5 +375,47 @@ console.log('G · pieza suelta, cuatro gestos encadenados con el mouse');
   });
 }
 
+// ===========================================================================
+// G · ↔ CENTRADO: EL TIRADOR NO LO PISA (25-ago)
+// ===========================================================================
+// La flecha del Δ ganó un tercer estado —'centro', mitad por cada borde— y el
+// tirador lo desconocía: su sondeo sólo probaba 'fin' e 'ini', así que arrastrar
+// un borde le escribía 'fin' y le deshacía el centrado al usuario. Era la mitad
+// que faltaba: el motor ya sabía repartir y la ficha ya sabía pedirlo, pero el
+// gesto directo lo borraba.
+// LO QUE SE CONGELA: en ↔, arrastrar un borde lo lleva 1:1 hasta el cursor Y abre
+// el opuesto lo mismo (que es justo lo CONTRARIO del bloque F, donde el opuesto
+// tiene que quedarse quieto). Los dos comportamientos conviven porque los pide el
+// mismo dato: `extremo`.
+(function () {
+  console.log('\nG — con ↔ puesto, el tirador abre los DOS bordes');
+  const c = montar(600);
+  const dom = 'A';                       // el lado que corre a lo largo del muro
+  c.dims = c.dims || {};
+  if (typeof c.dims[dom] !== 'object') c.dims[dom] = { modo: 'auto' };
+  c.dims[dom].extremo = 'centro';
+  regen();
+  const antes = medir();
+  const dm = tirar('+', 20);
+  const desp = medir();
+  ok(!!dm, 'el tirador agarra el borde');
+  if (dm && antes && desp) {
+    ok(dm.extremo === 'centro',
+      "el gesto CONSERVA el centrado en vez de escribir 'fin' (=" + dm.extremo + ')');
+    ok(c.dims[dom].extremo === 'centro',
+      '…y la receta queda con el ↔ que el usuario había puesto');
+    const dDer = r2(antes.der - desp.der);     // cuánto salió el borde agarrado
+    const dIzq = r2(antes.izq - desp.izq);     // cuánto salió el opuesto
+    ok(dDer === 20, 'el borde agarrado siguió al cursor 20 cm (=' + dDer + ')');
+    ok(dIzq === 20, 'y el OPUESTO se abrió lo mismo: sigue centrada (=' + dIzq + ')');
+    ok(r2(desp.ancho - antes.ancho) === 40,
+      'la pieza creció 40: 20 por cada borde (=' + r2(desp.ancho - antes.ancho) + ')');
+    // Sin compensación de posición: en ↔ la pieza se queda centrada sola, así que
+    // reponerle la posición sería desmentir el gesto.
+    ok(!(c.pos_hint && c.pos_hint.x),
+      'no se escribe pos_hint: el centrado no necesita que le repongan la posición');
+  }
+})();
+
 console.log(fallos ? ('' + fallos + ' FALLO(S)') : 'OK — el tirador deja quieto el borde opuesto');
 process.exit(fallos ? 1 : 0);
