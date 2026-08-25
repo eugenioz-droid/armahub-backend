@@ -1589,10 +1589,54 @@
     return { pts: out, iLong: iL };
   }
 
+  // ---------------------------------------------------------------------------
+  // SESGO DEL ANIDADO: EL ACORTAMIENTO SALE DE LA PUNTA QUE CIERRA (25-ago)
+  // ---------------------------------------------------------------------------
+  // `_normalizarCadena` CENTRA la cadena por bbox, así que una dim más corta entra
+  // por LAS DOS puntas a la mitad. Correcto cuando el lado cierra por sus dos
+  // extremos (103A: hay fierro delante en los dos, y el reparto simétrico ES la
+  // respuesta); FALSO cuando cierra por uno solo (102A: su punta libre no choca con
+  // nada y tiene que quedarse QUIETA capa a capa). MEDIDO en viga 600×60×30 rec
+  // 4/4/3, CBS φ16, 3 capas gap 6, patas fijas 30:
+  //   102A  capa 1  B 592  x −295.2 .. 296.0
+  //         capa 2  B 590  x −294.2 .. 295.0   ← la punta LIBRE entraba 1 cm
+  //         capa 3  B 588  x −293.2 .. 294.0   ← …y otro
+  // `anidarFigura` dice CUÁNTO sale de cada punta (`anchor.sesgo`, con el
+  // acortamiento ya redondeado). Lo que falta es el SIGNO, y ése se le pregunta AL
+  // TRAZO: `orPts[i+1].u − orPts[i].u` es hacia dónde va ESE lado en la cadena que
+  // se está dibujando. Es el mismo patrón que generar._acortarPatas
+  // (`Math.sign(first.y − second.y)`) y por la misma razón: deducirlo de la
+  // cara / del lado / del rumbo de la pose es donde se cometen los errores de signo.
+  //
+  // t = (retiro_inicio − retiro_fin) / 2, en la dirección inicio→fin del lado.
+  //   Sale de igualar las dos puntas: el centrado ya movió cada una r/2 hacia
+  //   adentro, y queremos que la de inicio se mueva r_ini y la de fin r_fin.
+  //   Simétrico (r_ini = r_fin) → t = 0: la cadena no se traslada, que es lo que
+  //   tiene que pasar con una 103A y con TODO contorno cerrado (ahí ni se llega
+  //   acá: el anillo se traza por marco de núcleo).
+  function _sesgoCadenaU(orPts, tramos, sesgo) {
+    if (!sesgo || !orPts || !tramos) return 0;
+    var t = 0;
+    for (var i = 0; i < tramos.length && i + 1 < orPts.length; i++) {
+      var L = tramos[i] ? tramos[i].lado : null;
+      var s = (L != null) ? sesgo[L] : null;
+      if (!s) continue;
+      var rIni = Number(s.inicio) || 0, rFin = Number(s.fin) || 0;
+      if (rIni === rFin) continue;
+      var du = orPts[i + 1].u - orPts[i].u;         // el TRAZO dice hacia dónde va
+      t += ((rIni - rFin) / 2) * (du >= 0 ? 1 : -1);
+    }
+    return t;
+  }
+
   function _normalizarCadena(c, anchor, tramos, ladoL, diamCm) {
     var i;
     var or = _orientarCadena(c, tramos, ladoL);
     var out = or.pts, iL = or.iLong;
+    // ANTES del pase de ganchos: ahí los índices tramo↔punto siguen valiendo (es la
+    // misma razón por la que `_orientarCadena` corre antes), y `or.pts` todavía no
+    // lo ha tocado el centrado de abajo.
+    var sesU = _sesgoCadenaU(or.pts, tramos, anchor && anchor.sesgo);
     var cerrada = _cadenaCierra(out);
     // GANCHOS CON RADIO (Tanda V) — ANTES de centrar: la pata de un gancho >90°
     // cuelga del arco desplazada, así que el bbox REAL de la pieza es el del
@@ -1647,6 +1691,7 @@
     minU -= resLo; maxU += resHi;               // la ENVOLVENTE del acero, punta a punta
     var anchoTotal = (maxU - minU) - emp.ini - emp.fin;
     var u0 = -anchoTotal / 2 - emp.ini - minU;  // …y ES ELLA la que queda centrada
+    u0 += sesU;                                 // …corrida al lado que CIERRA (ver arriba)
     for (i = 0; i < out.length; i++) out[i].u += u0;
     return { pts: out, cerrada: cerrada, iLong: iL, lado: null };
   }
@@ -2626,12 +2671,18 @@
   //   deben alinearse con las de la capa de afuera, y eso no es correcto».
   //
   // anidarFigura(figura, dims, delta, rol, opts) →
-  //   { dims, delta, inset, criterio, vecinos, cabe, motivo }
+  //   { dims, delta, inset, criterio, vecinos, sesgo, cabe, motivo }
   // NO muta `dims` (devuelve un clon cuando hay cambio).
   //   delta    : δ de DIMS de esta capa = k·φ_propio (lo usa la figura ABIERTA).
   //   opts.sep : δ del MARCO de esta capa = k·gap (lo usa la CERRADA). Ausente →
   //              cae a `delta` (llamadas directas de tests que no separan los dos).
   //   opts.cerrada: fuerza el criterio cerrado para figuras fuera de la serie 104.
+  //   sesgo    : { LADO: { inicio, fin } } = CUÁNTO SE RETIRA CADA PUNTA de ese
+  //              lado, con el acortamiento REAL (el de después del Math.floor, no
+  //              el nominal k·φ: el redondeo cambia el total y el sesgo tiene que
+  //              cuadrar con lo que la dim dice de verdad). Lo consume el trazador
+  //              —vía `anchor.sesgo`— para NO repartir a medias un acortamiento que
+  //              sale de una sola punta. Vacío = simétrico = no hay nada que sesgar.
   //
   // CABE (fix 12-ago, hallazgo A del verificador) — el inset k·Sep puede dejar la
   // capa SIN geometría: un estribo 24×52 con Sep 10 llega a la capa 3 con dims
@@ -2708,7 +2759,19 @@
   // lado tienen enfrente al lado vecino, que es perpendicular), que es exactamente
   // lo que el anillo ya hacía. Una sola regla, dos movimientos.
   //
-  // Devuelve { cierres: {LADO: 0|1|2}, dudosos: [LADO…], fuente }.
+  // CUÁNTOS NO BASTA: HAY QUE DECIR **CUÁL** (25-ago). Con `cierres` a secas el
+  // llamador sabe cuánto acortar pero no DE QUÉ PUNTA sacarlo, y el trazador —que
+  // CENTRA la cadena por bbox— reparte el acortamiento entre las dos: una 102A, que
+  // cierra por UN solo extremo, entraba 1 cm por arriba y 1 cm por abajo en vez de
+  // 2 cm por el lado de la pata, y su punta LIBRE (la que no choca con nada) se
+  // movía capa a capa. El bucle de abajo YA recorre los vecinos de inicio y de fin
+  // por separado — sólo los sumaba. Ahora también los publica:
+  //   extremos[LADO] = { inicio: 0|1, fin: 0|1 }   (cierres = inicio + fin)
+  // en el marco del TRAZADOR (`_orientarCadena`), o sea inicio = la esquina pts[i]
+  // del tramo y fin = pts[i+1] — las mismas dos esquinas que el trazo dibuja.
+  //
+  // Devuelve { cierres: {LADO: 0|1|2}, extremos: {LADO:{inicio,fin}},
+  //            dudosos: [LADO…], fuente }.
   // `dims` manda sobre la topología para la EXISTENCIA del vecino: si el lado que
   // cerraría ese extremo no viene en las dims (o viene ≤ 0), ese extremo NO cierra
   // — un 103A al que le falta la pata C es un 102A y tiene que contestar como tal.
@@ -2718,11 +2781,17 @@
     opts = opts || {};
     var f = (figura || '').toUpperCase();
     var lados = _ladosDeDims(dims);
-    var out = { cierres: {}, dudosos: [], fuente: 'topologia' };
+    var out = { cierres: {}, extremos: {}, dudosos: [], fuente: 'topologia' };
     var i, L;
-    for (i = 0; i < lados.length; i++) out.cierres[lados[i]] = 0;
+    for (i = 0; i < lados.length; i++) {
+      out.cierres[lados[i]] = 0;
+      out.extremos[lados[i]] = { inicio: 0, fin: 0 };
+    }
     if (opts.cerrada) {
-      for (i = 0; i < lados.length; i++) out.cierres[lados[i]] = 2;
+      for (i = 0; i < lados.length; i++) {
+        out.cierres[lados[i]] = 2;
+        out.extremos[lados[i]] = { inicio: 1, fin: 1 };
+      }
       out.fuente = 'anillo';
       return out;
     }
@@ -2734,7 +2803,9 @@
       // POSICIÓN en la cadena de dims, interior = 2 · extremo = 0.
       out.fuente = 'sin-catalogo';
       for (i = 0; i < lados.length; i++) {
-        out.cierres[lados[i]] = (i > 0 && i < lados.length - 1) ? 2 : 0;
+        var interior = (i > 0 && i < lados.length - 1);
+        out.cierres[lados[i]] = interior ? 2 : 0;
+        out.extremos[lados[i]] = { inicio: interior ? 1 : 0, fin: interior ? 1 : 0 };
       }
       return out;
     }
@@ -2759,22 +2830,25 @@
     for (i = 0; i < n; i++) {
       L = T[i].lado;
       if (L == null || !hay[L] || eje[i] !== 'u') continue;
-      var c = 0, dudoso = false;
+      var cx = { inicio: 0, fin: 0 }, dudoso = false;
       // extremo INICIO (esquina pts[i]): el vecino es el tramo anterior, recorrido
       // al revés. extremo FIN (esquina pts[i+1]): el vecino es el siguiente, tal cual.
+      // El `ext` es la ÚNICA línea nueva del bucle: la distinción inicio/fin ya
+      // estaba hecha aquí (son dos `push` distintos) y se tiraba al sumar.
       var vecinos = [];
       j = (i > 0) ? (i - 1) : (cierraCadena ? (n - 1) : -1);
-      if (j >= 0) vecinos.push({ j: j, sale: -dir[j].dv });
+      if (j >= 0) vecinos.push({ j: j, sale: -dir[j].dv, ext: 'inicio' });
       j = (i < n - 1) ? (i + 1) : (cierraCadena ? 0 : -1);
-      if (j >= 0) vecinos.push({ j: j, sale: dir[j].dv });
+      if (j >= 0) vecinos.push({ j: j, sale: dir[j].dv, ext: 'fin' });
       for (var q = 0; q < vecinos.length; q++) {
         var vj = vecinos[q].j;
         if (T[vj].lado == null || !hay[T[vj].lado]) continue;   // ese lado no existe en esta barra
         if (!(vecinos[q].sale > EPS_DIR)) continue;             // se va hacia afuera: no estorba
-        if (eje[vj] === 'v') c++;
+        if (eje[vj] === 'v') cx[vecinos[q].ext] = 1;
         else if (eje[vj] === 'd') dudoso = true;
       }
-      out.cierres[L] = c;
+      out.cierres[L] = cx.inicio + cx.fin;
+      out.extremos[L] = cx;
       if (dudoso && out.dudosos.indexOf(L) < 0) out.dudosos.push(L);
     }
     return out;
@@ -2785,7 +2859,7 @@
     var dDim = Number(delta) || 0;                                   // δ de dims (k·φ)
     var dSep = (opts.sep != null && isFinite(opts.sep)) ? Number(opts.sep) : dDim;  // δ del marco (k·gap)
     var res = { dims: dims, delta: 0, inset: 0, criterio: 'recta', cierres: {}, dudosos: [],
-      vecinos: {}, cabe: true, motivo: null };
+      vecinos: {}, sesgo: {}, cabe: true, motivo: null };
     var lados = _ladosDeDims(dims);
     var f = (figura || '').toUpperCase();
     // CRITERIO: manda la FORMA QUE SE DIBUJA, no el código de la figura.
@@ -2871,6 +2945,20 @@
         // 3D no dibuja — el defecto "medir ≠ dibujar" que este motor persigue.
         if (canalDelTrazo(f, rol, L) === 'dims') nuevo = Math.floor(nuevo);
         nd[L] = nuevo;
+        // DE QUÉ PUNTA SALE EL ACORTAMIENTO (25-ago). El trazador CENTRA la cadena
+        // por bbox, así que una dim más corta entra por LAS DOS puntas a la mitad.
+        // Eso es correcto cuando el lado cierra por sus dos extremos (103A: hay
+        // fierro delante en los dos), y es FALSO cuando cierra por uno solo (102A:
+        // su punta libre no choca con nada y tiene que quedarse QUIETA capa a capa).
+        // El reparto se publica con el acortamiento REAL —`Number(dims[L]) - nuevo`,
+        // ya redondeado— y no con el nominal v·d: si la dim listada dice 590 y no
+        // 590.4, la punta se tiene que retirar 2 y no 1.6, o el trazo deja de seguir
+        // a la dim (que es lo único que este motor no puede permitirse romper).
+        var ret = Number(dims[L]) - nuevo;
+        var ex = ec.extremos ? ec.extremos[L] : null;
+        if (ret > 0 && ex && ex.inicio !== ex.fin) {
+          res.sesgo[L] = { inicio: ex.inicio ? ret : 0, fin: ex.fin ? ret : 0 };
+        }
         if (!(nuevo > 0) && res.cabe) {
           res.cabe = false;
           res.motivo = 'dim ' + L + ' = ' + (Math.round(nuevo * 100) / 100);

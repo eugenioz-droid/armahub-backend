@@ -3222,6 +3222,13 @@
         var extra = { cara: cara };
         extra[mc.eje] = coordCara;
         extra[mc.ejeReparto] = _posReparto(mc, i, nBarras);
+        // SESGO DEL ANIDADO: DE QUÉ PUNTA SALE EL ACORTAMIENTO. Viaja por el anchor
+        // igual que el `inset` del anillo —la otra mitad del mismo anidado— porque
+        // el que CENTRA la cadena es el TRAZADOR, y es ahí donde hay que decirle que
+        // no reparta a medias lo que sale de un solo extremo (102A). Aquí NO se
+        // decide ningún signo: anidarFigura dice cuánto por punta y el TRAZO dice
+        // hacia dónde va el lado (figura_puntos._sesgoCadenaU).
+        if (usaAn && an.sesgo) extra.sesgo = an.sesgo;
         if (ins) {
           extra.inset = ins.inset; extra.insetInf = ins.insetInf; extra.insetLat = ins.insetLat;
         }
@@ -3501,6 +3508,9 @@
         var xr = posA[ri];
         var extra = {};
         if (ejeRA) extra[ejeRA] = xr;   // sin eje libre → la única copia va EN el anclaje
+        // MISMO sesgo que en layered: la misma pieza no puede anidar distinto según
+        // el modo de reparto (es la lección de F1, ver la nota de arriba).
+        if (usaAn && an.sesgo) extra.sesgo = an.sesgo;
         if (!unaCapa) {
           if (insA) {
             // CERRADA: el inset (= k·sep_capas) ES la posición del anillo (ya
@@ -4535,6 +4545,19 @@
     if (L == null) return null;
     var d = _deltasEfectivos(comp)[L];
     if (!d || !d.delta) return null;
+    // CENTRADO: el Δ se reparte por MITADES entre los dos bordes (pedido del usuario
+    // 25-ago: «que deje la barra al medio y reparta el delta hacia cada lado»). El
+    // marco CERRADO ya crecía así desde siempre; acá vivía el motivo de que en una
+    // figura ABIERTA el estado 'centro' no hiciera nada — caía al `else` y quedaba
+    // idéntico a 'fin', en silencio. Medido en 103A φ16 (viga 600×60×30) con Δ +20:
+    // 'fin' y 'centro' daban el mismo bbox [−295.2, 315.2] cuando el centrado tiene
+    // que dar [−305.2, 305.2].
+    // Δ/2 y NO `return null`: la geometría sale igual, pero devolver null le esconde
+    // la holgura a _avisarFueraDelHormigon —que suma ini+fin— y entonces un Δ grande
+    // centrado estrenaría un aviso rojo de "no construible" que el MISMO Δ cargado a
+    // un borde no da. El largo de corte es el mismo en los tres estados; lo único que
+    // cambia es dónde queda la barra.
+    if (d.extremo === 'centro') return { ini: d.delta / 2, fin: d.delta / 2 };
     return (d.extremo === 'ini') ? { ini: d.delta, fin: 0 } : { ini: 0, fin: d.delta };
   }
 

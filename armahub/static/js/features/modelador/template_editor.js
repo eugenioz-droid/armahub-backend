@@ -8773,12 +8773,31 @@
     // CERRADA es 'centro' — leerla de ahí habría pintado '→' en el espejo mientras su
     // par muestra '↔', que es otra vez el par diciendo dos cosas distintas.
     var dFlecha = esEspejo ? (c.dims[info.de] || {}) : d;
-    var ext = (dFlecha.extremo === 'ini') ? 'ini' : (dFlecha.extremo === 'fin' ? 'fin' : (cerrada ? 'centro' : 'fin'));
+    // EL CENTRADO YA NO ES PRIVILEGIO DEL MARCO CERRADO (25-ago, pedido del usuario:
+    // «que deje la barra al medio y reparta el delta hacia cada lado»). Antes un
+    // 'centro' guardado en una figura ABIERTA ni siquiera se leía acá — caía al default
+    // y la flecha pintaba '→' mientras la receta decía otra cosa. Ahora los tres
+    // estados se leen igual en toda figura; lo único que sigue dependiendo de la
+    // topología es el DEFAULT: el marco cerrado crece centrado por naturaleza, la
+    // cadena abierta crece por su punta final.
+    var ext = (dFlecha.extremo === 'ini') ? 'ini'
+      : (dFlecha.extremo === 'fin') ? 'fin'
+      : (dFlecha.extremo === 'centro') ? 'centro'
+      : (cerrada ? 'centro' : 'fin');
+    // LA FLECHA SOLO MANDA EN EL LADO QUE CORRE. En una figura ABIERTA el sesgo del Δ
+    // lo aplica reglas._deltaDelDominante, y esa función mira UN solo lado: el
+    // longitudinal. En una pata el Δ sí alarga (suma al largo de corte y a los kg),
+    // pero el ESTADO de la flecha no mueve nada — medido: Δ en la pata A de un 103A da
+    // el mismo bbox en los tres estados. Con dos estados nadie lo notaba; con tres,
+    // clicar '↔' en una pata parecería no funcionar. Se apaga DICIENDO por qué, que es
+    // lo que ya se hace con el 60φ de un lado diagonal. En una CERRADA no aplica: ahí
+    // el Δ va al marco y todos los lados cuentan.
+    var flechaMuerta = !cerrada && !esEspejo && L !== dom;
     var flecha = document.createElement('button');
     flecha.type = 'button'; flecha.className = 'te-deltadir' + (esEspejo ? ' te-deltadir-esp' : '');
     flecha.textContent = (ext === 'fin') ? '→' : (ext === 'ini' ? '←' : '↔');
     flecha.title = (ext === 'centro')
-      ? 'Crece/acorta CENTRADO (mitad por cada borde). Clic para cargarlo a un lado.'
+      ? 'Crece/acorta CENTRADO: la mitad por cada borde, la barra queda al medio. Clic para cargarlo a un lado.'
       : (ext === 'fin'
         ? 'Crece/acorta por el borde FINAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el inicio queda quieto)') + '. Clic para cambiar.'
         : 'Crece/acorta por el borde INICIAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el final queda quieto)') + '. Clic para cambiar.');
@@ -8786,11 +8805,20 @@
       flecha.disabled = true;
       flecha.title = 'Por dónde crece este lado: lo mismo que ' + info.de + ' (contorno cerrado), ' +
         'igual que su Δ. Para cambiarlo, edita el lado ' + info.de + '.';
+    } else if (flechaMuerta) {
+      flecha.disabled = true;
+      flecha.title = 'El Δ de esta pata alarga la barra (suma al largo de corte y a los kg), ' +
+        'pero por dónde crece sólo se decide en el lado que CORRE (' + dom + '): es ese el ' +
+        'que se puede cargar a un borde o dejar centrado.';
     } else {
       flecha.onclick = function () {
-        // cerradas: centro → fin → ini → centro · abiertas: fin ↔ ini
-        if (cerrada) d.extremo = (ext === 'centro') ? 'fin' : (ext === 'fin' ? 'ini' : 'centro');
-        else d.extremo = (ext === 'fin') ? 'ini' : 'fin';
+        // UN SOLO CICLO PARA TODA FIGURA: fin → ini → centro → fin.
+        // Acá había dos, uno por topología (`if (cerrada)`), porque el centrado sólo
+        // existía en el marco cerrado. Son el MISMO ciclo — centro→fin→ini→centro es
+        // éste empezando en otro punto —, así que al abrir el centrado a las figuras
+        // abiertas la rama se fue sola: se comprobó la tabla de verdad de los 7 valores
+        // posibles de `extremo` y para una cerrada las 7 filas dan lo mismo que antes.
+        d.extremo = (ext === 'fin') ? 'ini' : (ext === 'ini' ? 'centro' : 'fin');
         _mut(ci); _renderPanel();
       };
     }

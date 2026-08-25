@@ -34,6 +34,19 @@
 //      existe para impedir).
 //   G. Un GANCHO o una DIAGONAL como dominante se IGNORAN con aviso, y el
 //      resultado queda idéntico al de no haber elegido nada.
+//   K. Δ CENTRADO EN FIGURA ABIERTA (25-ago) — el tercer estado de la flecha.
+//
+// SOBRE K, porque el bug era silencioso: la flecha del Δ tenía 3 estados en el
+// marco CERRADO (centro/fin/ini) y sólo 2 en la cadena abierta (fin/ini). Guardar
+// 'centro' en una abierta NO fallaba: `_deltaDelDominante` caía al `else` y salía
+// EXACTAMENTE igual que 'fin'. Medido en 103A φ16, viga 600×60×30, Δ +20:
+//      fin      x [−295.2 , 315.2]
+//      ini      x [−315.2 , 295.2]
+//      centro   x [−295.2 , 315.2]   ← idéntico a fin: el estado no existía
+//      debería  x [−305.2 , 305.2]
+// El largo de corte era correcto en los tres; lo único roto era DÓNDE quedaba la
+// barra. Este bloque congela que los tres estados son tres posiciones distintas y
+// que el centrado reparte por mitades exactas.
 //
 // Correr con: node tests/test_delta_dominante.js
 
@@ -578,6 +591,53 @@ console.log('— J) dominante en marco cerrado = esquina de los ganchos —');
   Object.keys(esquinas).forEach(function (L) { distintas[esquinas[L]] = 1; });
   ok(Object.keys(distintas).length === 4,
     'la punta del gancho visita 4 esquinas distintas: ' + JSON.stringify(esquinas));
+})();
+
+// ===========================================================================
+// K. Δ CENTRADO EN FIGURA ABIERTA — «que deje la barra al medio y reparta el
+//    delta hacia cada lado» (usuario, 25-ago).
+// ===========================================================================
+(function () {
+  console.log('\nK. El Δ centrado en una cadena ABIERTA');
+  var viga = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
+  function bbX(fig, extremo, delta) {
+    var spec = CAT.get(fig), dims = {}, uno = (spec.parciales || []).length === 1;
+    (spec.parciales || []).forEach(function (L) {
+      dims[L] = (L === 'B' || uno) ? { modo: 'auto' } : { modo: 'fija', valor: 30 };
+    });
+    var LD = (spec.parciales || []).indexOf('B') >= 0 ? 'B' : (spec.parciales || [])[0];
+    dims[LD].delta = delta;
+    if (extremo) dims[LD].extremo = extremo;
+    var pls = R.expandirComponente({
+      comp_id: 'CBS', jerarquia: 2, tipologia: 'CBS', figura: fig, diam: 16,
+      cara: 'sup', angulos: [], dims: dims,
+      distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 6, sentido: 'nucleo' }
+    }, viga);
+    var xs = pls[0].puntos.map(function (q) { return q.x; });
+    return { lo: Math.round(Math.min.apply(null, xs) * 100) / 100,
+             hi: Math.round(Math.max.apply(null, xs) * 100) / 100 };
+  }
+  // 103A, Δ +20 — los tres estados son TRES posiciones distintas.
+  var f20 = bbX('103A', 'fin', 20), i20 = bbX('103A', 'ini', 20), c20 = bbX('103A', 'centro', 20);
+  ok(f20.lo === -295.2 && f20.hi === 315.2, "103A Δ+20 'fin': crece por el final (=" + f20.lo + ',' + f20.hi + ')');
+  ok(i20.lo === -315.2 && i20.hi === 295.2, "103A Δ+20 'ini': crece por el inicio (=" + i20.lo + ',' + i20.hi + ')');
+  ok(c20.lo === -305.2 && c20.hi === 305.2, "103A Δ+20 'centro': 10 y 10, la barra queda al medio (=" + c20.lo + ',' + c20.hi + ')');
+  // …y ninguno es el mismo que otro: ESO era el bug (centro salía igual que fin).
+  ok(c20.lo !== f20.lo && c20.lo !== i20.lo, "'centro' NO es un alias de 'fin' ni de 'ini'");
+  // El LARGO no cambia con el estado: la flecha mueve la barra, no la corta.
+  ok((f20.hi - f20.lo) === (c20.hi - c20.lo) && (i20.hi - i20.lo) === (c20.hi - c20.lo),
+    'el largo de corte es el MISMO en los tres estados: sólo cambia dónde queda');
+  // Δ NEGATIVO: acortar también se reparte.
+  var cN = bbX('103A', 'centro', -20);
+  ok(cN.lo === -285.2 && cN.hi === 285.2, "103A Δ−20 'centro': se acorta 10 por cada borde (=" + cN.lo + ',' + cN.hi + ')');
+  // La recta y la de una sola pata contestan igual: la regla no mira la figura.
+  var r101 = bbX('101A', 'centro', 20), r102 = bbX('102A', 'centro', 20);
+  ok(r101.lo === -306 && r101.hi === 306, '101A (recta) también se centra (=' + r101.lo + ',' + r101.hi + ')');
+  ok(r102.lo === -305.2 && r102.hi === 306, '102A (una pata) también, conservando su asimetría propia (=' + r102.lo + ',' + r102.hi + ')');
+  // SIN extremo escrito, una abierta sigue creciendo por el final: el default NO cambió.
+  var sinExt = bbX('103A', null, 20);
+  ok(sinExt.lo === f20.lo && sinExt.hi === f20.hi,
+    'sin extremo escrito la abierta crece por el final, como siempre (cero regresión)');
 })();
 
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
