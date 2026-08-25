@@ -1532,6 +1532,12 @@ class BarraUpdate(BaseModel):
     radio: Optional[float] = None
     nombre_plano: Optional[str] = None   # nombre legible del plano (editable en Bar Manager)
     suf_tipo: Optional[str] = None       # sufijo complementario de la tipología (A/B/inf/sup/comentario corto)
+    # La grilla de "Agregar Cubicación" persiste por ESTE canal las ediciones de
+    # barras ya guardadas (antes esas ediciones se perdían: el 💾 solo insertaba
+    # barras nuevas). Piso y marca (tipología) son sus dos columnas editables que
+    # el Bar Manager no expone.
+    piso: Optional[str] = None
+    marca: Optional[str] = None
 
 
 _GEOM_FIELDS = ["figura", "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f",
@@ -1571,7 +1577,7 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 "SELECT id, id_proyecto, sector, piso, ciclo, diam, largo_total, cant, cant_total, mult, "
-                "figura, dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i, "
+                "marca, figura, dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i, "
                 "ang1, ang2, ang3, ang4, radio FROM barras WHERE id = %s",
                 (barra_id,),
             )
@@ -1628,6 +1634,21 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                 st_val = (campos["suf_tipo"] or "").strip()[:30] or None
                 sets.append("suf_tipo = %s"); params.append(st_val)
                 cambios.append(f"suf_tipo: →{st_val or '(vacío)'}")
+
+            # piso / marca: los edita la grilla de "Agregar Cubicación" sobre barras YA
+            # guardadas (ver BarraUpdate). El piso es obligatorio en toda barra manual
+            # (el alta lo exige) → no puede quedar vacío por un PATCH.
+            piso_nuevo = None
+            if "piso" in campos:
+                piso_nuevo = (campos["piso"] or "").strip()[:30]
+                if not piso_nuevo:
+                    raise HTTPException(status_code=400, detail="El piso no puede quedar vacío.")
+                sets.append("piso = %s"); params.append(piso_nuevo)
+                cambios.append(f"piso: {barra['piso']}→{piso_nuevo}")
+            if "marca" in campos:
+                marca_val = (campos["marca"] or "").strip()[:30] or None
+                sets.append("marca = %s"); params.append(marca_val)
+                cambios.append(f"marca: {barra['marca']}→{marca_val or '(vacía)'}")
 
             # COHERENCIA cant/mult/cant_total: en el Bar Manager el usuario edita la CANTIDAD (que
             # es cant_total) y no ve cant ni mult. Al cambiar cant_total sin tocar cant/mult, estos
@@ -1720,6 +1741,11 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                 from .sector_estado import marcar_sector_modificado
                 marcar_sector_modificado(cur, barra["id_proyecto"], barra.get("sector"),
                                          barra.get("piso"), barra.get("ciclo"), por=email)
+                # Si la barra cambió de piso, el piso de DESTINO también cambió de
+                # contenido (recibió la barra): se marca igual que el de origen.
+                if piso_nuevo and piso_nuevo != barra.get("piso"):
+                    marcar_sector_modificado(cur, barra["id_proyecto"], barra.get("sector"),
+                                             piso_nuevo, barra.get("ciclo"), por=email)
             except Exception:
                 pass  # el estado del sector no debe romper la edición de la barra
 

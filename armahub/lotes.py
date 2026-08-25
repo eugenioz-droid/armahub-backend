@@ -184,6 +184,14 @@ class BarraManual(BaseModel):
     # posición de su distribución nació esta barra ('uid#ordinal'). Es la llave con la
     # que el sync cruza una generación con la siguiente. Vacío en el ingreso manual.
     origen_ref: Optional[str] = None
+    # IDEMPOTENCIA DEL GUARDADO (bug "guardé de nuevo y se duplicaron las barras"):
+    # id_unico OPCIONAL generado por el FRONT (mismo prefijo 'M-' del manual). Si el
+    # mismo guardado llega dos veces — doble clic con el primer POST aún en vuelo, o
+    # reintento tras perderse la respuesta de un INSERT que SÍ se commiteó — cada
+    # barra trae el MISMO id y el índice único (id_unico, id_proyecto) la reconoce:
+    # no se inserta de nuevo. Sin id (TE, panel_3d, clientes viejos) el backend lo
+    # genera como siempre.
+    id_unico: Optional[str] = None
 
 
 class BarrasBatch(BaseModel):
@@ -379,10 +387,13 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
             # auditoría: el duplicado los perdía → columna PLANO del export en
             # blanco y trazabilidad de template cortada — "algunas cosas no
             # quedaron bien guardadas").
+            # origen_ref viaja también: es la llave con la que el sync de una estructura
+            # cruza generaciones — sin él, la primera regeneración de una estructura
+            # duplicada borraba y recreaba todas sus barras (perdiendo id y revisión).
             campos = ["sector", "piso", "marca", "figura", "diam", "cant", "mult",
                       "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
                       "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo",
-                      "nombre_plano", "origen", "template_instancia_id"]
+                      "nombre_plano", "origen", "template_instancia_id", "origen_ref"]
             if estado_o == "eliminado":
                 import json as _json
                 origen = snap if isinstance(snap, list) else (_json.loads(snap) if snap else [])
@@ -424,6 +435,44 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                         raise HTTPException(status_code=409, detail="Conflicto al numerar el despiece. Reintenta.")
             factor = _factor_peso(cur, id_proyecto)
             now = _now_iso()
+            # LAS ESTRUCTURAS DEL MODELADOR SE DUPLICAN CON EL LOTE (bug "dupliqué un
+            # despiece y las modificaciones no se guardan"): antes las barras copiadas
+            # conservaban template_instancia_id apuntando a la instancia del lote
+            # ORIGEN. En el duplicado, reabrir la estructura (🧱) y "Actualizar en el
+            # despiece" hacía PUT + sync: el PUT editaba la receta compartida (¡la del
+            # lote original!) y el sync respondía 404 "esa estructura no pertenece a
+            # este despiece" (elementos_template.lote_id = lote origen) — los cambios
+            # sobre las barras no se guardaban NUNCA. Ahora cada instancia referenciada
+            # se copia a una fila PROPIA del lote nuevo (con el ciclo/eje elegidos) y
+            # las barras duplicadas apuntan a esa copia: reabrir y regenerar funciona
+            # igual que en el despiece original, sin tocar la receta de nadie más.
+            import json as _json2
+            mapa_inst = {}
+            iids = sorted({b.get("template_instancia_id") for b in origen
+                           if b.get("template_instancia_id") is not None})
+            for iid in iids:
+                cur.execute(
+                    "SELECT template_id, params, nombre, elemento, piso, id_proyecto, sector "
+                    "FROM elementos_template WHERE id = %s", (iid,))
+                ei = cur.fetchone()
+                if not ei:
+                    # La instancia origen ya no existe (data anterior a la 107 o
+                    # purgada): la barra duplicada queda SIN instancia en vez de
+                    # heredar una referencia rota que no se puede reabrir.
+                    mapa_inst[iid] = None
+                    continue
+                # params es JSONB: psycopg lo entrega como dict → re-serializar para
+                # el INSERT (mismo trato que modelador.py con json.dumps).
+                params_txt = ei[1] if isinstance(ei[1], str) else _json2.dumps(ei[1])
+                cur.execute(
+                    """INSERT INTO elementos_template
+                         (template_id, lote_id, params, creado_por, fecha, nombre, elemento,
+                          piso, estado, id_proyecto, sector, ciclo, eje, updated_at, editado_por)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'activa',%s,%s,%s,%s,%s,%s)
+                       RETURNING id""",
+                    (ei[0], nuevo_id, params_txt, email, now, ei[2], ei[3], ei[4],
+                     ei[5], ei[6], ciclo, eje, now, email))
+                mapa_inst[iid] = cur.fetchone()[0]
             n = 0
             for b in origen:
                 dims = {f"dim_{L}": b.get(f"dim_{L}") for L in "abcdefghi"}
@@ -439,19 +488,21 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                 cod_prod = cod_prod_de_diam(b.get("diam"))
                 # nombre_plano viaja (antes se perdía → columna PLANO del export en
                 # blanco); origen se HEREDA (antes 'manual' fijo: una barra de
-                # template duplicada perdía su clase) y template_instancia_id
-                # conserva la trazabilidad de la receta.
+                # template duplicada perdía su clase); template_instancia_id apunta a
+                # la COPIA de la instancia hecha arriba (nunca a la del lote origen) y
+                # origen_ref viaja para que el sync pueda cruzar generaciones.
+                iid_nuevo = mapa_inst.get(b.get("template_instancia_id"))
                 cur.execute(
                     """INSERT INTO barras
                        (id_unico, id_proyecto, sector, piso, ciclo, eje, diam, largo_total,
                         mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio, suf_tipo, nombre_plano,
-                        origen, template_instancia_id,
+                        origen, template_instancia_id, origen_ref,
                         import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,
-                               %s, %s,
+                               %s, %s, %s,
                                NULL, %s, 'borrador', %s, %s, %s, %s)""",
                     (idu, id_proyecto, b.get("sector"), b.get("piso"), ciclo, eje, b.get("diam"), largo,
                      b.get("mult"), b.get("cant"), cant_total, peso_u, peso_t, b.get("marca"), b.get("figura"), cod_prod,
@@ -461,7 +512,8 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                      ((b.get("suf_tipo") or "").strip() or None),
                      ((b.get("nombre_plano") or "").strip() or None),
                      (b.get("origen") or "manual"),
-                     b.get("template_instancia_id"),
+                     iid_nuevo,
+                     (b.get("origen_ref") or None),
                      nuevo_id, now, email, email, now))   # creado_por = quien duplica
                 n += 1
             cur.execute("UPDATE lotes SET n_barras = %s WHERE id = %s", (n, nuevo_id))
@@ -592,15 +644,29 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 v = _valores_barra(cur, b, i, factor)
                 largo, peso_u, peso_t = v["largo"], v["peso_u"], v["peso_t"]
                 cant_total, cod_prod = v["cant_total"], v["cod_prod"]
-                idu = _id_unico_manual()
+                # IDEMPOTENCIA (ver BarraManual.id_unico): si el front mandó su id 'M-…'
+                # se respeta — un reintento del MISMO guardado trae los MISMOS ids y el
+                # índice único (id_unico, id_proyecto) evita insertar dos veces. Un id
+                # que no respete el formato manual se ignora (protege el espacio de
+                # nombres del CSV, cuyo id_unico es ID_PROYECTO/PLANO/ID).
+                idu_cliente = (b.id_unico or "").strip()
+                if idu_cliente.startswith("M-") and 3 <= len(idu_cliente) <= 40:
+                    idu = idu_cliente
+                else:
+                    idu = _id_unico_manual()
                 # Revisada viaja con la barra: si el cubicador la marcó en la grilla, se guarda
                 # revisada=true + trazabilidad (quién/cuándo). Habilita terminar el lote (5N.19).
                 rev_por = email if b.revisada else None
                 rev_fecha = now if b.revisada else None
                 # Modelador 3D (T1.1): origen OPCIONAL (default 'manual' → intacto) + template_instancia_id.
                 origen_barra = _origen_valido(b.origen)
-                cur.execute(
-                    """INSERT INTO barras
+                # UPSERT sobre (id_unico, id_proyecto): la barra que YA entró en un
+                # intento anterior (respuesta perdida / doble clic) no se duplica — se
+                # RE-ESCRIBE con el contenido de ESTE envío (el usuario pudo haberla
+                # editado entre el intento perdido y el reintento) y devuelve su id de
+                # siempre. El WHERE acota el upsert al MISMO lote: un conflicto con una
+                # barra de otro lote NO se pisa (cae al manejo de colisión de abajo).
+                sql_ins = """INSERT INTO barras
                        (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
                         mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
@@ -610,17 +676,54 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                %s,%s,%s,%s,
-                               %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
-                    (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje,
-                     ((b.nombre_plano or "").strip() or plano_lote), b.diam, largo,
-                     b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
-                     b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
-                     b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
-                     bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
-                     origen_barra, b.template_instancia_id, ((b.origen_ref or "").strip() or None),
-                     lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
-                )
-                creadas.append({"id": cur.fetchone()[0], "id_unico": idu})   # id numérico + id_unico
+                               %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)
+                       ON CONFLICT (id_unico, id_proyecto) DO UPDATE SET
+                         sector=EXCLUDED.sector, piso=EXCLUDED.piso, ciclo=EXCLUDED.ciclo,
+                         eje=EXCLUDED.eje, nombre_plano=EXCLUDED.nombre_plano,
+                         diam=EXCLUDED.diam, largo_total=EXCLUDED.largo_total,
+                         mult=EXCLUDED.mult, cant=EXCLUDED.cant, cant_total=EXCLUDED.cant_total,
+                         peso_unitario=EXCLUDED.peso_unitario, peso_total=EXCLUDED.peso_total,
+                         marca=EXCLUDED.marca, figura=EXCLUDED.figura, cod_proyecto=EXCLUDED.cod_proyecto,
+                         dim_a=EXCLUDED.dim_a, dim_b=EXCLUDED.dim_b, dim_c=EXCLUDED.dim_c,
+                         dim_d=EXCLUDED.dim_d, dim_e=EXCLUDED.dim_e, dim_f=EXCLUDED.dim_f,
+                         dim_g=EXCLUDED.dim_g, dim_h=EXCLUDED.dim_h, dim_i=EXCLUDED.dim_i,
+                         ang1=EXCLUDED.ang1, ang2=EXCLUDED.ang2, ang3=EXCLUDED.ang3,
+                         ang4=EXCLUDED.ang4, radio=EXCLUDED.radio,
+                         revisada=EXCLUDED.revisada, revisada_por=EXCLUDED.revisada_por,
+                         revisada_fecha=EXCLUDED.revisada_fecha, suf_tipo=EXCLUDED.suf_tipo,
+                         origen=EXCLUDED.origen, template_instancia_id=EXCLUDED.template_instancia_id,
+                         origen_ref=EXCLUDED.origen_ref,
+                         editado_por=EXCLUDED.editado_por, editado_fecha=EXCLUDED.editado_fecha
+                       WHERE barras.lote_id = EXCLUDED.lote_id
+                       RETURNING id"""
+                nuevo_bid = None
+                for _rein in range(2):
+                    cur.execute(
+                        sql_ins,
+                        (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje,
+                         ((b.nombre_plano or "").strip() or plano_lote), b.diam, largo,
+                         b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
+                         b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
+                         b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
+                         bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
+                         origen_barra, b.template_instancia_id, ((b.origen_ref or "").strip() or None),
+                         lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
+                    )
+                    fila = cur.fetchone()
+                    if fila is not None:
+                        nuevo_bid = fila[0]
+                        break
+                    # Sin fila devuelta = conflicto con una barra de OTRO lote (el
+                    # upsert de arriba ya resolvió el caso "mismo lote"). Es una
+                    # colisión real de ids — p. ej. una fila clonada en el front que
+                    # arrastró el id de su original —: id nuevo del servidor e insertar
+                    # de verdad.
+                    idu = _id_unico_manual()
+                if nuevo_bid is None:
+                    # Dos colisiones seguidas con uuid nuevo: prácticamente imposible;
+                    # mejor abortar (transacción completa) que responder a medias.
+                    raise HTTPException(status_code=409, detail="Conflicto de ids al guardar. Reintenta.")
+                creadas.append({"id": nuevo_bid, "id_unico": idu})   # id numérico + id_unico
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))
             # Actualizar contador del lote.
             cur.execute(
@@ -895,10 +998,12 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
                 # nombre_plano/origen/template_instancia_id también al snapshot: sin
                 # ellos, duplicar DESDE una lápida los perdía aunque el duplicado
                 # normal ya los copie (misma auditoría del incidente del export).
+                # origen_ref también al snapshot: duplicar DESDE una lápida debe poder
+                # reconstruir la llave de cruce del sync igual que un duplicado normal.
                 _snap_campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
                                 "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
                                 "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo",
-                                "nombre_plano", "origen", "template_instancia_id"]
+                                "nombre_plano", "origen", "template_instancia_id", "origen_ref"]
                 cur.execute("SELECT " + ", ".join(_snap_campos) +
                             " FROM barras WHERE lote_id = %s ORDER BY id", (lote_id,))
                 snap_barras = [dict(zip(_snap_campos, row)) for row in cur.fetchall()]

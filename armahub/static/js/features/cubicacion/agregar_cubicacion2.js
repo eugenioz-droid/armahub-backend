@@ -1202,6 +1202,11 @@ window.ac2Duplicar=function(id){
   var b=ac2BarraPorId(id); if(!b) return;
   if (ac2BarraDeEstructura(b)) return;   // una copia suelta no pertenecería a la estructura
   var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false;
+  // La copia nace SIN el estado de guardado del original. Antes heredaba _guardada y
+  // _dbid: el 💾 la saltaba para siempre (fila fantasma que desaparecía al recargar —
+  // "las modificaciones no se guardan") y peor, quitarla borraba de la BD la barra
+  // ORIGINAL (compartían _dbid). _sync/_idu por lo mismo: son identidad del original.
+  delete copia._guardada; delete copia._dbid; delete copia._sync; delete copia._idu;
   AC2.barras.splice(AC2.barras.indexOf(b)+1,0, copia);
   ac2Render();
 };
@@ -1326,6 +1331,9 @@ window.ac2CopiarSeleccionadas=function(){
   var copias=[], ultimoIdx=-1;
   origen.forEach(function(b){
     var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
+    // _dbid/_sync/_idu son identidad del ORIGINAL: si la copia los hereda, la
+    // sincronización de revisadas y el quitar tocan la barra equivocada en la BD.
+    delete copia._dbid; delete copia._sync; delete copia._idu;
     copias.push(copia);
     ultimoIdx=Math.max(ultimoIdx, AC2.barras.indexOf(b));
   });
@@ -1350,6 +1358,8 @@ window.ac2DuplicarPiso=function(dir){
     var j=i+dir;
     if (j<0 || j>=_ac2Pisos.length){ sinDestino++; return; }   // ya en el tope / piso más bajo
     var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
+    // _dbid/_sync/_idu son identidad del ORIGINAL (ver ac2CopiarSeleccionadas).
+    delete copia._dbid; delete copia._sync; delete copia._idu;
     copia.piso=_ac2Pisos[j];
     copias.push(copia);
     ultimoIdx=Math.max(ultimoIdx, AC2.barras.indexOf(b));      // insertaremos tras la última original
@@ -1423,12 +1433,55 @@ async function _ac2Get(url){
 function ac2BarrasListas(){
   return AC2.barras.filter(function(b){ return !b._guardada && ac2BarraLista(b); });
 }
+// IDENTIDAD ESTABLE DE LA BARRA A TRAVÉS DE REINTENTOS (bug "guardé de nuevo y se
+// duplicaron las barras"): cada barra recibe UNA vez un id_unico local (mismo formato
+// 'M-…' del backend) que viaja en el POST. Si el guardado se repite — doble clic con
+// el primer POST en vuelo, o reintento tras "Error de red" cuando el INSERT sí había
+// entrado — el backend reconoce el id por su índice único y NO inserta de nuevo.
+// La colisión (astronómicamente improbable) la resuelve el backend con id propio.
+function _ac2IdUnicoLocal(){
+  var s='';
+  for (var i=0;i<12;i++) s+='0123456789ABCDEF'[Math.floor(Math.random()*16)];
+  return 'M-'+s;
+}
+// Campos de la barra que viven en la BD y son editables en la grilla. Con ellos se
+// hace la FOTO (_sync) del estado guardado de cada barra: comparando la foto con el
+// estado actual se sabe QUÉ campos editó el usuario en una barra YA guardada, para
+// mandarlos por PATCH al guardar (antes esas ediciones se perdían en silencio: el 💾
+// solo insertaba barras nuevas y una barra _guardada editada no viajaba nunca).
+var AC2_CAMPOS_SYNC=['piso','marca','suf_tipo','diam','cant','mult','figura','radio',
+                     'ang1','ang2','ang3','ang4'].concat(AC2_DIMKEYS);
+function _ac2Snapshot(b){
+  var s={};
+  AC2_CAMPOS_SYNC.forEach(function(k){ s[k]=(b[k]==null||b[k]==='')?null:b[k]; });
+  return JSON.stringify(s);
+}
+// Diff contra la foto: {campo: valorNuevo} SOLO con lo que cambió, o null si nada.
+// Sin foto (barra de sesiones anteriores a este fix) no hay contra qué comparar → null.
+function _ac2CambiosBarra(b){
+  if (!b._sync) return null;
+  var prev; try{ prev=JSON.parse(b._sync); }catch(e){ return null; }
+  var out=null;
+  AC2_CAMPOS_SYNC.forEach(function(k){
+    var v=(b[k]==null||b[k]==='')?null:b[k];
+    // Comparación tolerante a "5" vs 5 (los selects entregan string): en campos
+    // numéricos se compara el número.
+    if (k in AC2_CAMPOS_NUM){ v=(v==null)?null:Number(v); var p=(prev[k]==null)?null:Number(prev[k]);
+      if (v!==p && !(v==null&&p==null)){ (out=out||{})[k]=v; } return; }
+    if (v!==prev[k]){ (out=out||{})[k]=v; }
+  });
+  return out;
+}
+function _ac2Editadas(){
+  return AC2.barras.filter(function(b){ return b._guardada && b._dbid && _ac2CambiosBarra(b); });
+}
 // Mapea una barra del estado al payload del backend (mismo shape; solo limpia nulls/estampa contexto).
 function ac2Payload(b){
   var it={ sector:AC2.sector||null, ciclo:AC2.ciclo||null, piso:(b.piso||null), eje:AC2.eje||null,
            diam:Number(b.diam), figura:b.figura||null, marca:b.marca||null,
            cant:Number(b.cant)||1, mult:Number(b.mult)||1, radio:(b.radio!=null?Number(b.radio):null),
-           revisada: !!b.rev, suf_tipo:(b.suf_tipo||'').trim()||null };
+           revisada: !!b.rev, suf_tipo:(b.suf_tipo||'').trim()||null,
+           id_unico:(b._idu||null) };   // identidad estable (ver _ac2IdUnicoLocal)
   AC2_DIMKEYS.forEach(function(k){ it[k]=(b[k]!=null?Number(b[k]):null); });
   ['ang1','ang2','ang3','ang4'].forEach(function(a){ it[a]=(b[a]!=null?Number(b[a]):null); });
   return it;
@@ -1537,47 +1590,88 @@ window.ac2ReasignarContexto=async function(){
 // 💾 GUARDAR AVANCE: persiste las barras COMPLETAS y válidas en el lote YA creado. Las incompletas
 // NO se pierden: quedan en el formulario para completarlas y guardar después. (El backend solo
 // acepta barras con geometría válida + ubicación completa; guardar avance = fijar lo listo.)
+// Además persiste las EDICIONES de barras ya guardadas (PATCH por barra, el mismo canal del Bar
+// Manager): antes esas ediciones vivían solo en el front y se perdían al recargar — el síntoma
+// clásico era un despiece DUPLICADO (nace con todas sus barras _guardada) al que "no se le
+// guardaban las modificaciones".
+var _ac2Guardando=false;   // guardado EN VUELO: un segundo clic no dispara otro POST (duplicaba barras)
 window.ac2Guardar=async function(opts){
   var silencioso=!!(opts&&opts.silencioso);   // sin alerts (lo llama la bandera antes de terminar)
+  if (_ac2Guardando) return;   // el guardado anterior aún no responde: NO repetir el envío
   if (!AC2.loteId){ if(!silencioso) alert('Primero crea el despiece (🆕 Crear despiece) definiendo Obra, Ciclo y Eje.'); return; }
   if (AC2.loteEstado==='terminada'){ if(!silencioso) alert('El despiece está terminado; se edita desde Bar Manager.'); return; }
   var listas=ac2BarrasListas();
+  // Barras ya guardadas con ediciones pendientes: solo las COMPLETAS viajan (el backend valida la
+  // geometría del PATCH igual que la del alta); las editadas a medio llenar esperan en pantalla.
+  var editadas=_ac2Editadas();
+  var editListas=editadas.filter(function(b){ return ac2BarraLista(b); });
+  var editIncompletas=editadas.length-editListas.length;
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length - listas.length;
-  if (!listas.length){
-    if(!silencioso) alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el despiece las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
+  if (!listas.length && !editListas.length){
+    if(!silencioso) alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el despiece las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.'+(editIncompletas?'\n\n('+editIncompletas+' barra(s) guardadas tienen ediciones a medio llenar: complétalas para poder guardarlas.)':''));
     return;
   }
   _ac2LeerContexto();   // reconciliar ciclo/eje por si el usuario los ajustó justo antes de guardar
+  _ac2Guardando=true;
+  var _gb=document.getElementById('ac2_guardarBtn'); if(_gb) _gb.disabled=true;
   try{
-    // Agregar las barras (transaccional en el backend; rechaza si falta ubicación).
-    var rb=await _ac2Post('/lotes/'+AC2.loteId+'/barras', { barras: listas.map(ac2Payload) });
-    if (!rb.ok){
-      var d=rb.data&&rb.data.detail;
-      alert('No se guardaron las barras'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+rb.status+')')+'.');
-      return;
+    var n=0;
+    if (listas.length){
+      // Identidad estable ANTES del envío: el mismo lote de barras reintentado viaja con los
+      // MISMOS id_unico y el backend no lo inserta dos veces (ver _ac2IdUnicoLocal).
+      listas.forEach(function(b){ if(!b._idu) b._idu=_ac2IdUnicoLocal(); });
+      // Agregar las barras (transaccional en el backend; rechaza si falta ubicación).
+      var rb=await _ac2Post('/lotes/'+AC2.loteId+'/barras', { barras: listas.map(ac2Payload) });
+      if (!rb.ok){
+        var d=rb.data&&rb.data.detail;
+        alert('No se guardaron las barras'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+rb.status+')')+'.');
+        return;
+      }
+      n=(rb.data&&rb.data.creadas)||listas.length;
+      // Las barras guardadas PERMANECEN en la grilla (marcadas _guardada) para poder revisarlas
+      // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían. Guardamos el id de
+      // BD (_dbid) de cada una — el backend los devuelve en ORDEN — para poder sincronizar luego su
+      // estado "revisada" (/revisar) sin re-insertarlas, y la FOTO (_sync) del estado recién
+      // guardado para detectar ediciones posteriores.
+      var idsDb=(rb.data&&rb.data.ids)||[];
+      listas.forEach(function(b,i){ b._guardada=true; if(idsDb[i]!=null) b._dbid=idsDb[i]; b._sync=_ac2Snapshot(b); });
     }
-    var n=(rb.data&&rb.data.creadas)||listas.length;
+    // EDICIONES de barras ya guardadas → PATCH por barra, en paralelo (patrón del Bar Manager).
+    // Solo viajan los campos que CAMBIARON respecto de la foto (_sync): así la auditoría del
+    // backend registra exactamente la edición y nada más.
+    var editOk=0, editFail=0, editMsg='';
+    if (editListas.length){
+      var resultados=await Promise.all(editListas.map(async function(b){
+        var cambios=_ac2CambiosBarra(b);
+        if (!cambios) return { ok:true, sin_cambios:true };
+        var r=await _ac2Patch('/barras/'+b._dbid, cambios);
+        if (r.ok) b._sync=_ac2Snapshot(b);   // la foto pasa a ser el estado recién guardado
+        return { ok:r.ok, detail:r.data&&r.data.detail };
+      }));
+      resultados.forEach(function(r){
+        if (r.ok) editOk++;
+        else { editFail++; if(!editMsg && r.detail) editMsg=(r.detail.mensaje||r.detail.msg||(typeof r.detail==='string'?r.detail:'')); }
+      });
+    }
     if (silencioso){   // guardado desde la bandera: solo persistir + refrescar, sin alert
-      var idsS=(rb.data&&rb.data.ids)||[];
-      listas.forEach(function(b,i){ b._guardada=true; if(idsS[i]!=null) b._dbid=idsS[i]; });
       ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
       return;
     }
-    // Las barras guardadas PERMANECEN en la grilla (marcadas _guardada) para poder revisarlas
-    // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían. Guardamos el id de
-    // BD (_dbid) de cada una — el backend los devuelve en ORDEN — para poder sincronizar luego su
-    // estado "revisada" (/revisar) sin re-insertarlas.
-    var idsDb=(rb.data&&rb.data.ids)||[];
-    listas.forEach(function(b,i){ b._guardada=true; if(idsDb[i]!=null) b._dbid=idsDb[i]; });
     // El disquete NUNCA limpia el formulario: el usuario debe poder guardar SEGUIDO (avance) sin
     // perder lo que tiene en pantalla si se corta el internet. Para limpiar y crear otro lote está
     // la X (ac2Descartar). Las barras guardadas quedan marcadas _guardada; las incompletas siguen ahí.
     ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
-    var msg='✅ '+n+' barra(s) guardadas en el despiece #'+(AC2.loteNum||AC2.loteId)+'.';
+    var partes=[];
+    if (n) partes.push(n+' barra(s) guardadas');
+    if (editOk) partes.push(editOk+' edición(es) actualizadas');
+    var msg='✅ '+(partes.join(' · ')||'Sin cambios')+' en el despiece #'+(AC2.loteNum||AC2.loteId)+'.';
+    if (editFail) msg+='\n\n⚠ '+editFail+' edición(es) NO se guardaron'+(editMsg?': '+editMsg:'')+'. Corrige y guarda de nuevo.';
+    if (editIncompletas) msg+='\n\n'+editIncompletas+' barra(s) guardadas tienen ediciones a medio llenar — complétalas y guarda de nuevo.';
     if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y guarda de nuevo.';
-    else msg+='\n\nMarca "Rev" y 🏁 Terminar, o sigue agregando. Para vaciar el formulario usa la X.';
+    else if (!editFail) msg+='\n\nMarca "Rev" y 🏁 Terminar, o sigue agregando. Para vaciar el formulario usa la X.';
     alert(msg);
   }catch(e){ alert('Error de red al guardar. Reintenta.'); }
+  finally{ _ac2Guardando=false; if(_gb) _gb.disabled=false; }
 };
 
 // 🏁 TERMINAR: cierra el lote. El backend exige que TODAS sus barras estén revisadas (5N.19).
@@ -1587,10 +1681,15 @@ window.ac2Guardar=async function(opts){
 window.ac2ToggleTerminado=async function(){
   if (!AC2.loteId){ alert('Primero crea el despiece y guarda barras (💾) antes de terminarlo.'); return; }
   if (AC2.loteEstado==='terminada'){ alert('El despiece ya está terminado.'); return; }
-  // Guardar avance si hay barras completas sin persistir (sincroniza revisada de las nuevas).
-  if (ac2BarrasListas().length){ await ac2Guardar({ silencioso:true }); }
+  // Guardar avance si hay barras completas sin persistir O ediciones pendientes de barras
+  // guardadas (sincroniza revisada de las nuevas y fija las ediciones antes de cerrar).
+  if (ac2BarrasListas().length || _ac2Editadas().length){ await ac2Guardar({ silencioso:true }); }
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length;
   if (pendientes){ alert('Quedan '+pendientes+' barra(s) sin completar en el formulario. Complétalas y guárdalas, o descártalas, antes de terminar.'); return; }
+  // Ediciones que el guardado NO pudo fijar (incompletas o rechazadas por el backend): terminar
+  // ahora las perdería en silencio — la BD quedaría con el valor viejo y la grilla se limpia.
+  var editPend=_ac2Editadas().length;
+  if (editPend){ alert('Hay '+editPend+' barra(s) guardadas con ediciones sin fijar (a medio llenar o con error al guardar). Corrígelas y guarda (💾) antes de terminar.'); return; }
   // Sincronizar el estado "revisada" de TODAS las barras guardadas (por si alguna se marcó en el
   // front antes de este fix y nunca llegó a la BD). Marcamos revisadas y desmarcamos las no-rev.
   var revIds=AC2.barras.filter(function(b){return b._dbid && b.rev;}).map(function(b){return b._dbid;});
@@ -1900,6 +1999,7 @@ window.ac2RetomarLote=async function(id, forzar){
     AC2_DIMKEYS.forEach(function(k){ nb[k]=x[k]; });
     ['ang1','ang2','ang3','ang4'].forEach(function(a){ nb[a]=x[a]; });
     nb._guardada=true; nb._dbid=x.id;   // id de BD para sincronizar revisada (/revisar) al terminar
+    nb._sync=_ac2Snapshot(nb);          // FOTO del estado guardado: contra ella se detectan ediciones (PATCH al 💾)
     // ORIGEN de la barra: 'csv' | 'manual' | 'template' (las nacidas del editor 3D).
     // Un despiece puede tener de varias clases y el front tiene que distinguirlas.
     nb._origen=x.origen||''; nb._instanciaId=(x.template_instancia_id!=null?x.template_instancia_id:null);
