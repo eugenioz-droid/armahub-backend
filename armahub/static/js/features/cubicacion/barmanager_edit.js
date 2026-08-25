@@ -382,8 +382,18 @@
 
   // Normaliza el valor de una celda según el campo (figura=texto/null; dim/áng
   // vacío=null para borrar; resto=número). Devuelve el valor a guardar.
-  function _normalizarValorCelda(campo, val) {
-    if (campo === 'figura') return (val === '') ? null : val;
+  // LO QUE DICE LA CELDA, NO UNA LISTA DE NOMBRES (fix 25-ago).
+  // Acá había `if (campo === 'figura') …texto… ; else parseFloat(val)`, o sea una lista
+  // de excepciones de UN elemento. Cuando se sumaron columnas de TEXTO —el nombre del
+  // plano y el sufijo de tipología— nadie la actualizó, así que sus valores pasaban por
+  // parseFloat: escribir "Plano-3" daba NaN, viajaba como null en el PATCH y el backend
+  // lo interpretaba como "vaciar el campo". O sea que editar el plano en el Bar Manager
+  // lo BORRABA en vez de escribirlo (sólo funcionaba si el texto era un número).
+  // La celda ya sabe lo que es: los campos numéricos se pintan con <input type="number">
+  // y los de texto con type="text". Se le pregunta al input en vez de mantener una
+  // lista que la próxima columna de texto vuelva a dejar desactualizada.
+  function _normalizarValorCelda(el, val) {
+    if ((el && el.type) !== 'number') return (val === '') ? null : val;
     if (val === '') return null;   // vaciar dim/ángulo = borrar ese lado (5M.4)
     return parseFloat(val);
   }
@@ -411,7 +421,7 @@
     var id = el.getAttribute('data-barra-id');
     var campo = el.getAttribute('data-campo');
     if (!id || !campo) return;
-    var valor = _normalizarValorCelda(campo, el.value.trim());
+    var valor = _normalizarValorCelda(el, el.value.trim());
     _aplicarCambioBarra(id, campo, valor);
 
     // 5M.11: modificación MASIVA en tándem. Si el modo masivo está activo y la

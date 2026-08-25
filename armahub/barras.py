@@ -1538,6 +1538,12 @@ class BarraUpdate(BaseModel):
     # el Bar Manager no expone.
     piso: Optional[str] = None
     marca: Optional[str] = None
+    # CICLO editable en el Bar Manager (pedido del usuario 25-ago). Es el mismo tipo de
+    # dato que `piso`: una etiqueta de ubicación por la que se filtra, se ordena y se
+    # agrupa el estado del sector. Se corrige igual que el piso — sobre todo en barras
+    # que entraron por CSV con el ciclo mal escrito, que es donde no había forma de
+    # arreglarlo sin reimportar.
+    ciclo: Optional[str] = None
 
 
 _GEOM_FIELDS = ["figura", "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f",
@@ -1649,6 +1655,17 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                 marca_val = (campos["marca"] or "").strip()[:30] or None
                 sets.append("marca = %s"); params.append(marca_val)
                 cambios.append(f"marca: {barra['marca']}→{marca_val or '(vacía)'}")
+            # ciclo: MISMA regla que el piso. Toda barra manual nace con ciclo (lo exige
+            # _valores_barra en el alta y en el sync del modelador), así que un PATCH no
+            # puede dejarlo vacío: sería crear por la puerta de atrás el "lote corrupto
+            # sin contexto" que esa validación existe para impedir.
+            ciclo_nuevo = None
+            if "ciclo" in campos:
+                ciclo_nuevo = (campos["ciclo"] or "").strip()[:30]
+                if not ciclo_nuevo:
+                    raise HTTPException(status_code=400, detail="El ciclo no puede quedar vacío.")
+                sets.append("ciclo = %s"); params.append(ciclo_nuevo)
+                cambios.append(f"ciclo: {barra['ciclo']}→{ciclo_nuevo}")
 
             # COHERENCIA cant/mult/cant_total: en el Bar Manager el usuario edita la CANTIDAD (que
             # es cant_total) y no ve cant ni mult. Al cambiar cant_total sin tocar cant/mult, estos
@@ -1739,13 +1756,21 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
             # Evento de estado del sector (mismo cursor = misma transacción, atómico).
             try:
                 from .sector_estado import marcar_sector_modificado
+                # ORIGEN: la celda (sector, piso, ciclo) DE DONDE SALE la barra.
                 marcar_sector_modificado(cur, barra["id_proyecto"], barra.get("sector"),
                                          barra.get("piso"), barra.get("ciclo"), por=email)
-                # Si la barra cambió de piso, el piso de DESTINO también cambió de
-                # contenido (recibió la barra): se marca igual que el de origen.
-                if piso_nuevo and piso_nuevo != barra.get("piso"):
+                # DESTINO: si la barra CAMBIÓ de celda, la que la recibe también cambió de
+                # contenido y hay que marcarla igual. Antes esto sólo miraba el piso y
+                # armaba el destino con el ciclo VIEJO; con el ciclo editable (25-ago) eso
+                # habría marcado una celda que no existe cuando se mueven los dos a la vez.
+                # Ahora el destino se compone de los dos campos y se compara la celda
+                # entera: si es la misma, no se marca dos veces (el ON CONFLICT lo
+                # aguantaría, pero decir dos veces lo mismo esconde qué pasó de verdad).
+                piso_dest = piso_nuevo or barra.get("piso")
+                ciclo_dest = ciclo_nuevo or barra.get("ciclo")
+                if (piso_dest, ciclo_dest) != (barra.get("piso"), barra.get("ciclo")):
                     marcar_sector_modificado(cur, barra["id_proyecto"], barra.get("sector"),
-                                             piso_nuevo, barra.get("ciclo"), por=email)
+                                             piso_dest, ciclo_dest, por=email)
             except Exception:
                 pass  # el estado del sector no debe romper la edición de la barra
 

@@ -719,6 +719,23 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       'data-barra-id="' + b.id + '" data-campo="suf_tipo" id="bmcell-' + b.id + '-suf_tipo" onchange="bmRegistrarCambio(this)" ' +
       'style="width:46px; font-size:11px; padding:1px 3px;' + bgS + '" title="Sufijo complementario (se concatena a la tipología en el export)" /></td>';
   }
+  // Celda CICLO. Fuera del modo edición es el badge de color de siempre (así se sigue
+  // leyendo de un vistazo a qué ciclo pertenece cada fila); dentro, un input, igual que
+  // el plano y el sufijo. Se hizo editable el 25-ago a pedido del usuario: es una
+  // etiqueta de ubicación como el piso, y hasta ahora un ciclo mal escrito —típico de una
+  // importación por CSV— no había forma de corregirlo sin reimportar la obra.
+  // No se ofrece vacío: el backend lo rechaza (toda barra tiene ciclo), así que dejar
+  // escribir "" sería ofrecer un guardado que va a fallar.
+  function _celdaCiclo() {
+    if (!editando) return '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>';
+    var efC = (typeof bmValorEfectivoCelda === 'function') ? bmValorEfectivoCelda(b.id, 'ciclo', b.ciclo) : { valor: b.ciclo, tocado: false };
+    var bgC = efC.tocado ? ' background:#fff3cd;' : '';
+    var vC = (efC.valor == null) ? '' : String(efC.valor).replace(/"/g, '&quot;');
+    return '<td style="padding:1px 3px;"><input type="text" value="' + vC + '" maxlength="30" ' +
+      'data-barra-id="' + b.id + '" data-campo="ciclo" id="bmcell-' + b.id + '-ciclo" onchange="bmRegistrarCambio(this)" ' +
+      'style="width:52px; font-size:11px; padding:1px 3px;' + bgC + '" ' +
+      'title="Ciclo de esta barra. Mueve la barra de celda en la matriz de sectores." /></td>';
+  }
   // Celda del LARGO. Si hay cambios de geometría pendientes, muestra el largo YA
   // recalculado (suma de lados efectivos) en color, con nota "se guardará así".
   // Si no, el largo de memoria. Evita el desconcierto de ver el largo viejo (192)
@@ -753,7 +770,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     ubic = selCell +
       '<td style="padding:2px 6px; font-size:10px;">' + (b.piso || '—') + '</td>' +
       '<td style="padding:2px 6px;">' + _sectorBadge(b.sector) + '</td>' +
-      '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>' +
+      _celdaCiclo() +
       '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>';
       // (La columna Plano ahora va al FINAL de la fila — ver más abajo.)
   } else {
