@@ -32,6 +32,9 @@
 //   R7 · Lo que no se puede dibujar recibe un HUECO QUE LO DICE, nunca una silueta.
 //   R8 · SE DICE QUÉ SE ESTÁ MIRANDO (plano, rebanada, extremo) y NO se dice que sea
 //        aproximado: ya no lo es, y decirlo sería la misma mentira al revés.
+//   R4c · EL INVARIANTE QUE YA SE ROMPIÓ DOS VECES: el corte llena el alto en TODA
+//         fila, con recorte o sin él, con el tope de ancho activo o no. Si algo no
+//         cabe, cede la VENTANA — nunca la escala.
 //   R9 · El GESTOR entero, de la fila al SVG (TemplateEditor._tplMiniDibujo), y que la
 //        celda no dibuja al pintar la tabla sino al entrar en pantalla.
 //
@@ -509,6 +512,94 @@ console.log('\nR4b — hasta dónde mirar lo dice el confinamiento, no un númer
   ok(!pc.ventanaCorta && pc.ventana >= pc.confin,
     'un cabezal de ' + redondo(pc.confin, 0) + ' cm sí entra en los ' +
     redondo(pc.ventana, 0) + ' cm del cuadro, y ahí no se avisa de nada');
+}
+
+// ── R4c. EL INVARIANTE: EL CORTE SIEMPRE LLENA EL ALTO ──────────────────────
+// Se rompió DOS VECES, y las dos por lo mismo: cuando el ancho pedido no cabía, alguien
+// bajaba la escala para que entrara. Bajar la escala es lo contrario de la regla — el
+// corte deja de llenar el alto y la sección se ve chica, que es exactamente lo que el
+// usuario rechazó («no es el blanco lo que me molesta sino que la sección se ve chica»).
+// Cuando el ancho no alcanza, lo que cede es la VENTANA: se enseña MENOS elemento,
+// nunca más chico. Esto lo congela sobre las SEIS filas de su biblioteca, incluidas las
+// tres que salían «elemento completo» y diminutas.
+console.log('\nR4c — el corte llena el alto en TODA fila: si algo no cabe, cede la ventana');
+{
+  // Variantes de su lista. `sepTraba` grande es lo que mandaba la fila a «entero»: la
+  // ventana pedida (2 × @) se comía el elemento y la decisión se tomaba ANTES de fijar
+  // la escala. `confin` es un cabezal en cada punta.
+  function variante(largo, esp, o) {
+    o = o || {};
+    const r = JSON.parse(JSON.stringify(MURO));
+    const half = largo / 2;
+    r.geometria.largo = largo; r.geometria.ancho = esp;
+    r.componentes.forEach(c => ['rango', 'rango2'].forEach(k => {
+      const g = c.distribucion[k];
+      if (!g) return;
+      if (g.eje === 'x') { g.from = -(half - 3); g.to = half - 3; }
+      if (g.eje === 'z') { g.from = -(esp / 2 - 3); g.to = esp / 2 - 3; g.sep = esp - 6; }
+      if (g.eje === 'x' && c.comp_id === 'TR' && o.sepTraba) { g.sep = o.sepTraba; }
+    }));
+    if (o.sepTraba) r.componentes[2].distribucion.sep = o.sepTraba;
+    if (o.confin) [-1, 1].forEach(function (lado, i) {
+      const a = lado < 0 ? -(half - 3) : (half - 3 - o.confin);
+      const b = lado < 0 ? -(half - 3) + o.confin : (half - 3);
+      r.componentes.push({ comp_id: 'CB' + i, tipologia: 'CB', figura: '101A', diam: 16,
+        cara: 'lateral', jerarquia: 2, plano_pieza: { orientacion: 'de_pie' },
+        dims: { A: { modo: 'auto' } },
+        distribucion: { modo: 'arreglo', sep: 12, activa: true,
+          rango: { eje: 'x', from: a, to: b, sep: 12 },
+          rango2: { eje: 'z', from: -(esp / 2 - 3), to: esp / 2 - 3, sep: esp - 6 } } });
+    });
+    return r;
+  }
+  const CASOS = [
+    ['Muro EZ 524×20', variante(524, 20)],
+    ['Muro 600×20 con cabezal', variante(600, 20, { confin: 120 })],
+    ['Muro Emilio 150×20 @90', variante(150, 20, { sepTraba: 90 })],
+    ['Muro Hans 524×20 @300', variante(524, 20, { sepTraba: 300 })],
+    ['Muro Prueba 534×30 @300', variante(534, 30, { sepTraba: 300 })],
+    ['Viga 30×60 entera', VIGA]
+  ];
+  const util = R.cajas(H).util;
+  const medidos = CASOS.map(function (c) {
+    const receta = c[1];
+    const def = TE._planosDe(receta.tipo).seccion;
+    const fila = TE._tplMiniFila({ id: 1, tipo: receta.tipo, params: receta });
+    const p = R.plan(generar(receta), def, H, Object.assign(optsDe(receta),
+      { ventana: fila.ventana, confin: fila.confin }));
+    return { n: c[0], p: p, alto: (p.bbox.v1 - p.bbox.v0) * p.escala };
+  });
+  medidos.forEach(function (m) {
+    ok(Math.abs(m.alto - util) < 0.5,
+      m.n + ': el corte llena el alto (' + redondo(m.alto, 1) + ' de ' + util + ' px) · ' +
+      m.p.modo + ' · ' + redondo(m.p.ventana, 0) + ' cm por cuadro · celda ' + m.p.W);
+  });
+  ok(medidos.every(m => Math.abs(m.alto - medidos[0].alto) < 0.5),
+    'y los SEIS espesores dibujados son el mismo número: ' +
+    medidos.map(m => redondo(m.alto, 0)).join(' / ') + ' px');
+
+  // LAS TRES QUE SALÍAN «ELEMENTO COMPLETO» Y DIMINUTAS. Un elemento alargado no puede
+  // dibujarse entero a esta escala: si cupiera entero, es que no era alargado.
+  ['Muro Emilio 150×20 @90', 'Muro Hans 524×20 @300', 'Muro Prueba 534×30 @300'].forEach(function (n) {
+    const m = medidos.filter(x => x.n === n)[0];
+    ok(m.p.modo === 'extremos',
+      n + ' se recorta a dos extremos en vez de salir entero y aplastado');
+  });
+  // Y LA QUE PEDÍA MÁS ANCHO DEL QUE HAY: cede la ventana, no la escala, y se avisa.
+  const cab = medidos.filter(x => x.n === 'Muro 600×20 con cabezal')[0];
+  ok(cab.p.pedida > cab.p.ventana && cab.p.ventanaCorta,
+    'el muro con cabezal pedía ' + redondo(cab.p.pedida, 0) + ' cm y se le dan ' +
+    redondo(cab.p.ventana, 0) + ': cede la VENTANA (la escala sigue en ' +
+    redondo(cab.p.escala, 2) + ')');
+  ok(/OJO/.test(R.titulo(cab.p, TE._planosDe('muro').seccion, TE.EJE_DISPLAY)),
+    'y el tooltip dice los centímetros que quedaron fuera');
+  // LA GARANTÍA, EN EL CÓDIGO: la escala sale del alto y de nada más.
+  const cuerpo = R2D_SRC.slice(R2D_SRC.indexOf('function plan('), R2D_SRC.indexOf('function cajas(') + 1)
+    .replace(/\/\/[^\n]*/g, '');
+  ok(/var s = cj\.util \/ h;/.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
+    'la escala se fija con `cj.util / h` — el alto, y nada más');
+  ok(!/Math\.min\(cj\.util/.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
+    'y no hay ningún Math.min que la negocie con el ancho');
 }
 
 // ── R5. EL COLOR, POR PARÁMETRO ─────────────────────────────────────────────

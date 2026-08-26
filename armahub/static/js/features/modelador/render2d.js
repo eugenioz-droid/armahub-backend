@@ -548,47 +548,58 @@
     };
     var techo = (opts.anchoMax != null) ? Number(opts.anchoMax) : ANCHO_CUADRO_MAX;
 
-    // --- UN SOLO CUADRO: el elemento entero ---------------------------------
-    // Cae aquí lo que no es alargado, y también lo alargado cuya ventana ya se lo come
-    // completo (dos cuadros dirían lo mismo).
-    if (!parte || pedida >= largoDim - 0.01) {
-      // El corte llena el ALTO; si con eso el ancho se pasa del tope, manda el tope.
-      var sE = Math.min(cj.util / h, (techo - cj.aire) / w);
-      var anchoE = w * sE + 2 * cj.aire;
-      base.escala = sE;
+    // LA ESCALA LA FIJA EL ALTO, Y NO SE NEGOCIA (26-ago, tras la segunda regresión).
+    // Acá vivía un `Math.min(cj.util / h, (techo - cj.aire) / w)`: cuando el elemento no
+    // cabía a lo ancho se le BAJABA LA ESCALA para que entrara. Eso es justo el trueque
+    // que el usuario rechazó —«no es el blanco lo que me molesta sino que la sección se
+    // ve chica»— y hacía que un muro de 524 × 20 saliera «elemento completo» y diminuto.
+    // Cuando el ancho no alcanza, lo que cede es la VENTANA: se enseña MENOS elemento,
+    // nunca más chico. Y lo que queda fuera se DICE (`ventanaCorta`), no se disimula.
+    var s = cj.util / h;                         // el corte llena el alto del cuadro
+    var anchoEntero = w * s + 2 * cj.aire;       // lo que pediría el elemento completo
+    var ventMax = (techo - cj.aire) / s;         // cuánto elemento cabe en UN cuadro
+    var vent = Math.min(pedida, ventMax);
+
+    // --- ¿UNO O DOS CUADROS? La decisión va DESPUÉS de fijar la escala ------------
+    // Antes se decidía ANTES, mirando si la ventana pedida se comía el elemento; a un
+    // muro de 524 con un @ grande eso lo mandaba a «entero» y de ahí a la escala
+    // aplastada. Preguntar «¿cabe entero?» sólo tiene sentido A LA ESCALA A LA QUE SE
+    // VA A DIBUJAR. Se ve entero en tres casos, y ninguno negocia la escala:
+    //   · no es alargado — a un elemento rechoncho no se le corta nada;
+    //   · cabe de verdad a esta escala;
+    //   · los dos extremos se solaparían, y entonces dos cuadros serían dos veces lo
+    //     mismo (y cuestan la misma tinta que enseñarlo entero).
+    if (!parte || anchoEntero <= techo || 2 * vent >= largoDim) {
+      // El ancho de un elemento ENTERO puede pasarse del tope, y está bien: el tope
+      // acota cuánto ENSEÑAMOS de uno alargado, no aplasta a uno que se ve completo.
+      // Y no se dispara: por forma, su ancho es menos de RELACION_RECORTE × el alto.
+      base.escala = s;
       base.modo = 'entero';
       base.ventana = w;
       base.ventanaCorta = false;
-      base.W = Math.max(ANCHO_MIN, Math.round(anchoE + 2 * lay.pad));
+      base.W = Math.max(ANCHO_MIN, Math.round(anchoEntero + 2 * lay.pad));
       base.cuadros = [{
-        caja: { x: (base.W - anchoE) / 2, y: cj.y, w: anchoE, h: cj.h },
+        caja: { x: (base.W - anchoEntero) / 2, y: cj.y, w: anchoEntero, h: cj.h },
         vent: { u0: bb.u0, u1: bb.u1, v0: bb.v0, v1: bb.v1 }, extremo: 0
       }];
-      base.engorde = engordeRedondos(pls, def, sE, opts);
+      base.engorde = engordeRedondos(pls, def, s, opts);
       return base;
     }
 
     // --- DOS CUADROS: un extremo cada uno ------------------------------------
     // Se recorta por el eje LARGO del plano, que puede ser el horizontal o el vertical:
-    // no se da por hecho que un plano alargado lo sea siempre a lo ancho.
-    // Lo que se dibuja A LO ALTO llena el alto: el lado corto si el recorte va a lo
-    // ancho, y la propia ventana si va a lo alto.
-    var s = cj.util / (porU ? cortoDim : pedida);
-    var vent = pedida;
-    // El cuadro mide la ventana MÁS el aire de FUERA (la punta del elemento tiene que
-    // verse terminar); por dentro el dibujo llega al borde, porque ahí el elemento
-    // SIGUE y lo que hay es un corte.
-    var anchoCuadro = (porU ? vent : cortoDim) * s + cj.aire;
-    if (anchoCuadro > techo) {
-      // El tope corta. A lo ancho se recorta la ventana; a lo alto hay que bajar la
-      // escala, que es la única forma de que el ancho entre.
-      anchoCuadro = techo;
-      if (porU) {
-        vent = (anchoCuadro - cj.aire) / s;
-      } else {
-        s = (anchoCuadro - cj.aire) / cortoDim;
-        vent = cj.util / s;
-      }
+    // no se da por hecho que un plano alargado lo sea siempre a lo ancho. Lo que llena
+    // el alto es el lado corto cuando el recorte va a lo ancho, y la propia ventana
+    // cuando va a lo alto — en los dos casos, el corte llena el alto.
+    var anchoCuadro;
+    if (porU) {
+      // El cuadro mide la ventana MÁS el aire de FUERA (la punta tiene que verse
+      // terminar); por dentro el dibujo llega al borde, porque ahí el elemento SIGUE.
+      anchoCuadro = vent * s + cj.aire;
+    } else {
+      vent = pedida;
+      s = cj.util / vent;
+      anchoCuadro = w * s + 2 * cj.aire;
     }
     var aireCm = cj.aire / s;
     base.escala = s;
@@ -600,8 +611,6 @@
     base.ventanaCorta = (base.confin > 0 && vent < base.confin - 0.5);
     base.W = Math.max(ANCHO_MIN, Math.round(2 * anchoCuadro + lay.hueco + 2 * lay.pad));
     var x0 = (base.W - (2 * anchoCuadro + lay.hueco)) / 2;
-    // El aire va por FUERA —ahí el elemento termina— y por dentro el dibujo llega al
-    // borde del cuadro, porque ahí el elemento SIGUE y lo que hay es un corte.
     var a0 = (porU ? bb.u0 : bb.v0) - aireCm, a1 = (porU ? bb.u1 : bb.v1) + aireCm;
     var span = vent + aireCm;
     base.cuadros = [-1, 1].map(function (lado, idx) {
