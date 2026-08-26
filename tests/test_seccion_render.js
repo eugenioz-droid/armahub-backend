@@ -515,10 +515,12 @@ console.log('\nR4b — hasta dónde mirar lo dice el confinamiento, no un númer
 }
 
 // ── R4c. EL INVARIANTE, MEDIDO SOBRE LO QUE SE PUBLICA ──────────────────────
-// Se rompió TRES veces, y las tres por lo mismo: cuando el ancho pedido no cabía,
-// alguien bajaba la escala. Bajar la escala es lo contrario de la regla — el corte deja
-// de llenar el alto y la sección se ve chica, que es lo que el usuario lleva tres
-// rondas rechazando. Cuando el ancho no alcanza, lo que cede es la VENTANA.
+// Se rompió CUATRO veces. Las tres primeras: cuando el ancho pedido no cabía, alguien
+// bajaba la escala. La CUARTA —la única que llegó a producción con la suite verde—:
+// la escala salía del BBOX de todo lo dibujado, y una receta real con fierro ASOMADO
+// del hormigón (una pata, una pieza mal posada) inflaba el bbox y encogía la sección
+// entera; las fixtures eran recetas limpias y no lo veían. Cuando algo no cabe, lo que
+// cede es la VENTANA — y el fierro asomado se recorta en el marco, no manda la escala.
 //
 // Y ESTE BLOQUE YA FALLÓ UNA VEZ COMO TEST: medía un `R.plan(...)` armado a mano, no lo
 // que el gestor publica, así que dio verde sobre una fila que el usuario veía mal. Un
@@ -542,6 +544,14 @@ console.log('\nR4c — el corte llena el alto en TODA fila, medido sobre el SVG 
       r.componentes[2].distribucion.sep = o.sepTraba;
       r.componentes[2].distribucion.rango.sep = o.sepTraba;
     }
+    // FIERRO ASOMADO: la malla horizontal se posa `asoma` cm FUERA de cada cara. Es
+    // la fixture que faltaba en la 4ª regresión — el motor la genera sin quejarse
+    // (fierro fuera es dato honesto) y el bbox del dibujo crece más allá del hormigón.
+    if (o.asoma) {
+      const g2 = r.componentes[0].distribucion.rango2;
+      const z = esp / 2 - 3 + o.asoma;
+      g2.from = -z; g2.to = z; g2.sep = 2 * z;
+    }
     if (o.confin) [-1, 1].forEach(function (lado, i) {
       const a = lado < 0 ? -(half - 3) : (half - 3 - o.confin);
       const b = lado < 0 ? -(half - 3) + o.confin : (half - 3);
@@ -562,7 +572,11 @@ console.log('\nR4c — el corte llena el alto en TODA fila, medido sobre el SVG 
     ['Muro Emilio 150×20', variante(150, 20)],
     ['Muro Hans 524×20 @300', variante(524, 20, { sepTraba: 300 })],
     ['Muro Prueba 534×30 @300', variante(534, 30, { sepTraba: 300 })],
-    ['Viga 30×60 entera', VIGA]
+    ['Viga 30×60 entera', VIGA],
+    // LAS SUCIAS — las que faltaban. Mismo muro, con la malla asomada 20 cm en v: el
+    // bbox sube de 20 a 60 y ANTES la escala caía de 4 a 1,3 y Emilio salía «entero».
+    ['Muro EZ 524×20 SUCIO (asoma 20)', variante(524, 20, { asoma: 20 })],
+    ['Muro Emilio 150×20 SUCIO (asoma 20)', variante(150, 20, { asoma: 20 })]
   ];
   const util = R.cajas(H).util;
   // Lo que se PUBLICA: el SVG que el gestor mete en la celda.
@@ -588,7 +602,7 @@ console.log('\nR4c — el corte llena el alto en TODA fila, medido sobre el SVG 
       ' (celda ' + f.W + '×' + f.Hsvg + (f.cm ? ' · ' + f.cm + ' cm por cuadro' : ' · entero') + ')');
   });
   ok(filas.every(f => Math.abs(f.hormPx - filas[0].hormPx) < 1.5),
-    'y los SEIS hormigones dibujados son el mismo número: ' +
+    'y los OCHO hormigones dibujados son el mismo número —sucios incluidos—: ' +
     filas.map(f => redondo(f.hormPx, 0)).join(' / ') + ' px');
 
   // EL ANCHO DE SALIDA NO PUEDE PASAR DE LO QUE LA CELDA MUESTRA SIN ESCALAR.
@@ -611,7 +625,8 @@ console.log('\nR4c — el corte llena el alto en TODA fila, medido sobre el SVG 
     'y fija el alto en ' + H + ' px, que es lo que hace que el corte lo llene');
 
   // NINGÚN ELEMENTO ALARGADO SE DIBUJA ENTERO: si cupiera entero, no era alargado.
-  filas.slice(0, 5).forEach(function (f) {
+  filas.forEach(function (f, i) {
+    if (i === 5) return;   // la viga es la única que se ve entera, y con razón
     ok(!f.entero, f.n + ' se recorta a dos extremos en vez de salir entero y aplastado');
   });
   // LA QUE PEDÍA MÁS ANCHO DEL QUE HAY: cede la ventana, y se avisa con los cm.
@@ -619,9 +634,26 @@ console.log('\nR4c — el corte llena el alto en TODA fila, medido sobre el SVG 
   ok(cab.cm !== null && cab.cm < 206 && /OJO/.test(cab.titulo),
     'el muro con cabezal pedía 206 cm, publica ' + cab.cm +
     ' y el tooltip dice los que quedaron fuera');
-  // LA GARANTÍA, EN EL CÓDIGO: la escala sale del alto y ninguna rama la negocia.
+  // LAS SUCIAS, EN DETALLE: la sección de hormigón sigue llenando el alto (ya se
+  // afirmó arriba, fila por fila), la ventana es la MISMA que la de sus vecinas
+  // limpias, y el fierro asomado SE DICE — sin cargarle el aviso al muro limpio.
+  const sucias = filas.slice(6);
+  sucias.forEach(function (f) {
+    ok(f.cm === filas[0].cm,
+      f.n + ': su ventana es la misma que la del muro limpio (' + f.cm + ' cm)');
+    ok(/FUERA del hormigón/.test(f.titulo),
+      f.n + ': y el tooltip avisa del fierro fuera del hormigón');
+  });
+  ok(!/FUERA del hormigón/.test(filas[0].titulo),
+    'y el muro limpio NO carga con un aviso que no le corresponde');
+  // LA GARANTÍA, EN EL CÓDIGO — medida sobre el fuente SIN comentarios (la línea de
+  // abajo se los quita), para que una mención histórica en un comentario no dé verde
+  // ni rojo por casualidad. La escala sale del hormigón y ninguna rama la negocia.
   const codigo = R2D_SRC.replace(/\/\/[^\n]*/g, '');
-  ok(/var s = cj\.util \/ h;/.test(codigo), 'la escala se fija con `cj.util / h` — el alto, y nada más');
+  ok(/var s = cj\.util \/ hormH;/.test(codigo),
+    'la escala se fija con `cj.util / hormH` — el ESPESOR DEL HORMIGÓN, no el bbox');
+  ok(!/cj\.util \/ h\b/.test(codigo),
+    'y la forma vieja (el bbox de todo lo dibujado) no sobrevive en el código');
   ok(!/Math\.min\(cj\.util/.test(codigo), 'y no hay ningún Math.min que la negocie con el ancho');
   ok(!/vent = pedida;/.test(codigo),
     'ni una rama que reasigne la ventana saltándose el acote (fue el bug de la 4ª ronda)');

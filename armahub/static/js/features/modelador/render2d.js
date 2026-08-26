@@ -541,8 +541,30 @@
     var cj = cajas(alto, lay);
     if (!(cj.util > 0)) return null;
     var w = Math.max(bb.u1 - bb.u0, 1e-6), h = Math.max(bb.v1 - bb.v0, 1e-6);
-    var porU = (w >= h);
-    var largoDim = porU ? w : h, cortoDim = porU ? h : w;
+
+    // LA ESCALA LA FIJA EL HORMIGÓN, NO EL BBOX (26-ago, cuarta regresión — la única
+    // que llegó a producción con la suite verde, porque las fixtures eran recetas
+    // limpias). `h` es el alto de TODO lo dibujado, y una receta real puede tener
+    // fierro que SOBRESALE del hormigón: una pata de gancho, una pieza mal posada,
+    // fierro fuera —que el motor genera a propósito, como dato honesto—. Un solo
+    // fierro asomado 17 cm inflaba el bbox de un muro de 20 a 54, la escala caía de
+    // 4 a 1,5 y la SECCIÓN entera se encogía; y de paso un muro corto caía en
+    // «elemento completo». La regla del usuario es sobre el hormigón («que se agranda
+    // la sección de hormigón»), así que la escala sale de SUS medidas y de nada más.
+    // El fierro asomado SE DIBUJA IGUAL —hasta el borde del cuadro, donde el viewport
+    // lo recorta— y el tooltip dice que existe (`fuera`): no se esconde, porque
+    // seguramente es un defecto de la receta que al usuario le conviene ver; pero
+    // tampoco manda sobre el tamaño de lo que sí está bien.
+    var hayHorm = !!(opts.rect && opts.rect.W > 0 && opts.rect.H > 0);
+    var hormW = hayHorm ? Number(opts.rect.W) : w;
+    var hormH = hayHorm ? Number(opts.rect.H) : h;
+    // El hormigón del motor vive CENTRADO en el origen: lo que el bbox tenga más allá
+    // de sus medias caras es fierro fuera. (Sin hormigón no hay contra qué medir, y
+    // entonces el bbox es la única verdad disponible.)
+    var fuera = hayHorm && (bb.v1 > hormH / 2 + 0.5 || bb.v0 < -hormH / 2 - 0.5 ||
+                            bb.u1 > hormW / 2 + 0.5 || bb.u0 < -hormW / 2 - 0.5);
+    var porU = (hormW >= hormH);
+    var largoDim = porU ? hormW : hormH, cortoDim = porU ? hormH : hormW;
     var parte = recortable(cortoDim, largoDim);
 
     // LA VENTANA que hay que enseñar por extremo: hasta donde llega el confinamiento
@@ -554,71 +576,85 @@
 
     var base = {
       banda: banda, plsBanda: pls, bbox: bb, rect: opts.rect || null,
-      paso: paso, pedida: pedida, confin: Number(opts.confin) || 0, H: alto
+      paso: paso, pedida: pedida, confin: Number(opts.confin) || 0, H: alto,
+      fuera: fuera
     };
     var techo = (opts.anchoMax != null) ? Number(opts.anchoMax) : ANCHO_CUADRO_MAX;
 
-    // LA ESCALA LA FIJA EL ALTO, Y NO SE NEGOCIA (26-ago, tras la segunda regresión).
-    // Acá vivía un `Math.min(cj.util / h, (techo - cj.aire) / w)`: cuando el elemento no
-    // cabía a lo ancho se le BAJABA LA ESCALA para que entrara. Eso es justo el trueque
-    // que el usuario rechazó —«no es el blanco lo que me molesta sino que la sección se
-    // ve chica»— y hacía que un muro de 524 × 20 saliera «elemento completo» y diminuto.
-    // Cuando el ancho no alcanza, lo que cede es la VENTANA: se enseña MENOS elemento,
-    // nunca más chico. Y lo que queda fuera se DICE (`ventanaCorta`), no se disimula.
-    var s = cj.util / h;                         // el corte llena el alto del cuadro
-    var anchoEntero = w * s + 2 * cj.aire;       // lo que pediría el elemento completo
-    var ventMax = (techo - cj.aire) / s;         // cuánto elemento cabe en UN cuadro
-    var vent = Math.min(pedida, ventMax);
+    // EL CORTE LLENA EL ALTO: la escala es espesor-del-hormigón contra alto útil, y
+    // nada más la toca. La franja vertical que se dibuja es LA DEL HORMIGÓN (centrado
+    // en el origen); el fierro que asome por arriba o por abajo se recorta en el marco.
+    var s = cj.util / hormH;
+    var aireCm = cj.aire / s;
+    var vv0 = -hormH / 2, vv1 = hormH / 2;
+    var anchoEntero = w * s + 2 * cj.aire;       // lo que pediría TODO lo dibujado
+    var vent = Math.min(pedida, (techo - cj.aire) / s);
 
-    // --- ¿UNO O DOS CUADROS? La decisión va DESPUÉS de fijar la escala ------------
-    // Antes se decidía ANTES, mirando si la ventana pedida se comía el elemento; a un
-    // muro de 524 con un @ grande eso lo mandaba a «entero» y de ahí a la escala
-    // aplastada. Preguntar «¿cabe entero?» sólo tiene sentido A LA ESCALA A LA QUE SE
-    // VA A DIBUJAR. Se ve entero en tres casos, y ninguno negocia la escala:
-    //   · no es alargado — a un elemento rechoncho no se le corta nada;
-    //   · cabe de verdad a esta escala;
-    //   · los dos extremos se solaparían, y entonces dos cuadros serían dos veces lo
-    //     mismo (y cuestan la misma tinta que enseñarlo entero).
-    if (!parte || anchoEntero <= techo || 2 * vent >= largoDim) {
-      // El ancho de un elemento ENTERO puede pasarse del tope, y está bien: el tope
-      // acota cuánto ENSEÑAMOS de uno alargado, no aplasta a uno que se ve completo.
-      // Y no se dispara: por forma, su ancho es menos de RELACION_RECORTE × el alto.
+    // --- RECORTE VERTICAL (un plano más alto que ancho) -----------------------
+    // Lo que llena el alto es la propia ventana, así que la escala sale de ella — y
+    // para que el ancho no se dispare, la ventana no puede ser MENOR que la que el
+    // hormigón necesita para caber en el cuadro. Se enseña un poco más de lo pedido,
+    // nunca más chico. (Hoy ningún muro entra por acá —su plano es largo × espesor,
+    // siempre más ancho que alto—, pero una rama sin acotar ya costó tres regresiones.)
+    if (parte && !porU) {
+      var ventMin = hormW * cj.util / (techo - 2 * cj.aire);
+      var ventV = Math.min(largoDim, Math.max(pedida, ventMin));
+      if (2 * ventV < largoDim) {
+        s = cj.util / ventV;
+        aireCm = cj.aire / s;
+        var anchoV = hormW * s + 2 * cj.aire;
+        base.escala = s;
+        base.modo = 'extremos';
+        base.ventana = ventV;
+        base.ventanaCorta = (base.confin > 0 && ventV < base.confin - 0.5);
+        base.W = Math.max(ANCHO_MIN, Math.round(2 * anchoV + lay.hueco + 2 * lay.pad));
+        var x0v = (base.W - (2 * anchoV + lay.hueco)) / 2;
+        var b0 = -hormH / 2 - aireCm, b1 = hormH / 2 + aireCm;
+        var spanV = ventV + aireCm;
+        base.cuadros = [-1, 1].map(function (lado, idx) {
+          var lo = (lado < 0) ? b0 : (b1 - spanV), hi = (lado < 0) ? (b0 + spanV) : b1;
+          return {
+            caja: { x: x0v + idx * (anchoV + lay.hueco), y: cj.y, w: anchoV, h: cj.h },
+            vent: { u0: -hormW / 2 - aireCm, u1: hormW / 2 + aireCm, v0: lo, v1: hi },
+            extremo: lado, eje: def.v
+          };
+        });
+        base.engorde = engordeRedondos(pls, def, s, opts);
+        return base;
+      }
+      // los dos extremos se solaparían → se ve entero, con la escala del hormigón
+    }
+
+    // --- UN SOLO CUADRO ------------------------------------------------------
+    // Se ve entero si no es alargado (a un rechoncho no se le corta nada), si cabe de
+    // verdad A ESTA ESCALA, o si los dos extremos se solaparían (dos cuadros dirían
+    // dos veces lo mismo). Ninguno de los tres casos negocia la escala.
+    if (!parte || !porU || anchoEntero <= techo || 2 * vent >= largoDim) {
+      // El ancho de salida va ACOTADO A LA CELDA (ANCHO_MAX): si saliera más ancho,
+      // el navegador encogería el SVG entero — y con él el alto, que es la regresión
+      // de siempre una capa más abajo. El hormigón nunca toca este tope (por forma,
+      // su ancho a esta escala es < RELACION_RECORTE × el alto útil): lo único que el
+      // recorte puede tocar es fierro asomado.
+      var anchoE = Math.min(anchoEntero, ANCHO_MAX - 2 * lay.pad);
       base.escala = s;
       base.modo = 'entero';
-      base.ventana = w;
+      base.ventana = hormW;
       base.ventanaCorta = false;
-      base.W = Math.max(ANCHO_MIN, Math.round(anchoEntero + 2 * lay.pad));
+      base.W = Math.max(ANCHO_MIN, Math.round(anchoE + 2 * lay.pad));
       base.cuadros = [{
-        caja: { x: (base.W - anchoEntero) / 2, y: cj.y, w: anchoEntero, h: cj.h },
-        vent: { u0: bb.u0, u1: bb.u1, v0: bb.v0, v1: bb.v1 }, extremo: 0
+        caja: { x: (base.W - anchoE) / 2, y: cj.y, w: anchoE, h: cj.h },
+        vent: { u0: bb.u0 - aireCm, u1: bb.u1 + aireCm, v0: vv0, v1: vv1 }, extremo: 0
       }];
       base.engorde = engordeRedondos(pls, def, s, opts);
       return base;
     }
 
-    // --- DOS CUADROS: un extremo cada uno ------------------------------------
-    // Se recorta por el eje LARGO del plano, que puede ser el horizontal o el vertical:
-    // no se da por hecho que un plano alargado lo sea siempre a lo ancho. Lo que llena
-    // el alto es el lado corto cuando el recorte va a lo ancho, y la propia ventana
-    // cuando va a lo alto — en los dos casos, el corte llena el alto.
-    var anchoCuadro;
-    if (porU) {
-      // El cuadro mide la ventana MÁS el aire de FUERA (la punta tiene que verse
-      // terminar); por dentro el dibujo llega al borde, porque ahí el elemento SIGUE.
-      anchoCuadro = vent * s + cj.aire;
-    } else {
-      // RECORTE VERTICAL (un plano más alto que ancho). Lo que llena el alto es la
-      // propia ventana, así que la escala sale de ella — y para que el ancho no se
-      // dispare, la ventana no puede ser MENOR que la que deja el cuadro. Se enseña un
-      // poco más de lo pedido, nunca más chico: la escala sigue sin negociarse.
-      // (Hoy ningún muro entra por acá —su plano es largo × espesor, siempre más ancho
-      // que alto—, pero una rama sin acotar es lo que ya costó tres regresiones.)
-      var ventMin = w * cj.util / (techo - 2 * cj.aire);
-      vent = Math.min(largoDim, Math.max(pedida, ventMin));
-      s = cj.util / vent;
-      anchoCuadro = w * s + 2 * cj.aire;
-    }
-    var aireCm = cj.aire / s;
+    // --- DOS CUADROS: un extremo cada uno, recorte a lo ancho -----------------
+    // El cuadro mide la ventana MÁS el aire de FUERA (la punta del hormigón tiene que
+    // verse terminar); por dentro el dibujo llega al borde, porque ahí el elemento
+    // SIGUE y lo que hay es un corte. Los extremos se anclan en las puntas del
+    // HORMIGÓN: un fierro que asome más allá de la punta se recorta en el marco.
+    var anchoCuadro = vent * s + cj.aire;
     base.escala = s;
     base.modo = 'extremos';
     base.ventana = vent;
@@ -628,15 +664,14 @@
     base.ventanaCorta = (base.confin > 0 && vent < base.confin - 0.5);
     base.W = Math.max(ANCHO_MIN, Math.round(2 * anchoCuadro + lay.hueco + 2 * lay.pad));
     var x0 = (base.W - (2 * anchoCuadro + lay.hueco)) / 2;
-    var a0 = (porU ? bb.u0 : bb.v0) - aireCm, a1 = (porU ? bb.u1 : bb.v1) + aireCm;
+    var a0 = -hormW / 2 - aireCm, a1 = hormW / 2 + aireCm;
     var span = vent + aireCm;
     base.cuadros = [-1, 1].map(function (lado, idx) {
       var lo = (lado < 0) ? a0 : (a1 - span), hi = (lado < 0) ? (a0 + span) : a1;
       return {
         caja: { x: x0 + idx * (anchoCuadro + lay.hueco), y: cj.y, w: anchoCuadro, h: cj.h },
-        vent: porU ? { u0: lo, u1: hi, v0: bb.v0, v1: bb.v1 }
-          : { u0: bb.u0, u1: bb.u1, v0: lo, v1: hi },
-        extremo: lado, eje: porU ? def.u : def.v
+        vent: { u0: lo, u1: hi, v0: vv0, v1: vv1 },
+        extremo: lado, eje: def.u
       };
     });
     base.engorde = engordeRedondos(pls, def, s, opts);
@@ -814,6 +849,13 @@
       t += ' Se ve una REBANADA de ' + Math.round(p.banda.esp) + ' cm de profundidad (eje ' +
         l(def.depth) + '), no todo el fondo del elemento: proyectarlo entero apila ' +
         'unas barras sobre otras.';
+    }
+    // EL FIERRO ASOMADO SE DICE. La escala sale del hormigón (ver `plan`), así que lo
+    // que sobresale se recorta en el marco del cuadro: callarlo dejaría al usuario sin
+    // saber por qué hay fierro tocando el borde — y sin ver un defecto de su receta.
+    if (p.fuera) {
+      t += ' OJO: esta receta tiene fierro FUERA del hormigón; se dibuja hasta el borde ' +
+        'del cuadro, sin achicar la sección — revisa la receta.';
     }
     if (p.modo === 'extremos') {
       t += ' El elemento es demasiado alargado para leerse entero, así que van sus DOS ' +
