@@ -506,15 +506,26 @@
   // empeoraba justo lo que se venía a mejorar.
   // Así que las dos se aplican, pero con un PISO: la ventana puede bajar la escala
   // mientras la SECCIÓN MÁS FINA de la lista siga legíndose. Ese piso es un dato
-  // medido, no una opinión: las dos cortinas de un muro caen al 15% y al 85% del
-  // espesor —separadas el 70% del lado corto—, y por debajo de ~10 px de hueco dejan
-  // de leerse como dos líneas con hormigón en medio. O sea que el lado corto más fino
-  // de la lista no puede bajar de MIN_CORTO_PX. Si la ventana pide más que eso, gana
-  // la sección, la ventana no llega a donde pedía y el plan lo DICE (`ventanaCorta`):
-  // mejor que aplastar la lista entera en silencio.
+  // medido: las dos cortinas de un muro caen al 15% y al 85% del espesor —separadas el
+  // 70% del lado corto—, así que con 26 px de espesor quedan a 18 px una de otra, que
+  // es donde se leen cómodamente como dos líneas con hormigón en medio.
+  //
+  // POR QUÉ 26 Y NO 14 (26-ago, segunda medición). Con el piso en 14 la exigencia de la
+  // VENTANA se comía la sección sin que nada la parara: en la lista del usuario —tres
+  // muros de 20 cm y una viga— UNA sola fila con 80 cm de cabezal pedía 123 cm de
+  // ventana y dejaba a TODOS los muros en 17 px de espesor («se homologó pero se achicó
+  // todo»). Lo que topaba NO era la viga: quitarla de la lista daba exactamente la
+  // misma escala. Con el piso en 26 la sección se defiende, la ventana cede, y cuando
+  // cede de más el plan lo DICE (`ventanaCorta`) en vez de encoger la lista en silencio.
+  //
+  // LA IDENTIDAD QUE MANDA, y conviene tenerla a mano: a lo ancho de un cuadro,
+  //     escala (px/cm)  ×  centímetros que cubre  =  ancho útil del cuadro (px)
+  // O sea que subir la escala SIN ensanchar la celda se paga en cobertura, y al revés.
+  // Por eso el ajuste de esta ronda fue ensanchar: es lo único que sube las dos.
+  //
   // S_MIN/S_MAX son los topes duros de una lista degenerada (un solo elemento enorme,
   // o una biblioteca de puros elementos finísimos).
-  var S_MIN = 0.35, S_MAX = 3, MIN_CORTO_PX = 14;
+  var S_MIN = 0.35, S_MAX = 3, MIN_CORTO_PX = 26;
 
   // CUÁNDO SE PUEDE RECORTAR. Un elemento sólo se parte en dos extremos si de verdad
   // es ALARGADO: cortarle la profundidad a una viga de 30 × 60 sería tan absurdo como

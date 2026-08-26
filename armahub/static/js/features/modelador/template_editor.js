@@ -14264,13 +14264,31 @@
   // vacía y se dibuja al entrar en pantalla (IntersectionObserver, con 200 px de
   // anticipación para que el usuario nunca vea el hueco), y el resultado se CACHEA por
   // id + updated_at: volver a la lista tras editar un template redibuja ese y sólo ese.
-  // EL TAMAÑO DE LA CELDA, medido y no elegido a ojo. El ALTO es el presupuesto del
-  // que sale la escala común: el elemento de sección más gruesa de la lista tiene que
-  // caber en él, y los demás salen más finos porque LO SON. Con 96 px de celda (80 de
-  // dibujo) un muro de 60 cm se comía el alto entero y dejaba a uno de 15 en 11 px; con
-  // 110 (80 útiles) el rango real de espesores —15 a 60 cm— entra completo: el de 60
-  // llena la caja y el de 15 conserva ~16 px, con sus dos cortinas separadas.
-  var TPL_MINI_W = 232, TPL_MINI_H = 110;
+  // EL TAMAÑO DE LA CELDA, medido y no elegido a ojo.
+  //
+  // EL ANCHO es lo que paga las DOS cosas a la vez, y por eso esta celda es ancha
+  // (26-ago, pedido del usuario: «como alargaste lo que veo del muro, se achicaron las
+  // secciones. Lo que quiero es lo contrario: agrandar las secciones Y ver más del
+  // muro; para eso solo podemos alargar»). Tiene razón, y hay una identidad detrás:
+  //
+  //     escala (px/cm)  ×  centímetros que cubre un cuadro  =  ancho útil del cuadro
+  //
+  // O sea que con la celda fija, subir el espesor se paga en cobertura y al revés —que
+  // es exactamente el trueque que él acaba de rechazar—. Lo Único que sube los dos
+  // lados es ENSANCHAR.
+  //
+  // Y lo que topaba la escala NO era la viga (medido: quitarla de la lista daba la
+  // MISMA escala) sino la ventana del muro con cabezal. Medido sobre su lista —tres
+  // muros de 20 cm, uno con 80 cm de cabezal, más una viga que se dibuja entera:
+  //     232 × 110 → 0,85 px/cm → espesor 17 px · 123 cm por cuadro
+  //     420 × 130 → 1,57 px/cm → espesor 31 px · 127 cm por cuadro
+  // o sea casi el doble de sección sin perder un centímetro de muro.
+  //
+  // EL ALTO es el presupuesto por el otro lado: el elemento que se dibuja ENTERO —una
+  // viga de 60 cm de alto— tiene que caber en él, y con 100 px útiles admite hasta
+  // 1,57 px/cm. Pasado ese punto, ensanchar deja de subir la escala y sólo compra
+  // cobertura: para más espesor hay que subir el alto, y eso alarga la fila.
+  var TPL_MINI_W = 420, TPL_MINI_H = 130;
   var _tplMiniCache = {};
   var _tplMiniObs = null;
 

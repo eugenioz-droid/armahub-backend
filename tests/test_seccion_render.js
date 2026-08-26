@@ -415,6 +415,37 @@ console.log('\nR4 — una sola escala para toda la lista, y el encuadre sale de 
     'y por dentro corta: los dos cuadros juntos no muestran el muro entero');
   ok(!/simetr|palindrom|espejo/i.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
     'y nunca se afirma que un extremo represente al otro: no hay probador de simetría');
+  // LA IDENTIDAD DEL CUADRO, y el trueque que el usuario RECHAZÓ.
+  // A lo ancho de un cuadro: escala (px/cm) × centímetros cubiertos = ancho útil (px).
+  // Con la celda fija, engordar la sección se paga en cobertura y al revés — fue
+  // exactamente lo que pasó al hacer que la ventana cubriera el confinamiento: la
+  // ventana subió de 80 a 113 cm y el espesor cayó de 27 px a 17, y el usuario lo vio
+  // («se homologó pero se achicó todo»). Lo único que sube los DOS lados es ENSANCHAR
+  // la celda. Esto lo deja clavado para que el trueque no vuelva en silencio.
+  {
+    const cj = R.cajas(W, H);
+    ok(Math.abs(pLargo.escala * pLargo.ventana - (cj.fw - cj.aire)) < 0.01,
+      'escala × cobertura = ancho útil del cuadro (' + redondo(pLargo.escala, 2) + ' × ' +
+      redondo(pLargo.ventana, 0) + ' = ' + redondo(cj.fw - cj.aire, 0) + ' px)');
+    // ENSANCHAR NO PUEDE COSTAR NI ESPESOR NI COBERTURA: sube las dos.
+    const lista = espesores.map((e, i) => TE._tplMiniFila(filas[i]));
+    const cubre = (ss, ww) => { const c = R.cajas(ww, H); return (c.fw - c.aire) / ss; };
+    const angosta = R.escalaComun(lista, 232, H, {});
+    const ancha = R.escalaComun(lista, W, H, {});
+    ok(ancha >= angosta - 1e-9 && cubre(ancha, W) >= cubre(angosta, 232) - 1e-9,
+      'ensanchar la celda 232→' + W + ' sube la escala (' + redondo(angosta, 2) + '→' +
+      redondo(ancha, 2) + ' px/cm) SIN perder cobertura (' + redondo(cubre(angosta, 232), 0) +
+      '→' + redondo(cubre(ancha, W), 0) + ' cm por cuadro)');
+    // Y LA SECCIÓN SE DEFIENDE: por mucha ventana que pida una fila, la más fina de la
+    // lista no baja de MIN_CORTO_PX — es el piso que impide volver a los 17 px.
+    const glotona = lista.map(f => Object.assign({}, f, { ventana: 4000 }));
+    const sGlot = R.escalaComun(glotona, W, H, {});
+    const cortoMin = Math.min.apply(null, lista.map(f => f.corto));
+    ok(cortoMin * sGlot >= R.MIN_CORTO_PX - 0.01,
+      'una fila que pidiera 40 m de ventana no baja la sección más fina de ' +
+      R.MIN_CORTO_PX + ' px (queda en ' + redondo(cortoMin * sGlot, 1) + ')');
+  }
+
   TE._tplPonerLista([]);
 }
 

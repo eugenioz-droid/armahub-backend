@@ -295,23 +295,25 @@
      cuadrantes del editor- corriendo el motor real sobre la receta que ahora viaja en
      GET /templates; aca solo se le reserva el sitio y se le pone marco, para que una
      fila sin dibujo (backend viejo, receta rota) no descuadre la tabla.
-     232x110 (26-ago): el usuario pidio verlo "mas ampliado y preciso" y un elemento
-     alargado -un muro es 524x20- se dibuja en DOS cuadros, uno por extremo. Con los
-     110px de ancho de antes cada cuadro quedaba en 53 px y el espesor del muro caia
-     a 13. Y el ALTO no es adorno: es el PRESUPUESTO del que sale la escala COMUN de
-     la lista -el elemento de seccion mas gruesa tiene que caber en el-, asi que con
-     80 px utiles entra el rango real de espesores (15 a 60 cm) sin que el mas grueso
-     deje al mas fino en nada legible: medido, 60 cm ocupa 63 px y 15 cm conserva 16.
+     420x130 (26-ago): el usuario lo pidio "mas ampliado y preciso" y despues "que
+     podamos agrandar las secciones Y ver mas del muro; para eso solo podemos alargar".
+     Tiene razon y hay una identidad detras: a lo ancho de un cuadro, escala (px/cm) x
+     centimetros cubiertos = ancho util. Con la celda fija, engordar el hormigon se
+     paga en cobertura y al reves; lo unico que sube los dos lados es ENSANCHAR.
+     Medido sobre su lista (tres muros de 20 cm, uno con cabezal, mas una viga):
+     232x110 daba 0,85 px/cm = 17 px de espesor y 123 cm por cuadro; 420x130 da 1,57
+     px/cm = 31 px y 127 cm. El ALTO es el presupuesto por el otro lado: la viga, que
+     se dibuja ENTERA, tiene que caber en el (60 cm en 100 px utiles = 1,57 px/cm).
      El numero vive TAMBIEN en template_editor.js (TPL_MINI_W/H): el SVG trae su
      width/height, esto solo evita que un fallo de carga descuadre la columna. */
   #tplGuardadosLista .tplMini { display:inline-block; line-height:0; border-radius:5px;
-    border:1px solid #eceff1; background:#fff; min-width:232px; min-height:110px; }
-  #tplGuardadosLista .tplMini svg { display:block; width:232px; height:110px; }
-  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:244px; }
+    border:1px solid #eceff1; background:#fff; min-width:420px; min-height:130px; }
+  #tplGuardadosLista .tplMini svg { display:block; width:420px; height:130px; }
+  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:432px; }
   /* El GUION del que no hay dibujo: mismo trato que el resto de los datos que el
      servidor no manda (ver _tplKpi). Ocupa el mismo alto para no saltar la fila. */
   #tplGuardadosLista .tplMiniSin { display:flex; align-items:center; justify-content:center;
-    width:232px; height:110px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
+    width:420px; height:130px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
     font-size:11px; }
 
   /* INSIGNIA DE USO de la fila. El template que nadie cargó todavía lo DICE con
