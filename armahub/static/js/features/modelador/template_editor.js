@@ -359,6 +359,14 @@
 
   function $(id) { return document.getElementById(id); }
 
+  // EL DIBUJANTE 2D (features/modelador/render2d.js). Es la geometría de dibujo de un
+  // cuadrante —proyectar, encuadrar, rebanar en profundidad y convertir barras en
+  // trazos— fuera de este archivo, sin DOM y sin ST, para que la miniatura del Gestor
+  // de templates dibuje con EL MISMO dibujante que el editor y no con una segunda
+  // versión suya. Se resuelve al usarlo (nunca capturado a nivel de módulo): los
+  // scripts cargan en paralelo.
+  function _R2D() { return global.ModeladorRender2D; }
+
   function _deps() {
     return {
       gen: global.ModeladorGenerar,
@@ -2976,21 +2984,10 @@
   // barras del MISMO componente (material 3D distinto, color 2D distinto, una vista
   // de punta y otra de perfil) las manda a grupos separados sola, sin que este
   // código tenga que dar por sentado que hoy no pasa. Devolver null descarta.
+  // El recorrido vive en el dibujante puro (ModeladorRender2D.agrupar); acá queda lo
+  // único que era de este archivo: QUÉ está apagado (_ocultoCi lee ST).
   function _agruparPlacements(placements, clave) {
-    var grupos = [], indice = {};
-    for (var i = 0; i < (placements || []).length; i++) {
-      var pl = placements[i];
-      if (!pl) continue;
-      var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
-      if (_ocultoCi(ci)) continue;
-      var k = clave ? clave(pl, ci) : '';
-      if (k == null) continue;
-      k = ci + '|' + k;
-      var g = indice[k];
-      if (!g) { g = indice[k] = { ci: ci, clave: k, pls: [] }; grupos.push(g); }
-      g.pls.push(pl);
-    }
-    return grupos;
+    return _R2D().agrupar(placements, clave, _ocultoCi);
   }
 
   // Grupos de MALLA 3D. La clave lleva el material porque un componente PUEDE traer
@@ -3475,9 +3472,11 @@
       '</svg>';
   }
 
-  // Proyector genérico: dado el def de un plano → función punto3D → {u,v}.
+  // Proyector genérico: dado el def de un plano → función punto3D → {u,v}. Vive en el
+  // dibujante puro (ModeladorRender2D) para que el cuadrante y la miniatura del gestor
+  // no puedan proyectar distinto.
   function _proyectorDe(def) {
-    return function (p) { return { u: p[def.u], v: p[def.v] }; };
+    return _R2D().proyector(def);
   }
   // (G3/B3 — 11-ago) El "proyector de canto" (_proyectorVolteado) fue ELIMINADO: el
   // volteo de la pieza dejó de ser un truco de proyección y es GEOMETRÍA REAL en el
@@ -3584,10 +3583,7 @@
   // meter TODAS las barras de punta de un componente en UN solo nodo SVG: un <circle>
   // no se concatena con nada, y eran 3 nodos por barra en la vista de sección.
   function _dCirculo(cx, cy, r) {
-    var rr = r.toFixed(1), d2 = (2 * r).toFixed(1);
-    return 'M' + (cx - r).toFixed(1) + ',' + cy.toFixed(1) +
-           'a' + rr + ',' + rr + ' 0 1,0 ' + d2 + ',0' +
-           'a' + rr + ',' + rr + ' 0 1,0 -' + d2 + ',0Z';
+    return _R2D().dCirculo(cx, cy, r);
   }
 
   function _svgEl(tag, attrs) {
@@ -3601,8 +3597,13 @@
   // la regla de recorte del recubrimiento (recub.W/recub.H) de la tabla de planos
   // del elemento activo. Devuelve {W,H,iW,iH} en (u,v).
   function _rectPlano(g, plano) {
-    var def = (_defsPlanos() || {})[plano];
-    if (!def) return { W: 0, H: 0, iW: 0, iH: 0 };
+    return _rectDeDef(g, (_defsPlanos() || {})[plano]);
+  }
+  // La misma cuenta, pero contra un def SUELTO: el Gestor de templates necesita el
+  // rectángulo del plano del tipo de CADA FILA, no el del template abierto en el
+  // editor. Se separó para que las dos preguntas se contesten con una sola cuenta.
+  function _rectDeDef(g, def) {
+    if (!def || !g) return { W: 0, H: 0, iW: 0, iH: 0 };
     var rs = g.recub_sup != null ? Number(g.recub_sup) : 4;
     var ri = g.recub_inf != null ? Number(g.recub_inf) : 4;
     var rl = g.recub_lat != null ? Number(g.recub_lat) : 3;
@@ -4569,23 +4570,13 @@
 
     // TRANSFORM — en modo orto se deriva de la cámara (alineación exacta con el
     // render); si no hay 3D todavía, del bounding box proyectado (fallback SVG plano).
+    // El encuadre del fallback (bbox proyectado + margen) es el MISMO que usa la
+    // miniatura del Gestor de templates, así que vive en el dibujante puro
+    // (ModeladorRender2D.bbox/encuadre) y no repetido acá.
     var t = soloOverlay ? _transformDesdeCamara(plano, svg) : null;
     if (!t) {
-      var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
-      var acc = function (u, v) {
-        if (u < minU) minU = u; if (u > maxU) maxU = u;
-        if (v < minV) minV = v; if (v > maxV) maxV = v;
-      };
-      if (rect) { acc(-rect.W / 2, -rect.H / 2); acc(rect.W / 2, rect.H / 2); }
-      placements.forEach(function (pl) {
-        (pl.puntos || []).forEach(function (pt) { var q = proj(pt); if (isFinite(q.u) && isFinite(q.v)) acc(q.u, q.v); });
-      });
-      if (!isFinite(minU) || !isFinite(minV)) { ST.transforms[plano] = null; return; }
-      var MARGIN = 30;
-      var spanU = Math.max(maxU - minU, 1e-6), spanV = Math.max(maxV - minV, 1e-6);
-      var s = Math.min((VW - 2 * MARGIN) / spanU, (VH - 2 * MARGIN) / spanV);
-      var offX = (VW - spanU * s) / 2, offY = (VH - spanV * s) / 2;
-      t = _mkTransform(offX - minU * s, s, offY + maxV * s, -s);
+      t = _R2D().encuadre(_R2D().bbox(placements, proj, rect), VW, VH, 30);
+      if (!t) { ST.transforms[plano] = null; return; }
     }
     ST.transforms[plano] = t;
     function X(u) { return _tX(t, u); }
@@ -4632,76 +4623,41 @@
     // que el clic espera. Apagado: ni trazo ni zona de clic —lo filtra
     // _agruparPlacements con _ocultoCi—; que una barra invisible siguiera siendo
     // clicable en el cuadrante sería lo peor de los dos mundos.
+    //
+    // (26-ago) La GEOMETRÍA de todo esto —agrupar, decidir si la barra se ve de punta,
+    // concatenar los `d`— se mudó al dibujante puro (ModeladorRender2D.trazos), que es
+    // el mismo que dibuja la miniatura del Gestor de templates. Acá queda lo que sí es
+    // de este archivo: de dónde salen el color y el rol, qué está seleccionado, qué
+    // está apagado y cómo se cuelga cada trazo del DOM (clases, data-ci, capas).
     var capaHalo = [], capaTrazo = [], capaHit = [];
-    _agruparPlacements(placements, function (pl) {
-      var rolK = _rolComp(pl);
-      var puntaK = (rolK === 'cabezal' && _ejeMayorSpan(pl.puntos) === def.depth);
-      var colorK = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
-      var opK = (rolK === 'estribo' && plano === 'planta') ? '.6' : '1';
-      return (puntaK ? 'o' : 'l') + colorK + opK;
-    }).forEach(function (gr) {
-      var pl0 = gr.pls[0];
-      var rol = _rolComp(pl0);
-      var color = _colorComp(_compDePl(pl0) || { tipologia: pl0.tipologia });
-      var sel = (gr.ci >= 0) && _estaSeleccionado(gr.ci);
-      // ¿La barra se ve DE PUNTA en esta vista? (su eje longitudinal es la
-      // profundidad del plano) → círculo, no polilínea. Criterio GEOMÉTRICO (sirve
-      // igual para piezas volteadas, cuyo eje longitudinal ya cambió de verdad).
-      var punta = (rol === 'cabezal' && _ejeMayorSpan(pl0.puntos) === def.depth);
-      var dTrazo = '', dHalo = '', dHit = '';
-      for (var k = 0; k < gr.pls.length; k++) {
-        var pl = gr.pls[k];
-        var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
-        if (!pts.length) continue;
-        if (punta) {
-          // Punto representativo = el TRAMO RECTO que corre en profundidad (el cuerpo
-          // de la barra), NO pts[0] (que es la punta del gancho → el círculo salía
-          // "abajo" mientras la barra iba arriba). Todos los puntos del tramo proyectan
-          // al mismo (u,v): tomamos el extremo del segmento con mayor delta en depth.
-          var q0 = pts[0], mejorDelta = -1;
-          var raw = pl.puntos || [];
-          for (var si = 1; si < raw.length; si++) {
-            var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
-            if (dd > mejorDelta) { mejorDelta = dd; q0 = proj(raw[si]); }
-          }
-          // Radio REAL de la barra en px. OJO con las unidades: pl.diam YA viene en
-          // CENTÍMETROS (reglas.js lo convierte una sola vez: φ16 → 1.6) y t.s es
-          // px/cm → radio = diam/2 * s. Antes se dividía por 20 (se re-aplicaba el
-          // mm→cm) y el círculo salía 10× chico; el piso de 3 px lo tapaba dibujando
-          // todos los φ iguales. Piso 1.5 px: sólo actúa en zoom-out extremo.
-          var rPx = Math.max(1.5, (Number(pl.diam) / 2) * Math.abs(t.s || 1));
-          var cx = X(q0.u), cy = Y(q0.v);
-          dTrazo += _dCirculo(cx, cy, rPx);
-          dHalo += _dCirculo(cx, cy, rPx + 2.5);
-          dHit += _dCirculo(cx, cy, Math.max(7.5, rPx + 3));   // hit generoso: es lo que hace clicable la barra
-        } else {
-          dTrazo += (dTrazo ? ' ' : '') + pts.map(function (q, i) {
-            return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1);
-          }).join(' ');
-        }
-      }
-      if (!dTrazo) return;
-      if (punta) {
-        if (sel) capaHalo.push(_svgEl('path', { 'class': 'te-bar-halo', d: dHalo }));
+    _R2D().trazos(placements, def, t, {
+      colorDe: function (pl) { return _colorComp(_compDePl(pl) || { tipologia: pl.tipologia }); },
+      rolDe: _rolComp,
+      oculto: _ocultoCi,
+      opacidadDe: function (pl, rol) { return (rol === 'estribo' && plano === 'planta') ? 0.6 : 1; }
+    }).forEach(function (z) {
+      var sel = (z.ci >= 0) && _estaSeleccionado(z.ci);
+      if (z.punta) {
+        if (sel) capaHalo.push(_svgEl('path', { 'class': 'te-bar-halo', d: z.dHalo }));
         // el círculo de sección se pinta SIEMPRE, también en modo overlay: es la marca
         // permanente de la barra vista de punta y el render 3D no la dibuja.
-        capaTrazo.push(_svgEl('path', { d: dTrazo, fill: color, style: 'pointer-events:none' }));
+        capaTrazo.push(_svgEl('path', { d: z.d, fill: z.color, style: 'pointer-events:none' }));
         capaHit.push(_svgEl('path', {
-          d: dHit, fill: 'transparent', 'data-ci': gr.ci, 'data-hit': '1', style: 'cursor:pointer'
+          d: z.dHit, fill: 'transparent', 'data-ci': z.ci, 'data-hit': '1', style: 'cursor:pointer'
         }));
         return;
       }
-      if (sel) capaHalo.push(_svgEl('path', { 'class': 'te-bar-halo', d: dTrazo }));
+      if (sel) capaHalo.push(_svgEl('path', { 'class': 'te-bar-halo', d: z.d }));
       if (!soloOverlay) {
         capaTrazo.push(_svgEl('path', {
-          'class': 'te-bar' + (sel ? ' sel' : ''), d: dTrazo, stroke: color, style: 'pointer-events:none',
-          opacity: (rol === 'estribo' && plano === 'planta') ? 0.6 : 1
+          'class': 'te-bar' + (sel ? ' sel' : ''), d: z.d, stroke: z.color, style: 'pointer-events:none',
+          opacity: z.op
         }));
       }
       // trazo de HIT transparente ancho (facilita el clic sobre la línea fina)
       capaHit.push(_svgEl('path', {
-        d: dTrazo, fill: 'none', stroke: 'transparent', 'stroke-width': 9, 'stroke-linecap': 'round',
-        'data-ci': gr.ci, 'data-hit': '1', style: 'cursor:pointer'
+        d: z.d, fill: 'none', stroke: 'transparent', 'stroke-width': 9, 'stroke-linecap': 'round',
+        'data-ci': z.ci, 'data-hit': '1', style: 'cursor:pointer'
       }));
     });
     capaHalo.forEach(function (n) { svg.appendChild(n); });
@@ -4788,18 +4744,7 @@
 
   // Eje del mundo con MAYOR extensión de una polilínea = "por dónde corre" la barra.
   function _ejeMayorSpan(pts) {
-    if (!pts || pts.length < 2) return null;
-    var lo = { x: Infinity, y: Infinity, z: Infinity }, hi = { x: -Infinity, y: -Infinity, z: -Infinity };
-    for (var i = 0; i < pts.length; i++) {
-      var p = pts[i];
-      if (p.x < lo.x) lo.x = p.x; if (p.x > hi.x) hi.x = p.x;
-      if (p.y < lo.y) lo.y = p.y; if (p.y > hi.y) hi.y = p.y;
-      if (p.z < lo.z) lo.z = p.z; if (p.z > hi.z) hi.z = p.z;
-    }
-    var mejor = 'x', span = hi.x - lo.x;
-    if (hi.y - lo.y > span) { mejor = 'y'; span = hi.y - lo.y; }
-    if (hi.z - lo.z > span) { mejor = 'z'; span = hi.z - lo.z; }
-    return mejor;
+    return _R2D().ejeMayorSpan(pts);
   }
 
   function _dibujarCotas(svg, rect, s, X, Y, plano) {
@@ -14296,46 +14241,141 @@
       _esc(txt) + '</span>';
   }
 
-  // MINIATURA DE SECCIÓN de la fila. El dibujo lo hace ModeladorSeccionMini
-  // (features/modelador/seccion_mini.js) desde el resumen compacto que manda el
-  // backend en `t.seccion` (~50-120 bytes): acá sólo se decide QUÉ va en la celda.
-  // Tres huecos distintos, y CADA UNO dice lo suyo (mezclarlos era mandar al usuario a
-  // arreglar lo que no está roto):
-  //   · el backend no manda `seccion` (servidor viejo) → guion, el mismo trato que
-  //     cualquier dato que no viaja (ver _tplKpi);
-  //   · el dibujante no cargó → guion, pero diciendo que el que falta es el script.
-  //     No se improvisa un SVG acá: el dibujo vive en un solo sitio;
-  //   · `seccion` en null → el HUECO del dibujante, que dice que con ESTA receta no
-  //     hay sección. Un template cuya receta no se puede dibujar no recibe una silueta
-  //     inventada.
-  // El tooltip sale del dibujante (`titulo`), que es quien dice —con esa palabra— que
-  // el dibujo es un ESQUEMA y que las COTAS, en cambio, son las medidas del template.
-  function _tplMini(t) {
-    var M = global.ModeladorSeccionMini;
-    if (!M) {
-      return '<span class="tplMiniSin" title="El dibujante de la sección no llegó a cargar: recarga la página">—</span>';
-    }
-    if (!t || t.seccion === undefined) {
-      return '<span class="tplMiniSin" title="Este servidor no manda todavía el resumen de la sección">—</span>';
-    }
+  // ==========================================================================
+  // EL CORTE DE LA FILA — dibujado con el MOTOR REAL (26-ago)
+  // --------------------------------------------------------------------------
+  // ANTES: el backend derivaba de la receta un resumen de ~120 bytes («2 barras
+  // contra esta cara, 27 a lo largo») y un dibujante aparte lo convertía en un
+  // ESQUEMA, que había que rotular como tal porque el motor —que es JS— no corría en
+  // el servidor. El usuario lo comparó con el editor y pidió lo obvio: «que se vea
+  // como se ve en el editor, más ampliada y precisa».
+  //
+  // AHORA: el listado manda la RECETA (`t.params`, ~2 KB medidos; no crece con las
+  // barras: un muro de 760 pesa 2,5) y acá se corre ModeladorGenerar —el mismo motor
+  // del editor, ya cargado— y se dibuja con ModeladorRender2D —el mismo dibujante de
+  // los cuadrantes—. O sea que ya NO es un esquema y no se dice que lo sea: decir que
+  // el fierro es aproximado cuando ya no lo es sería la misma mentira al revés. Lo que
+  // sí se dice, y por eso el tooltip lo lleva, es QUÉ se está mirando: el plano, que
+  // es una REBANADA en profundidad y no todo el fondo, y que cada cuadro es un extremo.
+  //
+  // POR DEMANDA, NO AL PINTAR LA TABLA. Generar cuesta 3,1 ms con el muro de 166
+  // barras del usuario; ochenta filas de golpe son ~250 ms de hilo bloqueado más el
+  // costo de meter los trazos de ochenta miniaturas en el DOM. Así que la celda nace
+  // vacía y se dibuja al entrar en pantalla (IntersectionObserver, con 200 px de
+  // anticipación para que el usuario nunca vea el hueco), y el resultado se CACHEA por
+  // id + updated_at: volver a la lista tras editar un template redibuja ese y sólo ese.
+  var TPL_MINI_W = 232, TPL_MINI_H = 96;
+  var _tplMiniCache = {};
+  var _tplMiniObs = null;
+
+  // Clave del caché: si el template se editó, `updated_at` cambia y el dibujo viejo
+  // deja de valer solo. No hace falta invalidar a mano en ningún sitio.
+  function _tplMiniClave(t) {
+    return String(t.id) + '|' + String(t.updated_at || t.fecha || '');
+  }
+
+  // La receta → { svg, titulo }. Es la ÚNICA parte que sabe de templates: el motor
+  // recibe una receta y el dibujante recibe placements, y ninguno de los dos pregunta
+  // de dónde salieron.
+  function _tplMiniDibujo(t) {
+    var clave = _tplMiniClave(t);
+    if (_tplMiniCache[clave]) return _tplMiniCache[clave];
+    var R = _R2D(), G = global.ModeladorGenerar;
     // EL PLANO SALE DE PLANOS_POR_ELEMENTO, la MISMA tabla con la que el editor rotula
     // sus cuadrantes — no de una lista de tipos escrita acá. Por eso un muro se dibuja
     // en su corte HORIZONTAL (largo × espesor, «SECCIÓN · YX»), donde se ven las dos
     // cortinas y las trabas, y una viga en su corte transversal; y por eso un elemento
     // nuevo hereda el criterio el día que se agregue a la tabla, sin tocar esto.
-    // El rótulo de ejes viaja al tooltip por lo mismo: que la miniatura y el editor
-    // llamen al plano por el mismo nombre.
     var def = _planosDe(t.tipo).seccion;
-    var rotulo = def ? _ejeRotulo(def.u, def.v) : '';
-    // EL COLOR, DE LA PALETA ÚNICA (_colDe / COL2D) — la misma que pinta las barras del
-    // editor. El usuario comparó la miniatura contra el cuadrante SECCIÓN del 3D con el
-    // mismo muro y lo primero que dijo fue «los colores también son diferentes»: con la
-    // miniatura en un solo tono había que traducir entre dos vocabularios para leer el
-    // mismo fierro. Va como FUNCIÓN a propósito: el dibujante recibe la tipología del
-    // grupo y la devuelve convertida en color sin saber qué es una tipología, igual que
-    // el motor de figuras recibe `opts.color`. Y el color no cambia QUÉ se dibuja.
-    return '<span class="tplMini" title="' + _esc(M.titulo(t.seccion, def, rotulo)) + '">' +
-      M.svg(t.seccion, def, { color: _colDe }) + '</span>';
+    var p = t.params || {};
+    var geo = p.geometria;
+    var out = null;
+    if (def && geo && p.componentes && p.componentes.length) {
+      // COPIA: el motor normaliza y estampa campos sobre la receta que recibe, y ésta
+      // es la que el gestor tiene en memoria para abrir el template.
+      out = G.generarElemento(JSON.parse(JSON.stringify(
+        { tipo: t.tipo, geometria: geo, componentes: p.componentes })), {});
+    }
+    var pls = (out && out.placements) || [];
+    var d;
+    if (!pls.length) {
+      // Lo que no se puede dibujar recibe un HUECO QUE LO DICE, nunca una silueta
+      // inventada: una receta rota tiene que verse como lo que es.
+      d = { svg: R.hueco(TPL_MINI_W, TPL_MINI_H, 'sin barras que dibujar'),
+        titulo: 'Con esta receta el motor no genera ninguna barra. Ábrela para ver qué le falta.' };
+    } else {
+      // Los COLORES, de la paleta ÚNICA del editor (_colorComp → color propio del
+      // componente o COL2D), y entrando por PARÁMETRO: el dibujante no sabe qué es una
+      // tipología. Con la miniatura en un solo tono el usuario tenía que traducir entre
+      // dos vocabularios para leer el mismo muro.
+      var porId = {};
+      (p.componentes || []).forEach(function (c) { if (c && c.comp_id != null) porId[c.comp_id] = c; });
+      var opts = {
+        rect: _rectDeDef(geo, def),
+        colorDe: function (pl) { return _colorComp(porId[pl.comp_id] || { tipologia: pl.tipologia }); },
+        rolDe: _rolComp,
+        // Las LETRAS de los ejes son las del editor (EJE_DISPLAY): que la miniatura y
+        // el cuadrante llamen al plano por el mismo nombre.
+        letras: EJE_DISPLAY
+      };
+      // EL PLAN PRIMERO, y el dibujo con él: el tooltip tiene que decir exactamente lo
+      // que la imagen muestra, y derivarlo dos veces sería arriesgarse a que un día
+      // digan cosas distintas (además de rehacer el trabajo).
+      opts.plan = R.plan(pls, def, TPL_MINI_W, TPL_MINI_H, opts);
+      d = { svg: R.svg(pls, def, TPL_MINI_W, TPL_MINI_H, opts),
+        titulo: R.titulo(opts.plan, def, EJE_DISPLAY) };
+    }
+    _tplMiniCache[clave] = d;
+    return d;
+  }
+
+  // La CELDA, todavía sin dibujo. Dos huecos distintos, y cada uno dice lo suyo
+  // (mezclarlos era mandar al usuario a arreglar lo que no está roto):
+  //   · el backend no manda la receta (servidor viejo) → guion, el mismo trato que
+  //     cualquier dato que no viaja (ver _tplKpi);
+  //   · el motor o el dibujante no cargaron → guion, diciendo que el que falta es el
+  //     script. No se improvisa un SVG acá: el dibujo vive en un solo sitio.
+  function _tplMini(t) {
+    if (!_R2D() || !global.ModeladorGenerar) {
+      return '<span class="tplMiniSin" title="El dibujante del corte no llegó a cargar: recarga la página">—</span>';
+    }
+    if (!t || !t.params) {
+      return '<span class="tplMiniSin" title="Este servidor no manda todavía la receta en el listado">—</span>';
+    }
+    return '<span class="tplMini" data-tplmini="' + _esc(t.id) + '"></span>';
+  }
+
+  function _tplMiniPintar(span) {
+    var t = _tplPorId(span.getAttribute('data-tplmini'));
+    if (!t) return;
+    var d = _tplMiniDibujo(t);
+    span.removeAttribute('data-tplmini');
+    span.setAttribute('title', d.titulo);
+    span.innerHTML = d.svg;
+  }
+
+  // Cuelga el observador de las celdas que todavía no se dibujaron. Se rehace en cada
+  // repintado de la tabla (los nodos anteriores ya no existen) y se desconecta el
+  // anterior, que si no seguiría vivo apuntando a un DOM que se fue.
+  function _tplMiniObservar(cont) {
+    if (_tplMiniObs) { _tplMiniObs.disconnect(); _tplMiniObs = null; }
+    var pend = cont.querySelectorAll('.tplMini[data-tplmini]');
+    if (!pend.length) return;
+    if (!global.IntersectionObserver) {
+      // Sin observador no hay perezoso que valga: se dibujan todas de una. Es más lento
+      // en una lista larga, pero una tabla con ochenta celdas vacías para siempre sería
+      // peor que lenta.
+      for (var j = 0; j < pend.length; j++) _tplMiniPintar(pend[j]);
+      return;
+    }
+    _tplMiniObs = new global.IntersectionObserver(function (entradas) {
+      for (var k = 0; k < entradas.length; k++) {
+        if (!entradas[k].isIntersecting) continue;
+        _tplMiniObs.unobserve(entradas[k].target);
+        _tplMiniPintar(entradas[k].target);
+      }
+    }, { root: null, rootMargin: '200px 0px' });
+    for (var i = 0; i < pend.length; i++) _tplMiniObs.observe(pend[i]);
   }
 
   // Pinta la card entera desde el estado: _tplLista (lo que mandó el servidor) +
@@ -14384,10 +14424,13 @@
     // es el FIERRO. Se dibuja en el plano que PLANOS_POR_ELEMENTO llama «sección» para
     // ese elemento (26-ago): un muro en su corte HORIZONTAL, que es donde viven sus
     // cortinas — con el transversal salía el canto y los muros se seguían pareciendo.
-    // La cabecera dice «esquema» con todas sus letras y siempre visible, porque el
-    // dibujo NO va a escala (ver seccion_mini.js): eso no se deja para un asterisco.
+    // La cabecera decía «esquema» porque el dibujo no salía del motor. Ya sale
+    // (ModeladorGenerar + ModeladorRender2D, ver _tplMiniDibujo), así que la palabra se
+    // fue: seguir diciendo que el fierro es aproximado cuando ya no lo es es la misma
+    // mentira al revés. Lo que se está mirando —el plano, la rebanada y que cada cuadro
+    // es un extremo— lo dice el rótulo del propio dibujo y el tooltip.
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
-      '<tr><th ' + th + '>Sección · esquema</th>' +
+      '<tr><th ' + th + '>Sección</th>' +
       '<th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
       '<th ' + thN + '>Comp.</th><th ' + th + '>Uso</th>' +
       '<th ' + th + '>Última edición</th>' +
@@ -14446,6 +14489,8 @@
           '</td></tr>';
       }).join('') +
       '</table>';
+    // Los cortes se dibujan al entrar en pantalla, no ahora: ver _tplMiniObservar.
+    _tplMiniObservar(cont);
   }
 
   function _tplHayFiltro() {
@@ -14588,7 +14633,9 @@
     // GESTOR DE TEMPLATES (card del tab): orden, filtros locales y celdas de la fila.
     _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
     _tplUso: _tplUso, _tplMini: _tplMini, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
-    _planosDe: _planosDe, _ejeRotulo: _ejeRotulo,
+    _tplMiniDibujo: _tplMiniDibujo, _tplMiniClave: _tplMiniClave,
+    TPL_MINI_W: TPL_MINI_W, TPL_MINI_H: TPL_MINI_H,
+    _planosDe: _planosDe, _ejeRotulo: _ejeRotulo, EJE_DISPLAY: EJE_DISPLAY,
     _tplTiposPresentes: _tplTiposPresentes, _tplEsMio: _tplEsMio,
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,
@@ -14609,7 +14656,7 @@
     // panel se retiró, pero la paleta se queda ACÁ y expuesta: es la fuente 2D+3D y
     // el siguiente que dibuje barras la pide, no se escribe otra.
     colorDeTipologia: _colDe,
-    boundaryDeVista: boundaryDeVista, _rectPlano: _rectPlano,   // P2/base task2
+    boundaryDeVista: boundaryDeVista, _rectPlano: _rectPlano, _rectDeDef: _rectDeDef,   // P2/base task2
     setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null
     // INTERACCIÓN-2.0 · ghost + grosor + clamp + undo
     _pushUndo: _pushUndo, _undo: _undo,

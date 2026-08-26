@@ -187,6 +187,10 @@ function sesion() {
   mod('reglas.js', 'ModeladorReglas');
   mod('generar.js', 'ModeladorGenerar');
   mod('semilla_viga.js', 'ModeladorSemilla');
+  // El dibujante 2D PURO (26-ago): la geometria de _dibujarVista2D vive ahi para que
+  // la miniatura del Gestor de templates use EL MISMO dibujante. Es dependencia del
+  // editor, no un adorno: sin el no se dibuja ni un cuadrante.
+  mod('render2d.js', 'ModeladorRender2D');
   vm.runInContext(fs.readFileSync(path.join(BASE, 'template_editor.js'), 'utf8'), ctx, { filename: 'template_editor.js' });
 
   win._correrTimers = function (rondas) {

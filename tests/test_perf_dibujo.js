@@ -96,6 +96,11 @@ mod('motor_geom.js', 'ModeladorMotorGeom');
 mod('reglas.js', 'ModeladorReglas');
 mod('generar.js', 'ModeladorGenerar');
 mod('semilla_viga.js', 'ModeladorSemilla');
+// El dibujante 2D PURO: desde el 26-ago la geometría de _dibujarVista2D (agrupar,
+// proyectar, concatenar los `d`) vive ahí, para que la miniatura del Gestor de
+// templates use EL MISMO dibujante. Sin él el editor no dibuja: es una dependencia,
+// no un adorno.
+mod('render2d.js', 'ModeladorRender2D');
 vm.runInContext(fs.readFileSync(path.join(BASE, 'template_editor.js'), 'utf8'), ctx, { filename: 'template_editor.js' });
 
 const R = win.ModeladorReglas;

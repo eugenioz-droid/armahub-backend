@@ -398,15 +398,17 @@
         'modelador-semilla',
         '[ArmaHub] No se pudo cargar modelador/semilla_viga.js'
       ),
-      // Miniatura de SECCION del Gestor de templates: convierte el resumen compacto
-      // que manda GET /templates en un <svg>. No depende del motor (no lo corre: por
-      // eso el dibujo es un esquema y lo dice), asi que carga suelto como el resto.
+      // Dibujante 2D PURO: la geometria de dibujo de un cuadrante (proyectar,
+      // encuadrar, rebanar en profundidad y convertir barras en trazos) sin DOM ni
+      // estado. Lo usan el Template Editor (sus tres vistas) y la columna Seccion del
+      // Gestor de templates, que dibuja el corte con el motor real: un solo dibujante,
+      // no dos que puedan divergir.
       loadScript(
-        'script[data-armahub-feature="modelador-seccion-mini"]',
-        '/static/js/features/modelador/seccion_mini.js' + suffix,
+        'script[data-armahub-feature="modelador-render2d"]',
+        '/static/js/features/modelador/render2d.js' + suffix,
         'armahubFeature',
-        'modelador-seccion-mini',
-        '[ArmaHub] No se pudo cargar modelador/seccion_mini.js'
+        'modelador-render2d',
+        '[ArmaHub] No se pudo cargar modelador/render2d.js'
       ),
       // (Aquí se cargaba modelador/panel_3d.js, el panel del modal "3D Template".
       // Se retiró con el modal el 25-ago; el Template Editor hace ese trabajo.)

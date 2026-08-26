@@ -291,19 +291,24 @@
   #tplChips .tplLimpiar[disabled] { cursor:default; opacity:.35; }
   #tplChips .tplLimpiar[disabled]:hover { background:#fff; border-color:#dbe1e8; }
 
-  /* MINIATURA DE SECCION de la fila. El SVG lo arma seccion_mini.js desde el resumen
-     compacto que manda GET /templates; aca solo se le reserva el sitio y se le pone
-     marco, para que una fila sin miniatura (backend viejo, receta sin medidas) no
-     descuadre la tabla. 110x80 es el tamano que el usuario pidio: en 64x46 la seccion
-     con fierro no se leia. */
+  /* EL CORTE de la fila. El SVG lo arma render2d.js -el mismo dibujante de los
+     cuadrantes del editor- corriendo el motor real sobre la receta que ahora viaja en
+     GET /templates; aca solo se le reserva el sitio y se le pone marco, para que una
+     fila sin dibujo (backend viejo, receta rota) no descuadre la tabla.
+     232x96 (26-ago): el usuario pidio verlo "mas ampliado y preciso" y un elemento
+     alargado -un muro es 524x20- se dibuja en DOS cuadros, uno por extremo. Con los
+     110px de antes cada cuadro quedaba en 53 y el espesor del muro bajaba a 13px,
+     por debajo de los 26 que necesitan sus dos cortinas para leerse como dos lineas.
+     El numero vive TAMBIEN en template_editor.js (TPL_MINI_W/H): el SVG trae su
+     width/height, esto solo evita que un fallo de carga descuadre la columna. */
   #tplGuardadosLista .tplMini { display:inline-block; line-height:0; border-radius:5px;
-    border:1px solid #eceff1; background:#fff; }
-  #tplGuardadosLista .tplMini svg { display:block; width:110px; height:80px; }
-  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:120px; }
-  /* El GUION del que no hay miniatura: mismo trato que el resto de los datos que el
+    border:1px solid #eceff1; background:#fff; min-width:232px; min-height:96px; }
+  #tplGuardadosLista .tplMini svg { display:block; width:232px; height:96px; }
+  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:242px; }
+  /* El GUION del que no hay dibujo: mismo trato que el resto de los datos que el
      servidor no manda (ver _tplKpi). Ocupa el mismo alto para no saltar la fila. */
   #tplGuardadosLista .tplMiniSin { display:flex; align-items:center; justify-content:center;
-    width:110px; height:80px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
+    width:232px; height:96px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
     font-size:11px; }
 
   /* INSIGNIA DE USO de la fila. El template que nadie cargó todavía lo DICE con
@@ -330,18 +335,24 @@
            chips — no había cómo volver.
            Cada fila muestra el USO (n_usos / n_obras del backend), que es lo que
            sirve para elegir con 80 templates: el que ya funcionó, no el último
-           tocado. Y abre con la SECCIÓN: un esquema del corte con su fierro y sus
-           cotas, dibujado por seccion_mini.js desde el resumen compacto que viene en
-           la misma respuesta (campo `seccion`, ~100-200 bytes por fila; NO la receta),
-           con las barras COLOREADAS por tipología con la paleta del editor (COL2D), para
-           que la miniatura y el cuadrante 3D del mismo muro no hablen dos idiomas.
+           tocado. Y abre con la SECCIÓN: el corte del elemento dibujado con el MOTOR
+           REAL (ModeladorGenerar) y con el dibujante de los cuadrantes del editor
+           (render2d.js), desde la receta que ahora viaja en la misma respuesta (campo
+           `params`, ~2 KB por fila), con las barras COLOREADAS por tipología con la
+           paleta del editor (COL2D), para que la miniatura y el cuadrante 3D del mismo
+           muro no hablen dos idiomas.
            Es lo único que distingue cinco templates que se llaman «Muro …» y miden lo
            mismo. QUÉ corte se dibuja lo dice PLANOS_POR_ELEMENTO —la misma tabla que
            rotula los cuadrantes del editor—, así que un muro sale en su corte
            HORIZONTAL (largo × espesor, «SECCIÓN · YX»), donde se ven las dos cortinas
-           y las trabas, y una viga en su corte transversal. La cabecera dice «esquema»
-           siempre: el dibujo no va a escala —las posiciones las calcula el motor, que
-           no corre acá—, pero las COTAS sí son las medidas del template. Abrir = clic en la fila (GET /templates/{id} → modal);
+           y las trabas, y una viga en su corte transversal. Ya NO es un esquema y por
+           eso la columna dejó de decirlo. Lo que sí dice el dibujo —en su rótulo y en
+           el tooltip— es QUÉ se está mirando: que es una REBANADA de 30 cm en
+           profundidad (proyectar los 250 cm de alto de un muro sobre su corte
+           horizontal apila el fierro) y, cuando el elemento es demasiado alargado para
+           leerse entero, que cada uno de los DOS cuadros es un extremo, los dos a la
+           misma escala. Se dibuja al entrar en pantalla, no al pintar la tabla.
+           Abrir = clic en la fila (GET /templates/{id} → modal);
            Renombrar y Eliminar van con palabra al final (DELETE con confirmación
            que nombra el template; 409 = está en uso y NO se borra).
            La lógica vive en template_editor.js. -->

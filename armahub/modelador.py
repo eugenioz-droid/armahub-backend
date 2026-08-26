@@ -3,7 +3,7 @@ modelador.py — Backend del Modelador 3D (F1 · T1.1 + CICLO DE VIDA DEL TEMPLA
 
 Router de la biblioteca de templates y de la traza de instancias:
   POST   /templates                          -> crea un template en la biblioteca
-  GET    /templates?tipo=&obra=&nombre=      -> lista LIVIANA (sin params) para elegir
+  GET    /templates?tipo=&obra=&nombre=      -> lista para elegir (CON params: ~2 KB/fila)
   GET    /templates/{id}                     -> un template completo (con params)
   PUT    /templates/{id}                     -> edita nombre / tipo / params / obra
   DELETE /templates/{id}                     -> borra (409 si tiene instancias)
@@ -41,7 +41,6 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 import json
-import math
 
 from .db import get_conn, audit
 from .auth import get_current_user
@@ -442,403 +441,6 @@ def _params_dict(p):
     return p if isinstance(p, dict) else {}
 
 
-def _lista_json(v):
-    """Igual que _params_dict pero para un ARRAY: un jsonb puede llegar como lista
-    (psycopg) o como texto, según el cursor."""
-    if isinstance(v, str):
-        try:
-            v = json.loads(v)
-        except Exception:
-            return []
-    return v if isinstance(v, list) else []
-
-
-# ---------------------------------------------------------------------------
-# RESUMEN DE SECCIÓN — la miniatura del Gestor de templates
-# ---------------------------------------------------------------------------
-# EL PROBLEMA: el gestor mostraba cinco filas que empiezan con la palabra «Muro» y no
-# había forma de saber cuál era cuál sin abrirlas una por una. Lo que las distingue NO
-# es el hormigón (varias miden lo mismo) sino el FIERRO: dos cortinas cosidas con
-# trabas, dos cortinas sueltas, una sola cortina, una viga con estribo.
-#
-# POR QUÉ UN RESUMEN Y NO LA RECETA
-#   · `params` no viaja en el listado A PROPÓSITO (la receta entera pesa y la lista sólo
-#     sirve para escoger). Pedirla por fila sería un N+1 por red: el mismo que se mató
-#     el 25-ago en la carga de barras (2.483 consultas → 10).
-#   · Guardar el SVG en la tabla está descartado: se queda viejo en cuanto cambie la
-#     receta o el catálogo. Es el «guarda la RECETA, no el resultado» del modelador.
-#   · Las POSICIONES de las barras las calcula el motor (ModeladorGenerar), que es JS y
-#     no existe en el backend. O sea que esto NO es una sección cotada de taller: es un
-#     ESQUEMA — cuántos grupos hay, con cuántas barras, contra qué cara y con qué forma.
-#     El front lo dice con esa palabra (columna «Sección · esquema» + tooltip). Las
-#     COTAS, en cambio, son el hormigón REAL de la receta: la cota dice 20×250 porque el
-#     template dice 20×250. Esa asimetría es a propósito y conviene que se note.
-#
-# CÓMO VIAJA: entre ~90 y ~180 bytes por fila.
-#     "seccion": {"x":524,"y":250,"z":20,"rl":2.5,"rb":3,
-#                 "p":["1@50/13@1-99/2@15-85:x~MH", "3@1-99/1@50/1@50:zc~TR"]}
-#   x/y/z  = las TRES medidas del hormigón (largo · alto · ancho) en los ejes del motor,
-#            en cm; rl/rb = recubrimiento de las CARAS y de los BORDES. De ahí salen las
-#            cotas, que son dato real de la receta.
-#   p      = un TOKEN por grupo de barras:
-#                nx@ax-bx / ny@ay-by / nz@az-bz : rumbo [c] [~tipología]
-#            Por CADA EJE del hormigón: cuántas barras hay y ENTRE QUÉ DOS POSICIONES,
-#            en % de esa medida (0 = cara negativa, 100 = positiva). Después: por dónde
-#            CORRE la pieza, si su contorno CIERRA (c) y con qué TIPOLOGÍA se dibujó
-#            (sólo para el color; ver abajo).
-#
-# POR QUÉ EL TOKEN LLEVA POSICIONES Y NO SÓLO CUENTAS (26-ago, tras cotejar con el motor)
-# La versión anterior mandaba sólo cuántas barras había por eje y el dibujante las
-# repartía «a ojo» entre los recubrimientos. Cotejado contra ModeladorGenerar sobre un
-# muro real, eso fallaba en lo único que un corte horizontal de muro tiene que decir:
-# las dos cortinas van PEGADAS A LAS CARAS (el motor las pone en z = ±(espesor/2 −
-# recub − φ/2) = ±7 en un muro de 20), no repartidas por el medio. Y peor: el arreglo
-# que escribe el editor de HOY (_setModoComp) arma esas dos cortinas con `rango2`, no
-# con n_capas/eje_capas — que era lo único que esta derivación miraba. Resultado medido
-# sobre el muro 524×250×20 del usuario: las tres mallas colapsaban a n=1 y salían
-# apiladas EN EL CENTRO. Ahora cada eje viaja con su TRAMO, que sale de donde el dato
-# existe de verdad: el `from`/`to` de cada rango, o la cara + recubrimiento + φ/2 contra
-# la que la pieza se apoya. Son las MISMAS cifras que el motor.
-#
-# POR QUÉ VIAJA LA TIPOLOGÍA
-# Sólo para el COLOR, y el color no lo elige este backend ni el dibujante: lo resuelve
-# el gestor con `TemplateEditor.colorDeTipologia`, la paleta ÚNICA que ya pinta las
-# barras del editor. Con la miniatura en un solo tono, el usuario tenía que traducir
-# entre dos vocabularios para el mismo muro. La tipología NO cambia QUÉ se dibuja — eso
-# sale entero de la geometría de arriba; es una tabla de presentación y nada más.
-#
-# EL PLANO NO SE ELIGE ACÁ. Cuál es «la sección» de un elemento ya está decidido y en un
-# solo sitio, PLANOS_POR_ELEMENTO (template_editor.js): un muro se trabaja en el CORTE
-# HORIZONTAL (largo × espesor), que es donde viven sus dos cortinas y sus trabas.
-# Duplicar esa tabla acá serían dos verdades sobre lo mismo, y una lista de tipos
-# escrita a mano se quedaría atrás el día que exista un elemento nuevo. Así que el
-# backend describe el grupo en los TRES ejes del hormigón —que es un hecho de la
-# receta— y el dibujante proyecta sobre el plano que la tabla del editor diga.
-_EJES = ("x", "y", "z")
-# Más grupos DISTINTOS que esto no caben en una miniatura de 110 px: dibujarlos sería un
-# borrón. Se cortan acá y no en el navegador para no gastar bytes que no pintan nada.
-_MAX_PIEZAS = 10
-# Techo de un reparto: cuenta lo que la receta dice, sin que un `sep` minúsculo devuelva
-# un número absurdo.
-_MAX_REPARTO = 60
-# Con qué separación nacen las capas de un `layered` en el editor (_distDefault). Sólo
-# se usa cuando la receta no la trae: si la trae, manda la receta.
-_GAP_DEFAULT = 4
-
-
-def _num_pos(v):
-    """Número > 0, o None. Las medidas del hormigón las escribe el usuario: un 0, un
-    texto o un negativo no son una sección, son un hueco."""
-    n = _num(v)
-    return n if (n is not None and n > 0) else None
-
-
-def _cifra(n):
-    """20.0 → 20 y 2.5 → 2.5: el JSON no gasta un decimal que no dice nada y la cota
-    muestra la medida como se escribió."""
-    n = round(float(n), 1)
-    return int(n) if n == int(n) else n
-
-
-def _cuenta_rango(rango, sep_pref=None):
-    """Cuántas barras coloca un rango {from, to, sep}. Es la cuenta ArmaPilot del motor
-    (reglas.posicionesRango): ceil(span/@) + 1 — CIERRA el intervalo, o sea que hay una
-    barra en cada extremo. Con floor se perdía siempre la última: medido contra
-    ModeladorGenerar en un muro 524, rango 518 @20 → 27 barras, no 26.
-
-    `sep_pref` es el @ de la PRIMERA línea de distribución, que el motor toma de
-    `distribucion.sep` y no del rango (reglas._rangoReparto le pasa `cfg.sep`). La 2ª
-    línea (rango2) sí usa el suyo."""
-    if not isinstance(rango, dict):
-        return 1
-    a, b = _num(rango.get("from")), _num(rango.get("to"))
-    sep = sep_pref if (sep_pref is not None and sep_pref > 0) else _num(rango.get("sep"))
-    if a is None or b is None or sep is None or sep <= 0:
-        return 1
-    return max(1, min(int(math.ceil(abs(b - a) / sep)) + 1, _MAX_REPARTO))
-
-
-def _cuenta_zonas(zonas):
-    """Barras de un reparto por ZONAS. Espejo de reglas.redondeoCantidadZona:
-    ceil(long/sep) + 1 por zona."""
-    if not isinstance(zonas, list):
-        return 1
-    total = 0
-    for z in zonas:
-        if not isinstance(z, dict):
-            continue
-        largo, sep = _num(z.get("long")), _num(z.get("sep"))
-        total += (int(math.ceil(largo / sep)) + 1) if (largo and sep and sep > 0 and largo > 0) else 1
-    return max(1, min(total, _MAX_REPARTO))
-
-
-def _eje_pieza(rumbo, volteado):
-    """Por dónde CORRE la pieza, en los ejes del hormigón: 'x' recorre el largo, 'y'
-    cruza el alto, 'z' cruza el ancho. Sale de la pose; para las recetas viejas, de
-    plano_pieza (`de_pie` / `volteado`), que es exactamente de donde el motor deriva la
-    pose cuando no viene escrita."""
-    r = str(rumbo or "").strip().lower()
-    if r in _EJES:
-        return r
-    if r == "de_pie":
-        return "y"
-    return "z" if str(volteado).strip().lower() in ("true", "t", "1") else "x"
-
-
-def _eje_cara(cara):
-    """El EJE de la cara contra la que se apoya la pieza. Las caras del hormigón son un
-    dato de la receta y su eje es siempre el mismo: sup/inf miran por el alto, las
-    laterales por el ancho, los extremos por el largo."""
-    c = str(cara or "").strip().lower()
-    if c in ("sup", "inf"):
-        return "y"
-    if c in ("lateral", "lat"):
-        return "z"
-    if c in ("extremo", "ext"):
-        return "x"
-    return ""
-
-
-def _lado_cara(cara, lado):
-    """+1 / −1: contra CUÁL de las dos caras de ese eje. sup/inf lo dicen con su nombre;
-    en las demás lo dice la pose, y sin pose vale +1 — el mismo default del normalizador
-    del motor, no una elección de esta función."""
-    c = str(cara or "").strip().lower()
-    if c == "sup":
-        return 1
-    if c == "inf":
-        return -1
-    n = _num(lado)
-    return -1 if (n is not None and n < 0) else 1
-
-
-class _Marco(object):
-    """Las medidas del hormigón y sus recubrimientos, para convertir centímetros del
-    motor en el % de cada eje que viaja en el token."""
-
-    __slots__ = ("dim", "rl", "rb")
-
-    def __init__(self, dim, rl, rb):
-        self.dim, self.rl, self.rb = dim, rl, rb
-
-    def recub(self, eje):
-        """El recubrimiento que recorta ESE eje: el de las CARAS por el ancho, el de los
-        BORDES por el largo y el alto. Es la misma distinción que hace el editor en
-        PLANOS_POR_ELEMENTO.recub ('lat' vs 'supinf')."""
-        return self.rl if eje == "z" else self.rb
-
-    def pct(self, eje, cm):
-        """cm en coordenadas del motor (0 = centro del hormigón) → % de ese eje, con
-        0 = cara negativa y 100 = positiva. Fuera del hormigón se recorta: una barra no
-        se dibuja afuera de su propia sección."""
-        d = self.dim.get(eje)
-        if not d:
-            return 50
-        return int(round(max(0.0, min(100.0, 50.0 + 100.0 * (float(cm) / d)))))
-
-    def util(self, eje):
-        """El tramo ÚTIL de un eje (de recubrimiento a recubrimiento), en %."""
-        d = self.dim.get(eje)
-        if not d:
-            return (50, 50)
-        r = self.recub(eje)
-        return (self.pct(eje, -d / 2.0 + r), self.pct(eje, d / 2.0 - r))
-
-    def cara(self, eje, lado, diam_cm):
-        """Dónde queda el EJE de una barra apoyada contra una cara: recubrimiento más su
-        propio radio. Es la misma cuenta del motor (_marcoCara): en un muro de 20 con
-        recub 2.5 y φ10 da ±7, que es exactamente donde quedan las dos cortinas."""
-        d = self.dim.get(eje)
-        if not d:
-            return 50
-        return self.pct(eje, lado * (d / 2.0 - self.recub(eje) - diam_cm / 2.0))
-
-    def paso_pct(self, eje, cm):
-        """Un desplazamiento en cm → cuántos puntos porcentuales de ese eje."""
-        d = self.dim.get(eje)
-        return (100.0 * float(cm) / d) if d else 0.0
-
-
-def _bloque(n, a, b):
-    """Un eje del token: cuántas barras y entre qué dos posiciones (en %)."""
-    return ("%d@%d" % (n, a)) if a == b else ("%d@%d-%d" % (n, a, b))
-
-
-def _pieza_token(c, marco):
-    """Un componente PROYECTADO → su token, o None si la receta no dice dónde va (y
-    entonces NO SE DIBUJA: un dato que no se sabe situar no se pinta en el centro, se
-    omite — es la misma regla del hueco «sin sección», una escala más abajo).
-    `c` es la fila que arma el SELECT de listar_templates, en ese mismo orden."""
-    if not isinstance(c, (list, tuple)) or len(c) < 17:
-        return None
-    eje = _eje_pieza(c[1], c[2])
-    modo = str(c[3] or "").strip().lower()
-    n_capas, n_por_capa = _num(c[4]), _num(c[5])
-    eje_capas = str(c[6] or "").strip().lower()
-    if eje_capas not in _EJES:
-        eje_capas = "z"                       # el default del motor (distribuidorArreglo)
-    rango = c[7] if isinstance(c[7], dict) else None
-    # CONTORNO CERRADO por el número de lados DECLARADOS en la receta. No se pregunta al
-    # catálogo de figuras —que es donde vive la respuesta fina— porque traerlo costaría
-    # una segunda consulta, y el listado tiene que seguir costando una.
-    cerrada = int(_num(c[8]) or 0) >= 4
-    zonas = c[9] if isinstance(c[9], list) else None
-    rango2 = c[11] if isinstance(c[11], dict) else None
-    gap = _num(c[12])
-    sep_capas = _num(c[13])
-    diam_cm = (_num(c[14]) or 0) / 10.0       # el catálogo guarda φ en mm
-    tip = str(c[15] or "").strip().upper()[:6]
-    sep_dist = _num(c[16])
-    eje_ancla = _eje_cara(c[0])
-    lado = _lado_cara(c[0], c[10])
-
-    # MODO derivado igual que en el motor (reglas.js _distCanon): la FORMA de lo que trae
-    # la distribución manda sobre lo que diga —o no diga— el campo `modo`.
-    if modo not in ("layered", "linear", "arreglo"):
-        if zonas:
-            modo = "linear"
-        elif rango:
-            modo = "arreglo"
-        elif n_capas is not None or n_por_capa is not None:
-            modo = "layered"
-        else:
-            return None
-    capas = max(1, min(int(n_capas or 1), _MAX_REPARTO))
-    por_capa = max(1, min(int(n_por_capa or 1), _MAX_REPARTO))
-
-    # PUNTO DE PARTIDA: una barra sola, en su cara si se apoya en alguna y al centro si
-    # no. `p[e] = (n, desde%, hasta%)`.
-    p = {}
-    for e in _EJES:
-        q = marco.cara(e, lado, diam_cm) if e == eje_ancla else 50
-        p[e] = [1, q, q]
-    # Una pieza ABIERTA se EXTIENDE por su propio rumbo, de recubrimiento a
-    # recubrimiento: en ese eje el bloque no dice posiciones sino su LARGO. Sin esto una
-    # traba volteada —que se apoya en la cara lateral y CRUZA el espesor— salía dibujada
-    # pegada a una cara en vez de atravesando de lado a lado.
-    if not cerrada:
-        p[eje] = [1] + list(marco.util(eje))
-    else:
-        # Un CONTORNO CERRADO no se apoya contra una cara: ENCUADRA la sección entera
-        # (el marco de núcleo del motor). Su cara declarada es una convención de la
-        # receta —el estribo dice 'lateral'— y tomarla al pie de la letra lo dejaba
-        # pegado a un costado en vez de rodeando el hormigón.
-        for e in _EJES:
-            if e != eje:
-                p[e] = [1] + list(marco.util(e))
-
-    def apilar(e, n, paso_cm, sentido):
-        """n copias desde donde ya está, avanzando `paso_cm` hacia el núcleo."""
-        if n <= 1 or not paso_cm:
-            p[e][0] = max(p[e][0], n)
-            return
-        fin = p[e][1] - sentido * marco.paso_pct(e, paso_cm) * (n - 1)
-        p[e] = [n, p[e][1], int(round(max(0.0, min(100.0, fin))))]
-
-    def repartir(rg, sep_pref=None):
-        """Una LÍNEA de distribución (rango / rango2): su eje, su cuenta y su tramo REAL
-        —el from/to que escribió el usuario—, que es de donde sale que las cortinas
-        queden pegadas a las caras y no repartidas por el medio."""
-        if not isinstance(rg, dict):
-            return
-        e = str(rg.get("eje") or "").strip().lower()
-        if e not in _EJES:
-            e = "x"                            # el default de reglas._ejeRangoReparto
-        # Una pieza ABIERTA repartida por SU PROPIO eje no reparte: las copias caen una
-        # encima de otra y el motor las deja quietas (reglas.js `_recorreSuPropioEje`).
-        if e == eje and not cerrada:
-            return
-        a, b = _num(rg.get("from")), _num(rg.get("to"))
-        n = _cuenta_rango(rg, sep_pref)
-        if a is None or b is None:
-            p[e][0] = max(p[e][0], n)
-            return
-        p[e] = [n, marco.pct(e, a), marco.pct(e, b)]
-
-    if modo == "layered":
-        # Las capas se apilan HACIA EL NÚCLEO desde su cara, y las barras de cada capa se
-        # reparten A LO LARGO de esa cara — por el eje que no es ni el de la cara ni el
-        # que la barra recorre —, de recubrimiento a recubrimiento.
-        ea = eje_ancla or "y"
-        if not eje_ancla:
-            # Sin cara declarada, un cabezal se apoya en la de arriba: es el default del
-            # motor (_baseDeComponente), no una elección de esta función.
-            q = marco.cara(ea, lado, diam_cm)
-            p[ea] = [1, q, q]
-        apilar(ea, capas, gap if gap is not None else _GAP_DEFAULT, lado)
-        for et in _EJES:
-            if et != ea and et != eje:
-                a, b = marco.util(et)
-                p[et] = [por_capa, a, b]
-                break
-    else:
-        if modo == "arreglo" and capas > 1:
-            # CAPAS LEGADAS: sólo sobreviven en recetas guardadas antes de que el arreglo
-            # estrenara `rango2` (ver _setModoComp). Se apilan desde su cara igual que en
-            # 'layered', con su propia separación.
-            if eje_capas != eje_ancla:
-                q = marco.cara(eje_capas, lado, diam_cm)
-                p[eje_capas] = [1, q, q]
-            apilar(eje_capas, capas, sep_capas, lado)
-        repartir(rango, sep_dist)
-        # LA 2ª LÍNEA DEL ARREGLO. Es la que el editor de HOY usa para las dos cortinas
-        # de un muro: sin leerla, las tres mallas colapsaban a una sola en el centro.
-        repartir(rango2)
-        if not rango and not rango2 and zonas and cerrada:
-            # Las ZONAS reparten por el eje longitudinal de la pieza, de borde a borde.
-            # Sólo se ven cuando la pieza CIERRA (el estribo, que es un marco ⊥ a ese eje
-            # y se repite a lo largo): una pieza abierta que corre por ese mismo eje se
-            # queda quieta y sus copias caen una sobre otra (reglas._recorreSuPropioEje).
-            a, b = marco.util(eje)
-            p[eje] = [_cuenta_zonas(zonas), a, b]
-
-    return "%s/%s/%s:%s%s%s" % (
-        _bloque(*p["x"]), _bloque(*p["y"]), _bloque(*p["z"]),
-        eje, "c" if cerrada else "", ("~" + tip) if tip else "")
-
-
-def _resumen_seccion(geo, comps):
-    """RESUMEN COMPACTO de la sección de un template. None = con esta receta no hay
-    sección que dibujar (vacía, corrupta, sin medidas de hormigón), y entonces el front
-    muestra un hueco que lo DICE en vez de inventar una silueta.
-
-    Van las TRES medidas porque el plano lo elige el dibujante (ver arriba): con dos, el
-    backend estaría decidiendo por él cuál es la sección de cada elemento."""
-    if not isinstance(geo, dict):
-        return None
-    dims = {"x": _num_pos(geo.get("largo")), "y": _num_pos(geo.get("alto")),
-            "z": _num_pos(geo.get("ancho"))}
-    # Sin DOS medidas no hay plano que dibujar, sea cual sea el que pida el elemento.
-    if sum(1 for v in dims.values() if v is not None) < 2:
-        return None
-    # Los dos recubrimientos que distingue el editor (PLANOS_POR_ELEMENTO.recub): el de
-    # las CARAS y el de los BORDES. El de borde se promedia — arriba y abajo pueden
-    # diferir y a 110 px un píxel de asimetría no informa nada.
-    rl = _num(geo.get("recub_lat"))
-    rs, ri = _num(geo.get("recub_sup")), _num(geo.get("recub_inf"))
-    bordes = [v for v in (rs, ri) if v is not None and v >= 0]
-    rb = (sum(bordes) / len(bordes)) if bordes else None
-    if rl is None or rl < 0:
-        rl = rb if rb is not None else 0
-    if rb is None:
-        rb = rl
-    marco = _Marco(dims, rl, rb)
-    piezas = []
-    for c in comps or []:
-        tok = _pieza_token(c, marco)
-        # DEDUPE: dos grupos con el mismo token dibujan lo mismo en el mismo sitio —
-        # mandarlos dos veces son bytes que no pintan un píxel nuevo.
-        if tok and tok not in piezas:
-            piezas.append(tok)
-            if len(piezas) >= _MAX_PIEZAS:
-                break
-    out = {"rl": _cifra(rl), "rb": _cifra(rb), "p": piezas}
-    for e in _EJES:
-        if dims[e] is not None:
-            out[e] = _cifra(dims[e])
-    return out
-
-
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -878,13 +480,19 @@ def crear_template(body: TemplateCrear, user=Depends(get_current_user)):
 @router.get("/templates")
 def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
                      nombre: Optional[str] = None, user=Depends(get_current_user)):
-    """Lista LIVIANA para ELEGIR un template: id, nombre, tipo, obra, fecha, autor,
-    cuántos componentes tiene, CUÁNTO SE HA USADO y el RESUMEN DE SU SECCIÓN (la
-    miniatura del gestor: ver _resumen_seccion). NO trae `params`: la receta completa
-    puede pesar cientos de KB por template y la lista solo sirve para
-    escoger — se pide con GET /templates/{id} al abrir. Filtros: tipo, obra
+    """Lista para ELEGIR un template: id, nombre, tipo, obra, fecha, autor, cuántos
+    componentes tiene, CUÁNTO SE HA USADO y SU RECETA (`params`). Filtros: tipo, obra
     (prioriza esa obra pero incluye los generales/de otras) y nombre (contiene, sin
     distinguir mayúsculas).
+
+    POR QUÉ VIAJA LA RECETA (26-ago)
+    Antes NO viajaba: «la receta completa puede pesar cientos de KB». Estaba medido a
+    ojo y era falso — una receta real pesa ~2 KB y no crece con las barras (se guarda
+    la RECETA, no el resultado: un muro de 760 barras pesa 2,5 KB). Sin ella el gestor
+    no podía dibujar el corte de cada fila con el motor —que es JS y vive en el
+    navegador— y había que mandarle un resumen del que sólo salía un ESQUEMA. Con la
+    receta el dibujo es el del editor, con la misma geometría y los mismos colores.
+    Sigue costando UNA sola consulta para toda la lista.
 
     POR QUÉ VIAJA EL USO (n_usos / n_obras)
     Con 80 templates en la biblioteca lo que se busca es EL QUE YA FUNCIONÓ, no el
@@ -904,47 +512,25 @@ def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
             if nombre and nombre.strip():
                 where.append("t.nombre ILIKE %s")
                 params.append("%" + nombre.strip() + "%")
-            # LAS DOS ÚLTIMAS COLUMNAS SON LA MINIATURA DE SECCIÓN (ver «RESUMEN DE
-            # SECCIÓN» arriba). Van EN ESTA MISMA PASADA porque una miniatura no puede
-            # costar ni una consulta más que el listado de siempre: el uso ya se resuelve
-            # con un LEFT JOIN agregado y esto se suma ahí. Y se proyecta el PUÑADO de
-            # campos que el resumen necesita en vez de `params` entero —que es justo
-            # lo que este endpoint no trae a propósito—, así lo que cruza la red
-            # Render→Supabase son ~120 bytes por componente y no la receta completa.
+            # `t.params` VIAJA ENTERO (26-ago) y con él se fueron cuatro columnas
+            # derivadas: el conteo de componentes, la sonda de dims, la geometría y una
+            # subconsulta jsonb_agg de 17 campos por componente con la que este endpoint
+            # armaba un resumen para dibujar un ESQUEMA de la sección. Eso murió: el
+            # front dibuja el corte con el MOTOR REAL (ModeladorGenerar, que es JS y no
+            # existe acá) y para eso necesita la receta, no un resumen de ella.
+            #
+            # POR QUÉ SE PUEDE, si el docstring de este endpoint decía «cientos de KB»:
+            # porque estaba medido a ojo. Una receta real pesa ~2 KB, y NO crece con las
+            # barras —lo que se guarda es la RECETA, no el resultado: un muro de 760
+            # barras pesa 2,5 KB—. Mandarla entera es además MENOS trabajo para Postgres
+            # que la subconsulta que había, que abría el array de componentes fila por
+            # fila. Y sigue siendo UNA sola consulta para toda la lista.
             sql = """
                 SELECT t.id, t.nombre, t.tipo, t.obra, t.creado_por, t.fecha,
                        t.schema_version, t.updated_at, t.editado_por,
-                       CASE WHEN jsonb_typeof(t.params->'componentes') = 'array'
-                            THEN jsonb_array_length(t.params->'componentes') ELSE 0 END,
-                       t.params->'componentes'->0->'dims',
+                       t.params,
                        p.nombre_proyecto,
-                       COALESCE(u.n_usos, 0), COALESCE(u.n_obras, 0),
-                       t.params->'geometria',
-                       CASE WHEN jsonb_typeof(t.params->'componentes') = 'array' THEN (
-                           SELECT jsonb_agg(jsonb_build_array(
-                                      COALESCE(x.c->'pose'->>'cara', x.c->>'cara'),
-                                      COALESCE(x.c->'pose'->>'rumbo', x.c->'plano_pieza'->>'orientacion'),
-                                      x.c->'plano_pieza'->>'volteado',
-                                      x.c->'distribucion'->>'modo',
-                                      x.c->'distribucion'->>'n_capas',
-                                      x.c->'distribucion'->>'barras_capa',
-                                      x.c->'distribucion'->>'eje_capas',
-                                      x.c->'distribucion'->'rango',
-                                      CASE WHEN jsonb_typeof(x.c->'dims') = 'object'
-                                           THEN (SELECT count(*) FROM jsonb_object_keys(x.c->'dims'))
-                                           ELSE 0 END,
-                                      x.c->'distribucion'->'zonas',
-                                      x.c->'pose'->>'lado',
-                                      x.c->'distribucion'->'rango2',
-                                      x.c->'distribucion'->>'gap',
-                                      x.c->'distribucion'->>'sep_capas',
-                                      x.c->>'diam',
-                                      x.c->>'tipologia',
-                                      x.c->'distribucion'->>'sep')
-                                  ORDER BY x.ord)
-                             FROM jsonb_array_elements(t.params->'componentes')
-                                  WITH ORDINALITY AS x(c, ord))
-                       ELSE NULL END
+                       COALESCE(u.n_usos, 0), COALESCE(u.n_obras, 0)
                 FROM templates_catalogo t
                 LEFT JOIN proyectos p ON p.id_proyecto = t.obra
                 LEFT JOIN (SELECT e.template_id AS tid,
@@ -970,37 +556,35 @@ def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
             rows = cur.fetchall()
     templates = []
     for r in rows:
+        params = _params_dict(r[9])
+        comps = params.get("componentes")
         templates.append({
             "id": r[0], "nombre": r[1], "tipo": r[2], "obra": r[3],
             "creado_por": r[4], "fecha": r[5],
             # Filas anteriores a la migración 105: schema_version NULL → se DEDUCE de
             # las dims del primer componente (no se reescribe la tabla).
-            "schema_version": r[6] if r[6] is not None else _deducir_schema_version(r[10]),
+            "schema_version": r[6] if r[6] is not None else _schema_de_params(params),
             "updated_at": r[7], "editado_por": r[8],
-            "n_componentes": int(r[9] or 0),
-            "obra_nombre": r[11],
+            "n_componentes": len(comps) if isinstance(comps, list) else 0,
+            "obra_nombre": r[10],
             # USO REAL. Sale del LEFT JOIN agregado de arriba — UNA consulta para toda
             # la lista, no una por template: contar dentro del for era el N+1 clásico.
             # n_usos cuenta estructuras VIVAS: al borrar una se borra su fila de
             # elementos_template, así que el número baja solo. Una estructura
             # 'retirada' (se le borraron las barras pero la fila sigue) SÍ cuenta:
             # el template igual generó trabajo real ahí.
-            "n_usos": int(r[12] or 0),
+            "n_usos": int(r[11] or 0),
             # Obras DISTINTAS donde se usó. Una instancia sin lote ni traza de obra
             # suma en n_usos y no en n_obras (COUNT DISTINCT ignora NULL): se cuenta
             # lo que se sabe, no se inventa una obra.
-            "n_obras": int(r[13] or 0),
+            "n_obras": int(r[12] or 0),
             # Igual que en constructoras: el front muestra editar/eliminar con esto,
             # sin recalcular el criterio de permiso por su cuenta.
             "puede_modificar": _puede_modificar_template(r[4], user),
-            # MINIATURA DE SECCIÓN — ~55-140 bytes con los que el front dibuja un
-            # ESQUEMA del corte (no una sección a escala: ver _resumen_seccion) y sus
-            # COTAS, que sí son el hormigón real. Va en los TRES ejes del hormigón: qué
-            # plano es «la sección» de cada elemento lo decide PLANOS_POR_ELEMENTO en el
-            # front, que es donde ya estaba decidido. `null` = con esta receta no hay
-            # nada que dibujar, y el front pinta un hueco que lo dice en vez de una
-            # silueta inventada.
-            "seccion": _resumen_seccion(_params_dict(r[14]), _lista_json(r[15])),
+            # LA RECETA. Con ella el front dibuja el CORTE de cada fila corriendo el
+            # motor (ver el comentario del SELECT): sin receta no hay corte, y con un
+            # resumen sólo había un esquema que había que rotular como tal.
+            "params": params,
         })
     return {"ok": True, "templates": templates}
 
