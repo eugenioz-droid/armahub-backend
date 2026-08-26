@@ -344,50 +344,136 @@ console.log('\nR3 — se corta una rebanada en profundidad, y se elige DÓNDE');
     ' barras (sus estribos ya no se superponen)');
 }
 
-// ── R4. EL ENCUADRE ─────────────────────────────────────────────────────────
-console.log('\nR4 — uno o dos cuadros, según la PROPORCIÓN del plano');
+// ── R4. LA ESCALA COMÚN Y EL ENCUADRE ───────────────────────────────────────
+// Antes cada fila encuadraba su propio contenido en su caja, o sea que cada una salía
+// a su px/cm. El usuario lo vio enseguida: «tengo ese muro que es angosto y lo muestra
+// entero y muy pequeño… algunos se ven más grandes y otros más pequeños». Comparar dos
+// miniaturas ENGAÑABA. Ahora la lista decide UN px/cm y todas dibujan con él.
+console.log('\nR4 — una sola escala para toda la lista, y el encuadre sale de ella');
 {
-  ok(PLAN_MURO.modo === 'extremos' && PLAN_MURO.cuadros.length === 2,
-    'el muro (524 × 20) no cabe legible: dos cuadros');
-  ok(PLAN_MURO.cortoPx < R.CORTO_MIN_PX,
-    'porque entero su espesor mediría ' + redondo(PLAN_MURO.cortoPx, 1) + ' px, bajo los ' +
-    R.CORTO_MIN_PX + ' que necesitan sus dos cortinas para leerse como dos líneas');
-  const pv = R.plan(PLS_VIGA, DEF_VIGA, W, H, OPT_VIGA);
-  ok(pv.modo === 'entero' && pv.cuadros.length === 1,
-    'la viga (30 × 60) cabe entera: un cuadro (' + redondo(pv.cortoPx, 1) + ' px de lado corto)');
-  // MISMA ESCALA en los dos, y EXTREMOS OPUESTOS. Es lo que permite compararlos.
-  const [a, b] = PLAN_MURO.cuadros;
+  // UNA lista con tres secciones distintas: 15, 20 y 40 cm de espesor.
+  const espesores = [15, 20, 40];
+  const filas = espesores.map(e => {
+    const r = JSON.parse(JSON.stringify(MURO));
+    r.geometria.ancho = e;
+    r.componentes.forEach(c => {
+      ['rango', 'rango2'].forEach(k => {
+        const g = c.distribucion[k];
+        if (g && g.eje === 'z') { g.from = -(e / 2 - 3); g.to = (e / 2 - 3); g.sep = e - 6; }
+      });
+    });
+    return { id: e, tipo: 'muro', nombre: 'Muro e' + e, updated_at: 'u', params: r };
+  });
+  TE._tplPonerLista(filas);
+  const s = TE._tplMiniEscala();
+  ok(s > 0, 'la lista resuelve UNA escala común: ' + redondo(s, 3) + ' px/cm');
+  // Y con ella, el espesor dibujado es PROPORCIONAL al espesor real. Eso es lo que
+  // convierte «se ve más grueso» en un hecho del elemento y no en un artefacto.
+  const px = espesores.map(e => {
+    const t = filas[espesores.indexOf(e)];
+    const p = R.plan(generar(t.params), DEF_MURO, W, H,
+      Object.assign(optsDe(t.params), { escala: s, ventana: TE._tplMiniFila(t).ventana }));
+    return redondo(Math.min(p.bbox.v1 - p.bbox.v0, p.bbox.u1 - p.bbox.u0) * p.escala, 1);
+  });
+  ok(px[0] < px[1] && px[1] < px[2],
+    'el de 15 cm se dibuja más fino que el de 20 y éste que el de 40 (' + px.join(' / ') + ' px)');
+  ok(Math.abs(px[2] / px[0] - 40 / 15) < 0.02,
+    'y en la MISMA proporción que sus espesores reales (' + redondo(px[2] / px[0], 2) + ' vs ' +
+    redondo(40 / 15, 2) + ')');
+  ok(TE._tplMiniEscala() === s, 'la escala se calcula una vez y se reusa');
+  // El caso de la foto del usuario: un muro CORTO que antes salía diminuto por tener su
+  // propia escala. Ahora sale entero pero al mismo px/cm que los largos.
+  const corto = JSON.parse(JSON.stringify(MURO));
+  corto.geometria.largo = 150;
+  corto.componentes.forEach(c => ['rango', 'rango2'].forEach(k => {
+    const g = c.distribucion[k];
+    if (g && g.eje === 'x') { g.from = -72; g.to = 72; }
+  }));
+  const pCorto = R.plan(generar(corto), DEF_MURO, W, H,
+    Object.assign(optsDe(corto), { escala: s }));
+  const pLargo = R.plan(PLS_MURO, DEF_MURO, W, H, Object.assign(optsDe(MURO), { escala: s }));
+  ok(pCorto.modo === 'entero' && pLargo.modo === 'extremos',
+    'el muro de 150 cm cabe entero y el de 524 va a dos extremos');
+  ok(redondo(pCorto.escala, 4) === redondo(pLargo.escala, 4),
+    'pero los DOS al mismo px/cm: el corto ya no sale «muy pequeño» (' + redondo(s, 3) + ')');
+  // Un elemento RECHONCHO no se parte nunca, aunque no quepa: cortarle la profundidad a
+  // una viga sería tan absurdo como cortarle el espesor a un muro. Es forma, no tipo.
+  ok(!R.recortable(30, 60) && R.recortable(20, 524),
+    'sólo se recorta lo que de verdad es alargado (largo/corto ≥ ' + R.RELACION_RECORTE + ')');
+  const pv = R.plan(PLS_VIGA, DEF_VIGA, W, H, Object.assign(optsDe(VIGA), { escala: 3 }));
+  ok(pv.modo === 'entero',
+    'una viga 30×60 sigue entera aunque a esa escala no quepa: no se le parte la sección');
+  // LOS DOS EXTREMOS, misma escala, extremos opuestos, y nunca se afirma simetría.
+  const [a, b] = pLargo.cuadros;
   ok(redondo(a.vent.u1 - a.vent.u0, 2) === redondo(b.vent.u1 - b.vent.u0, 2),
-    'los dos cuadros abarcan lo mismo (' + redondo(PLAN_MURO.ventana, 1) + ' cm), o sea la MISMA escala');
+    'los dos cuadros abarcan lo mismo (' + redondo(pLargo.ventana, 1) + ' cm)');
   ok(a.extremo === -1 && b.extremo === 1 && a.vent.u0 < b.vent.u0,
     'y son los DOS extremos, no dos veces el mismo');
-  // Cada ventana asoma un poco POR FUERA del elemento: así se ve dónde TERMINA, en vez
-  // de parecer que sigue más allá del marco. Por dentro, en cambio, llega al borde:
-  // ahí el elemento sí sigue y lo que hay es un corte.
-  ok(a.vent.u0 < PLAN_MURO.bbox.u0 && b.vent.u1 > PLAN_MURO.bbox.u1,
+  ok(a.vent.u0 < pLargo.bbox.u0 && b.vent.u1 > pLargo.bbox.u1,
     'cada uno asoma la punta del elemento con su aire, no pegada al marco');
-  ok(a.vent.u1 < PLAN_MURO.bbox.u1 && b.vent.u0 > PLAN_MURO.bbox.u0,
+  ok(a.vent.u1 < pLargo.bbox.u1 && b.vent.u0 > pLargo.bbox.u0,
     'y por dentro corta: los dos cuadros juntos no muestran el muro entero');
-  // LA VENTANA abarca al menos DOS separaciones del reparto más suelto: con menos, el
-  // recorte enseñaría un fierro solitario en vez de un patrón (y podría perder la traba).
-  const paso = R.pasoTipico(PLAN_MURO.plsBanda, DEF_MURO.u);
-  ok(PLAN_MURO.ventana >= R.PASOS_MIN_VENTANA * paso - 0.01,
-    'la ventana (' + redondo(PLAN_MURO.ventana, 1) + ' cm) cubre ' + R.PASOS_MIN_VENTANA +
-    ' pasos del reparto más suelto (@' + redondo(paso, 1) + ')');
-  // Y LA REGLA NO MIRA EL TIPO: un muro CORTO cae solo del lado de un cuadro.
-  const corto = JSON.parse(JSON.stringify(MURO));
-  corto.geometria.largo = 60;
-  corto.componentes.forEach(c => {
-    ['rango', 'rango2'].forEach(k => {
-      const r = c.distribucion[k];
-      if (r && r.eje === 'x') { r.from = -25; r.to = 25; }
-    });
-  });
-  const pc = R.plan(generar(corto), DEF_MURO, W, H, optsDe(corto));
-  ok(pc.modo === 'entero', 'un muro de 60 × 20 —mismo TIPO— cae solo en un cuadro: manda la proporción');
-  // NO se demuestra ninguna simetría: no hay comparación de zonas/rangos en el código.
   ok(!/simetr|palindrom|espejo/i.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
     'y nunca se afirma que un extremo represente al otro: no hay probador de simetría');
+  TE._tplPonerLista([]);
+}
+
+// ── R4b. LA VENTANA LLEGA AL CONFINAMIENTO ──────────────────────────────────
+// Pedido del usuario: «mostrar un poco más hacia dentro del muro… ideal sería que la
+// regla reconozca los cabezales o elementos de confinamiento». No hace falta reconocer
+// tipologías: un fierro de confinamiento es el que NO se reparte por todo el elemento
+// y está pegado a una punta, y eso está DECLARADO en la receta.
+console.log('\nR4b — hasta dónde mirar lo dice el confinamiento, no un número redondo');
+{
+  const CONF = 90;
+  const conCabezal = JSON.parse(JSON.stringify(MURO));
+  [-1, 1].forEach(function (lado, i) {
+    const a = lado < 0 ? -259 : (259 - CONF), b = lado < 0 ? (-259 + CONF) : 259;
+    conCabezal.componentes.push({
+      comp_id: 'CB' + i, tipologia: 'CB', figura: '101A', diam: 16, cara: 'lateral', jerarquia: 2,
+      plano_pieza: { orientacion: 'de_pie' }, dims: { A: { modo: 'auto' } },
+      distribucion: { modo: 'arreglo', sep: 12, activa: true,
+        rango: { eje: 'x', from: a, to: b, sep: 12 },
+        rango2: { eje: 'z', from: -7, to: 7, sep: 14 } } });
+  });
+  const t = { id: 1, tipo: 'muro', nombre: 'Muro con cabezal', updated_at: 'u', params: conCabezal };
+  const f = TE._tplMiniFila(t);
+  ok(Math.abs(f.confin - (CONF + 3)) < 4,
+    'la receta declara confinamiento hasta los ' + redondo(f.confin, 0) + ' cm desde la punta');
+  ok(f.ventana > f.confin,
+    'y la ventana que se pide llega más allá (' + redondo(f.ventana, 0) +
+    ' cm), para que se vea que el confinamiento TERMINA');
+  // Sin fierro acotado no hay confinamiento que reconocer, y no se inventa ninguno.
+  ok(TE._tplMiniFila({ id: 2, tipo: 'muro', params: MURO }).confin === 0,
+    'un muro con todo el fierro corrido de punta a punta declara confinamiento 0');
+  // EL @ DECLARADO TIENE QUE SER EL QUE EL MOTOR REPARTE. Es el guardia contra el bug
+  // que este extractor ya tuvo: la PRIMERA línea de un reparto usa el `sep` del
+  // COMPONENTE, no el del rango, y leyendo el del rango la ventana pedía 360 cm donde
+  // el motor reparte cada 40. Encuadrar con la receta sólo vale si dice lo mismo.
+  const sepDecl = TE._sepDeclarada(MURO, 'x');
+  const sepReal = R.pasoTipico(PLS_MURO, 'x');
+  ok(Math.abs(sepDecl - sepReal) <= 1,
+    'el @ declarado en la receta (' + sepDecl + ') es el que el motor reparte de verdad (' +
+    redondo(sepReal, 2) + ')');
+  // Ni el extractor ni la regla nombran una tipología: el criterio es la FORMA del
+  // reparto (acotado + pegado a la punta), no el nombre del fierro.
+  const ext = TE_SRC.slice(TE_SRC.indexOf('function _tramosDeComp'), TE_SRC.indexOf('function _tplMiniFila'));
+  ok(!/'(CB|EC|TC|ES|MH|MV|TR)'/.test(ext),
+    'y el extractor no nombra ni una tipología: mira la forma del reparto');
+  // LO QUE NO CABE SE DICE. Un confinamiento más hondo que la ventana no se calla:
+  // callarlo dejaría creer que el confinamiento termina donde termina el cuadro.
+  TE._tplPonerLista([t]);
+  const s = TE._tplMiniEscala();
+  const p = R.plan(generar(conCabezal), DEF_MURO, W, H,
+    Object.assign(optsDe(conCabezal), { escala: s, ventana: f.ventana, confin: f.confin }));
+  ok(p.ventana >= p.confin - 0.5 && !p.ventanaCorta,
+    'con este muro la ventana (' + redondo(p.ventana, 0) + ' cm) cubre el confinamiento (' +
+    redondo(p.confin, 0) + ' cm)');
+  const apretado = R.plan(generar(conCabezal), DEF_MURO, W, H,
+    Object.assign(optsDe(conCabezal), { escala: 3, ventana: f.ventana, confin: f.confin }));
+  ok(apretado.ventanaCorta && /OJO/.test(R.titulo(apretado, DEF_MURO, TE.EJE_DISPLAY)),
+    'y si a la escala de la lista no cupiera, el tooltip lo DICE en vez de callarlo');
+  TE._tplPonerLista([]);
 }
 
 // ── R5. EL COLOR, POR PARÁMETRO ─────────────────────────────────────────────
@@ -414,6 +500,41 @@ console.log('\nR5 — el color entra por parámetro y es la paleta única del ed
   const gMH = anchoDe('MH'), gTR = anchoDe('TR');
   ok(gMH && gTR && gMH > gTR && Math.abs(gMH / gTR - 10 / 8) < 0.02,
     'y el grosor sigue al φ: φ10 sale ' + gMH + ' px y φ8 ' + gTR + ' px (razón 10/8)');
+
+  // Y LOS REDONDOS TAMBIÉN (26-ago). El usuario dudó: «parecía que el tamaño de los
+  // cabezales también [varía] pero en realidad no me queda tan claro». Medído: a las
+  // escalas a las que se mira un elemento entero (0,7-1,5 px/cm) el radio real de un
+  // φ16 es 0,8 px, así que el PISO de 1,5 px manda — y con un piso a secas un φ8 y un
+  // φ25 salían EXACTAMENTE iguales, en el editor tanto como en la lista. Ahora el piso
+  // lo toca el más fino del dibujo y los demás se engordan por el MISMO factor: siguen
+  // saliendo más grandes de lo que son, pero unos respecto de otros dicen la verdad.
+  {
+    const v = JSON.parse(JSON.stringify(VIGA));
+    v.componentes[1].diam = 25;                  // φ25 abajo contra φ16 arriba
+    const pv = generar(v);
+    const t = R.encuadreVentana({ u0: -15, u1: 15, v0: -30, v1: 30 }, { x: 0, y: 0, w: 40, h: 80 }, 0.933);
+    const tz = R.trazos(pv, DEF_VIGA, t, { colorDe: optsDe(v).colorDe, rolDe: optsDe(v).rolDe, halo: false, hit: false });
+    const radio = (tip) => {
+      const z = tz.filter(x => x.punta && x.color === TE.colorDeTipologia(tip))[0];
+      const m = z && /a([\d.]+),/.exec(z.d);
+      return m ? +m[1] : null;
+    };
+    const r16 = radio('CBS'), r25 = radio('CBI');
+    ok(r16 && r25 && r25 > r16,
+      'un φ25 se dibuja más gordo que un φ16 aunque los dos estén bajo el piso (' +
+      r16 + ' vs ' + r25 + ' px)');
+    ok(Math.abs(r25 / r16 - 25 / 16) < 0.06,
+      'y en su proporción real (' + redondo(r25 / r16, 3) + ' vs ' + redondo(25 / 16, 3) + ')');
+    ok(tz.filter(x => x.punta)[0].engorde > 1,
+      'el factor de engorde viaja en el trazo, para que el título pueda decirlo');
+    ok(/engordadas/.test(R.titulo(R.plan(pv, DEF_VIGA, W, H, Object.assign(optsDe(v), { escala: 0.933 })), DEF_VIGA, TE.EJE_DISPLAY)),
+      'y el tooltip lo dice: los redondos van engordados, su proporción no');
+    // Con escala de sobra el piso no actúa y el radio es el REAL.
+    const t2 = R.encuadreVentana({ u0: -15, u1: 15, v0: -30, v1: 30 }, { x: 0, y: 0, w: 120, h: 240 }, 4);
+    const tz2 = R.trazos(pv, DEF_VIGA, t2, { colorDe: optsDe(v).colorDe, rolDe: optsDe(v).rolDe, halo: false, hit: false });
+    ok(tz2.filter(x => x.punta)[0].engorde === 1,
+      'y a escala grande no se engorda nada: el radio es el de la barra');
+  }
 }
 
 // ── R6. DIBUJAR NO ESCRIBE ──────────────────────────────────────────────────
@@ -461,7 +582,7 @@ console.log('\nR8 — el rótulo dice el plano, la rebanada y el extremo; y NO d
   const tit = R.titulo(PLAN_MURO, DEF_MURO, TE.EJE_DISPLAY);
   ok(rot.cabecera.indexOf('YX') === 0, 'la cabecera nombra el plano con las letras del editor: ' + rot.cabecera);
   ok(/rebanada 30 cm en Z/.test(rot.cabecera), 'y dice que es una rebanada de 30 cm en la profundidad');
-  ok(rot.pies[0] === 'extremo Y−' && rot.pies[1] === 'extremo Y+',
+  ok(/^extremo Y− · \d+ cm$/.test(rot.pies[0]) && /^extremo Y\+ · \d+ cm$/.test(rot.pies[1]),
     'cada cuadro dice de qué extremo es (' + rot.pies.join(' · ') + ')');
   ok(SVG_MURO.indexOf(rot.cabecera) >= 0 && SVG_MURO.indexOf(rot.pies[0]) >= 0,
     'y esos rótulos están DENTRO del dibujo, no sólo en el tooltip');
@@ -492,8 +613,9 @@ console.log('\nR9 — de la fila del listado al SVG, y por demanda');
   ok(/rebanada 30 cm/.test(d.svg), 'y con su rótulo');
   ok(JSON.stringify(fila.params) === copia,
     'y NO le tocó la receta al gestor (el motor normaliza sobre una copia)');
-  ok(TE._tplMiniClave(fila) === '7|2026-08-26T10:00:00Z',
-    'el caché va por id + updated_at: editar el template invalida su dibujo solo');
+  ok(/^7|2026-08-26T10:00:00Z|[d.]+$/.test(TE._tplMiniClave(fila)),
+    'el caché va por id + updated_at + escala: editar el template —o cambiar la lista— ' +
+    'invalida su dibujo solo (' + TE._tplMiniClave(fila) + ')');
   // LA CELDA NACE VACÍA: 80 filas × 3 ms de motor no se pagan al pintar la tabla.
   const celda = TE._tplMini(fila);
   ok(celda.indexOf('<svg') < 0 && /data-tplmini="7"/.test(celda),

@@ -14264,14 +14264,160 @@
   // vacía y se dibuja al entrar en pantalla (IntersectionObserver, con 200 px de
   // anticipación para que el usuario nunca vea el hueco), y el resultado se CACHEA por
   // id + updated_at: volver a la lista tras editar un template redibuja ese y sólo ese.
-  var TPL_MINI_W = 232, TPL_MINI_H = 96;
+  // EL TAMAÑO DE LA CELDA, medido y no elegido a ojo. El ALTO es el presupuesto del
+  // que sale la escala común: el elemento de sección más gruesa de la lista tiene que
+  // caber en él, y los demás salen más finos porque LO SON. Con 96 px de celda (80 de
+  // dibujo) un muro de 60 cm se comía el alto entero y dejaba a uno de 15 en 11 px; con
+  // 110 (80 útiles) el rango real de espesores —15 a 60 cm— entra completo: el de 60
+  // llena la caja y el de 15 conserva ~16 px, con sus dos cortinas separadas.
+  var TPL_MINI_W = 232, TPL_MINI_H = 110;
   var _tplMiniCache = {};
   var _tplMiniObs = null;
 
+  // ==========================================================================
+  // HASTA DÓNDE HAY QUE MIRAR — EL CONFINAMIENTO, LEÍDO DE LA RECETA (26-ago)
+  // --------------------------------------------------------------------------
+  // Pedido del usuario: «mostrar un poco más hacia dentro del muro… ideal sería que la
+  // regla reconozca los cabezales o elementos de confinamiento para que se vean todos».
+  // Es la regla CORRECTA y no hace falta inventar nada: hasta dónde mirar no lo decide
+  // un número de legibilidad, lo decide DÓNDE TERMINA EL CONFINAMIENTO.
+  //
+  // Y eso está DECLARADO en la receta. Un fierro de confinamiento es el que NO se
+  // reparte por todo el elemento: su distribución está acotada a un tramo pegado a un
+  // extremo — un `rango` con from/to cortos, o la primera/última ZONA de un reparto por
+  // zonas. Lo que corre de punta a punta (las mallas, los longitudinales) no es
+  // confinamiento y no exige nada.
+  //
+  // POR QUÉ SE LEE DE LA RECETA Y NO DEL MOTOR: la escala de la lista tiene que estar
+  // decidida ANTES de dibujar la primera fila, y correr el motor de ochenta templates
+  // para eso son ~200 ms de hilo bloqueado — justo lo que el dibujo por demanda vino a
+  // evitar. El from/to y el @ están escritos en la receta y son EL DATO con el que el
+  // motor coloca: usarlos para ENCUADRAR es legítimo. El DIBUJO sigue saliendo del
+  // motor, exacto; lo único que sale de acá es hasta dónde mira el cuadro.
+  //
+  // Un tramo cuenta como confinamiento si cumple LAS DOS: no cubre casi todo el
+  // elemento, y arranca pegado a un extremo. Los dos umbrales son de forma, no de
+  // tipología: ningún nombre de fierro aparece acá.
+  var CONFIN_COBERTURA = 0.9;   // cubre ≥90% del largo → es reparto corrido, no confinamiento
+  var CONFIN_PEGADO = 0.15;     // su borde tiene que caer dentro del 15% inicial del largo
+
+  // Los TRAMOS que un componente ocupa sobre `eje`, en cm del hormigón. Vacío = no está
+  // localizado en ese eje (corre entero o reparte por otro), que es lo mismo que decir
+  // que no acota nada.
+  function _tramosDeComp(c, eje, largo) {
+    var d = (c && c.distribucion) || {}, out = [], half = largo / 2;
+    [d.rango, d.rango2].forEach(function (r) {
+      if (!r || String(r.eje || '').toLowerCase() !== eje) return;
+      var a = Number(r.from), b = Number(r.to);
+      if (isFinite(a) && isFinite(b)) out.push([Math.min(a, b), Math.max(a, b)]);
+    });
+    // ZONAS: reparten a lo LARGO de la pieza, de borde a borde, y la primera y la
+    // última son por definición las de los extremos (es la forma del reparto por zonas
+    // de una viga: confinamiento · centro · confinamiento).
+    if (Array.isArray(d.zonas) && d.zonas.length) {
+      var l0 = Number(d.zonas[0] && d.zonas[0].long);
+      var ln = Number(d.zonas[d.zonas.length - 1] && d.zonas[d.zonas.length - 1].long);
+      if (isFinite(l0) && l0 > 0) out.push([-half, -half + l0]);
+      if (isFinite(ln) && ln > 0) out.push([half - ln, half]);
+    }
+    return out;
+  }
+
+  // Cuánto entra el confinamiento desde el extremo, en cm. 0 = esta receta no declara
+  // ningún fierro acotado a una punta.
+  function _confinDeReceta(params, eje, largo) {
+    var comps = (params && params.componentes) || [];
+    var half = largo / 2, alcance = 0;
+    for (var i = 0; i < comps.length; i++) {
+      var tramos = _tramosDeComp(comps[i], eje, largo);
+      for (var k = 0; k < tramos.length; k++) {
+        var a = tramos[k][0], b = tramos[k][1];
+        if ((b - a) >= largo * CONFIN_COBERTURA) continue;      // corre por todo el elemento
+        var dIzq = a + half, dDer = half - b;
+        if (Math.min(dIzq, dDer) > largo * CONFIN_PEGADO) continue;   // vive por el medio
+        var hasta = (dIzq <= dDer) ? (b + half) : (half - a);
+        if (hasta > alcance) alcance = hasta;
+      }
+    }
+    return alcance;
+  }
+
+  // El @ MÁS SUELTO declarado sobre ese eje. Es lo que fija el mínimo de la ventana
+  // cuando no hay confinamiento: con menos de dos separaciones el recorte enseñaría un
+  // fierro solitario en vez de un patrón.
+  function _sepDeclarada(params, eje) {
+    var comps = (params && params.componentes) || [], max = 0;
+    for (var i = 0; i < comps.length; i++) {
+      var d = (comps[i] && comps[i].distribucion) || {};
+      // CUÁL @ MANDA, y no es el que uno esperaría: la PRIMERA línea del reparto usa el
+      // `sep` del COMPONENTE y no el del rango (reglas.js le pasa `cfg.sep` a
+      // _rangoReparto); la segunda sí usa el suyo. Con la regla al revés, un rango con
+      // `sep: 180` en una receta cuyo componente dice `sep: 40` pedía una ventana de
+      // 360 cm — nueve veces la que el motor de verdad reparte (medido: @39,85).
+      [[d.rango, Number(d.sep)], [d.rango2, null]].forEach(function (par) {
+        var r = par[0];
+        if (!r || String(r.eje || '').toLowerCase() !== eje) return;
+        var s = (par[1] > 0) ? par[1] : Number(r.sep);
+        if (isFinite(s) && s > max) max = s;
+      });
+      if (Array.isArray(d.zonas)) d.zonas.forEach(function (z) {
+        var s = Number(z && z.sep);
+        if (isFinite(s) && s > max) max = s;
+      });
+    }
+    return max;
+  }
+
+  // Lo que UNA fila le exige a la escala común: su lado corto, su lado largo y cuánto
+  // elemento hay que enseñar por extremo. null = esta receta no da ni para eso (y
+  // entonces tampoco pesa en la escala de las demás).
+  function _tplMiniFila(t) {
+    var def = t && t.tipo != null ? _planosDe(t.tipo).seccion : null;
+    var geo = t && t.params && t.params.geometria;
+    if (!def || !geo) return null;
+    var rect = _rectDeDef(geo, def);
+    if (!(rect.W > 0) || !(rect.H > 0)) return null;
+    var porU = (rect.W >= rect.H);
+    var eje = porU ? def.u : def.v;
+    var largo = porU ? rect.W : rect.H, corto = porU ? rect.H : rect.W;
+    var confin = _confinDeReceta(t.params, eje, largo);
+    var sep = _sepDeclarada(t.params, eje);
+    // La ventana llega hasta donde termina el confinamiento MÁS UNA separación del
+    // reparto corrido: así se ve que el confinamiento TERMINA y empieza lo de siempre.
+    // Sin confinamiento declarado queda el mínimo de legibilidad, dos separaciones.
+    var ventana = Math.max(confin > 0 ? confin + sep : 0,
+      _R2D().PASOS_MIN_VENTANA * sep);
+    return { corto: corto, largo: largo, ventana: ventana, confin: confin, sep: sep };
+  }
+
+  // LA ESCALA COMÚN DE LA LISTA — un solo px/cm para todas las filas, para que
+  // comparar dos miniaturas signifique algo. Se calcula UNA vez por lista (es
+  // aritmética sobre la geometría y las distribuciones declaradas: cero motor) y se
+  // recalcula sola cuando llega otra lista (_tplMiniOlvidar).
+  // Sale de la lista COMPLETA y no de la filtrada a propósito: si dependiera del
+  // filtro, poner un chip cambiaría el tamaño de todas las miniaturas y volvería a
+  // hacer incomparable lo que se está mirando.
+  var _tplMiniEsc = null;
+  function _tplMiniEscala() {
+    if (_tplMiniEsc != null) return _tplMiniEsc;
+    var filas = [];
+    for (var i = 0; i < _tplLista.length; i++) {
+      var f = _tplMiniFila(_tplLista[i]);
+      if (f) filas.push(f);
+    }
+    _tplMiniEsc = _R2D().escalaComun(filas, TPL_MINI_W, TPL_MINI_H, {});
+    return _tplMiniEsc;
+  }
+  // Llega otra lista → la escala y los dibujos hechos con la anterior ya no valen.
+  function _tplMiniOlvidar() { _tplMiniEsc = null; _tplMiniCache = {}; }
+
   // Clave del caché: si el template se editó, `updated_at` cambia y el dibujo viejo
   // deja de valer solo. No hace falta invalidar a mano en ningún sitio.
+  // Lleva la ESCALA porque el dibujo depende de ella: si llega otra lista y la escala
+  // comun cambia, el dibujo viejo ya no es comparable con los nuevos y tiene que
+  // rehacerse. (El cache se vacia igual en _tplMiniOlvidar; esto es el cinturon.)
   function _tplMiniClave(t) {
-    return String(t.id) + '|' + String(t.updated_at || t.fecha || '');
+    return String(t.id) + '|' + String(t.updated_at || t.fecha || '') + '|' + _tplMiniEscala();
   }
 
   // La receta → { svg, titulo }. Es la ÚNICA parte que sabe de templates: el motor
@@ -14308,6 +14454,7 @@
       // componente o COL2D), y entrando por PARÁMETRO: el dibujante no sabe qué es una
       // tipología. Con la miniatura en un solo tono el usuario tenía que traducir entre
       // dos vocabularios para leer el mismo muro.
+      var fila = _tplMiniFila(t);
       var porId = {};
       (p.componentes || []).forEach(function (c) { if (c && c.comp_id != null) porId[c.comp_id] = c; });
       var opts = {
@@ -14316,7 +14463,13 @@
         rolDe: _rolComp,
         // Las LETRAS de los ejes son las del editor (EJE_DISPLAY): que la miniatura y
         // el cuadrante llamen al plano por el mismo nombre.
-        letras: EJE_DISPLAY
+        letras: EJE_DISPLAY,
+        // LA ESCALA ES DE LA LISTA, no de esta fila: un px/cm para todas, o comparar
+        // dos miniaturas engaña (ver _tplMiniEscala). Y la VENTANA sale de la receta:
+        // el cuadro tiene que llegar hasta donde termina el confinamiento.
+        escala: _tplMiniEscala(),
+        ventana: (fila && fila.ventana) || 0,
+        confin: (fila && fila.confin) || 0
       };
       // EL PLAN PRIMERO, y el dibujo con él: el tooltip tiene que decir exactamente lo
       // que la imagen muestra, y derivarlo dos veces sería arriesgarse a que un día
@@ -14510,6 +14663,9 @@
     _tplFetch('/templates', { headers: _tplHeaders(false) })
       .then(function (data) {
         _tplLista = (data && data.templates) || [];
+        // Otra lista = otra escala común posible: los cortes ya dibujados dejan de ser
+        // comparables con los que vienen, así que se rehacen.
+        _tplMiniOlvidar();
         _tplPintarLista();
       })
       .catch(function (e) {
@@ -14634,6 +14790,9 @@
     _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
     _tplUso: _tplUso, _tplMini: _tplMini, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
     _tplMiniDibujo: _tplMiniDibujo, _tplMiniClave: _tplMiniClave,
+    _tplMiniFila: _tplMiniFila, _tplMiniEscala: _tplMiniEscala,
+    _tplMiniOlvidar: _tplMiniOlvidar, _confinDeReceta: _confinDeReceta,
+    _sepDeclarada: _sepDeclarada, _tplPonerLista: function (l) { _tplLista = l || []; _tplMiniOlvidar(); },
     TPL_MINI_W: TPL_MINI_W, TPL_MINI_H: TPL_MINI_H,
     _planosDe: _planosDe, _ejeRotulo: _ejeRotulo, EJE_DISPLAY: EJE_DISPLAY,
     _tplTiposPresentes: _tplTiposPresentes, _tplEsMio: _tplEsMio,

@@ -63,13 +63,6 @@
   // debería mostrar.
   var REBANADA_CM = 30;
 
-  // Cuántos PÍXELES necesita el lado CORTO del plano para que el fierro se lea. Sale
-  // del caso real: las dos cortinas de un muro caen al 15% y al 85% del espesor, o sea
-  // separadas el 70% del lado corto. Para que se lean como DOS líneas con hormigón en
-  // medio ese hueco no puede bajar de ~18 px → el lado corto necesita ~26. Por debajo
-  // de eso el elemento entero no se puede mostrar y hay que recortar a los extremos.
-  var CORTO_MIN_PX = 26;
-
   // Cuántas separaciones de la distribución tiene que abarcar como mínimo la ventana
   // de un extremo. Con menos de DOS posiciones consecutivas el reparto no se lee (y
   // una traba @40 puede no aparecer en el recorte): se vería un fierro suelto en vez
@@ -312,6 +305,41 @@
   // ---------------------------------------------------------------------------
   // TRAZOS — las barras de una vista, ya proyectadas, como datos de path
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // EL PISO DE LOS REDONDOS, PROPORCIONAL (26-ago)
+  // ---------------------------------------------------------------------------
+  // Una barra vista DE PUNTA se dibuja con su radio REAL, pero a las escalas a las que
+  // se mira un elemento entero —el cuadrante del editor anda entre 0,7 y 1,5 px/cm y la
+  // miniatura en ~1— el radio real de un φ16 es 0,8 px: no se ve. De ahí el piso.
+  //
+  // EL PROBLEMA DEL PISO A SECAS es que APLASTA información: con él un φ8 y un φ25 salen
+  // exactamente del mismo tamaño, y «¿el cabezal es más gordo que la traba?» deja de
+  // tener respuesta en el dibujo. (Medido: por debajo de 1,88 px/cm TODOS los diámetros
+  // de un muro caen al piso — le pasaba al cuadrante del editor tanto como a la lista.)
+  //
+  // Así que el piso se aplica UNA vez, al más fino del dibujo, y todos los demás se
+  // engordan por EL MISMO FACTOR: los redondos salen más grandes de lo que son —y el
+  // título lo dice cuando pasa— pero sus tamaños RELATIVOS vuelven a ser los reales.
+  // Devuelve 1 cuando a esa escala ya se ven solos.
+  function engordeRedondos(placements, def, s, opts) {
+    opts = opts || {};
+    var rolDe = opts.rolDe;
+    var rMin = (opts.rMin != null) ? Number(opts.rMin) : R_MIN_PX;
+    if (!rolDe) return 1;
+    var dMin = Infinity;
+    for (var i = 0; i < (placements || []).length; i++) {
+      var pl = placements[i];
+      if (!pl || !pl.puntos) continue;
+      if (rolDe(pl) !== 'cabezal') continue;
+      if (ejeMayorSpan(pl.puntos) !== def.depth) continue;   // no se ve de punta en esta vista
+      var d = Number(pl.diam);
+      if (isFinite(d) && d > 0 && d < dMin) dMin = d;
+    }
+    if (!isFinite(dMin)) return 1;
+    var rReal = (dMin / 2) * Math.abs(s || 1);
+    return (rReal > 0 && rReal < rMin) ? (rMin / rReal) : 1;
+  }
+
   // Un círculo como SUBTRAZO de un path (dos semiarcos relativos): es lo que permite
   // meter TODAS las barras de punta de un componente en UN solo nodo.
   function dCirculo(cx, cy, r) {
@@ -336,6 +364,8 @@
     var opacidadDe = opts.opacidadDe || function () { return 1; };
     var conHalo = opts.halo !== false, conHit = opts.hit !== false;
     var rMin = (opts.rMin != null) ? Number(opts.rMin) : R_MIN_PX;
+    // Cuánto hay que engordar los redondos para que el más fino se vea (ver arriba).
+    var engorde = engordeRedondos(placements, def, t && t.s, opts);
     var proj = proyector(def);
     // La clave lleva la PIEZA además del ci porque quien llama puede no haber
     // etiquetado los placements: el editor sí lo hace (meta.ci) y ahí este trozo es
@@ -376,9 +406,13 @@
             var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
             if (dd > mejorDelta) { mejorDelta = dd; q0 = proj(raw[si]); }
           }
-          // Radio REAL de la barra en px. pl.diam viene en CENTÍMETROS (reglas.js lo
-          // convierte una sola vez: φ16 → 1.6) y t.s es px/cm.
-          var rPx = Math.max(rMin, (Number(pl.diam) / 2) * Math.abs(t.s || 1));
+          // Radio de la barra en px. pl.diam viene en CENTÍMETROS (reglas.js lo
+          // convierte una sola vez: φ16 → 1.6) y t.s es px/cm. El `engorde` es común a
+          // TODO el dibujo, así que un φ25 sigue saliendo más gordo que un φ8.
+          // Sin diámetro no hay radio que escalar: se dibuja al piso, para que una barra
+          // con el dato roto se VEA en vez de desaparecer del corte.
+          var dCm = Number(pl.diam);
+          var rPx = (dCm > 0) ? (dCm / 2) * Math.abs(t.s || 1) * engorde : rMin;
           var cx = tX(t, q0.u), cy = tY(t, q0.v);
           dTrazo += dCirculo(cx, cy, rPx);
           if (conHalo) dHalo += dCirculo(cx, cy, rPx + 2.5);
@@ -394,7 +428,7 @@
       }
       if (!dTrazo) continue;
       out.push({
-        ci: gr.ci, rol: rol, color: colorDe(pl0), punta: punta,
+        ci: gr.ci, rol: rol, color: colorDe(pl0), punta: punta, engorde: engorde,
         op: opacidadDe(pl0, rol), diam: diam,
         d: dTrazo, dHalo: (conHalo ? dHalo : ''), dHit: (conHit ? dHit : '')
       });
@@ -410,20 +444,25 @@
   // frase se derivara por su cuenta sería una segunda verdad que puede desmentir al
   // dibujo. Acá se decide UNA vez y el texto y los píxeles leen lo mismo.
   //
-  // LA REGLA DEL ENCUADRE, y sale de la PROPORCIÓN del plano — no del tipo de elemento
-  // (un muro corto cae solo en el primer caso y una viga larguísima en el segundo, sin
-  // que nadie los registre en ninguna lista):
-  //   · el plano CABE a proporción legible → UN cuadro con el elemento entero;
-  //   · no cabe → DOS cuadros lado a lado, a la MISMA escala, uno por extremo.
-  // «Cabe» se mide, no se opina: es que el lado CORTO del plano llegue a CORTO_MIN_PX
-  // al dibujar el elemento completo en la caja disponible.
+  // LA ESCALA ES UN DATO QUE ENTRA, NO UNA DECISIÓN DE CADA MINIATURA (26-ago).
+  // Antes cada fila encuadraba su propio contenido en su caja, así que cada una salía
+  // a su px/cm: comparar dos templates ENGAÑABA — un muro se veía más grueso que otro
+  // por cómo lo encuadramos, no porque lo fuera. Ahora la lista decide UN px/cm
+  // (`escalaComun`) y todas las filas dibujan con él. Que una miniatura se vea más
+  // gruesa que otra pasa a ser un HECHO del elemento, no un artefacto del dibujo.
+  //
+  // Y CON ESO, EL ENCUADRE DEJA DE SER UNA REGLA APARTE: a la escala común,
+  //   · el plano CABE en la caja  → UN cuadro con el elemento entero;
+  //   · no cabe                   → DOS cuadros lado a lado, uno por extremo.
+  // No hay umbral de legibilidad que ajustar a mano: la escala ya está puesta para que
+  // el lado corto del elemento MÁS GRUESO de la lista llene la caja, y los demás salen
+  // más finos porque LO SON.
   //
   // POR QUÉ SIEMPRE LOS DOS EXTREMOS y no uno solo cuando el fierro «parece simétrico»:
   // mostrar un extremo AFIRMA que el otro es igual. Es una afirmación sobre el fierro,
   // derivada de leer la receta, y si se equivoca miente justo donde más importa. Con
   // los dos cuadros no se afirma nada: se muestran los dos extremos y quien mira
-  // compara. La información sigue estando —si son distintos, se ve— pero ya no la
-  // produce una inferencia nuestra.
+  // compara.
   //
   // Tamaño y reparto de la miniatura, en px del viewBox. Va en UNA tabla porque el
   // plan, el dibujo y la hoja de estilo tienen que estar de acuerdo sobre el mismo
@@ -433,11 +472,94 @@
   // ahí TERMINA, en vez de parecer que sigue).
   var LAYOUT = { pad: 3, cabecera: 12, pie: 12, hueco: 10, aire: 3 };
 
-  // En un recorte a un extremo el aire va SÓLO por fuera: por dentro el dibujo tiene
-  // que llegar al borde del cuadro, porque ahí el elemento SIGUE y lo que hay es un
-  // corte, no un final. Va como fracción de la ventana para que no dependa de la
-  // escala. 4,5% de 80 cm son 3,6 cm ≈ 5 px en la miniatura.
-  var AIRE_EXTREMO = 0.045;
+  // Las cajas de dibujo, en px del viewBox. UNA sola cuenta para el plan, la escala
+  // común y el SVG: si cada uno la hiciera por su lado, la escala que decide la lista
+  // podría no ser la que el cuadro es capaz de pintar.
+  function cajas(W, H, lay) {
+    lay = lay || LAYOUT;
+    var cw = W - 2 * lay.pad, ch = H - lay.cabecera - lay.pie - 2 * lay.pad;
+    return { x: lay.pad, y: lay.cabecera + lay.pad, w: cw, h: ch,
+      fw: (cw - lay.hueco) / 2, aire: lay.aire };
+  }
+
+  // ---------------------------------------------------------------------------
+  // LA ESCALA COMÚN DE LA LISTA
+  // ---------------------------------------------------------------------------
+  // Cada fila EXIGE un techo de px/cm y gana el menor. Dos exigencias, las dos
+  // medidas, ninguna heurística:
+  //
+  //   1) EL LADO CORTO TIENE QUE CABER ENTERO. El corto de una sección es su espesor
+  //      (o su ancho): recortarlo sería cortar el elemento por donde nunca se corta.
+  //      Se le reserva la dimensión MENOR de las cajas, que es la conservadora: así da
+  //      igual que el lado corto acabe dibujado en horizontal o en vertical, y da igual
+  //      si la fila termina en uno o en dos cuadros.
+  //
+  //   2) LA VENTANA TIENE QUE CABER. `ventana` es cuánto elemento hay que mostrar por
+  //      extremo y la manda quien llama, porque sale de la RECETA: hasta dónde llega el
+  //      confinamiento y, como mínimo, dos separaciones del reparto. Va acotada al
+  //      propio elemento: uno más corto que su ventana se ve entero y no exige más.
+  //
+  // CUÁL DE LAS DOS MANDA, Y POR QUÉ (medido, 26-ago). La primera versiÓn de esto
+  // aplicaba las dos exigencias a secas y la biblioteca de prueba dio 0,64 px/cm: un
+  // muro de 60 cm con 123 cm de confinamiento arrastraba a todos, y el muro de 20 del
+  // usuario —su caso principal— pasaba de 27 px de espesor a 13. O sea que «normalizar»
+  // empeoraba justo lo que se venía a mejorar.
+  // Así que las dos se aplican, pero con un PISO: la ventana puede bajar la escala
+  // mientras la SECCIÓN MÁS FINA de la lista siga legíndose. Ese piso es un dato
+  // medido, no una opinión: las dos cortinas de un muro caen al 15% y al 85% del
+  // espesor —separadas el 70% del lado corto—, y por debajo de ~10 px de hueco dejan
+  // de leerse como dos líneas con hormigón en medio. O sea que el lado corto más fino
+  // de la lista no puede bajar de MIN_CORTO_PX. Si la ventana pide más que eso, gana
+  // la sección, la ventana no llega a donde pedía y el plan lo DICE (`ventanaCorta`):
+  // mejor que aplastar la lista entera en silencio.
+  // S_MIN/S_MAX son los topes duros de una lista degenerada (un solo elemento enorme,
+  // o una biblioteca de puros elementos finísimos).
+  var S_MIN = 0.35, S_MAX = 3, MIN_CORTO_PX = 14;
+
+  // CUÁNDO SE PUEDE RECORTAR. Un elemento sólo se parte en dos extremos si de verdad
+  // es ALARGADO: cortarle la profundidad a una viga de 30 × 60 sería tan absurdo como
+  // cortarle el espesor a un muro. La relación es de FORMA (largo/corto), no de tipo:
+  // un muro corto y cuadrado cae solo del lado de «entero».
+  var RELACION_RECORTE = 4;
+
+  function recortable(corto, largo) { return (largo / corto) >= RELACION_RECORTE; }
+
+  // fila = { corto, largo, ventana } en cm → { corto: techo por la sección,
+  //                                            vent: techo por la ventana }, en px/cm.
+  function techoDeFila(fila, cj) {
+    var corto = Math.max(Number(fila.corto) || 0, 1e-6);
+    var largo = Math.max(Number(fila.largo) || 0, 1e-6);
+    var vent = Math.min(largo, Math.max(Number(fila.ventana) || 0, 1e-6));
+    var dispCorto = Math.min(cj.h, cj.fw) - 2 * cj.aire;
+    if (!recortable(corto, largo)) {
+      // No se recorta: tiene que caber ENTERO, y eso es lo que exige.
+      var t = Math.min(dispCorto / corto, (cj.h - 2 * cj.aire) / largo,
+        (cj.w - 2 * cj.aire) / largo);
+      return { corto: t, vent: t };
+    }
+    return { corto: dispCorto / corto, vent: (cj.fw - cj.aire) / vent };
+  }
+
+  // escalaComun(filas, W, H, opts) → el px/cm de TODA la lista.
+  function escalaComun(filas, W, H, opts) {
+    opts = opts || {};
+    var cj = cajas(W, H, opts.layout);
+    var sCorto = Infinity, sVent = Infinity, cortoMin = Infinity;
+    for (var i = 0; i < (filas || []).length; i++) {
+      var t = techoDeFila(filas[i], cj);
+      if (isFinite(t.corto) && t.corto > 0 && t.corto < sCorto) sCorto = t.corto;
+      if (isFinite(t.vent) && t.vent > 0 && t.vent < sVent) sVent = t.vent;
+      var c = Number(filas[i].corto);
+      if (isFinite(c) && c > 0 && c < cortoMin) cortoMin = c;
+    }
+    if (!isFinite(sCorto)) return 1;
+    // El PISO: la sección más fina de la lista no puede quedar por debajo de
+    // MIN_CORTO_PX. Ver la nota de arriba — sin él, una sola fila con mucho
+    // confinamiento deja a toda la lista sin espesor legible.
+    var piso = isFinite(cortoMin) ? Math.min(sCorto, MIN_CORTO_PX / cortoMin) : 0;
+    var s = Math.max(piso, Math.min(sCorto, sVent));
+    return Math.max(S_MIN, Math.min(S_MAX, s));
+  }
 
   function plan(placements, def, W, H, opts) {
     opts = opts || {};
@@ -447,72 +569,64 @@
     var bb = bbox(pls, proyector(def), opts.rect);
     if (!bb) return null;
 
-    var cajaW = W - 2 * lay.pad;
-    var cajaH = H - lay.cabecera - lay.pie - 2 * lay.pad;
-    if (!(cajaW > 0) || !(cajaH > 0)) return null;
+    var cj = cajas(W, H, lay);
+    if (!(cj.w > 0) || !(cj.h > 0)) return null;
     var w = Math.max(bb.u1 - bb.u0, 1e-6), h = Math.max(bb.v1 - bb.v0, 1e-6);
-
-    // ¿Entra entero y legible?
-    // La escala del elemento ENTERO se calcula contra la caja MENOS el aire: si no, el
-    // hormigón queda pegado al marco por el lado que manda y no se ve dónde termina.
-    var sEntero = Math.min((cajaW - 2 * lay.aire) / w, (cajaH - 2 * lay.aire) / h);
-    var cortoPx = Math.min(w, h) * sEntero;
-    var base = {
-      banda: banda, plsBanda: pls, bbox: bb, rect: opts.rect || null,
-      cortoPx: cortoPx, minCorto: CORTO_MIN_PX
-    };
-    if (cortoPx >= CORTO_MIN_PX) {
-      base.modo = 'entero';
-      base.escala = sEntero;
-      base.cuadros = [{
-        caja: { x: lay.pad, y: lay.cabecera + lay.pad, w: cajaW, h: cajaH },
-        vent: { u0: bb.u0, u1: bb.u1, v0: bb.v0, v1: bb.v1 }, extremo: 0
-      }];
-      return base;
-    }
-
-    // DOS CUADROS. Se recorta por el eje LARGO del plano (el que no cabe), que puede
-    // ser el horizontal o el vertical: no se da por hecho que un plano alargado lo sea
-    // siempre a lo ancho.
     var porU = (w >= h);
     var largoDim = porU ? w : h, cortoDim = porU ? h : w;
-    var FW = (cajaW - lay.hueco) / 2, FH = cajaH;
-    var FL = porU ? FW : FH, FC = porU ? FH : FW;
 
-    // LA VENTANA. Dos exigencias, y manda la mayor:
-    //   · llenar el cuadro (si sobra alto, se está desaprovechando la ampliación);
-    //   · abarcar al menos DOS separaciones del reparto más suelto, o el recorte
-    //     enseñaría un fierro solitario en vez de un patrón — y podría dejar fuera
-    //     la traba, que es lo que distingue un muro de otro.
+    // LA VENTANA que esta fila NECESITA por extremo. La manda quien llama, porque sale
+    // de la receta (hasta dónde llega el confinamiento). Si no viaja, se mide el paso
+    // del reparto sobre lo que el motor produjo: con menos de DOS separaciones el
+    // recorte enseñaría un fierro solitario en vez de un patrón.
     var paso = pasoTipico(pls, porU ? def.u : def.v);
-    var vent = Math.max(cortoDim * (FL / FC), PASOS_MIN_VENTANA * paso);
-    vent = Math.min(vent, largoDim);
-    base.paso = paso;
-    base.ventana = vent;
-    // Si la ventana se comió el elemento entero, los dos cuadros dirían lo mismo: es
-    // el caso de un cuadro, y se cae ahí solo.
-    if (!(vent < largoDim)) {
+    var pedida = Math.max(Number(opts.ventana) || 0, PASOS_MIN_VENTANA * paso);
+    // LA ESCALA: la común de la lista o —si esta miniatura va sola— la que esta misma
+    // fila exige, con exactamente la misma cuenta.
+    var s = Number(opts.escala) > 0 ? Number(opts.escala)
+      : escalaComun([{ corto: cortoDim, largo: largoDim, ventana: pedida }], W, H, opts);
+
+    var base = {
+      banda: banda, plsBanda: pls, bbox: bb, rect: opts.rect || null,
+      escala: s, paso: paso, pedida: pedida, confin: Number(opts.confin) || 0,
+      engorde: engordeRedondos(pls, def, s, opts)
+    };
+    // ¿ENTRA ENTERO A ESA ESCALA? Ésa es toda la regla del encuadre — más la condición
+    // de que el elemento sea de verdad ALARGADO (ver RELACION_RECORTE): a un elemento
+    // rechoncho no se le parte nada aunque no quepa, porque el recorte le cortaría una
+    // medida que la sección necesita entera.
+    if (!recortable(cortoDim, largoDim) ||
+        (w * s <= cj.w - 2 * cj.aire && h * s <= cj.h - 2 * cj.aire)) {
       base.modo = 'entero';
-      base.escala = sEntero;
+      base.ventana = largoDim;
+      base.ventanaCorta = false;
       base.cuadros = [{
-        caja: { x: lay.pad, y: lay.cabecera + lay.pad, w: cajaW, h: cajaH },
+        caja: { x: cj.x, y: cj.y, w: cj.w, h: cj.h },
         vent: { u0: bb.u0, u1: bb.u1, v0: bb.v0, v1: bb.v1 }, extremo: 0
       }];
       return base;
     }
-    var s = Math.min(FL / vent, (FC - 2 * lay.aire) / cortoDim);
+
+    // DOS CUADROS. Se recorta por el eje LARGO del plano —el que no cabe—, que puede
+    // ser el horizontal o el vertical: no se da por hecho que un plano alargado lo sea
+    // siempre a lo ancho.
+    var FL = porU ? cj.fw : cj.h;
+    // A escala fija la ventana ya no se ELIGE: es lo que cabe. El aire va SÓLO por
+    // fuera —ahí el elemento TERMINA— y por dentro el dibujo llega al borde del cuadro,
+    // porque ahí el elemento SIGUE y lo que hay es un corte.
+    var vent = FL / s, fuera = cj.aire / s;
+    base.ventana = vent - fuera;
+    // ¿CUPO EL CONFINAMIENTO? Ésa es la pregunta, y no si cupo la ventana ideal: lo
+    // que no se puede callar es que quede fierro de extremo FUERA del cuadro, porque
+    // entonces el dibujo deja creer que el confinamiento termina donde termina el
+    // cuadro. Que falte el respiro de una separación más no engaña a nadie.
+    base.ventanaCorta = (base.confin > 0 && base.ventana < base.confin - 0.5);
     base.modo = 'extremos';
-    base.escala = s;
-    // La ventana se DESPLAZA hacia afuera: el borde del elemento queda dentro del
-    // cuadro con su aire, y el lado de adentro llega al marco —que es donde el corte
-    // sucede—. Las dos ventanas siguen midiendo lo mismo, o sea la misma escala.
-    var aire = vent * AIRE_EXTREMO;
-    var a0 = (porU ? bb.u0 : bb.v0) - aire, a1 = (porU ? bb.u1 : bb.v1) + aire;
-    var y = lay.cabecera + lay.pad;
+    var a0 = (porU ? bb.u0 : bb.v0) - fuera, a1 = (porU ? bb.u1 : bb.v1) + fuera;
     base.cuadros = [-1, 1].map(function (lado, idx) {
       var lo = (lado < 0) ? a0 : (a1 - vent), hi = (lado < 0) ? (a0 + vent) : a1;
       return {
-        caja: { x: lay.pad + idx * (FW + lay.hueco), y: y, w: FW, h: FH },
+        caja: { x: cj.x + idx * (cj.fw + lay.hueco), y: cj.y, w: cj.fw, h: cj.h },
         vent: porU ? { u0: lo, u1: hi, v0: bb.v0, v1: bb.v1 }
           : { u0: bb.u0, u1: bb.u1, v0: lo, v1: hi },
         extremo: lado, eje: porU ? def.u : def.v
@@ -520,7 +634,6 @@
     });
     return base;
   }
-
 
   // ---------------------------------------------------------------------------
   // COLORES DEL CORTE (no del fierro: el fierro lo pinta quien llama)
@@ -664,7 +777,8 @@
     if (p.banda) cab += ' · rebanada ' + Math.round(p.banda.esp) + ' cm en ' + l(def.depth);
     var pies = p.cuadros.map(function (cu) {
       if (!cu.extremo) return '';
-      return 'extremo ' + l(cu.eje) + (cu.extremo < 0 ? '−' : '+');
+      return 'extremo ' + l(cu.eje) + (cu.extremo < 0 ? '−' : '+') +
+        ' · ' + Math.round(p.ventana) + ' cm';
     });
     if (p.modo === 'entero') pies[0] = 'elemento completo';
     return { cabecera: cab, pies: pies };
@@ -683,9 +797,25 @@
         'unas barras sobre otras.';
     }
     if (p.modo === 'extremos') {
-      t += ' El elemento es demasiado alargado para leerse entero, así que van sus DOS ' +
-        'extremos, a la misma escala: ' + Math.round(p.ventana) + ' cm cada uno.';
+      t += ' A la escala de la lista el elemento no cabe entero, así que van sus DOS ' +
+        'extremos: ' + Math.round(p.ventana) + ' cm cada uno.';
+      // SI LA VENTANA NO LLEGÓ AL FINAL DEL CONFINAMIENTO HAY QUE DECIRLO: callarlo
+      // dejaría creer que el confinamiento termina donde termina el cuadro.
+      if (p.ventanaCorta) {
+        t += ' OJO: la receta acota fierro hasta los ' + Math.round(p.confin) +
+          ' cm desde la punta — más adentro de lo que cabe en el cuadro a la escala de la ' +
+          'lista. Lo que se ve es el arranque del confinamiento, no todo. Ábrelo para verlo entero.';
+      }
     }
+    if (p.engorde > 1.01) {
+      t += ' Las barras que se ven DE PUNTA van engordadas ×' +
+        (Math.round(p.engorde * 10) / 10) + ' para que la más fina se vea a este tamaño;' +
+        ' entre ellas sí guardan su proporción real.';
+    }
+    // TODAS las miniaturas de la lista van a la MISMA escala, y eso se dice: es la
+    // diferencia entre «este muro es más grueso» y «este muro se dibujó más grande».
+    t += ' Escala de la lista: ' + (Math.round(p.escala * 100) / 100) + ' px/cm — la misma ' +
+      'en todas las filas, para que comparar dos templates signifique algo.';
     return t;
   }
 
@@ -694,13 +824,15 @@
     svg: svg, plan: plan, titulo: titulo, rotulos: rotulos, hueco: hueco,
     // las piezas que también usa el editor
     proyector: proyector, ejeMayorSpan: ejeMayorSpan, agrupar: agrupar,
-    trazos: trazos, dCirculo: dCirculo,
+    trazos: trazos, dCirculo: dCirculo, engordeRedondos: engordeRedondos,
     bbox: bbox, encuadre: encuadre, encuadreVentana: encuadreVentana,
     tX: tX, tY: tY, tramo: tramo,
     // la rebanada y el encuadre, sueltos (los tests y el gestor los leen)
     rebanada: rebanada, filtrar: filtrar, pasoTipico: pasoTipico, enVentana: _enVentana,
+    escalaComun: escalaComun, techoDeFila: techoDeFila, cajas: cajas,
     // números con nombre, para no cazarlos en el código
-    REBANADA_CM: REBANADA_CM, CORTO_MIN_PX: CORTO_MIN_PX,
+    REBANADA_CM: REBANADA_CM, S_MIN: S_MIN, S_MAX: S_MAX,
+    MIN_CORTO_PX: MIN_CORTO_PX, RELACION_RECORTE: RELACION_RECORTE, recortable: recortable,
     PASOS_MIN_VENTANA: PASOS_MIN_VENTANA, LAYOUT: LAYOUT, TINTA: TINTA
   };
   global.ModeladorRender2D = API;
