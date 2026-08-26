@@ -504,6 +504,16 @@
   // Y un ancho MÍNIMO para el SVG entero: el rótulo lleva las medidas del hormigón y
   // tiene que caber aunque el dibujo salga angosto (una viga vista de canto son 40 px).
   var ANCHO_MIN = 200;
+  // EL ANCHO MÁXIMO QUE PUEDE SALIR, y es una GARANTÍA, no un deseo: dos cuadros al
+  // tope, su calle y los márgenes. Ninguna rama de `plan` puede devolver un `W` mayor,
+  // y hay un test que lo afirma sobre el SVG PUBLICADO.
+  //
+  // POR QUÉ IMPORTA TANTO: si el SVG sale más ancho que la celda que lo muestra, el
+  // navegador lo escala entero para que quepa — y con él el alto. La regla del alto la
+  // desharía el CSS después de que el código la cumplió, que es la misma regresión de
+  // siempre cometida una capa más abajo. La hoja de estilo reserva EXACTAMENTE este
+  // número (ver catalogo.html).
+  var ANCHO_MAX = 2 * ANCHO_CUADRO_MAX + LAYOUT.hueco + 2 * LAYOUT.pad;
 
   // Las cajas de dibujo, en px del viewBox. `alto` manda; el ancho lo devuelve el plan.
   function cajas(alto, lay) {
@@ -597,7 +607,14 @@
       // terminar); por dentro el dibujo llega al borde, porque ahí el elemento SIGUE.
       anchoCuadro = vent * s + cj.aire;
     } else {
-      vent = pedida;
+      // RECORTE VERTICAL (un plano más alto que ancho). Lo que llena el alto es la
+      // propia ventana, así que la escala sale de ella — y para que el ancho no se
+      // dispare, la ventana no puede ser MENOR que la que deja el cuadro. Se enseña un
+      // poco más de lo pedido, nunca más chico: la escala sigue sin negociarse.
+      // (Hoy ningún muro entra por acá —su plano es largo × espesor, siempre más ancho
+      // que alto—, pero una rama sin acotar es lo que ya costó tres regresiones.)
+      var ventMin = w * cj.util / (techo - 2 * cj.aire);
+      vent = Math.min(largoDim, Math.max(pedida, ventMin));
       s = cj.util / vent;
       anchoCuadro = w * s + 2 * cj.aire;
     }
@@ -836,7 +853,8 @@
     rebanada: rebanada, filtrar: filtrar, pasoTipico: pasoTipico, enVentana: _enVentana,
     cajas: cajas,
     // números con nombre, para no cazarlos en el código
-    REBANADA_CM: REBANADA_CM, ANCHO_CUADRO_MAX: ANCHO_CUADRO_MAX, ANCHO_MIN: ANCHO_MIN,
+    REBANADA_CM: REBANADA_CM, ANCHO_CUADRO_MAX: ANCHO_CUADRO_MAX,
+    ANCHO_MIN: ANCHO_MIN, ANCHO_MAX: ANCHO_MAX,
     RELACION_RECORTE: RELACION_RECORTE, recortable: recortable,
     PASOS_MIN_VENTANA: PASOS_MIN_VENTANA, LAYOUT: LAYOUT, TINTA: TINTA
   };

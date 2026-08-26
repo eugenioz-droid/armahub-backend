@@ -514,19 +514,19 @@ console.log('\nR4b — hasta dónde mirar lo dice el confinamiento, no un númer
     redondo(pc.ventana, 0) + ' cm del cuadro, y ahí no se avisa de nada');
 }
 
-// ── R4c. EL INVARIANTE: EL CORTE SIEMPRE LLENA EL ALTO ──────────────────────
-// Se rompió DOS VECES, y las dos por lo mismo: cuando el ancho pedido no cabía, alguien
-// bajaba la escala para que entrara. Bajar la escala es lo contrario de la regla — el
-// corte deja de llenar el alto y la sección se ve chica, que es exactamente lo que el
-// usuario rechazó («no es el blanco lo que me molesta sino que la sección se ve chica»).
-// Cuando el ancho no alcanza, lo que cede es la VENTANA: se enseña MENOS elemento,
-// nunca más chico. Esto lo congela sobre las SEIS filas de su biblioteca, incluidas las
-// tres que salían «elemento completo» y diminutas.
-console.log('\nR4c — el corte llena el alto en TODA fila: si algo no cabe, cede la ventana');
+// ── R4c. EL INVARIANTE, MEDIDO SOBRE LO QUE SE PUBLICA ──────────────────────
+// Se rompió TRES veces, y las tres por lo mismo: cuando el ancho pedido no cabía,
+// alguien bajaba la escala. Bajar la escala es lo contrario de la regla — el corte deja
+// de llenar el alto y la sección se ve chica, que es lo que el usuario lleva tres
+// rondas rechazando. Cuando el ancho no alcanza, lo que cede es la VENTANA.
+//
+// Y ESTE BLOQUE YA FALLÓ UNA VEZ COMO TEST: medía un `R.plan(...)` armado a mano, no lo
+// que el gestor publica, así que dio verde sobre una fila que el usuario veía mal. Un
+// test verde sobre algo roto es peor que no tenerlo. Ahora mide el SVG PUBLICADO por
+// TemplateEditor._tplMiniDibujo: el ancho declarado, el alto del hormigón dibujado y los
+// centímetros que el rótulo anuncia. Si el dibujo y la intención se separan, falla acá.
+console.log('\nR4c — el corte llena el alto en TODA fila, medido sobre el SVG publicado');
 {
-  // Variantes de su lista. `sepTraba` grande es lo que mandaba la fila a «entero»: la
-  // ventana pedida (2 × @) se comía el elemento y la decisión se tomaba ANTES de fijar
-  // la escala. `confin` es un cabezal en cada punta.
   function variante(largo, esp, o) {
     o = o || {};
     const r = JSON.parse(JSON.stringify(MURO));
@@ -537,9 +537,11 @@ console.log('\nR4c — el corte llena el alto en TODA fila: si algo no cabe, ced
       if (!g) return;
       if (g.eje === 'x') { g.from = -(half - 3); g.to = half - 3; }
       if (g.eje === 'z') { g.from = -(esp / 2 - 3); g.to = esp / 2 - 3; g.sep = esp - 6; }
-      if (g.eje === 'x' && c.comp_id === 'TR' && o.sepTraba) { g.sep = o.sepTraba; }
     }));
-    if (o.sepTraba) r.componentes[2].distribucion.sep = o.sepTraba;
+    if (o.sepTraba) {
+      r.componentes[2].distribucion.sep = o.sepTraba;
+      r.componentes[2].distribucion.rango.sep = o.sepTraba;
+    }
     if (o.confin) [-1, 1].forEach(function (lado, i) {
       const a = lado < 0 ? -(half - 3) : (half - 3 - o.confin);
       const b = lado < 0 ? -(half - 3) + o.confin : (half - 3);
@@ -552,54 +554,77 @@ console.log('\nR4c — el corte llena el alto en TODA fila: si algo no cabe, ced
     });
     return r;
   }
+  // LAS SEIS FILAS DE SU BIBLIOTECA. «Muro 600» va con SU receta real —confinamiento de
+  // 123 cm con @40—, que es la que pedía 206 cm de ventana y la que se publicó mal.
   const CASOS = [
     ['Muro EZ 524×20', variante(524, 20)],
-    ['Muro 600×20 con cabezal', variante(600, 20, { confin: 120 })],
-    ['Muro Emilio 150×20 @90', variante(150, 20, { sepTraba: 90 })],
+    ['Muro 600×20 · cabezal 123 @40', variante(600, 20, { confin: 123 })],
+    ['Muro Emilio 150×20', variante(150, 20)],
     ['Muro Hans 524×20 @300', variante(524, 20, { sepTraba: 300 })],
     ['Muro Prueba 534×30 @300', variante(534, 30, { sepTraba: 300 })],
     ['Viga 30×60 entera', VIGA]
   ];
   const util = R.cajas(H).util;
-  const medidos = CASOS.map(function (c) {
+  // Lo que se PUBLICA: el SVG que el gestor mete en la celda.
+  const filas = CASOS.map(function (c, i) {
     const receta = c[1];
-    const def = TE._planosDe(receta.tipo).seccion;
-    const fila = TE._tplMiniFila({ id: 1, tipo: receta.tipo, params: receta });
-    const p = R.plan(generar(receta), def, H, Object.assign(optsDe(receta),
-      { ventana: fila.ventana, confin: fila.confin }));
-    return { n: c[0], p: p, alto: (p.bbox.v1 - p.bbox.v0) * p.escala };
+    const t = { id: 100 + i, tipo: receta.tipo, nombre: c[0], updated_at: 'u', params: receta };
+    const d = TE._tplMiniDibujo(t);
+    const cab = /<svg[^>]*width="(\d+)"[^>]*height="(\d+)"/.exec(d.svg);
+    // El hormigón es el PRIMER <rect> con relleno dentro del primer cuadro anidado.
+    const cuadro = /<svg x="[^"]*"[^>]*>([\s\S]*?)<\/svg>/.exec(d.svg);
+    const horm = cuadro && /<rect x="[-\d.]+" y="[-\d.]+" width="[-\d.]+" height="([\d.]+)" fill="#/.exec(cuadro[1]);
+    const cm = /· (\d+) cm<\/text>/.exec(d.svg.slice(d.svg.indexOf('extremo')) || '');
+    return { n: c[0], svg: d.svg, titulo: d.titulo,
+      W: cab ? +cab[1] : 0, Hsvg: cab ? +cab[2] : 0,
+      hormPx: horm ? +horm[1] : 0,
+      cm: cm ? +cm[1] : null,
+      entero: d.svg.indexOf('elemento completo') >= 0 };
   });
-  medidos.forEach(function (m) {
-    ok(Math.abs(m.alto - util) < 0.5,
-      m.n + ': el corte llena el alto (' + redondo(m.alto, 1) + ' de ' + util + ' px) · ' +
-      m.p.modo + ' · ' + redondo(m.p.ventana, 0) + ' cm por cuadro · celda ' + m.p.W);
-  });
-  ok(medidos.every(m => Math.abs(m.alto - medidos[0].alto) < 0.5),
-    'y los SEIS espesores dibujados son el mismo número: ' +
-    medidos.map(m => redondo(m.alto, 0)).join(' / ') + ' px');
 
-  // LAS TRES QUE SALÍAN «ELEMENTO COMPLETO» Y DIMINUTAS. Un elemento alargado no puede
-  // dibujarse entero a esta escala: si cupiera entero, es que no era alargado.
-  ['Muro Emilio 150×20 @90', 'Muro Hans 524×20 @300', 'Muro Prueba 534×30 @300'].forEach(function (n) {
-    const m = medidos.filter(x => x.n === n)[0];
-    ok(m.p.modo === 'extremos',
-      n + ' se recorta a dos extremos en vez de salir entero y aplastado');
+  filas.forEach(function (f) {
+    ok(Math.abs(f.hormPx - util) < 1.5,
+      f.n + ': el hormigón dibujado mide ' + redondo(f.hormPx, 0) + ' px de ' + util +
+      ' (celda ' + f.W + '×' + f.Hsvg + (f.cm ? ' · ' + f.cm + ' cm por cuadro' : ' · entero') + ')');
   });
-  // Y LA QUE PEDÍA MÁS ANCHO DEL QUE HAY: cede la ventana, no la escala, y se avisa.
-  const cab = medidos.filter(x => x.n === 'Muro 600×20 con cabezal')[0];
-  ok(cab.p.pedida > cab.p.ventana && cab.p.ventanaCorta,
-    'el muro con cabezal pedía ' + redondo(cab.p.pedida, 0) + ' cm y se le dan ' +
-    redondo(cab.p.ventana, 0) + ': cede la VENTANA (la escala sigue en ' +
-    redondo(cab.p.escala, 2) + ')');
-  ok(/OJO/.test(R.titulo(cab.p, TE._planosDe('muro').seccion, TE.EJE_DISPLAY)),
-    'y el tooltip dice los centímetros que quedaron fuera');
-  // LA GARANTÍA, EN EL CÓDIGO: la escala sale del alto y de nada más.
-  const cuerpo = R2D_SRC.slice(R2D_SRC.indexOf('function plan('), R2D_SRC.indexOf('function cajas(') + 1)
-    .replace(/\/\/[^\n]*/g, '');
-  ok(/var s = cj\.util \/ h;/.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
-    'la escala se fija con `cj.util / h` — el alto, y nada más');
-  ok(!/Math\.min\(cj\.util/.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
-    'y no hay ningún Math.min que la negocie con el ancho');
+  ok(filas.every(f => Math.abs(f.hormPx - filas[0].hormPx) < 1.5),
+    'y los SEIS hormigones dibujados son el mismo número: ' +
+    filas.map(f => redondo(f.hormPx, 0)).join(' / ') + ' px');
+
+  // EL ANCHO DE SALIDA NO PUEDE PASAR DE LO QUE LA CELDA MUESTRA SIN ESCALAR.
+  // Si el SVG sale más ancho que su caja, el navegador lo encoge entero —y con él el
+  // alto—: la regla del alto la deshace el CSS después de que el código la cumplió.
+  // Es la misma regresión de siempre, una capa más abajo.
+  filas.forEach(function (f) {
+    ok(f.W <= R.ANCHO_MAX,
+      f.n + ': su SVG mide ' + f.W + ' px y la celda reserva ' + R.ANCHO_MAX +
+      ' — no hay nada que el navegador tenga que encoger');
+    ok(f.Hsvg === H, f.n + ': y su alto es el de la celda (' + f.Hsvg + ' px), sin escalar');
+  });
+  // Y la hoja de estilo tiene que reservar EXACTAMENTE ese ancho: si reserva menos, el
+  // navegador escala y todo lo de arriba deja de valer.
+  const css = fs.readFileSync(path.join(__dirname, '..', 'armahub', 'templates', 'tabs', 'catalogo.html'), 'utf8');
+  const cssMini = css.slice(css.indexOf('.tplMini svg'), css.indexOf('.tplMiniSin'));
+  ok(new RegExp('max-width:' + R.ANCHO_MAX + 'px').test(cssMini),
+    'el CSS reserva los ' + R.ANCHO_MAX + ' px que el dibujante garantiza');
+  ok(new RegExp('height:' + H + 'px').test(cssMini),
+    'y fija el alto en ' + H + ' px, que es lo que hace que el corte lo llene');
+
+  // NINGÚN ELEMENTO ALARGADO SE DIBUJA ENTERO: si cupiera entero, no era alargado.
+  filas.slice(0, 5).forEach(function (f) {
+    ok(!f.entero, f.n + ' se recorta a dos extremos en vez de salir entero y aplastado');
+  });
+  // LA QUE PEDÍA MÁS ANCHO DEL QUE HAY: cede la ventana, y se avisa con los cm.
+  const cab = filas[1];
+  ok(cab.cm !== null && cab.cm < 206 && /OJO/.test(cab.titulo),
+    'el muro con cabezal pedía 206 cm, publica ' + cab.cm +
+    ' y el tooltip dice los que quedaron fuera');
+  // LA GARANTÍA, EN EL CÓDIGO: la escala sale del alto y ninguna rama la negocia.
+  const codigo = R2D_SRC.replace(/\/\/[^\n]*/g, '');
+  ok(/var s = cj\.util \/ h;/.test(codigo), 'la escala se fija con `cj.util / h` — el alto, y nada más');
+  ok(!/Math\.min\(cj\.util/.test(codigo), 'y no hay ningún Math.min que la negocie con el ancho');
+  ok(!/vent = pedida;/.test(codigo),
+    'ni una rama que reasigne la ventana saltándose el acote (fue el bug de la 4ª ronda)');
 }
 
 // ── R5. EL COLOR, POR PARÁMETRO ─────────────────────────────────────────────
