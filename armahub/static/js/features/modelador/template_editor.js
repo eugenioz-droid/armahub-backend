@@ -14264,31 +14264,21 @@
   // vacía y se dibuja al entrar en pantalla (IntersectionObserver, con 200 px de
   // anticipación para que el usuario nunca vea el hueco), y el resultado se CACHEA por
   // id + updated_at: volver a la lista tras editar un template redibuja ese y sólo ese.
-  // EL TAMAÑO DE LA CELDA, medido y no elegido a ojo.
+  // EL ALTO DE LA CELDA — y el alto es lo ÚNICO que se fija (26-ago).
   //
-  // EL ANCHO es lo que paga las DOS cosas a la vez, y por eso esta celda es ancha
-  // (26-ago, pedido del usuario: «como alargaste lo que veo del muro, se achicaron las
-  // secciones. Lo que quiero es lo contrario: agrandar las secciones Y ver más del
-  // muro; para eso solo podemos alargar»). Tiene razón, y hay una identidad detrás:
+  // El corte LLENA EL ALTO del cuadro (ver `plan` en render2d.js), así que este número
+  // es literalmente el tamaño al que se ve el fierro: con 116 px de celda quedan 80
+  // útiles, y el espesor de CUALQUIER muro se dibuja de 80 px. Era el pedido: «que
+  // siempre veamos el fierro del mismo tamaño, ocupando casi toda la altura del
+  // cuadro».
   //
-  //     escala (px/cm)  ×  centímetros que cubre un cuadro  =  ancho útil del cuadro
-  //
-  // O sea que con la celda fija, subir el espesor se paga en cobertura y al revés —que
-  // es exactamente el trueque que él acaba de rechazar—. Lo Único que sube los dos
-  // lados es ENSANCHAR.
-  //
-  // Y lo que topaba la escala NO era la viga (medido: quitarla de la lista daba la
-  // MISMA escala) sino la ventana del muro con cabezal. Medido sobre su lista —tres
-  // muros de 20 cm, uno con 80 cm de cabezal, más una viga que se dibuja entera:
-  //     232 × 110 → 0,85 px/cm → espesor 17 px · 123 cm por cuadro
-  //     420 × 130 → 1,57 px/cm → espesor 31 px · 127 cm por cuadro
-  // o sea casi el doble de sección sin perder un centímetro de muro.
-  //
-  // EL ALTO es el presupuesto por el otro lado: el elemento que se dibuja ENTERO —una
-  // viga de 60 cm de alto— tiene que caber en él, y con 100 px útiles admite hasta
-  // 1,57 px/cm. Pasado ese punto, ensanchar deja de subir la escala y sólo compra
-  // cobertura: para más espesor hay que subir el alto, y eso alarga la fila.
-  var TPL_MINI_W = 420, TPL_MINI_H = 130;
+  // EL ANCHO NO SE FIJA: sale de cuánto elemento hay que enseñar (el confinamiento más
+  // un par de barras) por la escala que acaba de salir del alto, y por eso VARÍA de una
+  // fila a otra. Lo acota render2d (ANCHO_CUADRO_MAX) para que un muro con muchísimo
+  // confinamiento no estire la fila sin límite; cuando el tope corta, el título lo dice
+  // con los centímetros que quedaron fuera. La columna reserva el máximo (ver el CSS de
+  // catalogo.html) y cada dibujo ocupa lo suyo, centrado.
+  var TPL_MINI_H = 116;
   var _tplMiniCache = {};
   var _tplMiniObs = null;
 
@@ -14400,42 +14390,30 @@
     var largo = porU ? rect.W : rect.H, corto = porU ? rect.H : rect.W;
     var confin = _confinDeReceta(t.params, eje, largo);
     var sep = _sepDeclarada(t.params, eje);
-    // La ventana llega hasta donde termina el confinamiento MÁS UNA separación del
-    // reparto corrido: así se ve que el confinamiento TERMINA y empieza lo de siempre.
-    // Sin confinamiento declarado queda el mínimo de legibilidad, dos separaciones.
-    var ventana = Math.max(confin > 0 ? confin + sep : 0,
-      _R2D().PASOS_MIN_VENTANA * sep);
+    // LA VENTANA: hasta donde termina el confinamiento MÁS UN PAR DE BARRAS del reparto
+    // corrido, para que se vea que el confinamiento TERMINA y empieza lo de siempre.
+    // Ni un centímetro más: lo que le interesa al usuario está en los primeros
+    // centímetros del extremo —el cabezal— y cada centímetro de más que se pide se paga
+    // en tamaño del fierro (ver `plan`: el ancho del cuadro es ventana × escala).
+    // Sin confinamiento declarado queda sólo ese par de barras.
+    var ventana = Math.max(confin, 0) + _R2D().PASOS_MIN_VENTANA * sep;
     return { corto: corto, largo: largo, ventana: ventana, confin: confin, sep: sep };
   }
 
-  // LA ESCALA COMÚN DE LA LISTA — un solo px/cm para todas las filas, para que
-  // comparar dos miniaturas signifique algo. Se calcula UNA vez por lista (es
-  // aritmética sobre la geometría y las distribuciones declaradas: cero motor) y se
-  // recalcula sola cuando llega otra lista (_tplMiniOlvidar).
-  // Sale de la lista COMPLETA y no de la filtrada a propósito: si dependiera del
-  // filtro, poner un chip cambiaría el tamaño de todas las miniaturas y volvería a
-  // hacer incomparable lo que se está mirando.
-  var _tplMiniEsc = null;
-  function _tplMiniEscala() {
-    if (_tplMiniEsc != null) return _tplMiniEsc;
-    var filas = [];
-    for (var i = 0; i < _tplLista.length; i++) {
-      var f = _tplMiniFila(_tplLista[i]);
-      if (f) filas.push(f);
-    }
-    _tplMiniEsc = _R2D().escalaComun(filas, TPL_MINI_W, TPL_MINI_H, {});
-    return _tplMiniEsc;
-  }
-  // Llega otra lista → la escala y los dibujos hechos con la anterior ya no valen.
-  function _tplMiniOlvidar() { _tplMiniEsc = null; _tplMiniCache = {}; }
+  // (AQUÍ VIVIÓ LA ESCALA COMÚN de la lista: un solo px/cm para todas las filas, para
+  // que comparar dos miniaturas a ojo significara algo. Se probó y el usuario la
+  // descartó: «es que esto es una previsualización… nos da lo mismo la escala, queremos
+  // ver un detalle claro de qué se trata el template». Normalizar obligaba a que el
+  // elemento más exigente encogiera a todos, y lo que se perdía —el fierro grande— es
+  // justo lo que esta columna vino a mostrar. Ahora CADA FILA usa la escala que
+  // necesita, y lo que compensa la pérdida son los centímetros del rótulo: el tamaño
+  // lo dan los números, no el dibujo. Ver la nota de `plan` en render2d.js.)
+  function _tplMiniOlvidar() { _tplMiniCache = {}; }
 
   // Clave del caché: si el template se editó, `updated_at` cambia y el dibujo viejo
   // deja de valer solo. No hace falta invalidar a mano en ningún sitio.
-  // Lleva la ESCALA porque el dibujo depende de ella: si llega otra lista y la escala
-  // comun cambia, el dibujo viejo ya no es comparable con los nuevos y tiene que
-  // rehacerse. (El cache se vacia igual en _tplMiniOlvidar; esto es el cinturon.)
   function _tplMiniClave(t) {
-    return String(t.id) + '|' + String(t.updated_at || t.fecha || '') + '|' + _tplMiniEscala();
+    return String(t.id) + '|' + String(t.updated_at || t.fecha || '');
   }
 
   // La receta → { svg, titulo }. Es la ÚNICA parte que sabe de templates: el motor
@@ -14465,7 +14443,7 @@
     if (!pls.length) {
       // Lo que no se puede dibujar recibe un HUECO QUE LO DICE, nunca una silueta
       // inventada: una receta rota tiene que verse como lo que es.
-      d = { svg: R.hueco(TPL_MINI_W, TPL_MINI_H, 'sin barras que dibujar'),
+      d = { svg: R.hueco(R.ANCHO_MIN, TPL_MINI_H, 'sin barras que dibujar'),
         titulo: 'Con esta receta el motor no genera ninguna barra. Ábrela para ver qué le falta.' };
     } else {
       // Los COLORES, de la paleta ÚNICA del editor (_colorComp → color propio del
@@ -14482,18 +14460,16 @@
         // Las LETRAS de los ejes son las del editor (EJE_DISPLAY): que la miniatura y
         // el cuadrante llamen al plano por el mismo nombre.
         letras: EJE_DISPLAY,
-        // LA ESCALA ES DE LA LISTA, no de esta fila: un px/cm para todas, o comparar
-        // dos miniaturas engaña (ver _tplMiniEscala). Y la VENTANA sale de la receta:
-        // el cuadro tiene que llegar hasta donde termina el confinamiento.
-        escala: _tplMiniEscala(),
+        // LA VENTANA sale de la receta: hasta dónde llega el confinamiento más un par
+        // de barras. El ANCHO del dibujo se deduce de ella (no entra: sale).
         ventana: (fila && fila.ventana) || 0,
         confin: (fila && fila.confin) || 0
       };
       // EL PLAN PRIMERO, y el dibujo con él: el tooltip tiene que decir exactamente lo
       // que la imagen muestra, y derivarlo dos veces sería arriesgarse a que un día
       // digan cosas distintas (además de rehacer el trabajo).
-      opts.plan = R.plan(pls, def, TPL_MINI_W, TPL_MINI_H, opts);
-      d = { svg: R.svg(pls, def, TPL_MINI_W, TPL_MINI_H, opts),
+      opts.plan = R.plan(pls, def, TPL_MINI_H, opts);
+      d = { svg: R.svg(pls, def, TPL_MINI_H, opts),
         titulo: R.titulo(opts.plan, def, EJE_DISPLAY) };
     }
     _tplMiniCache[clave] = d;
@@ -14808,10 +14784,10 @@
     _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
     _tplUso: _tplUso, _tplMini: _tplMini, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
     _tplMiniDibujo: _tplMiniDibujo, _tplMiniClave: _tplMiniClave,
-    _tplMiniFila: _tplMiniFila, _tplMiniEscala: _tplMiniEscala,
+    _tplMiniFila: _tplMiniFila,
     _tplMiniOlvidar: _tplMiniOlvidar, _confinDeReceta: _confinDeReceta,
     _sepDeclarada: _sepDeclarada, _tplPonerLista: function (l) { _tplLista = l || []; _tplMiniOlvidar(); },
-    TPL_MINI_W: TPL_MINI_W, TPL_MINI_H: TPL_MINI_H,
+    TPL_MINI_H: TPL_MINI_H,
     _planosDe: _planosDe, _ejeRotulo: _ejeRotulo, EJE_DISPLAY: EJE_DISPLAY,
     _tplTiposPresentes: _tplTiposPresentes, _tplEsMio: _tplEsMio,
     _st: ST, _regenerar: function () { _regenerar(); },

@@ -169,12 +169,12 @@ function optsDe(receta) {
     letras: TE.EJE_DISPLAY
   };
 }
-const W = TE.TPL_MINI_W, H = TE.TPL_MINI_H;
+const H = TE.TPL_MINI_H;
 const PLS_MURO = generar(MURO), PLS_VIGA = generar(VIGA);
 const DEF_MURO = defDe('muro'), DEF_VIGA = defDe('viga');
 const OPT_MURO = optsDe(MURO), OPT_VIGA = optsDe(VIGA);
-const PLAN_MURO = R.plan(PLS_MURO, DEF_MURO, W, H, OPT_MURO);
-const SVG_MURO = R.svg(PLS_MURO, DEF_MURO, W, H, OPT_MURO);
+const PLAN_MURO = R.plan(PLS_MURO, DEF_MURO, H, OPT_MURO);
+const SVG_MURO = R.svg(PLS_MURO, DEF_MURO, H, OPT_MURO);
 
 // Los <svg> ANIDADOS (un cuadro cada uno) con su contenido, en orden.
 function cuadrosDe(svg) {
@@ -237,7 +237,7 @@ console.log('\nR0 — el plano sale de PLANOS_POR_ELEMENTO, no de una lista escr
   ok(/_planosDe\(t\.tipo\)\.seccion/.test(mini), 'la celda pide el plano a _planosDe(tipo).seccion');
   ok(!/['"](muro|viga|columna|losa|fundacion)['"]/.test(mini),
     'y no nombra ni un tipo de elemento: cero listas escritas a mano');
-  ok(R.svg(PLS_MURO, null, W, H, OPT_MURO).indexOf('sin plano') >= 0,
+  ok(R.svg(PLS_MURO, null, H, OPT_MURO).indexOf('sin plano') >= 0,
     'sin plano el dibujante NO inventa uno: devuelve el hueco');
   // Y el dibujante no sabe de elementos ni de tipologías.
   ok(!/\b(muro|viga|columna|fundacion|losa|estribo|cabezal)\b/i.test(
@@ -338,115 +338,104 @@ console.log('\nR3 — se corta una rebanada en profundidad, y se elige DÓNDE');
   const fino = R.rebanada(PLS_MURO, { u: 'x', v: 'y', depth: 'z' }, {});
   ok(fino === null, 'un espesor de 20 cm es más delgado que la rebanada: se ve entero, sin banda');
   // La viga también se rebana (si no, se apilan sus ~50 estribos).
-  const pv = R.plan(PLS_VIGA, DEF_VIGA, W, H, OPT_VIGA);
+  const pv = R.plan(PLS_VIGA, DEF_VIGA, H, OPT_VIGA);
   ok(pv.banda && pv.plsBanda.length < PLS_VIGA.length,
     'la viga también: ' + pv.plsBanda.length + ' de ' + PLS_VIGA.length +
     ' barras (sus estribos ya no se superponen)');
 }
 
-// ── R4. LA ESCALA COMÚN Y EL ENCUADRE ───────────────────────────────────────
-// Antes cada fila encuadraba su propio contenido en su caja, o sea que cada una salía
-// a su px/cm. El usuario lo vio enseguida: «tengo ese muro que es angosto y lo muestra
-// entero y muy pequeño… algunos se ven más grandes y otros más pequeños». Comparar dos
-// miniaturas ENGAÑABA. Ahora la lista decide UN px/cm y todas dibujan con él.
-console.log('\nR4 — una sola escala para toda la lista, y el encuadre sale de ella');
+// ── R4. EL CORTE LLENA EL ALTO, Y EL ANCHO SALE DE AHÍ ──────────────────────
+// Hubo una versión con ESCALA COMÚN a toda la lista, para que comparar dos filas a ojo
+// significara algo. El usuario la probó y la descartó con el argumento correcto: «es
+// que esto es una previsualización… nos da lo mismo la escala, queremos ver un detalle
+// claro de qué se trata el template». Normalizar obliga a que el elemento más exigente
+// encoja a todos, y lo que se pierde —el fierro grande— es justo lo que la columna vino
+// a mostrar. Ahora la regla es una sola: el corte llena el alto del cuadro.
+console.log('\nR4 — el corte llena el alto; el ancho lo decide cuánto hay que enseñar');
 {
-  // UNA lista con tres secciones distintas: 15, 20 y 40 cm de espesor.
-  const espesores = [15, 20, 40];
-  const filas = espesores.map(e => {
+  const cj = R.cajas(H);
+  // TODAS las secciones salen del MISMO tamaño en pantalla, sea cual sea su espesor.
+  // Ése es el pedido literal: «que siempre veamos el fierro del mismo tamaño, ocupando
+  // casi toda la altura del cuadro».
+  const altos = [15, 20, 40].map(e => {
     const r = JSON.parse(JSON.stringify(MURO));
     r.geometria.ancho = e;
-    r.componentes.forEach(c => {
-      ['rango', 'rango2'].forEach(k => {
-        const g = c.distribucion[k];
-        if (g && g.eje === 'z') { g.from = -(e / 2 - 3); g.to = (e / 2 - 3); g.sep = e - 6; }
-      });
-    });
-    return { id: e, tipo: 'muro', nombre: 'Muro e' + e, updated_at: 'u', params: r };
+    r.componentes.forEach(c => ['rango', 'rango2'].forEach(k => {
+      const g = c.distribucion[k];
+      if (g && g.eje === 'z') { g.from = -(e / 2 - 3); g.to = (e / 2 - 3); g.sep = e - 6; }
+    }));
+    const p = R.plan(generar(r), DEF_MURO, H, optsDe(r));
+    return { e: e, px: redondo((p.bbox.v1 - p.bbox.v0) * p.escala, 1), s: p.escala, W: p.W };
   });
-  TE._tplPonerLista(filas);
-  const s = TE._tplMiniEscala();
-  ok(s > 0, 'la lista resuelve UNA escala común: ' + redondo(s, 3) + ' px/cm');
-  // Y con ella, el espesor dibujado es PROPORCIONAL al espesor real. Eso es lo que
-  // convierte «se ve más grueso» en un hecho del elemento y no en un artefacto.
-  const px = espesores.map(e => {
-    const t = filas[espesores.indexOf(e)];
-    const p = R.plan(generar(t.params), DEF_MURO, W, H,
-      Object.assign(optsDe(t.params), { escala: s, ventana: TE._tplMiniFila(t).ventana }));
-    return redondo(Math.min(p.bbox.v1 - p.bbox.v0, p.bbox.u1 - p.bbox.u0) * p.escala, 1);
-  });
-  ok(px[0] < px[1] && px[1] < px[2],
-    'el de 15 cm se dibuja más fino que el de 20 y éste que el de 40 (' + px.join(' / ') + ' px)');
-  ok(Math.abs(px[2] / px[0] - 40 / 15) < 0.02,
-    'y en la MISMA proporción que sus espesores reales (' + redondo(px[2] / px[0], 2) + ' vs ' +
-    redondo(40 / 15, 2) + ')');
-  ok(TE._tplMiniEscala() === s, 'la escala se calcula una vez y se reusa');
-  // El caso de la foto del usuario: un muro CORTO que antes salía diminuto por tener su
-  // propia escala. Ahora sale entero pero al mismo px/cm que los largos.
-  const corto = JSON.parse(JSON.stringify(MURO));
-  corto.geometria.largo = 150;
-  corto.componentes.forEach(c => ['rango', 'rango2'].forEach(k => {
-    const g = c.distribucion[k];
-    if (g && g.eje === 'x') { g.from = -72; g.to = 72; }
-  }));
-  const pCorto = R.plan(generar(corto), DEF_MURO, W, H,
-    Object.assign(optsDe(corto), { escala: s }));
-  const pLargo = R.plan(PLS_MURO, DEF_MURO, W, H, Object.assign(optsDe(MURO), { escala: s }));
-  ok(pCorto.modo === 'entero' && pLargo.modo === 'extremos',
-    'el muro de 150 cm cabe entero y el de 524 va a dos extremos');
-  ok(redondo(pCorto.escala, 4) === redondo(pLargo.escala, 4),
-    'pero los DOS al mismo px/cm: el corto ya no sale «muy pequeño» (' + redondo(s, 3) + ')');
-  // Un elemento RECHONCHO no se parte nunca, aunque no quepa: cortarle la profundidad a
+  ok(altos.every(a => Math.abs(a.px - cj.util) < 0.5),
+    'un muro de 15, uno de 20 y uno de 40 cm dibujan su espesor de ' + redondo(cj.util, 0) +
+    ' px los tres (' + altos.map(a => a.px).join(' / ') + ')');
+  ok(altos[0].s > altos[1].s && altos[1].s > altos[2].s,
+    'porque cada uno usa SU escala: ' + altos.map(a => redondo(a.s, 2)).join(' / ') + ' px/cm');
+  // Y por eso el tamaño en pantalla ya NO compara: lo que compara son los centímetros
+  // del rótulo. Sin ellos la miniatura dejaría creer que los tres muros son iguales.
+  const rot = R.rotulos(PLAN_MURO, DEF_MURO, TE.EJE_DISPLAY);
+  ok(/524 × 20 cm/.test(rot.cabecera),
+    'así que el rótulo lleva SIEMPRE las medidas reales del hormigón: ' + rot.cabecera);
+  ok(SVG_MURO.indexOf('524 × 20 cm') >= 0, 'y van dentro del dibujo, no sólo en el tooltip');
+  ok(/previsualizaci/.test(R.titulo(PLAN_MURO, DEF_MURO, TE.EJE_DISPLAY)) &&
+     /no se puede comparar/.test(R.titulo(PLAN_MURO, DEF_MURO, TE.EJE_DISPLAY)),
+    'y el tooltip avisa de que el tamaño en pantalla no compara entre filas');
+  // NO QUEDA NADA DE LA ESCALA COMÚN: si volviera, volvería el «se achicó todo».
+  ok(!R.escalaComun && !TE._tplMiniEscala,
+    'la escala común se fue del dibujante y del gestor, no quedó dormida');
+
+  // EL ANCHO ES VARIABLE. Es la consecuencia: ancho = ventana × escala, y la escala ya
+  // la fijó el alto.
+  const anchos = altos.map(a => a.W);
+  ok(new Set(anchos).size > 1 || anchos[0] === R.ANCHO_MIN,
+    'el ancho de la celda varía por fila (' + anchos.join(' / ') + ' px)');
+  const pv = R.plan(PLS_VIGA, DEF_VIGA, H, OPT_VIGA);
+  ok(pv.modo === 'entero' && pv.W < PLAN_MURO.W,
+    'una viga que se dibuja entera llena el alto igual y sale ANGOSTA (' + pv.W +
+    ' px contra ' + PLAN_MURO.W + ' del muro)');
+  ok(pv.W >= R.ANCHO_MIN,
+    'pero nunca por debajo del mínimo, o el rótulo con las medidas no cabría');
+  ok(Math.abs((pv.bbox.v1 - pv.bbox.v0) * pv.escala - cj.util) < 0.5,
+    'y su canto de 60 cm también llena el alto (' +
+    redondo((pv.bbox.v1 - pv.bbox.v0) * pv.escala, 0) + ' px)');
+
+  // UN ELEMENTO RECHONCHO NO SE PARTE NUNCA, aunque no quepa: cortarle la profundidad a
   // una viga sería tan absurdo como cortarle el espesor a un muro. Es forma, no tipo.
   ok(!R.recortable(30, 60) && R.recortable(20, 524),
     'sólo se recorta lo que de verdad es alargado (largo/corto ≥ ' + R.RELACION_RECORTE + ')');
-  const pv = R.plan(PLS_VIGA, DEF_VIGA, W, H, Object.assign(optsDe(VIGA), { escala: 3 }));
-  ok(pv.modo === 'entero',
-    'una viga 30×60 sigue entera aunque a esa escala no quepa: no se le parte la sección');
-  // LOS DOS EXTREMOS, misma escala, extremos opuestos, y nunca se afirma simetría.
-  const [a, b] = pLargo.cuadros;
+  // Un muro CORTO cae solo del lado de un cuadro cuando su ventana ya se lo come entero.
+  const corto = JSON.parse(JSON.stringify(MURO));
+  corto.geometria.largo = 70;
+  corto.componentes.forEach(c => ['rango', 'rango2'].forEach(k => {
+    const g = c.distribucion[k];
+    if (g && g.eje === 'x') { g.from = -32; g.to = 32; }
+  }));
+  const pCorto = R.plan(generar(corto), DEF_MURO, H, optsDe(corto));
+  ok(pCorto.modo === 'entero',
+    'y un muro de 70 cm —mismo TIPO— se ve entero: su ventana ya lo cubre');
+
+  // LOS DOS EXTREMOS: misma escala, extremos opuestos, y nunca se afirma simetría.
+  const [a, b] = PLAN_MURO.cuadros;
   ok(redondo(a.vent.u1 - a.vent.u0, 2) === redondo(b.vent.u1 - b.vent.u0, 2),
-    'los dos cuadros abarcan lo mismo (' + redondo(pLargo.ventana, 1) + ' cm)');
+    'los dos cuadros abarcan lo mismo (' + redondo(PLAN_MURO.ventana, 0) + ' cm)');
   ok(a.extremo === -1 && b.extremo === 1 && a.vent.u0 < b.vent.u0,
     'y son los DOS extremos, no dos veces el mismo');
-  ok(a.vent.u0 < pLargo.bbox.u0 && b.vent.u1 > pLargo.bbox.u1,
+  ok(a.vent.u0 < PLAN_MURO.bbox.u0 && b.vent.u1 > PLAN_MURO.bbox.u1,
     'cada uno asoma la punta del elemento con su aire, no pegada al marco');
-  ok(a.vent.u1 < pLargo.bbox.u1 && b.vent.u0 > pLargo.bbox.u0,
+  ok(a.vent.u1 < PLAN_MURO.bbox.u1 && b.vent.u0 > PLAN_MURO.bbox.u0,
     'y por dentro corta: los dos cuadros juntos no muestran el muro entero');
+  ok(redondo(a.caja.y, 1) === redondo(b.caja.y, 1) && a.caja.x < b.caja.x,
+    'van LADO A LADO, no apilados (el usuario descartó apilarlos)');
   ok(!/simetr|palindrom|espejo/i.test(R2D_SRC.replace(/\/\/[^\n]*/g, '')),
     'y nunca se afirma que un extremo represente al otro: no hay probador de simetría');
-  // LA IDENTIDAD DEL CUADRO, y el trueque que el usuario RECHAZÓ.
-  // A lo ancho de un cuadro: escala (px/cm) × centímetros cubiertos = ancho útil (px).
-  // Con la celda fija, engordar la sección se paga en cobertura y al revés — fue
-  // exactamente lo que pasó al hacer que la ventana cubriera el confinamiento: la
-  // ventana subió de 80 a 113 cm y el espesor cayó de 27 px a 17, y el usuario lo vio
-  // («se homologó pero se achicó todo»). Lo único que sube los DOS lados es ENSANCHAR
-  // la celda. Esto lo deja clavado para que el trueque no vuelva en silencio.
-  {
-    const cj = R.cajas(W, H);
-    ok(Math.abs(pLargo.escala * pLargo.ventana - (cj.fw - cj.aire)) < 0.01,
-      'escala × cobertura = ancho útil del cuadro (' + redondo(pLargo.escala, 2) + ' × ' +
-      redondo(pLargo.ventana, 0) + ' = ' + redondo(cj.fw - cj.aire, 0) + ' px)');
-    // ENSANCHAR NO PUEDE COSTAR NI ESPESOR NI COBERTURA: sube las dos.
-    const lista = espesores.map((e, i) => TE._tplMiniFila(filas[i]));
-    const cubre = (ss, ww) => { const c = R.cajas(ww, H); return (c.fw - c.aire) / ss; };
-    const angosta = R.escalaComun(lista, 232, H, {});
-    const ancha = R.escalaComun(lista, W, H, {});
-    ok(ancha >= angosta - 1e-9 && cubre(ancha, W) >= cubre(angosta, 232) - 1e-9,
-      'ensanchar la celda 232→' + W + ' sube la escala (' + redondo(angosta, 2) + '→' +
-      redondo(ancha, 2) + ' px/cm) SIN perder cobertura (' + redondo(cubre(angosta, 232), 0) +
-      '→' + redondo(cubre(ancha, W), 0) + ' cm por cuadro)');
-    // Y LA SECCIÓN SE DEFIENDE: por mucha ventana que pida una fila, la más fina de la
-    // lista no baja de MIN_CORTO_PX — es el piso que impide volver a los 17 px.
-    const glotona = lista.map(f => Object.assign({}, f, { ventana: 4000 }));
-    const sGlot = R.escalaComun(glotona, W, H, {});
-    const cortoMin = Math.min.apply(null, lista.map(f => f.corto));
-    ok(cortoMin * sGlot >= R.MIN_CORTO_PX - 0.01,
-      'una fila que pidiera 40 m de ventana no baja la sección más fina de ' +
-      R.MIN_CORTO_PX + ' px (queda en ' + redondo(cortoMin * sGlot, 1) + ')');
-  }
 
-  TE._tplPonerLista([]);
+  // EL TOPE DEL ANCHO. Sin él, un muro con mucho confinamiento estiraría la fila sin
+  // límite: a 4 px/cm, los 163 cm que pide uno con 80 cm de cabezal son 650 px por
+  // cuadro. Con tope, lo que no entra se DICE.
+  ok(PLAN_MURO.cuadros[0].caja.w <= R.ANCHO_CUADRO_MAX + 0.01,
+    'ningún cuadro pasa de ' + R.ANCHO_CUADRO_MAX + ' px de ancho (' +
+    redondo(PLAN_MURO.cuadros[0].caja.w, 0) + ')');
 }
 
 // ── R4b. LA VENTANA LLEGA AL CONFINAMIENTO ──────────────────────────────────
@@ -493,18 +482,33 @@ console.log('\nR4b — hasta dónde mirar lo dice el confinamiento, no un númer
     'y el extractor no nombra ni una tipología: mira la forma del reparto');
   // LO QUE NO CABE SE DICE. Un confinamiento más hondo que la ventana no se calla:
   // callarlo dejaría creer que el confinamiento termina donde termina el cuadro.
-  TE._tplPonerLista([t]);
-  const s = TE._tplMiniEscala();
-  const p = R.plan(generar(conCabezal), DEF_MURO, W, H,
-    Object.assign(optsDe(conCabezal), { escala: s, ventana: f.ventana, confin: f.confin }));
-  ok(p.ventana >= p.confin - 0.5 && !p.ventanaCorta,
-    'con este muro la ventana (' + redondo(p.ventana, 0) + ' cm) cubre el confinamiento (' +
-    redondo(p.confin, 0) + ' cm)');
-  const apretado = R.plan(generar(conCabezal), DEF_MURO, W, H,
-    Object.assign(optsDe(conCabezal), { escala: 3, ventana: f.ventana, confin: f.confin }));
-  ok(apretado.ventanaCorta && /OJO/.test(R.titulo(apretado, DEF_MURO, TE.EJE_DISPLAY)),
-    'y si a la escala de la lista no cupiera, el tooltip lo DICE en vez de callarlo');
-  TE._tplPonerLista([]);
+  // LO QUE NO CABE SE DICE. Un cabezal de 90 cm a 4 px/cm son 360 px, más de lo que el
+  // tope de ancho permite: el dibujo enseña el arranque y el título avisa. Callarlo
+  // dejaría creer que el confinamiento termina donde termina el cuadro.
+  const p = R.plan(generar(conCabezal), DEF_MURO, H,
+    Object.assign(optsDe(conCabezal), { ventana: f.ventana, confin: f.confin }));
+  ok(p.ventana < p.confin && p.ventanaCorta,
+    'la ventana (' + redondo(p.ventana, 0) + ' cm) no alcanza el confinamiento (' +
+    redondo(p.confin, 0) + ' cm) y el plan lo marca');
+  ok(/OJO/.test(R.titulo(p, DEF_MURO, TE.EJE_DISPLAY)),
+    'y el tooltip lo dice con los centímetros, no lo disimula');
+  // Con un cabezal chico sí entra, y entonces no se avisa de nada.
+  const chico = JSON.parse(JSON.stringify(MURO));
+  [-1, 1].forEach(function (lado, i) {
+    const a = lado < 0 ? -259 : 219, b = lado < 0 ? -219 : 259;
+    chico.componentes.push({ comp_id: 'CB' + i, tipologia: 'CB', figura: '101A', diam: 16,
+      cara: 'lateral', jerarquia: 2, plano_pieza: { orientacion: 'de_pie' },
+      dims: { A: { modo: 'auto' } },
+      distribucion: { modo: 'arreglo', sep: 12, activa: true,
+        rango: { eje: 'x', from: a, to: b, sep: 12 },
+        rango2: { eje: 'z', from: -7, to: 7, sep: 14 } } });
+  });
+  const fc = TE._tplMiniFila({ id: 9, tipo: 'muro', params: chico });
+  const pc = R.plan(generar(chico), DEF_MURO, H,
+    Object.assign(optsDe(chico), { ventana: fc.ventana, confin: fc.confin }));
+  ok(!pc.ventanaCorta && pc.ventana >= pc.confin,
+    'un cabezal de ' + redondo(pc.confin, 0) + ' cm sí entra en los ' +
+    redondo(pc.ventana, 0) + ' cm del cuadro, y ahí no se avisa de nada');
 }
 
 // ── R5. EL COLOR, POR PARÁMETRO ─────────────────────────────────────────────
@@ -558,7 +562,7 @@ console.log('\nR5 — el color entra por parámetro y es la paleta única del ed
       'y en su proporción real (' + redondo(r25 / r16, 3) + ' vs ' + redondo(25 / 16, 3) + ')');
     ok(tz.filter(x => x.punta)[0].engorde > 1,
       'el factor de engorde viaja en el trazo, para que el título pueda decirlo');
-    ok(/engordadas/.test(R.titulo(R.plan(pv, DEF_VIGA, W, H, Object.assign(optsDe(v), { escala: 0.933 })), DEF_VIGA, TE.EJE_DISPLAY)),
+    ok(/engordadas/.test(R.titulo(R.plan(pv, DEF_VIGA, H, optsDe(v)), DEF_VIGA, TE.EJE_DISPLAY)),
       'y el tooltip lo dice: los redondos van engordados, su proporción no');
     // Con escala de sobra el piso no actúa y el radio es el REAL.
     const t2 = R.encuadreVentana({ u0: -15, u1: 15, v0: -30, v1: 30 }, { x: 0, y: 0, w: 120, h: 240 }, 4);
@@ -573,8 +577,8 @@ console.log('\nR6 — pintar no muta nada');
 {
   const pls = generar(MURO);
   const antes = JSON.stringify(pls);
-  R.svg(pls, DEF_MURO, W, H, OPT_MURO);
-  R.plan(pls, DEF_MURO, W, H, OPT_MURO);
+  R.svg(pls, DEF_MURO, H, OPT_MURO);
+  R.plan(pls, DEF_MURO, H, OPT_MURO);
   ok(JSON.stringify(pls) === antes, 'los placements que entran salen intactos');
   // Y el dibujante no toca el DOM: se carga en un sandbox PELADO, sin `document`.
   const pelado = { console };
@@ -582,18 +586,18 @@ console.log('\nR6 — pintar no muta nada');
   vm.runInContext(R2D_SRC, pelado, { filename: 'render2d.js' });
   ok(!!pelado.ModeladorRender2D && typeof pelado.ModeladorRender2D.svg === 'function',
     'y carga sin document, sin window y sin el motor: es una función pura');
-  ok(pelado.ModeladorRender2D.svg(pls, DEF_MURO, W, H, OPT_MURO).length > 100,
+  ok(pelado.ModeladorRender2D.svg(pls, DEF_MURO, H, OPT_MURO).length > 100,
     'y dibuja igual ahí (si algún día necesita el DOM, este test lo dice antes que el navegador)');
 }
 
 // ── R7. EL HUECO ────────────────────────────────────────────────────────────
 console.log('\nR7 — lo que no se puede dibujar lo DICE');
 {
-  ok(R.svg([], DEF_MURO, W, H, OPT_MURO).indexOf('sin barras') >= 0,
+  ok(R.svg([], DEF_MURO, H, OPT_MURO).indexOf('sin barras') >= 0,
     'una receta sin barras devuelve un hueco que lo dice, no una silueta inventada');
-  ok(R.svg(PLS_MURO, { u: 'x', v: 'x' }, W, H, OPT_MURO).indexOf('sin plano') >= 0,
+  ok(R.svg(PLS_MURO, { u: 'x', v: 'x' }, H, OPT_MURO).indexOf('sin plano') >= 0,
     'un plano imposible tampoco se adivina');
-  const h = R.hueco(W, H, 'x');
+  const h = R.hueco(200, H, 'x');
   ok(/stroke-dasharray/.test(h) && h.indexOf('<path') < 0, 'el hueco es un marco punteado, no un dibujo');
   ok(TE._tplMini(null).indexOf('tplMiniSin') >= 0 &&
      TE._tplMini({ id: 1 }).indexOf('tplMiniSin') >= 0,
@@ -627,7 +631,7 @@ console.log('\nR8 — el rótulo dice el plano, la rebanada y el extremo; y NO d
   ok(ini > 0 && lista.indexOf('esquema') < 0 && lista.indexOf('>Sección</th>') >= 0,
     'ni en la cabecera de la columna del gestor');
   // La viga cabe entera: su rótulo no puede hablar de extremos.
-  const pv = R.plan(PLS_VIGA, DEF_VIGA, W, H, OPT_VIGA);
+  const pv = R.plan(PLS_VIGA, DEF_VIGA, H, OPT_VIGA);
   ok(!/extremo/.test(R.titulo(pv, DEF_VIGA, TE.EJE_DISPLAY)),
     'y cuando se ve el elemento entero no se menciona ningún extremo');
 }
@@ -670,7 +674,7 @@ console.log('\nR10 — el costo, medido');
     const a = process.hrtime.bigint(); for (let i = 0; i < n; i++) f();
     return Number(process.hrtime.bigint() - a) / n / 1e6; };
   const msMotor = med(15, () => generar(MURO));
-  const msDibujo = med(60, () => R.svg(PLS_MURO, DEF_MURO, W, H, OPT_MURO));
+  const msDibujo = med(60, () => R.svg(PLS_MURO, DEF_MURO, H, OPT_MURO));
   ok(msMotor + msDibujo < 60, 'una fila cuesta ' + redondo(msMotor, 2) + ' ms de motor (' +
     PLS_MURO.length + ' barras) + ' + redondo(msDibujo, 2) + ' ms de dibujo');
   ok(msDibujo < msMotor,

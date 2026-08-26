@@ -293,27 +293,24 @@
 
   /* EL CORTE de la fila. El SVG lo arma render2d.js -el mismo dibujante de los
      cuadrantes del editor- corriendo el motor real sobre la receta que ahora viaja en
-     GET /templates; aca solo se le reserva el sitio y se le pone marco, para que una
-     fila sin dibujo (backend viejo, receta rota) no descuadre la tabla.
-     420x130 (26-ago): el usuario lo pidio "mas ampliado y preciso" y despues "que
-     podamos agrandar las secciones Y ver mas del muro; para eso solo podemos alargar".
-     Tiene razon y hay una identidad detras: a lo ancho de un cuadro, escala (px/cm) x
-     centimetros cubiertos = ancho util. Con la celda fija, engordar el hormigon se
-     paga en cobertura y al reves; lo unico que sube los dos lados es ENSANCHAR.
-     Medido sobre su lista (tres muros de 20 cm, uno con cabezal, mas una viga):
-     232x110 daba 0,85 px/cm = 17 px de espesor y 123 cm por cuadro; 420x130 da 1,57
-     px/cm = 31 px y 127 cm. El ALTO es el presupuesto por el otro lado: la viga, que
-     se dibuja ENTERA, tiene que caber en el (60 cm en 100 px utiles = 1,57 px/cm).
-     El numero vive TAMBIEN en template_editor.js (TPL_MINI_W/H): el SVG trae su
-     width/height, esto solo evita que un fallo de carga descuadre la columna. */
+     GET /templates; aca solo se le reserva el sitio, para que una fila sin dibujo
+     (backend viejo, receta rota) no descuadre la tabla.
+     EL ANCHO NO SE FIJA (26-ago): el corte LLENA EL ALTO del cuadro -de ahi sale la
+     escala de cada fila- y el ancho es cuanto muro hay que ensenar por esa escala, o
+     sea que VARIA por fila (medido: 200 px una viga vista entera, 449 un muro de 30 cm,
+     576 uno de 20 con el tope puesto). Por eso aca no hay width en el svg: solo el
+     ALTO, que es el que manda, y un max-width de cortesia. La celda reserva el maximo
+     y el dibujo va centrado.
+     El alto vive TAMBIEN en template_editor.js (TPL_MINI_H) y el tope de ancho en
+     render2d.js (ANCHO_CUADRO_MAX): esto solo evita que un fallo de carga los mueva. */
   #tplGuardadosLista .tplMini { display:inline-block; line-height:0; border-radius:5px;
-    border:1px solid #eceff1; background:#fff; min-width:420px; min-height:130px; }
-  #tplGuardadosLista .tplMini svg { display:block; width:420px; height:130px; }
-  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:432px; }
+    border:1px solid #eceff1; background:#fff; min-height:116px; }
+  #tplGuardadosLista .tplMini svg { display:block; height:116px; max-width:576px; }
+  #tplGuardadosLista td.tplMiniCel { padding:5px 8px 5px 2px; width:588px; text-align:center; }
   /* El GUION del que no hay dibujo: mismo trato que el resto de los datos que el
      servidor no manda (ver _tplKpi). Ocupa el mismo alto para no saltar la fila. */
-  #tplGuardadosLista .tplMiniSin { display:flex; align-items:center; justify-content:center;
-    width:420px; height:130px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
+  #tplGuardadosLista .tplMiniSin { display:inline-flex; align-items:center; justify-content:center;
+    width:200px; height:116px; border-radius:5px; border:1px dashed #e3e8ee; color:#b0bec5;
     font-size:11px; }
 
   /* INSIGNIA DE USO de la fila. El template que nadie cargó todavía lo DICE con

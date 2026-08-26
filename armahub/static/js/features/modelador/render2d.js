@@ -70,6 +70,13 @@
   var PASOS_MIN_VENTANA = 2;
 
   function _num(v) { return Math.round(Number(v) * 100) / 100; }
+  // La medida COMO SE ESCRIBIÓ: 20 y no 20.0, 2.5 y no 2.50. Es cifra del usuario —no
+  // se le agregan decimales que él no puso— y desde que cada fila usa su propia escala
+  // es lo único que dice el tamaño de verdad.
+  function _medida(v) {
+    var n = Math.round(Number(v) * 10) / 10;
+    return String(n === Math.round(n) ? Math.round(n) : n);
+  }
   function _esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -440,139 +447,80 @@
   // EL PLAN DE LA MINIATURA — qué se va a dibujar, antes de dibujarlo
   // ---------------------------------------------------------------------------
   // Se separa del SVG a propósito: el TOOLTIP tiene que decir exactamente lo que la
-  // imagen muestra (qué plano, qué rebanada, si son extremos y de qué largo), y si esa
-  // frase se derivara por su cuenta sería una segunda verdad que puede desmentir al
-  // dibujo. Acá se decide UNA vez y el texto y los píxeles leen lo mismo.
+  // imagen muestra (qué plano, qué mide, qué rebanada, si son extremos y cuánto se ve),
+  // y si esa frase se derivara por su cuenta sería una segunda verdad que puede
+  // desmentir al dibujo. Acá se decide UNA vez y el texto y los píxeles leen lo mismo.
   //
-  // LA ESCALA ES UN DATO QUE ENTRA, NO UNA DECISIÓN DE CADA MINIATURA (26-ago).
-  // Antes cada fila encuadraba su propio contenido en su caja, así que cada una salía
-  // a su px/cm: comparar dos templates ENGAÑABA — un muro se veía más grueso que otro
-  // por cómo lo encuadramos, no porque lo fuera. Ahora la lista decide UN px/cm
-  // (`escalaComun`) y todas las filas dibujan con él. Que una miniatura se vea más
-  // gruesa que otra pasa a ser un HECHO del elemento, no un artefacto del dibujo.
+  // ESTO ES UNA PREVISUALIZACIÓN, NO UN PLANO (26-ago, decisión del usuario).
+  // Hubo una versión con ESCALA COMÚN a toda la lista, para que comparar dos filas a
+  // ojo significara algo. Se probó y él la descartó con el argumento correcto: «es que
+  // esto es una previsualización… entonces nos da lo mismo la escala, queremos ver un
+  // detalle claro de qué se trata el template». Normalizar la escala obliga a que el
+  // elemento más exigente encoja a todos los demás, y lo que se pierde —el fierro
+  // grande— es justo lo que la columna vino a mostrar.
   //
-  // Y CON ESO, EL ENCUADRE DEJA DE SER UNA REGLA APARTE: a la escala común,
-  //   · el plano CABE en la caja  → UN cuadro con el elemento entero;
-  //   · no cabe                   → DOS cuadros lado a lado, uno por extremo.
-  // No hay umbral de legibilidad que ajustar a mano: la escala ya está puesta para que
-  // el lado corto del elemento MÁS GRUESO de la lista llene la caja, y los demás salen
-  // más finos porque LO SON.
+  // ASÍ QUE LA REGLA ES OTRA, Y ES UNA SOLA: **el corte LLENA EL ALTO del cuadro.**
+  //   escala = alto útil / lo que mide el corte a lo alto
+  // De ahí sale todo lo demás. Un muro de 15 cm y uno de 60 salen los dos con el mismo
+  // grosor en pantalla: el fierro se ve grande siempre, que es el pedido. Una viga que
+  // se dibuja entera llena el alto igual, con sus 60 cm de canto, y por eso sale
+  // angosta. No hay una rama por elemento: hay un alto que se llena.
+  //
+  // LO QUE ESO CUESTA, Y CÓMO SE PAGA. Dos filas dejan de ser comparables a ojo: que un
+  // corte se vea más grueso que otro ya NO significa que lo sea. Se compensa diciendo
+  // las medidas: el rótulo lleva SIEMPRE los centímetros reales del hormigón (ver
+  // `rotulos`), así que el tamaño lo dan los números y no el dibujo. Callarlo sería
+  // dejar que la imagen afirme algo que no sostiene.
+  //
+  // Y EL ANCHO PASA A SER VARIABLE, porque ya no lo fija nadie: es cuánto elemento hay
+  // que enseñar, por la escala que acaba de salir del alto. Va ACOTADO (ANCHO_CUADRO_MAX)
+  // para que un muro con muchísimo confinamiento no estire la fila sin límite; cuando el
+  // tope corta, el plan lo DICE (`ventanaCorta`) con los centímetros que quedaron fuera.
   //
   // POR QUÉ SIEMPRE LOS DOS EXTREMOS y no uno solo cuando el fierro «parece simétrico»:
   // mostrar un extremo AFIRMA que el otro es igual. Es una afirmación sobre el fierro,
   // derivada de leer la receta, y si se equivoca miente justo donde más importa. Con
-  // los dos cuadros no se afirma nada: se muestran los dos extremos y quien mira
-  // compara.
+  // los dos cuadros no se afirma nada: se muestran los dos y quien mira compara.
   //
-  // Tamaño y reparto de la miniatura, en px del viewBox. Va en UNA tabla porque el
-  // plan, el dibujo y la hoja de estilo tienen que estar de acuerdo sobre el mismo
-  // rectángulo: `cabecera` es la franja del rótulo del plano, `pie` la de los rótulos
-  // de cada cuadro, `hueco` la calle entre los dos y `aire` el margen que se deja
-  // alrededor del elemento para que su borde no quede pegado al marco (y se vea que
-  // ahí TERMINA, en vez de parecer que sigue).
+  // Reparto de la miniatura, en px del viewBox. Va en UNA tabla porque el plan, el
+  // dibujo y la hoja de estilo tienen que estar de acuerdo sobre el mismo rectángulo:
+  // `cabecera` es la franja del rótulo del plano, `pie` la de los rótulos de cada
+  // cuadro, `hueco` la calle entre los dos y `aire` el margen alrededor del elemento
+  // para que su borde no quede pegado al marco (y se vea que ahí TERMINA).
   var LAYOUT = { pad: 3, cabecera: 12, pie: 12, hueco: 10, aire: 3 };
 
-  // Las cajas de dibujo, en px del viewBox. UNA sola cuenta para el plan, la escala
-  // común y el SVG: si cada uno la hiciera por su lado, la escala que decide la lista
-  // podría no ser la que el cuadro es capaz de pintar.
-  function cajas(W, H, lay) {
+  // EL TOPE DEL ANCHO DE UN CUADRO, en px. Es el límite que el propio usuario previó:
+  // «si hacemos algo con demasiado confinamiento se pierde la gracia, entonces debe
+  // estar limitado». Con el corte llenando el alto, un muro de 20 cm sale a 4 px/cm,
+  // así que 280 px son ~69 cm de muro por extremo: el cabezal y un par de barras del
+  // reparto corrido, que es lo que se vino a mirar.
+  //
+  // NO HAY CÓMO TENER LAS DOS COSAS, y conviene tenerlo escrito: el ancho de un cuadro
+  // es `ventana × escala`, y la escala ya la fijó el alto, así que cada centímetro de
+  // muro que se pide se paga en píxeles de fila. Enseñar los 163 cm que pide un muro
+  // con 80 cm de cabezal costaría ~650 px POR CUADRO. Por eso hay tope, y por eso lo
+  // que no entra se DICE (`ventanaCorta`) en vez de disimularse.
+  var ANCHO_CUADRO_MAX = 280;
+  // Y un ancho MÍNIMO para el SVG entero: el rótulo lleva las medidas del hormigón y
+  // tiene que caber aunque el dibujo salga angosto (una viga vista de canto son 40 px).
+  var ANCHO_MIN = 200;
+
+  // Las cajas de dibujo, en px del viewBox. `alto` manda; el ancho lo devuelve el plan.
+  function cajas(alto, lay) {
     lay = lay || LAYOUT;
-    var cw = W - 2 * lay.pad, ch = H - lay.cabecera - lay.pie - 2 * lay.pad;
-    return { x: lay.pad, y: lay.cabecera + lay.pad, w: cw, h: ch,
-      fw: (cw - lay.hueco) / 2, aire: lay.aire };
+    var ch = alto - lay.cabecera - lay.pie - 2 * lay.pad;
+    return { x: lay.pad, y: lay.cabecera + lay.pad, h: ch, util: ch - 2 * lay.aire, aire: lay.aire };
   }
 
-  // ---------------------------------------------------------------------------
-  // LA ESCALA COMÚN DE LA LISTA
-  // ---------------------------------------------------------------------------
-  // Cada fila EXIGE un techo de px/cm y gana el menor. Dos exigencias, las dos
-  // medidas, ninguna heurística:
-  //
-  //   1) EL LADO CORTO TIENE QUE CABER ENTERO. El corto de una sección es su espesor
-  //      (o su ancho): recortarlo sería cortar el elemento por donde nunca se corta.
-  //      Se le reserva la dimensión MENOR de las cajas, que es la conservadora: así da
-  //      igual que el lado corto acabe dibujado en horizontal o en vertical, y da igual
-  //      si la fila termina en uno o en dos cuadros.
-  //
-  //   2) LA VENTANA TIENE QUE CABER. `ventana` es cuánto elemento hay que mostrar por
-  //      extremo y la manda quien llama, porque sale de la RECETA: hasta dónde llega el
-  //      confinamiento y, como mínimo, dos separaciones del reparto. Va acotada al
-  //      propio elemento: uno más corto que su ventana se ve entero y no exige más.
-  //
-  // CUÁL DE LAS DOS MANDA, Y POR QUÉ (medido, 26-ago). La primera versiÓn de esto
-  // aplicaba las dos exigencias a secas y la biblioteca de prueba dio 0,64 px/cm: un
-  // muro de 60 cm con 123 cm de confinamiento arrastraba a todos, y el muro de 20 del
-  // usuario —su caso principal— pasaba de 27 px de espesor a 13. O sea que «normalizar»
-  // empeoraba justo lo que se venía a mejorar.
-  // Así que las dos se aplican, pero con un PISO: la ventana puede bajar la escala
-  // mientras la SECCIÓN MÁS FINA de la lista siga legíndose. Ese piso es un dato
-  // medido: las dos cortinas de un muro caen al 15% y al 85% del espesor —separadas el
-  // 70% del lado corto—, así que con 26 px de espesor quedan a 18 px una de otra, que
-  // es donde se leen cómodamente como dos líneas con hormigón en medio.
-  //
-  // POR QUÉ 26 Y NO 14 (26-ago, segunda medición). Con el piso en 14 la exigencia de la
-  // VENTANA se comía la sección sin que nada la parara: en la lista del usuario —tres
-  // muros de 20 cm y una viga— UNA sola fila con 80 cm de cabezal pedía 123 cm de
-  // ventana y dejaba a TODOS los muros en 17 px de espesor («se homologó pero se achicó
-  // todo»). Lo que topaba NO era la viga: quitarla de la lista daba exactamente la
-  // misma escala. Con el piso en 26 la sección se defiende, la ventana cede, y cuando
-  // cede de más el plan lo DICE (`ventanaCorta`) en vez de encoger la lista en silencio.
-  //
-  // LA IDENTIDAD QUE MANDA, y conviene tenerla a mano: a lo ancho de un cuadro,
-  //     escala (px/cm)  ×  centímetros que cubre  =  ancho útil del cuadro (px)
-  // O sea que subir la escala SIN ensanchar la celda se paga en cobertura, y al revés.
-  // Por eso el ajuste de esta ronda fue ensanchar: es lo único que sube las dos.
-  //
-  // S_MIN/S_MAX son los topes duros de una lista degenerada (un solo elemento enorme,
-  // o una biblioteca de puros elementos finísimos).
-  var S_MIN = 0.35, S_MAX = 3, MIN_CORTO_PX = 26;
-
-  // CUÁNDO SE PUEDE RECORTAR. Un elemento sólo se parte en dos extremos si de verdad
-  // es ALARGADO: cortarle la profundidad a una viga de 30 × 60 sería tan absurdo como
+  // CUÁNDO SE PUEDE RECORTAR. Un elemento sólo se parte en dos extremos si de verdad es
+  // ALARGADO: cortarle la profundidad a una viga de 30 × 60 sería tan absurdo como
   // cortarle el espesor a un muro. La relación es de FORMA (largo/corto), no de tipo:
-  // un muro corto y cuadrado cae solo del lado de «entero».
+  // un muro corto y rechoncho cae solo del lado de «entero».
   var RELACION_RECORTE = 4;
-
   function recortable(corto, largo) { return (largo / corto) >= RELACION_RECORTE; }
 
-  // fila = { corto, largo, ventana } en cm → { corto: techo por la sección,
-  //                                            vent: techo por la ventana }, en px/cm.
-  function techoDeFila(fila, cj) {
-    var corto = Math.max(Number(fila.corto) || 0, 1e-6);
-    var largo = Math.max(Number(fila.largo) || 0, 1e-6);
-    var vent = Math.min(largo, Math.max(Number(fila.ventana) || 0, 1e-6));
-    var dispCorto = Math.min(cj.h, cj.fw) - 2 * cj.aire;
-    if (!recortable(corto, largo)) {
-      // No se recorta: tiene que caber ENTERO, y eso es lo que exige.
-      var t = Math.min(dispCorto / corto, (cj.h - 2 * cj.aire) / largo,
-        (cj.w - 2 * cj.aire) / largo);
-      return { corto: t, vent: t };
-    }
-    return { corto: dispCorto / corto, vent: (cj.fw - cj.aire) / vent };
-  }
-
-  // escalaComun(filas, W, H, opts) → el px/cm de TODA la lista.
-  function escalaComun(filas, W, H, opts) {
-    opts = opts || {};
-    var cj = cajas(W, H, opts.layout);
-    var sCorto = Infinity, sVent = Infinity, cortoMin = Infinity;
-    for (var i = 0; i < (filas || []).length; i++) {
-      var t = techoDeFila(filas[i], cj);
-      if (isFinite(t.corto) && t.corto > 0 && t.corto < sCorto) sCorto = t.corto;
-      if (isFinite(t.vent) && t.vent > 0 && t.vent < sVent) sVent = t.vent;
-      var c = Number(filas[i].corto);
-      if (isFinite(c) && c > 0 && c < cortoMin) cortoMin = c;
-    }
-    if (!isFinite(sCorto)) return 1;
-    // El PISO: la sección más fina de la lista no puede quedar por debajo de
-    // MIN_CORTO_PX. Ver la nota de arriba — sin él, una sola fila con mucho
-    // confinamiento deja a toda la lista sin espesor legible.
-    var piso = isFinite(cortoMin) ? Math.min(sCorto, MIN_CORTO_PX / cortoMin) : 0;
-    var s = Math.max(piso, Math.min(sCorto, sVent));
-    return Math.max(S_MIN, Math.min(S_MAX, s));
-  }
-
-  function plan(placements, def, W, H, opts) {
+  // plan(placements, def, alto, opts) — `alto` en px; el ANCHO sale calculado (base.W).
+  function plan(placements, def, alto, opts) {
     opts = opts || {};
     var lay = opts.layout || LAYOUT;
     var banda = (opts.rebanada === false) ? null : rebanada(placements, def, opts);
@@ -580,69 +528,92 @@
     var bb = bbox(pls, proyector(def), opts.rect);
     if (!bb) return null;
 
-    var cj = cajas(W, H, lay);
-    if (!(cj.w > 0) || !(cj.h > 0)) return null;
+    var cj = cajas(alto, lay);
+    if (!(cj.util > 0)) return null;
     var w = Math.max(bb.u1 - bb.u0, 1e-6), h = Math.max(bb.v1 - bb.v0, 1e-6);
     var porU = (w >= h);
     var largoDim = porU ? w : h, cortoDim = porU ? h : w;
+    var parte = recortable(cortoDim, largoDim);
 
-    // LA VENTANA que esta fila NECESITA por extremo. La manda quien llama, porque sale
-    // de la receta (hasta dónde llega el confinamiento). Si no viaja, se mide el paso
-    // del reparto sobre lo que el motor produjo: con menos de DOS separaciones el
-    // recorte enseñaría un fierro solitario en vez de un patrón.
+    // LA VENTANA que hay que enseñar por extremo: hasta donde llega el confinamiento
+    // más un par de barras del reparto corrido, para que se vea DÓNDE TERMINA. La manda
+    // quien llama, porque sale de la receta; si no viaja, se mide el paso del reparto
+    // sobre lo que el motor produjo.
     var paso = pasoTipico(pls, porU ? def.u : def.v);
-    var pedida = Math.max(Number(opts.ventana) || 0, PASOS_MIN_VENTANA * paso);
-    // LA ESCALA: la común de la lista o —si esta miniatura va sola— la que esta misma
-    // fila exige, con exactamente la misma cuenta.
-    var s = Number(opts.escala) > 0 ? Number(opts.escala)
-      : escalaComun([{ corto: cortoDim, largo: largoDim, ventana: pedida }], W, H, opts);
+    var pedida = Math.min(largoDim, Math.max(Number(opts.ventana) || 0, PASOS_MIN_VENTANA * paso));
 
     var base = {
       banda: banda, plsBanda: pls, bbox: bb, rect: opts.rect || null,
-      escala: s, paso: paso, pedida: pedida, confin: Number(opts.confin) || 0,
-      engorde: engordeRedondos(pls, def, s, opts)
+      paso: paso, pedida: pedida, confin: Number(opts.confin) || 0, H: alto
     };
-    // ¿ENTRA ENTERO A ESA ESCALA? Ésa es toda la regla del encuadre — más la condición
-    // de que el elemento sea de verdad ALARGADO (ver RELACION_RECORTE): a un elemento
-    // rechoncho no se le parte nada aunque no quepa, porque el recorte le cortaría una
-    // medida que la sección necesita entera.
-    if (!recortable(cortoDim, largoDim) ||
-        (w * s <= cj.w - 2 * cj.aire && h * s <= cj.h - 2 * cj.aire)) {
+    var techo = (opts.anchoMax != null) ? Number(opts.anchoMax) : ANCHO_CUADRO_MAX;
+
+    // --- UN SOLO CUADRO: el elemento entero ---------------------------------
+    // Cae aquí lo que no es alargado, y también lo alargado cuya ventana ya se lo come
+    // completo (dos cuadros dirían lo mismo).
+    if (!parte || pedida >= largoDim - 0.01) {
+      // El corte llena el ALTO; si con eso el ancho se pasa del tope, manda el tope.
+      var sE = Math.min(cj.util / h, (techo - cj.aire) / w);
+      var anchoE = w * sE + 2 * cj.aire;
+      base.escala = sE;
       base.modo = 'entero';
-      base.ventana = largoDim;
+      base.ventana = w;
       base.ventanaCorta = false;
+      base.W = Math.max(ANCHO_MIN, Math.round(anchoE + 2 * lay.pad));
       base.cuadros = [{
-        caja: { x: cj.x, y: cj.y, w: cj.w, h: cj.h },
+        caja: { x: (base.W - anchoE) / 2, y: cj.y, w: anchoE, h: cj.h },
         vent: { u0: bb.u0, u1: bb.u1, v0: bb.v0, v1: bb.v1 }, extremo: 0
       }];
+      base.engorde = engordeRedondos(pls, def, sE, opts);
       return base;
     }
 
-    // DOS CUADROS. Se recorta por el eje LARGO del plano —el que no cabe—, que puede
-    // ser el horizontal o el vertical: no se da por hecho que un plano alargado lo sea
-    // siempre a lo ancho.
-    var FL = porU ? cj.fw : cj.h;
-    // A escala fija la ventana ya no se ELIGE: es lo que cabe. El aire va SÓLO por
-    // fuera —ahí el elemento TERMINA— y por dentro el dibujo llega al borde del cuadro,
-    // porque ahí el elemento SIGUE y lo que hay es un corte.
-    var vent = FL / s, fuera = cj.aire / s;
-    base.ventana = vent - fuera;
-    // ¿CUPO EL CONFINAMIENTO? Ésa es la pregunta, y no si cupo la ventana ideal: lo
-    // que no se puede callar es que quede fierro de extremo FUERA del cuadro, porque
-    // entonces el dibujo deja creer que el confinamiento termina donde termina el
-    // cuadro. Que falte el respiro de una separación más no engaña a nadie.
-    base.ventanaCorta = (base.confin > 0 && base.ventana < base.confin - 0.5);
+    // --- DOS CUADROS: un extremo cada uno ------------------------------------
+    // Se recorta por el eje LARGO del plano, que puede ser el horizontal o el vertical:
+    // no se da por hecho que un plano alargado lo sea siempre a lo ancho.
+    // Lo que se dibuja A LO ALTO llena el alto: el lado corto si el recorte va a lo
+    // ancho, y la propia ventana si va a lo alto.
+    var s = cj.util / (porU ? cortoDim : pedida);
+    var vent = pedida;
+    // El cuadro mide la ventana MÁS el aire de FUERA (la punta del elemento tiene que
+    // verse terminar); por dentro el dibujo llega al borde, porque ahí el elemento
+    // SIGUE y lo que hay es un corte.
+    var anchoCuadro = (porU ? vent : cortoDim) * s + cj.aire;
+    if (anchoCuadro > techo) {
+      // El tope corta. A lo ancho se recorta la ventana; a lo alto hay que bajar la
+      // escala, que es la única forma de que el ancho entre.
+      anchoCuadro = techo;
+      if (porU) {
+        vent = (anchoCuadro - cj.aire) / s;
+      } else {
+        s = (anchoCuadro - cj.aire) / cortoDim;
+        vent = cj.util / s;
+      }
+    }
+    var aireCm = cj.aire / s;
+    base.escala = s;
     base.modo = 'extremos';
-    var a0 = (porU ? bb.u0 : bb.v0) - fuera, a1 = (porU ? bb.u1 : bb.v1) + fuera;
+    base.ventana = vent;
+    // ¿CUPO EL CONFINAMIENTO? Ésa es la pregunta, no si cupo la ventana ideal: lo que
+    // no se puede callar es que quede fierro de extremo FUERA del cuadro, porque
+    // entonces el dibujo deja creer que el confinamiento termina donde termina el marco.
+    base.ventanaCorta = (base.confin > 0 && vent < base.confin - 0.5);
+    base.W = Math.max(ANCHO_MIN, Math.round(2 * anchoCuadro + lay.hueco + 2 * lay.pad));
+    var x0 = (base.W - (2 * anchoCuadro + lay.hueco)) / 2;
+    // El aire va por FUERA —ahí el elemento termina— y por dentro el dibujo llega al
+    // borde del cuadro, porque ahí el elemento SIGUE y lo que hay es un corte.
+    var a0 = (porU ? bb.u0 : bb.v0) - aireCm, a1 = (porU ? bb.u1 : bb.v1) + aireCm;
+    var span = vent + aireCm;
     base.cuadros = [-1, 1].map(function (lado, idx) {
-      var lo = (lado < 0) ? a0 : (a1 - vent), hi = (lado < 0) ? (a0 + vent) : a1;
+      var lo = (lado < 0) ? a0 : (a1 - span), hi = (lado < 0) ? (a0 + span) : a1;
       return {
-        caja: { x: cj.x + idx * (cj.fw + lay.hueco), y: cj.y, w: cj.fw, h: cj.h },
+        caja: { x: x0 + idx * (anchoCuadro + lay.hueco), y: cj.y, w: anchoCuadro, h: cj.h },
         vent: porU ? { u0: lo, u1: hi, v0: bb.v0, v1: bb.v1 }
           : { u0: bb.u0, u1: bb.u1, v0: lo, v1: hi },
         extremo: lado, eje: porU ? def.u : def.v
       };
     });
+    base.engorde = engordeRedondos(pls, def, s, opts);
     return base;
   }
 
@@ -747,14 +718,18 @@
   //                 hormigon, hormigonBorde, recub, rotulo, plan }
   // `opts.plan` es el plan YA calculado: quien necesita el tooltip lo pide primero (es
   // el que sabe qué se va a ver) y lo pasa, en vez de que se derive dos veces.
-  function svg(placements, def, W, H, opts) {
+  // El ANCHO ya no entra: lo devuelve el plan (p.W), porque sale de cuánto elemento hay
+  // que enseñar por la escala que fijó el alto. Varía de una fila a otra y eso es el
+  // punto: la celda reserva el máximo y cada dibujo ocupa lo suyo.
+  function svg(placements, def, alto, opts) {
     opts = opts || {};
-    W = Number(W) || 232; H = Number(H) || 96;
-    if (!def || !def.u || !def.v || !def.depth) return hueco(W, H, 'sin plano');
-    if (!placements || !placements.length) return hueco(W, H, 'sin barras');
-    var p = opts.plan || plan(placements, def, W, H, opts);
-    if (!p) return hueco(W, H, 'sin geometría');
+    alto = Number(alto) || 116;
+    if (!def || !def.u || !def.v || !def.depth) return hueco(ANCHO_MIN, alto, 'sin plano');
+    if (!placements || !placements.length) return hueco(ANCHO_MIN, alto, 'sin barras');
+    var p = opts.plan || plan(placements, def, alto, opts);
+    if (!p) return hueco(ANCHO_MIN, alto, 'sin geometría');
     var lay = opts.layout || LAYOUT;
+    var W = p.W, H = p.H;
     var rot = rotulos(p, def, opts.letras);
     var partes = [_abre(W, H)];
     partes.push(_texto(W / 2, lay.cabecera - 3, rot.cabecera, 8, opts.rotulo || TINTA.rotulo));
@@ -785,6 +760,13 @@
     var L = letras || {};
     function l(e) { return L[e] || String(e).toUpperCase(); }
     var cab = l(def.u) + l(def.v);
+    // LAS MEDIDAS DEL HORMIGÓN, SIEMPRE. Desde que cada fila usa su propia escala
+    // (ver `plan`), el dibujo ya no dice el tamaño: lo dicen estos dos números. Sin
+    // ellos la miniatura dejaría creer que un muro de 15 cm y uno de 60 son iguales,
+    // porque los dos llenan el alto del cuadro.
+    if (p.rect && p.rect.W > 0 && p.rect.H > 0) {
+      cab += ' · ' + _medida(p.rect.W) + ' × ' + _medida(p.rect.H) + ' cm';
+    }
     if (p.banda) cab += ' · rebanada ' + Math.round(p.banda.esp) + ' cm en ' + l(def.depth);
     var pies = p.cuadros.map(function (cu) {
       if (!cu.extremo) return '';
@@ -808,8 +790,8 @@
         'unas barras sobre otras.';
     }
     if (p.modo === 'extremos') {
-      t += ' A la escala de la lista el elemento no cabe entero, así que van sus DOS ' +
-        'extremos: ' + Math.round(p.ventana) + ' cm cada uno.';
+      t += ' El elemento es demasiado alargado para leerse entero, así que van sus DOS ' +
+        'extremos: ' + Math.round(p.ventana) + ' cm de largo cada uno.';
       // SI LA VENTANA NO LLEGÓ AL FINAL DEL CONFINAMIENTO HAY QUE DECIRLO: callarlo
       // dejaría creer que el confinamiento termina donde termina el cuadro.
       if (p.ventanaCorta) {
@@ -823,10 +805,13 @@
         (Math.round(p.engorde * 10) / 10) + ' para que la más fina se vea a este tamaño;' +
         ' entre ellas sí guardan su proporción real.';
     }
-    // TODAS las miniaturas de la lista van a la MISMA escala, y eso se dice: es la
-    // diferencia entre «este muro es más grueso» y «este muro se dibujó más grande».
-    t += ' Escala de la lista: ' + (Math.round(p.escala * 100) / 100) + ' px/cm — la misma ' +
-      'en todas las filas, para que comparar dos templates signifique algo.';
+    // CADA FILA VA A SU ESCALA, y hay que decirlo: es la diferencia entre «este muro es
+    // más grueso» y «este muro se dibujó más grande». El corte llena el alto del cuadro
+    // en todas las filas, así que el tamaño en pantalla NO compara: comparan los
+    // números del rótulo, que son los centímetros reales.
+    t += ' Es una previsualización: el corte se dibuja llenando el alto del cuadro (' +
+      (Math.round(p.escala * 100) / 100) + ' px/cm en esta fila), así que su tamaño en ' +
+      'pantalla no se puede comparar con el de otra fila — las medidas van en el rótulo.';
     return t;
   }
 
@@ -840,10 +825,10 @@
     tX: tX, tY: tY, tramo: tramo,
     // la rebanada y el encuadre, sueltos (los tests y el gestor los leen)
     rebanada: rebanada, filtrar: filtrar, pasoTipico: pasoTipico, enVentana: _enVentana,
-    escalaComun: escalaComun, techoDeFila: techoDeFila, cajas: cajas,
+    cajas: cajas,
     // números con nombre, para no cazarlos en el código
-    REBANADA_CM: REBANADA_CM, S_MIN: S_MIN, S_MAX: S_MAX,
-    MIN_CORTO_PX: MIN_CORTO_PX, RELACION_RECORTE: RELACION_RECORTE, recortable: recortable,
+    REBANADA_CM: REBANADA_CM, ANCHO_CUADRO_MAX: ANCHO_CUADRO_MAX, ANCHO_MIN: ANCHO_MIN,
+    RELACION_RECORTE: RELACION_RECORTE, recortable: recortable,
     PASOS_MIN_VENTANA: PASOS_MIN_VENTANA, LAYOUT: LAYOUT, TINTA: TINTA
   };
   global.ModeladorRender2D = API;
