@@ -3360,8 +3360,15 @@
   function _tipoElemento() {
     return (ST.receta && ST.receta.tipo) || ST.elemento || 'viga';
   }
+  // Los planos de UN tipo de elemento. Se separó de _defsPlanos() porque el Gestor de
+  // templates necesita los del tipo de CADA FILA, no los del template que está abierto
+  // en el editor — y ese lookup (con su fallback) tiene que ser el mismo, o la
+  // miniatura acabaría dibujando un plano distinto del que rotula el cuadrante.
+  function _planosDe(tipo) {
+    return PLANOS_POR_ELEMENTO[String(tipo || '').toLowerCase()] || PLANOS_POR_ELEMENTO.viga;
+  }
   function _defsPlanos() {
-    return PLANOS_POR_ELEMENTO[_tipoElemento()] || PLANOS_POR_ELEMENTO.viga;
+    return _planosDe(_tipoElemento());
   }
 
   // BUG 8 — TÍTULOS por EJE. El nombre semántico ('SECCIÓN'/'A LO LARGO'/'PLANTA') es
@@ -14311,8 +14318,17 @@
     if (!t || t.seccion === undefined) {
       return '<span class="tplMiniSin" title="Este servidor no manda todavía el resumen de la sección">—</span>';
     }
-    return '<span class="tplMini" title="' + _esc(M.titulo(t.seccion)) + '">' +
-      M.svg(t.seccion) + '</span>';
+    // EL PLANO SALE DE PLANOS_POR_ELEMENTO, la MISMA tabla con la que el editor rotula
+    // sus cuadrantes — no de una lista de tipos escrita acá. Por eso un muro se dibuja
+    // en su corte HORIZONTAL (largo × espesor, «SECCIÓN · YX»), donde se ven las dos
+    // cortinas y las trabas, y una viga en su corte transversal; y por eso un elemento
+    // nuevo hereda el criterio el día que se agregue a la tabla, sin tocar esto.
+    // El rótulo de ejes viaja al tooltip por lo mismo: que la miniatura y el editor
+    // llamen al plano por el mismo nombre.
+    var def = _planosDe(t.tipo).seccion;
+    var rotulo = def ? _ejeRotulo(def.u, def.v) : '';
+    return '<span class="tplMini" title="' + _esc(M.titulo(t.seccion, def, rotulo)) + '">' +
+      M.svg(t.seccion, def) + '</span>';
   }
 
   // Pinta la card entera desde el estado: _tplLista (lo que mandó el servidor) +
@@ -14358,9 +14374,11 @@
     // Entró USO, que es la pregunta real de la pantalla: cuál ya funcionó.
     // Y entró SECCIÓN (25-ago): con cinco templates que se llaman «Muro …» el nombre
     // no distingue nada y el hormigón tampoco (varios miden lo mismo) — lo que cambia
-    // es el FIERRO. La cabecera dice «esquema» con todas sus letras y siempre visible,
-    // porque el dibujo NO es una sección a escala (ver seccion_mini.js): eso no se
-    // deja para un asterisco al pie.
+    // es el FIERRO. Se dibuja en el plano que PLANOS_POR_ELEMENTO llama «sección» para
+    // ese elemento (26-ago): un muro en su corte HORIZONTAL, que es donde viven sus
+    // cortinas — con el transversal salía el canto y los muros se seguían pareciendo.
+    // La cabecera dice «esquema» con todas sus letras y siempre visible, porque el
+    // dibujo NO va a escala (ver seccion_mini.js): eso no se deja para un asterisco.
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
       '<tr><th ' + th + '>Sección · esquema</th>' +
       '<th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
@@ -14563,6 +14581,7 @@
     // GESTOR DE TEMPLATES (card del tab): orden, filtros locales y celdas de la fila.
     _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
     _tplUso: _tplUso, _tplMini: _tplMini, _tplVisibles: _tplVisibles, _tplFiltros: _tplFiltros,
+    _planosDe: _planosDe, _ejeRotulo: _ejeRotulo,
     _tplTiposPresentes: _tplTiposPresentes, _tplEsMio: _tplEsMio,
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,

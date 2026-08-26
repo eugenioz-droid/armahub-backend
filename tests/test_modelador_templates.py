@@ -175,11 +175,11 @@ def _params_obj(fila):
 
 
 def _proyeccion_seccion(fila):
-    """Lo que el SELECT proyecta de CADA componente para la miniatura de sección: los
-    10 escalares que necesita el resumen, NUNCA la receta entera (que es justo lo que
-    el listado no manda). Réplica en Python del jsonb_agg(jsonb_build_array(...)) del
-    router — si alguien cambia el orden de una, el resumen sale corrido y los tests de
-    t_seccion_miniatura lo dicen."""
+    """Lo que el SELECT proyecta de CADA componente para la miniatura de sección: el
+    puñado de campos que necesita el resumen, NUNCA la receta entera (que es justo lo
+    que el listado no manda). Réplica en Python del jsonb_agg(jsonb_build_array(...))
+    del router — si alguien cambia el orden de uno, el resumen sale corrido y los tests
+    de t_seccion_miniatura lo dicen."""
     comps = _params_obj(fila).get("componentes")
     if not isinstance(comps, list):
         return None
@@ -197,7 +197,8 @@ def _proyeccion_seccion(fila):
             d.get("modo"), d.get("n_capas"), d.get("barras_capa"), d.get("eje_capas"),
             d.get("rango"),
             len(dims),
-            1 if isinstance(d.get("zonas"), list) else 0,
+            d.get("zonas") if isinstance(d.get("zonas"), list) else None,
+            pose.get("lado"),
         ])
     return out
 
@@ -661,6 +662,14 @@ def t_seccion_miniatura():
     mismo y lo que cambia es el FIERRO. La receta no viaja (pesa) y el motor que sitúa
     las barras es JS: lo que viaja es un resumen de decenas de bytes.
 
+    EL RESUMEN VA EN LOS TRES EJES DEL HORMIGÓN (26-ago). La primera versión resolvía
+    acá el plano del corte y mandaba filas × columnas, eligiendo siempre el transversal
+    — que para un MURO es el canto, la vista menos informativa de las tres. Cuál es «la
+    sección» de cada elemento ya está decidido en PLANOS_POR_ELEMENTO
+    (template_editor.js) y proyectar es trabajo del dibujante. Lo que este backend
+    describe es un HECHO de la receta: cuántas barras hay por eje, por dónde corre la
+    pieza y contra qué cara se apoya.
+
     Lo que se congela acá: QUÉ distingue a un template de otro en ese resumen, que
     sigue costando UNA sola consulta, que no viaja la receta escondida dentro y que una
     receta que no da para una sección devuelve null en vez de una silueta inventada."""
@@ -676,48 +685,58 @@ def t_seccion_miniatura():
                                  params=receta_muro(n_cortinas=1)), user=MIEMBRO)
     por = {t["nombre"]: t["seccion"] for t in listar_templates(user=MIEMBRO)["templates"]}
 
-    # --- el hormigón: son las medidas REALES de la receta (la cota no es un esquema) --
+    # --- el hormigón: las TRES medidas reales (las cotas no son un esquema) ---------
     viga, cosido, suelto, una = (por["Viga 30/60"], por["Muro cosido"],
                                  por["Muro suelto"], por["Muro 1 cortina"])
-    check("la sección mide ancho x alto (el corte va perpendicular al largo)",
-          (viga["w"], viga["h"]) == (30, 60) and (cosido["w"], cosido["h"]) == (20, 250),
-          (viga, cosido))
-    check("y trae el recubrimiento, con su decimal cuando lo tiene",
-          viga["r"] == 3 and cosido["r"] == 2.5, (viga["r"], cosido["r"]))
+    check("viajan las TRES medidas en los ejes del motor (largo x / alto y / ancho z), "
+          "no dos ya elegidas por el backend",
+          (viga["x"], viga["y"], viga["z"]) == (600, 60, 30) and
+          (cosido["x"], cosido["y"], cosido["z"]) == (400, 250, 20), (viga, cosido))
+    check("y los dos recubrimientos que distingue el editor: caras (rl) y bordes (rb)",
+          (cosido["rl"], cosido["rb"]) == (2.5, 3) and (viga["rl"], viga["rb"]) == (3, 4),
+          (cosido["rl"], cosido["rb"], viga["rl"], viga["rb"]))
     check("las medidas enteras viajan sin .0 (bytes que no dicen nada)",
-          isinstance(viga["w"], int) and isinstance(viga["h"], int), viga)
+          isinstance(viga["x"], int) and isinstance(viga["z"], int), viga)
+    check("y el decimal se conserva donde lo hay", cosido["rl"] == 2.5, cosido["rl"])
 
     # --- el fierro: lo que de verdad distingue una fila de otra ---------------------
-    # Muro: 2 cortinas (n_capas del arreglo, sobre el eje del ANCHO) x el reparto del
-    # rango (sobre el eje del ALTO). La traba cruza el ancho y va en 2 alturas.
-    check("dos cortinas cosidas: 2 columnas x 5 filas de puntos + la traba que cruza",
-          "t2x5p" in cosido["p"] and "t1x2h" in cosido["p"], cosido["p"])
-    check("dos cortinas SUELTAS: las mismas columnas y NINGUNA traba",
-          "t2x5p" in suelto["p"] and not any(x.endswith("h") for x in suelto["p"]),
+    # MURO. Las dos cortinas son las CAPAS del arreglo sobre el eje del espesor (z), la
+    # malla horizontal corre por el largo (x) y la vertical por el alto (y); la traba
+    # cruza el espesor (z). Cada token dice barras-por-eje + por dónde corre.
+    check("muro: la malla horizontal corre por el largo, con 2 cortinas en el espesor",
+          "1.5.2:x" in cosido["p"], cosido["p"])
+    check("muro: la vertical corre por el alto y se reparte a lo largo (5), en 2 cortinas",
+          "5.1.2:y" in cosido["p"], cosido["p"])
+    check("muro: la traba CRUZA el espesor (corre por z) y hay 3 a lo largo",
+          "3.2.1:z" in cosido["p"], cosido["p"])
+    check("dos cortinas SUELTAS: las mismas mallas y NINGUNA pieza que cruce el espesor",
+          "1.5.2:x" in suelto["p"] and not any(t.endswith(":z") for t in suelto["p"]),
           suelto["p"])
-    check("una sola cortina: 1 columna (era el caso que el nombre no distinguía)",
-          "t1x5p" in una["p"] and "t2x5p" not in una["p"], una["p"])
+    check("una sola cortina: 1 en el espesor (era el caso que el nombre no distinguía)",
+          "1.5.1:x" in una["p"] and "1.5.2:x" not in una["p"], una["p"])
     check("y por eso las tres filas «Muro …» salen DISTINTAS entre sí",
           len({tuple(cosido["p"]), tuple(suelto["p"]), tuple(una["p"])}) == 3,
           (cosido["p"], suelto["p"], una["p"]))
-    check("la malla vertical se dibuja de pie ('v'), no como punto: la receta lo dice "
-          "en plano_pieza", "t2x1v" in cosido["p"], cosido["p"])
 
-    # Viga: capas contra su cara + el estribo como marco.
-    check("viga: el cabezal SUPERIOR se apila desde su cara (3 barras x 2 capas)",
-          "s3x2p" in viga["p"], viga["p"])
-    check("viga: el inferior desde la suya (4 x 1)", "i4x1p" in viga["p"], viga["p"])
-    check("viga: el estribo se ve UNO (se repite a lo largo) y con forma de marco",
-          "t1x1m" in viga["p"], viga["p"])
-    check("y el marco sale del nº de LADOS declarados, no de la tipología: la misma "
-          "receta con una figura de 1 lado deja de ser marco",
-          "m" not in _seccion_suelta(_sin_lados(receta_viga_completa()))["p"],
+    # VIGA. Capas contra su cara (con el signo de la cara) + el estribo como contorno
+    # cerrado repetido a lo largo.
+    check("viga: el cabezal SUPERIOR se apoya en la cara de arriba (3 a lo ancho x 2 capas)",
+          "1.2.3:x@y+" in viga["p"], viga["p"])
+    check("viga: el inferior en la de abajo (4 x 1)", "1.1.4:x@y-" in viga["p"], viga["p"])
+    check("viga: el estribo CIERRA (c) y se repite a lo largo, no en la sección",
+          any(t.endswith(":xc") and t.startswith("48.1.1") for t in viga["p"]), viga["p"])
+    check("y el cierre sale del nº de LADOS declarados, no de la tipología: la misma "
+          "receta con una figura de 1 lado deja de cerrar",
+          not any("c" in t for t in _seccion_suelta(_sin_lados(receta_viga_completa()))["p"]),
           _seccion_suelta(_sin_lados(receta_viga_completa()))["p"])
+    check("un longitudinal repartido por SU PROPIO eje no se multiplica (las copias "
+          "caerían una encima de otra, y el motor las deja quietas)",
+          "1.1.1:x" in viga["p"], viga["p"])
 
     # --- el tamaño: decenas de bytes, no cientos -----------------------------------
     for nombre, sec in por.items():
         n = len(json.dumps(sec, separators=(",", ":")))
-        check("«%s» cabe en decenas de bytes (%d)" % (nombre, n), n <= 140, n)
+        check("«%s» cabe en decenas de bytes (%d)" % (nombre, n), n <= 150, n)
     check("los grupos IDÉNTICOS no se repiten (dos veces el mismo token no pinta un "
           "píxel nuevo)", len(set(cosido["p"])) == len(cosido["p"]), cosido["p"])
 
@@ -728,7 +747,7 @@ def t_seccion_miniatura():
           len(CONSULTAS) - n == 1, len(CONSULTAS) - n)
     check("y la receta NO viaja escondida en el resumen",
           all("params" not in t for t in filas) and
-          all(set(t["seccion"] or {}) <= {"w", "h", "r", "p"} for t in filas),
+          all(set(t["seccion"] or {}) <= {"x", "y", "z", "rl", "rb", "p"} for t in filas),
           [t["seccion"] for t in filas][:2])
     for i in range(8):
         crear_template(TemplateCrear(nombre="Extra %d" % i, tipo="muro",
@@ -740,6 +759,43 @@ def t_seccion_miniatura():
     check("los 12 traen su miniatura", all(t["seccion"] for t in filas), len(filas))
     check("leer la lista NO reescribió ninguna receta (pintar no muta)",
           _params_obj(STORE["templates"][0])["componentes"][0]["comp_id"] == "CBS")
+
+
+def t_seccion_sin_plano_elegido():
+    """EL BACKEND NO ELIGE EL PLANO DEL CORTE (26-ago).
+
+    La miniatura salió dibujando el CANTO de los muros (alto × espesor) porque este
+    resumen venía ya proyectado a un plano fijo. Cuál es «la sección» de cada elemento
+    lo dice PLANOS_POR_ELEMENTO en el front, y esa tabla no se duplica acá: el backend
+    describe la receta en sus tres ejes y nada más. Esto congela que no vuelva a
+    aparecer una decisión de plano —ni una lista de tipos— en el backend."""
+    _reset()
+    crear_template(TemplateCrear(nombre="Muro", tipo="muro", params=receta_muro()), user=MIEMBRO)
+    crear_template(TemplateCrear(nombre="Viga", tipo="viga",
+                                 params=receta_viga_completa()), user=MIEMBRO)
+    por = {t["nombre"]: t["seccion"] for t in listar_templates(user=MIEMBRO)["templates"]}
+    check("el resumen no trae ancho/alto ya elegidos como plano ('w'/'h')",
+          all(("w" not in s and "h" not in s) for s in por.values()), por)
+
+    # LA MISMA receta con OTRO `tipo` da EXACTAMENTE el mismo resumen: el tipo no entra
+    # en el cálculo. Si alguien mete un `if tipo == 'muro'` acá, este chequeo cae.
+    _reset()
+    crear_template(TemplateCrear(nombre="Como muro", tipo="muro",
+                                 params=receta_viga_completa()), user=MIEMBRO)
+    crear_template(TemplateCrear(nombre="Como viga", tipo="viga",
+                                 params=receta_viga_completa()), user=MIEMBRO)
+    dos = {t["nombre"]: t["seccion"] for t in listar_templates(user=MIEMBRO)["templates"]}
+    check("la misma receta guardada como muro y como viga da el MISMO resumen: el "
+          "backend no ramifica por tipo de elemento",
+          dos["Como muro"] == dos["Como viga"], dos)
+    # Y el módulo no nombra elementos por ninguna parte del cálculo.
+    import inspect
+    fuente = "".join(inspect.getsource(f) for f in
+                     (M._resumen_seccion, M._pieza_token, M._cara_ancla, M._eje_pieza))
+    codigo = "\n".join(l for l in fuente.split("\n") if not l.strip().startswith("#"))
+    check("y no nombra ni un tipo de elemento en el código del resumen",
+          not any(p in codigo.lower() for p in ("viga", "muro", "columna", "losa", "fundacion")),
+          [p for p in ("viga", "muro", "columna", "losa", "fundacion") if p in codigo.lower()])
 
 
 def t_seccion_no_dibujable():
@@ -756,16 +812,18 @@ def t_seccion_no_dibujable():
 
     STORE["templates"] = [
         fila(1, "Sin geometría", {"tipo": "muro", "componentes": []}),
-        fila(2, "Hormigón en 0", {"tipo": "muro", "geometria": {"ancho": 0, "alto": 250},
+        fila(2, "Hormigón en 0", {"tipo": "muro",
+                                  "geometria": {"largo": 0, "ancho": 0, "alto": 250},
                                   "componentes": []}),
         fila(3, "Hormigón con texto", {"tipo": "muro",
-                                       "geometria": {"ancho": "ancho?", "alto": 250},
+                                       "geometria": {"largo": "?", "ancho": "ancho?", "alto": 250},
                                        "componentes": []}),
         fila(4, "Receta vacía", {}),
-        fila(5, "Sin barras", {"tipo": "muro", "geometria": {"ancho": 20, "alto": 250,
-                                                             "recub_lat": 2}}),
+        fila(5, "Sin barras", {"tipo": "muro", "geometria": {"largo": 400, "ancho": 20,
+                                                             "alto": 250, "recub_lat": 2}}),
         fila(6, "Barras sin distribución",
-             {"tipo": "muro", "geometria": {"ancho": 20, "alto": 250, "recub_lat": 2},
+             {"tipo": "muro", "geometria": {"largo": 400, "ancho": 20, "alto": 250,
+                                            "recub_lat": 2},
               "componentes": [{"figura": "101A", "diam": 10, "cara": "lateral",
                                "dims": {"A": {"modo": "auto"}}}]}),
     ]
@@ -774,20 +832,20 @@ def t_seccion_no_dibujable():
     for nombre in ("Sin geometría", "Hormigón en 0", "Hormigón con texto", "Receta vacía"):
         check("«%s» da null (hueco), no una silueta inventada" % nombre,
               por[nombre] is None, por[nombre])
-    # Con hormigón REAL sí hay algo verdadero que decir (las cotas), aunque no haya
-    # una sola barra que situar: eso se dibuja, y el tooltip lo explica.
+    # Con hormigón REAL sí hay algo verdadero que decir (las cotas), aunque no haya una
+    # sola barra que situar: eso se dibuja, y el tooltip lo explica.
     check("con hormigón pero sin barras se dibuja el hormigón y ninguna barra",
-          por["Sin barras"] == {"w": 20, "h": 250, "r": 2, "p": []}, por["Sin barras"])
+          por["Sin barras"] == {"rl": 2, "rb": 2, "p": [], "x": 400, "y": 250, "z": 20},
+          por["Sin barras"])
     check("un componente que no dice cómo se coloca no se sitúa a ojo: no aporta grupo",
           por["Barras sin distribución"]["p"] == [], por["Barras sin distribución"])
-    check("y el listado no se cae con ninguna de las seis",
-          len(por) == 6, len(por))
+    check("y el listado no se cae con ninguna de las seis", len(por) == 6, len(por))
 
 
 def _sin_lados(receta):
     """La misma receta con el estribo reducido a UN lado. Sirve para comprobar que el
-    marco sale de la GEOMETRÍA declarada y no del chip de tipología (que sigue siendo
-    'ES')."""
+    contorno cerrado sale de la GEOMETRÍA declarada y no del chip de tipología (que
+    sigue siendo 'ES')."""
     receta["componentes"][2]["dims"] = {"A": {"modo": "auto"}}
     return receta
 
@@ -1026,7 +1084,7 @@ def t_deduccion_shape_unitaria():
 def main():
     for t in (t_post_crea, t_permiso_escritura_unificado, t_lectura_cerrada,
               t_get_lista_sin_params, t_uso_por_template,
-              t_seccion_miniatura, t_seccion_no_dibujable,
+              t_seccion_miniatura, t_seccion_sin_plano_elegido, t_seccion_no_dibujable,
               t_get_detalle_trae_receta, t_put_edita,
               t_put_de_otro_rechazado, t_delete, t_receta_invalida_422,
               t_lo_que_hoy_SI_se_guarda,
