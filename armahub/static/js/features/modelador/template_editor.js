@@ -14327,8 +14327,15 @@
     // llamen al plano por el mismo nombre.
     var def = _planosDe(t.tipo).seccion;
     var rotulo = def ? _ejeRotulo(def.u, def.v) : '';
+    // EL COLOR, DE LA PALETA ÚNICA (_colDe / COL2D) — la misma que pinta las barras del
+    // editor. El usuario comparó la miniatura contra el cuadrante SECCIÓN del 3D con el
+    // mismo muro y lo primero que dijo fue «los colores también son diferentes»: con la
+    // miniatura en un solo tono había que traducir entre dos vocabularios para leer el
+    // mismo fierro. Va como FUNCIÓN a propósito: el dibujante recibe la tipología del
+    // grupo y la devuelve convertida en color sin saber qué es una tipología, igual que
+    // el motor de figuras recibe `opts.color`. Y el color no cambia QUÉ se dibuja.
     return '<span class="tplMini" title="' + _esc(M.titulo(t.seccion, def, rotulo)) + '">' +
-      M.svg(t.seccion, def) + '</span>';
+      M.svg(t.seccion, def, { color: _colDe }) + '</span>';
   }
 
   // Pinta la card entera desde el estado: _tplLista (lo que mandó el servidor) +

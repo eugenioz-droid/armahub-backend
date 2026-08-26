@@ -199,6 +199,8 @@ def _proyeccion_seccion(fila):
             len(dims),
             d.get("zonas") if isinstance(d.get("zonas"), list) else None,
             pose.get("lado"),
+            d.get("rango2"), d.get("gap"), d.get("sep_capas"),
+            c.get("diam"), c.get("tipologia"), d.get("sep"),
         ])
     return out
 
@@ -488,6 +490,39 @@ def receta_muro(n_cortinas=2, sep_horiz=55, con_traba=True):
             "componentes": comps}
 
 
+# EL MURO TAL COMO LO GUARDA EL EDITOR DE HOY. Va aparte del de arriba a propósito: el
+# `arreglo` del editor (_setModoComp) arma sus DOS LÍNEAS de distribución con `rango` +
+# `rango2`, y las capas legadas (n_capas/eje_capas) sólo sobreviven en recetas viejas.
+# Ésta es la receta con la que se destapó el bug del 26-ago: al mirar sólo las capas, las
+# tres mallas del muro colapsaban a una y salían dibujadas EN EL CENTRO.
+# Los mismos números se cotejan contra ModeladorGenerar en tests/test_seccion_mini.js.
+MURO_EDITOR = {
+    "tipo": "muro",
+    "geometria": {"largo": 524, "alto": 250, "ancho": 20,
+                  "recub_sup": 3, "recub_inf": 3, "recub_lat": 2.5},
+    "componentes": [
+        {"comp_id": "MH", "tipologia": "MH", "figura": "101A", "diam": 10,
+         "cara": "lateral", "jerarquia": 1, "modo": "arreglo",
+         "dims": {"A": {"modo": "auto"}},
+         "distribucion": {"modo": "arreglo", "sep": 20, "activa": True,
+                          "rango": {"eje": "y", "from": -122, "to": 122, "sep": 20},
+                          "rango2": {"eje": "z", "from": -7, "to": 7, "sep": 14}}},
+        {"comp_id": "MV", "tipologia": "MV", "figura": "101A", "diam": 10,
+         "cara": "lateral", "jerarquia": 1, "modo": "arreglo",
+         "plano_pieza": {"orientacion": "de_pie"}, "dims": {"A": {"modo": "auto"}},
+         "distribucion": {"modo": "arreglo", "sep": 20, "activa": True,
+                          "rango": {"eje": "x", "from": -259, "to": 259, "sep": 120},
+                          "rango2": {"eje": "z", "from": -7, "to": 7, "sep": 14}}},
+        {"comp_id": "TR", "tipologia": "TR", "figura": "101A", "diam": 8,
+         "cara": "lateral", "jerarquia": 2, "modo": "arreglo",
+         "plano_pieza": {"volteado": True}, "dims": {"A": {"modo": "auto"}},
+         "distribucion": {"modo": "arreglo", "sep": 40, "activa": True,
+                          "rango": {"eje": "x", "from": -259, "to": 259, "sep": 180},
+                          "rango2": {"eje": "y", "from": -122, "to": 122, "sep": 60}}},
+    ],
+}
+
+
 def receta_enfierrador():
     """Shape ENFIERRADOR MVP: dims numéricas PLANAS (el que convive en la misma tabla)."""
     return {
@@ -699,44 +734,59 @@ def t_seccion_miniatura():
           isinstance(viga["x"], int) and isinstance(viga["z"], int), viga)
     check("y el decimal se conserva donde lo hay", cosido["rl"] == 2.5, cosido["rl"])
 
-    # --- el fierro: lo que de verdad distingue una fila de otra ---------------------
-    # MURO. Las dos cortinas son las CAPAS del arreglo sobre el eje del espesor (z), la
-    # malla horizontal corre por el largo (x) y la vertical por el alto (y); la traba
-    # cruza el espesor (z). Cada token dice barras-por-eje + por dónde corre.
-    check("muro: la malla horizontal corre por el largo, con 2 cortinas en el espesor",
-          "1.5.2:x" in cosido["p"], cosido["p"])
-    check("muro: la vertical corre por el alto y se reparte a lo largo (5), en 2 cortinas",
-          "5.1.2:y" in cosido["p"], cosido["p"])
-    check("muro: la traba CRUZA el espesor (corre por z) y hay 3 a lo largo",
-          "3.2.1:z" in cosido["p"], cosido["p"])
+    # --- el fierro: DÓNDE va, no sólo cuánto hay ------------------------------------
+    # CADA EJE del token dice «cuántas barras @ desde%-hasta%», y esos % son los del
+    # motor: el `from`/`to` de cada rango, o la cara + recubrimiento + φ/2 contra la que
+    # la barra se apoya. Cotejado contra ModeladorGenerar el 26-ago sobre un muro real:
+    # las dos cortinas caen en z = ±(10 − 2.5 − φ/2) = ±7 de un espesor 20, o sea el
+    # 15% y el 85%. Que ESO se respete es el contrato de esta miniatura — con las
+    # cortinas repartidas «por el medio» el dibujo no dice nada de un muro.
+    check("muro: las dos cortinas van PEGADAS A LAS CARAS (15% y 85% del espesor), "
+          "no repartidas por el medio",
+          "1@1-99/5@6-94/2@85-15:x~MA" in cosido["p"], cosido["p"])
+    check("y es la misma cuenta del motor: (espesor/2 - recub - fi/2) / espesor",
+          round(100 * (10 - 2.5 - 0.5) / 20 + 50) == 85)
+    check("muro: la malla vertical corre por el alto y se reparte a lo largo, en las "
+          "mismas dos cortinas",
+          "5@5-95/1@1-99/2@85-15:y~MA" in cosido["p"], cosido["p"])
+    check("muro: la traba CRUZA el espesor de lado a lado (12-88%) y se repite a lo largo",
+          "3@25-75/2@99-75/1@12-88:z~TM" in cosido["p"], cosido["p"])
     check("dos cortinas SUELTAS: las mismas mallas y NINGUNA pieza que cruce el espesor",
-          "1.5.2:x" in suelto["p"] and not any(t.endswith(":z") for t in suelto["p"]),
-          suelto["p"])
-    check("una sola cortina: 1 en el espesor (era el caso que el nombre no distinguía)",
-          "1.5.1:x" in una["p"] and "1.5.2:x" not in una["p"], una["p"])
+          any(t.startswith("1@1-99/5@6-94/2@85-15") for t in suelto["p"]) and
+          not any(":z" in t for t in suelto["p"]), suelto["p"])
+    check("una sola cortina: UNA posición en el espesor, y contra su cara (85%)",
+          any("/1@85:x" in t for t in una["p"]) and
+          not any("2@85-15" in t for t in una["p"]), una["p"])
     check("y por eso las tres filas «Muro …» salen DISTINTAS entre sí",
           len({tuple(cosido["p"]), tuple(suelto["p"]), tuple(una["p"])}) == 3,
           (cosido["p"], suelto["p"], una["p"]))
 
-    # VIGA. Capas contra su cara (con el signo de la cara) + el estribo como contorno
-    # cerrado repetido a lo largo.
-    check("viga: el cabezal SUPERIOR se apoya en la cara de arriba (3 a lo ancho x 2 capas)",
-          "1.2.3:x@y+" in viga["p"], viga["p"])
-    check("viga: el inferior en la de abajo (4 x 1)", "1.1.4:x@y-" in viga["p"], viga["p"])
-    check("viga: el estribo CIERRA (c) y se repite a lo largo, no en la sección",
-          any(t.endswith(":xc") and t.startswith("48.1.1") for t in viga["p"]), viga["p"])
+    # VIGA. Capas apiladas desde su cara hacia el núcleo + el estribo, que ENCUADRA.
+    check("viga: el cabezal superior se apila desde su cara hacia adentro (92% -> 85%) "
+          "y sus 3 barras se reparten de recubrimiento a recubrimiento",
+          "1@1-99/2@92-85/3@10-90:x~CBS" in viga["p"], viga["p"])
+    check("viga: el inferior, contra la suya (8%), 4 barras y una sola capa",
+          "1@1-99/1@8/4@10-90:x~CBI" in viga["p"], viga["p"])
+    check("viga: el estribo CIERRA (c), ENCUADRA la sección (no se pega a una cara) y "
+          "se repite a lo largo",
+          any(t.startswith("48@1-99") and ":xc" in t and "/1@7-93/1@10-90" in t
+              for t in viga["p"]), viga["p"])
     check("y el cierre sale del nº de LADOS declarados, no de la tipología: la misma "
           "receta con una figura de 1 lado deja de cerrar",
-          not any("c" in t for t in _seccion_suelta(_sin_lados(receta_viga_completa()))["p"]),
+          not any(":xc" in t for t in _seccion_suelta(_sin_lados(receta_viga_completa()))["p"]),
           _seccion_suelta(_sin_lados(receta_viga_completa()))["p"])
     check("un longitudinal repartido por SU PROPIO eje no se multiplica (las copias "
           "caerían una encima de otra, y el motor las deja quietas)",
-          "1.1.1:x" in viga["p"], viga["p"])
+          "1@1-99/1@50/1@89:x~TRV" in viga["p"], viga["p"])
+    check("cada grupo viaja con su TIPOLOGÍA (sólo para el color: el dibujo sale entero "
+          "de la geometría)",
+          all("~" in t for t in viga["p"]) and viga["p"][0].endswith("~CBS"), viga["p"])
 
     # --- el tamaño: decenas de bytes, no cientos -----------------------------------
     for nombre, sec in por.items():
         n = len(json.dumps(sec, separators=(",", ":")))
-        check("«%s» cabe en decenas de bytes (%d)" % (nombre, n), n <= 150, n)
+        check("«%s» sigue siendo un resumen y no la receta (%d bytes)" % (nombre, n),
+              n <= 200, n)
     check("los grupos IDÉNTICOS no se repiten (dos veces el mismo token no pinta un "
           "píxel nuevo)", len(set(cosido["p"])) == len(cosido["p"]), cosido["p"])
 
@@ -791,11 +841,49 @@ def t_seccion_sin_plano_elegido():
     # Y el módulo no nombra elementos por ninguna parte del cálculo.
     import inspect
     fuente = "".join(inspect.getsource(f) for f in
-                     (M._resumen_seccion, M._pieza_token, M._cara_ancla, M._eje_pieza))
-    codigo = "\n".join(l for l in fuente.split("\n") if not l.strip().startswith("#"))
+                     (M._resumen_seccion, M._pieza_token, M._eje_cara, M._lado_cara,
+                      M._eje_pieza, M._Marco))
+    # Se mira el CÓDIGO, no la prosa: comentarios y docstrings SÍ pueden nombrar un
+    # muro (explicar la cuenta con un ejemplo concreto es de lo poco que hace legible
+    # esto). Lo que no puede es que el CÁLCULO ramifique por el nombre del elemento.
+    codigo = re.sub(r'"""(?:.|\n)*?"""', "", fuente)
+    codigo = "\n".join(l for l in codigo.split("\n") if not l.strip().startswith("#"))
+    tipos = ("viga", "muro", "columna", "losa", "fundacion")
     check("y no nombra ni un tipo de elemento en el código del resumen",
-          not any(p in codigo.lower() for p in ("viga", "muro", "columna", "losa", "fundacion")),
-          [p for p in ("viga", "muro", "columna", "losa", "fundacion") if p in codigo.lower()])
+          not any(p in codigo.lower() for p in tipos),
+          [p for p in tipos if p in codigo.lower()])
+
+
+def t_seccion_dos_lineas_de_distribucion():
+    """LAS DOS LÍNEAS DEL ARREGLO (`rango` + `rango2`) — el bug del 26-ago.
+
+    El usuario comparó la miniatura contra el cuadrante SECCIÓN·YX del editor con el
+    MISMO muro: «se ve una barra al medio, creo que no está dibujando bien». Causa: el
+    arreglo que escribe el editor de HOY arma sus dos cortinas con `rango2`, y esta
+    derivación sólo miraba las capas legadas (n_capas/eje_capas). Sin la 2ª línea, las
+    tres mallas del muro quedaban con UNA posición en el espesor y el dibujante las
+    ponía al centro — que es justo lo que un corte horizontal de muro no puede decir.
+
+    Los números de abajo están cotejados barra por barra contra ModeladorGenerar
+    (tests/test_seccion_mini.js corre el motor y compara contra estos mismos tokens)."""
+    _reset()
+    crear_template(TemplateCrear(nombre="Muro del editor", tipo="muro",
+                                 params=MURO_EDITOR), user=MIEMBRO)
+    sec = listar_templates(user=MIEMBRO)["templates"][0]["seccion"]
+    p = sec["p"]
+    check("la malla horizontal: 14 barras en altura x 2 CORTINAS en el espesor (15/85%)",
+          "1@1-99/14@1-99/2@15-85:x~MH" in p, p)
+    check("la malla vertical: 27 a lo largo x las mismas 2 cortinas",
+          "27@1-99/1@1-99/2@15-85:y~MV" in p, p)
+    check("la traba: 14 a lo largo x 6 en altura, cruzando el espesor (12-88%)",
+          "14@1-99/6@1-99/1@12-88:z~TR" in p, p)
+    check("NINGÚN grupo queda con una sola posición en el espesor (era el síntoma: "
+          "todo apilado en el centro)",
+          all("/1@50:" not in t for t in p), p)
+    check("y las cuentas son las del motor: 14x2 = 28, 27x2 = 54, 14x6 = 84",
+          (14 * 2, 27 * 2, 14 * 6) == (28, 54, 84))
+    n = len(json.dumps(sec, separators=(",", ":")))
+    check("el resumen del muro real pesa %d bytes (sigue siendo un resumen)" % n, n <= 200, n)
 
 
 def t_seccion_no_dibujable():
@@ -1084,7 +1172,8 @@ def t_deduccion_shape_unitaria():
 def main():
     for t in (t_post_crea, t_permiso_escritura_unificado, t_lectura_cerrada,
               t_get_lista_sin_params, t_uso_por_template,
-              t_seccion_miniatura, t_seccion_sin_plano_elegido, t_seccion_no_dibujable,
+              t_seccion_miniatura, t_seccion_sin_plano_elegido,
+              t_seccion_dos_lineas_de_distribucion, t_seccion_no_dibujable,
               t_get_detalle_trae_receta, t_put_edita,
               t_put_de_otro_rechazado, t_delete, t_receta_invalida_422,
               t_lo_que_hoy_SI_se_guarda,

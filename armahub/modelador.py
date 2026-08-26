@@ -474,30 +474,46 @@ def _lista_json(v):
 #     COTAS, en cambio, son el hormigón REAL de la receta: la cota dice 20×250 porque el
 #     template dice 20×250. Esa asimetría es a propósito y conviene que se note.
 #
-# CÓMO VIAJA: entre ~55 y ~140 bytes por fila.
-#     "seccion": {"x":400,"y":250,"z":20,"rl":2.5,"rb":3,"p":["1.5.2:x","3.2.1:z"]}
+# CÓMO VIAJA: entre ~90 y ~180 bytes por fila.
+#     "seccion": {"x":524,"y":250,"z":20,"rl":2.5,"rb":3,
+#                 "p":["1@50/13@1-99/2@15-85:x~MH", "3@1-99/1@50/1@50:zc~TR"]}
 #   x/y/z  = las TRES medidas del hormigón (largo · alto · ancho) en los ejes del motor,
 #            en cm; rl/rb = recubrimiento de las CARAS y de los BORDES. De ahí salen las
 #            cotas, que son dato real de la receta.
-#   p      = un TOKEN por grupo de barras, de 7 a 12 bytes:
-#                nx.ny.nz : rumbo [c] [@cara]
-#            cuántas barras del grupo hay SOBRE CADA EJE, por dónde CORRE la pieza, si su
-#            contorno CIERRA (c) y contra qué cara se apoya. Ejemplo real de un muro:
-#            "1.5.2:x" = una a lo largo, cinco en altura, dos en el espesor (las dos
-#            cortinas), corriendo por el largo.
+#   p      = un TOKEN por grupo de barras:
+#                nx@ax-bx / ny@ay-by / nz@az-bz : rumbo [c] [~tipología]
+#            Por CADA EJE del hormigón: cuántas barras hay y ENTRE QUÉ DOS POSICIONES,
+#            en % de esa medida (0 = cara negativa, 100 = positiva). Después: por dónde
+#            CORRE la pieza, si su contorno CIERRA (c) y con qué TIPOLOGÍA se dibujó
+#            (sólo para el color; ver abajo).
 #
-# POR QUÉ EN LOS TRES EJES Y NO YA PROYECTADO A UN PLANO (26-ago)
-# La primera versión resolvía acá el plano del corte y mandaba filas × columnas. Estaba
-# mal: elegía SIEMPRE el corte transversal (ancho × alto) y para un muro ése es el CANTO,
-# la vista menos informativa de las tres — por eso los muros se seguían pareciendo. Cuál
-# es «la sección» de un elemento ya está decidido y en un solo sitio, PLANOS_POR_ELEMENTO
-# (template_editor.js): un muro se trabaja en el CORTE HORIZONTAL (largo × espesor), que
-# es donde viven sus dos cortinas y sus trabas. Duplicar esa tabla acá habría sido tener
-# dos verdades sobre lo mismo, y una lista de tipos escrita a mano acá se quedaría atrás
-# el día que exista un elemento nuevo.
-# Así que el backend NO elige plano: describe el grupo en los ejes del hormigón —que es
-# un hecho de la receta— y el dibujante lo proyecta sobre el plano que la tabla del editor
-# diga para ese elemento. Un elemento nuevo hereda el criterio sin que nadie registre nada.
+# POR QUÉ EL TOKEN LLEVA POSICIONES Y NO SÓLO CUENTAS (26-ago, tras cotejar con el motor)
+# La versión anterior mandaba sólo cuántas barras había por eje y el dibujante las
+# repartía «a ojo» entre los recubrimientos. Cotejado contra ModeladorGenerar sobre un
+# muro real, eso fallaba en lo único que un corte horizontal de muro tiene que decir:
+# las dos cortinas van PEGADAS A LAS CARAS (el motor las pone en z = ±(espesor/2 −
+# recub − φ/2) = ±7 en un muro de 20), no repartidas por el medio. Y peor: el arreglo
+# que escribe el editor de HOY (_setModoComp) arma esas dos cortinas con `rango2`, no
+# con n_capas/eje_capas — que era lo único que esta derivación miraba. Resultado medido
+# sobre el muro 524×250×20 del usuario: las tres mallas colapsaban a n=1 y salían
+# apiladas EN EL CENTRO. Ahora cada eje viaja con su TRAMO, que sale de donde el dato
+# existe de verdad: el `from`/`to` de cada rango, o la cara + recubrimiento + φ/2 contra
+# la que la pieza se apoya. Son las MISMAS cifras que el motor.
+#
+# POR QUÉ VIAJA LA TIPOLOGÍA
+# Sólo para el COLOR, y el color no lo elige este backend ni el dibujante: lo resuelve
+# el gestor con `TemplateEditor.colorDeTipologia`, la paleta ÚNICA que ya pinta las
+# barras del editor. Con la miniatura en un solo tono, el usuario tenía que traducir
+# entre dos vocabularios para el mismo muro. La tipología NO cambia QUÉ se dibuja — eso
+# sale entero de la geometría de arriba; es una tabla de presentación y nada más.
+#
+# EL PLANO NO SE ELIGE ACÁ. Cuál es «la sección» de un elemento ya está decidido y en un
+# solo sitio, PLANOS_POR_ELEMENTO (template_editor.js): un muro se trabaja en el CORTE
+# HORIZONTAL (largo × espesor), que es donde viven sus dos cortinas y sus trabas.
+# Duplicar esa tabla acá serían dos verdades sobre lo mismo, y una lista de tipos
+# escrita a mano se quedaría atrás el día que exista un elemento nuevo. Así que el
+# backend describe el grupo en los TRES ejes del hormigón —que es un hecho de la
+# receta— y el dibujante proyecta sobre el plano que la tabla del editor diga.
 _EJES = ("x", "y", "z")
 # Más grupos DISTINTOS que esto no caben en una miniatura de 110 px: dibujarlos sería un
 # borrón. Se cortan acá y no en el navegador para no gastar bytes que no pintan nada.
@@ -505,6 +521,9 @@ _MAX_PIEZAS = 10
 # Techo de un reparto: cuenta lo que la receta dice, sin que un `sep` minúsculo devuelva
 # un número absurdo.
 _MAX_REPARTO = 60
+# Con qué separación nacen las capas de un `layered` en el editor (_distDefault). Sólo
+# se usa cuando la receta no la trae: si la trae, manda la receta.
+_GAP_DEFAULT = 4
 
 
 def _num_pos(v):
@@ -521,16 +540,22 @@ def _cifra(n):
     return int(n) if n == int(n) else n
 
 
-def _cuenta_rango(rango):
-    """Cuántas barras coloca un rango {from, to, sep}: una en cada extremo y las
-    intermedias cada `sep` (la misma cuenta del motor). Sin `sep` no reparte nada y
-    queda en 1 — se cuenta lo que la receta DICE, no lo que podría decir."""
+def _cuenta_rango(rango, sep_pref=None):
+    """Cuántas barras coloca un rango {from, to, sep}. Es la cuenta ArmaPilot del motor
+    (reglas.posicionesRango): ceil(span/@) + 1 — CIERRA el intervalo, o sea que hay una
+    barra en cada extremo. Con floor se perdía siempre la última: medido contra
+    ModeladorGenerar en un muro 524, rango 518 @20 → 27 barras, no 26.
+
+    `sep_pref` es el @ de la PRIMERA línea de distribución, que el motor toma de
+    `distribucion.sep` y no del rango (reglas._rangoReparto le pasa `cfg.sep`). La 2ª
+    línea (rango2) sí usa el suyo."""
     if not isinstance(rango, dict):
         return 1
-    a, b, sep = _num(rango.get("from")), _num(rango.get("to")), _num(rango.get("sep"))
+    a, b = _num(rango.get("from")), _num(rango.get("to"))
+    sep = sep_pref if (sep_pref is not None and sep_pref > 0) else _num(rango.get("sep"))
     if a is None or b is None or sep is None or sep <= 0:
         return 1
-    return max(1, min(int(abs(b - a) / sep) + 1, _MAX_REPARTO))
+    return max(1, min(int(math.ceil(abs(b - a) / sep)) + 1, _MAX_REPARTO))
 
 
 def _cuenta_zonas(zonas):
@@ -560,50 +585,91 @@ def _eje_pieza(rumbo, volteado):
     return "z" if str(volteado).strip().lower() in ("true", "t", "1") else "x"
 
 
-def _cara_ancla(cara, lado):
-    """La cara contra la que se APOYA la pieza, como eje + lado ('y+' = la de arriba).
-    Es lo que decide si un grupo se apila desde un borde o se reparte por el medio. Las
-    caras del hormigón son un dato de la receta; el lado sale de la pose (±1) y sin él
-    se deja sin signo — un grupo que no dice contra cuál de las dos caras se apoya se
-    reparte, que es lo único que no inventa un sitio."""
+def _eje_cara(cara):
+    """El EJE de la cara contra la que se apoya la pieza. Las caras del hormigón son un
+    dato de la receta y su eje es siempre el mismo: sup/inf miran por el alto, las
+    laterales por el ancho, los extremos por el largo."""
     c = str(cara or "").strip().lower()
-    n = _num(lado)
-    signo = "" if n is None else ("-" if n < 0 else "+")
-    if c == "sup":
-        return "y+"
-    if c == "inf":
-        return "y-"
+    if c in ("sup", "inf"):
+        return "y"
     if c in ("lateral", "lat"):
-        return "z" + signo
+        return "z"
     if c in ("extremo", "ext"):
-        return "x" + signo
+        return "x"
     return ""
 
 
-def _repartir(n, eje_r, cant, eje_pieza, cerrada):
-    """Suma un reparto de `cant` copias sobre `eje_r`. NO reparte cuando la pieza es
-    ABIERTA y corre por ese mismo eje: ahí las copias caen una encima de otra y el motor
-    las deja quietas (reglas.js `_recorreSuPropioEje`). Es la diferencia entre el estribo
-    —marco ⊥ al largo, que sí se repite a lo largo— y el longitudinal que corre por él."""
-    if eje_r not in _EJES or cant <= 1:
-        return
-    if eje_r == eje_pieza and not cerrada:
-        return
-    n[eje_r] = min(n[eje_r] * cant, _MAX_REPARTO)
+def _lado_cara(cara, lado):
+    """+1 / −1: contra CUÁL de las dos caras de ese eje. sup/inf lo dicen con su nombre;
+    en las demás lo dice la pose, y sin pose vale +1 — el mismo default del normalizador
+    del motor, no una elección de esta función."""
+    c = str(cara or "").strip().lower()
+    if c == "sup":
+        return 1
+    if c == "inf":
+        return -1
+    n = _num(lado)
+    return -1 if (n is not None and n < 0) else 1
 
 
-def _tercer_eje(a, b):
-    for e in _EJES:
-        if e != a and e != b:
-            return e
-    return "z"
+class _Marco(object):
+    """Las medidas del hormigón y sus recubrimientos, para convertir centímetros del
+    motor en el % de cada eje que viaja en el token."""
+
+    __slots__ = ("dim", "rl", "rb")
+
+    def __init__(self, dim, rl, rb):
+        self.dim, self.rl, self.rb = dim, rl, rb
+
+    def recub(self, eje):
+        """El recubrimiento que recorta ESE eje: el de las CARAS por el ancho, el de los
+        BORDES por el largo y el alto. Es la misma distinción que hace el editor en
+        PLANOS_POR_ELEMENTO.recub ('lat' vs 'supinf')."""
+        return self.rl if eje == "z" else self.rb
+
+    def pct(self, eje, cm):
+        """cm en coordenadas del motor (0 = centro del hormigón) → % de ese eje, con
+        0 = cara negativa y 100 = positiva. Fuera del hormigón se recorta: una barra no
+        se dibuja afuera de su propia sección."""
+        d = self.dim.get(eje)
+        if not d:
+            return 50
+        return int(round(max(0.0, min(100.0, 50.0 + 100.0 * (float(cm) / d)))))
+
+    def util(self, eje):
+        """El tramo ÚTIL de un eje (de recubrimiento a recubrimiento), en %."""
+        d = self.dim.get(eje)
+        if not d:
+            return (50, 50)
+        r = self.recub(eje)
+        return (self.pct(eje, -d / 2.0 + r), self.pct(eje, d / 2.0 - r))
+
+    def cara(self, eje, lado, diam_cm):
+        """Dónde queda el EJE de una barra apoyada contra una cara: recubrimiento más su
+        propio radio. Es la misma cuenta del motor (_marcoCara): en un muro de 20 con
+        recub 2.5 y φ10 da ±7, que es exactamente donde quedan las dos cortinas."""
+        d = self.dim.get(eje)
+        if not d:
+            return 50
+        return self.pct(eje, lado * (d / 2.0 - self.recub(eje) - diam_cm / 2.0))
+
+    def paso_pct(self, eje, cm):
+        """Un desplazamiento en cm → cuántos puntos porcentuales de ese eje."""
+        d = self.dim.get(eje)
+        return (100.0 * float(cm) / d) if d else 0.0
 
 
-def _pieza_token(c):
+def _bloque(n, a, b):
+    """Un eje del token: cuántas barras y entre qué dos posiciones (en %)."""
+    return ("%d@%d" % (n, a)) if a == b else ("%d@%d-%d" % (n, a, b))
+
+
+def _pieza_token(c, marco):
     """Un componente PROYECTADO → su token, o None si la receta no dice dónde va (y
-    entonces no se dibuja: inventarle un sitio sería una miniatura que miente).
+    entonces NO SE DIBUJA: un dato que no se sabe situar no se pinta en el centro, se
+    omite — es la misma regla del hueco «sin sección», una escala más abajo).
     `c` es la fila que arma el SELECT de listar_templates, en ese mismo orden."""
-    if not isinstance(c, (list, tuple)) or len(c) < 11:
+    if not isinstance(c, (list, tuple)) or len(c) < 17:
         return None
     eje = _eje_pieza(c[1], c[2])
     modo = str(c[3] or "").strip().lower()
@@ -617,7 +683,14 @@ def _pieza_token(c):
     # una segunda consulta, y el listado tiene que seguir costando una.
     cerrada = int(_num(c[8]) or 0) >= 4
     zonas = c[9] if isinstance(c[9], list) else None
-    ancla = _cara_ancla(c[0], c[10])
+    rango2 = c[11] if isinstance(c[11], dict) else None
+    gap = _num(c[12])
+    sep_capas = _num(c[13])
+    diam_cm = (_num(c[14]) or 0) / 10.0       # el catálogo guarda φ en mm
+    tip = str(c[15] or "").strip().upper()[:6]
+    sep_dist = _num(c[16])
+    eje_ancla = _eje_cara(c[0])
+    lado = _lado_cara(c[0], c[10])
 
     # MODO derivado igual que en el motor (reglas.js _distCanon): la FORMA de lo que trae
     # la distribución manda sobre lo que diga —o no diga— el campo `modo`.
@@ -633,31 +706,95 @@ def _pieza_token(c):
     capas = max(1, min(int(n_capas or 1), _MAX_REPARTO))
     por_capa = max(1, min(int(n_por_capa or 1), _MAX_REPARTO))
 
-    n = {"x": 1, "y": 1, "z": 1}
-    if modo == "layered":
-        # Las capas se apilan HACIA EL NÚCLEO por el eje de su cara, y las barras de cada
-        # capa se reparten A LO LARGO de esa cara — por el eje que no es ni el de la cara
-        # ni el que la barra recorre.
-        ea = ancla[0] if ancla else "y"
-        n[ea] = capas
-        et = _tercer_eje(ea, eje)
-        if et != ea:
-            n[et] = por_capa
+    # PUNTO DE PARTIDA: una barra sola, en su cara si se apoya en alguna y al centro si
+    # no. `p[e] = (n, desde%, hasta%)`.
+    p = {}
+    for e in _EJES:
+        q = marco.cara(e, lado, diam_cm) if e == eje_ancla else 50
+        p[e] = [1, q, q]
+    # Una pieza ABIERTA se EXTIENDE por su propio rumbo, de recubrimiento a
+    # recubrimiento: en ese eje el bloque no dice posiciones sino su LARGO. Sin esto una
+    # traba volteada —que se apoya en la cara lateral y CRUZA el espesor— salía dibujada
+    # pegada a una cara en vez de atravesando de lado a lado.
+    if not cerrada:
+        p[eje] = [1] + list(marco.util(eje))
     else:
-        if modo == "arreglo":
-            n[eje_capas] = capas
-        # El eje del rango es el DECLARADO; sin declarar, el largo (mismo default que
-        # reglas._ejeRangoReparto). Las zonas reparten por el eje longitudinal de la
-        # pieza, que es su rumbo.
-        if rango:
-            eje_r = str(rango.get("eje") or "").strip().lower()
-            _repartir(n, eje_r if eje_r in _EJES else "x", _cuenta_rango(rango), eje, cerrada)
-        elif zonas:
-            _repartir(n, eje, _cuenta_zonas(zonas), eje, cerrada)
-    # El ancla sólo viaja cuando de verdad manda: en un reparto o un arreglo las barras
-    # no se apilan desde una cara, se reparten.
-    suf = ("@" + ancla) if (modo == "layered" and ancla) else ""
-    return "%d.%d.%d:%s%s%s" % (n["x"], n["y"], n["z"], eje, "c" if cerrada else "", suf)
+        # Un CONTORNO CERRADO no se apoya contra una cara: ENCUADRA la sección entera
+        # (el marco de núcleo del motor). Su cara declarada es una convención de la
+        # receta —el estribo dice 'lateral'— y tomarla al pie de la letra lo dejaba
+        # pegado a un costado en vez de rodeando el hormigón.
+        for e in _EJES:
+            if e != eje:
+                p[e] = [1] + list(marco.util(e))
+
+    def apilar(e, n, paso_cm, sentido):
+        """n copias desde donde ya está, avanzando `paso_cm` hacia el núcleo."""
+        if n <= 1 or not paso_cm:
+            p[e][0] = max(p[e][0], n)
+            return
+        fin = p[e][1] - sentido * marco.paso_pct(e, paso_cm) * (n - 1)
+        p[e] = [n, p[e][1], int(round(max(0.0, min(100.0, fin))))]
+
+    def repartir(rg, sep_pref=None):
+        """Una LÍNEA de distribución (rango / rango2): su eje, su cuenta y su tramo REAL
+        —el from/to que escribió el usuario—, que es de donde sale que las cortinas
+        queden pegadas a las caras y no repartidas por el medio."""
+        if not isinstance(rg, dict):
+            return
+        e = str(rg.get("eje") or "").strip().lower()
+        if e not in _EJES:
+            e = "x"                            # el default de reglas._ejeRangoReparto
+        # Una pieza ABIERTA repartida por SU PROPIO eje no reparte: las copias caen una
+        # encima de otra y el motor las deja quietas (reglas.js `_recorreSuPropioEje`).
+        if e == eje and not cerrada:
+            return
+        a, b = _num(rg.get("from")), _num(rg.get("to"))
+        n = _cuenta_rango(rg, sep_pref)
+        if a is None or b is None:
+            p[e][0] = max(p[e][0], n)
+            return
+        p[e] = [n, marco.pct(e, a), marco.pct(e, b)]
+
+    if modo == "layered":
+        # Las capas se apilan HACIA EL NÚCLEO desde su cara, y las barras de cada capa se
+        # reparten A LO LARGO de esa cara — por el eje que no es ni el de la cara ni el
+        # que la barra recorre —, de recubrimiento a recubrimiento.
+        ea = eje_ancla or "y"
+        if not eje_ancla:
+            # Sin cara declarada, un cabezal se apoya en la de arriba: es el default del
+            # motor (_baseDeComponente), no una elección de esta función.
+            q = marco.cara(ea, lado, diam_cm)
+            p[ea] = [1, q, q]
+        apilar(ea, capas, gap if gap is not None else _GAP_DEFAULT, lado)
+        for et in _EJES:
+            if et != ea and et != eje:
+                a, b = marco.util(et)
+                p[et] = [por_capa, a, b]
+                break
+    else:
+        if modo == "arreglo" and capas > 1:
+            # CAPAS LEGADAS: sólo sobreviven en recetas guardadas antes de que el arreglo
+            # estrenara `rango2` (ver _setModoComp). Se apilan desde su cara igual que en
+            # 'layered', con su propia separación.
+            if eje_capas != eje_ancla:
+                q = marco.cara(eje_capas, lado, diam_cm)
+                p[eje_capas] = [1, q, q]
+            apilar(eje_capas, capas, sep_capas, lado)
+        repartir(rango, sep_dist)
+        # LA 2ª LÍNEA DEL ARREGLO. Es la que el editor de HOY usa para las dos cortinas
+        # de un muro: sin leerla, las tres mallas colapsaban a una sola en el centro.
+        repartir(rango2)
+        if not rango and not rango2 and zonas and cerrada:
+            # Las ZONAS reparten por el eje longitudinal de la pieza, de borde a borde.
+            # Sólo se ven cuando la pieza CIERRA (el estribo, que es un marco ⊥ a ese eje
+            # y se repite a lo largo): una pieza abierta que corre por ese mismo eje se
+            # queda quieta y sus copias caen una sobre otra (reglas._recorreSuPropioEje).
+            a, b = marco.util(eje)
+            p[eje] = [_cuenta_zonas(zonas), a, b]
+
+    return "%s/%s/%s:%s%s%s" % (
+        _bloque(*p["x"]), _bloque(*p["y"]), _bloque(*p["z"]),
+        eje, "c" if cerrada else "", ("~" + tip) if tip else "")
 
 
 def _resumen_seccion(geo, comps):
@@ -685,9 +822,10 @@ def _resumen_seccion(geo, comps):
         rl = rb if rb is not None else 0
     if rb is None:
         rb = rl
+    marco = _Marco(dims, rl, rb)
     piezas = []
     for c in comps or []:
-        tok = _pieza_token(c)
+        tok = _pieza_token(c, marco)
         # DEDUPE: dos grupos con el mismo token dibujan lo mismo en el mismo sitio —
         # mandarlos dos veces son bytes que no pintan un píxel nuevo.
         if tok and tok not in piezas:
@@ -796,7 +934,13 @@ def listar_templates(tipo: Optional[str] = None, obra: Optional[str] = None,
                                            THEN (SELECT count(*) FROM jsonb_object_keys(x.c->'dims'))
                                            ELSE 0 END,
                                       x.c->'distribucion'->'zonas',
-                                      x.c->'pose'->>'lado')
+                                      x.c->'pose'->>'lado',
+                                      x.c->'distribucion'->'rango2',
+                                      x.c->'distribucion'->>'gap',
+                                      x.c->'distribucion'->>'sep_capas',
+                                      x.c->>'diam',
+                                      x.c->>'tipologia',
+                                      x.c->'distribucion'->>'sep')
                                   ORDER BY x.ord)
                              FROM jsonb_array_elements(t.params->'componentes')
                                   WITH ORDINALITY AS x(c, ord))

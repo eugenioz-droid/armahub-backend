@@ -4,11 +4,15 @@
 // QUÉ DIBUJA: el corte del elemento, sus COTAS y un ESQUEMA del fierro, a partir de
 // dos cosas:
 //   1) el resumen compacto que manda GET /templates (modelador._resumen_seccion):
-//        { x:400, y:250, z:20, rl:2.5, rb:3, p:['1.5.2:x','5.1.2:y','3.2.1:z'] }
+//        { x:524, y:250, z:20, rl:2.5, rb:3, p:['1@1-99/14@1-99/2@15-85:x~MH', …] }
 //      x/y/z = las TRES medidas del hormigón en los ejes del motor (largo · alto ·
-//      ancho); rl/rb = recubrimiento de caras y de bordes; cada token dice cuántas
-//      barras del grupo hay SOBRE CADA EJE, por dónde corre la pieza, si su contorno
-//      cierra y contra qué cara se apoya.
+//      ancho); rl/rb = recubrimiento de caras y de bordes; y cada token dice, POR CADA
+//      EJE, cuántas barras hay y ENTRE QUÉ DOS POSICIONES (en % de esa medida), más por
+//      dónde corre la pieza, si su contorno cierra y su tipología (sólo para el color).
+//      Esos % son los del motor: el `from`/`to` de cada rango y la cara + recubrimiento
+//      + φ/2 contra la que la barra se apoya. Por eso las dos cortinas de un muro caen
+//      donde el motor las pone —15% y 85% del espesor— y no repartidas por el medio,
+//      que es como salían mientras este dibujante las colocaba a ojo.
 //   2) el PLANO del corte, que lo pasa quien llama.
 //
 // EL PLANO NO SE ELIGE ACÁ, Y ÉSE ES EL PUNTO (26-ago)
@@ -92,21 +96,22 @@
   // caben se pinta con las que caben: a esta escala la diferencia entre 14 puntos y 22
   // no es información, es un borrón (y el tooltip ya dice que es un esquema).
   var PASO_MIN = 3;
-  var PASO_CAPA = 3.4;             // cuánto se separan las capas apiladas contra su cara
   var RADIO_PUNTO = 1.45;
-  // Las barras CORTADAS se arriman por dentro del recubrimiento en vez de quedar
-  // clavadas en él: en una sección de verdad el longitudinal va por dentro del marco
-  // que lo abraza. De ahí sale, además, lo que hace legible el dibujo de un muro: la
-  // traba, que se dibuja ENTERA de recubrimiento a recubrimiento, asoma sus puntas por
-  // fuera de las dos cortinas que cose — que es exactamente lo que hace (medido en
-  // tests/test_muro_orientaciones.js: «sus dos puntas pasan POR FUERA de los ejes de
-  // las dos cortinas: las cose»). Sin ese cruce, dos cortinas más dos trabas cierran un
-  // rectángulo perfecto y la miniatura se lee como un estribo, que es otra cosa.
-  var ARRIMO = RADIO_PUNTO;
+  // (26-ago) ACÁ VIVÍAN un «arrimo» y un «paso de capas» con los que este dibujante
+  // colocaba las barras a ojo entre los dos recubrimientos. Murieron al cotejar contra
+  // ModeladorGenerar: las posiciones REALES vienen ahora medidas en el token (% de cada
+  // eje) y colocarlas es interpolar, no estimar. Lo que aquellas constantes conseguían
+  // por accidente —que la traba asome por fuera de las dos cortinas que cose— ahora sale
+  // solo, porque la traba trae SU largo (cruza de recubrimiento a recubrimiento) y las
+  // cortinas SU posición (a φ/2 del recubrimiento de cada cara).
 
-  // Un token del resumen: barras por eje + rumbo + contorno cerrado + cara de apoyo.
-  // Lo que no calce con esto NO se dibuja (no se adivina): el resumen es un contrato.
-  var RE_TOKEN = /^(\d+)\.(\d+)\.(\d+):([xyz])(c?)(?:@([xyz])([+-]?))?$/;
+  // Un token del resumen: por CADA EJE del hormigón «cuántas barras @ desde%-hasta%»,
+  // y después por dónde corre la pieza, si su contorno cierra y con qué tipología se
+  // dibujó. Lo que no calce con esto NO se dibuja (no se adivina): el resumen es un
+  // contrato, no una sugerencia.
+  var BLOQUE = '(\\d+)@(\\d+)(?:-(\\d+))?';
+  var RE_TOKEN = new RegExp('^' + BLOQUE + '/' + BLOQUE + '/' + BLOQUE +
+    ':([xyz])(c?)(?:~([^~:/]{1,8}))?$');
 
   function _n(v) { return Math.round(Number(v) * 100) / 100; }
   function _clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
@@ -122,11 +127,11 @@
   function _tok(t) {
     var m = RE_TOKEN.exec(String(t || ''));
     if (!m) return null;
-    return {
-      n: { x: parseInt(m[1], 10), y: parseInt(m[2], 10), z: parseInt(m[3], 10) },
-      r: m[4], cerrada: m[5] === 'c',
-      ancla: m[6] ? { eje: m[6], signo: (m[7] === '-' ? -1 : (m[7] === '+' ? 1 : 0)) } : null
-    };
+    function eje(i) {
+      var a = parseInt(m[i + 1], 10);
+      return { n: parseInt(m[i], 10), a: a, b: (m[i + 2] == null ? a : parseInt(m[i + 2], 10)) };
+    }
+    return { x: eje(1), y: eje(4), z: eje(7), r: m[10], cerrada: m[11] === 'c', tip: m[12] || '' };
   }
 
   // El eje que NO está en el plano: la profundidad que el corte colapsa.
@@ -136,8 +141,8 @@
   }
 
   // TOKEN + PLANO → cómo se ve ese grupo en ESTE corte. Es todo el trabajo de
-  // proyección, y no tiene una sola rama por tipo de elemento: pregunta por dónde
-  // corre la pieza y lo compara con los ejes del plano.
+  // proyección, y no tiene una sola rama por tipo de elemento ni por tipología:
+  // pregunta por dónde corre la pieza y lo compara con los ejes del plano.
   function _proyectar(tk, u, v) {
     var d = _fondo(u, v), forma;
     if (tk.cerrada) {
@@ -150,49 +155,28 @@
       // corre por un eje del plano se ve entera (línea por ese eje).
       forma = (tk.r === d) ? 'p' : ((tk.r === u) ? 'h' : 'v');
     }
-    return {
-      cols: tk.n[u], filas: tk.n[v], forma: forma,
-      // El apoyo sólo cuenta si su cara está EN el plano: una pila que se apila hacia
-      // la profundidad se ve de frente, o sea repartida.
-      aU: (tk.ancla && tk.ancla.eje === u) ? tk.ancla.signo : 0,
-      aV: (tk.ancla && tk.ancla.eje === v) ? tk.ancla.signo : 0
-    };
+    return { u: tk[u], v: tk[v], forma: forma, tip: tk.tip };
   }
 
-  // n posiciones repartidas entre a y b, con las de los extremos EN los extremos.
-  // Con n = 1 va al centro: una sola cortina va al medio del muro y no pegada a una
-  // cara — que es lo que hace el motor y lo que el usuario espera ver.
-  function _reparto(n, a, b) {
-    if (n <= 1) return [(a + b) / 2];
-    var out = [], paso = (b - a) / (n - 1), i;
-    for (i = 0; i < n; i++) out.push(a + i * paso);
-    return out;
-  }
-
-  // Capas apiladas DESDE una cara hacia el núcleo.
-  function _pila(n, desde, hacia) {
-    var largo = Math.abs(hacia - desde);
-    var paso = Math.min(PASO_CAPA, n > 1 ? largo / (n - 1) : PASO_CAPA);
-    var signo = (hacia >= desde) ? 1 : -1;
-    var out = [], i;
-    for (i = 0; i < n; i++) out.push(desde + signo * i * paso);
+  // n posiciones repartidas entre dos PORCENTAJES del hormigón, ya en coordenadas del
+  // dibujo (`mapa` convierte % → píxel en el eje que toque). Éste es el punto donde la
+  // miniatura dejó de adivinar: los porcentajes los calculó el backend desde el
+  // `from`/`to` de cada rango y desde la cara + recubrimiento + φ/2 contra la que la
+  // barra se apoya, o sea las MISMAS cifras que el motor. Antes acá se repartía «entre
+  // los dos recubrimientos» y por eso las dos cortinas de un muro salían por el medio
+  // en vez de pegadas a las caras — que es justo lo que un corte de muro tiene que decir.
+  function _posiciones(b, mapa) {
+    var p0 = mapa(b.a), p1 = mapa(b.b);
+    var n = _caben(b.n, Math.abs(p1 - p0));
+    if (n <= 1) return [p0];
+    var out = [], paso = (p1 - p0) / (n - 1), i;
+    for (i = 0; i < n; i++) out.push(p0 + i * paso);
     return out;
   }
 
   // Cuántas barras de un grupo CABEN en un tramo. Ver PASO_MIN.
   function _caben(n, largo) {
     return Math.max(1, Math.min(n, Math.floor(largo / PASO_MIN) + 1));
-  }
-
-  // Posiciones en UN eje: apiladas desde su cara si el grupo se apoya en ese eje,
-  // repartidas si no.
-  function _posiciones(n, a, b, apoyo, vertical) {
-    n = _caben(n, Math.abs(b - a));
-    if (!apoyo) return _reparto(n, a, b);
-    // apoyo +1 = contra el extremo POSITIVO del eje del hormigón. En el eje vertical
-    // del dibujo el positivo queda ARRIBA (la y del SVG crece hacia abajo).
-    var haciaMax = vertical ? (apoyo < 0) : (apoyo > 0);
-    return haciaMax ? _pila(n, b, a) : _pila(n, a, b);
   }
 
   function _linea(x1, y1, x2, y2, color, ancho) {
@@ -237,27 +221,36 @@
     ].join('');
   }
 
-  // UN grupo de barras ya proyectado → su trazo.
-  function _grupo(pr, g, color) {
+  // UN grupo de barras ya proyectado → su trazo. `tinta` puede ser un color o una
+  // FUNCIÓN que recibe la tipología del grupo y devuelve el suyo: así el gestor le pasa
+  // la paleta del editor sin que este dibujante sepa qué es una tipología (ver la
+  // cabecera). La tipología NO cambia qué se dibuja: sólo de qué color.
+  function _grupo(pr, g, tinta) {
+    var color = (typeof tinta === 'function') ? (tinta(pr.tip) || TINTA) : tinta;
+    // El hormigón ÚTIL, de recubrimiento a recubrimiento: es el 0-100% del token.
     var x0 = g.rx + g.padX, x1 = g.rx + g.rw - g.padX;
     var y0 = g.ry + g.padY, y1 = g.ry + g.rh - g.padY;
     if (pr.forma === 'm') return _marco(x0, y0, x1, y1, color);
 
-    var ax0 = Math.min(x0 + ARRIMO, (x0 + x1) / 2), ax1 = Math.max(x1 - ARRIMO, (x0 + x1) / 2);
-    var ay0 = Math.min(y0 + ARRIMO, (y0 + y1) / 2), ay1 = Math.max(y1 - ARRIMO, (y0 + y1) / 2);
-    var xs = _posiciones(pr.cols, ax0, ax1, pr.aU, false);
-    var ys = _posiciones(pr.filas, ay0, ay1, pr.aV, true);
+    // El 0% de un eje es su cara NEGATIVA; en el eje vertical del dibujo ésa queda
+    // ABAJO (la y del SVG crece hacia abajo), así que ese eje se recorre al revés.
+    var aU = function (p) { return g.rx + g.rw * (p / 100); };
+    var aV = function (p) { return g.ry + g.rh * (1 - p / 100); };
+    var xs = _posiciones(pr.u, aU), ys = _posiciones(pr.v, aV);
 
     var out = [], i, j;
-    // Una pieza que se ve ENTERA ocupa todo el hormigón útil por su eje: su largo lo
-    // pone el corte, no el reparto del otro eje (una traba tiene una por altura, no
-    // una por columna).
+    // Una pieza que se ve ENTERA se dibuja con SU LARGO: el bloque de su propio eje no
+    // trae posiciones sino de dónde a dónde llega (por eso una traba cruza el espesor de
+    // lado a lado y asoma por fuera de las dos cortinas que cose, igual que en el motor).
+    // Sin largo declarado se toma el hormigón útil, que es lo que hace una barra 'auto'.
     if (pr.forma === 'v') {
-      for (i = 0; i < xs.length; i++) out.push(_linea(xs[i], y0, xs[i], y1, color, 0.9));
+      var v0 = (pr.v.a !== pr.v.b) ? aV(pr.v.a) : y1, v1 = (pr.v.a !== pr.v.b) ? aV(pr.v.b) : y0;
+      for (i = 0; i < xs.length; i++) out.push(_linea(xs[i], v0, xs[i], v1, color, 0.9));
       return out.join('');
     }
     if (pr.forma === 'h') {
-      for (i = 0; i < ys.length; i++) out.push(_linea(x0, ys[i], x1, ys[i], color, 0.9));
+      var u0 = (pr.u.a !== pr.u.b) ? aU(pr.u.a) : x0, u1 = (pr.u.a !== pr.u.b) ? aU(pr.u.b) : x1;
+      for (i = 0; i < ys.length; i++) out.push(_linea(u0, ys[i], u1, ys[i], color, 0.9));
       return out.join('');
     }
     for (i = 0; i < xs.length; i++) {
@@ -386,7 +379,7 @@
     svg: svg, titulo: titulo,
     // Expuestos para los tests y para poder probar otros tonos sin cazar el hex.
     TINTA: TINTA, HORMIGON: HORMIGON, HORMIGON_BORDE: HORMIGON_BORDE, COTA: COTA,
-    _tok: _tok, _proyectar: _proyectar, _reparto: _reparto, _encuadre: _encuadre
+    _tok: _tok, _proyectar: _proyectar, _posiciones: _posiciones, _encuadre: _encuadre
   };
   global.ModeladorSeccionMini = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
