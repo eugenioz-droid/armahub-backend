@@ -820,7 +820,13 @@
       _refrescarFigDatalist(); _validarFiguraRibbon(false); return;
     }
     ST._catPedido = true;
-    fetch(_tplUrl('/figuras-catalogo'), { headers: _tplHeaders(false) })
+    // CON LAS OBSOLETAS (26-ago). El motor tiene que RESOLVER toda figura que una
+    // receta pueda nombrar, y desde el soft erase eso incluye las retiradas: un
+    // template repuntado a `104B~1` no se dibujaría ni generaría barras si el
+    // catálogo del cliente no la conociera. Lo que NO cambia es lo que se OFRECE —
+    // el datalist sale de `dibujables()`, que las filtra. Resolver todo, ofrecer
+    // sólo lo vivo.
+    fetch(_tplUrl('/figuras-catalogo?incluir_obsoletas=true'), { headers: _tplHeaders(false) })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (data) c.actualizar(data);

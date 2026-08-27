@@ -12,6 +12,8 @@ El seed (`seed_catalogo`) carga el catálogo semilla de forma idempotente (no pi
 ediciones hechas desde la UI en el futuro: solo inserta lo que falta).
 """
 
+import json
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -19,6 +21,10 @@ from pydantic import BaseModel
 
 from .auth import get_current_user
 from .db import get_conn
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 router = APIRouter()
 
@@ -456,13 +462,27 @@ def validar_geometria(fuente, codigo_figura: str, valores: dict) -> dict:
 # ============================================================================
 
 @router.get("/figuras-catalogo")
-def listar_figuras(activo: Optional[bool] = True, user=Depends(get_current_user)):
-    """Catálogo de figuras. Lo consumen Bar Manager (validación/filtros) y el editor."""
+def listar_figuras(activo: Optional[bool] = True, incluir_obsoletas: bool = False,
+                   user=Depends(get_current_user)):
+    """Catálogo de figuras. Lo consumen Bar Manager (validación/filtros) y el editor.
+
+    RESOLVER TODO, OFRECER SÓLO LO ACTIVO (26-ago). Con el soft erase existen figuras
+    OBSOLETAS: retiradas del catálogo pero todavía referenciadas por recetas que hay
+    que poder dibujar y generar. Son dos preguntas distintas y por eso son dos
+    llamadas distintas:
+      · un SELECTOR de figura (el picker del editor, el datalist del Bar Manager, el
+        select del creador) pregunta «¿qué puedo elegir?» → sólo activas, el default;
+      · el MOTOR pregunta «¿qué significa este código?» → `incluir_obsoletas=true`.
+    Si el motor no las recibiera, un template repuntado a una obsoleta no podría
+    dibujarse ni generar barras: es el punto exacto donde este esquema se cae si la
+    asimetría no se hace a propósito.
+    """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            where = " WHERE activo = TRUE" if activo else ""
+            where = " WHERE activo = TRUE" if (activo and not incluir_obsoletas) else ""
             cur.execute(f"""
-                SELECT codigo, parciales, angulos, radio, descripcion, activo, geometria
+                SELECT codigo, parciales, angulos, radio, descripcion, activo, geometria,
+                       obsoleta_de
                 FROM figuras_catalogo{where} ORDER BY codigo
             """)
             rows = cur.fetchall()
@@ -470,10 +490,181 @@ def listar_figuras(activo: Optional[bool] = True, user=Depends(get_current_user)
         "figuras": [
             {"codigo": r[0], "parciales": r[1] or [], "angulos": r[2] or [],
              "radio": bool(r[3]), "descripcion": r[4], "activo": r[5],
-             "geometria": r[6]}   # 5M.8: JSON de armado (o None si sin render)
+             "geometria": r[6],   # 5M.8: JSON de armado (o None si sin render)
+             "obsoleta_de": r[7]}
             for r in rows
         ]
     }
+
+
+# ---------------------------------------------------------------------------
+# SOFT ERASE — el código obsoleto
+# ---------------------------------------------------------------------------
+# FORMATO: el código original + '~' + un correlativo → `104B~1`, `104B~2`…
+#   · '~' porque no aparece en ningún código del catálogo Armacero (todos son
+#     dígitos + letra) ni en los de aSa Studio, y se ordena DESPUÉS de las letras y
+#     los dígitos en ASCII, así que las obsoletas caen juntas al final de cualquier
+#     lista ordenada por código sin tener que filtrarlas.
+#   · CORRELATIVO porque el mismo código se puede retirar más de una vez: redibujas
+#     104B, no te gusta, lo retiras otra vez. Sin número, la segunda pisaría a la
+#     primera y se perdería la receta de un template viejo.
+#   · Y como el código es texto libre, el carácter queda PROHIBIDO al crear (ver
+#     crear_o_actualizar_figura): sin eso, un usuario podría crear `104B~1` a mano y
+#     colisionar con una obsoleta. El esquema entero descansa en que '~' sea nuestro.
+MARCA_OBSOLETA = "~"
+
+
+def _codigo_obsoleto(cur, codigo: str) -> str:
+    """Siguiente código obsoleto libre para `codigo`. Cuenta los que ya existen en vez
+    de leer un contador: el dato ya está en la tabla y no hay nada que mantener."""
+    cur.execute(
+        "SELECT codigo FROM figuras_catalogo WHERE codigo LIKE %s",
+        (codigo + MARCA_OBSOLETA + "%",),
+    )
+    usados = set()
+    for (c,) in cur.fetchall():
+        suf = c[len(codigo) + 1:]
+        if suf.isdigit():
+            usados.add(int(suf))
+    n = 1
+    while n in usados:
+        n += 1
+    return f"{codigo}{MARCA_OBSOLETA}{n}"
+
+
+# Las dos tablas que guardan RECETAS con `params.componentes[].figura`. Las dos
+# regeneran barras contra el catálogo, así que las dos hay que repuntarlas: los
+# templates (la biblioteca) y las estructuras ya cargadas a un despiece — si sólo se
+# repuntara la primera, reabrir una estructura y actualizarla le cambiaría la
+# geometría en silencio, que es el defecto que este mecanismo viene a evitar.
+_TABLAS_RECETA = ("templates_catalogo", "elementos_template")
+
+
+def _repuntar_recetas(cur, viejo: str, nuevo: str) -> dict:
+    """Cambia `viejo` → `nuevo` en la figura de cada componente, en las dos tablas de
+    recetas. UNA sentencia por tabla (nada de leer N recetas a Python y reescribirlas:
+    es el N+1 que ya costó caro en lotes.py). Devuelve cuántas filas tocó cada una."""
+    tocadas = {}
+    for tabla in _TABLAS_RECETA:
+        cur.execute(
+            f"""
+            UPDATE {tabla} t
+               SET params = jsonb_set(t.params, '{{componentes}}', (
+                     SELECT COALESCE(jsonb_agg(
+                              CASE WHEN x.c->>'figura' = %s
+                                   THEN jsonb_set(x.c, '{{figura}}', to_jsonb(%s::text))
+                                   ELSE x.c END
+                              ORDER BY x.ord), '[]'::jsonb)
+                       FROM jsonb_array_elements(t.params->'componentes')
+                            WITH ORDINALITY AS x(c, ord)))
+             WHERE jsonb_typeof(t.params->'componentes') = 'array'
+               AND t.params->'componentes' @> %s::jsonb
+            """,
+            (viejo, nuevo, json.dumps([{"figura": viejo}])),
+        )
+        tocadas[tabla] = cur.rowcount or 0
+    return tocadas
+
+
+def _uso_de_figura(cur, codigo: str) -> dict:
+    """Dónde se usa una figura. Se dice ANTES de retirarla, con números reales: una
+    advertencia genérica no deja decidir. Las BARRAS son informativas — no se tocan
+    nunca en este flujo, porque llevan su propia geometría."""
+    cur.execute("SELECT COUNT(*) FROM barras WHERE figura = %s", (codigo,))
+    barras = int(cur.fetchone()[0] or 0)
+    conteo = {"barras": barras}
+    ref = json.dumps([{"figura": codigo}])
+    for tabla in _TABLAS_RECETA:
+        cur.execute(
+            f"""SELECT COUNT(*) FROM {tabla}
+                 WHERE jsonb_typeof(params->'componentes') = 'array'
+                   AND params->'componentes' @> %s::jsonb""",
+            (ref,),
+        )
+        conteo[tabla] = int(cur.fetchone()[0] or 0)
+    return conteo
+
+
+@router.get("/figuras-catalogo/{codigo}/uso")
+def uso_figura(codigo: str, user=Depends(get_current_user)):
+    """Cuántas barras, templates y estructuras referencian esta figura. Lo pide la
+    confirmación de retirar, para que el admin decida con el número a la vista."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            u = _uso_de_figura(cur, (codigo or "").strip())
+    return {"codigo": codigo, "barras": u["barras"],
+            "templates": u["templates_catalogo"], "estructuras": u["elementos_template"]}
+
+
+@router.get("/figuras-catalogo-obsoletas")
+def listar_obsoletas(user=Depends(get_current_user)):
+    """Las figuras retiradas, para poder VISITARLAS (pedido del usuario). Cada una
+    dice de qué código viene, cuándo se retiró y si su código original está libre —
+    que es la única condición para poder reactivarla."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT o.codigo, o.obsoleta_de, o.retirada_fecha, o.retirada_por,
+                       o.parciales, o.angulos, o.radio, o.geometria,
+                       EXISTS (SELECT 1 FROM figuras_catalogo v WHERE v.codigo = o.obsoleta_de)
+                  FROM figuras_catalogo o
+                 WHERE o.obsoleta_de IS NOT NULL
+                 ORDER BY o.retirada_fecha DESC NULLS LAST, o.codigo
+            """)
+            rows = cur.fetchall()
+    return {"obsoletas": [
+        {"codigo": r[0], "obsoleta_de": r[1], "retirada_fecha": r[2], "retirada_por": r[3],
+         "parciales": r[4] or [], "angulos": r[5] or [], "radio": bool(r[6]),
+         "geometria": r[7], "codigo_ocupado": bool(r[8])}
+        for r in rows
+    ]}
+
+
+@router.post("/figuras-catalogo/{codigo}/reactivar")
+def reactivar_figura(codigo: str, user=Depends(get_current_user)):
+    """Deshace un retiro: la obsoleta vuelve a su código original y a estar activa,
+    y las recetas que se le repuntaron vuelven con ella.
+
+    SÓLO si el código original sigue LIBRE. Si alguien ya redibujó ahí, reactivar
+    significaría dos figuras con el mismo código: se rechaza con 409 diciendo por qué,
+    en vez de inventar un desempate."""
+    from fastapi import HTTPException
+    if not _puede_editar_catalogo(user):
+        raise HTTPException(status_code=403, detail="No tienes permiso para editar el catálogo de figuras.")
+    codigo = (codigo or "").strip()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT obsoleta_de FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail=f"Figura '{codigo}' no encontrada.")
+            original = r[0]
+            if not original:
+                raise HTTPException(status_code=400, detail=f"'{codigo}' no es una figura retirada.")
+            cur.execute("SELECT 1 FROM figuras_catalogo WHERE codigo = %s", (original,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail=(
+                    f"No se puede reactivar: el código '{original}' ya está ocupado por otra figura. "
+                    f"Para recuperar ésta, primero retira la que ocupa ese código."))
+            tocadas = _repuntar_recetas(cur, codigo, original)
+            cur.execute(
+                """UPDATE figuras_catalogo
+                      SET codigo = %s, activo = TRUE, obsoleta_de = NULL,
+                          retirada_fecha = NULL, retirada_por = NULL
+                    WHERE codigo = %s""",
+                (original, codigo),
+            )
+    try:
+        from .db import audit
+        audit(user.get("email", "?"), "reactivar_figura_catalogo",
+              f"{codigo} → {original} · recetas repuntadas: "
+              f"{tocadas['templates_catalogo']} templates, {tocadas['elementos_template']} estructuras",
+              "figura", original)
+    except Exception:
+        pass
+    return {"ok": True, "codigo": original, "desde": codigo,
+            "templates": tocadas["templates_catalogo"],
+            "estructuras": tocadas["elementos_template"]}
 
 
 class FiguraCrear(BaseModel):
@@ -517,6 +708,16 @@ def crear_o_actualizar_figura(body: FiguraCrear, user=Depends(get_current_user))
     if not codigo:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="El código/nombre de la figura es obligatorio.")
+    # EL '~' ES NUESTRO (26-ago). El soft erase renombra la figura retirada a
+    # `104B~1`, y eso sólo es seguro si nadie puede crear un código así a mano: si un
+    # usuario creara `104B~1`, chocaría con la obsoleta y una de las dos perdería su
+    # receta. Se bloquea al crear, que es la única puerta por donde entra un código
+    # nuevo, y se dice por qué en vez de rechazarlo con un error mudo.
+    if MARCA_OBSOLETA in codigo:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=(
+            f"El código no puede llevar '{MARCA_OBSOLETA}': ese carácter lo usa el sistema "
+            f"para marcar las figuras retiradas (por ejemplo 104B{MARCA_OBSOLETA}1)."))
     geo_json = json.dumps(body.geometria) if body.geometria is not None else None
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -543,8 +744,28 @@ def crear_o_actualizar_figura(body: FiguraCrear, user=Depends(get_current_user))
 
 @router.delete("/figuras-catalogo/{codigo}")
 def eliminar_figura(codigo: str, user=Depends(get_current_user)):
-    """Elimina una figura del catálogo (5M.8). Solo admin. Data maestra: se borra
-    de verdad (no soft-delete) porque el diseñador la puede recrear."""
+    """RETIRA una figura del catálogo: no la destruye. Solo admin.
+
+    ANTES BORRABA DE VERDAD, con este argumento: «data maestra: se borra de verdad
+    porque el diseñador la puede recrear». El argumento era cierto para la FIGURA y
+    falso para todo lo que la referenciaba: entre el borrado y el redibujo, los
+    templates que la usaban generaban un componente MENOS, y al actualizar una
+    estructura en su despiece esas barras se borraban. Perdías fierro sin tocar el
+    despiece.
+
+    QUÉ HACE AHORA, en una transacción:
+      · la figura pasa a un código obsoleto (`104B` → `104B~1`) y queda inactiva;
+      · las RECETAS que la usaban se repuntan a ese código, así que siguen dibujando
+        y generando exactamente lo mismo;
+      · el código original queda LIBRE para redibujarlo.
+
+    LAS BARRAS NO SE TOCAN, y no es un olvido: una barra es autosuficiente —guarda sus
+    lados, sus ángulos, su largo, su peso y el nombre de la figura— y el catálogo es
+    una capa de VALIDACIÓN encima, no la fuente de su contenido. El export manda lo
+    que la barra dice. Por eso una barra vieja sigue diciendo `104B` y está bien: ese
+    dato describe lo que se fabricó. Lo único que regenera contra el catálogo son las
+    recetas, y ésas son las que se repuntan.
+    """
     from fastapi import HTTPException
     rol = (user.get("role") or "").lower()
     if rol not in ("admin", "admin_calidad"):
@@ -552,16 +773,38 @@ def eliminar_figura(codigo: str, user=Depends(get_current_user)):
     codigo = (codigo or "").strip()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM figuras_catalogo WHERE codigo = %s", (codigo,))
-            n = cur.rowcount or 0
-    if n == 0:
-        raise HTTPException(status_code=404, detail=f"Figura '{codigo}' no encontrada.")
+            cur.execute("SELECT obsoleta_de FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail=f"Figura '{codigo}' no encontrada.")
+            if r[0]:
+                raise HTTPException(status_code=400, detail=(
+                    f"'{codigo}' ya es una figura retirada. Se puede reactivar, no retirar de nuevo."))
+            uso = _uso_de_figura(cur, codigo)
+            nuevo = _codigo_obsoleto(cur, codigo)
+            # El repunte va ANTES del renombre: mientras las recetas dicen el código
+            # viejo, el UPDATE las encuentra. Al revés no habría a qué apuntar.
+            tocadas = _repuntar_recetas(cur, codigo, nuevo)
+            cur.execute(
+                """UPDATE figuras_catalogo
+                      SET codigo = %s, activo = FALSE, obsoleta_de = %s,
+                          retirada_fecha = %s, retirada_por = %s
+                    WHERE codigo = %s""",
+                (nuevo, codigo, _now_iso(), user.get("email", "?"), codigo),
+            )
     try:
         from .db import audit
-        audit(user.get("email", "?"), "eliminar_figura_catalogo", codigo, "figura", codigo)
+        audit(user.get("email", "?"), "retirar_figura_catalogo",
+              f"{codigo} → {nuevo} · {tocadas['templates_catalogo']} templates y "
+              f"{tocadas['elementos_template']} estructuras repuntadas · "
+              f"{uso['barras']} barras intactas",
+              "figura", nuevo)
     except Exception:
         pass
-    return {"ok": True, "codigo": codigo}
+    return {"ok": True, "codigo": codigo, "obsoleta": nuevo,
+            "templates": tocadas["templates_catalogo"],
+            "estructuras": tocadas["elementos_template"],
+            "barras": uso["barras"]}
 
 
 @router.get("/tipologias")

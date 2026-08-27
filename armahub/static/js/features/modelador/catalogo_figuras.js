@@ -29,7 +29,7 @@
 (function (global) {
   'use strict';
 
-  var VERSION = '2026-08-12';   // fecha en que se generó el espejo
+  var VERSION = '2026-08-26';   // fecha en que se generó el espejo
   var SHA = '9754897b8c4d';           // huella de la data del seed (detecta desfases)
   var FUENTE = 'armahub/catalogo.py::_FIGURAS_SEED';
 
@@ -217,7 +217,16 @@
     return {
       codigo: cod, parciales: par, angulos: ang, radio: !!(f && f.radio),
       descripcion: (f && f.descripcion != null) ? f.descripcion : null,
-      geometria: (f && f.geometria != null) ? f.geometria : null
+      geometria: (f && f.geometria != null) ? f.geometria : null,
+      // RETIRADA DEL CATALOGO (26-ago, soft erase). Una figura obsoleta SIGUE
+      // RESOLVIENDO -- hay recetas repuntadas a ella que tienen que poder dibujarse
+      // y generar barras -- pero NO se ofrece en los selectores. Por eso el dato
+      // viaja hasta aca en vez de filtrarse en el servidor: quien RESUELVE y quien
+      // OFRECE son dos preguntas distintas, y este catalogo contesta las dos.
+      // `activo` por defecto TRUE: el espejo estatico no trae el campo y todas sus
+      // figuras estan vivas; leerlo como undefined las habria escondido a todas.
+      activo: (f && f.activo != null) ? !!f.activo : true,
+      obsoleta_de: (f && f.obsoleta_de != null) ? f.obsoleta_de : null
     };
   }
 
@@ -260,10 +269,27 @@
     return fp.noDibujables(codigo);
   }
 
+  // LO QUE SE PUEDE OFRECER. Fuera las RETIRADAS: siguen en FIGURAS para que las
+  // recetas repuntadas resuelvan, pero elegir una figura obsoleta para una barra
+  // NUEVA no tiene sentido -- se retiro justamente para dejar de usarse.
+  // Este es el UNICO sitio donde se aplica el filtro: `get` y `FIGURAS` las
+  // devuelven igual, y eso es lo que hace que el motor no se entere de nada.
   function dibujables() {
     var fp = _fp();
-    if (!fp || !fp.dibujabilidad) return codigos();
-    return codigos().filter(function (c) { return fp.dibujabilidad(c).dibujable; });
+    var vivos = codigos().filter(function (c) {
+      var f = FIGURAS[c];
+      return !(f && (f.activo === false || f.obsoleta_de));
+    });
+    if (!fp || !fp.dibujabilidad) return vivos;
+    return vivos.filter(function (c) { return fp.dibujabilidad(c).dibujable; });
+  }
+
+  // Las retiradas, para la pantalla que las lista ("visitarlas").
+  function obsoletas() {
+    return codigos().filter(function (c) {
+      var f = FIGURAS[c];
+      return !!(f && (f.obsoleta_de || f.activo === false));
+    });
   }
 
   var API = {
@@ -273,6 +299,7 @@
     FIGURAS: FIGURAS,
     TIPOLOGIAS: TIPOLOGIAS,
     FIGURAS_POR_TIPOLOGIA: FIGURAS_POR_TIPOLOGIA,
+    obsoletas: obsoletas,
     get: get,
     existe: existe,
     codigos: codigos,
