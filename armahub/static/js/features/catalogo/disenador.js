@@ -1034,6 +1034,9 @@
     _redibujarLienzo();
     _redibujarPanel();
     _redibujarGaleria();
+    // Las RETIRADAS viven en su propia lista (GET aparte): se piden acá para que la
+    // sección esté al abrir el Diseñador, no sólo después de guardar o borrar algo.
+    _recargarObsoletas();
     _actualizarBandaEditando();   // muestra "Nueva figura" / "Editando X" según estado
   }
 
@@ -1856,6 +1859,7 @@
       var data = await apiGet('/figuras-catalogo');
       _figurasCat = (data && data.figuras) || _figurasCat;
     } catch (e) {}
+    _recargarObsoletas();   // las retiradas viven en su propia lista (ver más abajo)
     disenadorInit();   // refresca resumen + galería del diseñador
     // También refrescar la TABLA del catálogo (index.js tiene su propio estado
     // _figurasData) para que la figura recién guardada aparezca sin refrescar a mano.
@@ -1888,6 +1892,96 @@
         '</div>';
     }).join('');
   }
+
+  // ---- FIGURAS RETIRADAS (soft erase) --------------------------------------
+  // Van APARTE de la galería viva, no mezcladas con un badge: son otra cosa. Una
+  // figura retirada no se elige para una barra nueva —se retiró justamente para
+  // dejar de usarse— pero sigue dibujando las recetas que la nombran, así que
+  // tiene que poder verse y recuperarse.
+  // EL GRIS ES EL MENSAJE: el mismo trazo, otra tinta. Y no se pinta a mano acá —
+  // el color entra por parámetro al motor, igual que TINTA/TINTA_3D, así que el
+  // dibujante no sabe nada de figuras retiradas.
+  var TINTA_OBSOLETA = '#90a4ae';   // blue grey 300: se lee, pero no compite con las vivas
+  // El codigo de una figura es texto que escribe el usuario y aca entra en HTML y
+  // dentro de atributos `title`. La galeria viva lo inserta crudo desde siempre;
+  // esto no arregla aquello, pero no estrena el mismo agujero.
+  function _escH(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  var _obsoletas = [];
+
+  async function _recargarObsoletas() {
+    try {
+      var d = await apiGet('/figuras-catalogo-obsoletas');
+      _obsoletas = (d && d.obsoletas) || [];
+    } catch (e) { _obsoletas = []; }
+    _redibujarObsoletas();
+  }
+
+  function _redibujarObsoletas() {
+    var wrap = document.getElementById('disenadorObsoletasWrap');
+    var cont = document.getElementById('disenadorObsoletas');
+    if (!wrap || !cont) return;
+    // Sin retiradas, el bloque entero desaparece: una sección vacía permanente es
+    // ruido, y este caso es el normal en una instalación sana.
+    wrap.style.display = _obsoletas.length ? '' : 'none';
+    var cnt = document.getElementById('disenadorObsoletasCnt');
+    if (cnt) cnt.textContent = _obsoletas.length ? ('(' + _obsoletas.length + ')') : '';
+    if (!_obsoletas.length) { cont.innerHTML = ''; return; }
+    cont.innerHTML = _obsoletas.map(function (f) {
+      var vis = (f.geometria && f.geometria.tramos && f.geometria.tramos.length)
+        ? dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12, color: TINTA_OBSOLETA })
+        : '<div style="height:72px; display:flex; align-items:center; justify-content:center;' +
+          ' color:#b0bec5; font-size:10px;">sin dibujo</div>';
+      var cod = String(f.codigo).replace(/'/g, "\\'");
+      // REACTIVAR sólo si su código original sigue libre. Si alguien ya redibujó
+      // ahí, el botón se muestra APAGADO CON EL MOTIVO: esconderlo dejaría al
+      // usuario preguntándose por qué esa figura no se puede recuperar.
+      var puede = !f.codigo_ocupado;
+      var btn = puede
+        ? '<button onclick="disenadorReactivar(\'' + cod + '\')" title="Devolverla a su código ' +
+          _escH(f.obsoleta_de) + ' y volver a ofrecerla" style="margin-top:3px; font-size:10px;' +
+          ' padding:2px 8px; border:1px solid #558B2F; background:#fff; color:#558B2F;' +
+          ' border-radius:4px; cursor:pointer;">Recuperar</button>'
+        : '<button disabled title="El código ' + _escH(f.obsoleta_de) + ' ya lo ocupa otra figura.' +
+          ' Para recuperar ésta, primero retira la que está usando ese código."' +
+          ' style="margin-top:3px; font-size:10px; padding:2px 8px; border:1px solid #cfd8dc;' +
+          ' background:#fafafa; color:#b0bec5; border-radius:4px; cursor:not-allowed;">Recuperar</button>';
+      var cuando = f.retirada_fecha ? String(f.retirada_fecha).slice(0, 10) : '';
+      return '<div style="border:1px dashed #cfd8dc; border-radius:6px; padding:6px;' +
+        ' text-align:center; background:#fafafa;">' + vis +
+        '<div style="font-size:11px; font-weight:700; color:#78909c; margin-top:2px;">' +
+        _escH(f.codigo) + '</div>' +
+        '<div style="font-size:9.5px; color:#b0bec5;">era ' + _escH(f.obsoleta_de) +
+        (cuando ? ' · ' + cuando : '') + '</div>' + btn + '</div>';
+    }).join('');
+  }
+
+  // Devuelve una retirada a su código original. El backend rechaza con 409 si el
+  // código ya está ocupado — acá se pregunta antes sólo para no hacer viajar un
+  // clic que ya sabemos que falla; la regla vive allá.
+  global.disenadorReactivar = async function (codigo) {
+    var f = _obsoletas.find(function (x) { return x.codigo === codigo; });
+    if (!f) return;
+    if (!confirm('Recuperar esta figura como "' + f.obsoleta_de + '".\n\n' +
+                 'Las recetas que quedaron apuntando a "' + codigo + '" vuelven con ella.')) return;
+    try {
+      var res = await fetch(apiUrl('/figuras-catalogo/' + encodeURIComponent(codigo) + '/reactivar'),
+        { method: 'POST', headers: authHeaders() });
+      var data = null; try { data = await res.json(); } catch (e) {}
+      if (!res.ok) {
+        alert('No se pudo recuperar: ' + ((data && data.detail) || 'error inesperado') + '.');
+        return;
+      }
+      alert('Figura recuperada como "' + (data && data.codigo) + '".' +
+            (data && (data.templates || data.estructuras)
+              ? '\n' + data.templates + ' template(s) y ' + data.estructuras +
+                ' estructura(s) volvieron con ella.' : ''));
+      _recargarCatalogo();
+    } catch (e) { alert('No se pudo recuperar la figura (sin conexión).'); }
+  };
 
   // Carga una figura del catálogo al lienzo para EDITARLA. Convierte su geometría
   // a puntos del lienzo (misma dirección de armado; se escala a la grilla).

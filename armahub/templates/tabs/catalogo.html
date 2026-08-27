@@ -224,6 +224,25 @@
             <div class="muted" style="font-size:12px;">Cargando…</div>
           </div>
         </div>
+
+        <!-- FIGURAS RETIRADAS (soft erase, 26-ago). Retirar una figura ya no la
+             destruye: se le cambia el código a uno obsoleto (104B → 104B~1), las
+             recetas que la usaban se repuntan a él y el código original queda LIBRE
+             para redibujar. Esta sección es el «poder visitarlas» que pidió el
+             usuario: siguen acá, se ven, y se pueden recuperar.
+             Van en GRIS —el mismo trazo, otra tinta— porque eso es lo que son: la
+             misma figura, fuera de circulación. El bloque entero se esconde si no
+             hay ninguna: una sección vacía permanente es ruido. -->
+        <div id="disenadorObsoletasWrap" style="display:none; margin-top:16px; border-top:1px dashed #ddd; padding-top:12px;">
+          <div style="font-size:12px; font-weight:600; color:#78909c; margin-bottom:2px;">
+            Figuras retiradas <span id="disenadorObsoletasCnt" style="font-weight:400;"></span>
+          </div>
+          <div class="muted" style="font-size:11px; margin-bottom:8px;">
+            Ya no se ofrecen para barras nuevas, pero siguen dibujando las recetas que las usaban.
+            Se pueden recuperar mientras su código original siga libre.
+          </div>
+          <div id="disenadorObsoletas" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:8px;"></div>
+        </div>
       </div>
     </div>
 
