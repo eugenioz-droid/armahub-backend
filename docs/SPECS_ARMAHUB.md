@@ -1688,6 +1688,13 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   resumir e inventariar. Además `max_retries` pasó de 1 a 3: un `500 api_error` de la API (que es
   pasajero) llegaba a la pantalla del usuario como si fuera culpa suya; ahora se reintenta con
   espera creciente y, si igual falla, el mensaje dice que es pasajero y que reenvíe.
+- **F1.15 — los errores se explican solos (31-ago)**: pedido del usuario para no tener que traer el
+  texto técnico cada vez. `_explicacion_api` traduce cada error conocido a una línea que dice QUÉ
+  pasó, DE QUIÉN es y QUÉ hacer: campos opcionales de más y gramática grande → «problema del
+  programa, no de lo que pediste»; 5xx → «pasajero, reenvía»; 429/529 → «espera unos segundos»;
+  sin crédito o clave inválida → «avísale al administrador»; conversación muy larga → «cierra el
+  chat y ábrelo de nuevo, el muro no se pierde». El detalle técnico queda detrás, para quien lo
+  necesite. Cubre también timeout y fallo de red.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

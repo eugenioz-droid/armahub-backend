@@ -927,6 +927,65 @@ def _figuras_de(cur, spec: dict):
         return None
 
 
+# ---------------------------------------------------------------------------
+# ERRORES EN CASTELLANO — que paso, de quien es y que hacer
+# ---------------------------------------------------------------------------
+# El usuario no tiene por que traducir un 400 de la API ni traerle el texto a
+# nadie (pedido 31-ago). Cada error conocido se explica en una linea, dice si es
+# problema del PROGRAMA o pasajero, y que hacer. El detalle tecnico se conserva
+# al final, para quien lo necesite.
+_EXPLICACIONES = [
+    ("union types",
+     "El formulario interno del asistente tiene demasiados campos opcionales para "
+     "lo que la API acepta. Es un problema del programa, no de lo que pediste."),
+    ("compiled grammar",
+     "El formulario interno del asistente quedo demasiado grande para la API. Es un "
+     "problema del programa, no de lo que pediste."),
+    ("max_tokens",
+     "La respuesta pedida excede el maximo permitido. Es un problema del programa."),
+    ("context",
+     "La conversacion se hizo demasiado larga para un solo pedido. Cierra el chat y "
+     "abrelo de nuevo para empezar limpio; el muro que ya cargaste no se pierde."),
+    ("credit",
+     "La cuenta de la API se quedo sin credito. Avisale al administrador para que "
+     "recargue."),
+    ("billing",
+     "Hay un problema de facturacion en la cuenta de la API. Avisale al administrador."),
+    ("rate limit",
+     "Se hicieron muchas consultas seguidas. Espera unos segundos y reenvia."),
+    ("overloaded",
+     "La API esta saturada en este momento. Espera unos segundos y reenvia."),
+    ("authentication",
+     "La clave de la API no es valida o falta. Avisale al administrador."),
+    ("permission",
+     "La clave de la API no tiene permiso para este modelo. Avisale al administrador."),
+    ("not_found",
+     "El modelo configurado no existe o cambio de nombre. Es un problema del programa."),
+]
+
+
+def _explicacion_api(status: int, texto: str) -> str:
+    """Una linea en castellano que diga QUE paso y QUE hacer."""
+    t = (texto or "").lower()
+    for clave, explicacion in _EXPLICACIONES:
+        if clave in t:
+            return explicacion
+    if status >= 500:
+        return ("La API tuvo un problema pasajero y los reintentos tampoco pasaron. "
+                "Reenvia el mensaje en unos segundos.")
+    if status == 400:
+        return ("La peticion que arma el asistente no fue valida. Es un problema del "
+                "programa, no de lo que pediste.")
+    return "El asistente no pudo responder por un problema tecnico."
+
+
+def _detalle_error(status: int, texto: str) -> str:
+    """Explicacion simple + el texto tecnico detras, recortado."""
+    simple = _explicacion_api(status, texto)
+    tec = (texto or "").strip().replace(chr(10), " ")[:300]
+    return simple + ("  ·  Detalle tecnico: " + tec if tec else "")
+
+
 def _tope_diario(email: str):
     clave = (email, date.today().isoformat())
     n = _llamadas.get(clave, 0) + 1
@@ -1052,31 +1111,35 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                              "algo, dime.")
                 return {"texto": texto or "…", "receta": receta, "resumen": resumen}
 
-            except anthropic.AuthenticationError:
+            except anthropic.AuthenticationError as e:
                 raise HTTPException(status_code=503,
-                                    detail="El asistente no puede conectarse (API key inválida). Avisa al administrador.")
-            except anthropic.RateLimitError:
+                                    detail=_detalle_error(401, str(e)))
+            except anthropic.RateLimitError as e:
                 raise HTTPException(status_code=503,
-                                    detail="El asistente está saturado. Intenta de nuevo en unos segundos.")
+                                    detail=_detalle_error(429, str(e)))
             except anthropic.APIStatusError as e:
                 if "credit" in str(e).lower() or "billing" in str(e).lower():
                     raise HTTPException(status_code=402,
-                                        detail="Asistente sin crédito. Avisa al administrador para recargar.")
+                                        detail=_detalle_error(402, str(e)))
                 # EL MOTIVO SE DICE, NO SE ESCONDE (31-ago). Un «tuvo un problema,
                 # intenta de nuevo» mandó al usuario a reintentar algo que no iba a
                 # funcionar: el error real era de la petición (schema, parámetro),
                 # no un tropiezo pasajero. Se muestra el mensaje de la API recortado
                 # — esta pantalla es interna y quien la usa necesita el dato.
                 log.error("asistente: error de API (%s): %s", email, e)
-                if getattr(e, "status_code", 0) >= 500:
-                    raise HTTPException(
-                        status_code=502,
-                        detail="La API tuvo un problema pasajero y los reintentos "
-                               "tampoco pasaron. Reenvía el mensaje en unos segundos.")
-                motivo = str(getattr(e, "message", None) or e)[:400]
                 raise HTTPException(
                     status_code=502,
-                    detail="El asistente no pudo responder. Motivo técnico: " + motivo)
-            except anthropic.APIConnectionError:
-                raise HTTPException(status_code=502,
-                                    detail="Sin conexión con el asistente. Intenta de nuevo.")
+                    detail=_detalle_error(getattr(e, "status_code", 0) or 0,
+                                          str(getattr(e, "message", None) or e)))
+            except anthropic.APIConnectionError as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail="No se pudo conectar con la API (problema de red del "
+                           "servidor). Reenvia en unos segundos.  ·  Detalle "
+                           "tecnico: " + str(e)[:200])
+            except anthropic.APITimeoutError as e:
+                raise HTTPException(
+                    status_code=504,
+                    detail="La API tardo demasiado en responder. Reenvia el mensaje; "
+                           "si se repite, acorta el pedido.  ·  Detalle tecnico: "
+                           + str(e)[:200])

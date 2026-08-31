@@ -287,6 +287,25 @@ check("sin empalme pedido no se inventa Delta",
 check("el resumen muestra el empalme",
       any(f.get("label") == "Empalme" for f in _resumen_de_spec(SPEC_EMP)))
 
+# --- LOS ERRORES SE EXPLICAN SOLOS (pedido del usuario 31-ago: que no tenga que
+#     traer el texto tecnico para saber que paso)
+from armahub.asistente import _detalle_error as _de
+check("un error de campos opcionales se explica como problema del programa",
+      "del programa" in _de(400, "Schemas contains too many parameters with union types"))
+check("una gramatica muy grande tambien",
+      "del programa" in _de(400, "The compiled grammar is too large"))
+check("un 500 se explica como pasajero y dice reenviar",
+      "pasajero" in _de(500, "Unable to complete this request right now")
+      and "eenvia" in _de(500, "x"))
+check("sin credito manda al administrador",
+      "administrador" in _de(402, "Your credit balance is too low"))
+check("la clave invalida tambien",
+      "administrador" in _de(401, "authentication_error: invalid x-api-key"))
+check("una conversacion muy larga dice como salir del paso",
+      "larga" in _de(400, "prompt is too long for the context window"))
+check("y el detalle tecnico se conserva detras de la explicacion",
+      "Detalle tecnico" in _de(500, "Unable to complete this request"))
+
 # --- EL SCHEMA DE LA HERRAMIENTA TIENE QUE SER VALIDO PARA strict (31-ago: el
 #     asistente empezo a fallar con "tuvo un problema al responder" y hubo que
 #     descartar el schema a mano). strict exige: additionalProperties false, y
