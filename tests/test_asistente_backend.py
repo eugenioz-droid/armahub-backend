@@ -205,6 +205,14 @@ r_cb = _construir_receta_muro(SOLO_CB, CAT)
 check("«solo cabezales» produce SOLO los dos cabezales, sin mallas ni estribo",
       [c["tipologia"] for c in r_cb["componentes"]] == ["CB", "CB"])
 check("el inventario lo dice tal cual", _inventario(_normalizar_ficha(SOLO_CB)) == "2 cabezales")
+# El resumen se pinta desde la ficha NORMALIZADA: sobre la cruda decia «2 mallas
+# verticales» y «phi0 @ 0» en la misma pantalla (usuario 31-ago).
+_fil_cb = _resumen_de_spec(_normalizar_ficha(SOLO_CB))
+check("una malla que no lleva se muestra «no lleva», nunca phi0 @ 0",
+      any(f.get("label") == "Malla vertical" and f["valor"] == "no lleva" for f in _fil_cb)
+      and not any("φ0" in str(f.get("valor", "")) for f in _fil_cb))
+check("y el inventario del resumen no cuenta mallas que no existen",
+      any(f.get("label") == "Armaduras" and "malla" not in f["valor"] for f in _fil_cb))
 check("una malla con diametro 0 se lee como «no lleva», no como dato faltante",
       _normalizar_ficha(SOLO_CB)["malla_vertical"] is None)
 check("pero una ficha sin NINGUNA armadura si se rechaza",

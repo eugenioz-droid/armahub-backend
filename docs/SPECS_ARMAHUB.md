@@ -1681,6 +1681,13 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   Verificado con el pedido literal: salen 2 cabezales φ18 102A con pata 25 y empalme, nada más, y
   el motor los valida. Se agregó también el botón **⧉ Copiar chat** (el hilo completo + la ficha)
   para diagnosticar estos casos con el texto real y no con capturas.
+- **F1.14 — el resumen sale de la ficha normalizada + reintentos (31-ago)**: la pantalla mostraba
+  «2 mallas verticales + 2 horizontales» y, tres líneas abajo, «Malla vertical: φ0 @ 0» — dos
+  lecturas del mismo dato porque el resumen se pintaba desde la ficha CRUDA y el constructor desde
+  la normalizada. Ahora se normaliza UNA vez en el endpoint y esa ficha manda para construir,
+  resumir e inventariar. Además `max_retries` pasó de 1 a 3: un `500 api_error` de la API (que es
+  pasajero) llegaba a la pantalla del usuario como si fuera culpa suya; ahora se reintenta con
+  espera creciente y, si igual falla, el mensaje dice que es pasajero y que reenvíe.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

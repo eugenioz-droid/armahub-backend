@@ -970,7 +970,11 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
             _check_permiso_templates(cur, user)
 
             catalogo = _catalogo_de_figuras(cur)
-            client = anthropic.Anthropic(timeout=90.0, max_retries=1)
+            # max_retries=3: los 429/500/529 de la API son PASAJEROS y el SDK los
+            # reintenta con espera creciente. Con 1 solo intento extra, un 500
+            # («Unable to complete this request right now») llegaba a la pantalla del
+            # usuario como si fuera un error suyo — le paso el 31-ago.
+            client = anthropic.Anthropic(timeout=90.0, max_retries=3)
 
             def _llamar(msgs):
                 return client.messages.create(
@@ -994,6 +998,11 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 spec_ok = spec
                 if spec is not None:
                     try:
+                        # La ficha NORMALIZADA es la que manda para TODO: construir,
+                        # resumir e inventariar. Sacar el resumen de la cruda mostraba
+                        # «2 mallas verticales» junto a «φ0 @ 0» en la misma pantalla
+                        # (visto por el usuario 31-ago): dos lecturas del mismo dato.
+                        spec = _normalizar_ficha(spec)
                         receta = _construir_receta_muro(spec, _figuras_de(cur, spec))
                     except ValueError:
                         # Ficha incompleta: no se inventa nada y el texto del modelo
@@ -1018,6 +1027,7 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                         texto2, spec2 = _extraer(resp2)
                         texto = texto2 or texto
                         if spec2 is not None:
+                            spec2 = _normalizar_ficha(spec2)
                             spec_ok = spec2
                             receta = _construir_receta_muro(spec2, _figuras_de(cur, spec2))
                             errores = _validar_receta(cur, receta)
@@ -1058,6 +1068,11 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 # no un tropiezo pasajero. Se muestra el mensaje de la API recortado
                 # — esta pantalla es interna y quien la usa necesita el dato.
                 log.error("asistente: error de API (%s): %s", email, e)
+                if getattr(e, "status_code", 0) >= 500:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="La API tuvo un problema pasajero y los reintentos "
+                               "tampoco pasaron. Reenvía el mensaje en unos segundos.")
                 motivo = str(getattr(e, "message", None) or e)[:400]
                 raise HTTPException(
                     status_code=502,
