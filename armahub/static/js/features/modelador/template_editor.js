@@ -3272,9 +3272,13 @@
     CBS: '#1565c0', CBS2: '#42a5f5', CBSn: '#64b5f6',
     CBI: '#00897b', CBI2: '#26a69a', CBIn: '#4db6ac',
     ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b',
-    // MURO
-    MH: '#1565c0', MV: '#00897b', MA: '#3949ab', TR: '#7b1fa2',
-    EC: '#e65100', TC: '#7b1fa2', CB: '#1565c0',
+    // MURO — paleta pedida por el usuario (31-ago): cada familia se distingue de
+    // una mirada. Antes CB y MH compartian el mismo azul y TR/TC el mismo morado,
+    // asi que un muro completo se veia «todo azul» salvo la MV.
+    //   malla vertical verde · malla horizontal azul · traba de muro fucsia ·
+    //   confinamiento (estribo y su traba) ambar · cabezal rojo
+    MH: '#1565c0', MV: '#00897b', MA: '#3949ab', TR: '#d81b60',
+    EC: '#f9a825', TC: '#ffb300', CB: '#c62828',
     // LOSA / FUNDACION
     Fi: '#1565c0', Fs: '#00897b', "F'i": '#42a5f5', "F's": '#26a69a',
     F: '#5e35b1', "F'": '#7e57c2', SP: '#607d8b', Rp: '#607d8b', TRL: '#7b1fa2',

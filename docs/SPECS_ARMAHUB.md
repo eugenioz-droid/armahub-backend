@@ -1737,6 +1737,15 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   número dado ya cuadra, no se toca. Además, **gate**: una armadura ENTERA cuyo origen el modelo
   declara `asumido` NO se crea (aparecieron trabas que nadie pidió) — asumir valores sí, inventar
   barras no. Suite 98 checks + motor.
+- **F1.19 — traba de muro ≠ traba de confinamiento, y paleta del muro (31-ago)**: el generador
+  creaba la traba de la malla corriente como **TC** (confinamiento) cuando es **TR** (traba de
+  muro) — son barras distintas, con separación distinta y color distinto. Corregido en la fábrica
+  (`trabas` → TR; `trabas_confinamiento` → TC, agregable por `operar_barras`), en la regla de los
+  cruces (solo la TR se alinea con la trama; la TC sigue la separación apretada del estribo) y en
+  el conocimiento. **Paleta de MURO** (pedida por el usuario, en `COL2D`): MV verde · MH azul ·
+  **TR fucsia** `#d81b60` · **EC/TC ámbar** `#f9a825`/`#ffb300` · **CB rojo** `#c62828`. Antes CB
+  compartía el azul de MH y TR el morado de TC, así que un muro completo se veía «todo azul» salvo
+  la MV. Suite 100 checks + motor.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

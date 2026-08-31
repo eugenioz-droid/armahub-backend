@@ -96,7 +96,7 @@ SPEC = {
 r = _construir_receta_muro(SPEC)
 tips = [c["tipologia"] for c in r["componentes"]]
 check("tipologias REALES del muro (MV/MH x2 cortinas + TC + CB/EC x2 puntas)",
-      tips == ["MV", "MH", "MV", "MH", "TC", "CB", "EC", "CB", "EC"])
+      tips == ["MV", "MH", "MV", "MH", "TR", "CB", "EC", "CB", "EC"])
 mvs = [c for c in r["componentes"] if c["tipologia"] == "MV"]
 check("cada cortina es UN componente con lado +-1 (no capas)",
       [c["lado"] for c in mvs] == [1, -1]
@@ -106,8 +106,8 @@ check("MV de pie reparte en x; MH acostada reparte en y",
       mvs[0]["plano_pieza"]["orientacion"] == "de_pie"
       and mvs[0]["distribucion"]["rango"]["eje"] == "x"
       and r["componentes"][1]["distribucion"]["rango"]["eje"] == "y")
-tc = [c for c in r["componentes"] if c["tipologia"] == "TC"][0]
-check("traba TC: figura con ganchos 103B, pose sup/z, arreglo x*y y jer.3 por regla",
+tc = [c for c in r["componentes"] if c["tipologia"] == "TR"][0]
+check("traba de muro TR: figura con ganchos 103B, pose sup/z, arreglo x*y y jer.3 por regla",
       tc["figura"] == "103B" and tc["pose"] == {"cara": "sup", "lado": 1,
                                                 "rumbo": "z", "espejo": False}
       and tc["jerarquia"] == 3 and tc["distribucion"]["rango2"]["eje"] == "y")
@@ -135,12 +135,12 @@ SPEC_FIG = dict(SPEC,
                 trabas=dict(SPEC["trabas"], figura="103E", jerarquia=3))
 rf = _construir_receta_muro(SPEC_FIG)
 mh_f = [c for c in rf["componentes"] if c["tipologia"] == "MH"]
-tc_f = [c for c in rf["componentes"] if c["tipologia"] == "TC"][0]
+tc_f = [c for c in rf["componentes"] if c["tipologia"] == "TR"][0]
 check("la figura pedida para la malla horizontal llega a la receta",
       all(c["figura"] == "104B" and c["jerarquia"] == 1 for c in mh_f))
 check("y la jerarquia DICTADA gana sobre la regla de jerarquias",
       all(c["jerarquia"] == 1 for c in mh_f))
-check("la figura y jerarquia pedidas para la traba llegan a la receta",
+check("la figura y jerarquia pedidas para la traba de muro llegan a la receta",
       tc_f["figura"] == "103E" and tc_f["jerarquia"] == 3)
 check("sin figura pedida se mantiene el default de la plataforma",
       [c["figura"] for c in r["componentes"] if c["tipologia"] == "MH"] == ["101A", "101A"])
@@ -251,7 +251,7 @@ SPEC_COL = dict(SPEC, trabas=dict(SPEC["trabas"], color="rojo"),
                 malla_vertical=dict(SPEC["malla_vertical"], color="#123456"))
 rc = _construir_receta_muro(SPEC_COL, CAT)
 check("el color pedido por nombre se traduce a hex",
-      [c for c in rc["componentes"] if c["tipologia"] == "TC"][0]["color"] == "#c62828")
+      [c for c in rc["componentes"] if c["tipologia"] == "TR"][0]["color"] == "#c62828")
 check("un hex se respeta tal cual",
       [c for c in rc["componentes"] if c["tipologia"] == "MV"][0]["color"] == "#123456")
 check("sin color pedido NO se escribe (manda el de la tipologia)",
@@ -544,15 +544,26 @@ SPEC_TR = json.loads(json.dumps(SPEC_R))
 SPEC_TR["origenes"]["trabas"] = "leido"
 SPEC_TR["trabas"]["sx"] = 45          # no es multiplo de @20
 _rt = _construir_receta_muro(SPEC_TR, CAT)
-_tc = [c for c in _rt["componentes"] if c["tipologia"] == "TC"][0]
+_tc = [c for c in _rt["componentes"] if c["tipologia"] == "TR"][0]
 check("regla: la grilla de trabas cae en los cruces de la malla (45 -> 40)",
       _tc["distribucion"]["rango"]["sep"] == 40.0)
-check("regla: la traba se apoya sobre las dos mallas (jer.3)", _tc["jerarquia"] == 3)
+check("regla: la traba de muro se apoya sobre las dos mallas (jer.3)", _tc["jerarquia"] == 3)
+# TR (traba de muro) y TC (confinamiento) son barras distintas y se pintan distinto
+_rtc, _ = _aplicar_cambios(_RECETA_EJ, [
+    {"accion": "agregar", "barra": 0, "armadura": "trabas_confinamiento",
+     "diam": 8, "sep": 10}], CAT)
+check("la traba de confinamiento entra como TC, no como TR",
+      [c["tipologia"] for c in _rtc["componentes"]][-1] == "TC")
+_jt_col = io.open(os.path.join(BASE, "armahub", "static", "js", "features",
+                               "modelador", "template_editor.js"), encoding="utf-8").read()
+check("la paleta del muro distingue cabezal, traba de muro y confinamiento",
+      "CB: '#c62828'" in _jt_col and "TR: '#d81b60'" in _jt_col
+      and "EC: '#f9a825'" in _jt_col and "MH: '#1565c0'" in _jt_col)
 _sin_ajuste = json.loads(json.dumps(SPEC_TR))
 _sin_ajuste["trabas"]["sx"] = 40      # ya cuadra
 _rt2 = _construir_receta_muro(_sin_ajuste, CAT)
 check("override: una grilla que ya cuadra no se toca",
-      [c for c in _rt2["componentes"] if c["tipologia"] == "TC"][0]
+      [c for c in _rt2["componentes"] if c["tipologia"] == "TR"][0]
       ["distribucion"]["rango"]["sep"] == 40.0)
 
 # --- COMPUERTA, ESPEJO Y RASTRO (31-ago: el modelo rehizo el muro para "agregar

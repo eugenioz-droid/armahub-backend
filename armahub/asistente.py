@@ -602,7 +602,12 @@ def _fabricar(clase, p, geo, figuras, lados):
                 c["espejo"] = True
             comps.append(c)
 
-    elif clase == "trabas":
+    elif clase in ("trabas", "trabas_confinamiento"):
+        # TR = traba de MURO (cose las dos cortinas de la malla corriente).
+        # TC = traba de CONFINAMIENTO (va dentro del borde, con la separacion
+        # apretada del estribo). Son barras distintas y la plataforma las pinta
+        # distinto: confundirlas fue un error del generador (usuario 31-ago).
+        tip = "TR" if clase == "trabas" else "TC"
         fig = _pedido(p, "figura", "103B")
         par, ang = _spec_figura(figuras, fig, ["A", "B", "C"], [45, 45])
         dist = _mk_lin(p.get("sx", 40), "x", -rx, rx, p.get("tramos"))
@@ -611,7 +616,7 @@ def _fabricar(clase, p, geo, figuras, lados):
         dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
                           "sep": _r1(p.get("sy", 40))}
         comps.append(_marcar_jer(_mk_extras(_mk_base(
-            "TC", fig, p["diam"], ang, "arreglo", "sup", 1, "z", "volteada",
+            tip, fig, p["diam"], ang, "arreglo", "sup", 1, "z", "volteada",
             True, {L: {"modo": "auto"} for L in par},
             int(_pedido(p, "jerarquia", 2)), dist), p), p))
 
@@ -684,8 +689,8 @@ def _regla_jerarquias(comps):
         c["jerarquia"] = 1
     for c in mh:
         c["jerarquia"] = 2
-    for c in _por_tip(comps, "TC", "TR"):
-        c["jerarquia"] = 3               # la traba se apoya sobre las dos mallas
+    for c in _por_tip(comps, "TR"):
+        c["jerarquia"] = 3               # la traba de muro se apoya sobre las dos
     return "malla vertical contra la cara (jer.1), horizontal encima (jer.2)"
 
 
@@ -746,7 +751,9 @@ def _regla_trabas_en_los_cruces(comps):
 
     NO TOCA si la grilla pedida YA es multiplo de esas separaciones (es decir, si
     el usuario dio numeros que cuadran, se respetan tal cual)."""
-    tcs = _por_tip(comps, "TC", "TR")
+    # SOLO la traba de MURO: la de confinamiento sigue la separacion apretada del
+    # estribo del borde, no la trama de la malla (correccion del usuario 31-ago).
+    tcs = _por_tip(comps, "TR")
     mv, mh = _por_tip(comps, "MV"), _por_tip(comps, "MH")
     if not tcs or not (mv or mh):
         return None
@@ -867,7 +874,9 @@ TOOL_OPERAR = {
                         "armadura": {"type": "string",
                                      "description": "solo al agregar: "
                                                     "malla_vertical, malla_horizontal, "
-                                                    "trabas, cabezales o estribo"},
+                                                    "trabas (de muro), "
+                                                    "trabas_confinamiento (del borde), "
+                                                    "cabezales o estribo"},
                         "lados": {"type": "string",
                                   "description": "al agregar: 'ambas' (las dos "
                                                  "cortinas/puntas), '1' o '-1'. "
@@ -911,8 +920,8 @@ TOOL_OPERAR = {
 }
 
 _CLASE_DE_TIP = {"MV": "malla_vertical", "MH": "malla_horizontal",
-                 "TR": "trabas", "TC": "trabas", "CB": "cabezales",
-                 "EC": "estribo"}
+                 "TR": "trabas", "TC": "trabas_confinamiento",
+                 "CB": "cabezales", "EC": "estribo"}
 
 
 def _editar_comp(c, cb, geo, figuras):
@@ -1036,12 +1045,12 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
         elif accion == "agregar":
             clase = str(cb.get("armadura") or "").strip().lower()
             if clase not in ("malla_vertical", "malla_horizontal", "trabas",
-                             "cabezales", "estribo"):
+                             "trabas_confinamiento", "cabezales", "estribo"):
                 avisos.append("No entendi que armadura agregar (%r)." % clase)
                 continue
             defaults = {"malla_vertical": (8, 20), "malla_horizontal": (8, 20),
-                        "trabas": (8, 40), "cabezales": (16, 0),
-                        "estribo": (8, 10)}
+                        "trabas": (8, 40), "trabas_confinamiento": (8, 10),
+                        "cabezales": (16, 0), "estribo": (8, 10)}
             ddiam, dsep = defaults[clase]
             p = {"diam": _num(cb.get("diam")) or ddiam,
                  "sep": _num(cb.get("sep")) or dsep,
@@ -1060,7 +1069,7 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
                  "sep_capas": _num(cb.get("sep_capas")),
                  "largo": _num(cb.get("largo"))}
             lados_txt = str(cb.get("lados") or "").strip()
-            if clase == "trabas":
+            if clase in ("trabas", "trabas_confinamiento"):
                 lados = [1]
             elif lados_txt == "1":
                 lados = [1]

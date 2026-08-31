@@ -90,7 +90,7 @@ if ((porTipo.MV || []).length === 2) {
 });
 
 // --- TC: la traba CRUZA el espesor (no es una barra plana en la cara) ---
-(porTipo.TC || []).forEach(({ c, pls }) => {
+(porTipo.TR || porTipo.TC || []).forEach(({ c, pls }) => {
   const z = lim(pls[0], 'z');
   ok(z.hi - z.lo > geo.ancho - 2 * rec - 2,
     'la traba cruza el espesor (' + (z.hi - z.lo).toFixed(1) + ' de ' + geo.ancho + ')');

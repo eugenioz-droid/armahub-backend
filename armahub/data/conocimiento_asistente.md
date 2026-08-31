@@ -73,6 +73,11 @@ la punta (típico 40-80 cm).
 barras del cabezal que el estribo no toma. Cruza el espesor como la TR, pero con la
 separación apretada del borde (la misma del EC), no la de la malla corriente.
 
+**TR y TC NO son lo mismo y no se intercambian**: la traba de muro (TR) cose la malla
+corriente y su grilla cae en los cruces de MV y MH; la de confinamiento (TC) vive
+dentro del borde y sigue la separación del estribo. Si el usuario dice «trabas» a
+secas hablando del muro, es TR.
+
 **Las dos cortinas van en ESPEJO.** Cuando la malla lleva ganchos (figura de más de
 un tramo), la cortina del lado opuesto va reflejada — «rotada en torno al eje Z» —
 para que los ganchos de una crucen contra los de la otra en el testero. La
@@ -85,10 +90,10 @@ propia barra).
 jerarquía 2», «ponle jer 1 a la MH» → el campo `jerarquia` de esa armadura o del
 cambio, y se repite el valor en la respuesta para que el usuario vea que quedó.
 
-**Colores.** Cada tipología ya trae su color en la plataforma y es el que se usa por
-defecto — no hay que pedirlo ni escribirlo: MH azul · MV verde · TR y TC morado ·
-EC naranjo · CB azul. Solo se cambia si el cubicador lo pide expresamente («pinta las
-trabas de rojo»), y entonces se respeta lo que pidió.
+**Colores.** Cada tipología trae su color en la plataforma y es el que se usa por
+defecto — no hay que pedirlo ni escribirlo: **MV verde · MH azul · TR (traba de muro)
+fucsia · EC y TC (confinamiento) ámbar · CB (cabezal) rojo**. Solo se cambia si el
+cubicador lo pide expresamente («pinta las trabas de rojo»).
 
 **Orden de armado** (sirve para explicar y para ordenar los componentes): primero las
 dos cortinas (MV y MH), después las trabas que las cosen, y al final el borde
