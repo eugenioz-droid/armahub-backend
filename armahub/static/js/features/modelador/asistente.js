@@ -194,17 +194,50 @@
   // COPIAR LA RECETA — la evidencia exacta de lo que se instalo. Existe porque
   // diagnosticar una barra deforme mirando el 3D es interpretar pixeles: con el
   // JSON se lee la figura, las dims y la pose de cada componente sin adivinar.
-  function _copiarReceta() {
-    if (!PROPUESTA || !PROPUESTA.receta) return;
-    var txt;
-    try { txt = JSON.stringify(PROPUESTA.receta, null, 2); }
-    catch (e) { return; }
-    var ok = function () { _burbuja('asistente', 'Receta copiada al portapapeles.'); };
+  function _alPortapapeles(txt, aviso) {
+    var ok = function () { _burbuja('asistente', aviso); };
     if (global.navigator && navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(txt).then(ok, function () { _copiarFallback(txt, ok); });
     } else {
       _copiarFallback(txt, ok);
     }
+  }
+
+  function _copiarReceta() {
+    if (!PROPUESTA || !PROPUESTA.receta) return;
+    try {
+      _alPortapapeles(JSON.stringify(PROPUESTA.receta, null, 2),
+        'Receta copiada al portapapeles.');
+    } catch (e) { /* receta no serializable: no hay nada que copiar */ }
+  }
+
+  // COPIAR EL CHAT — la conversación entera más la ficha propuesta, en texto plano.
+  // Sirve para pegarla donde se pueda revisar por qué el asistente entendió mal:
+  // el hilo completo dice mucho más que una captura del resultado.
+  var SALTO = String.fromCharCode(10);
+
+  function _copiarChat() {
+    var l = ['=== Chat · Asistente de enfierrado ==='];
+    var est = _estadoEditor() || {};
+    if (est.elemento) l.push('Elemento: ' + est.elemento + (est.nombre ? ' · ' + est.nombre : ''));
+    l.push('');
+    if (!CHAT.length) {
+      l.push('(conversación vacía)');
+    } else {
+      CHAT.forEach(function (m) {
+        l.push('[' + (m.rol === 'user' ? 'USUARIO' : 'ASISTENTE') + '] ' + m.texto);
+        l.push('');
+      });
+    }
+    if (PROPUESTA && PROPUESTA.resumen && PROPUESTA.resumen.length) {
+      l.push('--- Ficha propuesta ---');
+      PROPUESTA.resumen.forEach(function (r) {
+        if (r.seccion) { l.push('# ' + r.seccion); return; }
+        l.push('  ' + (r.label || '') + ': ' + (r.valor || '') +
+          (r.origen ? '  [' + r.origen + ']' : ''));
+      });
+    }
+    _alPortapapeles(l.join(SALTO), 'Chat copiado al portapapeles.');
   }
 
   // Fallback sin permiso de portapapeles (o http): textarea + execCommand.
@@ -418,6 +451,8 @@
     if (cargar) cargar.addEventListener('click', function () { _cargarBorrador(false); });
     var cop = $('te_iaCopiar');
     if (cop) cop.addEventListener('click', _copiarReceta);
+    var copChat = $('te_iaCopiarChat');
+    if (copChat) copChat.addEventListener('click', _copiarChat);
   }
 
   if (document.readyState === 'loading') {
