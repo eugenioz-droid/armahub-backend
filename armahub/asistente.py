@@ -112,6 +112,23 @@ _PATA_PROP = {
     "description": "largo en CM de la pata/gancho (los lados que NO corren). Solo "
                    "aplica a figuras de 2 o mas tramos. null = gancho normativo",
 }
+# COLORES POR NOMBRE. El editor guarda `c.color` como #rrggbb y, SIN ese campo,
+# pinta con el color de la TIPOLOGIA (template_editor.js:3543 `_colorComp` ->
+# COL2D). O sea el default ya es el sugerido por tipologia y no hay que escribirlo:
+# esto es solo para cuando el usuario pide otro ("pinta las trabas de rojo").
+_COLORES = {
+    "rojo": "#c62828", "azul": "#1565c0", "verde": "#2e7d32", "naranjo": "#e65100",
+    "naranja": "#e65100", "morado": "#7b1fa2", "violeta": "#7b1fa2",
+    "amarillo": "#f9a825", "celeste": "#42a5f5", "gris": "#607d8b",
+    "negro": "#212121", "blanco": "#fafafa", "rosado": "#ad1457",
+    "cafe": "#5d4037", "café": "#5d4037", "turquesa": "#00897b",
+}
+_COLOR_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "string"}],
+    "description": "color de esa barra: nombre en castellano (rojo, azul, verde, "
+                   "naranjo, morado, amarillo, celeste, gris...) o hex #rrggbb. "
+                   "null = el color de su tipologia, que es el default",
+}
 _TRAMOS_PROP = {
     "anyOf": [
         {"type": "null"},
@@ -139,7 +156,7 @@ _GIRO_PATAS_PROP = {
 _MALLA_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["diam", "sep", "figura", "jerarquia", "empalme", "pata",
-                 "tramos", "lado_dominante", "giro_patas"],
+                 "tramos", "lado_dominante", "giro_patas", "color"],
     "properties": {
         "diam": {"type": "number", "description": "φ en mm"},
         "sep": {"type": "number", "description": "@ en cm"},
@@ -150,6 +167,7 @@ _MALLA_SCHEMA = {
         "tramos": _TRAMOS_PROP,
         "lado_dominante": _DOMINANTE_PROP,
         "giro_patas": _GIRO_PATAS_PROP,
+        "color": _COLOR_PROP,
     },
 }
 
@@ -189,7 +207,7 @@ TOOL_MURO = {
                          "barras": {
                              "type": "object", "additionalProperties": False,
                              "required": ["diam", "barras_capa", "n_capas", "figura",
-                                          "empalme", "pata", "sep_capas"],
+                                          "empalme", "pata", "sep_capas", "color"],
                              "properties": {
                                  "diam": {"type": "number", "description": "φ cabezal en mm"},
                                  "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
@@ -202,13 +220,14 @@ TOOL_MURO = {
                                      "description": "separacion entre capas de "
                                                     "cabezales, eje a eje, en cm",
                                  },
+                                 "color": _COLOR_PROP,
                              }},
                          "estribo": {
                              "anyOf": [
                                  {"type": "null"},
                                  {"type": "object", "additionalProperties": False,
                                   "required": ["diam", "sep", "figura", "tramos",
-                                               "anidar"],
+                                               "anidar", "color"],
                                   "properties": {
                                       "diam": {"type": "number", "description": "φ estribo en mm"},
                                       "sep": {"type": "number", "description": "@ en cm (usual ≤6φ y ≤½ espesor)"},
@@ -219,6 +238,7 @@ TOOL_MURO = {
                                                     {"type": "boolean"}],
                                           "description": "ajustar capas anidadas",
                                       },
+                                      "color": _COLOR_PROP,
                                   }},
                              ]},
                          "largo": {"type": "number",
@@ -231,7 +251,7 @@ TOOL_MURO = {
                     {"type": "null"},
                     {"type": "object", "additionalProperties": False,
                      "required": ["diam", "sx", "sy", "figura", "jerarquia",
-                                  "tramos", "anidar"],
+                                  "tramos", "anidar", "color"],
                      "properties": {
                          "diam": {"type": "number", "description": "φ en mm"},
                          "sx": {"type": "number", "description": "grilla horizontal cm"},
@@ -245,6 +265,7 @@ TOOL_MURO = {
                                             "interior se acorta un phi). null = el "
                                             "default de la plataforma",
                          },
+                         "color": _COLOR_PROP,
                      }},
                 ],
             },
@@ -267,6 +288,24 @@ TOOL_MURO = {
 # ---------------------------------------------------------------------------
 def _r1(v):
     return round(float(v), 1)
+
+
+def _hex_color(v):
+    """Nombre en castellano o hex -> #rrggbb. Devuelve None si no se entiende: sin
+    color escrito, el editor pinta con el color de la TIPOLOGIA, que es el default
+    correcto (template_editor.js:3543). Un color mal puesto seria peor que ninguno."""
+    if not v:
+        return None
+    t = str(v).strip().lower()
+    if t in _COLORES:
+        return _COLORES[t]
+    if t.startswith("#") and len(t) == 7:
+        try:
+            int(t[1:], 16)
+            return t
+        except ValueError:
+            return None
+    return None
 
 
 def _spec_figura(figuras, codigo, parciales_def, angulos_def):
@@ -336,6 +375,9 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
         anid = (d or {}).get("anidar")
         if anid is not None:
             comp["distribucion"]["anidar"] = bool(anid)
+        col = _hex_color((d or {}).get("color"))
+        if col:
+            comp["color"] = col
         return comp
 
     def _base(tip, figura, diam, angulos, modo, cara, lado, rumbo,
@@ -605,6 +647,10 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "libres produce barras deformes.\n"
         "· CABEZALES: `sep_capas` = separacion entre capas en cm («capas cada "
         "15») y `barras_capa` = cuantas van por capa a lo ancho del espesor.\n"
+        "· COLOR: cada tipología ya trae su color (malla horizontal azul, "
+        "vertical verde, trabas morado, estribo naranjo, cabezal azul) y ese es "
+        "el default — no lo escribas. Solo llena `color` si el usuario pide otro "
+        "(«las trabas píntalas de rojo»); acepta nombre en castellano o hex.\n"
         "· Responde en español chileno neutro, breve, sin jerga técnica de la "
         "plataforma. Nada de muros de texto.\n\n"
         "DEFAULTS DE LA PLATAFORMA (origen 'config'):\n"

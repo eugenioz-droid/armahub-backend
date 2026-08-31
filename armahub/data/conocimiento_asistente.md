@@ -73,6 +73,11 @@ la punta (típico 40-80 cm).
 barras del cabezal que el estribo no toma. Cruza el espesor como la TR, pero con la
 separación apretada del borde (la misma del EC), no la de la malla corriente.
 
+**Colores.** Cada tipología ya trae su color en la plataforma y es el que se usa por
+defecto — no hay que pedirlo ni escribirlo: MH azul · MV verde · TR y TC morado ·
+EC naranjo · CB azul. Solo se cambia si el cubicador lo pide expresamente («pinta las
+trabas de rojo»), y entonces se respeta lo que pidió.
+
 **Orden de armado** (sirve para explicar y para ordenar los componentes): primero las
 dos cortinas (MV y MH), después las trabas que las cosen, y al final el borde
 (cabezales, su estribo y sus trabas).

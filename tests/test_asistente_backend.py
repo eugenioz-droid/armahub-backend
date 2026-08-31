@@ -169,6 +169,20 @@ check("los TRAMOS multi-@ llegan al rango del estribo",
                                                  {"long": 150.0, "sep": 20.0}])
 check("el anidado pedido se escribe", ec1["distribucion"]["anidar"] is True)
 
+# --- COLOR: default = el de la tipologia (no se escribe); override por nombre
+SPEC_COL = dict(SPEC, trabas=dict(SPEC["trabas"], color="rojo"),
+                malla_vertical=dict(SPEC["malla_vertical"], color="#123456"))
+rc = _construir_receta_muro(SPEC_COL, CAT)
+check("el color pedido por nombre se traduce a hex",
+      [c for c in rc["componentes"] if c["tipologia"] == "TC"][0]["color"] == "#c62828")
+check("un hex se respeta tal cual",
+      [c for c in rc["componentes"] if c["tipologia"] == "MV"][0]["color"] == "#123456")
+check("sin color pedido NO se escribe (manda el de la tipologia)",
+      all("color" not in c for c in r["componentes"]))
+check("un color que no se entiende no se inventa",
+      all("color" not in c for c in _construir_receta_muro(
+          dict(SPEC, trabas=dict(SPEC["trabas"], color="fucsia neon")), CAT)["componentes"]))
+
 # --- lado dominante y giro de patas
 SPEC_EXTRA = dict(SPEC, malla_vertical=dict(SPEC["malla_vertical"],
                                             lado_dominante="B", giro_patas=180))

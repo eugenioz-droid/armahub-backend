@@ -1618,6 +1618,15 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   `sep_capas` (separación entre capas del cabezal), `tramos` (reparto multi-@: «@10 los primeros
   80, @20 el resto»), `anidar`, `lado_dominante` y `giro_patas`. El traslapo de la casa se corrigió
   a **60·φ** (no 40) en el conocimiento y en el prompt. Suite: 39 checks + motor real.
+- **F1.7 — color por barra (31-ago)**: campo `color` en la ficha, por nombre en castellano o hex.
+  El DEFAULT ya era correcto y no se toca: sin `c.color` el editor pinta con el color de la
+  TIPOLOGÍA (`_colorComp` → COL2D, template_editor.js:3543) — MH azul, MV verde, TR/TC morado,
+  EC naranjo, CB azul —, así que el constructor no lo escribe salvo que el usuario pida otro.
+  Un color que no se entiende NO se inventa: se deja el de la tipología.
+  **Verificación de la «peineta»** (duda razonable del usuario: ¿el motor cambió la figura?): NO.
+  Medida la morfología de la 102A del cabezal en los tres casos — siempre **2 tramos con quiebre de
+  90°, ejes X e Y**. Lo único que cambiaba era el largo de la pata: 507 cm en auto contra 24 con la
+  pata fija. El motor fue consistente; el dato de entrada era absurdo.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
