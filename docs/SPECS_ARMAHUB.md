@@ -1448,6 +1448,144 @@ apagada con el motivo.
    Lo correcto sería que arrastrando en modo centrado la barra crezca a los dos lados a la vez
    (el borde arrastrado sigue al mouse igual y el opuesto se abre lo mismo).
 
+## 12. ASISTENTE IA DE ENFIERRADO — chat en el modelador (DISEÑO CERRADO 2026-08-30, 2ª ronda auditada)
+
+### 12.1 Propósito
+
+Copiloto conversacional dentro del modelador: el cubicador le pega **recortes de plano** (imagen
+sacada del CAD) y/o le describe el muro con texto, el asistente conversa corto y va armando/
+modificando la **receta** del muro, lista para que el motor genere las barras. Sirve tanto para
+**crear templates desde cero** (esa es parte de la gracia) como para ajustar uno existente.
+Partimos con **MUROS**; después se extrapola a los otros elementos.
+
+**Es ayuda productiva, NO automatización.** El humano siempre valida en el 3D antes de aceptar.
+
+### 12.2 Principios firmes
+
+1. **El modelo NUNCA genera geometría.** Solo llena/modifica los parámetros de la receta
+   (`{tipo, geometria, componentes[]}` — mismo shape que el TE produce a mano, schema 2 de dims).
+   El motor de reglas existente hace todo lo demás. Cero ramas nuevas en el motor.
+2. **Puede partir de un template existente O del muro en blanco** (defaults del TE). No exige
+   biblioteca poblada.
+3. **Entrada acotada a UN muro/eje** — pero pueden ser varios recortes del mismo muro en distintos
+   rangos de pisos (p.ej. 4-7 y 8-12): el asistente entiende la película completa del eje.
+   La lámina completa con muchos muros queda fuera.
+4. **Nada silencioso.** Cada campo con su **origen**: `leído del recorte` · `config` ·
+   `asumido (dicho al usuario)` · `no encontrado`. Lo crítico se pregunta; jamás inventa un
+   diámetro o espaciamiento. El origen vive en el estado del chat (no se guarda en la receta).
+5. **El resultado entra como elemento en edición, SIN guardar** — guardar template o cargar al
+   despiece son las acciones manuales de siempre.
+6. **Si el usuario edita en el 3D y sigue conversando, el asistente recibe la receta ACTUAL del
+   editor en cada turno** — nunca pisa lo editado con una copia vieja.
+
+### 12.3 UI (cerrada 30-ago 2ª ronda)
+
+- **UN solo botón IA** en el modal del Template Editor. Como el "Enfierrador" es el MISMO modal en
+  modo obra (desde 25-ago), el botón sirve en ambos contextos sin doble integración.
+- El chat **NO es un modal sobre el modal**: reemplaza/ocupa el panel de controles (o panel
+  lateral), de modo que el 3D queda SIEMPRE visible mientras se conversa — "vamos a ver lo que
+  dibujó" sin cerrar nada. Minimizable.
+- **Persistencia temporal de sesión**: la conversación vive mientras el modal esté abierto
+  (minimizar/restaurar no la pierde). Cerrar el modal o recargar la página la pierde (F1).
+  Muro nuevo = chat nuevo. No se persiste en BD (decisión 2ª ronda: "hacer el muro, cargar y
+  cerrar").
+- Muestra un **formulario tipo** con los campos de la receta (los del controlador de componentes)
+  llenándose en vivo — pinta desde `ST.receta` viva, no desde una copia. Edición inline: NO v1.
+
+### 12.4 Arquitectura (correcciones de auditoría incorporadas)
+
+- **Backend**: endpoint nuevo (p.ej. `POST /api/v1/asistente/chat`) → **API de Anthropic** (visión
+  + tool use, JSON-schema de la receta como salida forzada). API key en env; el navegador NUNCA
+  habla directo con Anthropic. Agregar `anthropic` a requirements.txt.
+- El cliente manda el historial completo en cada POST (estado en JS); sin tabla de conversaciones
+  en F1.
+- **La salida del modelo pasa por `_validar_receta` antes de cargarse al editor**; si no valida, se
+  reintenta automático con el error como feedback; si vuelve a fallar, se muestra al usuario.
+- **Unidades fijadas en el prompt**: dims en cm, φ en mm, sep en cm — igual que todo el modelador.
+- **Contexto**: la config del modelador es **GLOBAL** (decisión 17-ago), no por obra — el asistente
+  lee esa config global + `obra_config` cuando hay obra activa. (§12 v1 decía "de la obra activa":
+  corregido.) Protocolo de cubicación se conecta a futuro.
+- **Tope de gasto**: cuenta API del usuario, US$5 inicial. Crédito agotado → mensaje claro al
+  usuario: «Asistente sin crédito, avisa al administrador». Contador simple de llamadas por
+  usuario/día como freno de loops.
+- **Modelo**: **Sonnet**; Opus solo si la lectura se queda corta.
+- **Historial**: solo sesión del modal (ver §12.3).
+- **Sin fine-tuning**: calidad por contexto (ver §12.8).
+
+### 12.5 Permisos
+
+**Los mismos que hoy gestionan templates** (`_puede_gestionar_templates`: admin/admin_calidad/
+miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el botón.
+
+### 12.6 Decisiones cerradas por el usuario (30-ago, dos rondas)
+
+1. Un botón IA en el modal del TE (sirve en catálogo y modo obra); chat en panel con el 3D siempre
+   visible; minimizable con persistencia de sesión.
+2. Siempre 1 muro; varios recortes por rangos de pisos del mismo eje.
+3. Recortes se guardan (R2). En modo obra: asociados a la obra. En catálogo: **genéricos, sin
+   obra** — son herramientas de trabajo del template.
+4. Campos = los del controlador de componentes; formulario visible llenándose.
+5. Contexto = config global del modelador + obra_config; protocolo de cubicación a futuro.
+6. Conversación corta; parte de template existente O en blanco (sirve para crear templates).
+7. Resultado en edición, sin guardar. Historial no persiste en BD.
+8. Permisos = los mismos del TE actual.
+9. API propia del usuario, tope inicial US$5; sin crédito → aviso claro.
+10. OK enviar recortes a la API (límite real: contrato con cada cliente; sin mecanismo por obra,
+    deuda anotada).
+11. Historial por sesión de modal; muro nuevo = chat nuevo.
+12. Sonnet primero.
+13. Salida del modelo validada con `_validar_receta` + reintento; unidades cm/mm en prompt; origen
+    por campo en el estado del chat.
+
+14. **Respuesta del chat: en bloque (opción A, cerrada 30-ago)** — icono de cargando ~5-15 s y la
+    respuesta llega completa. Streaming (texto de a poco) = mejora futura, migrable sin botar nada.
+
+**No quedan preguntas abiertas de F1.**
+
+### 12.7 Fases
+
+- **F1 — texto → receta** (sin imagen): botón, chat en panel, esquema, formulario, validación,
+  origen por campo, carga como elemento en edición. Deja toda la cañería lista.
+  - **Etapa 1 (maqueta visual, HECHA 30-ago)**: botón 🤖 IA en el titlebar del TE, panel de chat
+    que reemplaza a #te_side (3D visible), minimizable, formulario demo con chips de origen,
+    conversación de ejemplo. Archivos: `template_editor_modal.html` (markup+CSS scopeado),
+    `modelador/asistente.js` (nuevo), `bootstrap.js` (carga). SIN lógica: la respuesta es fija.
+  - **Etapa 2 (conectar)**: endpoint `/asistente/chat`, doc de conocimiento, receta real en el
+    formulario, «Cargar como borrador». Pendiente del OK visual del usuario a la Etapa 1.
+- **F2 — + recortes de imagen**. Rangos de pisos RESUELTO (2ª ronda): la salida es **UNA receta**;
+  al instanciar en modo obra el asistente **presugiere los pisos donde detecta repetición** y el
+  usuario inserta con el botón usual (la selección de pisos ya existe en el flujo de instanciar).
+  Variantes distintas por rango = pasadas sucesivas del chat. Pendiente F2: formato/tope de MB y
+  máximo de imágenes por conversación; tabla que asocie recorte↔obra/template.
+- **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares y protocolo
+  de cubicación como contexto.
+
+### 12.8 Base de conocimiento del asistente (plan por capas, sin fine-tuning)
+
+Para que entienda mejor las prácticas típicas, en este orden de esfuerzo/valor:
+
+1. **Documento de conocimiento curado** (glosario chileno φ/@/malla/traba, prácticas típicas,
+   convenciones de planos de las oficinas con que se trabaja) que se inyecta al prompt. Editable
+   como data, no como código. Es la capa v1.
+2. **Ejemplos resueltos** (few-shot): pares descripción/recorte → receta correcta, elegidos a mano.
+   2-4 ejemplos buenos mueven más la aguja que cualquier otra cosa.
+3. **La propia biblioteca de templates** como referencia: al conversar, se le pasan los templates
+   de muro existentes (nombres + recetas resumidas) para que proponga "parecido al Muro X".
+4. (Futuro, solo si el volumen lo pide) búsqueda de templates similares antes de llamar al modelo.
+
+El documento de conocimiento (capa 1) se organiza **catalogado por tipo de elemento** (muro, viga,
+columna, losa...) desde el día uno, para que al extrapolar a otros elementos solo se agregue la
+sección nueva sin tocar lo demás.
+
+### 12.9 Idea futura anotada (NO comprometida): muros irregulares por composición de cajas
+
+Visión del usuario (30-ago): elementos de hormigón no-caja se armarían **componiendo varias
+cajas**, reutilizando todo el motor actual. Insight clave: *da lo mismo en qué caja esté la barra
+mientras sus dimensiones se configuren bien* — una barra podría nacer en una caja, cruzar otras y
+morir en una distinta, tomando el **recubrimiento de la caja donde muere**. El contorno libre
+(polígono extruido) queda descartado como camino: obligaría a rehacer colocador/caras/
+recubrimientos. No abordar hasta que se decida explícitamente.
+
 ---
 
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
