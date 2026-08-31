@@ -1566,8 +1566,20 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   usuario inserta con el botón usual (la selección de pisos ya existe en el flujo de instanciar).
   Variantes distintas por rango = pasadas sucesivas del chat. Pendiente F2: formato/tope de MB y
   máximo de imágenes por conversación; tabla que asocie recorte↔obra/template.
-- **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares y protocolo
-  de cubicación como contexto.
+- **F1.2 — traductor ficha→receta REAL (HECHA 31-ago, tras primera prueba del usuario)**: la
+  primera versión armaba las mallas con un patrón simplificado (MA/arreglo + trabas rectas) y el
+  muro salía mal (sin jerarquías, trabas sin gancho, sin bordes). Se reescribió
+  `_construir_receta_muro` con el patrón EXACTO del editor (mapa de agente 31-ago): MV/MH modo
+  lineal, UNA cortina por componente (lado ±1), traba TC **figura 103B** pose {sup,1,z} jerarquía 2
+  en arreglo x×y (rango2, margen de gancho abajo), y **confinamiento de borde EN LA FICHA**:
+  cabezales CB (cara extremo, layered n×m por punta) + estribo EC acotado (dims.B fija
+  extremo 'centro' + pos_hint.x — única combinación que el motor respeta, medida). Verificado con
+  el MOTOR REAL vía Node: `tests/test_asistente_receta_motor.js` (cortinas opuestas dentro del
+  recub, traba cruza espesor, CB en ambos testeros, EC en la punta, nada fuera del hormigón);
+  encadenado desde `tests/test_asistente_backend.py`. UX: auto-carga de la receta al editor,
+  contador de segundos, cierre cuando la respuesta viene sin texto, esfuerzo medio.
+- **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
+  de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
 ### 12.8 Base de conocimiento del asistente (plan por capas, sin fine-tuning)
 
