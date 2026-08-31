@@ -906,9 +906,16 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 if "credit" in str(e).lower() or "billing" in str(e).lower():
                     raise HTTPException(status_code=402,
                                         detail="Asistente sin crédito. Avisa al administrador para recargar.")
+                # EL MOTIVO SE DICE, NO SE ESCONDE (31-ago). Un «tuvo un problema,
+                # intenta de nuevo» mandó al usuario a reintentar algo que no iba a
+                # funcionar: el error real era de la petición (schema, parámetro),
+                # no un tropiezo pasajero. Se muestra el mensaje de la API recortado
+                # — esta pantalla es interna y quien la usa necesita el dato.
                 log.error("asistente: error de API (%s): %s", email, e)
-                raise HTTPException(status_code=502,
-                                    detail="El asistente tuvo un problema al responder. Intenta de nuevo.")
+                motivo = str(getattr(e, "message", None) or e)[:400]
+                raise HTTPException(
+                    status_code=502,
+                    detail="El asistente no pudo responder. Motivo técnico: " + motivo)
             except anthropic.APIConnectionError:
                 raise HTTPException(status_code=502,
                                     detail="Sin conexión con el asistente. Intenta de nuevo.")

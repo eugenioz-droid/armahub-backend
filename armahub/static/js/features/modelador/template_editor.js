@@ -13266,8 +13266,45 @@
   // _renderPanel): no hay un segundo camino de inserción que pueda divergir.
   global.templateEditorAgregarComponente = function (comp) {
     if (!ST.receta || !comp || ST.soloVista) return false;
+    // EL COMPONENTE DE AFUERA ENTRA POR LAS MISMAS PUERTAS QUE EL CLIC (31-ago,
+    // exigencia del usuario: «si usara las reglas del motor como las usa el
+    // usuario, no debería poder ocurrir eso»).
+    //
+    // El Asistente IA arma la receta en el backend, en Python, o sea por un camino
+    // PARALELO al del editor. Un camino paralelo puede producir estados que el
+    // editor nunca produciría —una distribución a medias, una pose sin espejar en
+    // los campos viejos, dims que no cubren los parciales de la figura— y esos
+    // estados son exactamente los que salen deformes. Así que acá el componente NO
+    // se empuja tal cual: se pasa por los MISMOS mutadores que corren al colocar a
+    // mano, que son los que dejan cada campo completo y coherente:
+    //   · _setPose   — pose canónica + espejo de cara/lado/plano_pieza
+    //   · _dimsDefault — una dim por parcial REAL de la figura del catálogo
+    //   · _setModoComp — completa la distribución del modo (siembra el rango que
+    //     falte, activa:true, y limpia el hint del eje que reparte)
+    // Lo que el componente ya trae se respeta (los mutadores no pisan lo puesto);
+    // lo que falta se completa como el editor lo completaría. El ancla del rango la
+    // estampa _regenerar() vía reanclarReceta, igual que en cualquier otra mutación.
+    var c;
+    try { c = JSON.parse(JSON.stringify(comp)); } catch (e) { return false; }
+    try {
+      if (c.pose) _setPose(c, c.pose);
+      c.dims = c.dims || {};
+      var base = _dimsDefault(c.figura);
+      Object.keys(base).forEach(function (L) {
+        if (!c.dims[L]) c.dims[L] = base[L];          // parcial que la ficha no nombró
+      });
+      Object.keys(c.dims).forEach(function (L) {
+        if (!base[L]) delete c.dims[L];               // lado que la figura NO tiene
+      });
+      _setModoComp(c, _modoDe(c));
+    } catch (e) {
+      if (global.console && global.console.warn) {
+        global.console.warn('[TE] componente externo no se pudo normalizar:', e);
+      }
+      return false;
+    }
     ST.receta.componentes = ST.receta.componentes || [];
-    ST.receta.componentes.push(comp);
+    ST.receta.componentes.push(c);
     ST.selCi = ST.receta.componentes.length - 1;
     _regenerar();
     _renderPanel();

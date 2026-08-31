@@ -242,6 +242,38 @@ check("sin empalme pedido no se inventa Delta",
 check("el resumen muestra el empalme",
       any(f.get("label") == "Empalme" for f in _resumen_de_spec(SPEC_EMP)))
 
+# --- EL SCHEMA DE LA HERRAMIENTA TIENE QUE SER VALIDO PARA strict (31-ago: el
+#     asistente empezo a fallar con "tuvo un problema al responder" y hubo que
+#     descartar el schema a mano). strict exige: additionalProperties false, y
+#     TODA property listada en required, en cada nivel.
+def _revisar_schema(nodo, ruta="raiz", fallas=None):
+    fallas = [] if fallas is None else fallas
+    if not isinstance(nodo, dict):
+        return fallas
+    if nodo.get("type") == "object":
+        props = set((nodo.get("properties") or {}).keys())
+        req = set(nodo.get("required") or [])
+        if req - props:
+            fallas.append("%s: required sin property %s" % (ruta, req - props))
+        if props - req:
+            fallas.append("%s: property fuera de required %s" % (ruta, props - req))
+        if nodo.get("additionalProperties") is not False:
+            fallas.append("%s: falta additionalProperties:false" % ruta)
+        for k, v in (nodo.get("properties") or {}).items():
+            _revisar_schema(v, ruta + "." + k, fallas)
+    for clave in ("anyOf", "oneOf", "allOf"):
+        for i, v in enumerate(nodo.get(clave) or []):
+            _revisar_schema(v, "%s.%s[%d]" % (ruta, clave, i), fallas)
+    if "items" in nodo:
+        _revisar_schema(nodo["items"], ruta + "[]", fallas)
+    return fallas
+
+_fallas_schema = _revisar_schema(TOOL_MURO["input_schema"])
+check("el schema de proponer_muro es valido para strict en TODOS los niveles",
+      not _fallas_schema)
+if _fallas_schema:
+    print("   ", _fallas_schema)
+
 # --- EL CATALOGO VA COMPLETO Y DESDE LA BD (31-ago: el asistente dijo que 104B no
 #     existia porque solo tenia la lista a mano del documento) ---
 from armahub.asistente import (_catalogo_texto, _system_prompt,
@@ -321,6 +353,9 @@ check("la receta se INSTALA EN VIVO al llegar (no de golpe, no a mano)",
       "_instalarEnVivo()" in _ja
       and "templateEditorAgregarComponente" in _ja
       and "templateEditorAgregarComponente" in _jt)
+check("el componente externo entra por las puertas del editor, no se empuja crudo",
+      "_setPose(c, c.pose)" in _jt and "_setModoComp(c, _modoDe(c))" in _jt
+      and "_dimsDefault(c.figura)" in _jt)
 check("hay como copiar la receta (evidencia para diagnosticar sin mirar pixeles)",
       "_copiarReceta" in _ja and "te_iaCopiar" in _ja and "te_iaCopiar" in _html)
 check("el boton del panel es RE-carga y no pasa el evento como flag",

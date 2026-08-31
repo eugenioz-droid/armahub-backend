@@ -1644,6 +1644,18 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   CERRADO (6 tramos, puntas a 4 cm = el traslape del gancho). Corrección del usuario incorporada:
   el estribo de confinamiento por defecto pasa de 104D a **106A** (verificado contra el motor:
   6 lados, cierra, ganchos de 45°, tramos [8.6, 37.2, 15.2, 39.2, 13.2, 8.6] con B fija en 40).
+- **F1.10 — un solo camino de construcción + el error se dice (31-ago)**: el usuario señaló el
+  defecto de raíz — «si usara las reglas del motor como las usa el usuario, no debería poder
+  ocurrir eso». Es correcto: el asistente armaba la receta en Python, un camino PARALELO al del
+  editor, y un camino paralelo puede producir estados que el editor nunca produciría (distribución
+  a medias, pose sin espejar, dims que no cubren los parciales de la figura) — justo los que salen
+  deformes. Ahora `templateEditorAgregarComponente` NO empuja el componente crudo: lo pasa por los
+  MISMOS mutadores del clic manual (`_setPose` → `_dimsDefault` por parcial real de la figura →
+  `_setModoComp`), y el ancla la estampa `_regenerar` vía `reanclarReceta` como en cualquier otra
+  mutación. Además el error de la API dejó de esconderse detrás de «tuvo un problema, intenta de
+  nuevo» (mandaba a reintentar algo que no iba a funcionar): ahora se muestra el motivo técnico.
+  Y el test valida el schema de la herramienta en todos sus niveles (strict exige
+  additionalProperties:false y toda property en required).
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
