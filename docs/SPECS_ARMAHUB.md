@@ -1709,6 +1709,19 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   40×40, estribo φ8@10), se marca 'asumido' y se ofrece corregir al final. Índice inválido avisa
   sin reventar; validación + reintento cubren ambas herramientas (tool_result para todos los
   tool_use del turno). Suite 89 checks + motor real sobre receta operada.
+- **F1.17 — compuerta anti-borrado, espejo y memoria (31-ago, del segundo chat copiado)**: tres
+  fallas vistas en uso real. (a) Para «agrega una malla vertical» el modelo llamó `proponer_muro`
+  y la auto-carga PISÓ cabezales y mallas ya armados → **compuerta dura en el backend**: con barras
+  en el editor, `proponer_muro` sin `rehacer=1` se rechaza con tool_result y el modelo se corrige a
+  `operar_barras`; `rehacer=1` solo si el usuario pidió rehacer expresamente. (b) La «mala memoria»
+  era consecuencia: al pisar la receta, el inventario (su única memoria) quedó vacío → ahora cada
+  respuesta con receta anexa «Quedó en el editor: 1. MV… 2. CB…», así el historial lleva el estado
+  turno a turno, y el prompt fija el listado como la memoria real. (c) «Rótala en torno a Z»
+  terminó girando las patas → campo `espejo` en operar_barras + regla en el conocimiento
+  (espejo ≠ giro_patas). **Regla de la casa incorporada a la fábrica** (captura del usuario): en
+  doble malla con ganchos, la cortina opuesta nace en ESPEJO — los ganchos se cruzan en el testero;
+  la plataforma lo hace sola, sin depender del modelo. Y la jerarquía dictada SIEMPRE se escribe y
+  se repite en la respuesta. Suite 88 checks + motor sobre cortinas espejadas.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

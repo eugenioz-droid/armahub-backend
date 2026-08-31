@@ -319,8 +319,8 @@ def _revisar_schema(nodo, ruta="raiz", fallas=None):
         req = set(nodo.get("required") or [])
         if req - props:
             fallas.append("%s: required sin property %s" % (ruta, req - props))
-        if props - req:
-            fallas.append("%s: property fuera de required %s" % (ruta, props - req))
+        # Sin `strict` (F1.12) una property fuera de required es LEGITIMA: asi se
+        # declaran los opcionales de verdad (p.ej. `rehacer`). Ya no se marca.
         if nodo.get("additionalProperties") is not False:
             fallas.append("%s: falta additionalProperties:false" % ruta)
         for k, v in (nodo.get("properties") or {}).items():
@@ -500,6 +500,39 @@ check("el prompt manda a PROPONER con lo tipico en vez de interrogar",
       "PROPONE, NO INTERROGUES" in _sp("muro") and "asumido" in _sp("muro"))
 check("el prompt manda a operar_barras para cambios puntuales",
       "operar_barras" in _sp("muro") and "NUNCA reconstruyas" in _sp("muro"))
+
+# --- COMPUERTA, ESPEJO Y RASTRO (31-ago: el modelo rehizo el muro para "agregar
+#     una malla" y piso cabezales; y confundio espejo con giro de patas) ---
+check("proponer_muro declara el candado rehacer",
+      "rehacer" in TOOL_MURO["input_schema"]["properties"])
+check("operar_barras tiene el campo espejo",
+      "espejo" in TOOL_OPERAR["input_schema"]["properties"]["cambios"]["items"]["properties"])
+_r7, _ = _aplicar_cambios(_RECETA_EJ, [{"accion": "editar", "barra": 1, "espejo": 1}], CAT)
+check("editar espejo=1 refleja la barra (pose.espejo y campo viejo)",
+      _r7["componentes"][0]["pose"]["espejo"] is True
+      and _r7["componentes"][0]["espejo"] is True)
+_r8, _ = _aplicar_cambios(_r7, [{"accion": "editar", "barra": 1, "espejo": 0}], CAT)
+check("espejo=0 lo quita", _r8["componentes"][0]["pose"]["espejo"] is False)
+CAT104 = {"101A": {"parciales": ["A"], "angulos": []},
+          "104B": {"parciales": ["A", "B", "C", "D"], "angulos": [45, 45]}}
+_rmh, _ = _aplicar_cambios(_RECETA_EJ, [
+    {"accion": "agregar", "barra": 0, "armadura": "malla_horizontal",
+     "figura": "104B", "diam": 8, "sep": 20, "lados": "ambas"}], CAT104)
+_mhs = [c for c in _rmh["componentes"] if c["tipologia"] == "MH"]
+check("regla de la casa: la cortina opuesta de una malla con ganchos nace en ESPEJO",
+      [c["pose"]["espejo"] for c in _mhs] == [False, True])
+_rmr, _ = _aplicar_cambios(_RECETA_EJ, [
+    {"accion": "agregar", "barra": 0, "armadura": "malla_horizontal",
+     "figura": "101A", "diam": 8, "sep": 20, "lados": "ambas"}], CAT104)
+check("con barra recta no se escribe espejo (no cambia nada)",
+      all(not c["pose"]["espejo"] for c in _rmr["componentes"]
+          if c["tipologia"] == "MH"))
+from armahub.asistente import _estado_corto
+check("el rastro de estado lista lo que quedo, numerado",
+      _estado_corto(_RECETA_EJ).startswith("1. MV")
+      and "2. CB" in _estado_corto(_RECETA_EJ))
+check("el prompt distingue espejo de giro de patas y fija el listado como memoria",
+      "ESPEJO vs GIRO" in _sp("muro") and "TU MEMORIA ES EL LISTADO" in _sp("muro"))
 
 # --- cableado
 main_src = io.open(os.path.join(BASE, "armahub", "main.py"), encoding="utf-8").read()

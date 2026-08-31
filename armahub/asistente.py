@@ -200,6 +200,13 @@ TOOL_MURO = {
         "required": ["geometria", "malla_vertical", "malla_horizontal",
                      "doble_malla", "trabas", "bordes", "origenes"],
         "properties": {
+            "rehacer": {
+                "type": "integer",
+                "description": "1 SOLO si el usuario pidio expresamente rehacer el "
+                               "muro completo. Con barras en el editor, proponer_muro "
+                               "sin rehacer=1 se rechaza: para cambios puntuales usa "
+                               "operar_barras.",
+            },
             "geometria": {
                 "type": "object", "additionalProperties": False,
                 "required": ["largo", "alto", "espesor", "recubrimiento"],
@@ -537,23 +544,33 @@ def _fabricar(clase, p, geo, figuras, lados):
         fig = _pedido(p, "figura", "101A")
         par, ang = _spec_figura(figuras, fig, ["A"], [])
         for lado in lados:
-            comps.append(_mk_extras(_mk_base(
+            c = _mk_extras(_mk_base(
                 "MV", fig, p["diam"], ang, "lineal", "lateral", lado, "y",
                 "de_pie", False,
                 _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
                 int(_pedido(p, "jerarquia", 1)),
-                _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p))
+                _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p)
+            if lado == -1 and len(par) > 1:
+                # regla de la casa: la cortina opuesta va en ESPEJO (los ganchos
+                # se cruzan en el testero, captura del usuario 31-ago)
+                c["pose"]["espejo"] = True
+                c["espejo"] = True
+            comps.append(c)
 
     elif clase == "malla_horizontal":
         fig = _pedido(p, "figura", "101A")
         par, ang = _spec_figura(figuras, fig, ["A"], [])
         for lado in lados:
-            comps.append(_mk_extras(_mk_base(
+            c = _mk_extras(_mk_base(
                 "MH", fig, p["diam"], ang, "lineal", "lateral", lado, "x",
                 "acostada", False,
                 _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
                 int(_pedido(p, "jerarquia", 1)),
-                _mk_lin(p["sep"], "y", -ry, ry, p.get("tramos"))), p))
+                _mk_lin(p["sep"], "y", -ry, ry, p.get("tramos"))), p)
+            if lado == -1 and len(par) > 1:
+                c["pose"]["espejo"] = True
+                c["espejo"] = True
+            comps.append(c)
 
     elif clase == "trabas":
         fig = _pedido(p, "figura", "103B")
@@ -688,6 +705,12 @@ TOOL_OPERAR = {
                         "suf": {"type": "string", "description": "sufijo de marca; \"\" = no tocar"},
                         "recub": {"type": "number", "description": "recubrimiento propio cm; 0 = no tocar, -1 = quitar"},
                         "giro_patas": {"type": "integer", "description": "0/90/180/270; -1 = no tocar"},
+                        "espejo": {"type": "integer",
+                                   "description": "1 = reflejar la barra (media "
+                                                  "vuelta: los ganchos quedan en "
+                                                  "espejo, p.ej. «rotala en torno a "
+                                                  "Z»); 0 = quitar el espejo; -1 = "
+                                                  "no tocar"},
                         "lado_dominante": {"type": "string", "description": "letra; \"\" = no tocar"},
                         "anidar": {"type": "integer", "description": "1 si, 0 no, -1 no tocar"},
                         "barras_capa": {"type": "integer", "description": "0 = no tocar"},
@@ -765,6 +788,13 @@ def _editar_comp(c, cb, geo, figuras):
             if L != corre:
                 dims[L] = {"modo": "auto"}
 
+    esp = int(_num(cb.get("espejo"), -1))
+    if esp in (0, 1):
+        # «Rotar en torno a Z» / «ganchos en espejo» = el bit espejo de la POSE,
+        # no el giro de patas (el modelo confundio los dos el 31-ago y roto las
+        # mallas sobre su propio eje).
+        c.setdefault("pose", {})["espejo"] = bool(esp)
+        c["espejo"] = bool(esp)
     col = _hex_color(cb.get("color"))
     if col:
         c["color"] = col
@@ -893,6 +923,19 @@ def _linea_comp(c) -> str:
             partes.append("emp+%g" % _num(v["delta"]))
             break
     return " ".join(partes)
+
+
+def _estado_corto(receta) -> str:
+    """Una linea con lo que quedo en el editor. Se anexa a CADA respuesta con
+    receta: el historial del chat pasa a llevar el estado real turno a turno, y el
+    modelo (que solo ve texto) deja de 'olvidar' lo que el mismo armo — el 31-ago
+    piso los cabezales y despues no recordaba que existian."""
+    comps = receta.get("componentes") or []
+    partes = ["%d. %s %s \u03c6%g" % (i, c.get("tipologia") or "?",
+                                      c.get("figura") or "?", _num(c.get("diam")))
+              for i, c in enumerate(comps, start=1)]
+    return " \u00b7 ".join(partes[:14]) + (" (+%d mas)" % (len(partes) - 14)
+                                           if len(partes) > 14 else "")
 
 
 def _inventario_receta(receta) -> str:
@@ -1048,6 +1091,14 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "operar_barras con esos números — NUNCA reconstruyas el muro entero con "
         "proponer_muro para un cambio puntual, porque pisarías lo que el usuario "
         "editó a mano.\n"
+        "· TU MEMORIA ES EL LISTADO: el inventario numerado del mensaje es el "
+        "estado REAL del editor, turno a turno. Confía en él por sobre tu "
+        "recuerdo de la conversación; si el usuario dice que algo existía y no "
+        "está en el listado, dilo en vez de improvisar.\n"
+        "· ESPEJO vs GIRO DE PATAS: «rótala en torno a Z», «que quede en "
+        "espejo», «los ganchos al otro lado» = campo `espejo` de operar_barras "
+        "(refleja la barra). `giro_patas` solo gira los GANCHOS sobre el eje de "
+        "la propia barra — no es una rotación del cuerpo.\n"
         "· Por ahora SOLO muros. Si piden otro elemento, dilo amable: viga y "
         "columna vienen después.\n"
         "· SE PUEDE PEDIR SOLO UNA PARTE. «Hazme solo los cabezales» es un "
@@ -1380,6 +1431,40 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                                 r = None
                     return r, sp
 
+                # COMPUERTA ANTI-BORRADO (31-ago): el modelo uso proponer_muro para
+                # «agrega una malla vertical» y la auto-carga PISO los cabezales y
+                # las mallas ya armadas. Que no vuelva a depender del criterio del
+                # modelo: con barras en el editor, rehacer el muro exige rehacer=1
+                # (que solo debe poner si el usuario lo pidio expresamente); si no,
+                # se le devuelve el tool_result con la instruccion de operar.
+                def _bloqueado(sp):
+                    return (sp is not None
+                            and (body.receta_actual or {}).get("componentes")
+                            and int(_num(sp.get("rehacer"))) != 1)
+
+                if _bloqueado(spec) and tu_ids:
+                    n_barras = len(body.receta_actual["componentes"])
+                    contenido = [{"type": "tool_result", "tool_use_id": t,
+                                  "is_error": True,
+                                  "content": "Hay %d barras en el editor. Reconstruir "
+                                             "con proponer_muro las BORRARIA. Para "
+                                             "cambios puntuales llama operar_barras "
+                                             "con los numeros del listado; solo si el "
+                                             "usuario pidio rehacer el muro completo, "
+                                             "repite proponer_muro con rehacer=1."
+                                             % n_barras} for t in tu_ids]
+                    resp = _llamar(mensajes + [
+                        {"role": "assistant", "content": resp.content},
+                        {"role": "user", "content": contenido},
+                    ])
+                    texto2, spec, cambios, tu_ids = _extraer(resp)
+                    texto = texto2 or texto
+                    figuras = _figuras_para(cur, spec, cambios)
+                if _bloqueado(spec):
+                    avisos.append("Descarté rehacer el muro entero: hay barras en "
+                                  "el editor y no pediste rehacerlo.")
+                    spec = None
+
                 receta, spec_ok = _armar(spec, cambios)
 
                 if receta is not None:
@@ -1421,6 +1506,11 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 if receta is not None and not texto:
                     texto = ("Listo — apliqué los cambios y cargué el resultado "
                              "al editor. Revísalo en el 3D; si algo no calza, dime.")
+                if receta is not None:
+                    # RASTRO DE ESTADO: el historial (que es lo unico que el modelo
+                    # recuerda) lleva turno a turno lo que quedo en el editor.
+                    texto = (texto + "\n\nQuedó en el editor: "
+                             + _estado_corto(receta)).strip()
                 return {"texto": texto, "receta": receta, "resumen": resumen}
 
             except anthropic.AuthenticationError as e:

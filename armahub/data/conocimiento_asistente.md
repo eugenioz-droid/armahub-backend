@@ -73,6 +73,18 @@ la punta (típico 40-80 cm).
 barras del cabezal que el estribo no toma. Cruza el espesor como la TR, pero con la
 separación apretada del borde (la misma del EC), no la de la malla corriente.
 
+**Las dos cortinas van en ESPEJO.** Cuando la malla lleva ganchos (figura de más de
+un tramo), la cortina del lado opuesto va reflejada — «rotada en torno al eje Z» —
+para que los ganchos de una crucen contra los de la otra en el testero. La
+plataforma lo hace sola al crear la doble malla; si el usuario pide «rótala en
+torno a Z» o «en espejo» sobre una barra existente, es el campo `espejo` de
+operar_barras (NUNCA `giro_patas`, que solo gira los ganchos sobre el eje de la
+propia barra).
+
+**La jerarquía SIEMPRE se escribe cuando el usuario la dicta.** «Cabezales con
+jerarquía 2», «ponle jer 1 a la MH» → el campo `jerarquia` de esa armadura o del
+cambio, y se repite el valor en la respuesta para que el usuario vea que quedó.
+
 **Colores.** Cada tipología ya trae su color en la plataforma y es el que se usa por
 defecto — no hay que pedirlo ni escribirlo: MH azul · MV verde · TR y TC morado ·
 EC naranjo · CB azul. Solo se cambia si el cubicador lo pide expresamente («pinta las
