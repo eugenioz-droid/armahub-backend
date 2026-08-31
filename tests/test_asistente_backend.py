@@ -321,6 +321,8 @@ check("la receta se INSTALA EN VIVO al llegar (no de golpe, no a mano)",
       "_instalarEnVivo()" in _ja
       and "templateEditorAgregarComponente" in _ja
       and "templateEditorAgregarComponente" in _jt)
+check("hay como copiar la receta (evidencia para diagnosticar sin mirar pixeles)",
+      "_copiarReceta" in _ja and "te_iaCopiar" in _ja and "te_iaCopiar" in _html)
 check("el boton del panel es RE-carga y no pasa el evento como flag",
       "_cargarBorrador(false)" in _ja
       and "Cargar la propuesta completa" in _html)

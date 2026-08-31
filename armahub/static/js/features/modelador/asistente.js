@@ -187,6 +187,42 @@
   function _mostrarCargar(si) {
     var b = $('te_iaCargar');
     if (b) b.style.display = si ? '' : 'none';
+    var c = $('te_iaCopiar');
+    if (c) c.style.display = si ? '' : 'none';
+  }
+
+  // COPIAR LA RECETA — la evidencia exacta de lo que se instalo. Existe porque
+  // diagnosticar una barra deforme mirando el 3D es interpretar pixeles: con el
+  // JSON se lee la figura, las dims y la pose de cada componente sin adivinar.
+  function _copiarReceta() {
+    if (!PROPUESTA || !PROPUESTA.receta) return;
+    var txt;
+    try { txt = JSON.stringify(PROPUESTA.receta, null, 2); }
+    catch (e) { return; }
+    var ok = function () { _burbuja('asistente', 'Receta copiada al portapapeles.'); };
+    if (global.navigator && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(ok, function () { _copiarFallback(txt, ok); });
+    } else {
+      _copiarFallback(txt, ok);
+    }
+  }
+
+  // Fallback sin permiso de portapapeles (o http): textarea + execCommand.
+  function _copiarFallback(txt, ok) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok();
+    } catch (e) {
+      _burbuja('asistente', 'No pude copiarla; abre la consola del navegador y usa el JSON de ahi.');
+      if (global.console) global.console.log(txt);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -380,6 +416,8 @@
     // OJO: sin el envoltorio, addEventListener pasa el MouseEvent como `auto`
     // (truthy) y la re-carga se quedaria muda.
     if (cargar) cargar.addEventListener('click', function () { _cargarBorrador(false); });
+    var cop = $('te_iaCopiar');
+    if (cop) cop.addEventListener('click', _copiarReceta);
   }
 
   if (document.readyState === 'loading') {
