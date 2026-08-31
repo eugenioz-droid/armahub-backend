@@ -13248,6 +13248,23 @@
 
   global.templateEditorVerEn3D = function () { _iniciar3dEnVivo(); };
 
+  // ASISTENTE IA (SPECS seccion 12) - foto del estado que el chat necesita: la receta
+  // ACTUAL (copia; el asistente nunca toca ST directo) y el contexto para reabrir el
+  // editor con una receta nueva por LA MISMA puerta que usa el borrador
+  // (templateEditorAbrir). Lo consume modelador/asistente.js; no lo usa nadie mas.
+  global.templateEditorEstado = function () {
+    var bd = $('te_backdrop');
+    return {
+      abierto: !!(bd && bd.classList.contains('on')),
+      elemento: ST.elemento || null,
+      nombre: ST.nombre || '',
+      receta: ST.receta ? JSON.parse(JSON.stringify(ST.receta)) : null,
+      templateId: ST.templateId, obra: ST.obra, puedeModificar: ST.puedeModificar,
+      ctxObra: ST.ctxObra, piso: ST.piso, instanciaId: ST.instanciaId,
+      soloVista: !!ST.soloVista
+    };
+  };
+
   // Cerrar con clic en el backdrop (fuera del modal)
   document.addEventListener('click', function (e) {
     var bd = $('te_backdrop');

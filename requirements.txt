@@ -16,3 +16,5 @@ fpdf2
 Pillow
 boto3
 resend
+# Asistente IA de enfierrado (SPECS seccion 12): backend -> API Anthropic
+anthropic
