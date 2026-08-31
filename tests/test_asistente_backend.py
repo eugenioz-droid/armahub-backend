@@ -566,6 +566,45 @@ check("override: una grilla que ya cuadra no se toca",
       [c for c in _rt2["componentes"] if c["tipologia"] == "TR"][0]
       ["distribucion"]["rango"]["sep"] == 40.0)
 
+# --- EL PROMPT COMPLETO DEL USUARIO (31-ago) de punta a punta ---
+CAT_P = {"101A": {"parciales": ["A"], "angulos": []},
+         "103B": {"parciales": ["A", "B", "C"], "angulos": [45, 45]},
+         "104B": {"parciales": ["A", "B", "C", "D"], "angulos": [45, 45]}}
+SPEC_P = {"geometria": {"largo": 500, "alto": 300, "espesor": 20, "recubrimiento": 2},
+          "malla_vertical": {"diam": 10, "sep": 20, "figura": "101A", "jerarquia": 2,
+                             "empalme": 70, "holgura": 10},
+          "malla_horizontal": {"diam": 8, "sep": 20, "figura": "104B", "jerarquia": 1},
+          "doble_malla": True,
+          "trabas": {"diam": 8, "sx": 40, "sy": 40, "figura": "103B"},
+          "bordes": {"barras": {"diam": 16, "barras_capa": 2, "n_capas": 2,
+                                "empalme": 96, "sep_capas": 15, "jerarquia": 2},
+                     "estribo": None, "largo": 0},
+          "origenes": {"trabas": "leido", "bordes": "leido"}}
+_rp = _construir_receta_muro(SPEC_P, CAT_P)
+_mvp = [c for c in _rp["componentes"] if c["tipologia"] == "MV"]
+_mhp = [c for c in _rp["componentes"] if c["tipologia"] == "MH"]
+_trp = [c for c in _rp["componentes"] if c["tipologia"] == "TR"][0]
+_cbp = [c for c in _rp["componentes"] if c["tipologia"] == "CB"]
+check("las 3 jerarquias dictadas se respetan (MH=1, MV=2, CB=2)",
+      all(c["jerarquia"] == 2 for c in _mvp) and all(c["jerarquia"] == 1 for c in _mhp)
+      and all(c["jerarquia"] == 2 for c in _cbp))
+check("la traba deriva su jerarquia SOBRE las mallas aunque se dicten las otras",
+      _trp["jerarquia"] == 3)
+check("la HOLGURA pedida manda: la MV arranca a 10 cm del cabezal (15+10=25)",
+      _mvp[0]["distribucion"]["rango"]["to"] == 500 / 2 - 2 - 15 - 10)
+check("la segunda MH va espejada y la primera no",
+      [c["pose"]["espejo"] for c in _mhp] == [False, True])
+check("la traba de muro queda ENTRE los cabezales, no sobre ellos",
+      _trp["distribucion"]["rango"]["to"] == _mvp[0]["distribucion"]["rango"]["to"])
+check("la traba lleva +2 cm en su cuerpo para enganchar las dos barras",
+      _trp["dims"]["B"].get("delta") == 2.0
+      and _trp["dims"]["B"].get("extremo") == "centro")
+check("el empalme de la MV va en su lado que corre y el del cabezal en el suyo",
+      _mvp[0]["dims"]["A"].get("delta") == 70.0
+      and _cbp[0]["dims"]["A"].get("delta") == 96.0)
+check("la separacion entre capas de cabezales es la pedida",
+      _cbp[0]["distribucion"]["gap"] == 15.0)
+
 # --- COMPUERTA, ESPEJO Y RASTRO (31-ago: el modelo rehizo el muro para "agregar
 #     una malla" y piso cabezales; y confundio espejo con giro de patas) ---
 check("proponer_muro declara el candado rehacer",

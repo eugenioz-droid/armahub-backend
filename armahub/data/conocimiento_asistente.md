@@ -73,6 +73,11 @@ la punta (típico 40-80 cm).
 barras del cabezal que el estribo no toma. Cruza el espesor como la TR, pero con la
 separación apretada del borde (la misma del EC), no la de la malla corriente.
 
+**Dónde vive la traba de muro** (regla de la casa): solo en el tramo COMPRENDIDO
+ENTRE los cabezales — el borde ya tiene su propio confinamiento y no se le
+superpone malla ni traba. Y su cuerpo lleva **2 cm de sobrelargo**, porque tiene
+que pasar por fuera del eje de las dos cortinas para engancharlas.
+
 **TR y TC NO son lo mismo y no se intercambian**: la traba de muro (TR) cose la malla
 corriente y su grilla cae en los cruces de MV y MH; la de confinamiento (TC) vive
 dentro del borde y sigue la separación del estribo. Si el usuario dice «trabas» a

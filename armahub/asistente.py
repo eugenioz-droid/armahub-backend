@@ -161,7 +161,7 @@ _GIRO_PATAS_PROP = {
 _MALLA_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["diam", "sep", "figura", "jerarquia", "empalme", "pata",
-                 "tramos", "lado_dominante", "giro_patas", "color"],
+                 "holgura", "tramos", "lado_dominante", "giro_patas", "color"],
     "properties": {
         "diam": {"type": "number",
                  "description": "φ en mm. 0 = el muro NO lleva esta malla "
@@ -171,6 +171,12 @@ _MALLA_SCHEMA = {
         "jerarquia": _JERARQUIA_PROP,
         "empalme": _EMPALME_PROP,
         "pata": _PATA_PROP,
+        "holgura": {
+            "type": "number",
+            "description": "cm libres entre el cabezal y la PRIMERA barra de esta "
+                           "malla («el primer vertical a 10 cm del cabezal»). 0 = "
+                           "lo decide la plataforma",
+        },
         "tramos": _TRAMOS_PROP,
         "lado_dominante": _DOMINANTE_PROP,
         "giro_patas": _GIRO_PATAS_PROP,
@@ -229,7 +235,8 @@ TOOL_MURO = {
                          "barras": {
                              "type": "object", "additionalProperties": False,
                              "required": ["diam", "barras_capa", "n_capas", "figura",
-                                          "empalme", "pata", "sep_capas", "color"],
+                                          "empalme", "pata", "sep_capas", "color",
+                                          "jerarquia"],
                              "properties": {
                                  "diam": {"type": "number", "description": "φ cabezal en mm"},
                                  "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
@@ -237,6 +244,7 @@ TOOL_MURO = {
                                  "figura": _FIGURA_PROP,
                                  "empalme": _EMPALME_PROP,
                                  "pata": _PATA_PROP,
+                                 "jerarquia": _JERARQUIA_PROP,
                                  "sep_capas": {
                                      "type": "number",
                                      "description": "separacion entre capas de "
@@ -391,6 +399,7 @@ def _normalizar_ficha(spec: dict) -> dict:
             "jerarquia": int(_num(d.get("jerarquia"))),
             "empalme": _num(d.get("empalme")),
             "pata": _num(d.get("pata")),
+            "holgura": _num(d.get("holgura")),
             "color": str(d.get("color") or "").strip(),
             "lado_dominante": str(d.get("lado_dominante") or "").strip(),
             "giro_patas": int(_num(d.get("giro_patas"), -1)),
@@ -579,6 +588,8 @@ def _fabricar(clase, p, geo, figuras, lados):
                 int(_pedido(p, "jerarquia", 1)),
                 _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p)
             _marcar_jer(c, p)
+            if _num(p.get("holgura")) > 0:
+                c["_holgura"] = _num(p.get("holgura"))   # lo lee la regla del borde
             if lado == -1 and len(par) > 1:
                 # regla de la casa: la cortina opuesta va en ESPEJO (los ganchos
                 # se cruzan en el testero, captura del usuario 31-ago)
@@ -615,9 +626,18 @@ def _fabricar(clase, p, geo, figuras, lados):
         m_gancho = 6.0 * float(p["diam"]) / 10.0 + 5.0
         dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
                           "sep": _r1(p.get("sy", 40))}
+        # LA TRABA ENGANCHA LAS DOS BARRAS: su cuerpo mide el espesor util MAS un
+        # sobrelargo, porque tiene que pasar por fuera del eje de cada cortina para
+        # agarrarlas (regla de la casa, usuario 31-ago: «2 cm mas en su lado B»).
+        dims_tr = {L: {"modo": "auto"} for L in par}
+        cuerpo = _lado_que_corre(par)
+        sobre = _num(p.get("sobrelargo"), 2) if p.get("sobrelargo") is not None else 2
+        if cuerpo and sobre:
+            dims_tr[cuerpo]["delta"] = _r1(sobre)
+            dims_tr[cuerpo]["extremo"] = "centro"   # crece por las dos puntas
         comps.append(_marcar_jer(_mk_extras(_mk_base(
             tip, fig, p["diam"], ang, "arreglo", "sup", 1, "z", "volteada",
-            True, {L: {"modo": "auto"} for L in par},
+            True, dims_tr,
             int(_pedido(p, "jerarquia", 2)), dist), p), p))
 
     elif clase == "cabezales":
@@ -680,17 +700,23 @@ def _regla_jerarquias(comps):
     mv, mh = _por_tip(comps, "MV"), _por_tip(comps, "MH")
     if not (mv and mh):
         return None
-    if any(c.get("_jer_dictada") for c in mv + mh):
-        return None                      # el usuario la dicto: la regla no manda
     jers = {c.get("jerarquia", 1) for c in mv} | {c.get("jerarquia", 1) for c in mh}
-    if len(jers) > 1:
-        return None                      # ya estan diferenciadas: es del usuario
-    for c in mv:
-        c["jerarquia"] = 1
-    for c in mh:
-        c["jerarquia"] = 2
+    dictadas = any(c.get("_jer_dictada") for c in mv + mh) or len(jers) > 1
+    if not dictadas:
+        for c in mv:
+            c["jerarquia"] = 1
+        for c in mh:
+            c["jerarquia"] = 2
+        jers = {1, 2}
+    # LA TRABA VA SOBRE LAS DOS MALLAS SIEMPRE, tambien cuando el usuario dicto
+    # las jerarquias de las cortinas: su nivel se DERIVA del de ellas (una traba
+    # que se apoye por debajo de una malla no amarra nada). Se abstiene solo si el
+    # usuario dicto la jerarquia de la traba misma.
     for c in _por_tip(comps, "TR"):
-        c["jerarquia"] = 3               # la traba de muro se apoya sobre las dos
+        if not c.get("_jer_dictada"):
+            c["jerarquia"] = max(jers) + 1
+    if dictadas:
+        return None
     return "malla vertical contra la cara (jer.1), horizontal encima (jer.2)"
 
 
@@ -705,6 +731,16 @@ def _zona_de_borde(comps):
         d = c.get("distribucion") or {}
         z = max(z, (max(1, int(_num(d.get("n_capas"), 1))) - 1) * _num(d.get("gap"), 4))
     return z
+
+
+def _margen_borde(comps, geo, holgura=0.0):
+    """Desde donde puede empezar la malla: la punta util menos el paquete de
+    cabezales, menos la holgura pedida (o una separacion si no se pidio)."""
+    zona = _zona_de_borde(comps)
+    if not zona:
+        return None
+    rx = geo["largo"] / 2.0 - geo["rec"]
+    return rx - zona - holgura
 
 
 def _regla_mv_esquiva_cabezales(comps, geo):
@@ -726,12 +762,45 @@ def _regla_mv_esquiva_cabezales(comps, geo):
         d = (c.get("distribucion") or {}).get("rango")
         if not isinstance(d, dict) or d.get("eje") != "x":
             continue
-        margen = zona + _num(d.get("sep"), 20)
-        lim = _r1(max(rx * 0.25, rx - margen))    # nunca colapsar el abanico
+        # La HOLGURA la manda el usuario cuando la dicta («el primer vertical a 10
+        # cm del cabezal»); si no dice nada, se usa una separacion de malla.
+        holgura = _num(c.get("_holgura")) or _num(d.get("sep"), 20)
+        lim = _r1(max(rx * 0.25, rx - zona - holgura))   # nunca colapsar el abanico
         d["from"], d["to"] = -lim, lim
         recorte = _r1(rx - lim)
-    return ("la malla vertical se corre %g cm de cada punta para no repetirse "
+    return ("la malla vertical arranca a %g cm de cada punta para no repetirse "
             "sobre los cabezales" % recorte) if recorte else None
+
+
+def _regla_traba_entre_cabezales(comps, geo):
+    """La traba de MURO solo cose la malla corriente: el borde tiene su propio
+    confinamiento, asi que la traba no se mete sobre los cabezales (usuario
+    31-ago). Su abanico se acota al mismo tramo libre que la malla vertical.
+
+    NO TOCA si no hay cabezales."""
+    trs = _por_tip(comps, "TR")
+    mvs = _por_tip(comps, "MV")
+    if not (trs and _zona_de_borde(comps)):
+        return None
+    # el tramo libre ya calculado para la MV manda; si no hay MV, se calcula igual
+    lim = None
+    for c in mvs:
+        r = (c.get("distribucion") or {}).get("rango")
+        if isinstance(r, dict) and r.get("eje") == "x":
+            lim = _num(r.get("to"))
+            break
+    if lim is None:
+        m = _margen_borde(comps, geo, 0.0)
+        lim = _r1(m) if m else None
+    if not lim:
+        return None
+    tocada = False
+    for c in trs:
+        r = (c.get("distribucion") or {}).get("rango")
+        if isinstance(r, dict) and r.get("eje") == "x" and _num(r.get("to")) > lim:
+            r["from"], r["to"] = -lim, lim
+            tocada = True
+    return "las trabas de muro quedaron entre los cabezales" if tocada else None
 
 
 def _multiplo_cercano(valor, base, mini):
@@ -791,6 +860,7 @@ def _aplicar_reglas(receta):
     avisos = []
     for regla in (lambda: _regla_jerarquias(comps),
                   lambda: _regla_mv_esquiva_cabezales(comps, geo),
+                  lambda: _regla_traba_entre_cabezales(comps, geo),
                   lambda: _regla_trabas_en_los_cruces(comps)):
         try:
             msg = regla()
@@ -800,7 +870,8 @@ def _aplicar_reglas(receta):
         if msg:
             avisos.append(msg)
     for c in comps:
-        c.pop("_jer_dictada", None)      # marcador interno: no viaja en la receta
+        c.pop("_jer_dictada", None)      # marcadores internos: no viajan
+        c.pop("_holgura", None)
     return avisos
 
 

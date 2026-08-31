@@ -1746,6 +1746,16 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   **TR fucsia** `#d81b60` · **EC/TC ámbar** `#f9a825`/`#ffb300` · **CB rojo** `#c62828`. Antes CB
   compartía el azul de MH y TR el morado de TC, así que un muro completo se veía «todo azul» salvo
   la MV. Suite 100 checks + motor.
+- **F1.20 — lo que pedía el prompt del usuario y no existía (31-ago)**: revisando su prompt de
+  prueba aparecieron tres huecos y se cerraron. (a) **`jerarquia` del CABEZAL** no estaba en la
+  ficha (solo mallas y trabas la tenían), así que «CB=2» era inaplicable. (b) **`holgura`**: campo
+  nuevo en las mallas — «el primer vertical a 10 cm del cabezal»; la regla del borde lo usa cuando
+  viene dictado y cae a una separación de malla cuando no. (c) Dos reglas nuevas para la traba de
+  muro, dictadas por el usuario: vive **solo entre los cabezales** (el borde tiene su propio
+  confinamiento) y su cuerpo lleva **+2 cm de sobrelargo** para enganchar las dos cortinas
+  (Δ centrado, crece por las dos puntas). Además la traba **deriva su jerarquía por sobre las
+  mallas aunque el usuario dicte las de las cortinas** — antes la regla se abstenía entera y la
+  traba quedaba por debajo, sin amarrar. Test de punta a punta con el prompt literal. Suite 108.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
