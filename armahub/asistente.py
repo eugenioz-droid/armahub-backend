@@ -534,6 +534,27 @@ def _detalle_fig(d):
     return (" · " + " ".join(partes)) if partes else ""
 
 
+def _inventario(spec: dict) -> str:
+    """Qué armaduras va a crear esta ficha, en una línea.
+
+    EXISTE PORQUE (usuario 31-ago): pidió cabezales y el asistente además inventó un
+    estribo de confinamiento φ8@10 — 32 barras que nadie pidió, la «espina de
+    pescado» que vio en el 3D. El formulario mostraba el dato, pero perdido entre las
+    filas. Una línea que diga «2 cabezales + 2 estribos» hace evidente lo que sobra
+    ANTES de que se instale."""
+    n = 2 if spec.get("doble_malla", True) else 1
+    partes = ["%d malla%s vertical%s" % (n, "s" if n > 1 else "", "es" if n > 1 else ""),
+              "%d horizontal%s" % (n, "es" if n > 1 else "")]
+    if spec.get("doble_malla", True) and spec.get("trabas"):
+        partes.append("1 traba")
+    bo = spec.get("bordes")
+    if bo:
+        partes.append("2 cabezales")
+        if bo.get("estribo"):
+            partes.append("2 estribos de borde")
+    return " + ".join(partes)
+
+
 def _resumen_de_spec(spec: dict) -> list:
     """Filas del formulario del chat (§12.3), con su chip de origen."""
     g, o = spec["geometria"], spec.get("origenes", {})
@@ -542,6 +563,8 @@ def _resumen_de_spec(spec: dict) -> list:
         return o.get(k) if o.get(k) in _ORIGENES else "asumido"
 
     filas = [
+        {"seccion": "Se van a crear"},
+        {"label": "Armaduras", "valor": _inventario(spec), "origen": "config"},
         {"seccion": "Hormigón (muro)"},
         {"label": "Largo × Alto",
          "valor": f"{g['largo']:g} × {g['alto']:g} cm", "origen": org("geometria")},
@@ -622,11 +645,19 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "a llamar proponer_muro con la ficha completa corregida.\n"
         "· Por ahora SOLO muros. Si piden otro elemento, dilo amable: viga y "
         "columna vienen después.\n"
-        "· La ficha cubre: mallas, trabas y CONFINAMIENTO DE BORDE (cabezales "
-        "por punta + estribo de confinamiento acotado). Si el muro trae borde, "
-        "pregunta lo crítico (φ y cantidad de cabezales); el estribo puedes "
-        "asumirlo con lo usual (φ8-φ10, @ ≤6φ del cabezal y ≤½ espesor; largo "
-        "confinado ≥40 cm) marcándolo 'asumido'.\n"
+        "· NO INVENTES ARMADURAS QUE NADIE PIDIÓ. Cada armadura de la ficha es "
+        "una barra distinta que se va a fabricar: si el usuario pide SOLO "
+        "cabezales, el estribo va en null; si pide solo mallas, trabas y bordes "
+        "van en null. Agregar una armadura de más es un error grave, no una "
+        "ayuda.\n"
+        "· CABEZAL y ESTRIBO son DOS COSAS DISTINTAS del borde, no las mezcles:\n"
+        "    · `bordes.barras` = CABEZALES: las barras verticales gruesas de la "
+        "punta. Llevan diámetro, cuántas por capa, cuántas capas, separación "
+        "entre capas, figura, pata y empalme. Van por CAPAS, nunca con un @.\n"
+        "    · `bordes.estribo` = el marco cerrado que las abraza, repartido en "
+        "altura con un @. Si el usuario no lo menciona va en null Y SE LO "
+        "PREGUNTAS: «¿solo los cabezales, o le pongo estribo de confinamiento?».\n"
+        "    Un pedido de cabezales NUNCA se escribe en `estribo`.\n"
         "· FIGURA y JERARQUÍA SÍ son tuyas: la ficha las lleva por elemento. Si el "
         "usuario dice «la malla horizontal es 104B» o «esa traba con jerarquía 2», "
         "ponlo en la ficha y vuelve a proponer — NUNCA le digas que eso lo decide "

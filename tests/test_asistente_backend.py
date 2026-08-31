@@ -169,6 +169,26 @@ check("los TRAMOS multi-@ llegan al rango del estribo",
                                                  {"long": 150.0, "sep": 20.0}])
 check("el anidado pedido se escribe", ec1["distribucion"]["anidar"] is True)
 
+# --- NO INVENTAR ARMADURAS + inventario visible (31-ago: pidio cabezales y el
+#     asistente agrego un estribo phi8@10 de 32 barras que nadie pidio)
+from armahub.asistente import _inventario, _system_prompt as _sp
+SPEC_SOLO_CB = dict(SPEC, bordes={"barras": {"diam": 22, "barras_capa": 2, "n_capas": 2,
+                                             "figura": None, "empalme": None,
+                                             "pata": None, "sep_capas": None},
+                                  "estribo": None, "largo": 40})
+r_solo = _construir_receta_muro(SPEC_SOLO_CB, CAT)
+check("sin estribo pedido NO se crea ningun estribo",
+      not [c for c in r_solo["componentes"] if c["tipologia"] == "EC"]
+      and len([c for c in r_solo["componentes"] if c["tipologia"] == "CB"]) == 2)
+check("el inventario dice exactamente que se va a crear",
+      _inventario(SPEC_SOLO_CB).endswith("2 cabezales")
+      and "2 estribos de borde" in _inventario(SPEC_CB))
+check("el inventario encabeza el formulario",
+      _resumen_de_spec(SPEC_CB)[0].get("seccion") == "Se van a crear")
+check("el prompt prohibe inventar armaduras y separa cabezal de estribo",
+      "NO INVENTES ARMADURAS" in _sp("muro")
+      and "NUNCA se escribe en `estribo`" in _sp("muro"))
+
 # --- COLOR: default = el de la tipologia (no se escribe); override por nombre
 SPEC_COL = dict(SPEC, trabas=dict(SPEC["trabas"], color="rojo"),
                 malla_vertical=dict(SPEC["malla_vertical"], color="#123456"))
@@ -229,8 +249,8 @@ check("el catalogo entra al system prompt y el documento ya no lleva lista a man
 
 # --- resumen para el formulario del chat ---
 filas = _resumen_de_spec(SPEC)
-check("resumen: 3 secciones y fila de cabezales con origen",
-      sum(1 for f in filas if "seccion" in f) == 3
+check("resumen: 4 secciones (inventario + hormigon + barras + borde) y cabezales",
+      sum(1 for f in filas if "seccion" in f) == 4
       and any(f.get("label") == "Cabezales" and f["origen"] == "leido" for f in filas))
 
 # --- schema estricto ---

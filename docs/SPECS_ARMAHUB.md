@@ -1627,6 +1627,15 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   Medida la morfología de la 102A del cabezal en los tres casos — siempre **2 tramos con quiebre de
   90°, ejes X e Y**. Lo único que cambiaba era el largo de la pata: 507 cm en auto contra 24 con la
   pata fija. El motor fue consistente; el dato de entrada era absurdo.
+- **F1.8 — no inventar armaduras (31-ago)**: el usuario pidió SOLO cabezales y el asistente creó
+  además un estribo de confinamiento φ8@10 — 32 marcos apilados que en el 3D se ven como una
+  «espina de pescado». No fue alucinación del modelo: **mi prompt le decía que asumiera el
+  estribo**. Ahora la regla es la contraria y explícita: cada armadura de la ficha es una barra que
+  se fabrica, lo que no se pidió va en null, y el estribo se PREGUNTA. Además el prompt separa
+  `bordes.barras` (CABEZALES, por capas) de `bordes.estribo` (marco con @) — un pedido de
+  cabezales nunca se escribe en el estribo. Y el formulario abre con una línea de **inventario**
+  («2 mallas verticales + 2 horizontales + 1 traba + 2 cabezales») para que lo que sobra se vea
+  antes de instalarse.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
