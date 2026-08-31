@@ -12456,6 +12456,13 @@
   global.templateEditorAbrir = function (cfg) {
     var bd = $('te_backdrop');
     if (!bd) { alert('El Template Editor aún se está cargando. Reintenta en un momento.'); return; }
+    // CONTADOR DE APERTURAS — lo lee el Asistente IA (modelador/asistente.js) para
+    // saber que empezó OTRO elemento y reiniciar su conversación («muro nuevo =
+    // chat nuevo», SPECS §12.3). Es un número, no un hook: envolver esta función
+    // desde fuera dependía del orden de carga de los scripts (bootstrap.js los pide
+    // en paralelo), así que el envoltorio se instalaba sobre `undefined` y el chat
+    // se arrastraba de un template a otro — reportado por el usuario 31-ago.
+    global.__teAperturas = (global.__teAperturas || 0) + 1;
     if (!cfg || !cfg.elemento) {
       // No es un caso de usuario: es un llamado mal hecho desde el código. Se avisa
       // por consola y NO se abre (abrir "algo" sería inventarle un template).

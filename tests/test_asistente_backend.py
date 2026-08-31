@@ -167,6 +167,27 @@ check("main.py monta asistente_router (root y api_v1)",
 boot = io.open(os.path.join(BASE, "armahub", "static", "js", "app", "bootstrap.js"),
                encoding="utf-8").read()
 check("bootstrap.js carga modelador/asistente.js", "modelador/asistente.js" in boot)
+
+# --- CABLEADO DEL FRONT (dos fallos reales del 31-ago que esto habria cazado):
+#     (a) la auto-carga quedo anunciada en el HTML pero el JS nunca se guardo;
+#     (b) el reinicio "muro nuevo = chat nuevo" dependia del ORDEN DE CARGA.
+_ja = io.open(os.path.join(BASE, "armahub", "static", "js", "features",
+                           "modelador", "asistente.js"), encoding="utf-8").read()
+_jt = io.open(os.path.join(BASE, "armahub", "static", "js", "features",
+                           "modelador", "template_editor.js"), encoding="utf-8").read()
+_html = io.open(os.path.join(BASE, "armahub", "templates", "tabs",
+                             "template_editor_modal.html"), encoding="utf-8").read()
+check("la receta se auto-carga al editor al llegar (_cargarBorrador(true))",
+      "_cargarBorrador(true)" in _ja)
+check("el boton del panel es RE-carga y no pasa el evento como flag",
+      "_cargarBorrador(false)" in _ja
+      and "Volver a cargar la propuesta" in _html)
+check("template_editor.js estampa el contador de aperturas",
+      "__teAperturas" in _jt)
+check("el chat lee ese contador y NO envuelve templateEditorAbrir (orden de carga)",
+      "__teAperturas" in _ja and "_envolverAbrir" not in _ja)
+check("templateEditorEstado expuesto para que el chat vea la receta actual",
+      "global.templateEditorEstado" in _jt)
 check("conocimiento_asistente.md existe con seccion MURO",
       "## MURO" in io.open(os.path.join(BASE, "armahub", "data",
                                         "conocimiento_asistente.md"), encoding="utf-8").read())

@@ -9,8 +9,9 @@
 // burbuja «Pensando…» y luego el texto completo.
 //
 // PERSISTENCIA (§12.3): la conversación vive en memoria de sesión. Minimizar NO
-// la pierde; ABRIR OTRO ELEMENTO la reinicia (muro nuevo = chat nuevo) — eso lo
-// detecta el envoltorio sobre templateEditorAbrir de abajo. F5 la pierde (F1).
+// la pierde; ABRIR OTRO ELEMENTO la reinicia (muro nuevo = chat nuevo) — se
+// detecta leyendo el contador `global.__teAperturas` que estampa
+// templateEditorAbrir (ver _reiniciarSiOtroElemento). F5 la pierde (F1).
 //
 // «Cargar como borrador» reabre el editor con la receta propuesta por LA MISMA
 // puerta que usa el borrador local (templateEditorAbrir), conservando contexto
@@ -30,6 +31,7 @@
   var PENSANDO = false;
   var PROPUESTA = null;      // { receta, resumen } de la última respuesta con receta
   var _aplicandoIA = false;  // true mientras Cargar-como-borrador reabre el editor
+  var _selloVisto = null;    // ultimo global.__teAperturas que vio el chat
 
   // ---------------------------------------------------------------------------
   // BACKEND
@@ -61,7 +63,14 @@
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (d) {
         if (!r.ok) {
-          var msg = (d && d.detail) || ('El asistente no respondió (' + r.status + ').');
+          // 502/503 SIN detalle = no contesto la app, contesto el proxy: el
+          // servidor esta reiniciando (deploy) o caido. Decirlo tal cual, porque
+          // "el asistente no respondio" manda a buscar el problema donde no esta
+          // (le paso al usuario justo durante un deploy, 31-ago).
+          var msg = (d && d.detail)
+            || ((r.status === 502 || r.status === 503)
+                ? 'El servidor no está respondiendo (puede estar actualizándose). Espera unos segundos y reintenta.'
+                : ('El asistente no respondió (' + r.status + ').'));
           throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
         }
         return d;
@@ -97,6 +106,7 @@
 
   function _enviar() {
     if (PENSANDO) return;
+    _reiniciarSiOtroElemento();
     var inp = $('te_iaInput');
     if (!inp) return;
     var txt = (inp.value || '').trim();
@@ -122,6 +132,9 @@
       if (d.receta) {
         PROPUESTA = { receta: d.receta, resumen: d.resumen || [] };
         _pintarForm(PROPUESTA.resumen);
+        // AUTO-CARGA: la propuesta entra ALTIRO al editor como borrador (§12.2.5,
+        // nada guardado) — el usuario ve las barras aparecer sin apretar nada.
+        _cargarBorrador(true);
       }
     }).catch(function (e) {
       if (esperando) esperando.remove();
@@ -178,15 +191,18 @@
   // CARGAR COMO BORRADOR — reabre el editor con la receta propuesta (§12.2.5),
   // por la MISMA puerta que el borrador local. No guarda nada.
   // ---------------------------------------------------------------------------
-  function _cargarBorrador() {
+  // auto=true → la carga automática al recibir la receta (el usuario ve las barras
+  // aparecer sin apretar nada, pedido 31-ago). auto=false → el botón, que es una
+  // RE-carga: vuelve a la propuesta después de que el usuario editó a mano.
+  function _cargarBorrador(auto) {
     if (!PROPUESTA || !PROPUESTA.receta) return;
     if (typeof global.templateEditorAbrir !== 'function') return;
     var est = _estadoEditor() || {};
     if (est.soloVista) {
-      _burbuja('asistente', 'Este editor está en solo-vista: no puedo cargar la receta aquí.');
+      if (!auto) _burbuja('asistente', 'Este editor está en solo-vista: no puedo cargar la receta aquí.');
       return;
     }
-    _aplicandoIA = true;      // que el envoltorio NO reinicie el chat (mismo muro)
+    _aplicandoIA = true;      // mismo muro: el sello se re-sella, no se reinicia
     try {
       global.templateEditorAbrir({
         elemento: 'MURO',
@@ -201,9 +217,13 @@
         piso: est.piso || '',
         instanciaId: (est.instanciaId != null) ? est.instanciaId : null
       });
-    } finally { _aplicandoIA = false; }
-    _agregar('asistente', 'Listo — cargué la receta al editor como borrador. ' +
-      'Revísala en el 3D; nada quedó guardado. Si quieres ajustar algo, dime.');
+    } finally { _aplicandoIA = false; _selloVisto = _sello(); }
+    // En auto-carga el texto de cierre ya lo puso la respuesta del asistente; este
+    // mensaje es sólo para la RE-carga con el botón.
+    if (!auto) {
+      _agregar('asistente', 'Listo — volví a cargar mi propuesta al editor ' +
+        '(pisó lo que había). Nada quedó guardado.');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -220,6 +240,7 @@
   function _abrir() {
     var modal = $('te_modal');
     if (!modal) return;
+    _reiniciarSiOtroElemento();   // otro template abierto = conversacion nueva
     ABIERTO = true;
     modal.classList.add('te-ia-abierto');
     _marcarBtn();
@@ -257,21 +278,26 @@
       : 'Asistente IA de enfierrado — arma la receta del muro conversando';
   }
 
-  // MURO NUEVO = CHAT NUEVO (§12.3): se envuelve templateEditorAbrir para
-  // detectar cada apertura. Cargar-como-borrador también pasa por aquí, pero es
-  // el MISMO muro (flag _aplicandoIA) y la conversación se conserva. Este script
-  // carga DESPUÉS de template_editor.js (bootstrap.js), así que el original ya
-  // existe; si algún día no, el envoltorio simplemente no se instala y lo único
-  // que se pierde es el reinicio automático.
-  function _envolverAbrir() {
-    var orig = global.templateEditorAbrir;
-    if (typeof orig !== 'function' || orig._iaWrapped) return;
-    var wrapper = function (cfg) {
-      if (!_aplicandoIA) _reiniciar();
-      return orig.apply(this, arguments);
-    };
-    wrapper._iaWrapped = true;
-    global.templateEditorAbrir = wrapper;
+  // MURO NUEVO = CHAT NUEVO (§12.3). Se lee el CONTADOR DE APERTURAS que estampa
+  // templateEditorAbrir (`global.__teAperturas`): si cambió desde la última vez
+  // que el chat lo miró, es otro elemento y la conversación se reinicia.
+  //
+  // Antes esto se hacía envolviendo templateEditorAbrir al cargar el script, y
+  // NO FUNCIONABA: bootstrap.js pide los features en paralelo, así que este
+  // archivo podía correr antes que template_editor.js y el envoltorio se
+  // instalaba sobre `undefined`. El usuario abrió un template nuevo y encontró
+  // el chat con toda la conversación anterior (31-ago). Un número que se
+  // consulta no depende del orden de carga; un hook que se instala, sí.
+  //
+  // Cargar-como-borrador también reabre el editor, pero es el MISMO muro: ahí se
+  // re-sella el sello sin reiniciar (ver _cargarBorrador).
+  function _sello() { return global.__teAperturas || 0; }
+
+  function _reiniciarSiOtroElemento() {
+    var s = _sello();
+    if (s === _selloVisto) return;
+    _selloVisto = s;
+    _reiniciar();
   }
 
   // ---------------------------------------------------------------------------
@@ -281,7 +307,7 @@
     var b = $('te_btnIA');
     if (!b || b._iaBound) return;
     b._iaBound = true;
-    _envolverAbrir();
+    _selloVisto = _sello();
     var est = $('te_iaEstado');
     if (est) est.textContent = 'muros · F1';
     b.addEventListener('click', function () { ABIERTO ? _minimizar() : _abrir(); });
@@ -294,7 +320,9 @@
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _enviar(); }
     });
     var cargar = $('te_iaCargar');
-    if (cargar) cargar.addEventListener('click', _cargarBorrador);
+    // OJO: sin el envoltorio, addEventListener pasa el MouseEvent como `auto`
+    // (truthy) y la re-carga se quedaria muda.
+    if (cargar) cargar.addEventListener('click', function () { _cargarBorrador(false); });
   }
 
   if (document.readyState === 'loading') {
