@@ -102,14 +102,20 @@ _JERARQUIA_PROP = {
     "description": "orden de apilado: 1 = pegada a la cara, 2 = se apoya sobre la "
                    "de nivel 1. null = default",
 }
+_EMPALME_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "number"}],
+    "description": "traslapo en CM que se SUMA al largo de corte del lado que corre "
+                   "(el Δ del editor). «60 de empalme» = 60. null = sin empalme",
+}
 _MALLA_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["diam", "sep", "figura", "jerarquia"],
+    "required": ["diam", "sep", "figura", "jerarquia", "empalme"],
     "properties": {
         "diam": {"type": "number", "description": "φ en mm"},
         "sep": {"type": "number", "description": "@ en cm"},
         "figura": _FIGURA_PROP,
         "jerarquia": _JERARQUIA_PROP,
+        "empalme": _EMPALME_PROP,
     },
 }
 
@@ -148,12 +154,14 @@ TOOL_MURO = {
                      "properties": {
                          "barras": {
                              "type": "object", "additionalProperties": False,
-                             "required": ["diam", "barras_capa", "n_capas", "figura"],
+                             "required": ["diam", "barras_capa", "n_capas", "figura",
+                                          "empalme"],
                              "properties": {
                                  "diam": {"type": "number", "description": "φ cabezal en mm"},
                                  "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
                                  "n_capas": {"type": "integer", "description": "capas hacia el interior del muro"},
                                  "figura": _FIGURA_PROP,
+                                 "empalme": _EMPALME_PROP,
                              }},
                          "estribo": {
                              "anyOf": [
@@ -264,8 +272,22 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     def _autoABCD():
         return {L: {"modo": "auto"} for L in ("A", "B", "C", "D")}
 
-    def _dimsDe(parciales):
-        return {L: {"modo": "auto"} for L in parciales}
+    def _dimsDe(parciales, empalme=None):
+        """Dims en auto + el EMPALME como Δ del lado que CORRE.
+
+        El editor resuelve el traslapo alargando la barra: Δ en cm sobre un lado,
+        con la flecha diciendo por que punta crece (template_editor.js:8722). El
+        lado que corre es A en una barra recta y B en una figura de 3 o 4 tramos
+        (A y C son las patas). La flecha va en 'fin': la barra crece hacia arriba
+        y el arranque se queda donde esta."""
+        dims = {L: {"modo": "auto"} for L in parciales}
+        if empalme:
+            L = "B" if (len(parciales) >= 3 and "B" in dims) else (
+                parciales[0] if parciales else None)
+            if L:
+                dims[L]["delta"] = _r1(empalme)
+                dims[L]["extremo"] = "fin"
+        return dims
 
     def _pedido(d, clave, porDefecto):
         v = (d or {}).get(clave)
@@ -281,10 +303,12 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     jmh = int(_pedido(mh, "jerarquia", 1))
     for lado in ([1, -1] if doble else [1]):
         comps.append(_base("MV", fmv, mv["diam"], amv, "lineal",
-                           "lateral", lado, "y", "de_pie", False, _dimsDe(pmv), jmv,
+                           "lateral", lado, "y", "de_pie", False,
+                           _dimsDe(pmv, mv.get("empalme")), jmv,
                            _lin(mv["sep"], "x", -rx, rx)))
         comps.append(_base("MH", fmh, mh["diam"], amh, "lineal",
-                           "lateral", lado, "x", "acostada", False, _dimsDe(pmh), jmh,
+                           "lateral", lado, "x", "acostada", False,
+                           _dimsDe(pmh, mh.get("empalme")), jmh,
                            _lin(mh["sep"], "y", -ry, ry)))
 
     tr = spec.get("trabas")
@@ -314,7 +338,8 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
         pcb, acb = _spec_figura(figuras, fcb, ["A"], [])
         for lado in (1, -1):
             comps.append(_base("CB", fcb, bb["diam"], acb, "puntual",
-                               "extremo", lado, "y", "de_pie", False, _dimsDe(pcb), 1,
+                               "extremo", lado, "y", "de_pie", False,
+                               _dimsDe(pcb, bb.get("empalme")), 1,
                                {"modo": "layered",
                                 "n_capas": max(1, int(bb["n_capas"])),
                                 "barras_capa": max(1, int(bb["barras_capa"])),
@@ -395,6 +420,14 @@ def _resumen_de_spec(spec: dict) -> list:
                   "valor": ((f"φ{tr['diam']:g} · {tr['sx']:g} × {tr['sy']:g}"
                              + _detalle_fig(tr)) if tr else "sin trabas"),
                   "origen": org("trabas")})
+    emp = (spec["malla_vertical"].get("empalme")
+           or spec["malla_horizontal"].get("empalme"))
+    if emp:
+        filas.append({"label": "Empalme",
+                      "valor": ("MV +%g cm" % spec["malla_vertical"]["empalme"]
+                                if spec["malla_vertical"].get("empalme")
+                                else "MH +%g cm" % spec["malla_horizontal"]["empalme"]),
+                      "origen": org("malla_vertical")})
     bo = spec.get("bordes")
     filas.append({"seccion": "Confinamiento de borde"})
     if bo:
@@ -450,6 +483,11 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "de estas instrucciones. NO decidas por el nombre ni por familias: si el "
         "código está en esa lista, EXISTE y puedes usarlo. Solo di que un código "
         "no existe si de verdad NO aparece ahí, y ahí ofrece los que sí están.\n"
+        "· EMPALME: cuando el usuario pide empalme/traslapo («ponle 60 de "
+        "empalme», «traslapo 40 phi»), va en el campo `empalme` de esa armadura, "
+        "en CENTÍMETROS — se suma al largo de corte. Si lo dicta en diámetros "
+        "(40·φ), conviértelo tú: φ10 y 40φ = 40 cm. Lo pide casi siempre para la "
+        "malla vertical y los cabezales.\n"
         "· Responde en español chileno neutro, breve, sin jerga técnica de la "
         "plataforma. Nada de muros de texto.\n\n"
         "DEFAULTS DE LA PLATAFORMA (origen 'config'):\n"

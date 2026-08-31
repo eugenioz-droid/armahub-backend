@@ -1596,6 +1596,17 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   `figuras_catalogo` (1 consulta) y le inyecta la lista completa como `codigo:lados:angulos`,
   declarada como única autoridad; el documento de conocimiento dejó de enumerar códigos y solo
   explica cómo leerlos. Nada que sincronizar a mano: el catálogo es dato.
+- **F1.5 — EMPALME en la ficha + mapa de controles (31-ago)**: el usuario pidió «empalme 60» y el
+  asistente no tenía dónde ponerlo. El traslapo es el **Δ por lado** del editor
+  (`dims[L].delta` + `extremo`, template_editor.js:8722): se suma al largo de corte y la barra
+  SOBRESALE del hormigón por esa punta (correcto — amarra con el piso de arriba; el test de motor
+  lo tomaba como error y se corrigió para sumar el Δ declarado). Campo `empalme` (cm) en mallas y
+  cabezales; se escribe en el lado que corre (A en barra recta, B en figura de 3-4 tramos).
+  **Controles que el asistente TODAVÍA no alcanza** (inventario del panel, agente 31-ago), por
+  orden de importancia: `rango.tramos[]` (reparto multi-@: @10 en zona confinada, @20 al centro),
+  `distribucion.anidar`, `c.lado_dominante`, `c.orient.spin` (dirección de patas), `rango.n`
+  (dictar por cantidad en vez de por rango), `c.color`, `c._oculto`. Inertes en toda la
+  plataforma (no son huecos del asistente): `prioridad`, `depende_de`, `comp_id`.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

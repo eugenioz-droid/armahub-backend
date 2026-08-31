@@ -133,6 +133,24 @@ check("el resumen muestra la figura solo cuando el usuario la dicto",
       any("104B" in f.get("valor", "") for f in _resumen_de_spec(SPEC_FIG))
       and not any("101A" in f.get("valor", "") for f in _resumen_de_spec(SPEC)))
 
+# --- EMPALME: el traslapo que el usuario pide en el chat tiene que llegar al
+#     Delta del lado que corre (control real del editor, template_editor.js:8722) ---
+SPEC_EMP = dict(SPEC,
+                malla_vertical=dict(SPEC["malla_vertical"], empalme=60),
+                bordes={"barras": dict(SPEC["bordes"]["barras"], empalme=60),
+                        "estribo": SPEC["bordes"]["estribo"], "largo": 40})
+re_ = _construir_receta_muro(SPEC_EMP)
+mv_e = [c for c in re_["componentes"] if c["tipologia"] == "MV"]
+cb_e = [c for c in re_["componentes"] if c["tipologia"] == "CB"]
+mh_e = [c for c in re_["componentes"] if c["tipologia"] == "MH"]
+check("el empalme se escribe como Delta del lado que corre, creciendo por la punta",
+      all(c["dims"]["A"].get("delta") == 60.0
+          and c["dims"]["A"].get("extremo") == "fin" for c in mv_e + cb_e))
+check("sin empalme pedido no se inventa Delta",
+      all("delta" not in c["dims"]["A"] for c in mh_e))
+check("el resumen muestra el empalme",
+      any(f.get("label") == "Empalme" for f in _resumen_de_spec(SPEC_EMP)))
+
 # --- EL CATALOGO VA COMPLETO Y DESDE LA BD (31-ago: el asistente dijo que 104B no
 #     existia porque solo tenia la lista a mano del documento) ---
 from armahub.asistente import (_catalogo_texto, _system_prompt,

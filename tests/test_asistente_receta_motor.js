@@ -38,6 +38,11 @@ const lim = (pl, e) => {
   const v = pl.puntos.map(p => p[e]);
   return { lo: Math.min(...v), hi: Math.max(...v) };
 };
+// EMPALME declarado del componente (Δ de sus dims): una barra empalmada mide su
+// largo útil MÁS el traslapo, y sobresale del hormigón por esa punta. Los checks
+// de largo lo suman en vez de tratarlo como error.
+const deltaDe = c => Math.max(0, ...Object.keys(c.dims || {}).map(
+  L => Number((c.dims[L] || {}).delta) || 0));
 
 // --- expansión por componente: TODOS colocan algo y nada sale del hormigón ---
 const porTipo = {};
@@ -45,7 +50,11 @@ receta.componentes.forEach((c, i) => {
   const pls = R.expandirComponente(c, geo) || [];
   (porTipo[c.tipologia] = porTipo[c.tipologia] || []).push({ c, pls });
   ok(pls.length > 0, c.tipologia + '#' + i + ' coloca barras (=' + pls.length + ')');
-  const margen = 1.5; // holgura chica: ganchos/arcos redondean
+  // UNA BARRA CON EMPALME SOBRESALE DEL HORMIGON A PROPOSITO: el traslapo queda
+  // fuera del vaciado para amarrar con el piso de arriba (medido 31-ago, cuando
+  // este check dio 74 falsos positivos con empalme 60). Se le da esa holgura, que
+  // sale de la propia receta: el Delta declarado en sus dims.
+  const margen = 1.5 + deltaDe(c); // holgura: ganchos/arcos redondean + el empalme
   pls.forEach(pl => {
     const x = lim(pl, 'x'), y = lim(pl, 'y'), z = lim(pl, 'z');
     if (!(x.lo >= -geo.largo / 2 - margen && x.hi <= geo.largo / 2 + margen &&
@@ -60,8 +69,8 @@ receta.componentes.forEach((c, i) => {
 // --- MV: de pie, corre en la altura, cortinas en ±z dentro del recub ---
 (porTipo.MV || []).forEach(({ c, pls }) => {
   const y = lim(pls[0], 'y'), z = lim(pls[0], 'z');
-  ok(close(y.hi - y.lo, geo.alto - 2 * rec, 2),
-    'MV corre en el alto de borde a borde (=' + (y.hi - y.lo).toFixed(1) + ')');
+  ok(close(y.hi - y.lo, geo.alto - 2 * rec + deltaDe(c), 2),
+    'MV corre en el alto de borde a borde + su empalme (=' + (y.hi - y.lo).toFixed(1) + ')');
   ok(Math.abs(z.hi) < geo.ancho / 2 - rec + 0.6 && (z.hi === z.lo || close(z.hi, z.lo, 2)),
     'MV es una cortina plana dentro del recubrimiento (z=' + z.hi.toFixed(1) + ')');
 });
@@ -95,8 +104,8 @@ if ((porTipo.MV || []).length === 2) {
     const x = lim(pls[0], 'x'), y = lim(pls[0], 'y');
     ok(Math.abs(Math.abs(x.hi) - (geo.largo / 2 - rec)) < 6,
       'CB pegado al testero (x=' + x.hi.toFixed(1) + ' de ±' + (geo.largo / 2 - rec) + ')');
-    ok(close(y.hi - y.lo, geo.alto - 2 * rec, 2),
-      'CB corre en el alto completo (=' + (y.hi - y.lo).toFixed(1) + ')');
+    ok(close(y.hi - y.lo, geo.alto - 2 * rec + deltaDe(c), 2),
+      'CB corre en el alto completo + su empalme (=' + (y.hi - y.lo).toFixed(1) + ')');
   });
   if (cbs.length === 2) {
     const x0 = lim(cbs[0].pls[0], 'x').hi, x1 = lim(cbs[1].pls[0], 'x').hi;
