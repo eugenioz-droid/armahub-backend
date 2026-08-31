@@ -74,7 +74,8 @@ SPEC = {
     "malla_vertical": {"diam": 8, "sep": 20},
     "malla_horizontal": {"diam": 8, "sep": 20},
     "doble_malla": True,
-    "trabas": {"diam": 8, "sx": 40, "sy": 40},
+    "trabas": {"diam": 8, "sx": 40, "sy": 40, "figura": None, "jerarquia": None,
+               "tramos": None, "anidar": None},
     "bordes": {"barras": {"diam": 18, "barras_capa": 2, "n_capas": 2},
                "estribo": {"diam": 8, "sep": 10}, "largo": 40},
     "origenes": {"geometria": "leido", "recubrimiento": "leido",
@@ -132,6 +133,54 @@ check("sin figura pedida se mantiene el default de la plataforma",
 check("el resumen muestra la figura solo cuando el usuario la dicto",
       any("104B" in f.get("valor", "") for f in _resumen_de_spec(SPEC_FIG))
       and not any("101A" in f.get("valor", "") for f in _resumen_de_spec(SPEC)))
+
+# --- EL PEDIDO QUE SALIO DEFORME (31-ago): cabezales 102A con pata 25, empalme
+#     6phi, phi22, 2 capas x 2 barras, capas cada 15. La pata en AUTO media 508 cm
+#     (el largo del muro) y la barra salia como una peineta cruzando el muro.
+CAT = {"101A": {"parciales": ["A"], "angulos": []},
+       "102A": {"parciales": ["A", "B"], "angulos": []},
+       "103B": {"parciales": ["A", "B", "C"], "angulos": [45, 45]},
+       "104D": {"parciales": ["A", "B", "C", "D"], "angulos": [135, 135]}}
+SPEC_CB = dict(SPEC, bordes={
+    "barras": {"diam": 22, "barras_capa": 2, "n_capas": 2, "figura": "102A",
+               "empalme": 13.2, "pata": 25, "sep_capas": 15},
+    "estribo": {"diam": 8, "sep": 10, "figura": "104D",
+                "tramos": [{"long": 80, "sep": 10}, {"long": 150, "sep": 20}],
+                "anidar": True},
+    "largo": 40})
+rcb = _construir_receta_muro(SPEC_CB, CAT)
+cb1 = [c for c in rcb["componentes"] if c["tipologia"] == "CB"][0]
+ec1 = [c for c in rcb["componentes"] if c["tipologia"] == "EC"][0]
+check("la PATA del cabezal se fija con lo pedido (nunca auto: auto media 508 cm)",
+      cb1["dims"]["A"] == {"modo": "fija", "valor": 25.0})
+check("el cuerpo del cabezal es B y ahi va el empalme (no en la pata)",
+      cb1["dims"]["B"].get("delta") == 13.2 and cb1["dims"]["B"]["modo"] == "auto")
+check("la separacion entre capas del cabezal es la pedida",
+      cb1["distribucion"]["gap"] == 15.0)
+check("sin pata pedida el cabezal igual la fija (gancho normativo, no auto)",
+      _construir_receta_muro(
+          dict(SPEC, bordes={"barras": {"diam": 22, "barras_capa": 2, "n_capas": 2,
+                                        "figura": "102A", "empalme": None,
+                                        "pata": None, "sep_capas": None},
+                             "estribo": None, "largo": 40}), CAT
+      )["componentes"][-1]["dims"]["A"]["modo"] == "fija")
+check("los TRAMOS multi-@ llegan al rango del estribo",
+      ec1["distribucion"]["rango"]["tramos"] == [{"long": 80.0, "sep": 10.0},
+                                                 {"long": 150.0, "sep": 20.0}])
+check("el anidado pedido se escribe", ec1["distribucion"]["anidar"] is True)
+
+# --- lado dominante y giro de patas
+SPEC_EXTRA = dict(SPEC, malla_vertical=dict(SPEC["malla_vertical"],
+                                            lado_dominante="B", giro_patas=180))
+mv_x = [c for c in _construir_receta_muro(SPEC_EXTRA, CAT)["componentes"]
+        if c["tipologia"] == "MV"][0]
+check("lado dominante y giro de patas llegan al componente",
+      mv_x.get("lado_dominante") == "B" and mv_x.get("orient") == {"spin": 180})
+check("si no se piden, no se inventan",
+      "lado_dominante" not in [c for c in r["componentes"]
+                               if c["tipologia"] == "MV"][0]
+      and "orient" not in [c for c in r["componentes"]
+                           if c["tipologia"] == "MV"][0])
 
 # --- EMPALME: el traslapo que el usuario pide en el chat tiene que llegar al
 #     Delta del lado que corre (control real del editor, template_editor.js:8722) ---

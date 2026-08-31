@@ -20,9 +20,9 @@ usuario 31-ago: no aportaban al armado y estorbaban.
 - Muros se nombran «M + número» (M402 = muro del piso 4). Anotación típica en plano:
   «e=20, DM φ8@20» o «DM φ10@20 V / φ8@25 H».
 - **Empalme**: el traslapo se resuelve ALARGANDO la barra — se suma al largo de
-  corte. Traslapo usual de la armadura vertical: 40·φ de la barra mayor (referencia
-  de cubicación NCh353) salvo que el plano diga otra cosa. «Ponle 60 de empalme»
-  significa sumarle 60 cm al lado que corre.
+  corte. **El traslapo de la casa es 60·φ** (el editor tiene ese atajo), salvo que el
+  plano diga otra cosa: φ22 → 132 cm. «Ponle 60 de empalme» a secas, en cambio, son
+  60 cm al lado que corre. Si el usuario dicta en diámetros, convertir.
 - Gancho sísmico donde el plano lo pida: 135°, extensión 6·φ mínimo 7,5 cm.
 - Recubrimiento usual de muro: 2 a 3 cm (un solo valor para caras y bordes).
 
@@ -43,7 +43,7 @@ barra comercial, se empalma y el traslapo se suma al largo.
 **MV · Malla Vertical.** Barras verticales que corren en la ALTURA, de piso a piso.
 Se reparten a lo LARGO del muro (@ horizontal, típico 15-25 cm). Figura recta. **Casi
 siempre lleva empalme**: la barra sube y traslapa con el arranque del piso siguiente
-(40·φ típico), y ese traslapo se suma al largo de corte — es lo que pide el cubicador
+(60·φ, el traslapo de la casa), y ese traslapo se suma al largo de corte — es lo que pide el cubicador
 cuando dice «ponle 60 de empalme».
 
 **Cuál cortina va contra la cara** lo decide el proyecto y el cubicador lo dicta con
@@ -59,8 +59,10 @@ jerarquía 2. Figura con gancho en ambos extremos: una barra recta no amarra nad
 
 **CB · Cabezal.** Barras longitudinales gruesas (φ16-φ25) concentradas en las PUNTAS
 del muro, corriendo en la altura igual que la MV. Se describen por punta: cuántas
-barras por capa (a lo ancho del espesor, normalmente 2, una por cara) y cuántas capas
-hacia adentro del muro. Llevan el mismo empalme que la MV.
+barras por capa (a lo ancho del espesor, normalmente 2, una por cara), cuántas capas
+hacia adentro y la separación entre capas. Llevan el mismo empalme que la MV. Si se
+pide con figura de pata (102A y similares), **hay que decir cuánto mide la pata**: el
+cuerpo corre en la altura y la pata entra hacia el núcleo.
 
 **EC · Estribo Confinamiento.** Marco CERRADO con ganchos 135° que abraza el paquete
 de cabezales en la punta. Corre en el plano de la sección y se reparte en la ALTURA,

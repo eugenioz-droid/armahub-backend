@@ -102,8 +102,12 @@ if ((porTipo.MV || []).length === 2) {
   const cbs = porTipo.CB || [];
   cbs.forEach(({ c, pls }) => {
     const x = lim(pls[0], 'x'), y = lim(pls[0], 'y');
-    ok(Math.abs(Math.abs(x.hi) - (geo.largo / 2 - rec)) < 6,
-      'CB pegado al testero (x=' + x.hi.toFixed(1) + ' de ±' + (geo.largo / 2 - rec) + ')');
+    // El cabezal TOCA el testero por una punta; si la figura tiene pata, el otro
+    // extremo del bbox entra hacia el nucleo (medido: 102A con pata 25 va de -255
+    // a -230). Por eso se mide el extremo MAS LEJANO del centro, no x.hi.
+    const xLejos = Math.max(Math.abs(x.lo), Math.abs(x.hi));
+    ok(Math.abs(xLejos - (geo.largo / 2 - rec)) < 6,
+      'CB pegado al testero (x=' + xLejos.toFixed(1) + ' de ±' + (geo.largo / 2 - rec) + ')');
     ok(close(y.hi - y.lo, geo.alto - 2 * rec + deltaDe(c), 2),
       'CB corre en el alto completo + su empalme (=' + (y.hi - y.lo).toFixed(1) + ')');
   });

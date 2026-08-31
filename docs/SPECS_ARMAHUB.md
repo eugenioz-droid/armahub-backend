@@ -1607,6 +1607,17 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   `distribucion.anidar`, `c.lado_dominante`, `c.orient.spin` (dirección de patas), `rango.n`
   (dictar por cantidad en vez de por rango), `c.color`, `c._oculto`. Inertes en toda la
   plataforma (no son huecos del asistente): `prioridad`, `depende_de`, `comp_id`.
+- **F1.6 — la ficha alcanza los controles que faltaban (31-ago)**: el usuario pidió «cabezales
+  102A con pata de 25, empalme 6φ, 2 capas cada 15» y salió una barra deforme («peineta»).
+  MEDIDO con el motor: con la pata en AUTO, la pose del cabezal (cara `extremo`) la resuelve
+  **contra el largo del muro** — A = 508 cm en un muro de 514, la barra que el editor marca como
+  «fierro fuera del hormigón». Correcciones: (a) el lado que CORRE es **B** cuando la figura lo
+  tiene (antes el empalme caía en A, la pata, y la barra se iba 266 cm afuera); (b) el cabezal
+  escribe sus **patas FIJAS** — lo pedido, o el gancho normativo si no se dijo — porque auto ahí no
+  sirve (en trabas y estribos sí, medido, y se deja); (c) campos nuevos en la ficha: `pata`,
+  `sep_capas` (separación entre capas del cabezal), `tramos` (reparto multi-@: «@10 los primeros
+  80, @20 el resto»), `anidar`, `lado_dominante` y `giro_patas`. El traslapo de la casa se corrigió
+  a **60·φ** (no 40) en el conocimiento y en el prompt. Suite: 39 checks + motor real.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

@@ -107,15 +107,49 @@ _EMPALME_PROP = {
     "description": "traslapo en CM que se SUMA al largo de corte del lado que corre "
                    "(el Δ del editor). «60 de empalme» = 60. null = sin empalme",
 }
+_PATA_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "number"}],
+    "description": "largo en CM de la pata/gancho (los lados que NO corren). Solo "
+                   "aplica a figuras de 2 o mas tramos. null = gancho normativo",
+}
+_TRAMOS_PROP = {
+    "anyOf": [
+        {"type": "null"},
+        {"type": "array",
+         "items": {"type": "object", "additionalProperties": False,
+                   "required": ["long", "sep"],
+                   "properties": {
+                       "long": {"type": "number", "description": "largo del tramo en cm"},
+                       "sep": {"type": "number", "description": "@ de ESE tramo en cm"},
+                   }}},
+    ],
+    "description": "reparto por TRAMOS a lo largo del rango, en orden ('@10 los "
+                   "primeros 80, @20 el resto'). null = un solo @ parejo",
+}
+_DOMINANTE_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "string"}],
+    "description": "letra del lado que manda en la figura (A, B, C...). null = lo "
+                   "decide el motor",
+}
+_GIRO_PATAS_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "integer"}],
+    "description": "hacia donde apuntan las patas: 0, 90, 180 o 270 grados. null = "
+                   "como nace",
+}
 _MALLA_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["diam", "sep", "figura", "jerarquia", "empalme"],
+    "required": ["diam", "sep", "figura", "jerarquia", "empalme", "pata",
+                 "tramos", "lado_dominante", "giro_patas"],
     "properties": {
         "diam": {"type": "number", "description": "φ en mm"},
         "sep": {"type": "number", "description": "@ en cm"},
         "figura": _FIGURA_PROP,
         "jerarquia": _JERARQUIA_PROP,
         "empalme": _EMPALME_PROP,
+        "pata": _PATA_PROP,
+        "tramos": _TRAMOS_PROP,
+        "lado_dominante": _DOMINANTE_PROP,
+        "giro_patas": _GIRO_PATAS_PROP,
     },
 }
 
@@ -155,23 +189,36 @@ TOOL_MURO = {
                          "barras": {
                              "type": "object", "additionalProperties": False,
                              "required": ["diam", "barras_capa", "n_capas", "figura",
-                                          "empalme"],
+                                          "empalme", "pata", "sep_capas"],
                              "properties": {
                                  "diam": {"type": "number", "description": "φ cabezal en mm"},
                                  "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
                                  "n_capas": {"type": "integer", "description": "capas hacia el interior del muro"},
                                  "figura": _FIGURA_PROP,
                                  "empalme": _EMPALME_PROP,
+                                 "pata": _PATA_PROP,
+                                 "sep_capas": {
+                                     "anyOf": [{"type": "null"}, {"type": "number"}],
+                                     "description": "separacion entre capas de "
+                                                    "cabezales, eje a eje, en cm",
+                                 },
                              }},
                          "estribo": {
                              "anyOf": [
                                  {"type": "null"},
                                  {"type": "object", "additionalProperties": False,
-                                  "required": ["diam", "sep", "figura"],
+                                  "required": ["diam", "sep", "figura", "tramos",
+                                               "anidar"],
                                   "properties": {
                                       "diam": {"type": "number", "description": "φ estribo en mm"},
                                       "sep": {"type": "number", "description": "@ en cm (usual ≤6φ y ≤½ espesor)"},
                                       "figura": _FIGURA_PROP,
+                                      "tramos": _TRAMOS_PROP,
+                                      "anidar": {
+                                          "anyOf": [{"type": "null"},
+                                                    {"type": "boolean"}],
+                                          "description": "ajustar capas anidadas",
+                                      },
                                   }},
                              ]},
                          "largo": {"type": "number",
@@ -183,13 +230,21 @@ TOOL_MURO = {
                 "anyOf": [
                     {"type": "null"},
                     {"type": "object", "additionalProperties": False,
-                     "required": ["diam", "sx", "sy", "figura", "jerarquia"],
+                     "required": ["diam", "sx", "sy", "figura", "jerarquia",
+                                  "tramos", "anidar"],
                      "properties": {
                          "diam": {"type": "number", "description": "φ en mm"},
                          "sx": {"type": "number", "description": "grilla horizontal cm"},
                          "sy": {"type": "number", "description": "grilla vertical cm"},
                          "figura": _FIGURA_PROP,
                          "jerarquia": _JERARQUIA_PROP,
+                         "tramos": _TRAMOS_PROP,
+                         "anidar": {
+                             "anyOf": [{"type": "null"}, {"type": "boolean"}],
+                             "description": "ajustar capas anidadas (cada capa "
+                                            "interior se acorta un phi). null = el "
+                                            "default de la plataforma",
+                         },
                      }},
                 ],
             },
@@ -220,8 +275,13 @@ def _spec_figura(figuras, codigo, parciales_def, angulos_def):
     llamador. Nunca se inventan: una figura pedida por el usuario puede tener 2, 3
     o 4 lados y de eso dependen las dims que hay que escribir."""
     if figuras is not None:
-        from .catalogo import get_figura
-        f = get_figura(figuras, codigo)
+        # Un dict plano {codigo: {parciales, angulos}} sirve igual que el snapshot
+        # del catalogo: asi los tests pueden medir el constructor sin BD.
+        if isinstance(figuras, dict):
+            f = figuras.get(codigo)
+        else:
+            from .catalogo import get_figura
+            f = get_figura(figuras, codigo)
         if f:
             return (list(f.get("parciales") or parciales_def),
                     list(f.get("angulos") or []))
@@ -250,10 +310,33 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     doble = bool(spec.get("doble_malla", True))
     rx, ry = largo / 2.0 - rec, alto / 2.0 - rec   # lineas de recubrimiento
 
-    def _lin(sep, eje, lo, hi):
-        return {"modo": "linear", "activa": True, "sep": _r1(sep),
-                "zonas": [{"long": 0, "sep": _r1(sep)}], "start_offset": 4,
-                "rango": {"eje": eje, "from": _r1(lo), "to": _r1(hi), "sep": _r1(sep)}}
+    def _lin(sep, eje, lo, hi, tramos=None):
+        """Distribucion lineal. Con `tramos` el rango se subdivide (@10 los primeros
+        80, @20 el resto): el motor reparte por tramos y el @ simple deja de mandar
+        (template_editor.js:9106). Los tramos van en el ORDEN dado, desde `from`."""
+        d = {"modo": "linear", "activa": True, "sep": _r1(sep),
+             "zonas": [{"long": 0, "sep": _r1(sep)}], "start_offset": 4,
+             "rango": {"eje": eje, "from": _r1(lo), "to": _r1(hi), "sep": _r1(sep)}}
+        if tramos:
+            d["rango"]["tramos"] = [{"long": _r1(t["long"]), "sep": _r1(t["sep"])}
+                                    for t in tramos if t.get("long") and t.get("sep")]
+        return d
+
+    def _extras(comp, d):
+        """Campos sueltos que el usuario puede dictar y que no cambian la forma de
+        armar: lado dominante (que lado manda en la figura), giro de las patas y
+        anidado de capas. Se escriben SOLO si vinieron: el default de la plataforma
+        es el que sabe, y un valor puesto porque si cambia dims."""
+        dom = (d or {}).get("lado_dominante")
+        if dom:
+            comp["lado_dominante"] = str(dom).strip().upper()
+        giro = (d or {}).get("giro_patas")
+        if giro in (0, 90, 180, 270):
+            comp["orient"] = {"spin": int(giro)}
+        anid = (d or {}).get("anidar")
+        if anid is not None:
+            comp["distribucion"]["anidar"] = bool(anid)
+        return comp
 
     def _base(tip, figura, diam, angulos, modo, cara, lado, rumbo,
               orientacion, volteado, dims, jer, dist):
@@ -272,21 +355,35 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     def _autoABCD():
         return {L: {"modo": "auto"} for L in ("A", "B", "C", "D")}
 
-    def _dimsDe(parciales, empalme=None):
-        """Dims en auto + el EMPALME como Δ del lado que CORRE.
+    def _dimsDe(parciales, empalme=None, pata=None, phi=None, patas_fijas=False):
+        """Dims del componente: cuerpo en auto, patas segun lo pedido, y el
+        EMPALME como Delta del lado que CORRE.
 
-        El editor resuelve el traslapo alargando la barra: Δ en cm sobre un lado,
-        con la flecha diciendo por que punta crece (template_editor.js:8722). El
-        lado que corre es A en una barra recta y B en una figura de 3 o 4 tramos
-        (A y C son las patas). La flecha va en 'fin': la barra crece hacia arriba
-        y el arranque se queda donde esta."""
+        EL LADO QUE CORRE ES **B** siempre que la figura lo tenga; A (y C, D)
+        son las patas. Medido con el motor el 31-ago sobre un cabezal 102A: con
+        el empalme puesto en A la barra se iba 266 cm fuera del muro; con B como
+        cuerpo queda correcta (A = pata horizontal, B = alto completo).
+
+        PATAS EN AUTO NO SIRVEN PARA UN CABEZAL: en su pose (cara extremo) el
+        motor le resuelve la pata contra el LARGO del muro. MEDIDO: 102A todo en
+        auto dio A = 508 cm en un muro de 514 — la barra en forma de peineta que
+        el usuario vio y que el editor marca como fierro fuera del hormigon. Por
+        eso el cabezal escribe sus patas FIJAS: lo que el usuario pidio, o el
+        gancho normativo si no dijo nada. En trabas y estribos el auto SI resuelve
+        bien (medido tambien), y ahi se deja.
+
+        El traslapo va como Delta en cm sobre el lado que corre, con la flecha en
+        fin: crece hacia arriba y el arranque se queda quieto."""
         dims = {L: {"modo": "auto"} for L in parciales}
-        if empalme:
-            L = "B" if (len(parciales) >= 3 and "B" in dims) else (
-                parciales[0] if parciales else None)
-            if L:
-                dims[L]["delta"] = _r1(empalme)
-                dims[L]["extremo"] = "fin"
+        corre = "B" if "B" in dims else (parciales[0] if parciales else None)
+        if pata or patas_fijas:
+            largo_pata = _r1(pata) if pata else _r1(max(7.5, float(phi or 8)))
+            for L in parciales:
+                if L != corre:
+                    dims[L] = {"modo": "fija", "valor": largo_pata}
+        if empalme and corre:
+            dims[corre]["delta"] = _r1(empalme)
+            dims[corre]["extremo"] = "fin"
         return dims
 
     def _pedido(d, clave, porDefecto):
@@ -302,18 +399,20 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     jmv = int(_pedido(mv, "jerarquia", 1))
     jmh = int(_pedido(mh, "jerarquia", 1))
     for lado in ([1, -1] if doble else [1]):
-        comps.append(_base("MV", fmv, mv["diam"], amv, "lineal",
+        comps.append(_extras(_base("MV", fmv, mv["diam"], amv, "lineal",
                            "lateral", lado, "y", "de_pie", False,
-                           _dimsDe(pmv, mv.get("empalme")), jmv,
-                           _lin(mv["sep"], "x", -rx, rx)))
-        comps.append(_base("MH", fmh, mh["diam"], amh, "lineal",
+                           _dimsDe(pmv, mv.get("empalme"), mv.get("pata"),
+                                   mv["diam"]), jmv,
+                           _lin(mv["sep"], "x", -rx, rx, mv.get("tramos"))), mv))
+        comps.append(_extras(_base("MH", fmh, mh["diam"], amh, "lineal",
                            "lateral", lado, "x", "acostada", False,
-                           _dimsDe(pmh, mh.get("empalme")), jmh,
-                           _lin(mh["sep"], "y", -ry, ry)))
+                           _dimsDe(pmh, mh.get("empalme"), mh.get("pata"),
+                                   mh["diam"]), jmh,
+                           _lin(mh["sep"], "y", -ry, ry, mh.get("tramos"))), mh))
 
     tr = spec.get("trabas")
     if doble and tr:
-        dist = _lin(tr["sx"], "x", -rx, rx)
+        dist = _lin(tr["sx"], "x", -rx, rx, tr.get("tramos"))
         dist["modo"] = "arreglo"
         # La 103B cuelga su gancho HACIA ABAJO de la fila (~6phi + curva): si la
         # primera fila nace en la linea de recub, el gancho se sale del hormigon
@@ -326,9 +425,10 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
         # 311 cm fuera del hormigon — medido 31-ago). El usuario puede pedir otra.
         ftr = _pedido(tr, "figura", "103B")
         ptr, atr = _spec_figura(figuras, ftr, ["A", "B", "C"], [45, 45])
-        comps.append(_base("TC", ftr, tr["diam"], atr, "arreglo",
-                           "sup", 1, "z", "volteada", True,
-                           _dimsDe(ptr), int(_pedido(tr, "jerarquia", 2)), dist))
+        comps.append(_extras(_base("TC", ftr, tr["diam"], atr, "arreglo",
+                                   "sup", 1, "z", "volteada", True,
+                                   _dimsDe(ptr), int(_pedido(tr, "jerarquia", 2)),
+                                   dist), tr))
 
     bo = spec.get("bordes")
     if bo:
@@ -339,11 +439,13 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
         for lado in (1, -1):
             comps.append(_base("CB", fcb, bb["diam"], acb, "puntual",
                                "extremo", lado, "y", "de_pie", False,
-                               _dimsDe(pcb, bb.get("empalme")), 1,
+                               _dimsDe(pcb, bb.get("empalme"), bb.get("pata"),
+                                       bb["diam"], patas_fijas=True), 1,
                                {"modo": "layered",
                                 "n_capas": max(1, int(bb["n_capas"])),
                                 "barras_capa": max(1, int(bb["barras_capa"])),
-                                "gap": 4, "sentido": "nucleo",
+                                "gap": _r1(bb.get("sep_capas") or 4),
+                                "sentido": "nucleo",
                                 "justify": "repartir"}))
             if est:
                 # extremo 'centro' + pos_hint.x = la UNICA combinacion que el
@@ -360,7 +462,8 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
                 ec = _base("EC", fec, est["diam"], aec, "lineal",
                            "lateral", 1, "y", "de_pie", False, dec,
                            int(_pedido(est, "jerarquia", 1)),
-                           _lin(est["sep"], "y", -ry, ry))
+                           _lin(est["sep"], "y", -ry, ry, est.get("tramos")))
+                _extras(ec, est)
                 ec["pos_hint"] = {"x": _r1(lado * (largo / 2.0 - rec - lconf / 2.0))}
                 comps.append(ec)
 
@@ -432,8 +535,16 @@ def _resumen_de_spec(spec: dict) -> list:
     filas.append({"seccion": "Confinamiento de borde"})
     if bo:
         bb, est = bo["barras"], bo.get("estribo")
+        det = ""
+        if bb.get("sep_capas"):
+            det += " @%g" % bb["sep_capas"]
+        if bb.get("pata"):
+            det += " · pata %g" % bb["pata"]
+        if bb.get("empalme"):
+            det += " · emp %g" % bb["empalme"]
         filas.append({"label": "Cabezales",
-                      "valor": f"{bb['barras_capa']}φ{bb['diam']:g} × {bb['n_capas']} capas por punta",
+                      "valor": f"{bb['barras_capa']}φ{bb['diam']:g} × {bb['n_capas']} capas por punta"
+                               + det + _detalle_fig(bb),
                       "origen": org("bordes")})
         filas.append({"label": "Estribo borde",
                       "valor": (f"φ{est['diam']:g} @ {est['sep']:g} · largo {bo['largo']:g}" if est
@@ -486,8 +597,14 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "· EMPALME: cuando el usuario pide empalme/traslapo («ponle 60 de "
         "empalme», «traslapo 40 phi»), va en el campo `empalme` de esa armadura, "
         "en CENTÍMETROS — se suma al largo de corte. Si lo dicta en diámetros "
-        "(40·φ), conviértelo tú: φ10 y 40φ = 40 cm. Lo pide casi siempre para la "
+        "(60·φ), conviértelo tú: φ10 y 60φ = 60 cm. Lo pide casi siempre para la "
         "malla vertical y los cabezales.\n"
+        "· PATA: si el usuario pide una figura con pata o gancho («cabezales "
+        "102A con pata de 25»), ese largo va en el campo `pata`, en CM. Si elige "
+        "una figura con patas y NO dice cuanto miden, PREGUNTASELO: dejarlas "
+        "libres produce barras deformes.\n"
+        "· CABEZALES: `sep_capas` = separacion entre capas en cm («capas cada "
+        "15») y `barras_capa` = cuantas van por capa a lo ancho del espesor.\n"
         "· Responde en español chileno neutro, breve, sin jerga técnica de la "
         "plataforma. Nada de muros de texto.\n\n"
         "DEFAULTS DE LA PLATAFORMA (origen 'config'):\n"
