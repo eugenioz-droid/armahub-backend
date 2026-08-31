@@ -1656,6 +1656,14 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   nuevo» (mandaba a reintentar algo que no iba a funcionar): ahora se muestra el motivo técnico.
   Y el test valida el schema de la herramienta en todos sus niveles (strict exige
   additionalProperties:false y toda property en required).
+- **F1.11 — el tope de uniones de la API (31-ago)**: al mostrar el motivo técnico (F1.10) apareció
+  la causa real de que el asistente dejara de responder: `400 invalid_request_error — Schemas
+  contains too many parameters with union types (33). Limit: 16`. Cada campo opcional que se fue
+  agregando usaba `anyOf [null, X]`, y sumaron 33. Ahora los ESCALARES opcionales no son anulables:
+  usan valor vacío — `""` en textos, `0` en números (ningún φ, @ ni largo real vale 0) y `-1` donde
+  el 0 es legítimo (giro de patas, anidar). `tramos` pasó a lista vacía. Quedan 3 uniones, solo los
+  objetos que pueden no existir (trabas, bordes, estribo). El test cuenta las uniones y falla si se
+  pasa de 16 — este error no se puede repetir en silencio.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

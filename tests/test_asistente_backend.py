@@ -74,8 +74,8 @@ SPEC = {
     "malla_vertical": {"diam": 8, "sep": 20},
     "malla_horizontal": {"diam": 8, "sep": 20},
     "doble_malla": True,
-    "trabas": {"diam": 8, "sx": 40, "sy": 40, "figura": None, "jerarquia": None,
-               "tramos": None, "anidar": None},
+    "trabas": {"diam": 8, "sx": 40, "sy": 40, "figura": "", "jerarquia": 0,
+               "tramos": [], "anidar": -1},
     "bordes": {"barras": {"diam": 18, "barras_capa": 2, "n_capas": 2},
                "estribo": {"diam": 8, "sep": 10}, "largo": 40},
     "origenes": {"geometria": "leido", "recubrimiento": "leido",
@@ -267,6 +267,27 @@ def _revisar_schema(nodo, ruta="raiz", fallas=None):
     if "items" in nodo:
         _revisar_schema(nodo["items"], ruta + "[]", fallas)
     return fallas
+
+def _uniones(nodo, ruta="raiz", out=None):
+    """Parametros con union (anyOf / type lista). La API topa en 16 por herramienta:
+    pasarse devuelve 400 y el asistente deja de responder (paso el 31-ago con 33)."""
+    out = [] if out is None else out
+    if not isinstance(nodo, dict):
+        return out
+    if isinstance(nodo.get("type"), list) or "anyOf" in nodo or "oneOf" in nodo:
+        out.append(ruta)
+    for k, v in (nodo.get("properties") or {}).items():
+        _uniones(v, ruta + "." + k, out)
+    for clave in ("anyOf", "oneOf", "allOf"):
+        for i, v in enumerate(nodo.get(clave) or []):
+            _uniones(v, "%s.%s[%d]" % (ruta, clave, i), out)
+    if "items" in nodo:
+        _uniones(nodo["items"], ruta + "[]", out)
+    return out
+
+_u = _uniones(TOOL_MURO["input_schema"])
+check("el schema no pasa el tope de 16 parametros con union de la API (hay %d)" % len(_u),
+      len(_u) <= 16)
 
 _fallas_schema = _revisar_schema(TOOL_MURO["input_schema"])
 check("el schema de proponer_muro es valido para strict en TODOS los niveles",

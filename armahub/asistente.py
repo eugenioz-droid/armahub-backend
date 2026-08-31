@@ -92,25 +92,33 @@ _ORIGENES = ["leido", "config", "asumido"]
 # los codigos del catalogo y tiene que poder dictarlos; van OPCIONALES (null = el
 # default de la plataforma). Los parciales y angulos de la figura NO se inventan
 # aca: salen del catalogo real (ver _construir_receta_muro).
+# LOS OPCIONALES NO SON ANULABLES (31-ago). La API topa en 16 parametros con
+# union (anyOf/nullable) por herramienta —"exponential compilation cost"— y esta
+# ficha llego a 33: el asistente dejo de responder con un 400. Cada escalar
+# opcional usa ahora un VALOR VACIO en vez de null: "" en textos, 0 en numeros
+# (ningun diametro, separacion ni largo real vale 0), -1 donde el 0 es un valor
+# legitimo. Solo quedan anulables los OBJETOS que pueden no existir (trabas,
+# bordes, estribo), que son 3.
 _FIGURA_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "string"}],
+    "type": "string",
     "description": "codigo de figura del catalogo (101A recta, 103B traba con "
-                   "ganchos, 104D estribo cerrado...). null = default de la plataforma",
+                   "ganchos, 106A estribo de la casa...). \"\" = default de la "
+                   "plataforma",
 }
 _JERARQUIA_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "integer"}],
+    "type": "integer",
     "description": "orden de apilado: 1 = pegada a la cara, 2 = se apoya sobre la "
-                   "de nivel 1. null = default",
+                   "de nivel 1. 0 = default",
 }
 _EMPALME_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "number"}],
+    "type": "number",
     "description": "traslapo en CM que se SUMA al largo de corte del lado que corre "
-                   "(el Δ del editor). «60 de empalme» = 60. null = sin empalme",
+                   "(el Δ del editor). «60 de empalme» = 60. 0 = sin empalme",
 }
 _PATA_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "number"}],
+    "type": "number",
     "description": "largo en CM de la pata/gancho (los lados que NO corren). Solo "
-                   "aplica a figuras de 2 o mas tramos. null = gancho normativo",
+                   "aplica a figuras de 2 o mas tramos. 0 = gancho normativo",
 }
 # COLORES POR NOMBRE. El editor guarda `c.color` como #rrggbb y, SIN ese campo,
 # pinta con el color de la TIPOLOGIA (template_editor.js:3543 `_colorComp` ->
@@ -124,34 +132,31 @@ _COLORES = {
     "cafe": "#5d4037", "café": "#5d4037", "turquesa": "#00897b",
 }
 _COLOR_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "string"}],
+    "type": "string",
     "description": "color de esa barra: nombre en castellano (rojo, azul, verde, "
                    "naranjo, morado, amarillo, celeste, gris...) o hex #rrggbb. "
-                   "null = el color de su tipologia, que es el default",
+                   "\"\" = el color de su tipologia, que es el default",
 }
 _TRAMOS_PROP = {
-    "anyOf": [
-        {"type": "null"},
-        {"type": "array",
-         "items": {"type": "object", "additionalProperties": False,
-                   "required": ["long", "sep"],
-                   "properties": {
-                       "long": {"type": "number", "description": "largo del tramo en cm"},
-                       "sep": {"type": "number", "description": "@ de ESE tramo en cm"},
-                   }}},
-    ],
+    "type": "array",
+    "items": {"type": "object", "additionalProperties": False,
+              "required": ["long", "sep"],
+              "properties": {
+                  "long": {"type": "number", "description": "largo del tramo en cm"},
+                  "sep": {"type": "number", "description": "@ de ESE tramo en cm"},
+              }},
     "description": "reparto por TRAMOS a lo largo del rango, en orden ('@10 los "
-                   "primeros 80, @20 el resto'). null = un solo @ parejo",
+                   "primeros 80, @20 el resto'). Lista vacia = un solo @ parejo",
 }
 _DOMINANTE_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "string"}],
-    "description": "letra del lado que manda en la figura (A, B, C...). null = lo "
+    "type": "string",
+    "description": "letra del lado que manda en la figura (A, B, C...). \"\" = lo "
                    "decide el motor",
 }
 _GIRO_PATAS_PROP = {
-    "anyOf": [{"type": "null"}, {"type": "integer"}],
-    "description": "hacia donde apuntan las patas: 0, 90, 180 o 270 grados. null = "
-                   "como nace",
+    "type": "integer",
+    "description": "hacia donde apuntan las patas: 0, 90, 180 o 270 grados. -1 = "
+                   "como nace (el 0 es un giro valido, por eso el vacio es -1)",
 }
 _MALLA_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -216,9 +221,10 @@ TOOL_MURO = {
                                  "empalme": _EMPALME_PROP,
                                  "pata": _PATA_PROP,
                                  "sep_capas": {
-                                     "anyOf": [{"type": "null"}, {"type": "number"}],
+                                     "type": "number",
                                      "description": "separacion entre capas de "
-                                                    "cabezales, eje a eje, en cm",
+                                                    "cabezales, eje a eje, en cm. "
+                                                    "0 = default",
                                  },
                                  "color": _COLOR_PROP,
                              }},
@@ -234,9 +240,9 @@ TOOL_MURO = {
                                       "figura": _FIGURA_PROP,
                                       "tramos": _TRAMOS_PROP,
                                       "anidar": {
-                                          "anyOf": [{"type": "null"},
-                                                    {"type": "boolean"}],
-                                          "description": "ajustar capas anidadas",
+                                          "type": "integer",
+                                          "description": "ajustar capas anidadas: "
+                                                         "1 si, 0 no, -1 default",
                                       },
                                       "color": _COLOR_PROP,
                                   }},
@@ -260,10 +266,10 @@ TOOL_MURO = {
                          "jerarquia": _JERARQUIA_PROP,
                          "tramos": _TRAMOS_PROP,
                          "anidar": {
-                             "anyOf": [{"type": "null"}, {"type": "boolean"}],
+                             "type": "integer",
                              "description": "ajustar capas anidadas (cada capa "
-                                            "interior se acorta un phi). null = el "
-                                            "default de la plataforma",
+                                            "interior se acorta un phi): 1 si, 0 no, "
+                                            "-1 el default de la plataforma",
                          },
                          "color": _COLOR_PROP,
                      }},
@@ -373,7 +379,7 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
         if giro in (0, 90, 180, 270):
             comp["orient"] = {"spin": int(giro)}
         anid = (d or {}).get("anidar")
-        if anid is not None:
+        if anid in (0, 1, True, False):        # -1 (o ausente) = default de la casa
             comp["distribucion"]["anidar"] = bool(anid)
         col = _hex_color((d or {}).get("color"))
         if col:
