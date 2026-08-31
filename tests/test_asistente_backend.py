@@ -349,9 +349,12 @@ def _uniones(nodo, ruta="raiz", out=None):
         _uniones(nodo["items"], ruta + "[]", out)
     return out
 
-_u = _uniones(TOOL_MURO["input_schema"])
-check("el schema no pasa el tope de 16 parametros con union de la API (hay %d)" % len(_u),
+from armahub.asistente import TOOL_OPERAR
+_u = _uniones(TOOL_MURO["input_schema"]) + _uniones(TOOL_OPERAR["input_schema"])
+check("las DOS herramientas juntas no pasan el tope de 16 uniones (hay %d)" % len(_u),
       len(_u) <= 16)
+check("operar_barras no tiene NINGUNA union (schema plano con centinelas)",
+      len(_uniones(TOOL_OPERAR["input_schema"])) == 0)
 
 _fallas_schema = _revisar_schema(TOOL_MURO["input_schema"])
 check("el schema de proponer_muro es valido para strict en TODOS los niveles",
@@ -422,16 +425,81 @@ except OSError:
 
 # --- armado de mensajes (alternancia + receta actual pegada al último turno)
 from armahub.asistente import _mensajes_api, ChatBody
+_RECETA_EJ = {"tipo": "muro",
+              "geometria": {"largo": 514, "alto": 315, "ancho": 20,
+                            "recub_sup": 2, "recub_inf": 2, "recub_lat": 2},
+              "componentes": [
+                  {"tipologia": "MV", "figura": "101A", "diam": 8, "lado": 1,
+                   "jerarquia": 1, "dims": {"A": {"modo": "auto"}},
+                   "distribucion": {"modo": "linear", "sep": 20,
+                                    "rango": {"eje": "x", "from": -255, "to": 255,
+                                              "sep": 20}}},
+                  {"tipologia": "CB", "figura": "102A", "diam": 18, "lado": 1,
+                   "jerarquia": 1,
+                   "dims": {"A": {"modo": "fija", "valor": 25},
+                            "B": {"modo": "auto", "delta": 118, "extremo": "fin"}},
+                   "distribucion": {"modo": "layered", "barras_capa": 2,
+                                    "n_capas": 2, "gap": 4}},
+              ]}
 b = ChatBody(historial=[
     {"rol": "asistente", "texto": "hola"},
     {"rol": "user", "texto": "muro de 6m"},
     {"rol": "user", "texto": "espesor 20"},
-], receta_actual={"tipo": "muro"})
+], receta_actual=_RECETA_EJ)
 msgs = _mensajes_api(b)
 check("mensajes: turnos user consecutivos se funden (alternancia de la API)",
       len(msgs) == 2 and msgs[-1]["role"] == "user")
-check("mensajes: la receta actual viaja en el ultimo turno",
-      '"tipo": "muro"' in msgs[-1]["content"])
+check("mensajes: el editor viaja como INVENTARIO NUMERADO, no como JSON crudo",
+      "Barras HOY en el editor" in msgs[-1]["content"]
+      and "1. MV" in msgs[-1]["content"] and "2. CB" in msgs[-1]["content"]
+      and '"tipo"' not in msgs[-1]["content"])
+
+# --- OPERAR BARRAS: el asistente OPERA los controles del editor (31-ago) ---
+from armahub.asistente import _aplicar_cambios, _inventario_receta
+
+_r2, _av = _aplicar_cambios(_RECETA_EJ, [
+    {"accion": "editar", "barra": 1, "diam": 10, "sep": 15, "jerarquia": 2},
+], CAT)
+check("editar: phi, @ y jerarquia cambian en la barra pedida y el rango acompana",
+      _r2["componentes"][0]["diam"] == 10.0
+      and _r2["componentes"][0]["distribucion"]["sep"] == 15.0
+      and _r2["componentes"][0]["distribucion"]["rango"]["sep"] == 15.0
+      and _r2["componentes"][0]["jerarquia"] == 2 and not _av)
+check("editar NO toca las otras barras ni la receta original",
+      _r2["componentes"][1]["diam"] == 18
+      and _RECETA_EJ["componentes"][0]["diam"] == 8)
+
+_r3, _ = _aplicar_cambios(_RECETA_EJ, [
+    {"accion": "agregar", "barra": 0, "armadura": "malla_horizontal",
+     "figura": "104B", "diam": 8, "sep": 20, "lados": "ambas"},
+], {"101A": {"parciales": ["A"], "angulos": []},
+    "104B": {"parciales": ["A", "B", "C", "D"], "angulos": [45, 45]}})
+check("agregar malla horizontal 104B en ambas cortinas = 2 componentes nuevos",
+      len(_r3["componentes"]) == 4
+      and [c["tipologia"] for c in _r3["componentes"][2:]] == ["MH", "MH"]
+      and all(c["figura"] == "104B" and set(c["dims"]) == {"A", "B", "C", "D"}
+              for c in _r3["componentes"][2:])
+      and {c["lado"] for c in _r3["componentes"][2:]} == {1, -1})
+
+_r4, _ = _aplicar_cambios(_RECETA_EJ, [{"accion": "quitar", "barra": 2}], CAT)
+check("quitar saca exactamente esa barra", len(_r4["componentes"]) == 1
+      and _r4["componentes"][0]["tipologia"] == "MV")
+
+_r5, _av5 = _aplicar_cambios(_RECETA_EJ, [{"accion": "quitar", "barra": 9}], CAT)
+check("un indice invalido AVISA sin reventar ni tocar nada",
+      len(_r5["componentes"]) == 2 and _av5)
+
+_r6, _ = _aplicar_cambios(_RECETA_EJ, [
+    {"accion": "editar", "barra": 2, "empalme": -1}], CAT)
+check("empalme -1 QUITA el delta del cabezal",
+      "delta" not in _r6["componentes"][1]["dims"]["B"])
+
+check("el inventario numera las barras para que el modelo diga «la barra 2»",
+      "2. CB" in _inventario_receta(_RECETA_EJ))
+check("el prompt manda a PROPONER con lo tipico en vez de interrogar",
+      "PROPONE, NO INTERROGUES" in _sp("muro") and "asumido" in _sp("muro"))
+check("el prompt manda a operar_barras para cambios puntuales",
+      "operar_barras" in _sp("muro") and "NUNCA reconstruyas" in _sp("muro"))
 
 # --- cableado
 main_src = io.open(os.path.join(BASE, "armahub", "main.py"), encoding="utf-8").read()

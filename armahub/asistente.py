@@ -447,202 +447,465 @@ def _normalizar_ficha(spec: dict) -> dict:
     return out
 
 
+
+# ---------------------------------------------------------------------------
+# FABRICAS POR ARMADURA — un solo lugar que sabe armar cada tipologia.
+# Las usan _construir_receta_muro (muro de cero) y _aplicar_cambios (operar
+# barras sueltas): dos puertas, UNA fabrica, para que no diverjan.
+# ---------------------------------------------------------------------------
+def _mk_lin(sep, eje, lo, hi, tramos=None):
+    d = {"modo": "linear", "activa": True, "sep": _r1(sep),
+         "zonas": [{"long": 0, "sep": _r1(sep)}], "start_offset": 4,
+         "rango": {"eje": eje, "from": _r1(lo), "to": _r1(hi), "sep": _r1(sep)}}
+    if tramos:
+        d["rango"]["tramos"] = [{"long": _r1(t["long"]), "sep": _r1(t["sep"])}
+                                for t in tramos if t.get("long") and t.get("sep")]
+    return d
+
+
+def _mk_base(tip, figura, diam, angulos, modo, cara, lado, rumbo,
+             orientacion, volteado, dims, jer, dist):
+    return {"tipologia": tip, "figura": figura, "diam": float(diam),
+            "suf_tipo": "", "recub_override": None, "angulos": list(angulos),
+            "comp_id": None, "modo": modo,
+            "pose": {"cara": cara, "lado": lado, "rumbo": rumbo, "espejo": False},
+            "cara": cara, "lado": lado,
+            "plano_pieza": {"orientacion": orientacion, "volteado": volteado},
+            "arreglo": {"n_capas": 1, "sep_capas": 20, "rango": None},
+            "dims": dims, "jerarquia": jer, "distribucion": dist, "pos_hint": {}}
+
+
+def _lado_que_corre(parciales):
+    return "B" if "B" in parciales else (parciales[0] if parciales else None)
+
+
+def _mk_dims(parciales, empalme=None, pata=None, phi=None, patas_fijas=False):
+    """Cuerpo en auto, patas fijas si corresponde, empalme como Delta del lado que
+    CORRE (B cuando existe). Las patas de un CABEZAL siempre van fijas: en su pose
+    el auto las resuelve contra el largo del muro (medido: 508 cm)."""
+    dims = {L: {"modo": "auto"} for L in parciales}
+    corre = _lado_que_corre(parciales)
+    if pata or patas_fijas:
+        largo_pata = _r1(pata) if pata else _r1(max(7.5, float(phi or 8)))
+        for L in parciales:
+            if L != corre:
+                dims[L] = {"modo": "fija", "valor": largo_pata}
+    if empalme and corre:
+        dims[corre]["delta"] = _r1(empalme)
+        dims[corre]["extremo"] = "fin"
+    return dims
+
+
+def _mk_extras(comp, d):
+    dom = (d or {}).get("lado_dominante")
+    if dom:
+        comp["lado_dominante"] = str(dom).strip().upper()
+    giro = (d or {}).get("giro_patas")
+    if giro in (0, 90, 180, 270):
+        comp["orient"] = {"spin": int(giro)}
+    anid = (d or {}).get("anidar")
+    if anid in (0, 1, True, False):
+        comp["distribucion"]["anidar"] = bool(anid)
+    col = _hex_color((d or {}).get("color"))
+    if col:
+        comp["color"] = col
+    return comp
+
+
+def _pedido(d, clave, porDefecto):
+    v = (d or {}).get(clave)
+    return v if v not in (None, "", 0) else porDefecto
+
+
+def _geo_de(receta_o_ficha):
+    g = receta_o_ficha.get("geometria") or {}
+    esp = g.get("ancho", g.get("espesor"))
+    rec = g.get("recub_lat", g.get("recubrimiento"))
+    return {"largo": _num(g.get("largo")), "alto": _num(g.get("alto")),
+            "esp": _num(esp), "rec": _num(rec, 2.5) or 2.5}
+
+
+def _fabricar(clase, p, geo, figuras, lados):
+    """Los componentes de UNA armadura: clase en malla_vertical / malla_horizontal /
+    trabas / cabezales / estribo. `p` ya viene normalizado; `lados` dice en que
+    cortina(s) o punta(s)."""
+    rx = geo["largo"] / 2.0 - geo["rec"]
+    ry = geo["alto"] / 2.0 - geo["rec"]
+    comps = []
+
+    if clase == "malla_vertical":
+        fig = _pedido(p, "figura", "101A")
+        par, ang = _spec_figura(figuras, fig, ["A"], [])
+        for lado in lados:
+            comps.append(_mk_extras(_mk_base(
+                "MV", fig, p["diam"], ang, "lineal", "lateral", lado, "y",
+                "de_pie", False,
+                _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
+                int(_pedido(p, "jerarquia", 1)),
+                _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p))
+
+    elif clase == "malla_horizontal":
+        fig = _pedido(p, "figura", "101A")
+        par, ang = _spec_figura(figuras, fig, ["A"], [])
+        for lado in lados:
+            comps.append(_mk_extras(_mk_base(
+                "MH", fig, p["diam"], ang, "lineal", "lateral", lado, "x",
+                "acostada", False,
+                _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
+                int(_pedido(p, "jerarquia", 1)),
+                _mk_lin(p["sep"], "y", -ry, ry, p.get("tramos"))), p))
+
+    elif clase == "trabas":
+        fig = _pedido(p, "figura", "103B")
+        par, ang = _spec_figura(figuras, fig, ["A", "B", "C"], [45, 45])
+        dist = _mk_lin(p.get("sx", 40), "x", -rx, rx, p.get("tramos"))
+        dist["modo"] = "arreglo"
+        m_gancho = 6.0 * float(p["diam"]) / 10.0 + 5.0
+        dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
+                          "sep": _r1(p.get("sy", 40))}
+        comps.append(_mk_extras(_mk_base(
+            "TC", fig, p["diam"], ang, "arreglo", "sup", 1, "z", "volteada",
+            True, {L: {"modo": "auto"} for L in par},
+            int(_pedido(p, "jerarquia", 2)), dist), p))
+
+    elif clase == "cabezales":
+        fig = _pedido(p, "figura", "101A")
+        par, ang = _spec_figura(figuras, fig, ["A"], [])
+        for lado in lados:
+            comps.append(_mk_extras(_mk_base(
+                "CB", fig, p["diam"], ang, "puntual", "extremo", lado, "y",
+                "de_pie", False,
+                _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"],
+                         patas_fijas=True), int(_pedido(p, "jerarquia", 1)),
+                {"modo": "layered",
+                 "n_capas": max(1, int(_num(p.get("n_capas"), 1))),
+                 "barras_capa": max(1, int(_num(p.get("barras_capa"), 2))),
+                 "gap": _r1(p.get("sep_capas") or 4),
+                 "sentido": "nucleo", "justify": "repartir"}), p))
+
+    elif clase == "estribo":
+        fig = _pedido(p, "figura", "106A")
+        par, ang = _spec_figura(figuras, fig,
+                                ["A", "B", "C", "D", "E", "F"], [45, 45])
+        lconf = _num(p.get("largo"), 40) or 40
+        for lado in lados:
+            dims = {L: {"modo": "auto"} for L in par}
+            if "B" in dims:
+                dims["B"] = {"modo": "fija", "valor": _r1(lconf),
+                             "extremo": "centro"}
+            ec = _mk_base("EC", fig, p["diam"], ang, "lineal", "lateral", 1,
+                          "y", "de_pie", False, dims,
+                          int(_pedido(p, "jerarquia", 1)),
+                          _mk_lin(p.get("sep", 10), "y", -ry, ry,
+                                  p.get("tramos")))
+            ec["pos_hint"] = {"x": _r1(lado * (geo["largo"] / 2.0 - geo["rec"]
+                                               - lconf / 2.0))}
+            comps.append(_mk_extras(ec, p))
+    return comps
+
+
 def _construir_receta_muro(spec: dict, figuras=None) -> dict:
-    """Ficha simple -> receta {tipo,geometria,componentes[]} EXACTAMENTE como los
-    crea el Template Editor a mano (mapa del 31-ago sobre reglas.js /
-    template_editor.js / tests):
-      - mallas = tipologias MV/MH reales, modo LINEAL, UNA CORTINA POR COMPONENTE
-        (lado +-1: "dos cortinas son DOS componentes, no 2 capas de uno",
-        test_muro_orientaciones.js:357);
-      - trabas = TC pose {sup,1,z} (cruzan el espesor), figura con ganchos 104B,
-        modo arreglo con rango (x) + rango2 (y), jerarquia 2;
-      - bordes = CB en el testero (cara 'extremo', puntual layered) + EC acotado
-        a la punta (dims.B fija con extremo + pos_hint.x; sin posicion el motor
-        centra - template_editor.js:7318);
-      - rangos con from/to de linea de recub a linea de recub, SIN ancla: la
-        deriva normalizarReceta al abrir (migracion sin movimiento, reglas.js:1698).
-    Nada del modelo toca geometria. Verificado contra el MOTOR REAL por
-    tests/test_asistente_receta_motor.js (node)."""
+    """Ficha normalizada -> receta, delegando cada armadura a _fabricar."""
     spec = _normalizar_ficha(spec)
-    g = spec["geometria"]
-    largo, alto = float(g["largo"]), float(g["alto"])
-    esp, rec = float(g["espesor"]), float(g["recubrimiento"])
+    geo = _geo_de({"geometria": spec["geometria"]})
     doble = bool(spec.get("doble_malla", True))
-    rx, ry = largo / 2.0 - rec, alto / 2.0 - rec   # lineas de recubrimiento
-
-    def _lin(sep, eje, lo, hi, tramos=None):
-        """Distribucion lineal. Con `tramos` el rango se subdivide (@10 los primeros
-        80, @20 el resto): el motor reparte por tramos y el @ simple deja de mandar
-        (template_editor.js:9106). Los tramos van en el ORDEN dado, desde `from`."""
-        d = {"modo": "linear", "activa": True, "sep": _r1(sep),
-             "zonas": [{"long": 0, "sep": _r1(sep)}], "start_offset": 4,
-             "rango": {"eje": eje, "from": _r1(lo), "to": _r1(hi), "sep": _r1(sep)}}
-        if tramos:
-            d["rango"]["tramos"] = [{"long": _r1(t["long"]), "sep": _r1(t["sep"])}
-                                    for t in tramos if t.get("long") and t.get("sep")]
-        return d
-
-    def _extras(comp, d):
-        """Campos sueltos que el usuario puede dictar y que no cambian la forma de
-        armar: lado dominante (que lado manda en la figura), giro de las patas y
-        anidado de capas. Se escriben SOLO si vinieron: el default de la plataforma
-        es el que sabe, y un valor puesto porque si cambia dims."""
-        dom = (d or {}).get("lado_dominante")
-        if dom:
-            comp["lado_dominante"] = str(dom).strip().upper()
-        giro = (d or {}).get("giro_patas")
-        if giro in (0, 90, 180, 270):
-            comp["orient"] = {"spin": int(giro)}
-        anid = (d or {}).get("anidar")
-        if anid in (0, 1, True, False):        # -1 (o ausente) = default de la casa
-            comp["distribucion"]["anidar"] = bool(anid)
-        col = _hex_color((d or {}).get("color"))
-        if col:
-            comp["color"] = col
-        return comp
-
-    def _base(tip, figura, diam, angulos, modo, cara, lado, rumbo,
-              orientacion, volteado, dims, jer, dist):
-        return {"tipologia": tip, "figura": figura, "diam": float(diam),
-                "suf_tipo": "", "recub_override": None, "angulos": list(angulos),
-                "comp_id": None, "modo": modo,
-                "pose": {"cara": cara, "lado": lado, "rumbo": rumbo, "espejo": False},
-                "cara": cara, "lado": lado,
-                "plano_pieza": {"orientacion": orientacion, "volteado": volteado},
-                "arreglo": {"n_capas": 1, "sep_capas": 20, "rango": None},
-                "dims": dims, "jerarquia": jer, "distribucion": dist, "pos_hint": {}}
-
-    def _autoA():
-        return {"A": {"modo": "auto"}}
-
-    def _autoABCD():
-        return {L: {"modo": "auto"} for L in ("A", "B", "C", "D")}
-
-    def _dimsDe(parciales, empalme=None, pata=None, phi=None, patas_fijas=False):
-        """Dims del componente: cuerpo en auto, patas segun lo pedido, y el
-        EMPALME como Delta del lado que CORRE.
-
-        EL LADO QUE CORRE ES **B** siempre que la figura lo tenga; A (y C, D)
-        son las patas. Medido con el motor el 31-ago sobre un cabezal 102A: con
-        el empalme puesto en A la barra se iba 266 cm fuera del muro; con B como
-        cuerpo queda correcta (A = pata horizontal, B = alto completo).
-
-        PATAS EN AUTO NO SIRVEN PARA UN CABEZAL: en su pose (cara extremo) el
-        motor le resuelve la pata contra el LARGO del muro. MEDIDO: 102A todo en
-        auto dio A = 508 cm en un muro de 514 — la barra en forma de peineta que
-        el usuario vio y que el editor marca como fierro fuera del hormigon. Por
-        eso el cabezal escribe sus patas FIJAS: lo que el usuario pidio, o el
-        gancho normativo si no dijo nada. En trabas y estribos el auto SI resuelve
-        bien (medido tambien), y ahi se deja.
-
-        El traslapo va como Delta en cm sobre el lado que corre, con la flecha en
-        fin: crece hacia arriba y el arranque se queda quieto."""
-        dims = {L: {"modo": "auto"} for L in parciales}
-        corre = "B" if "B" in dims else (parciales[0] if parciales else None)
-        if pata or patas_fijas:
-            largo_pata = _r1(pata) if pata else _r1(max(7.5, float(phi or 8)))
-            for L in parciales:
-                if L != corre:
-                    dims[L] = {"modo": "fija", "valor": largo_pata}
-        if empalme and corre:
-            dims[corre]["delta"] = _r1(empalme)
-            dims[corre]["extremo"] = "fin"
-        return dims
-
-    def _pedido(d, clave, porDefecto):
-        v = (d or {}).get(clave)
-        return v if v not in (None, "", 0) else porDefecto
-
     comps = []
     mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
     for lado in ([1, -1] if doble else [1]):
         if mv:
-            fmv = _pedido(mv, "figura", "101A")
-            pmv, amv = _spec_figura(figuras, fmv, ["A"], [])
-            comps.append(_extras(_base(
-                "MV", fmv, mv["diam"], amv, "lineal", "lateral", lado, "y",
-                "de_pie", False,
-                _dimsDe(pmv, mv.get("empalme"), mv.get("pata"), mv["diam"]),
-                int(_pedido(mv, "jerarquia", 1)),
-                _lin(mv["sep"], "x", -rx, rx, mv.get("tramos"))), mv))
+            comps += _fabricar("malla_vertical", mv, geo, figuras, [lado])
         if mh:
-            fmh = _pedido(mh, "figura", "101A")
-            pmh, amh = _spec_figura(figuras, fmh, ["A"], [])
-            comps.append(_extras(_base(
-                "MH", fmh, mh["diam"], amh, "lineal", "lateral", lado, "x",
-                "acostada", False,
-                _dimsDe(pmh, mh.get("empalme"), mh.get("pata"), mh["diam"]),
-                int(_pedido(mh, "jerarquia", 1)),
-                _lin(mh["sep"], "y", -ry, ry, mh.get("tramos"))), mh))
-
+            comps += _fabricar("malla_horizontal", mh, geo, figuras, [lado])
     tr = spec.get("trabas")
     if doble and tr and (mv or mh):
-        dist = _lin(tr["sx"], "x", -rx, rx, tr.get("tramos"))
-        dist["modo"] = "arreglo"
-        # La 103B cuelga su gancho HACIA ABAJO de la fila (~6phi + curva): si la
-        # primera fila nace en la linea de recub, el gancho se sale del hormigon
-        # (medido 31-ago: fila -155.5 -> gancho -165). Se le da ese margen abajo.
-        m_gancho = 6.0 * float(tr["diam"]) / 10.0 + 5.0
-        dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
-                          "sep": _r1(tr["sy"])}
-        # 103B por defecto = cuerpo + 2 ganchos: "eso es una traba" (reglas.js:1284,
-        # medido). Con 104D/104B el lado C en auto resolvia contra el ALTO (pieza de
-        # 311 cm fuera del hormigon — medido 31-ago). El usuario puede pedir otra.
-        ftr = _pedido(tr, "figura", "103B")
-        ptr, atr = _spec_figura(figuras, ftr, ["A", "B", "C"], [45, 45])
-        comps.append(_extras(_base("TC", ftr, tr["diam"], atr, "arreglo",
-                                   "sup", 1, "z", "volteada", True,
-                                   _dimsDe(ptr), int(_pedido(tr, "jerarquia", 2)),
-                                   dist), tr))
-
+        comps += _fabricar("trabas", tr, geo, figuras, [1])
     bo = spec.get("bordes")
     if bo:
-        bb, est = bo["barras"], bo.get("estribo")
-        lconf = float(bo.get("largo") or 40)
-        fcb = _pedido(bb, "figura", "101A")
-        pcb, acb = _spec_figura(figuras, fcb, ["A"], [])
+        bb, est = dict(bo["barras"]), bo.get("estribo")
         for lado in (1, -1):
-            comps.append(_base("CB", fcb, bb["diam"], acb, "puntual",
-                               "extremo", lado, "y", "de_pie", False,
-                               _dimsDe(pcb, bb.get("empalme"), bb.get("pata"),
-                                       bb["diam"], patas_fijas=True), 1,
-                               {"modo": "layered",
-                                "n_capas": max(1, int(bb["n_capas"])),
-                                "barras_capa": max(1, int(bb["barras_capa"])),
-                                "gap": _r1(bb.get("sep_capas") or 4),
-                                "sentido": "nucleo",
-                                "justify": "repartir"}))
+            comps += _fabricar("cabezales", bb, geo, figuras, [lado])
             if est:
-                # extremo 'centro' + pos_hint.x = la UNICA combinacion que el
-                # motor respeta tal cual (medido 31-ago: 'fin' ignora el hint y
-                # cae al testero opuesto; hint+pos_ancla se pasa del hormigon).
-                # 106A = el estribo de la casa (correccion del usuario 31-ago).
-                # Medido contra el motor: 6 lados, cierra, ganchos de 45 grados —
-                # tramos [8.6, 37.2, 15.2, 39.2, 13.2, 8.6] con B fija en 40.
-                fec = _pedido(est, "figura", "106A")
-                pec, aec = _spec_figura(figuras, fec,
-                                        ["A", "B", "C", "D", "E", "F"], [45, 45])
-                dec = _dimsDe(pec)
-                # El largo confinado se escribe en el lado B (el que corre a lo largo
-                # del muro en un marco de 4 lados). Si la figura pedida no tiene B, no
-                # hay donde acotarla: queda en auto y el estribo abraza lo que da.
-                if "B" in dec:
-                    dec["B"] = {"modo": "fija", "valor": _r1(lconf), "extremo": "centro"}
-                ec = _base("EC", fec, est["diam"], aec, "lineal",
-                           "lateral", 1, "y", "de_pie", False, dec,
-                           int(_pedido(est, "jerarquia", 1)),
-                           _lin(est["sep"], "y", -ry, ry, est.get("tramos")))
-                _extras(ec, est)
-                ec["pos_hint"] = {"x": _r1(lado * (largo / 2.0 - rec - lconf / 2.0))}
-                comps.append(ec)
-
+                e = dict(est)
+                e["largo"] = bo.get("largo") or 40
+                comps += _fabricar("estribo", e, geo, figuras, [lado])
     return {
         "tipo": "muro",
-        "geometria": {"largo": _r1(largo), "alto": _r1(alto), "ancho": _r1(esp),
-                      "recub_sup": _r1(rec), "recub_inf": _r1(rec),
-                      "recub_lat": _r1(rec)},
+        "geometria": {"largo": _r1(geo["largo"]), "alto": _r1(geo["alto"]),
+                      "ancho": _r1(geo["esp"]),
+                      "recub_sup": _r1(geo["rec"]), "recub_inf": _r1(geo["rec"]),
+                      "recub_lat": _r1(geo["rec"])},
         "componentes": comps,
     }
+
+
+# ---------------------------------------------------------------------------
+# OPERAR BARRAS — la 2a herramienta: el asistente deja de ser solo un generador
+# de muros y pasa a OPERAR los controles del editor (exigencia del usuario
+# 31-ago: acceso a todos los controles, modificarlos segun se le pida).
+# Schema PLANO y sin uniones: los dos topes de la API ya mordieron una vez
+# (16 uniones · gramatica compilada) y el test los vigila.
+# ---------------------------------------------------------------------------
+TOOL_OPERAR = {
+    "name": "operar_barras",
+    "description": (
+        "Opera sobre el muro que YA esta en el editor: agrega, edita o quita "
+        "barras puntuales. Usala cuando el usuario pida cambios sobre lo "
+        "existente (cambia, agrega, quita, sube, esa barra...). El listado "
+        "numerado de barras viene al final del mensaje del usuario: `barra` es "
+        "ese numero. En los campos, 0 o \"\" = no tocar; -1 = quitar el valor. "
+        "Para armar un muro completo desde cero usa proponer_muro."),
+    "input_schema": {
+        "type": "object", "additionalProperties": False,
+        "required": ["cambios"],
+        "properties": {
+            "cambios": {
+                "type": "array",
+                "items": {
+                    "type": "object", "additionalProperties": False,
+                    "required": ["accion", "barra"],
+                    "properties": {
+                        "accion": {"type": "string",
+                                   "enum": ["agregar", "editar", "quitar"]},
+                        "barra": {"type": "integer",
+                                  "description": "numero del listado (editar/"
+                                                 "quitar); 0 al agregar"},
+                        "armadura": {"type": "string",
+                                     "description": "solo al agregar: "
+                                                    "malla_vertical, malla_horizontal, "
+                                                    "trabas, cabezales o estribo"},
+                        "lados": {"type": "string",
+                                  "description": "al agregar: 'ambas' (las dos "
+                                                 "cortinas/puntas), '1' o '-1'. "
+                                                 "\"\" = ambas"},
+                        "diam": {"type": "number", "description": "phi mm; 0 = no tocar"},
+                        "sep": {"type": "number", "description": "@ cm (sx en trabas); 0 = no tocar"},
+                        "sep2": {"type": "number", "description": "sy de trabas; 0 = no tocar"},
+                        "figura": {"type": "string", "description": "codigo del catalogo; \"\" = no tocar"},
+                        "jerarquia": {"type": "integer", "description": "0 = no tocar"},
+                        "empalme": {"type": "number", "description": "cm al lado que corre; 0 = no tocar, -1 = quitar"},
+                        "pata": {"type": "number", "description": "cm; 0 = no tocar, -1 = volver a auto"},
+                        "color": {"type": "string", "description": "nombre o hex; \"\" = no tocar"},
+                        "suf": {"type": "string", "description": "sufijo de marca; \"\" = no tocar"},
+                        "recub": {"type": "number", "description": "recubrimiento propio cm; 0 = no tocar, -1 = quitar"},
+                        "giro_patas": {"type": "integer", "description": "0/90/180/270; -1 = no tocar"},
+                        "lado_dominante": {"type": "string", "description": "letra; \"\" = no tocar"},
+                        "anidar": {"type": "integer", "description": "1 si, 0 no, -1 no tocar"},
+                        "barras_capa": {"type": "integer", "description": "0 = no tocar"},
+                        "n_capas": {"type": "integer", "description": "0 = no tocar"},
+                        "sep_capas": {"type": "number", "description": "cm entre capas (gap); 0 = no tocar"},
+                        "largo": {"type": "number", "description": "largo del estribo de borde cm; 0 = no tocar"},
+                        "tramos": {"type": "array",
+                                   "items": {"type": "object",
+                                             "additionalProperties": False,
+                                             "required": ["long", "sep"],
+                                             "properties": {
+                                                 "long": {"type": "number"},
+                                                 "sep": {"type": "number"}}},
+                                   "description": "reparto multi-@; [] = no tocar"},
+                    },
+                },
+            },
+        },
+    },
+}
+
+_CLASE_DE_TIP = {"MV": "malla_vertical", "MH": "malla_horizontal",
+                 "TR": "trabas", "TC": "trabas", "CB": "cabezales",
+                 "EC": "estribo"}
+
+
+def _editar_comp(c, cb, geo, figuras):
+    """Aplica al componente los campos no-vacios del cambio, escribiendo lo MISMO
+    que escribiria el panel (dims/distribucion/orient), no campos inventados."""
+    d = c.setdefault("distribucion", {})
+    dims = c.setdefault("dims", {})
+    corre = _lado_que_corre(list(dims.keys()))
+
+    fig = str(cb.get("figura") or "").strip().upper()
+    if fig:
+        par, ang = _spec_figura(figuras, fig, list(dims.keys()) or ["A"], [])
+        c["figura"], c["angulos"] = fig, ang
+        viejo = dims.get(corre, {}) if corre else {}
+        dims = c["dims"] = {L: {"modo": "auto"} for L in par}
+        corre = _lado_que_corre(par)
+        if corre and viejo.get("delta"):
+            dims[corre]["delta"] = viejo["delta"]
+            dims[corre]["extremo"] = viejo.get("extremo", "fin")
+
+    if _num(cb.get("diam")) > 0:
+        c["diam"] = _num(cb.get("diam"))
+    if _num(cb.get("sep")) > 0:
+        sep = _r1(cb.get("sep"))
+        d["sep"] = sep
+        if isinstance(d.get("rango"), dict):
+            d["rango"]["sep"] = sep
+        if d.get("zonas"):
+            d["zonas"][0]["sep"] = sep
+    if _num(cb.get("sep2")) > 0 and isinstance(d.get("rango2"), dict):
+        d["rango2"]["sep"] = _r1(cb.get("sep2"))
+    if int(_num(cb.get("jerarquia"))) > 0:
+        c["jerarquia"] = int(_num(cb.get("jerarquia")))
+
+    emp = _num(cb.get("empalme"))
+    if emp > 0 and corre:
+        dims.setdefault(corre, {"modo": "auto"})
+        dims[corre]["delta"] = _r1(emp)
+        dims[corre]["extremo"] = "fin"
+    elif emp == -1 and corre and isinstance(dims.get(corre), dict):
+        dims[corre].pop("delta", None)
+        dims[corre].pop("extremo", None)
+
+    pata = _num(cb.get("pata"))
+    if pata > 0:
+        for L in dims:
+            if L != corre:
+                dims[L] = {"modo": "fija", "valor": _r1(pata)}
+    elif pata == -1:
+        for L in dims:
+            if L != corre:
+                dims[L] = {"modo": "auto"}
+
+    col = _hex_color(cb.get("color"))
+    if col:
+        c["color"] = col
+    if str(cb.get("suf") or "").strip():
+        c["suf_tipo"] = str(cb["suf"]).strip()
+    rec = _num(cb.get("recub"))
+    if rec > 0:
+        c["recub_override"] = _r1(rec)
+    elif rec == -1:
+        c["recub_override"] = None
+
+    _mk_extras(c, {"lado_dominante": cb.get("lado_dominante"),
+                   "giro_patas": int(_num(cb.get("giro_patas"), -1)),
+                   "anidar": (int(_num(cb.get("anidar"), -1))
+                              if int(_num(cb.get("anidar"), -1)) in (0, 1) else None),
+                   "color": ""})
+
+    if int(_num(cb.get("barras_capa"))) > 0:
+        d["barras_capa"] = int(_num(cb.get("barras_capa")))
+    if int(_num(cb.get("n_capas"))) > 0:
+        d["n_capas"] = int(_num(cb.get("n_capas")))
+    if _num(cb.get("sep_capas")) > 0:
+        d["gap"] = _r1(cb.get("sep_capas"))
+    if _num(cb.get("largo")) > 0 and c.get("tipologia") == "EC":
+        lconf = _num(cb.get("largo"))
+        if "B" in dims:
+            dims["B"] = {"modo": "fija", "valor": _r1(lconf), "extremo": "centro"}
+        signo = 1 if _num((c.get("pos_hint") or {}).get("x"), c.get("lado", 1)) >= 0 else -1
+        c["pos_hint"] = {"x": _r1(signo * (geo["largo"] / 2.0 - geo["rec"] - lconf / 2.0))}
+    tramos = [t for t in (cb.get("tramos") or []) if isinstance(t, dict)]
+    if tramos and isinstance(d.get("rango"), dict):
+        d["rango"]["tramos"] = [{"long": _r1(t.get("long")), "sep": _r1(t.get("sep"))}
+                                for t in tramos if _num(t.get("long")) and _num(t.get("sep"))]
+    return c
+
+
+def _aplicar_cambios(receta_actual, cambios, figuras):
+    """Los cambios de operar_barras sobre la receta del editor. Devuelve
+    (receta_nueva, avisos). Un indice invalido AVISA en vez de reventar: el resto
+    de los cambios igual se aplica."""
+    receta = json.loads(json.dumps(receta_actual))
+    comps = receta.setdefault("componentes", [])
+    geo = _geo_de(receta)
+    avisos = []
+    for cb in cambios or []:
+        if not isinstance(cb, dict):
+            continue
+        accion = str(cb.get("accion") or "").strip().lower()
+        idx = int(_num(cb.get("barra")))
+        if accion == "quitar":
+            if 1 <= idx <= len(comps):
+                comps.pop(idx - 1)
+            else:
+                avisos.append("No existe la barra %s del listado." % idx)
+        elif accion == "editar":
+            if 1 <= idx <= len(comps):
+                _editar_comp(comps[idx - 1], cb, geo, figuras)
+            else:
+                avisos.append("No existe la barra %s del listado." % idx)
+        elif accion == "agregar":
+            clase = str(cb.get("armadura") or "").strip().lower()
+            if clase not in ("malla_vertical", "malla_horizontal", "trabas",
+                             "cabezales", "estribo"):
+                avisos.append("No entendi que armadura agregar (%r)." % clase)
+                continue
+            defaults = {"malla_vertical": (8, 20), "malla_horizontal": (8, 20),
+                        "trabas": (8, 40), "cabezales": (16, 0),
+                        "estribo": (8, 10)}
+            ddiam, dsep = defaults[clase]
+            p = {"diam": _num(cb.get("diam")) or ddiam,
+                 "sep": _num(cb.get("sep")) or dsep,
+                 "sx": _num(cb.get("sep")) or 40, "sy": _num(cb.get("sep2")) or 40,
+                 "figura": str(cb.get("figura") or "").strip().upper(),
+                 "jerarquia": int(_num(cb.get("jerarquia"))),
+                 "empalme": _num(cb.get("empalme")),
+                 "pata": _num(cb.get("pata")),
+                 "color": cb.get("color"), "tramos": cb.get("tramos") or [],
+                 "lado_dominante": cb.get("lado_dominante"),
+                 "giro_patas": int(_num(cb.get("giro_patas"), -1)),
+                 "anidar": (int(_num(cb.get("anidar"), -1))
+                            if int(_num(cb.get("anidar"), -1)) in (0, 1) else None),
+                 "barras_capa": int(_num(cb.get("barras_capa"))),
+                 "n_capas": int(_num(cb.get("n_capas"))),
+                 "sep_capas": _num(cb.get("sep_capas")),
+                 "largo": _num(cb.get("largo"))}
+            lados_txt = str(cb.get("lados") or "").strip()
+            if clase == "trabas":
+                lados = [1]
+            elif lados_txt == "1":
+                lados = [1]
+            elif lados_txt == "-1":
+                lados = [-1]
+            else:
+                lados = [1, -1]
+            comps.extend(_fabricar(clase, p, geo, figuras, lados))
+    if not comps:
+        raise ValueError("El muro quedaria sin ninguna barra; no aplique los cambios.")
+    return receta, avisos
+
+
+def _resumen_de_receta(receta) -> list:
+    """El formulario despues de operar: el listado numerado de lo que quedo."""
+    filas = [{"seccion": "Barras en el editor"}]
+    for i, c in enumerate(receta.get("componentes") or [], start=1):
+        filas.append({"label": "%d · %s" % (i, c.get("tipologia") or "?"),
+                      "valor": _linea_comp(c), "origen": "leido"})
+    return filas
+
+
+def _linea_comp(c) -> str:
+    d = c.get("distribucion") or {}
+    partes = ["%s \u03c6%g" % (c.get("figura") or "?", _num(c.get("diam")))]
+    if d.get("modo") == "layered":
+        partes.append("%dx%d capas" % (int(_num(d.get("barras_capa"), 1)),
+                                       int(_num(d.get("n_capas"), 1))))
+    elif _num(d.get("sep")):
+        partes.append("@%g" % _num(d.get("sep")))
+    if c.get("jerarquia") not in (None, "", 1):
+        partes.append("jer.%s" % c["jerarquia"])
+    lado = c.get("lado")
+    if lado in (1, -1):
+        partes.append("lado%+d" % lado)
+    dims = c.get("dims") or {}
+    for L, v in dims.items():
+        if isinstance(v, dict) and v.get("delta"):
+            partes.append("emp+%g" % _num(v["delta"]))
+            break
+    return " ".join(partes)
+
+
+def _inventario_receta(receta) -> str:
+    """El listado numerado que ve el MODELO para poder decir «la barra 3»."""
+    g = receta.get("geometria") or {}
+    l = ["Muro %gx%gx%g rec %g" % (_num(g.get("largo")), _num(g.get("alto")),
+                                   _num(g.get("ancho")), _num(g.get("recub_lat")))]
+    for i, c in enumerate(receta.get("componentes") or [], start=1):
+        l.append("%d. %s %s" % (i, c.get("tipologia") or "?", _linea_comp(c)))
+    if len(l) == 1:
+        l.append("(sin barras todavia)")
+    return chr(10).join(l)
+
 
 
 _ORIGEN_LBL = {"leido": "leído", "config": "config", "asumido": "asumido"}
@@ -768,15 +1031,23 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "REGLAS:\n"
         "· Unidades: dimensiones y separaciones en CENTÍMETROS, diámetros (φ) en "
         "MILÍMETROS. Convierte si el usuario habla en metros o mm.\n"
-        "· JAMÁS inventes un diámetro, separación o dimensión. Si falta un dato "
-        "crítico (dimensiones del muro o alguna malla), PREGUNTA — corto y de a "
-        "una o dos preguntas. Lo secundario (recubrimiento, trabas) puedes "
-        "asumirlo con el valor típico, marcándolo 'asumido' y diciéndolo.\n"
+        "· PROPONE, NO INTERROGUES (política del usuario). Lo ÚNICO que siempre "
+        "necesitas son las dimensiones del hormigón: si no hay muro abierto y no "
+        "te las dan, pregunta SOLO eso. Todo lo demás de las armaduras que el "
+        "usuario SÍ pidió es asumible con lo típico (malla φ8@20, traba φ8 "
+        "40×40, cabezal φ16 2×2, estribo φ8@10, empalme 60φ): asume, marca "
+        "'asumido', y cierra tu respuesta con una línea que diga qué asumiste y "
+        "que te lo corrijan si no calza. Es mejor mostrar un muro corregible que "
+        "hacer una pregunta. OJO: esto NO te deja agregar armaduras que no "
+        "pidió — asumir valores sí, inventar barras no.\n"
         "· Cuando tengas los datos críticos, llama proponer_muro. En origenes "
         "marca cada campo: 'leido' (lo dijo el usuario), 'config' (default de la "
         "plataforma), 'asumido' (lo pusiste tú).\n"
-        "· Si el usuario pide cambiar algo sobre una receta ya propuesta, vuelve "
-        "a llamar proponer_muro con la ficha completa corregida.\n"
+        "· Si YA hay barras en el editor (viene el listado numerado al final del "
+        "mensaje) y el usuario pide cambiar, agregar o quitar algo, usa "
+        "operar_barras con esos números — NUNCA reconstruyas el muro entero con "
+        "proponer_muro para un cambio puntual, porque pisarías lo que el usuario "
+        "editó a mano.\n"
         "· Por ahora SOLO muros. Si piden otro elemento, dilo amable: viga y "
         "columna vienen después.\n"
         "· SE PUEDE PEDIR SOLO UNA PARTE. «Hazme solo los cabezales» es un "
@@ -861,10 +1132,11 @@ def _mensajes_api(body: ChatBody) -> list:
         raise HTTPException(status_code=400,
                             detail="El historial debe terminar con un mensaje del usuario.")
     if body.receta_actual:
+        # INVENTARIO NUMERADO, no el JSON crudo: el modelo necesita poder decir
+        # «la barra 3» para operar_barras, y el JSON entero solo gastaba tokens.
         msgs[-1]["content"] += (
-            "\n\n[Estado actual del editor — receta que el usuario tiene en "
-            "pantalla; si pide modificar, parte de esto]\n"
-            + json.dumps(body.receta_actual, ensure_ascii=False))
+            "\n\n[Barras HOY en el editor — para operar_barras usa estos numeros]\n"
+            + _inventario_receta(body.receta_actual))
     return msgs
 
 
@@ -996,14 +1268,39 @@ def _tope_diario(email: str):
 
 
 def _extraer(respuesta):
-    """(texto, spec|None) de una respuesta de la API."""
-    texto, spec = [], None
+    """(texto, spec, cambios, ids_de_tool_use) de una respuesta de la API."""
+    texto, spec, cambios, tus = [], None, None, []
     for b in respuesta.content:
         if b.type == "text" and b.text:
             texto.append(b.text)
-        elif b.type == "tool_use" and b.name == "proponer_muro":
-            spec = b.input
-    return "\n".join(texto).strip(), spec
+        elif b.type == "tool_use":
+            tus.append(b.id)
+            if b.name == "proponer_muro":
+                spec = b.input
+            elif b.name == "operar_barras":
+                cambios = (b.input or {}).get("cambios")
+    return "\n".join(texto).strip(), spec, cambios, tus
+
+
+def _figuras_para(cur, spec, cambios):
+    """Catalogo de TODAS las figuras nombradas (ficha + cambios) + defaults."""
+    base = spec if isinstance(spec, dict) else {}
+    figs = _figuras_de(cur, base)
+    extras = {str(cb.get("figura") or "").strip().upper()
+              for cb in (cambios or []) if isinstance(cb, dict)}
+    extras = {f for f in extras if f}
+    if not extras:
+        return figs
+    try:
+        from .catalogo import cargar_figuras
+        codigos = {"101A", "103B", "106A"} | extras
+        for k in ("malla_vertical", "malla_horizontal", "trabas"):
+            d = base.get(k)
+            if isinstance(d, dict) and d.get("figura"):
+                codigos.add(str(d["figura"]).strip().upper())
+        return cargar_figuras(cur, codigos)
+    except Exception:
+        return figs
 
 
 @router.post("/asistente/chat")
@@ -1044,72 +1341,87 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                     # largo. Si la calidad baja, subir a "high".
                     output_config={"effort": "medium"},
                     system=_system_prompt(elemento, catalogo),
-                    tools=[TOOL_MURO],
+                    tools=[TOOL_MURO, TOOL_OPERAR],
                     tool_choice={"type": "auto"},
                     messages=msgs,
                 )
 
             try:
                 resp = _llamar(mensajes)
-                texto, spec = _extraer(resp)
+                texto, spec, cambios, tu_ids = _extraer(resp)
 
                 receta = resumen = None
-                spec_ok = spec
-                if spec is not None:
-                    try:
-                        # La ficha NORMALIZADA es la que manda para TODO: construir,
-                        # resumir e inventariar. Sacar el resumen de la cruda mostraba
-                        # «2 mallas verticales» junto a «φ0 @ 0» en la misma pantalla
-                        # (visto por el usuario 31-ago): dos lecturas del mismo dato.
-                        spec = _normalizar_ficha(spec)
-                        receta = _construir_receta_muro(spec, _figuras_de(cur, spec))
-                    except ValueError:
-                        # Ficha incompleta: no se inventa nada y el texto del modelo
-                        # (que ya suele estar preguntando) se entrega tal cual.
-                        log.info("asistente: ficha incompleta (%s)", email)
-                        spec = None
-                        receta = None
+                avisos = []
+                spec_ok = None
+                figuras = _figuras_para(cur, spec, cambios)
+
+                def _armar(spec_x, cambios_x):
+                    """(receta|None, spec_ok|None) a partir de lo que llamo el
+                    modelo: la ficha arma de cero, los cambios operan sobre lo
+                    construido o sobre lo que hay en el editor."""
+                    r, sp = None, None
+                    if spec_x is not None:
+                        try:
+                            nf = _normalizar_ficha(spec_x)
+                            r, sp = _construir_receta_muro(nf, figuras), nf
+                        except ValueError:
+                            log.info("asistente: ficha incompleta (%s)", email)
+                    if cambios_x:
+                        base = r if r is not None else body.receta_actual
+                        if not base:
+                            avisos.append("No hay un muro abierto sobre el cual operar.")
+                        else:
+                            try:
+                                r, avs = _aplicar_cambios(base, cambios_x, figuras)
+                                avisos.extend(avs)
+                                sp = None      # el resumen sale de la receta operada
+                            except ValueError as exc:
+                                avisos.append(str(exc))
+                                r = None
+                    return r, sp
+
+                receta, spec_ok = _armar(spec, cambios)
+
+                if receta is not None:
                     errores = _validar_receta(cur, receta)
-                    if errores:
-                        # UN reintento con el error como feedback (§12 decisión 13)
-                        tu_id = next(b.id for b in resp.content if b.type == "tool_use")
+                    if errores and tu_ids:
+                        # UN reintento con el error como feedback (decision 13).
+                        # tool_result para CADA tool_use del turno: la API exige
+                        # respuesta a todos.
+                        contenido = [{"type": "tool_result", "tool_use_id": t,
+                                      "is_error": True,
+                                      "content": "La receta no pasó la validación: "
+                                                 + " · ".join(errores)
+                                                 + " Corrige y llama la herramienta de nuevo."}
+                                     for t in tu_ids]
                         resp2 = _llamar(mensajes + [
                             {"role": "assistant", "content": resp.content},
-                            {"role": "user", "content": [{
-                                "type": "tool_result", "tool_use_id": tu_id,
-                                "is_error": True,
-                                "content": "La receta no pasó la validación: "
-                                           + " · ".join(errores)
-                                           + " Corrige la ficha y llama proponer_muro de nuevo.",
-                            }]},
+                            {"role": "user", "content": contenido},
                         ])
-                        texto2, spec2 = _extraer(resp2)
+                        texto2, spec2, cambios2, _tu2 = _extraer(resp2)
                         texto = texto2 or texto
-                        if spec2 is not None:
-                            spec2 = _normalizar_ficha(spec2)
-                            spec_ok = spec2
-                            receta = _construir_receta_muro(spec2, _figuras_de(cur, spec2))
-                            errores = _validar_receta(cur, receta)
-                        if errores:
-                            log.warning("asistente: receta inválida tras reintento (%s): %s",
-                                        email, errores)
-                            receta = None
-                            texto = (texto + "\n\n(No pude dejar la receta válida: "
-                                     + " · ".join(errores) + ")").strip()
-                    if receta is not None:
-                        resumen = _resumen_de_spec(spec_ok)
+                        figuras = _figuras_para(cur, spec2, cambios2)
+                        receta, spec_ok = _armar(spec2, cambios2)
+                        errores = _validar_receta(cur, receta) if receta is not None else errores
+                    if errores:
+                        log.warning("asistente: receta invalida tras reintento (%s): %s",
+                                    email, errores)
+                        receta = None
+                        texto = (texto + "\n\n(No pude dejar la receta válida: "
+                                 + " · ".join(errores) + ")").strip()
 
-                # El modelo a veces llama la herramienta SIN texto (visto en la
-                # primera prueba real): la respuesta "…" parecia un cuelgue. Si
-                # hay receta y no hay palabras, se pone la frase de cierre.
+                if receta is not None:
+                    resumen = (_resumen_de_spec(spec_ok) if spec_ok
+                               else _resumen_de_receta(receta))
+                if avisos:
+                    texto = (texto + "\n\n" + " ".join(avisos)).strip()
                 if receta is None and not texto:
                     texto = ("Me falta algo para armarlo. Dime al menos las "
                              "dimensiones del muro y qué armadura quieres.")
                 if receta is not None and not texto:
-                    texto = ("Listo — armé la receta y la cargué al editor como "
-                             "borrador. Revísala en el 3D; si quieres ajustar "
-                             "algo, dime.")
-                return {"texto": texto or "…", "receta": receta, "resumen": resumen}
+                    texto = ("Listo — apliqué los cambios y cargué el resultado "
+                             "al editor. Revísalo en el 3D; si algo no calza, dime.")
+                return {"texto": texto, "receta": receta, "resumen": resumen}
 
             except anthropic.AuthenticationError as e:
                 raise HTTPException(status_code=503,

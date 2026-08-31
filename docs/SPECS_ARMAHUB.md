@@ -1695,6 +1695,20 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   sin crédito o clave inválida → «avísale al administrador»; conversación muy larga → «cierra el
   chat y ábrelo de nuevo, el muro no se pierde». El detalle técnico queda detrás, para quien lo
   necesite. Cubre también timeout y fallo de red.
+- **F1.16 — operar_barras: el asistente OPERA el editor (31-ago, giro de producto)**: el usuario
+  fijó el principio — es un asistente, debe acceder a los controles y modificarlos según se le
+  pida; el conocimiento es un lujo posterior. Segunda herramienta `operar_barras` con acciones
+  agregar / editar / quitar sobre barras puntuales, referidas por el **inventario numerado** que
+  ahora viaja en el prompt en vez del JSON crudo («la barra 3»). El constructor se descompuso en
+  **fábricas por armadura** (`_fabricar`) que usan tanto la ficha (muro de cero) como los cambios
+  (operar) — una sola fábrica, sin divergencia. `_editar_comp` escribe lo MISMO que escribiría el
+  panel (dims/distribución/orient). Medidas anti-topes: schema plano con centinelas (0 uniones en
+  operar_barras; test cuenta las de ambas herramientas), sin strict. Política nueva de conversación
+  (pedido del usuario): **PROPONE, NO INTERROGUES** — solo las dimensiones del hormigón se
+  preguntan; todo lo demás de las armaduras pedidas se asume con lo típico (malla φ8@20, traba φ8
+  40×40, estribo φ8@10), se marca 'asumido' y se ofrece corregir al final. Índice inválido avisa
+  sin reventar; validación + reintento cubren ambas herramientas (tool_result para todos los
+  tool_use del turno). Suite 89 checks + motor real sobre receta operada.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
