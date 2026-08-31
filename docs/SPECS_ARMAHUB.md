@@ -1578,6 +1578,17 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   recub, traba cruza espesor, CB en ambos testeros, EC en la punta, nada fuera del hormigón);
   encadenado desde `tests/test_asistente_backend.py`. UX: auto-carga de la receta al editor,
   contador de segundos, cierre cuando la respuesta viene sin texto, esfuerzo medio.
+- **F1.3 — figura/jerarquía en la ficha + instalación en vivo (HECHA 31-ago)**: el usuario pidió
+  «malla horizontal 104B, jerarquía 1» y el asistente contestó que eso no era suyo y lo mandó a
+  reportar un bug inexistente — era un hueco de la ficha, no del modelo. Ahora `figura` y
+  `jerarquia` son campos OPCIONALES por elemento (null = default de la plataforma) y los parciales
+  y ángulos salen del **catálogo real** (`cargar_figuras`), no de una tabla escrita a mano: una
+  figura de 2, 3 o 4 lados escribe las dims que le corresponden. Además la receta se **instala en
+  vivo**: entra el hormigón y las barras se colocan de a una por
+  `templateEditorAgregarComponente` (la misma puerta del clic manual), con el chat mostrando
+  «colocando 3 de 9». El botón del panel pasó a ser «Cargar la propuesta completa».
+  Corregido también el filtro del documento de conocimiento: comparaba el título entero, así que
+  una sección con paréntesis («## FIGURAS (códigos…)») nunca llegaba al prompt **en silencio**.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

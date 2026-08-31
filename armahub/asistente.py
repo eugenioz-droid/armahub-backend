@@ -64,10 +64,17 @@ def _conocimiento(elemento: str) -> str:
             texto = f.read()
     except OSError:
         return ""
+    # GENERAL y FIGURAS valen para todos los elementos; el resto de las secciones
+    # son del elemento que se esta armando (catalogado por elemento, SPECS 12.8).
     partes, quedarse = [], False
     for linea in texto.splitlines():
         if linea.startswith("## "):
-            quedarse = linea[3:].strip().upper() in ("GENERAL", elemento.upper())
+            # Se compara la PRIMERA PALABRA del titulo: los encabezados llevan
+            # aclaraciones entre parentesis ("## FIGURAS (codigos del catalogo)")
+            # y comparar la linea entera dejaba la seccion fuera del prompt en
+            # silencio — que es peor que no tenerla, porque parece cargada.
+            titulo = linea[3:].strip().split("(")[0].strip().upper()
+            quedarse = titulo in ("GENERAL", "FIGURAS", elemento.upper())
         if quedarse:
             partes.append(linea)
     return "\n".join(partes)
@@ -78,6 +85,33 @@ def _conocimiento(elemento: str) -> str:
 # Campos simples de dominio; la receta la arma _construir_receta_muro abajo.
 # ---------------------------------------------------------------------------
 _ORIGENES = ["leido", "config", "asumido"]
+
+# Figura y jerarquia SON PARTE DE LA FICHA (feedback del usuario 31-ago: le pidio
+# al asistente "malla horizontal 104B, jerarquia 1" y este contesto que no estaban
+# en su ficha, mandandolo a reportar un bug que no existia). El cubicador conoce
+# los codigos del catalogo y tiene que poder dictarlos; van OPCIONALES (null = el
+# default de la plataforma). Los parciales y angulos de la figura NO se inventan
+# aca: salen del catalogo real (ver _construir_receta_muro).
+_FIGURA_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "string"}],
+    "description": "codigo de figura del catalogo (101A recta, 103B traba con "
+                   "ganchos, 104D estribo cerrado...). null = default de la plataforma",
+}
+_JERARQUIA_PROP = {
+    "anyOf": [{"type": "null"}, {"type": "integer"}],
+    "description": "orden de apilado: 1 = pegada a la cara, 2 = se apoya sobre la "
+                   "de nivel 1. null = default",
+}
+_MALLA_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["diam", "sep", "figura", "jerarquia"],
+    "properties": {
+        "diam": {"type": "number", "description": "φ en mm"},
+        "sep": {"type": "number", "description": "@ en cm"},
+        "figura": _FIGURA_PROP,
+        "jerarquia": _JERARQUIA_PROP,
+    },
+}
 
 TOOL_MURO = {
     "name": "proponer_muro",
@@ -103,22 +137,8 @@ TOOL_MURO = {
                     "recubrimiento": {"type": "number", "description": "cm"},
                 },
             },
-            "malla_vertical": {
-                "type": "object", "additionalProperties": False,
-                "required": ["diam", "sep"],
-                "properties": {
-                    "diam": {"type": "number", "description": "φ en mm"},
-                    "sep": {"type": "number", "description": "@ en cm"},
-                },
-            },
-            "malla_horizontal": {
-                "type": "object", "additionalProperties": False,
-                "required": ["diam", "sep"],
-                "properties": {
-                    "diam": {"type": "number", "description": "φ en mm"},
-                    "sep": {"type": "number", "description": "@ en cm"},
-                },
-            },
+            "malla_vertical": _MALLA_SCHEMA,
+            "malla_horizontal": _MALLA_SCHEMA,
             "doble_malla": {"type": "boolean"},
             "bordes": {
                 "anyOf": [
@@ -128,20 +148,22 @@ TOOL_MURO = {
                      "properties": {
                          "barras": {
                              "type": "object", "additionalProperties": False,
-                             "required": ["diam", "barras_capa", "n_capas"],
+                             "required": ["diam", "barras_capa", "n_capas", "figura"],
                              "properties": {
                                  "diam": {"type": "number", "description": "φ cabezal en mm"},
                                  "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
                                  "n_capas": {"type": "integer", "description": "capas hacia el interior del muro"},
+                                 "figura": _FIGURA_PROP,
                              }},
                          "estribo": {
                              "anyOf": [
                                  {"type": "null"},
                                  {"type": "object", "additionalProperties": False,
-                                  "required": ["diam", "sep"],
+                                  "required": ["diam", "sep", "figura"],
                                   "properties": {
                                       "diam": {"type": "number", "description": "φ estribo en mm"},
                                       "sep": {"type": "number", "description": "@ en cm (usual ≤6φ y ≤½ espesor)"},
+                                      "figura": _FIGURA_PROP,
                                   }},
                              ]},
                          "largo": {"type": "number",
@@ -153,11 +175,13 @@ TOOL_MURO = {
                 "anyOf": [
                     {"type": "null"},
                     {"type": "object", "additionalProperties": False,
-                     "required": ["diam", "sx", "sy"],
+                     "required": ["diam", "sx", "sy", "figura", "jerarquia"],
                      "properties": {
                          "diam": {"type": "number", "description": "φ en mm"},
                          "sx": {"type": "number", "description": "grilla horizontal cm"},
                          "sy": {"type": "number", "description": "grilla vertical cm"},
+                         "figura": _FIGURA_PROP,
+                         "jerarquia": _JERARQUIA_PROP,
                      }},
                 ],
             },
@@ -182,7 +206,21 @@ def _r1(v):
     return round(float(v), 1)
 
 
-def _construir_receta_muro(spec: dict) -> dict:
+def _spec_figura(figuras, codigo, parciales_def, angulos_def):
+    """(parciales, angulos) de una figura. Salen del CATALOGO cuando se pudo leer
+    (`figuras` = CatalogoFiguras del endpoint); si no, de la tabla de respaldo del
+    llamador. Nunca se inventan: una figura pedida por el usuario puede tener 2, 3
+    o 4 lados y de eso dependen las dims que hay que escribir."""
+    if figuras is not None:
+        from .catalogo import get_figura
+        f = get_figura(figuras, codigo)
+        if f:
+            return (list(f.get("parciales") or parciales_def),
+                    list(f.get("angulos") or []))
+    return list(parciales_def), list(angulos_def)
+
+
+def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     """Ficha simple -> receta {tipo,geometria,componentes[]} EXACTAMENTE como los
     crea el Template Editor a mano (mapa del 31-ago sobre reglas.js /
     template_editor.js / tests):
@@ -226,14 +264,27 @@ def _construir_receta_muro(spec: dict) -> dict:
     def _autoABCD():
         return {L: {"modo": "auto"} for L in ("A", "B", "C", "D")}
 
+    def _dimsDe(parciales):
+        return {L: {"modo": "auto"} for L in parciales}
+
+    def _pedido(d, clave, porDefecto):
+        v = (d or {}).get(clave)
+        return v if v not in (None, "", 0) else porDefecto
+
     comps = []
     mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
+    fmv = _pedido(mv, "figura", "101A")
+    fmh = _pedido(mh, "figura", "101A")
+    pmv, amv = _spec_figura(figuras, fmv, ["A"], [])
+    pmh, amh = _spec_figura(figuras, fmh, ["A"], [])
+    jmv = int(_pedido(mv, "jerarquia", 1))
+    jmh = int(_pedido(mh, "jerarquia", 1))
     for lado in ([1, -1] if doble else [1]):
-        comps.append(_base("MV", "101A", mv["diam"], [], "lineal",
-                           "lateral", lado, "y", "de_pie", False, _autoA(), 1,
+        comps.append(_base("MV", fmv, mv["diam"], amv, "lineal",
+                           "lateral", lado, "y", "de_pie", False, _dimsDe(pmv), jmv,
                            _lin(mv["sep"], "x", -rx, rx)))
-        comps.append(_base("MH", "101A", mh["diam"], [], "lineal",
-                           "lateral", lado, "x", "acostada", False, _autoA(), 1,
+        comps.append(_base("MH", fmh, mh["diam"], amh, "lineal",
+                           "lateral", lado, "x", "acostada", False, _dimsDe(pmh), jmh,
                            _lin(mh["sep"], "y", -ry, ry)))
 
     tr = spec.get("trabas")
@@ -246,20 +297,24 @@ def _construir_receta_muro(spec: dict) -> dict:
         m_gancho = 6.0 * float(tr["diam"]) / 10.0 + 5.0
         dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
                           "sep": _r1(tr["sy"])}
-        # 103B = cuerpo + 2 ganchos: "eso es una traba" (reglas.js:1284, medido).
-        # Con 104D/104B el lado C en auto resolvia contra el ALTO (pieza de 311 cm
-        # que se salia del hormigon — medido con el motor, 31-ago).
-        comps.append(_base("TC", "103B", tr["diam"], [45, 45], "arreglo",
+        # 103B por defecto = cuerpo + 2 ganchos: "eso es una traba" (reglas.js:1284,
+        # medido). Con 104D/104B el lado C en auto resolvia contra el ALTO (pieza de
+        # 311 cm fuera del hormigon — medido 31-ago). El usuario puede pedir otra.
+        ftr = _pedido(tr, "figura", "103B")
+        ptr, atr = _spec_figura(figuras, ftr, ["A", "B", "C"], [45, 45])
+        comps.append(_base("TC", ftr, tr["diam"], atr, "arreglo",
                            "sup", 1, "z", "volteada", True,
-                           {L: {"modo": "auto"} for L in ("A", "B", "C")}, 2, dist))
+                           _dimsDe(ptr), int(_pedido(tr, "jerarquia", 2)), dist))
 
     bo = spec.get("bordes")
     if bo:
         bb, est = bo["barras"], bo.get("estribo")
         lconf = float(bo.get("largo") or 40)
+        fcb = _pedido(bb, "figura", "101A")
+        pcb, acb = _spec_figura(figuras, fcb, ["A"], [])
         for lado in (1, -1):
-            comps.append(_base("CB", "101A", bb["diam"], [], "puntual",
-                               "extremo", lado, "y", "de_pie", False, _autoA(), 1,
+            comps.append(_base("CB", fcb, bb["diam"], acb, "puntual",
+                               "extremo", lado, "y", "de_pie", False, _dimsDe(pcb), 1,
                                {"modo": "layered",
                                 "n_capas": max(1, int(bb["n_capas"])),
                                 "barras_capa": max(1, int(bb["barras_capa"])),
@@ -269,13 +324,18 @@ def _construir_receta_muro(spec: dict) -> dict:
                 # extremo 'centro' + pos_hint.x = la UNICA combinacion que el
                 # motor respeta tal cual (medido 31-ago: 'fin' ignora el hint y
                 # cae al testero opuesto; hint+pos_ancla se pasa del hormigon).
-                ec = _base("EC", "104D", est["diam"], [135, 135], "lineal",
-                           "lateral", 1, "y", "de_pie", False,
-                           {"A": {"modo": "auto"},
-                            "B": {"modo": "fija", "valor": _r1(lconf),
-                                  "extremo": "centro"},
-                            "C": {"modo": "auto"}, "D": {"modo": "auto"}},
-                           1, _lin(est["sep"], "y", -ry, ry))
+                fec = _pedido(est, "figura", "104D")
+                pec, aec = _spec_figura(figuras, fec, ["A", "B", "C", "D"], [135, 135])
+                dec = _dimsDe(pec)
+                # El largo confinado se escribe en el lado B (el que corre a lo largo
+                # del muro en un marco de 4 lados). Si la figura pedida no tiene B, no
+                # hay donde acotarla: queda en auto y el estribo abraza lo que da.
+                if "B" in dec:
+                    dec["B"] = {"modo": "fija", "valor": _r1(lconf), "extremo": "centro"}
+                ec = _base("EC", fec, est["diam"], aec, "lineal",
+                           "lateral", 1, "y", "de_pie", False, dec,
+                           int(_pedido(est, "jerarquia", 1)),
+                           _lin(est["sep"], "y", -ry, ry))
                 ec["pos_hint"] = {"x": _r1(lado * (largo / 2.0 - rec - lconf / 2.0))}
                 comps.append(ec)
 
@@ -289,6 +349,19 @@ def _construir_receta_muro(spec: dict) -> dict:
 
 
 _ORIGEN_LBL = {"leido": "leído", "config": "config", "asumido": "asumido"}
+
+
+def _detalle_fig(d):
+    """Sufijo con la figura/jerarquia SOLO cuando el usuario las dicto (si no, el
+    formulario no tiene por que hablar de codigos de catalogo)."""
+    if not isinstance(d, dict):
+        return ""
+    partes = []
+    if d.get("figura"):
+        partes.append(str(d["figura"]))
+    if d.get("jerarquia") not in (None, ""):
+        partes.append("jer." + str(d["jerarquia"]))
+    return (" · " + " ".join(partes)) if partes else ""
 
 
 def _resumen_de_spec(spec: dict) -> list:
@@ -307,18 +380,20 @@ def _resumen_de_spec(spec: dict) -> list:
          "origen": org("recubrimiento")},
         {"seccion": "Barras"},
         {"label": "Malla vertical",
-         "valor": f"φ{spec['malla_vertical']['diam']:g} @ {spec['malla_vertical']['sep']:g}",
+         "valor": f"φ{spec['malla_vertical']['diam']:g} @ {spec['malla_vertical']['sep']:g}"
+                  + _detalle_fig(spec["malla_vertical"]),
          "origen": org("malla_vertical")},
         {"label": "Malla horizontal",
-         "valor": f"φ{spec['malla_horizontal']['diam']:g} @ {spec['malla_horizontal']['sep']:g}",
+         "valor": f"φ{spec['malla_horizontal']['diam']:g} @ {spec['malla_horizontal']['sep']:g}"
+                  + _detalle_fig(spec["malla_horizontal"]),
          "origen": org("malla_horizontal")},
         {"label": "Mallas", "valor": "doble" if spec.get("doble_malla", True) else "simple",
          "origen": org("doble_malla")},
     ]
     tr = spec.get("trabas")
     filas.append({"label": "Trabas",
-                  "valor": (f"φ{tr['diam']:g} · {tr['sx']:g} × {tr['sy']:g}" if tr
-                            else "sin trabas"),
+                  "valor": ((f"φ{tr['diam']:g} · {tr['sx']:g} × {tr['sy']:g}"
+                             + _detalle_fig(tr)) if tr else "sin trabas"),
                   "origen": org("trabas")})
     bo = spec.get("bordes")
     filas.append({"seccion": "Confinamiento de borde"})
@@ -366,6 +441,11 @@ def _system_prompt(elemento: str) -> str:
         "pregunta lo crítico (φ y cantidad de cabezales); el estribo puedes "
         "asumirlo con lo usual (φ8-φ10, @ ≤6φ del cabezal y ≤½ espesor; largo "
         "confinado ≥40 cm) marcándolo 'asumido'.\n"
+        "· FIGURA y JERARQUÍA SÍ son tuyas: la ficha las lleva por elemento. Si el "
+        "usuario dice «la malla horizontal es 104B» o «esa traba con jerarquía 2», "
+        "ponlo en la ficha y vuelve a proponer — NUNCA le digas que eso lo decide "
+        "el motor o que lo reporte como bug. Si no las menciona, déjalas en null y "
+        "manda el default de la plataforma.\n"
         "· Responde en español chileno neutro, breve, sin jerga técnica de la "
         "plataforma. Nada de muros de texto.\n\n"
         "DEFAULTS DE LA PLATAFORMA (origen 'config'):\n"
@@ -409,6 +489,27 @@ def _mensajes_api(body: ChatBody) -> list:
             "pantalla; si pide modificar, parte de esto]\n"
             + json.dumps(body.receta_actual, ensure_ascii=False))
     return msgs
+
+
+def _figuras_de(cur, spec: dict):
+    """Catalogo (1 consulta) de las figuras que la ficha nombra + los defaults, para
+    que el constructor escriba las dims y angulos REALES de cada una."""
+    codigos = {"101A", "103B", "104D"}
+    for k in ("malla_vertical", "malla_horizontal", "trabas"):
+        d = spec.get(k)
+        if isinstance(d, dict) and d.get("figura"):
+            codigos.add(str(d["figura"]).strip().upper())
+    bo = spec.get("bordes")
+    if isinstance(bo, dict):
+        for k in ("barras", "estribo"):
+            d = bo.get(k)
+            if isinstance(d, dict) and d.get("figura"):
+                codigos.add(str(d["figura"]).strip().upper())
+    try:
+        from .catalogo import cargar_figuras
+        return cargar_figuras(cur, codigos)
+    except Exception:      # el constructor cae a su tabla de respaldo
+        return None
 
 
 def _tope_diario(email: str):
@@ -476,7 +577,7 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 receta = resumen = None
                 spec_ok = spec
                 if spec is not None:
-                    receta = _construir_receta_muro(spec)
+                    receta = _construir_receta_muro(spec, _figuras_de(cur, spec))
                     errores = _validar_receta(cur, receta)
                     if errores:
                         # UN reintento con el error como feedback (§12 decisión 13)
@@ -495,7 +596,7 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                         texto = texto2 or texto
                         if spec2 is not None:
                             spec_ok = spec2
-                            receta = _construir_receta_muro(spec2)
+                            receta = _construir_receta_muro(spec2, _figuras_de(cur, spec2))
                             errores = _validar_receta(cur, receta)
                         if errores:
                             log.warning("asistente: receta inválida tras reintento (%s): %s",

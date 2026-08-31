@@ -50,7 +50,26 @@ DS61 (2011), guía Innova/UV de muros, estadística U. de Chile, AZA/NCh211.
   ~@10 cm en muro de 20); largo confinado típico ≥ 40 cm desde la punta; trabas
   con ganchos sísmicos 135° en AMBOS extremos (extensión 6·φ, mínimo 7,5 cm).
   Los planos lo llaman «elemento de borde», «refuerzo de borde» o «confinamiento».
-  NOTA DE ALCANCE: la ficha actual del asistente aún no arma bordes — si el muro
-  trae, decirlo simple y proponer igual mallas + trabas.
+  La ficha del asistente SÍ arma bordes: cabezales por punta (φ, barras por capa,
+  capas) + estribo de confinamiento (φ, @, largo confinado).
 - Gancho sísmico (donde el plano lo pida): doblez 135°, extensión 6·φ mínimo
   7,5 cm (φ8→7,5 · φ10→7,5 · φ12→7,5 · φ16→9,6 · φ18→10,8 · φ22→13,2 cm).
+
+## FIGURAS (códigos del catálogo, para cuando el usuario los dicta)
+
+El cubicador puede pedir una figura por su código; va en la ficha (campo `figura`)
+y también la `jerarquia` (1 = pegada a la cara, 2 = se apoya sobre la de nivel 1).
+Familias del catálogo Armacero:
+
+- **101A** — barra RECTA, sin dobleces. Es el default de malla vertical, malla
+  horizontal y cabezal de muro.
+- **102A/102B/102C** — 2 tramos (una pata): 102A codo 90°, 102B gancho 135°
+  (sísmico), 102C gancho 45°.
+- **103A/103G** — 3 tramos con codos 90° (grapa/U). **103B** — 3 tramos con dos
+  patas a 45°: es el default de traba de muro (cuerpo que cruza el espesor + dos
+  ganchos). **103E/103H** — 3 tramos con ganchos 135° en ambos extremos.
+- **104A** — marco de 4 tramos sin ganchos. **104D** — estribo cerrado con ganchos
+  135° en ambos extremos: es el default del estribo de confinamiento de borde.
+
+Si el usuario no nombra figura, se usa el default; no hay que inventar códigos.
+Una figura que no exista en el catálogo la rechaza la validación.

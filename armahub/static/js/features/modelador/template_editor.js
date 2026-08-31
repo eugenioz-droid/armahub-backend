@@ -13259,6 +13259,21 @@
   // ACTUAL (copia; el asistente nunca toca ST directo) y el contexto para reabrir el
   // editor con una receta nueva por LA MISMA puerta que usa el borrador
   // (templateEditorAbrir). Lo consume modelador/asistente.js; no lo usa nadie mas.
+  // AGREGAR UN COMPONENTE DESDE FUERA — lo usa el Asistente IA para INSTALAR LA
+  // RECETA EN VIVO, un componente a la vez, y que el usuario vea aparecer las
+  // barras en vez de que se materialice todo de golpe (pedido 31-ago).
+  // Es la MISMA secuencia del clic que coloca a mano (push + _regenerar +
+  // _renderPanel): no hay un segundo camino de inserción que pueda divergir.
+  global.templateEditorAgregarComponente = function (comp) {
+    if (!ST.receta || !comp || ST.soloVista) return false;
+    ST.receta.componentes = ST.receta.componentes || [];
+    ST.receta.componentes.push(comp);
+    ST.selCi = ST.receta.componentes.length - 1;
+    _regenerar();
+    _renderPanel();
+    return true;
+  };
+
   global.templateEditorEstado = function () {
     var bd = $('te_backdrop');
     return {

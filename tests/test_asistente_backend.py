@@ -115,6 +115,24 @@ check("rangos sin ancla (la deriva normalizarReceta) y de recub a recub",
       "ancla" not in mvs[0]["distribucion"]["rango"]
       and mvs[0]["distribucion"]["rango"]["from"] == -255.0)
 
+# --- FIGURA Y JERARQUIA LAS DICTA EL USUARIO (feedback 31-ago: el asistente decia
+#     que no eran suyas y mandaba a reportar un bug inexistente) ---
+SPEC_FIG = dict(SPEC,
+                malla_horizontal=dict(SPEC["malla_horizontal"], figura="104B", jerarquia=1),
+                trabas=dict(SPEC["trabas"], figura="103E", jerarquia=3))
+rf = _construir_receta_muro(SPEC_FIG)
+mh_f = [c for c in rf["componentes"] if c["tipologia"] == "MH"]
+tc_f = [c for c in rf["componentes"] if c["tipologia"] == "TC"][0]
+check("la figura pedida para la malla horizontal llega a la receta",
+      all(c["figura"] == "104B" and c["jerarquia"] == 1 for c in mh_f))
+check("la figura y jerarquia pedidas para la traba llegan a la receta",
+      tc_f["figura"] == "103E" and tc_f["jerarquia"] == 3)
+check("sin figura pedida se mantiene el default de la plataforma",
+      [c["figura"] for c in r["componentes"] if c["tipologia"] == "MH"] == ["101A", "101A"])
+check("el resumen muestra la figura solo cuando el usuario la dicto",
+      any("104B" in f.get("valor", "") for f in _resumen_de_spec(SPEC_FIG))
+      and not any("101A" in f.get("valor", "") for f in _resumen_de_spec(SPEC)))
+
 # --- resumen para el formulario del chat ---
 filas = _resumen_de_spec(SPEC)
 check("resumen: 3 secciones y fila de cabezales con origen",
@@ -177,17 +195,27 @@ _jt = io.open(os.path.join(BASE, "armahub", "static", "js", "features",
                            "modelador", "template_editor.js"), encoding="utf-8").read()
 _html = io.open(os.path.join(BASE, "armahub", "templates", "tabs",
                              "template_editor_modal.html"), encoding="utf-8").read()
-check("la receta se auto-carga al editor al llegar (_cargarBorrador(true))",
-      "_cargarBorrador(true)" in _ja)
+check("la receta se INSTALA EN VIVO al llegar (no de golpe, no a mano)",
+      "_instalarEnVivo()" in _ja
+      and "templateEditorAgregarComponente" in _ja
+      and "templateEditorAgregarComponente" in _jt)
 check("el boton del panel es RE-carga y no pasa el evento como flag",
       "_cargarBorrador(false)" in _ja
-      and "Volver a cargar la propuesta" in _html)
+      and "Cargar la propuesta completa" in _html)
 check("template_editor.js estampa el contador de aperturas",
       "__teAperturas" in _jt)
 check("el chat lee ese contador y NO envuelve templateEditorAbrir (orden de carga)",
       "__teAperturas" in _ja and "_envolverAbrir" not in _ja)
 check("templateEditorEstado expuesto para que el chat vea la receta actual",
       "global.templateEditorEstado" in _jt)
+# El filtro de secciones del conocimiento: lo que NO llega al prompt es peor que
+# no escribirlo (parece cargado y no lo esta). Se mide el texto que se inyecta.
+from armahub.asistente import _conocimiento as _con
+check("el prompt de MURO recibe GENERAL + MURO + FIGURAS (titulos con parentesis)",
+      "## GENERAL" in _con("muro") and "## MURO" in _con("muro")
+      and "103B" in _con("muro"))
+check("otro elemento NO arrastra la seccion del muro",
+      "## MURO" not in _con("viga") and "103B" in _con("viga"))
 check("conocimiento_asistente.md existe con seccion MURO",
       "## MURO" in io.open(os.path.join(BASE, "armahub", "data",
                                         "conocimiento_asistente.md"), encoding="utf-8").read())

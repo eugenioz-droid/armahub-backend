@@ -13,9 +13,10 @@
 // detecta leyendo el contador `global.__teAperturas` que estampa
 // templateEditorAbrir (ver _reiniciarSiOtroElemento). F5 la pierde (F1).
 //
-// «Cargar como borrador» reabre el editor con la receta propuesta por LA MISMA
-// puerta que usa el borrador local (templateEditorAbrir), conservando contexto
-// de obra/piso. No guarda nada (§12.2.5).
+// Al llegar una receta se INSTALA EN VIVO: el hormigón primero y las barras de a
+// una (templateEditorAgregarComponente, la misma puerta del clic manual), con una
+// pausa corta entre medio — el usuario ve el muro armándose. El botón del panel
+// vuelve a cargarla completa de una. No se guarda nada (§12.2.5).
 //
 // El markup y el CSS viven en template_editor_modal.html (scopeados, 3 temas).
 // =============================================================================
@@ -132,9 +133,10 @@
       if (d.receta) {
         PROPUESTA = { receta: d.receta, resumen: d.resumen || [] };
         _pintarForm(PROPUESTA.resumen);
-        // AUTO-CARGA: la propuesta entra ALTIRO al editor como borrador (§12.2.5,
-        // nada guardado) — el usuario ve las barras aparecer sin apretar nada.
-        _cargarBorrador(true);
+        // INSTALACIÓN EN VIVO (§12.2.5, nada guardado): el hormigón entra primero
+        // y las barras se van colocando de a una, para que el usuario VEA cómo se
+        // arma el muro en vez de que aparezca todo de golpe (pedido 31-ago).
+        _instalarEnVivo();
       }
     }).catch(function (e) {
       if (esperando) esperando.remove();
@@ -191,6 +193,72 @@
   // CARGAR COMO BORRADOR — reabre el editor con la receta propuesta (§12.2.5),
   // por la MISMA puerta que el borrador local. No guarda nada.
   // ---------------------------------------------------------------------------
+  // INSTALAR EN VIVO — abre el editor con el HORMIGÓN y ningún fierro, y después
+  // agrega los componentes uno por uno (templateEditorAgregarComponente, la misma
+  // puerta del clic que coloca a mano). Entre uno y otro hay una pausa corta: lo
+  // que se ve es el muro armándose. Si el usuario cierra el modal a medio camino,
+  // se corta sin dejar nada a medias.
+  var PASO_MS = 320;
+  var _instalando = false;
+
+  function _instalarEnVivo() {
+    if (!PROPUESTA || !PROPUESTA.receta) return;
+    if (typeof global.templateEditorAbrir !== 'function'
+      || typeof global.templateEditorAgregarComponente !== 'function') {
+      _cargarBorrador(true);   // editor viejo sin la puerta: carga de una
+      return;
+    }
+    var est = _estadoEditor() || {};
+    if (est.soloVista) return;
+    var comps = (PROPUESTA.receta.componentes || []).slice();
+    if (!comps.length) { _cargarBorrador(true); return; }
+
+    _abrirConReceta({ tipo: PROPUESTA.receta.tipo,
+                      geometria: PROPUESTA.receta.geometria,
+                      componentes: [] }, est);
+    _instalando = true;
+    var i = 0;
+    (function siguiente() {
+      if (!_instalando) return;
+      var e = _estadoEditor();
+      if (!e || !e.abierto) { _instalando = false; _estado(null); return; }
+      if (i >= comps.length) {
+        _instalando = false;
+        _estado(null);
+        return;
+      }
+      global.templateEditorAgregarComponente(comps[i]);
+      i++;
+      _estado('colocando ' + i + ' de ' + comps.length);
+      global.setTimeout(siguiente, PASO_MS);
+    })();
+  }
+
+  // Texto de estado del encabezado del chat (vuelve a su etiqueta con null).
+  function _estado(txt) {
+    var e = $('te_iaEstado');
+    if (e) e.textContent = txt || 'muros · F1';
+  }
+
+  // Abrir el editor con una receta dada, conservando el contexto (obra/piso) y
+  // sin reiniciar la conversación (es el MISMO muro).
+  function _abrirConReceta(receta, est) {
+    _aplicandoIA = true;
+    try {
+      global.templateEditorAbrir({
+        elemento: 'MURO',
+        nombre: est.nombre || '',
+        dims: receta.geometria,
+        receta: receta,
+        templateId: null,
+        obra: (est.obra != null) ? est.obra : null,
+        ctxObra: est.ctxObra || null,
+        piso: est.piso || '',
+        instanciaId: (est.instanciaId != null) ? est.instanciaId : null
+      });
+    } finally { _aplicandoIA = false; _selloVisto = _sello(); }
+  }
+
   // auto=true → la carga automática al recibir la receta (el usuario ve las barras
   // aparecer sin apretar nada, pedido 31-ago). auto=false → el botón, que es una
   // RE-carga: vuelve a la propuesta después de que el usuario editó a mano.
@@ -202,22 +270,10 @@
       if (!auto) _burbuja('asistente', 'Este editor está en solo-vista: no puedo cargar la receta aquí.');
       return;
     }
-    _aplicandoIA = true;      // mismo muro: el sello se re-sella, no se reinicia
-    try {
-      global.templateEditorAbrir({
-        elemento: 'MURO',
-        nombre: est.nombre || '',
-        dims: PROPUESTA.receta.geometria,
-        receta: PROPUESTA.receta,
-        // templateId null: esta receta es NUEVA — «Guardar template» crea una,
-        // no pisa la que estaba abierta (mismo criterio que el modo obra).
-        templateId: null,
-        obra: (est.obra != null) ? est.obra : null,
-        ctxObra: est.ctxObra || null,
-        piso: est.piso || '',
-        instanciaId: (est.instanciaId != null) ? est.instanciaId : null
-      });
-    } finally { _aplicandoIA = false; _selloVisto = _sello(); }
+    // templateId null adentro de _abrirConReceta: esta receta es NUEVA — «Guardar
+    // template» crea una, no pisa la que estaba abierta (criterio del modo obra).
+    _instalando = false;              // una re-carga cancela una instalación en curso
+    _abrirConReceta(PROPUESTA.receta, est);
     // En auto-carga el texto de cierre ya lo puso la respuesta del asistente; este
     // mensaje es sólo para la RE-carga con el botón.
     if (!auto) {
@@ -262,6 +318,8 @@
   function _reiniciar() {
     CHAT = [];
     PROPUESTA = null;
+    _instalando = false;
+    _estado(null);
     var box = $('te_iaMsgs'); if (box) box.innerHTML = '';
     _pintarForm(null);
     if (ABIERTO) { _saludo(); }
@@ -308,8 +366,7 @@
     if (!b || b._iaBound) return;
     b._iaBound = true;
     _selloVisto = _sello();
-    var est = $('te_iaEstado');
-    if (est) est.textContent = 'muros · F1';
+    _estado(null);
     b.addEventListener('click', function () { ABIERTO ? _minimizar() : _abrir(); });
     var min = $('te_iaMin');
     if (min) min.addEventListener('click', _minimizar);
