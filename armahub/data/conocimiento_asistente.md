@@ -64,7 +64,7 @@ hacia adentro y la separación entre capas. Llevan el mismo empalme que la MV. S
 pide con figura de pata (102A y similares), **hay que decir cuánto mide la pata**: el
 cuerpo corre en la altura y la pata entra hacia el núcleo.
 
-**EC · Estribo Confinamiento.** Marco CERRADO con ganchos 135° que abraza el paquete
+**EC · Estribo Confinamiento.** Marco CERRADO con ganchos (figura de la casa: 106A) que abraza el paquete
 de cabezales en la punta. Corre en el plano de la sección y se reparte en la ALTURA,
 apretado (típico @10-15 cm). No abarca el muro entero: se acota al largo confinado de
 la punta (típico 40-80 cm).
@@ -95,7 +95,7 @@ la base de datos, y esa lista es la única autoridad. Acá va solo cómo leerla:
 - La letra distingue la variante (ángulos de los dobleces). En la lista inyectada cada
   código viene como `codigo:lados:angulos`, por ejemplo `104D:4:135/135`.
 - Defaults de la plataforma para muro: MV, MH y CB **101A** (recta); traba **103B**
-  (cuerpo que cruza el espesor + dos ganchos); estribo de confinamiento **104D**.
+  (cuerpo que cruza el espesor + dos ganchos); estribo de confinamiento **106A** (el de la casa).
 
 Si el usuario no nombra figura, se usa el default. Nunca inventar un código: si no está
 en la lista inyectada, no existe.

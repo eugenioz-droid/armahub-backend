@@ -493,8 +493,12 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
                 # extremo 'centro' + pos_hint.x = la UNICA combinacion que el
                 # motor respeta tal cual (medido 31-ago: 'fin' ignora el hint y
                 # cae al testero opuesto; hint+pos_ancla se pasa del hormigon).
-                fec = _pedido(est, "figura", "104D")
-                pec, aec = _spec_figura(figuras, fec, ["A", "B", "C", "D"], [135, 135])
+                # 106A = el estribo de la casa (correccion del usuario 31-ago).
+                # Medido contra el motor: 6 lados, cierra, ganchos de 45 grados —
+                # tramos [8.6, 37.2, 15.2, 39.2, 13.2, 8.6] con B fija en 40.
+                fec = _pedido(est, "figura", "106A")
+                pec, aec = _spec_figura(figuras, fec,
+                                        ["A", "B", "C", "D", "E", "F"], [45, 45])
                 dec = _dimsDe(pec)
                 # El largo confinado se escribe en el lado B (el que corre a lo largo
                 # del muro en un marco de 4 lados). Si la figura pedida no tiene B, no
@@ -769,7 +773,7 @@ def _catalogo_de_figuras(cur) -> str:
 def _figuras_de(cur, spec: dict):
     """Catalogo (1 consulta) de las figuras que la ficha nombra + los defaults, para
     que el constructor escriba las dims y angulos REALES de cada una."""
-    codigos = {"101A", "103B", "104D"}
+    codigos = {"101A", "103B", "106A"}
     for k in ("malla_vertical", "malla_horizontal", "trabas"):
         d = spec.get(k)
         if isinstance(d, dict) and d.get("figura"):

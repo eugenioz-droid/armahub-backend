@@ -140,7 +140,8 @@ check("el resumen muestra la figura solo cuando el usuario la dicto",
 CAT = {"101A": {"parciales": ["A"], "angulos": []},
        "102A": {"parciales": ["A", "B"], "angulos": []},
        "103B": {"parciales": ["A", "B", "C"], "angulos": [45, 45]},
-       "104D": {"parciales": ["A", "B", "C", "D"], "angulos": [135, 135]}}
+       "104D": {"parciales": ["A", "B", "C", "D"], "angulos": [135, 135]},
+       "106A": {"parciales": ["A", "B", "C", "D", "E", "F"], "angulos": [45, 45]}}
 SPEC_CB = dict(SPEC, bordes={
     "barras": {"diam": 22, "barras_capa": 2, "n_capas": 2, "figura": "102A",
                "empalme": 13.2, "pata": 25, "sep_capas": 15},
@@ -168,6 +169,13 @@ check("los TRAMOS multi-@ llegan al rango del estribo",
       ec1["distribucion"]["rango"]["tramos"] == [{"long": 80.0, "sep": 10.0},
                                                  {"long": 150.0, "sep": 20.0}])
 check("el anidado pedido se escribe", ec1["distribucion"]["anidar"] is True)
+check("el estribo por defecto es la figura de la casa (106A), no la 104D",
+      [c for c in _construir_receta_muro(
+          dict(SPEC, bordes={"barras": SPEC["bordes"]["barras"],
+                             "estribo": {"diam": 8, "sep": 10, "figura": None,
+                                         "tramos": None, "anidar": None},
+                             "largo": 40}), CAT)["componentes"]
+       if c["tipologia"] == "EC"][0]["figura"] == "106A")
 
 # --- NO INVENTAR ARMADURAS + inventario visible (31-ago: pidio cabezales y el
 #     asistente agrego un estribo phi8@10 de 32 barras que nadie pidio)

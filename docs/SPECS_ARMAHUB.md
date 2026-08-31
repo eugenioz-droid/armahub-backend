@@ -1636,6 +1636,14 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   cabezales nunca se escribe en el estribo. Y el formulario abre con una línea de **inventario**
   («2 mallas verticales + 2 horizontales + 1 traba + 2 cabezales») para que lo que sobra se vea
   antes de instalarse.
+- **F1.9 — el estribo de la casa es la 106A + verificación del render (31-ago)**: el usuario
+  preguntó si la barra que veía era una renderización defectuosa. **NO se pudo corroborar, y la
+  evidencia apunta a lo contrario**: `motor_geom.partesDeBarra` dibuja la polilínea LITERAL — un
+  cilindro por tramo y un toro por doblez, sin cerrar ni suavizar —, así que lo que se ve en
+  pantalla ES la lista de puntos. Medido además que el estribo que genera el asistente sale
+  CERRADO (6 tramos, puntas a 4 cm = el traslape del gancho). Corrección del usuario incorporada:
+  el estribo de confinamiento por defecto pasa de 104D a **106A** (verificado contra el motor:
+  6 lados, cierra, ganchos de 45°, tramos [8.6, 37.2, 15.2, 39.2, 13.2, 8.6] con B fija en 40).
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 
