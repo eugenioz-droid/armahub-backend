@@ -1550,8 +1550,17 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
     que reemplaza a #te_side (3D visible), minimizable, formulario demo con chips de origen,
     conversación de ejemplo. Archivos: `template_editor_modal.html` (markup+CSS scopeado),
     `modelador/asistente.js` (nuevo), `bootstrap.js` (carga). SIN lógica: la respuesta es fija.
-  - **Etapa 2 (conectar)**: endpoint `/asistente/chat`, doc de conocimiento, receta real en el
-    formulario, «Cargar como borrador». Pendiente del OK visual del usuario a la Etapa 1.
+  - **Etapa 2 (conectar, HECHA 30-ago tras OK visual)**: `armahub/asistente.py` (nuevo router
+    `POST /asistente/chat`): API Anthropic con tool use estricto `proponer_muro` — el modelo llena
+    una FICHA simple (geometría, mallas, trabas, origenes) y el backend construye la receta
+    determinísticamente (`_construir_receta_muro`, patrón del test canónico de muro); valida con
+    `_validar_receta` + 1 reintento; tope 200 llamadas/usuario/día; errores en castellano (sin
+    crédito → 402 «avisa al administrador»). Conocimiento en `armahub/data/conocimiento_asistente.md`
+    (§12.8, por elemento). Front: `asistente.js` conectado (Pensando…, formulario real por origen,
+    «Cargar como borrador» vía `templateEditorAbrir`), export nuevo `templateEditorEstado()` y
+    muro-nuevo=chat-nuevo (envoltorio sobre `templateEditorAbrir`). Tests reales:
+    `tests/test_asistente_backend.py` (16 checks del constructor/mensajes/cableado).
+    **Prerrequisito para que responda: variable `ANTHROPIC_API_KEY` en Render.**
 - **F2 — + recortes de imagen**. Rangos de pisos RESUELTO (2ª ronda): la salida es **UNA receta**;
   al instanciar en modo obra el asistente **presugiere los pisos donde detecta repetición** y el
   usuario inserta con el botón usual (la selección de pisos ya existe en el flujo de instanciar).
