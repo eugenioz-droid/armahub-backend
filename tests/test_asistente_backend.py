@@ -68,64 +68,83 @@ def check(nombre, cond):
 
 from armahub.asistente import _construir_receta_muro, _resumen_de_spec, TOOL_MURO
 
-# --- ficha del muro del test canónico: 400×250×20, recub 2.5, φ10@55/@90, TM φ8
+# --- ficha completa (muro real del usuario 31-ago: DM + trabas + bordes) ---
 SPEC = {
-    "geometria": {"largo": 400, "alto": 250, "espesor": 20, "recubrimiento": 2.5},
-    "malla_vertical": {"diam": 10, "sep": 90},
-    "malla_horizontal": {"diam": 10, "sep": 55},
+    "geometria": {"largo": 514, "alto": 315, "espesor": 20, "recubrimiento": 2},
+    "malla_vertical": {"diam": 8, "sep": 20},
+    "malla_horizontal": {"diam": 8, "sep": 20},
     "doble_malla": True,
-    "trabas": {"diam": 8, "sx": 100, "sy": 60},
-    "origenes": {"geometria": "leido", "recubrimiento": "config",
+    "trabas": {"diam": 8, "sx": 40, "sy": 40},
+    "bordes": {"barras": {"diam": 18, "barras_capa": 2, "n_capas": 2},
+               "estribo": {"diam": 8, "sep": 10}, "largo": 40},
+    "origenes": {"geometria": "leido", "recubrimiento": "leido",
                  "malla_vertical": "leido", "malla_horizontal": "leido",
-                 "doble_malla": "asumido", "trabas": "asumido"},
+                 "doble_malla": "asumido", "trabas": "config", "bordes": "leido"},
 }
 
 r = _construir_receta_muro(SPEC)
-geo = r["geometria"]
-check("tipo muro", r["tipo"] == "muro")
-check("geometria canonica (ancho=espesor, recub triple)",
-      geo == {"largo": 400.0, "alto": 250.0, "ancho": 20.0,
-              "recub_sup": 2.5, "recub_inf": 2.5, "recub_lat": 2.5})
+tips = [c["tipologia"] for c in r["componentes"]]
+check("tipologias REALES del muro (MV/MH x2 cortinas + TC + CB/EC x2 puntas)",
+      tips == ["MV", "MH", "MV", "MH", "TC", "CB", "EC", "CB", "EC"])
+mvs = [c for c in r["componentes"] if c["tipologia"] == "MV"]
+check("cada cortina es UN componente con lado +-1 (no capas)",
+      [c["lado"] for c in mvs] == [1, -1]
+      and all(c["modo"] == "lineal" and c["distribucion"]["modo"] == "linear"
+              and c["distribucion"]["activa"] for c in mvs))
+check("MV de pie reparte en x; MH acostada reparte en y",
+      mvs[0]["plano_pieza"]["orientacion"] == "de_pie"
+      and mvs[0]["distribucion"]["rango"]["eje"] == "x"
+      and r["componentes"][1]["distribucion"]["rango"]["eje"] == "y")
+tc = [c for c in r["componentes"] if c["tipologia"] == "TC"][0]
+check("traba TC: figura con ganchos 103B, pose sup/z, jerarquia 2, arreglo x*y",
+      tc["figura"] == "103B" and tc["pose"] == {"cara": "sup", "lado": 1,
+                                                "rumbo": "z", "espejo": False}
+      and tc["jerarquia"] == 2 and tc["distribucion"]["rango2"]["eje"] == "y")
+cbs = [c for c in r["componentes"] if c["tipologia"] == "CB"]
+check("cabezales en las DOS puntas (cara extremo, lado +-1, layered 2x2)",
+      [c["lado"] for c in cbs] == [1, -1]
+      and all(c["cara"] == "extremo" and c["distribucion"]["modo"] == "layered"
+              and c["distribucion"]["n_capas"] == 2
+              and c["distribucion"]["barras_capa"] == 2 for c in cbs))
+ecs = [c for c in r["componentes"] if c["tipologia"] == "EC"]
+check("estribo de borde acotado: dims.B fija 40 extremo centro + pos_hint.x en la punta",
+      all(c["dims"]["B"] == {"modo": "fija", "valor": 40.0, "extremo": "centro"}
+          for c in ecs)
+      and ecs[0]["pos_hint"]["x"] == 235.0 and ecs[1]["pos_hint"]["x"] == -235.0)
+check("rangos sin ancla (la deriva normalizarReceta) y de recub a recub",
+      "ancla" not in mvs[0]["distribucion"]["rango"]
+      and mvs[0]["distribucion"]["rango"]["from"] == -255.0)
 
-mh, mv, tm = r["componentes"]
-Z = 20 / 2 - 2.5 - 0.5   # 7 — eje de cortina del test canónico
-check("MH: arreglo 2 cortinas en z ±7 (sep_capas 14)",
-      mh["comp_id"] == "MH" and mh["tipologia"] == "MA"
-      and mh["distribucion"]["n_capas"] == 2
-      and mh["distribucion"]["sep_capas"] == 2 * Z
-      and mh["distribucion"]["eje_capas"] == "z")
-check("MH: rango en y de borde a borde con su recub+φ/2",
-      mh["distribucion"]["rango"] == {"eje": "y", "from": -122.0, "to": 122.0, "sep": 55.0})
-check("MV: de pie, rango en x",
-      mv["comp_id"] == "MV" and mv["plano_pieza"]["orientacion"] == "de_pie"
-      and mv["distribucion"]["rango"]["eje"] == "x"
-      and mv["distribucion"]["rango"]["from"] == -197.0)
-check("TM: volteada, filas en y cada 60 (int((250-5)//60)+1 = 5)",
-      tm["comp_id"] == "TM" and tm["plano_pieza"]["volteado"] is True
-      and tm["distribucion"]["n_capas"] == 5
-      and tm["distribucion"]["rango"] == {"eje": "x", "from": -197.5, "to": 197.5, "sep": 100.0})
-check("dims todas en auto (el motor calcula largos, no el modelo)",
-      all(c["dims"] == {"A": {"modo": "auto"}} for c in r["componentes"]))
-
-# --- malla simple: 1 cortina, sin trabas aunque la ficha las traiga
-simple = dict(SPEC, doble_malla=False)
-r2 = _construir_receta_muro(simple)
-check("malla simple: 1 cortina y sin trabas",
-      len(r2["componentes"]) == 2
-      and all(c["distribucion"]["n_capas"] == 1 for c in r2["componentes"]))
-
-# --- resumen para el formulario del chat
+# --- resumen para el formulario del chat ---
 filas = _resumen_de_spec(SPEC)
-check("resumen: 2 secciones + 6 campos con origen",
-      sum(1 for f in filas if "seccion" in f) == 2
-      and sum(1 for f in filas if f.get("origen")) == 6 + 1)  # 7 filas con chip
-check("resumen: recubrimiento sale de config",
-      any(f.get("label") == "Recubrimiento" and f["origen"] == "config" for f in filas))
+check("resumen: 3 secciones y fila de cabezales con origen",
+      sum(1 for f in filas if "seccion" in f) == 3
+      and any(f.get("label") == "Cabezales" and f["origen"] == "leido" for f in filas))
 
-# --- schema estricto: la API rechaza campos de más (strict=True exige esto)
-check("tool proponer_muro es strict con additionalProperties false",
+# --- schema estricto ---
+check("tool proponer_muro es strict con additionalProperties false y pide bordes",
       TOOL_MURO["strict"] is True
-      and TOOL_MURO["input_schema"]["additionalProperties"] is False)
+      and TOOL_MURO["input_schema"]["additionalProperties"] is False
+      and "bordes" in TOOL_MURO["input_schema"]["required"])
+
+# --- EL TEST QUE MIDE LO PUBLICADO: la receta contra el MOTOR REAL (node) ---
+import json, subprocess, shutil
+_receta_json = os.path.join(BASE, "tests", "_receta_asistente_tmp.json")
+io.open(_receta_json, "w", encoding="utf-8").write(json.dumps(r))
+_node = shutil.which("node") or "C:/Users/ezalazar/Tools/node/node-v24.16.0-win-x64/node.exe"
+if os.path.exists(_node):
+    _p = subprocess.run([_node, os.path.join(BASE, "tests", "test_asistente_receta_motor.js"),
+                         _receta_json], capture_output=True, text=True)
+    check("MOTOR REAL: la receta genera un muro fisicamente valido (node)",
+          _p.returncode == 0)
+    if _p.returncode != 0:
+        print(_p.stdout[-2000:], _p.stderr[-500:])
+else:
+    print("AVISO: node no encontrado - test de motor no corrido")
+try:
+    os.remove(_receta_json)
+except OSError:
+    pass
 
 # --- armado de mensajes (alternancia + receta actual pegada al último turno)
 from armahub.asistente import _mensajes_api, ChatBody

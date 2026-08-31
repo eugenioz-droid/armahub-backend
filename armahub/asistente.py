@@ -91,7 +91,7 @@ TOOL_MURO = {
         "type": "object",
         "additionalProperties": False,
         "required": ["geometria", "malla_vertical", "malla_horizontal",
-                     "doble_malla", "trabas", "origenes"],
+                     "doble_malla", "trabas", "bordes", "origenes"],
         "properties": {
             "geometria": {
                 "type": "object", "additionalProperties": False,
@@ -120,6 +120,35 @@ TOOL_MURO = {
                 },
             },
             "doble_malla": {"type": "boolean"},
+            "bordes": {
+                "anyOf": [
+                    {"type": "null"},
+                    {"type": "object", "additionalProperties": False,
+                     "required": ["barras", "estribo", "largo"],
+                     "properties": {
+                         "barras": {
+                             "type": "object", "additionalProperties": False,
+                             "required": ["diam", "barras_capa", "n_capas"],
+                             "properties": {
+                                 "diam": {"type": "number", "description": "φ cabezal en mm"},
+                                 "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
+                                 "n_capas": {"type": "integer", "description": "capas hacia el interior del muro"},
+                             }},
+                         "estribo": {
+                             "anyOf": [
+                                 {"type": "null"},
+                                 {"type": "object", "additionalProperties": False,
+                                  "required": ["diam", "sep"],
+                                  "properties": {
+                                      "diam": {"type": "number", "description": "φ estribo en mm"},
+                                      "sep": {"type": "number", "description": "@ en cm (usual ≤6φ y ≤½ espesor)"},
+                                  }},
+                             ]},
+                         "largo": {"type": "number",
+                                   "description": "largo confinado por punta, cm (usual ≥ 40)"},
+                     }},
+                ],
+            },
             "trabas": {
                 "anyOf": [
                     {"type": "null"},
@@ -135,11 +164,11 @@ TOOL_MURO = {
             "origenes": {
                 "type": "object", "additionalProperties": False,
                 "required": ["geometria", "recubrimiento", "malla_vertical",
-                             "malla_horizontal", "doble_malla", "trabas"],
+                             "malla_horizontal", "doble_malla", "trabas", "bordes"],
                 "properties": {k: {"type": "string", "enum": _ORIGENES}
                                for k in ("geometria", "recubrimiento",
                                          "malla_vertical", "malla_horizontal",
-                                         "doble_malla", "trabas")},
+                                         "doble_malla", "trabas", "bordes")},
             },
         },
     },
@@ -154,65 +183,108 @@ def _r1(v):
 
 
 def _construir_receta_muro(spec: dict) -> dict:
-    """Ficha simple → receta {tipo,geometria,componentes[]} con el MISMO patrón
-    que tests/test_muro_orientaciones.js (d): mallas MA en modo arreglo (rango +
-    cortinas en z) y trabas TM volteadas. Nada del modelo toca geometría."""
+    """Ficha simple -> receta {tipo,geometria,componentes[]} EXACTAMENTE como los
+    crea el Template Editor a mano (mapa del 31-ago sobre reglas.js /
+    template_editor.js / tests):
+      - mallas = tipologias MV/MH reales, modo LINEAL, UNA CORTINA POR COMPONENTE
+        (lado +-1: "dos cortinas son DOS componentes, no 2 capas de uno",
+        test_muro_orientaciones.js:357);
+      - trabas = TC pose {sup,1,z} (cruzan el espesor), figura con ganchos 104B,
+        modo arreglo con rango (x) + rango2 (y), jerarquia 2;
+      - bordes = CB en el testero (cara 'extremo', puntual layered) + EC acotado
+        a la punta (dims.B fija con extremo + pos_hint.x; sin posicion el motor
+        centra - template_editor.js:7318);
+      - rangos con from/to de linea de recub a linea de recub, SIN ancla: la
+        deriva normalizarReceta al abrir (migracion sin movimiento, reglas.js:1698).
+    Nada del modelo toca geometria. Verificado contra el MOTOR REAL por
+    tests/test_asistente_receta_motor.js (node)."""
     g = spec["geometria"]
     largo, alto = float(g["largo"]), float(g["alto"])
     esp, rec = float(g["espesor"]), float(g["recubrimiento"])
-    mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
     doble = bool(spec.get("doble_malla", True))
-    n_cort = 2 if doble else 1
+    rx, ry = largo / 2.0 - rec, alto / 2.0 - rec   # lineas de recubrimiento
 
-    def _malla(m, de_pie):
-        phi_cm = float(m["diam"]) / 10.0          # φ mm → cm
-        z = esp / 2.0 - rec - phi_cm / 2.0        # eje de la cortina
-        medio = (largo if de_pie else alto) / 2.0 - rec - phi_cm / 2.0
-        comp = {
-            "comp_id": "MV" if de_pie else "MH",
-            "tipologia": "MA", "figura": "101A",
-            "diam": float(m["diam"]), "cara": "lateral", "jerarquia": 1,
-            "dims": {"A": {"modo": "auto"}},
-            "distribucion": {
-                "modo": "arreglo",
-                "n_capas": n_cort,
-                "sep_capas": _r1(2 * z) if doble else 0,
-                "eje_capas": "z",
-                "rango": {"eje": "x" if de_pie else "y",
-                          "from": _r1(-medio), "to": _r1(medio),
-                          "sep": _r1(m["sep"])},
-            },
-        }
-        if de_pie:
-            comp["plano_pieza"] = {"orientacion": "de_pie"}
-        return comp
+    def _lin(sep, eje, lo, hi):
+        return {"modo": "linear", "activa": True, "sep": _r1(sep),
+                "zonas": [{"long": 0, "sep": _r1(sep)}], "start_offset": 4,
+                "rango": {"eje": eje, "from": _r1(lo), "to": _r1(hi), "sep": _r1(sep)}}
 
-    componentes = [_malla(mh, False), _malla(mv, True)]
+    def _base(tip, figura, diam, angulos, modo, cara, lado, rumbo,
+              orientacion, volteado, dims, jer, dist):
+        return {"tipologia": tip, "figura": figura, "diam": float(diam),
+                "suf_tipo": "", "recub_override": None, "angulos": list(angulos),
+                "comp_id": None, "modo": modo,
+                "pose": {"cara": cara, "lado": lado, "rumbo": rumbo, "espejo": False},
+                "cara": cara, "lado": lado,
+                "plano_pieza": {"orientacion": orientacion, "volteado": volteado},
+                "arreglo": {"n_capas": 1, "sep_capas": 20, "rango": None},
+                "dims": dims, "jerarquia": jer, "distribucion": dist, "pos_hint": {}}
+
+    def _autoA():
+        return {"A": {"modo": "auto"}}
+
+    def _autoABCD():
+        return {L: {"modo": "auto"} for L in ("A", "B", "C", "D")}
+
+    comps = []
+    mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
+    for lado in ([1, -1] if doble else [1]):
+        comps.append(_base("MV", "101A", mv["diam"], [], "lineal",
+                           "lateral", lado, "y", "de_pie", False, _autoA(), 1,
+                           _lin(mv["sep"], "x", -rx, rx)))
+        comps.append(_base("MH", "101A", mh["diam"], [], "lineal",
+                           "lateral", lado, "x", "acostada", False, _autoA(), 1,
+                           _lin(mh["sep"], "y", -ry, ry)))
 
     tr = spec.get("trabas")
     if doble and tr:
-        sy = float(tr["sy"])
-        filas = max(1, int((alto - 2 * rec) // sy) + 1) if sy > 0 else 1
-        tx = largo / 2.0 - rec
-        componentes.append({
-            "comp_id": "TM", "tipologia": "TM", "figura": "101A",
-            "diam": float(tr["diam"]), "cara": "lateral", "jerarquia": 2,
-            "plano_pieza": {"volteado": True},
-            "dims": {"A": {"modo": "auto"}},
-            "distribucion": {
-                "modo": "arreglo",
-                "n_capas": filas, "sep_capas": _r1(sy), "eje_capas": "y",
-                "rango": {"eje": "x", "from": _r1(-tx), "to": _r1(tx),
-                          "sep": _r1(tr["sx"])},
-            },
-        })
+        dist = _lin(tr["sx"], "x", -rx, rx)
+        dist["modo"] = "arreglo"
+        # La 103B cuelga su gancho HACIA ABAJO de la fila (~6phi + curva): si la
+        # primera fila nace en la linea de recub, el gancho se sale del hormigon
+        # (medido 31-ago: fila -155.5 -> gancho -165). Se le da ese margen abajo.
+        m_gancho = 6.0 * float(tr["diam"]) / 10.0 + 5.0
+        dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
+                          "sep": _r1(tr["sy"])}
+        # 103B = cuerpo + 2 ganchos: "eso es una traba" (reglas.js:1284, medido).
+        # Con 104D/104B el lado C en auto resolvia contra el ALTO (pieza de 311 cm
+        # que se salia del hormigon — medido con el motor, 31-ago).
+        comps.append(_base("TC", "103B", tr["diam"], [45, 45], "arreglo",
+                           "sup", 1, "z", "volteada", True,
+                           {L: {"modo": "auto"} for L in ("A", "B", "C")}, 2, dist))
+
+    bo = spec.get("bordes")
+    if bo:
+        bb, est = bo["barras"], bo.get("estribo")
+        lconf = float(bo.get("largo") or 40)
+        for lado in (1, -1):
+            comps.append(_base("CB", "101A", bb["diam"], [], "puntual",
+                               "extremo", lado, "y", "de_pie", False, _autoA(), 1,
+                               {"modo": "layered",
+                                "n_capas": max(1, int(bb["n_capas"])),
+                                "barras_capa": max(1, int(bb["barras_capa"])),
+                                "gap": 4, "sentido": "nucleo",
+                                "justify": "repartir"}))
+            if est:
+                # extremo 'centro' + pos_hint.x = la UNICA combinacion que el
+                # motor respeta tal cual (medido 31-ago: 'fin' ignora el hint y
+                # cae al testero opuesto; hint+pos_ancla se pasa del hormigon).
+                ec = _base("EC", "104D", est["diam"], [135, 135], "lineal",
+                           "lateral", 1, "y", "de_pie", False,
+                           {"A": {"modo": "auto"},
+                            "B": {"modo": "fija", "valor": _r1(lconf),
+                                  "extremo": "centro"},
+                            "C": {"modo": "auto"}, "D": {"modo": "auto"}},
+                           1, _lin(est["sep"], "y", -ry, ry))
+                ec["pos_hint"] = {"x": _r1(lado * (largo / 2.0 - rec - lconf / 2.0))}
+                comps.append(ec)
 
     return {
         "tipo": "muro",
         "geometria": {"largo": _r1(largo), "alto": _r1(alto), "ancho": _r1(esp),
                       "recub_sup": _r1(rec), "recub_inf": _r1(rec),
                       "recub_lat": _r1(rec)},
-        "componentes": componentes,
+        "componentes": comps,
     }
 
 
@@ -248,6 +320,20 @@ def _resumen_de_spec(spec: dict) -> list:
                   "valor": (f"φ{tr['diam']:g} · {tr['sx']:g} × {tr['sy']:g}" if tr
                             else "sin trabas"),
                   "origen": org("trabas")})
+    bo = spec.get("bordes")
+    filas.append({"seccion": "Confinamiento de borde"})
+    if bo:
+        bb, est = bo["barras"], bo.get("estribo")
+        filas.append({"label": "Cabezales",
+                      "valor": f"{bb['barras_capa']}φ{bb['diam']:g} × {bb['n_capas']} capas por punta",
+                      "origen": org("bordes")})
+        filas.append({"label": "Estribo borde",
+                      "valor": (f"φ{est['diam']:g} @ {est['sep']:g} · largo {bo['largo']:g}" if est
+                                else "sin estribo"),
+                      "origen": org("bordes")})
+    else:
+        filas.append({"label": "Bordes", "valor": "sin confinamiento",
+                      "origen": org("bordes")})
     return filas
 
 
@@ -275,12 +361,11 @@ def _system_prompt(elemento: str) -> str:
         "a llamar proponer_muro con la ficha completa corregida.\n"
         "· Por ahora SOLO muros. Si piden otro elemento, dilo amable: viga y "
         "columna vienen después.\n"
-        "· ALCANCE ACTUAL DE LA FICHA: mallas + trabas. El confinamiento de "
-        "borde (cabezales y estribos de punta) TODAVÍA no entra en la ficha: si "
-        "el muro trae, dilo claro y simple («los bordes por ahora agrégalos a "
-        "mano en el editor; pronto los voy a poder armar yo») y propone IGUAL la "
-        "receta con las mallas y trabas — que el usuario avance. No te enredes "
-        "explicando limitaciones técnicas internas de la plataforma.\n"
+        "· La ficha cubre: mallas, trabas y CONFINAMIENTO DE BORDE (cabezales "
+        "por punta + estribo de confinamiento acotado). Si el muro trae borde, "
+        "pregunta lo crítico (φ y cantidad de cabezales); el estribo puedes "
+        "asumirlo con lo usual (φ8-φ10, @ ≤6φ del cabezal y ≤½ espesor; largo "
+        "confinado ≥40 cm) marcándolo 'asumido'.\n"
         "· Responde en español chileno neutro, breve, sin jerga técnica de la "
         "plataforma. Nada de muros de texto.\n\n"
         "DEFAULTS DE LA PLATAFORMA (origen 'config'):\n"
