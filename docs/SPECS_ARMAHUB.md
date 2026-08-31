@@ -1722,6 +1722,21 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   doble malla con ganchos, la cortina opuesta nace en ESPEJO — los ganchos se cruzan en el testero;
   la plataforma lo hace sola, sin depender del modelo. Y la jerarquía dictada SIEMPRE se escribe y
   se repite en la respuesta. Suite 88 checks + motor sobre cortinas espejadas.
+- **F1.18 — CAPA DE REGLAS DE ARMADO: inteligencia con override (31-ago)**: respuesta a la pregunta
+  del usuario sobre cómo dar «inteligencia» sin perder el control. Son relaciones ENTRE armaduras
+  que ninguna ficha puede expresar aislada, y viven en `_aplicar_reglas`, que corre al final de las
+  DOS puertas (construir y operar). **Contrato de cada regla: mira la receta entera y solo toca lo
+  que el usuario no fijó**; cada una lleva escrita su condición de abstención y avisa lo que hizo,
+  para que el usuario pueda mandar lo contrario. Las tres primeras, todas reportadas en uso real:
+  (1) **jerarquías** — MV contra la cara (1), MH encima (2), traba sobre ambas (3); se abstiene si
+  la jerarquía vino dictada (marcador `_jer_dictada` puesto desde la ficha: sin él no se podía
+  distinguir «pidió jer.1» de «nadie dijo nada y el default es 1»); (2) **la MV esquiva los
+  cabezales** — el abanico se recorta la profundidad del paquete + una separación por cada punta,
+  para no repetir malla sobre el borde ya armado; (3) **las trabas caen en los cruces** — su grilla
+  se lleva al múltiplo de las separaciones de MV y MH y arranca donde arrancan las mallas; si el
+  número dado ya cuadra, no se toca. Además, **gate**: una armadura ENTERA cuyo origen el modelo
+  declara `asumido` NO se crea (aparecieron trabas que nadie pidió) — asumir valores sí, inventar
+  barras no. Suite 98 checks + motor.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

@@ -422,7 +422,19 @@ def _normalizar_ficha(spec: dict) -> dict:
            "trabas": None, "bordes": None,
            "origenes": spec.get("origenes") if isinstance(spec.get("origenes"), dict) else {}}
 
+    # UNA ARMADURA COMPLETA QUE EL MODELO MARCA 'asumido' NO SE CREA (31-ago: el
+    # usuario pidio mallas y cabezales, y aparecieron trabas que nadie pidio). El
+    # origen lo declara el propio modelo: 'asumido' sobre la armadura ENTERA
+    # significa «la agregue yo», y agregar barras no pedidas es justamente lo
+    # prohibido. Asumir VALORES sigue permitido; inventar barras, no.
+    orig = out["origenes"]
+
+    def _la_invento(clave):
+        return str((orig or {}).get(clave) or "").strip().lower() == "asumido"
+
     tr = spec.get("trabas")
+    if _la_invento("trabas"):
+        tr = None
     if isinstance(tr, dict) and _num(tr.get("diam")) > 0:
         t = _armadura(tr, con_sep=False)
         t["sx"] = _num(tr.get("sx"), 40)
@@ -430,6 +442,8 @@ def _normalizar_ficha(spec: dict) -> dict:
         out["trabas"] = t
 
     bo = spec.get("bordes")
+    if _la_invento("bordes"):
+        bo = None
     if isinstance(bo, dict) and isinstance(bo.get("barras"), dict):
         bb = bo["barras"]
         if _num(bb.get("diam")) > 0:
@@ -524,6 +538,20 @@ def _pedido(d, clave, porDefecto):
     return v if v not in (None, "", 0) else porDefecto
 
 
+def _dictado(d, clave):
+    """True si el usuario puso ESE campo (el vacio de la ficha es 0 / '')."""
+    return (d or {}).get(clave) not in (None, "", 0)
+
+
+def _marcar_jer(comp, p):
+    """Deja constancia de que la jerarquia vino DICTADA, para que la regla de
+    jerarquias se abstenga. Sin esto no habia como distinguir «el usuario pidio
+    jer.1» de «nadie dijo nada y el default es 1» — y la regla pisaba al usuario."""
+    if _dictado(p, "jerarquia"):
+        comp["_jer_dictada"] = True
+    return comp
+
+
 def _geo_de(receta_o_ficha):
     g = receta_o_ficha.get("geometria") or {}
     esp = g.get("ancho", g.get("espesor"))
@@ -550,6 +578,7 @@ def _fabricar(clase, p, geo, figuras, lados):
                 _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
                 int(_pedido(p, "jerarquia", 1)),
                 _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p)
+            _marcar_jer(c, p)
             if lado == -1 and len(par) > 1:
                 # regla de la casa: la cortina opuesta va en ESPEJO (los ganchos
                 # se cruzan en el testero, captura del usuario 31-ago)
@@ -567,6 +596,7 @@ def _fabricar(clase, p, geo, figuras, lados):
                 _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
                 int(_pedido(p, "jerarquia", 1)),
                 _mk_lin(p["sep"], "y", -ry, ry, p.get("tramos"))), p)
+            _marcar_jer(c, p)
             if lado == -1 and len(par) > 1:
                 c["pose"]["espejo"] = True
                 c["espejo"] = True
@@ -580,10 +610,10 @@ def _fabricar(clase, p, geo, figuras, lados):
         m_gancho = 6.0 * float(p["diam"]) / 10.0 + 5.0
         dist["rango2"] = {"eje": "y", "from": _r1(-(ry - m_gancho)), "to": _r1(ry),
                           "sep": _r1(p.get("sy", 40))}
-        comps.append(_mk_extras(_mk_base(
+        comps.append(_marcar_jer(_mk_extras(_mk_base(
             "TC", fig, p["diam"], ang, "arreglo", "sup", 1, "z", "volteada",
             True, {L: {"modo": "auto"} for L in par},
-            int(_pedido(p, "jerarquia", 2)), dist), p))
+            int(_pedido(p, "jerarquia", 2)), dist), p), p))
 
     elif clase == "cabezales":
         fig = _pedido(p, "figura", "101A")
@@ -621,6 +651,152 @@ def _fabricar(clase, p, geo, figuras, lados):
     return comps
 
 
+# ---------------------------------------------------------------------------
+# REGLAS DE ARMADO — la inteligencia del sistema, con override (31-ago)
+# ---------------------------------------------------------------------------
+# Son relaciones ENTRE armaduras que ninguna ficha puede expresar por separado:
+# la malla vertical depende de si hay cabezales, la grilla de trabas depende de
+# las separaciones de las mallas, la jerarquia depende de que cortina va primero.
+#
+# CONTRATO DE CADA REGLA: mira la receta entera, y toca SOLO lo que el usuario no
+# fijo. Cada una lleva escrita su condicion de «no lo toco el usuario»; si el dato
+# vino dictado, la regla se abstiene. Asi el sistema es inteligente por defecto y
+# obediente cuando se le manda.
+def _por_tip(comps, *tips):
+    return [c for c in comps if c.get("tipologia") in tips]
+
+
+def _regla_jerarquias(comps):
+    """MV contra la cara, MH encima, trabas sobre las dos.
+
+    NO TOCA si las mallas ya vienen con jerarquias DISTINTAS entre si: eso es
+    senal de que alguien las diferencio a proposito (el usuario dicta cual cortina
+    va contra la cara — es decision de proyecto, no nuestra)."""
+    mv, mh = _por_tip(comps, "MV"), _por_tip(comps, "MH")
+    if not (mv and mh):
+        return None
+    if any(c.get("_jer_dictada") for c in mv + mh):
+        return None                      # el usuario la dicto: la regla no manda
+    jers = {c.get("jerarquia", 1) for c in mv} | {c.get("jerarquia", 1) for c in mh}
+    if len(jers) > 1:
+        return None                      # ya estan diferenciadas: es del usuario
+    for c in mv:
+        c["jerarquia"] = 1
+    for c in mh:
+        c["jerarquia"] = 2
+    for c in _por_tip(comps, "TC", "TR"):
+        c["jerarquia"] = 3               # la traba se apoya sobre las dos mallas
+    return "malla vertical contra la cara (jer.1), horizontal encima (jer.2)"
+
+
+def _zona_de_borde(comps):
+    """Cuanto ocupa el paquete de cabezales medido desde el testero hacia adentro:
+    las capas se apilan hacia el nucleo separadas por su gap."""
+    cbs = _por_tip(comps, "CB")
+    if not cbs:
+        return 0.0
+    z = 0.0
+    for c in cbs:
+        d = c.get("distribucion") or {}
+        z = max(z, (max(1, int(_num(d.get("n_capas"), 1))) - 1) * _num(d.get("gap"), 4))
+    return z
+
+
+def _regla_mv_esquiva_cabezales(comps, geo):
+    """La malla vertical no reparte barras sobre los cabezales.
+
+    El abanico de la MV corre a lo largo del muro; donde hay cabezales esa zona ya
+    esta armada, y repetir malla ahi es fierro de mas (reportado por el usuario).
+    Se recorta el rango por ambas puntas la profundidad del paquete + una
+    separacion, para que la primera barra de malla caiga limpia al lado.
+
+    NO TOCA si no hay cabezales."""
+    zona = _zona_de_borde(comps)
+    mvs = _por_tip(comps, "MV")
+    if not (zona and mvs):
+        return None
+    rx = geo["largo"] / 2.0 - geo["rec"]
+    recorte = None
+    for c in mvs:
+        d = (c.get("distribucion") or {}).get("rango")
+        if not isinstance(d, dict) or d.get("eje") != "x":
+            continue
+        margen = zona + _num(d.get("sep"), 20)
+        lim = _r1(max(rx * 0.25, rx - margen))    # nunca colapsar el abanico
+        d["from"], d["to"] = -lim, lim
+        recorte = _r1(rx - lim)
+    return ("la malla vertical se corre %g cm de cada punta para no repetirse "
+            "sobre los cabezales" % recorte) if recorte else None
+
+
+def _multiplo_cercano(valor, base, mini):
+    """El multiplo de `base` mas cercano a `valor`, nunca bajo `mini`."""
+    if base <= 0:
+        return valor
+    n = max(1, int(round(valor / base)))
+    while n * base < mini:
+        n += 1
+    return _r1(n * base)
+
+
+def _regla_trabas_en_los_cruces(comps):
+    """La traba amarra donde la malla se cruza: su grilla cae en multiplos de las
+    separaciones de MV (horizontal) y MH (vertical), y arranca donde arrancan las
+    mallas.
+
+    NO TOCA si la grilla pedida YA es multiplo de esas separaciones (es decir, si
+    el usuario dio numeros que cuadran, se respetan tal cual)."""
+    tcs = _por_tip(comps, "TC", "TR")
+    mv, mh = _por_tip(comps, "MV"), _por_tip(comps, "MH")
+    if not tcs or not (mv or mh):
+        return None
+    sep_mv = _num(((mv[0].get("distribucion") or {}).get("rango") or {}).get("sep")) if mv else 0
+    sep_mh = _num(((mh[0].get("distribucion") or {}).get("rango") or {}).get("sep")) if mh else 0
+    r_mv = ((mv[0].get("distribucion") or {}).get("rango") or {}) if mv else {}
+    r_mh = ((mh[0].get("distribucion") or {}).get("rango") or {}) if mh else {}
+    ajustada = False
+    for c in tcs:
+        d = c.get("distribucion") or {}
+        r1, r2 = d.get("rango"), d.get("rango2")
+        if isinstance(r1, dict) and sep_mv:
+            nuevo = _multiplo_cercano(_num(r1.get("sep"), 40), sep_mv, sep_mv)
+            if nuevo != _num(r1.get("sep")):
+                r1["sep"] = nuevo
+                ajustada = True
+            if r_mv.get("from") is not None:      # arrancar donde arranca la MV
+                r1["from"], r1["to"] = r_mv["from"], r_mv["to"]
+        if isinstance(r2, dict) and sep_mh:
+            nuevo = _multiplo_cercano(_num(r2.get("sep"), 40), sep_mh, sep_mh)
+            if nuevo != _num(r2.get("sep")):
+                r2["sep"] = nuevo
+                ajustada = True
+    return "las trabas se alinearon con los cruces de la malla" if ajustada else None
+
+
+def _aplicar_reglas(receta):
+    """Todas las reglas sobre la receta ya armada. Devuelve los avisos de las que
+    hicieron algo, para que el asistente lo cuente y el usuario pueda mandar lo
+    contrario."""
+    comps = receta.get("componentes") or []
+    if not comps:
+        return []
+    geo = _geo_de(receta)
+    avisos = []
+    for regla in (lambda: _regla_jerarquias(comps),
+                  lambda: _regla_mv_esquiva_cabezales(comps, geo),
+                  lambda: _regla_trabas_en_los_cruces(comps)):
+        try:
+            msg = regla()
+        except Exception as exc:          # una regla nunca puede romper el muro
+            log.warning("asistente: regla de armado fallo: %s", exc)
+            msg = None
+        if msg:
+            avisos.append(msg)
+    for c in comps:
+        c.pop("_jer_dictada", None)      # marcador interno: no viaja en la receta
+    return avisos
+
+
 def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     """Ficha normalizada -> receta, delegando cada armadura a _fabricar."""
     spec = _normalizar_ficha(spec)
@@ -645,7 +821,7 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
                 e = dict(est)
                 e["largo"] = bo.get("largo") or 40
                 comps += _fabricar("estribo", e, geo, figuras, [lado])
-    return {
+    receta = {
         "tipo": "muro",
         "geometria": {"largo": _r1(geo["largo"]), "alto": _r1(geo["alto"]),
                       "ancho": _r1(geo["esp"]),
@@ -653,6 +829,8 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
                       "recub_lat": _r1(geo["rec"])},
         "componentes": comps,
     }
+    receta["_avisos_reglas"] = _aplicar_reglas(receta)
+    return receta
 
 
 # ---------------------------------------------------------------------------
@@ -768,6 +946,7 @@ def _editar_comp(c, cb, geo, figuras):
         d["rango2"]["sep"] = _r1(cb.get("sep2"))
     if int(_num(cb.get("jerarquia"))) > 0:
         c["jerarquia"] = int(_num(cb.get("jerarquia")))
+        c["_jer_dictada"] = True
 
     emp = _num(cb.get("empalme"))
     if emp > 0 and corre:
@@ -892,6 +1071,7 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
             comps.extend(_fabricar(clase, p, geo, figuras, lados))
     if not comps:
         raise ValueError("El muro quedaria sin ninguna barra; no aplique los cambios.")
+    avisos.extend(_aplicar_reglas(receta))
     return receta, avisos
 
 
@@ -1091,6 +1271,11 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "operar_barras con esos números — NUNCA reconstruyas el muro entero con "
         "proponer_muro para un cambio puntual, porque pisarías lo que el usuario "
         "editó a mano.\n"
+        "· LA PLATAFORMA APLICA REGLAS DE ARMADO SOLA (jerarquías de las "
+        "cortinas, la malla vertical esquivando los cabezales, las trabas "
+        "cayendo en los cruces de la malla). No las expliques ni las pidas: se "
+        "aplican al armar y te llegan como aviso para que las cuentes. Si el "
+        "usuario quiere otra cosa, dicta el valor y la regla se abstiene.\n"
         "· TU MEMORIA ES EL LISTADO: el inventario numerado del mensaje es el "
         "estado REAL del editor, turno a turno. Confía en él por sobre tu "
         "recuerdo de la conversación; si el usuario dice que algo existía y no "
@@ -1460,6 +1645,8 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                     texto2, spec, cambios, tu_ids = _extraer(resp)
                     texto = texto2 or texto
                     figuras = _figuras_para(cur, spec, cambios)
+                if receta is None and isinstance(spec, dict):
+                    pass
                 if _bloqueado(spec):
                     avisos.append("Descarté rehacer el muro entero: hay barras en "
                                   "el editor y no pediste rehacerlo.")
@@ -1496,6 +1683,7 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                                  + " · ".join(errores) + ")").strip()
 
                 if receta is not None:
+                    avisos.extend(receta.pop("_avisos_reglas", []) or [])
                     resumen = (_resumen_de_spec(spec_ok) if spec_ok
                                else _resumen_de_receta(receta))
                 if avisos:

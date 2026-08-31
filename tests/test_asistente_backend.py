@@ -107,10 +107,10 @@ check("MV de pie reparte en x; MH acostada reparte en y",
       and mvs[0]["distribucion"]["rango"]["eje"] == "x"
       and r["componentes"][1]["distribucion"]["rango"]["eje"] == "y")
 tc = [c for c in r["componentes"] if c["tipologia"] == "TC"][0]
-check("traba TC: figura con ganchos 103B, pose sup/z, jerarquia 2, arreglo x*y",
+check("traba TC: figura con ganchos 103B, pose sup/z, arreglo x*y y jer.3 por regla",
       tc["figura"] == "103B" and tc["pose"] == {"cara": "sup", "lado": 1,
                                                 "rumbo": "z", "espejo": False}
-      and tc["jerarquia"] == 2 and tc["distribucion"]["rango2"]["eje"] == "y")
+      and tc["jerarquia"] == 3 and tc["distribucion"]["rango2"]["eje"] == "y")
 cbs = [c for c in r["componentes"] if c["tipologia"] == "CB"]
 check("cabezales en las DOS puntas (cara extremo, lado +-1, layered 2x2)",
       [c["lado"] for c in cbs] == [1, -1]
@@ -122,9 +122,11 @@ check("estribo de borde acotado: dims.B fija 40 extremo centro + pos_hint.x en l
       all(c["dims"]["B"] == {"modo": "fija", "valor": 40.0, "extremo": "centro"}
           for c in ecs)
       and ecs[0]["pos_hint"]["x"] == 235.0 and ecs[1]["pos_hint"]["x"] == -235.0)
+# La MH no la recorta ninguna regla, asi que es la que mide «de recub a recub».
+_mh0 = [c for c in r["componentes"] if c["tipologia"] == "MH"][0]
 check("rangos sin ancla (la deriva normalizarReceta) y de recub a recub",
       "ancla" not in mvs[0]["distribucion"]["rango"]
-      and mvs[0]["distribucion"]["rango"]["from"] == -255.0)
+      and _mh0["distribucion"]["rango"]["from"] == -(315 / 2 - 2))
 
 # --- FIGURA Y JERARQUIA LAS DICTA EL USUARIO (feedback 31-ago: el asistente decia
 #     que no eran suyas y mandaba a reportar un bug inexistente) ---
@@ -136,6 +138,8 @@ mh_f = [c for c in rf["componentes"] if c["tipologia"] == "MH"]
 tc_f = [c for c in rf["componentes"] if c["tipologia"] == "TC"][0]
 check("la figura pedida para la malla horizontal llega a la receta",
       all(c["figura"] == "104B" and c["jerarquia"] == 1 for c in mh_f))
+check("y la jerarquia DICTADA gana sobre la regla de jerarquias",
+      all(c["jerarquia"] == 1 for c in mh_f))
 check("la figura y jerarquia pedidas para la traba llegan a la receta",
       tc_f["figura"] == "103E" and tc_f["jerarquia"] == 3)
 check("sin figura pedida se mantiene el default de la plataforma",
@@ -464,7 +468,7 @@ check("editar: phi, @ y jerarquia cambian en la barra pedida y el rango acompana
       _r2["componentes"][0]["diam"] == 10.0
       and _r2["componentes"][0]["distribucion"]["sep"] == 15.0
       and _r2["componentes"][0]["distribucion"]["rango"]["sep"] == 15.0
-      and _r2["componentes"][0]["jerarquia"] == 2 and not _av)
+      and _r2["componentes"][0]["jerarquia"] == 2)
 check("editar NO toca las otras barras ni la receta original",
       _r2["componentes"][1]["diam"] == 18
       and _RECETA_EJ["componentes"][0]["diam"] == 8)
@@ -500,6 +504,56 @@ check("el prompt manda a PROPONER con lo tipico en vez de interrogar",
       "PROPONE, NO INTERROGUES" in _sp("muro") and "asumido" in _sp("muro"))
 check("el prompt manda a operar_barras para cambios puntuales",
       "operar_barras" in _sp("muro") and "NUNCA reconstruyas" in _sp("muro"))
+
+# --- REGLAS DE ARMADO: inteligencia con override (31-ago, del chat real) ---
+SPEC_R = {"geometria": {"largo": 500, "alto": 300, "espesor": 20, "recubrimiento": 2.5},
+          "malla_vertical": {"diam": 10, "sep": 20, "figura": "101A"},
+          "malla_horizontal": {"diam": 8, "sep": 20, "figura": "101A"},
+          "doble_malla": True,
+          "trabas": {"diam": 8, "sx": 40, "sy": 40, "figura": "103B"},
+          "bordes": {"barras": {"diam": 16, "barras_capa": 2, "n_capas": 2,
+                                "figura": "101A", "empalme": 96, "sep_capas": 15},
+                     "estribo": None, "largo": 0},
+          "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                       "trabas": "asumido", "bordes": "leido"}}
+_rr = _construir_receta_muro(SPEC_R, CAT)
+_tips = [c["tipologia"] for c in _rr["componentes"]]
+check("una armadura ENTERA marcada 'asumido' NO se crea (las trabas que nadie pidio)",
+      "TC" not in _tips and _tips == ["MV", "MH", "MV", "MH", "CB", "CB"])
+check("regla: MV contra la cara (jer.1) y MH encima (jer.2)",
+      all(c["jerarquia"] == 1 for c in _rr["componentes"] if c["tipologia"] == "MV")
+      and all(c["jerarquia"] == 2 for c in _rr["componentes"] if c["tipologia"] == "MH"))
+_rx = 500 / 2 - 2.5
+_rango_mv = [c["distribucion"]["rango"] for c in _rr["componentes"] if c["tipologia"] == "MV"][0]
+check("regla: la MV se recorta para no repetirse sobre los cabezales",
+      _rango_mv["to"] < _rx and _rango_mv["to"] == 212.5)
+check("las reglas avisan lo que hicieron (para poder contradecirlas)",
+      len(_rr.get("_avisos_reglas") or []) >= 2)
+
+# override: si el usuario diferencia las jerarquias, la regla se abstiene
+SPEC_OV = json.loads(json.dumps(SPEC_R))
+SPEC_OV["malla_vertical"]["jerarquia"] = 2
+SPEC_OV["malla_horizontal"]["jerarquia"] = 1
+_ro = _construir_receta_muro(SPEC_OV, CAT)
+check("override: jerarquias dictadas por el usuario se respetan",
+      all(c["jerarquia"] == 2 for c in _ro["componentes"] if c["tipologia"] == "MV")
+      and all(c["jerarquia"] == 1 for c in _ro["componentes"] if c["tipologia"] == "MH"))
+
+# trabas pedidas de verdad: se alinean con los cruces de la malla
+SPEC_TR = json.loads(json.dumps(SPEC_R))
+SPEC_TR["origenes"]["trabas"] = "leido"
+SPEC_TR["trabas"]["sx"] = 45          # no es multiplo de @20
+_rt = _construir_receta_muro(SPEC_TR, CAT)
+_tc = [c for c in _rt["componentes"] if c["tipologia"] == "TC"][0]
+check("regla: la grilla de trabas cae en los cruces de la malla (45 -> 40)",
+      _tc["distribucion"]["rango"]["sep"] == 40.0)
+check("regla: la traba se apoya sobre las dos mallas (jer.3)", _tc["jerarquia"] == 3)
+_sin_ajuste = json.loads(json.dumps(SPEC_TR))
+_sin_ajuste["trabas"]["sx"] = 40      # ya cuadra
+_rt2 = _construir_receta_muro(_sin_ajuste, CAT)
+check("override: una grilla que ya cuadra no se toca",
+      [c for c in _rt2["componentes"] if c["tipologia"] == "TC"][0]
+      ["distribucion"]["rango"]["sep"] == 40.0)
 
 # --- COMPUERTA, ESPEJO Y RASTRO (31-ago: el modelo rehizo el muro para "agregar
 #     una malla" y piso cabezales; y confundio espejo con giro de patas) ---
