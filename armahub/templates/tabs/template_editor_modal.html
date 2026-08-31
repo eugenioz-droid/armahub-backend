@@ -1523,9 +1523,16 @@
   #te_modal .te-ia-org.falta{background:var(--te-err-bg);color:var(--te-err)}
   #te_modal .te-ia-pie{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--te-line);
     background:var(--te-panel);flex:0 0 auto}
+  /* El campo CRECE con el texto (pedido del usuario 31-ago: editar un pedido
+     largo dentro de dos lineas era incomodo). El alto lo fija _autoAltoInput en
+     asistente.js segun el contenido; aca solo van los topes y el scroll cuando
+     ya no cabe. resize:vertical deja ademas estirarlo a mano. */
   #te_modal #te_iaInput{flex:1;border:1px solid var(--te-field-b);background:var(--te-field);
-    color:var(--te-ink);border-radius:8px;padding:7px 10px;font-size:12px;resize:none;
-    font-family:inherit;min-height:34px;max-height:90px}
+    color:var(--te-ink);border-radius:8px;padding:7px 10px;font-size:12px;
+    resize:vertical;overflow-y:auto;line-height:1.45;
+    font-family:inherit;min-height:34px;max-height:260px}
+  #te_modal .te-ia-pie{align-items:flex-end}
+  #te_modal #te_iaEnviar{align-self:stretch;max-height:64px}
   #te_modal #te_iaEnviar{border:0;background:var(--te-acero);color:#fff;border-radius:8px;
     padding:0 14px;font-size:12px;font-weight:700;cursor:pointer}
   #te_modal #te_iaEnviar:hover{background:var(--te-acero-d)}

@@ -1765,6 +1765,17 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   caracteres — y lo que no viene lo pone `_normalizar_ficha`. Además: `max_tokens` 2048 → 8000, se
   avisa si la respuesta se cortó por largo, y **el rechazo dice QUÉ faltó** («me falta alto y
   espesor del muro») en vez de un genérico. Suite 111.
+- **F1.22 — el campo de escritura crece con el texto (31-ago)**: editar un pedido largo dentro de
+  dos líneas era incómodo. El textarea ahora se ajusta a su contenido (`_autoAltoInput`, enganchado
+  a `input` para que también crezca al PEGAR), con tope de 260 px y scroll después; vuelve a una
+  línea al enviarse y se puede estirar a mano.
+- **PENDIENTE / RUMBO (usuario 31-ago)**: «el modelo necesita demasiada precisión; esto lo usarán
+  usuarios no tan precisos en el lenguaje, por eso la necesidad de tener reglas predefinidas». La
+  capa de reglas (F1.18) es el vehículo: cada práctica de la casa que hoy hay que dictar debe pasar
+  a ser un default con override. Candidatos inmediatos, salidos de los ensayos: figura por
+  tipología (MH 104B, MV 101A, traba 103B), empalme 60φ por defecto en MV y cabezales, holgura al
+  cabezal, jerarquías MH/MV según proyecto, y sinónimos de lenguaje suelto («fierro», «cuantía»,
+  «arranques», «el de arriba») mapeados a los campos.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

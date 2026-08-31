@@ -105,6 +105,16 @@
     _burbuja(rol, texto);
   }
 
+  // Alto del campo de escritura segun su contenido. El tope real lo pone el CSS
+  // (max-height); aca solo se mide el texto y se deja el scroll cuando ya no cabe.
+  function _autoAltoInput() {
+    var inp = $('te_iaInput');
+    if (!inp) return;
+    inp.style.height = 'auto';
+    var alto = Math.max(34, inp.scrollHeight);
+    inp.style.height = alto + 'px';
+  }
+
   function _enviar() {
     if (PENSANDO) return;
     _reiniciarSiOtroElemento();
@@ -113,6 +123,7 @@
     var txt = (inp.value || '').trim();
     if (!txt) return;
     inp.value = '';
+    _autoAltoInput();                 // vuelve a una linea al vaciarse
     _agregar('user', txt);
 
     PENSANDO = true;
@@ -442,9 +453,16 @@
     var env = $('te_iaEnviar');
     if (env) env.addEventListener('click', _enviar);
     var inp = $('te_iaInput');
-    if (inp) inp.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _enviar(); }
-    });
+    if (inp) {
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _enviar(); }
+      });
+      // El campo crece con el texto (hasta el tope del CSS) y vuelve a su alto al
+      // vaciarse. Se engancha a 'input' —no a keyup— para que tambien crezca al
+      // PEGAR un pedido largo, que es justo cuando molestaba.
+      inp.addEventListener('input', _autoAltoInput);
+      _autoAltoInput();
+    }
     var cargar = $('te_iaCargar');
     // OJO: sin el envoltorio, addEventListener pasa el MouseEvent como `auto`
     // (truthy) y la re-carga se quedaria muda.

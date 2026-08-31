@@ -701,6 +701,9 @@ check("la receta se INSTALA EN VIVO al llegar (no de golpe, no a mano)",
 check("el componente externo entra por las puertas del editor, no se empuja crudo",
       "_setPose(c, c.pose)" in _jt and "_setModoComp(c, _modoDe(c))" in _jt
       and "_dimsDefault(c.figura)" in _jt)
+check("el campo de escritura crece con el texto",
+      "_autoAltoInput" in _ja and "addEventListener('input'" in _ja
+      and "max-height:260px" in _html)
 check("hay como copiar el CHAT completo (para revisar por que entendio mal)",
       "_copiarChat" in _ja and "te_iaCopiarChat" in _ja and "te_iaCopiarChat" in _html)
 check("hay como copiar la receta (evidencia para diagnosticar sin mirar pixeles)",
