@@ -415,7 +415,7 @@ def _resumen_de_spec(spec: dict) -> list:
 # ---------------------------------------------------------------------------
 # PROMPT
 # ---------------------------------------------------------------------------
-def _system_prompt(elemento: str) -> str:
+def _system_prompt(elemento: str, catalogo: str = "") -> str:
     return (
         "Eres el Asistente de Enfierrado de ArmaHub: un copiloto para cubicadores "
         "chilenos que arma MUROS de hormigón armado conversando. Tu único trabajo "
@@ -446,6 +446,10 @@ def _system_prompt(elemento: str) -> str:
         "ponlo en la ficha y vuelve a proponer — NUNCA le digas que eso lo decide "
         "el motor o que lo reporte como bug. Si no las menciona, déjalas en null y "
         "manda el default de la plataforma.\n"
+        "· El ÚNICO catálogo de figuras es la lista completa que va al final "
+        "de estas instrucciones. NO decidas por el nombre ni por familias: si el "
+        "código está en esa lista, EXISTE y puedes usarlo. Solo di que un código "
+        "no existe si de verdad NO aparece ahí, y ahí ofrece los que sí están.\n"
         "· Responde en español chileno neutro, breve, sin jerga técnica de la "
         "plataforma. Nada de muros de texto.\n\n"
         "DEFAULTS DE LA PLATAFORMA (origen 'config'):\n"
@@ -453,6 +457,7 @@ def _system_prompt(elemento: str) -> str:
         "· Trabas por defecto: φ8 en grilla 40×40 cm (solo con doble malla).\n"
         "· Doble malla salvo indicación contraria.\n\n"
         + _conocimiento(elemento)
+        + (catalogo or "")
     )
 
 
@@ -489,6 +494,44 @@ def _mensajes_api(body: ChatBody) -> list:
             "pantalla; si pide modificar, parte de esto]\n"
             + json.dumps(body.receta_actual, ensure_ascii=False))
     return msgs
+
+
+def _catalogo_texto(filas) -> str:
+    """Lista compacta del catalogo para el prompt: `codigo:lados[:angulos]`.
+
+    POR QUE VA COMPLETO Y DESDE LA BD (usuario 31-ago): el asistente tenia solo el
+    resumen escrito a mano del documento de conocimiento y lo trato como si fuera
+    todo el catalogo — le pidieron la figura 104B (que EXISTE) y contesto que no,
+    ofreciendo "las familias 104 son 104A y 104D". Una lista parcial dentro de un
+    prompt no se lee como parcial. El catalogo es DATO y vive en figuras_catalogo:
+    se manda entero y no queda nada que sincronizar a mano."""
+    if not filas:
+        return ""
+    partes = []
+    for fila in filas:
+        codigo, parciales, angulos = fila[0], fila[1], fila[2]
+        if not codigo:
+            continue
+        lados = len(parciales or [])
+        ang = "/".join(str(int(a)) for a in (angulos or []))
+        partes.append("%s:%d%s" % (codigo, lados, (":" + ang) if ang else ""))
+    if not partes:
+        return ""
+    cab = ("\n\nCATALOGO COMPLETO DE FIGURAS (codigo:lados:angulos de los dobleces). "
+           "ES LA LISTA COMPLETA: si un codigo esta aca, EXISTE y puedes usarlo; si "
+           "no esta, no existe. No supongas familias ni inventes codigos.\n")
+    return cab + " \u00b7 ".join(partes)
+
+
+def _catalogo_de_figuras(cur) -> str:
+    """Lee el catalogo activo (1 consulta) y lo deja listo para el prompt."""
+    try:
+        cur.execute("SELECT codigo, parciales, angulos FROM figuras_catalogo "
+                    "WHERE activo IS NOT FALSE ORDER BY codigo")
+        return _catalogo_texto(cur.fetchall())
+    except Exception as _e:      # sin catalogo el asistente sigue, solo mas ciego
+        log.warning("asistente: no se pudo leer el catalogo de figuras: %s", _e)
+        return ""
 
 
 def _figuras_de(cur, spec: dict):
@@ -554,6 +597,7 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             _check_permiso_templates(cur, user)
 
+            catalogo = _catalogo_de_figuras(cur)
             client = anthropic.Anthropic(timeout=90.0, max_retries=1)
 
             def _llamar(msgs):
@@ -564,7 +608,7 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                     # medio — la ficha es extraccion simple, no necesita pensar
                     # largo. Si la calidad baja, subir a "high".
                     output_config={"effort": "medium"},
-                    system=_system_prompt(elemento),
+                    system=_system_prompt(elemento, catalogo),
                     tools=[TOOL_MURO],
                     tool_choice={"type": "auto"},
                     messages=msgs,

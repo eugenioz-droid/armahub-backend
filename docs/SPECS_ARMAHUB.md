@@ -1589,6 +1589,13 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   «colocando 3 de 9». El botón del panel pasó a ser «Cargar la propuesta completa».
   Corregido también el filtro del documento de conocimiento: comparaba el título entero, así que
   una sección con paréntesis («## FIGURAS (códigos…)») nunca llegaba al prompt **en silencio**.
+- **F1.4 — el catálogo de figuras va COMPLETO y desde la BD (31-ago)**: el asistente rechazó la
+  figura 104B diciendo que no existía («las familias 104 son 104A y 104D») porque solo tenía la
+  lista resumida que yo había escrito a mano en el documento de conocimiento, y una lista parcial
+  dentro de un prompt no se lee como parcial. Ahora `_catalogo_de_figuras(cur)` lee
+  `figuras_catalogo` (1 consulta) y le inyecta la lista completa como `codigo:lados:angulos`,
+  declarada como única autoridad; el documento de conocimiento dejó de enumerar códigos y solo
+  explica cómo leerlos. Nada que sincronizar a mano: el catálogo es dato.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

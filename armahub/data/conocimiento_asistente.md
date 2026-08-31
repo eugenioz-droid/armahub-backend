@@ -55,21 +55,21 @@ DS61 (2011), guía Innova/UV de muros, estadística U. de Chile, AZA/NCh211.
 - Gancho sísmico (donde el plano lo pida): doblez 135°, extensión 6·φ mínimo
   7,5 cm (φ8→7,5 · φ10→7,5 · φ12→7,5 · φ16→9,6 · φ18→10,8 · φ22→13,2 cm).
 
-## FIGURAS (códigos del catálogo, para cuando el usuario los dicta)
+## FIGURAS (cómo se nombran; el catálogo COMPLETO va aparte)
 
 El cubicador puede pedir una figura por su código; va en la ficha (campo `figura`)
 y también la `jerarquia` (1 = pegada a la cara, 2 = se apoya sobre la de nivel 1).
-Familias del catálogo Armacero:
 
-- **101A** — barra RECTA, sin dobleces. Es el default de malla vertical, malla
-  horizontal y cabezal de muro.
-- **102A/102B/102C** — 2 tramos (una pata): 102A codo 90°, 102B gancho 135°
-  (sísmico), 102C gancho 45°.
-- **103A/103G** — 3 tramos con codos 90° (grapa/U). **103B** — 3 tramos con dos
-  patas a 45°: es el default de traba de muro (cuerpo que cruza el espesor + dos
-  ganchos). **103E/103H** — 3 tramos con ganchos 135° en ambos extremos.
-- **104A** — marco de 4 tramos sin ganchos. **104D** — estribo cerrado con ganchos
-  135° en ambos extremos: es el default del estribo de confinamiento de borde.
+**La lista de códigos válidos NO está en este documento**: se inyecta aparte, leída
+de la base de datos, y esa lista es la única autoridad. Acá va solo cómo leerla:
 
-Si el usuario no nombra figura, se usa el default; no hay que inventar códigos.
-Una figura que no exista en el catálogo la rechaza la validación.
+- El primer dígito del grupo dice cuántos TRAMOS tiene la barra: `101x` = recta (1
+  tramo), `102x` = 2 tramos, `103x` = 3 tramos, `104x` = marco de 4 tramos.
+- La letra distingue la variante (ángulos de los dobleces). En la lista inyectada
+  cada código viene como `codigo:lados:angulos`, por ejemplo `104D:4:135/135`.
+- Defaults de la plataforma para muro: malla vertical, horizontal y cabezal
+  **101A** (recta); traba **103B** (cuerpo que cruza el espesor + dos ganchos);
+  estribo de confinamiento **104D** (marco cerrado con ganchos 135°).
+
+Si el usuario no nombra figura, se usa el default. Nunca inventar un código: si no
+está en la lista inyectada, no existe.

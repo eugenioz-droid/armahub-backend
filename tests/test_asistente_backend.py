@@ -133,6 +133,19 @@ check("el resumen muestra la figura solo cuando el usuario la dicto",
       any("104B" in f.get("valor", "") for f in _resumen_de_spec(SPEC_FIG))
       and not any("101A" in f.get("valor", "") for f in _resumen_de_spec(SPEC)))
 
+# --- EL CATALOGO VA COMPLETO Y DESDE LA BD (31-ago: el asistente dijo que 104B no
+#     existia porque solo tenia la lista a mano del documento) ---
+from armahub.asistente import (_catalogo_texto, _system_prompt,
+                               _conocimiento as _con)
+_cat = _catalogo_texto([("101A", ["A"], []), ("104B", ["A", "B", "C", "D"], [45, 45]),
+                        ("104D", ["A", "B", "C", "D"], [135, 135])])
+check("el catalogo se formatea codigo:lados:angulos y se declara COMPLETO",
+      "101A:1" in _cat and "104B:4:45/45" in _cat and "104D:4:135/135" in _cat
+      and "LISTA COMPLETA" in _cat)
+check("el catalogo entra al system prompt y el documento ya no lleva lista a mano",
+      _cat in _system_prompt("muro", _cat)
+      and "104A" not in _con("muro"))
+
 # --- resumen para el formulario del chat ---
 filas = _resumen_de_spec(SPEC)
 check("resumen: 3 secciones y fila de cabezales con origen",
@@ -210,7 +223,6 @@ check("templateEditorEstado expuesto para que el chat vea la receta actual",
       "global.templateEditorEstado" in _jt)
 # El filtro de secciones del conocimiento: lo que NO llega al prompt es peor que
 # no escribirlo (parece cargado y no lo esta). Se mide el texto que se inyecta.
-from armahub.asistente import _conocimiento as _con
 check("el prompt de MURO recibe GENERAL + MURO + FIGURAS (titulos con parentesis)",
       "## GENERAL" in _con("muro") and "## MURO" in _con("muro")
       and "103B" in _con("muro"))
