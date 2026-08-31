@@ -1664,6 +1664,13 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   el 0 es legítimo (giro de patas, anidar). `tramos` pasó a lista vacía. Quedan 3 uniones, solo los
   objetos que pueden no existir (trabas, bordes, estribo). El test cuenta las uniones y falla si se
   pasa de 16 — este error no se puede repetir en silencio.
+- **F1.12 — fuera `strict` (31-ago)**: resuelto el tope de uniones apareció el siguiente:
+  `400 — The compiled grammar is too large`. Con `strict: true` la API compila una gramática con el
+  schema y esta ficha la hizo reventar. Se quitó `strict`: el schema se sigue mandando entero y el
+  modelo lo respeta, pero deja de ser garantía dura — así que la ficha que llega ahora se
+  **normaliza** (`_normalizar_ficha`): tipos coercionados (un «20» de texto vale 20), opcionales
+  ausentes con su vacío, recubrimiento al default si no vino. Los datos CRÍTICOS que falten
+  (dimensiones, mallas) no se inventan: cortan la receta y el asistente contesta preguntando.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

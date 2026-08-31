@@ -183,7 +183,13 @@ TOOL_MURO = {
         "críticos (dimensiones, mallas). No la llames si falta un dato crítico: "
         "pregunta primero. Los campos no críticos que asumas, márcalos 'asumido' "
         "en origenes y dilo en tu respuesta."),
-    "strict": True,
+    # SIN `strict` (31-ago). Con strict la API COMPILA una gramatica con el schema
+    # y esta ficha la hizo reventar: "The compiled grammar is too large, which would
+    # cause performance issues". El schema se sigue mandando entero —el modelo lo
+    # respeta— pero deja de ser una garantia dura, asi que la ficha que llega se
+    # NORMALIZA antes de construir (ver _normalizar_ficha): tipos coercionados,
+    # opcionales con su vacio, y los datos criticos que falten cortan la receta en
+    # vez de inventarse.
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -333,6 +339,95 @@ def _spec_figura(figuras, codigo, parciales_def, angulos_def):
     return list(parciales_def), list(angulos_def)
 
 
+_CRITICOS_FALTAN = "faltan datos criticos del muro"
+
+
+def _num(v, porDefecto=0.0):
+    """Numero tolerante: el modelo puede mandar '20', 20.0 o nada."""
+    try:
+        n = float(str(v).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return porDefecto
+    return n
+
+
+def _normalizar_ficha(spec: dict) -> dict:
+    """La ficha que llega del modelo, con los tipos y vacios en su lugar.
+
+    Existe porque el schema dejo de ser `strict` (la gramatica compilada topaba en
+    tamano): sin esa garantia el modelo puede omitir un opcional o mandar un numero
+    como texto, y el constructor no puede caerse por eso. Lo que NO se inventa son
+    los datos criticos —dimensiones y mallas—: si faltan, se levanta ValueError y el
+    asistente contesta preguntando, que es exactamente lo que debe hacer."""
+    if not isinstance(spec, dict):
+        raise ValueError(_CRITICOS_FALTAN)
+    g = spec.get("geometria")
+    if not isinstance(g, dict):
+        raise ValueError(_CRITICOS_FALTAN)
+    geo = {k: _num(g.get(k)) for k in ("largo", "alto", "espesor", "recubrimiento")}
+    if geo["largo"] <= 0 or geo["alto"] <= 0 or geo["espesor"] <= 0:
+        raise ValueError(_CRITICOS_FALTAN)
+    if geo["recubrimiento"] <= 0:
+        geo["recubrimiento"] = 2.5          # default declarado de la plataforma
+
+    def _armadura(d, con_sep=True):
+        d = d if isinstance(d, dict) else {}
+        out = {
+            "diam": _num(d.get("diam")),
+            "figura": str(d.get("figura") or "").strip().upper(),
+            "jerarquia": int(_num(d.get("jerarquia"))),
+            "empalme": _num(d.get("empalme")),
+            "pata": _num(d.get("pata")),
+            "color": str(d.get("color") or "").strip(),
+            "lado_dominante": str(d.get("lado_dominante") or "").strip(),
+            "giro_patas": int(_num(d.get("giro_patas"), -1)),
+            "tramos": [{"long": _num(t.get("long")), "sep": _num(t.get("sep"))}
+                       for t in (d.get("tramos") or []) if isinstance(t, dict)],
+            # El booleano tambien vale: el schema lo pide como entero (-1/0/1) pero
+            # un true/false del modelo significa lo mismo y no se va a descartar.
+            "anidar": (1 if d.get("anidar") is True
+                       else 0 if d.get("anidar") is False
+                       else int(_num(d.get("anidar"), -1))),
+        }
+        if con_sep:
+            out["sep"] = _num(d.get("sep"))
+        return out
+
+    mv, mh = _armadura(spec.get("malla_vertical")), _armadura(spec.get("malla_horizontal"))
+    if mv["diam"] <= 0 or mv["sep"] <= 0 or mh["diam"] <= 0 or mh["sep"] <= 0:
+        raise ValueError(_CRITICOS_FALTAN)
+
+    out = {"geometria": geo, "malla_vertical": mv, "malla_horizontal": mh,
+           "doble_malla": bool(spec.get("doble_malla", True)),
+           "trabas": None, "bordes": None,
+           "origenes": spec.get("origenes") if isinstance(spec.get("origenes"), dict) else {}}
+
+    tr = spec.get("trabas")
+    if isinstance(tr, dict) and _num(tr.get("diam")) > 0:
+        t = _armadura(tr, con_sep=False)
+        t["sx"] = _num(tr.get("sx"), 40)
+        t["sy"] = _num(tr.get("sy"), 40)
+        out["trabas"] = t
+
+    bo = spec.get("bordes")
+    if isinstance(bo, dict) and isinstance(bo.get("barras"), dict):
+        bb = bo["barras"]
+        if _num(bb.get("diam")) > 0:
+            barras = _armadura(bb, con_sep=False)
+            barras["barras_capa"] = max(1, int(_num(bb.get("barras_capa"), 2)))
+            barras["n_capas"] = max(1, int(_num(bb.get("n_capas"), 1)))
+            barras["sep_capas"] = _num(bb.get("sep_capas"))
+            est = bo.get("estribo")
+            estribo = None
+            if isinstance(est, dict) and _num(est.get("diam")) > 0:
+                estribo = _armadura(est)
+                if estribo["sep"] <= 0:
+                    estribo["sep"] = 10.0
+            out["bordes"] = {"barras": barras, "estribo": estribo,
+                             "largo": _num(bo.get("largo"), 40) or 40}
+    return out
+
+
 def _construir_receta_muro(spec: dict, figuras=None) -> dict:
     """Ficha simple -> receta {tipo,geometria,componentes[]} EXACTAMENTE como los
     crea el Template Editor a mano (mapa del 31-ago sobre reglas.js /
@@ -349,6 +444,7 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
         deriva normalizarReceta al abrir (migracion sin movimiento, reglas.js:1698).
     Nada del modelo toca geometria. Verificado contra el MOTOR REAL por
     tests/test_asistente_receta_motor.js (node)."""
+    spec = _normalizar_ficha(spec)
     g = spec["geometria"]
     largo, alto = float(g["largo"]), float(g["alto"])
     esp, rec = float(g["espesor"]), float(g["recubrimiento"])
@@ -863,7 +959,14 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 receta = resumen = None
                 spec_ok = spec
                 if spec is not None:
-                    receta = _construir_receta_muro(spec, _figuras_de(cur, spec))
+                    try:
+                        receta = _construir_receta_muro(spec, _figuras_de(cur, spec))
+                    except ValueError:
+                        # Ficha incompleta: no se inventa nada y el texto del modelo
+                        # (que ya suele estar preguntando) se entrega tal cual.
+                        log.info("asistente: ficha incompleta (%s)", email)
+                        spec = None
+                        receta = None
                     errores = _validar_receta(cur, receta)
                     if errores:
                         # UN reintento con el error como feedback (§12 decisión 13)

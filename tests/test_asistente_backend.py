@@ -60,6 +60,16 @@ if "fastapi" not in sys.modules:
 FALLAS = []
 
 
+def _falla_critico(spec):
+    """True si la ficha se rechaza por falta de datos criticos (lo correcto)."""
+    from armahub.asistente import _normalizar_ficha as _nf
+    try:
+        _nf(spec)
+        return False
+    except ValueError:
+        return True
+
+
 def check(nombre, cond):
     print(("OK  " if cond else "FALLA ") + nombre)
     if not cond:
@@ -315,10 +325,27 @@ check("resumen: 4 secciones (inventario + hormigon + barras + borde) y cabezales
       and any(f.get("label") == "Cabezales" and f["origen"] == "leido" for f in filas))
 
 # --- schema estricto ---
-check("tool proponer_muro es strict con additionalProperties false y pide bordes",
-      TOOL_MURO["strict"] is True
-      and TOOL_MURO["input_schema"]["additionalProperties"] is False
+check("la herramienta NO usa strict (la gramatica compilada topaba en tamano)",
+      "strict" not in TOOL_MURO)
+check("el schema igual declara additionalProperties false y pide bordes",
+      TOOL_MURO["input_schema"]["additionalProperties"] is False
       and "bordes" in TOOL_MURO["input_schema"]["required"])
+# Sin strict el schema deja de ser garantia: la ficha que llega se NORMALIZA.
+from armahub.asistente import _normalizar_ficha
+_min = {"geometria": {"largo": "514", "alto": 315, "espesor": 20},
+        "malla_vertical": {"diam": 8, "sep": "20"},
+        "malla_horizontal": {"diam": 8, "sep": 20}}
+_n = _normalizar_ficha(_min)
+check("la ficha minima se normaliza: numeros en texto, opcionales ausentes, recub default",
+      _n["geometria"]["largo"] == 514.0 and _n["malla_vertical"]["sep"] == 20.0
+      and _n["geometria"]["recubrimiento"] == 2.5
+      and _n["trabas"] is None and _n["bordes"] is None
+      and _n["malla_vertical"]["figura"] == "")
+check("una ficha sin datos criticos NO se construye a medias: avisa",
+      _falla_critico({"geometria": {"largo": 0, "alto": 0, "espesor": 0},
+                      "malla_vertical": {}, "malla_horizontal": {}}))
+check("y el constructor sobrevive a una ficha minima",
+      len(_construir_receta_muro(_min)["componentes"]) == 4)
 
 # --- EL TEST QUE MIDE LO PUBLICADO: la receta contra el MOTOR REAL (node) ---
 import json, subprocess, shutil
