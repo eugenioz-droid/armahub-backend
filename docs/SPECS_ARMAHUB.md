@@ -1756,6 +1756,15 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   (Δ centrado, crece por las dos puntas). Además la traba **deriva su jerarquía por sobre las
   mallas aunque el usuario dicte las de las cortinas** — antes la regla se abstenía entera y la
   traba quedaba por debajo, sin amarrar. Test de punta a punta con el prompt literal. Suite 108.
+- **F1.21 — la ficha dejó de exigirlo todo (31-ago)**: el asistente respondió «me falta algo para
+  armarlo» a un prompt que traía TODO. Medido: el schema exigía **74 campos obligatorios por
+  llamada** — herencia de `strict`, que sí los pedía. Sin strict eso es pura verborrea: obliga al
+  modelo a escribir 950 caracteres de ficha cada vez y multiplica las chances de que la respuesta
+  se corte a la mitad y llegue un `tool_use` incompleto (que es exactamente lo que produce ese
+  mensaje). Ahora `required` declara solo lo imprescindible — **20 campos**, ficha de 473
+  caracteres — y lo que no viene lo pone `_normalizar_ficha`. Además: `max_tokens` 2048 → 8000, se
+  avisa si la respuesta se cortó por largo, y **el rechazo dice QUÉ faltó** («me falta alto y
+  espesor del muro») en vez de un genérico. Suite 111.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

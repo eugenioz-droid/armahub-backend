@@ -160,8 +160,7 @@ _GIRO_PATAS_PROP = {
 }
 _MALLA_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["diam", "sep", "figura", "jerarquia", "empalme", "pata",
-                 "holgura", "tramos", "lado_dominante", "giro_patas", "color"],
+    "required": ["diam", "sep"],
     "properties": {
         "diam": {"type": "number",
                  "description": "φ en mm. 0 = el muro NO lleva esta malla "
@@ -203,8 +202,11 @@ TOOL_MURO = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["geometria", "malla_vertical", "malla_horizontal",
-                     "doble_malla", "trabas", "bordes", "origenes"],
+        # SIN strict, `required` solo declara lo IMPRESCINDIBLE. Listarlo todo
+        # obligaba al modelo a escribir 74 campos en cada llamada —verborrea que
+        # gasta tokens y multiplica las chances de que la respuesta se corte a la
+        # mitad—. Lo que no viene, lo pone _normalizar_ficha.
+        "required": ["geometria"],
         "properties": {
             "rehacer": {
                 "type": "integer",
@@ -215,7 +217,7 @@ TOOL_MURO = {
             },
             "geometria": {
                 "type": "object", "additionalProperties": False,
-                "required": ["largo", "alto", "espesor", "recubrimiento"],
+                "required": ["largo", "alto", "espesor"],
                 "properties": {
                     "largo": {"type": "number", "description": "cm"},
                     "alto": {"type": "number", "description": "cm"},
@@ -230,13 +232,11 @@ TOOL_MURO = {
                 "anyOf": [
                     {"type": "null"},
                     {"type": "object", "additionalProperties": False,
-                     "required": ["barras", "estribo", "largo"],
+                     "required": ["barras"],
                      "properties": {
                          "barras": {
                              "type": "object", "additionalProperties": False,
-                             "required": ["diam", "barras_capa", "n_capas", "figura",
-                                          "empalme", "pata", "sep_capas", "color",
-                                          "jerarquia"],
+                             "required": ["diam"],
                              "properties": {
                                  "diam": {"type": "number", "description": "φ cabezal en mm"},
                                  "barras_capa": {"type": "integer", "description": "barras por capa (a lo ancho)"},
@@ -257,8 +257,7 @@ TOOL_MURO = {
                              "anyOf": [
                                  {"type": "null"},
                                  {"type": "object", "additionalProperties": False,
-                                  "required": ["diam", "sep", "figura", "tramos",
-                                               "anidar", "color"],
+                                  "required": ["diam"],
                                   "properties": {
                                       "diam": {"type": "number", "description": "φ estribo en mm"},
                                       "sep": {"type": "number", "description": "@ en cm (usual ≤6φ y ≤½ espesor)"},
@@ -283,8 +282,7 @@ TOOL_MURO = {
                 "anyOf": [
                     {"type": "null"},
                     {"type": "object", "additionalProperties": False,
-                     "required": ["diam", "sx", "sy", "figura", "jerarquia",
-                                  "tramos", "anidar", "color"],
+                     "required": ["diam"],
                      "properties": {
                          "diam": {"type": "number", "description": "φ en mm"},
                          "sx": {"type": "number", "description": "grilla horizontal cm"},
@@ -304,8 +302,7 @@ TOOL_MURO = {
             },
             "origenes": {
                 "type": "object", "additionalProperties": False,
-                "required": ["geometria", "recubrimiento", "malla_vertical",
-                             "malla_horizontal", "doble_malla", "trabas", "bordes"],
+                "required": [],
                 "properties": {k: {"type": "string", "enum": _ORIGENES}
                                for k in ("geometria", "recubrimiento",
                                          "malla_vertical", "malla_horizontal",
@@ -380,14 +377,14 @@ def _normalizar_ficha(spec: dict) -> dict:
     como texto, y el constructor no puede caerse por eso. Lo que NO se inventa son
     los datos criticos —dimensiones y mallas—: si faltan, se levanta ValueError y el
     asistente contesta preguntando, que es exactamente lo que debe hacer."""
-    if not isinstance(spec, dict):
-        raise ValueError(_CRITICOS_FALTAN)
-    g = spec.get("geometria")
-    if not isinstance(g, dict):
-        raise ValueError(_CRITICOS_FALTAN)
+    if not isinstance(spec, dict) or not isinstance(spec.get("geometria"), dict):
+        raise ValueError("me faltan las dimensiones del muro (largo, alto y espesor)")
+    g = spec["geometria"]
     geo = {k: _num(g.get(k)) for k in ("largo", "alto", "espesor", "recubrimiento")}
-    if geo["largo"] <= 0 or geo["alto"] <= 0 or geo["espesor"] <= 0:
-        raise ValueError(_CRITICOS_FALTAN)
+    faltan = [n for n, k in (("largo", "largo"), ("alto", "alto"),
+                             ("espesor", "espesor")) if geo[k] <= 0]
+    if faltan:
+        raise ValueError("me falta " + " y ".join(faltan) + " del muro")
     if geo["recubrimiento"] <= 0:
         geo["recubrimiento"] = 2.5          # default declarado de la plataforma
 
@@ -473,7 +470,8 @@ def _normalizar_ficha(spec: dict) -> dict:
     # eso no sale ninguna barra. Ahi si corresponde volver a preguntar.
     if not (out["malla_vertical"] or out["malla_horizontal"]
             or out["trabas"] or out["bordes"]):
-        raise ValueError(_CRITICOS_FALTAN)
+        raise ValueError("no me quedó ninguna armadura con diámetro y separación "
+                         "válidos")
     return out
 
 
@@ -1651,7 +1649,10 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
             def _llamar(msgs):
                 return client.messages.create(
                     model=ASISTENTE_MODEL,
-                    max_tokens=2048,
+                    # 8000: la ficha completa mas el texto caben con holgura. Con
+                    # 2048 una respuesta larga podia cortarse a la mitad y llegar
+                    # como tool_use incompleto (= «me falta algo» sin motivo).
+                    max_tokens=8000,
                     # Velocidad (feedback usuario 31-ago: "muy lento"): esfuerzo
                     # medio — la ficha es extraccion simple, no necesita pensar
                     # largo. Si la calidad baja, subir a "high".
@@ -1680,8 +1681,9 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                         try:
                             nf = _normalizar_ficha(spec_x)
                             r, sp = _construir_receta_muro(nf, figuras), nf
-                        except ValueError:
-                            log.info("asistente: ficha incompleta (%s)", email)
+                        except ValueError as exc:
+                            log.info("asistente: ficha incompleta (%s): %s", email, exc)
+                            avisos.append("No pude armarlo: %s." % exc)
                     if cambios_x:
                         base = r if r is not None else body.receta_actual
                         if not base:
@@ -1768,9 +1770,12 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                                else _resumen_de_receta(receta))
                 if avisos:
                     texto = (texto + "\n\n" + " ".join(avisos)).strip()
+                if getattr(resp, "stop_reason", None) == "max_tokens":
+                    avisos.append("Mi respuesta se cortó por largo; pídeme el resto "
+                                  "en un mensaje aparte.")
                 if receta is None and not texto:
-                    texto = ("Me falta algo para armarlo. Dime al menos las "
-                             "dimensiones del muro y qué armadura quieres.")
+                    texto = ("No alcancé a armarlo. Dime las dimensiones del muro "
+                             "(largo × alto × espesor) y qué armadura quieres.")
                 if receta is not None and not texto:
                     texto = ("Listo — apliqué los cambios y cargué el resultado "
                              "al editor. Revísalo en el 3D; si algo no calza, dime.")

@@ -60,6 +60,16 @@ if "fastapi" not in sys.modules:
 FALLAS = []
 
 
+def _de_falta(spec):
+    """El motivo textual con que se rechaza una ficha incompleta."""
+    from armahub.asistente import _normalizar_ficha as _nf
+    try:
+        _nf(spec)
+        return ""
+    except ValueError as exc:
+        return str(exc)
+
+
 def _falla_critico(spec):
     """True si la ficha se rechaza por falta de datos criticos (lo correcto)."""
     from armahub.asistente import _normalizar_ficha as _nf
@@ -388,9 +398,10 @@ check("resumen: 4 secciones (inventario + hormigon + barras + borde) y cabezales
 # --- schema estricto ---
 check("la herramienta NO usa strict (la gramatica compilada topaba en tamano)",
       "strict" not in TOOL_MURO)
-check("el schema igual declara additionalProperties false y pide bordes",
+check("el schema igual cierra a campos desconocidos y exige la geometria",
       TOOL_MURO["input_schema"]["additionalProperties"] is False
-      and "bordes" in TOOL_MURO["input_schema"]["required"])
+      and TOOL_MURO["input_schema"]["required"] == ["geometria"]
+      and "bordes" in TOOL_MURO["input_schema"]["properties"])
 # Sin strict el schema deja de ser garantia: la ficha que llega se NORMALIZA.
 from armahub.asistente import _normalizar_ficha
 _min = {"geometria": {"largo": "514", "alto": 315, "espesor": 20},
@@ -565,6 +576,33 @@ _rt2 = _construir_receta_muro(_sin_ajuste, CAT)
 check("override: una grilla que ya cuadra no se toca",
       [c for c in _rt2["componentes"] if c["tipologia"] == "TR"][0]
       ["distribucion"]["rango"]["sep"] == 40.0)
+
+# --- LA FICHA NO OBLIGA A ESCRIBIRLO TODO (31-ago: 74 campos obligatorios por
+#     llamada; el modelo se quedaba sin aire y llegaba un tool_use a medias) ---
+def _req(nodo, ruta="raiz", out=None):
+    out = [] if out is None else out
+    if not isinstance(nodo, dict):
+        return out
+    for r in (nodo.get("required") or []):
+        out.append(ruta + "." + r)
+    for k, v in (nodo.get("properties") or {}).items():
+        _req(v, ruta + "." + k, out)
+    for alt in (nodo.get("anyOf") or []):
+        _req(alt, ruta, out)
+    if "items" in nodo:
+        _req(nodo["items"], ruta + "[]", out)
+    return out
+
+check("la ficha pide pocos campos obligatorios (%d), no todos" % len(_req(TOOL_MURO["input_schema"])),
+      len(_req(TOOL_MURO["input_schema"])) <= 25)
+_MIN_F = {"geometria": {"largo": 500, "alto": 300, "espesor": 20, "recubrimiento": 2},
+          "malla_vertical": {"diam": 10, "sep": 20},
+          "malla_horizontal": {"diam": 8, "sep": 20}}
+check("y una ficha minima (sin opcionales) se arma igual",
+      len(_construir_receta_muro(_MIN_F, CAT)["componentes"]) == 4)
+check("cuando falta un dato critico se DICE cual",
+      "alto" in _de_falta({"geometria": {"largo": 500}})
+      and "espesor" in _de_falta({"geometria": {"largo": 500}}))
 
 # --- EL PROMPT COMPLETO DEL USUARIO (31-ago) de punta a punta ---
 CAT_P = {"101A": {"parciales": ["A"], "angulos": []},
