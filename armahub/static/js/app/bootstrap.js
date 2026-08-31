@@ -421,6 +421,16 @@
         'armahubFeature',
         'modelador-template-editor',
         '[ArmaHub] No se pudo cargar modelador/template_editor.js'
+      ),
+      // Asistente IA de enfierrado (SPECS §12) — botón 🤖 IA del Template Editor y
+      // panel de chat. Etapa 1: maqueta visual sin lógica; Etapa 2 lo conecta al
+      // backend (/api/v1/asistente/chat).
+      loadScript(
+        'script[data-armahub-feature="modelador-asistente"]',
+        '/static/js/features/modelador/asistente.js' + suffix,
+        'armahubFeature',
+        'modelador-asistente',
+        '[ArmaHub] No se pudo cargar modelador/asistente.js'
       )
     ]);
   }).catch(function(error) {

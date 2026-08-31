@@ -1480,6 +1480,64 @@
   #te_modal #te_borrador button:hover{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   #te_modal #te_borrador button.te-brghost{color:var(--te-muted);border-color:var(--te-line)}
   #te_modal #te_borrador button.te-brghost:hover{background:var(--te-ghost);color:var(--te-ink);border-color:var(--te-line)}
+
+  /* ==== ASISTENTE IA (Etapa 1 · MAQUETA — SPECS §12). El chat REEMPLAZA al panel
+     izquierdo (#te_side) mientras está abierto: el 3D y los cuadrantes quedan
+     siempre visibles (decisión del usuario 30-ago: nada de modal sobre modal).
+     Todo scopeado bajo #te_backdrop y pintado con las variables --te-* para que
+     acompañe a los 3 temas del selector de fondo. ==== */
+  #te_modal #te_ia{width:360px;min-width:360px;border-right:1px solid var(--te-line);
+    background:var(--te-panel);display:none;flex-direction:column;min-height:0;overflow:hidden}
+  #te_modal.te-ia-abierto #te_ia{display:flex}
+  #te_modal.te-ia-abierto #te_side{display:none}
+  #te_modal .te-ia-h{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  #te_modal .te-ia-h b{font-size:12.5px;color:var(--te-ink)}
+  #te_modal .te-ia-h .te-ia-est{font-size:10.5px;color:var(--te-faint)}
+  #te_modal .te-ia-hbtn{border:1px solid var(--te-field-b);background:var(--te-field);
+    color:var(--te-ghost-ink);border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer}
+  #te_modal .te-ia-hbtn:hover{background:var(--te-hover)}
+  #te_modal #te_iaMsgs{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 12px;
+    display:flex;flex-direction:column;gap:8px}
+  #te_modal .te-ia-msg{max-width:92%;padding:7px 10px;border-radius:10px;font-size:12px;
+    line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  #te_modal .te-ia-msg.user{align-self:flex-end;background:var(--te-azul-b);color:var(--te-ink);
+    border-bottom-right-radius:3px}
+  #te_modal .te-ia-msg.bot{align-self:flex-start;background:var(--te-panel2);color:var(--te-ink);
+    border:1px solid var(--te-line);border-bottom-left-radius:3px}
+  /* FORMULARIO VIVO — los campos de la receta llenándose, cada uno con su chip de
+     ORIGEN (§12.2.4): leído (azul) · config (verde) · asumido (ámbar) · falta (rojo). */
+  #te_modal #te_iaForm{border-top:1px solid var(--te-line);background:var(--te-panel2);
+    padding:8px 12px;max-height:38%;overflow-y:auto;flex:0 0 auto}
+  #te_modal .te-ia-ft{font-size:10.5px;font-weight:700;color:var(--te-muted);
+    text-transform:uppercase;letter-spacing:.4px;margin:6px 0 3px}
+  #te_modal .te-ia-fila{display:flex;align-items:center;gap:6px;font-size:11.5px;
+    color:var(--te-ink);padding:2px 0}
+  #te_modal .te-ia-fila .lbl{color:var(--te-muted);flex:0 0 108px}
+  #te_modal .te-ia-fila .val{flex:1;font-weight:600}
+  #te_modal .te-ia-fila .val.vacio{color:var(--te-faint);font-weight:400}
+  #te_modal .te-ia-org{font-size:9.5px;border-radius:8px;padding:1px 7px;flex:0 0 auto}
+  #te_modal .te-ia-org.leido{background:var(--te-azul-b);color:var(--te-azul-t)}
+  #te_modal .te-ia-org.config{background:var(--te-chip);color:var(--te-chip-ink)}
+  #te_modal .te-ia-org.asumido{background:var(--te-warn-bg);color:var(--te-warn)}
+  #te_modal .te-ia-org.falta{background:var(--te-err-bg);color:var(--te-err)}
+  #te_modal .te-ia-pie{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--te-line);
+    background:var(--te-panel);flex:0 0 auto}
+  #te_modal #te_iaInput{flex:1;border:1px solid var(--te-field-b);background:var(--te-field);
+    color:var(--te-ink);border-radius:8px;padding:7px 10px;font-size:12px;resize:none;
+    font-family:inherit;min-height:34px;max-height:90px}
+  #te_modal #te_iaEnviar{border:0;background:var(--te-acero);color:#fff;border-radius:8px;
+    padding:0 14px;font-size:12px;font-weight:700;cursor:pointer}
+  #te_modal #te_iaEnviar:hover{background:var(--te-acero-d)}
+  #te_modal #te_iaCargar{margin:0 12px 8px;border:1px dashed var(--te-azul-t);
+    background:transparent;color:var(--te-azul-t);border-radius:8px;padding:6px;
+    font-size:11.5px;cursor:pointer;flex:0 0 auto}
+  /* Botón del titlebar: marcado (identidad acero) con el chat abierto o con
+     conversación viva minimizada. */
+  #te_modal #te_btnIA{border:1px solid var(--te-field-b);background:var(--te-field);
+    color:var(--te-ghost-ink);border-radius:7px;font-size:12px;padding:4px 10px;cursor:pointer}
+  #te_modal #te_btnIA:hover{background:var(--te-hover)}
+  #te_modal #te_btnIA.on{background:var(--te-acero);border-color:var(--te-acero);color:#fff}
 </style>
 
 <div id="te_backdrop">
@@ -1512,6 +1570,9 @@
            activo (mismo motivo de siempre, en el tooltip). -->
       <div id="te_elemBtns" class="te-elembtns"></div>
       <div class="te-spacer"></div>
+      <!-- ASISTENTE IA (SPECS §12) — un solo botón para ambos contextos (catálogo y
+           modo obra: son el mismo modal). Lo cablea modelador/asistente.js. -->
+      <button type="button" id="te_btnIA" title="Asistente IA de enfierrado — arma la receta conversando (Etapa 1: maqueta)">🤖 IA</button>
       <!-- El badge queda como identidad de color junto a la ✕ (mismo tono que la
            lista de templates guardados); lo actualiza _actualizarTitulos(). -->
       <span class="te-chip" id="te_elemBadge">VIGA</span>
@@ -1691,6 +1752,25 @@
            CONTENIDO y no la POSICIÓN. Cada zona scrollea por su cuenta.
            Se RENDERIZA dinámicamente desde ST.receta.componentes en template_editor.js
            (_renderGrilla / _renderDetalle). Cada .te-comp lleva data-ci = índice. -->
+      <!-- ===== ASISTENTE IA — panel del chat (Etapa 1 · MAQUETA sin lógica).
+           Ocupa el lugar del panel de componentes mientras está abierto; minimizar
+           lo esconde SIN perder la conversación (persistencia de sesión, §12.3).
+           Mensajes y formulario los maneja modelador/asistente.js. ===== -->
+      <div id="te_ia">
+        <div class="te-ia-h">
+          <span>🤖</span><b>Asistente de enfierrado</b>
+          <span class="te-ia-est" id="te_iaEstado">maqueta · etapa 1</span>
+          <span style="flex:1"></span>
+          <button type="button" class="te-ia-hbtn" id="te_iaMin" title="Minimizar sin perder la conversación">— Minimizar</button>
+        </div>
+        <div id="te_iaMsgs"></div>
+        <div id="te_iaForm"></div>
+        <button type="button" id="te_iaCargar" title="Etapa 2: carga la receta propuesta como elemento en edición" style="display:none">⬇ Cargar como borrador al editor</button>
+        <div class="te-ia-pie">
+          <textarea id="te_iaInput" rows="1" placeholder="Describe el muro o pega tus indicaciones…"></textarea>
+          <button type="button" id="te_iaEnviar">Enviar</button>
+        </div>
+      </div>
       <div id="te_side">
 
         <!-- ZONA 1 · DETALLE (no se mueve). El espacio queda RESERVADO aunque no haya
