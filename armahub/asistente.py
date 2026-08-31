@@ -163,7 +163,9 @@ _MALLA_SCHEMA = {
     "required": ["diam", "sep", "figura", "jerarquia", "empalme", "pata",
                  "tramos", "lado_dominante", "giro_patas", "color"],
     "properties": {
-        "diam": {"type": "number", "description": "φ en mm"},
+        "diam": {"type": "number",
+                 "description": "φ en mm. 0 = el muro NO lleva esta malla "
+                                "(el usuario pidió solo otras armaduras)"},
         "sep": {"type": "number", "description": "@ en cm"},
         "figura": _FIGURA_PROP,
         "jerarquia": _JERARQUIA_PROP,
@@ -179,10 +181,12 @@ _MALLA_SCHEMA = {
 TOOL_MURO = {
     "name": "proponer_muro",
     "description": (
-        "Propone la ficha completa de un muro cuando ya tienes TODOS los datos "
-        "críticos (dimensiones, mallas). No la llames si falta un dato crítico: "
-        "pregunta primero. Los campos no críticos que asumas, márcalos 'asumido' "
-        "en origenes y dilo en tu respuesta."),
+        "Propone la ficha del muro. El usuario puede pedir el muro COMPLETO o SOLO "
+        "UNA PARTE (por ejemplo solo los cabezales): las armaduras que no pida van "
+        "vacías —diámetro 0 en las mallas, null en trabas y bordes— y NO se le "
+        "preguntan. Lo único imprescindible son las dimensiones del muro y que haya "
+        "al menos UNA armadura. Los campos que asumas, márcalos 'asumido' en "
+        "origenes y dilo en tu respuesta."),
     # SIN `strict` (31-ago). Con strict la API COMPILA una gramatica con el schema
     # y esta ficha la hizo reventar: "The compiled grammar is too large, which would
     # cause performance issues". El schema se sigue mandando entero —el modelo lo
@@ -254,7 +258,9 @@ TOOL_MURO = {
                                   }},
                              ]},
                          "largo": {"type": "number",
-                                   "description": "largo confinado por punta, cm (usual ≥ 40)"},
+                                   "description": "largo del ESTRIBO por punta, cm. "
+                                                  "Solo importa si hay estribo; sin "
+                                                  "estribo no se pregunta (0 = 40)"},
                      }},
                 ],
             },
@@ -393,9 +399,16 @@ def _normalizar_ficha(spec: dict) -> dict:
             out["sep"] = _num(d.get("sep"))
         return out
 
-    mv, mh = _armadura(spec.get("malla_vertical")), _armadura(spec.get("malla_horizontal"))
-    if mv["diam"] <= 0 or mv["sep"] <= 0 or mh["diam"] <= 0 or mh["sep"] <= 0:
-        raise ValueError(_CRITICOS_FALTAN)
+    # LAS MALLAS SON OPCIONALES (31-ago). Antes eran obligatorias, asi que un
+    # «hazme SOLO los cabezales» no cabia en la ficha: el asistente se veia forzado a
+    # pedir diametro y separacion de unas mallas que el usuario no queria, y la
+    # conversacion se trababa ahi. Un elemento con solo cabezales es perfectamente
+    # valido — el cubicador arma su template por partes.
+    def _malla(clave):
+        m = _armadura(spec.get(clave))
+        return m if (m["diam"] > 0 and m["sep"] > 0) else None
+
+    mv, mh = _malla("malla_vertical"), _malla("malla_horizontal")
 
     out = {"geometria": geo, "malla_vertical": mv, "malla_horizontal": mh,
            "doble_malla": bool(spec.get("doble_malla", True)),
@@ -425,6 +438,12 @@ def _normalizar_ficha(spec: dict) -> dict:
                     estribo["sep"] = 10.0
             out["bordes"] = {"barras": barras, "estribo": estribo,
                              "largo": _num(bo.get("largo"), 40) or 40}
+
+    # Una ficha sin NINGUNA armadura no es un muro a medias: es un muro vacio, y de
+    # eso no sale ninguna barra. Ahi si corresponde volver a preguntar.
+    if not (out["malla_vertical"] or out["malla_horizontal"]
+            or out["trabas"] or out["bordes"]):
+        raise ValueError(_CRITICOS_FALTAN)
     return out
 
 
@@ -536,26 +555,28 @@ def _construir_receta_muro(spec: dict, figuras=None) -> dict:
 
     comps = []
     mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
-    fmv = _pedido(mv, "figura", "101A")
-    fmh = _pedido(mh, "figura", "101A")
-    pmv, amv = _spec_figura(figuras, fmv, ["A"], [])
-    pmh, amh = _spec_figura(figuras, fmh, ["A"], [])
-    jmv = int(_pedido(mv, "jerarquia", 1))
-    jmh = int(_pedido(mh, "jerarquia", 1))
     for lado in ([1, -1] if doble else [1]):
-        comps.append(_extras(_base("MV", fmv, mv["diam"], amv, "lineal",
-                           "lateral", lado, "y", "de_pie", False,
-                           _dimsDe(pmv, mv.get("empalme"), mv.get("pata"),
-                                   mv["diam"]), jmv,
-                           _lin(mv["sep"], "x", -rx, rx, mv.get("tramos"))), mv))
-        comps.append(_extras(_base("MH", fmh, mh["diam"], amh, "lineal",
-                           "lateral", lado, "x", "acostada", False,
-                           _dimsDe(pmh, mh.get("empalme"), mh.get("pata"),
-                                   mh["diam"]), jmh,
-                           _lin(mh["sep"], "y", -ry, ry, mh.get("tramos"))), mh))
+        if mv:
+            fmv = _pedido(mv, "figura", "101A")
+            pmv, amv = _spec_figura(figuras, fmv, ["A"], [])
+            comps.append(_extras(_base(
+                "MV", fmv, mv["diam"], amv, "lineal", "lateral", lado, "y",
+                "de_pie", False,
+                _dimsDe(pmv, mv.get("empalme"), mv.get("pata"), mv["diam"]),
+                int(_pedido(mv, "jerarquia", 1)),
+                _lin(mv["sep"], "x", -rx, rx, mv.get("tramos"))), mv))
+        if mh:
+            fmh = _pedido(mh, "figura", "101A")
+            pmh, amh = _spec_figura(figuras, fmh, ["A"], [])
+            comps.append(_extras(_base(
+                "MH", fmh, mh["diam"], amh, "lineal", "lateral", lado, "x",
+                "acostada", False,
+                _dimsDe(pmh, mh.get("empalme"), mh.get("pata"), mh["diam"]),
+                int(_pedido(mh, "jerarquia", 1)),
+                _lin(mh["sep"], "y", -ry, ry, mh.get("tramos"))), mh))
 
     tr = spec.get("trabas")
-    if doble and tr:
+    if doble and tr and (mv or mh):
         dist = _lin(tr["sx"], "x", -rx, rx, tr.get("tramos"))
         dist["modo"] = "arreglo"
         # La 103B cuelga su gancho HACIA ABAJO de la fila (~6phi + curva): si la
@@ -649,9 +670,14 @@ def _inventario(spec: dict) -> str:
     filas. Una línea que diga «2 cabezales + 2 estribos» hace evidente lo que sobra
     ANTES de que se instale."""
     n = 2 if spec.get("doble_malla", True) else 1
-    partes = ["%d malla%s vertical%s" % (n, "s" if n > 1 else "", "es" if n > 1 else ""),
-              "%d horizontal%s" % (n, "es" if n > 1 else "")]
-    if spec.get("doble_malla", True) and spec.get("trabas"):
+    partes = []
+    if spec.get("malla_vertical"):
+        partes.append("%d malla%s vertical%s" % (n, "s" if n > 1 else "",
+                                                 "es" if n > 1 else ""))
+    if spec.get("malla_horizontal"):
+        partes.append("%d horizontal%s" % (n, "es" if n > 1 else ""))
+    if spec.get("doble_malla", True) and spec.get("trabas") \
+            and (spec.get("malla_vertical") or spec.get("malla_horizontal")):
         partes.append("1 traba")
     bo = spec.get("bordes")
     if bo:
@@ -679,12 +705,14 @@ def _resumen_de_spec(spec: dict) -> list:
          "origen": org("recubrimiento")},
         {"seccion": "Barras"},
         {"label": "Malla vertical",
-         "valor": f"φ{spec['malla_vertical']['diam']:g} @ {spec['malla_vertical']['sep']:g}"
-                  + _detalle_fig(spec["malla_vertical"]),
+         "valor": (f"φ{spec['malla_vertical']['diam']:g} @ {spec['malla_vertical']['sep']:g}"
+                   + _detalle_fig(spec["malla_vertical"])) if spec.get("malla_vertical")
+                  else "no lleva",
          "origen": org("malla_vertical")},
         {"label": "Malla horizontal",
-         "valor": f"φ{spec['malla_horizontal']['diam']:g} @ {spec['malla_horizontal']['sep']:g}"
-                  + _detalle_fig(spec["malla_horizontal"]),
+         "valor": (f"φ{spec['malla_horizontal']['diam']:g} @ {spec['malla_horizontal']['sep']:g}"
+                   + _detalle_fig(spec["malla_horizontal"])) if spec.get("malla_horizontal")
+                  else "no lleva",
          "origen": org("malla_horizontal")},
         {"label": "Mallas", "valor": "doble" if spec.get("doble_malla", True) else "simple",
          "origen": org("doble_malla")},
@@ -694,12 +722,12 @@ def _resumen_de_spec(spec: dict) -> list:
                   "valor": ((f"φ{tr['diam']:g} · {tr['sx']:g} × {tr['sy']:g}"
                              + _detalle_fig(tr)) if tr else "sin trabas"),
                   "origen": org("trabas")})
-    emp = (spec["malla_vertical"].get("empalme")
-           or spec["malla_horizontal"].get("empalme"))
+    emp = ((spec.get("malla_vertical") or {}).get("empalme")
+           or (spec.get("malla_horizontal") or {}).get("empalme"))
     if emp:
         filas.append({"label": "Empalme",
                       "valor": ("MV +%g cm" % spec["malla_vertical"]["empalme"]
-                                if spec["malla_vertical"].get("empalme")
+                                if (spec.get("malla_vertical") or {}).get("empalme")
                                 else "MH +%g cm" % spec["malla_horizontal"]["empalme"]),
                       "origen": org("malla_vertical")})
     bo = spec.get("bordes")
@@ -751,6 +779,12 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "a llamar proponer_muro con la ficha completa corregida.\n"
         "· Por ahora SOLO muros. Si piden otro elemento, dilo amable: viga y "
         "columna vienen después.\n"
+        "· SE PUEDE PEDIR SOLO UNA PARTE. «Hazme solo los cabezales» es un "
+        "pedido completo y valido: se llena esa armadura y las demas van vacias "
+        "(diametro 0 en las mallas, null en trabas y bordes). NO le pidas las "
+        "mallas, ni el estribo, ni el largo del estribo si no los menciono — lo "
+        "unico imprescindible son las dimensiones del muro. Preguntar por "
+        "armaduras que no pidio es lo mismo que agregarlas.\n"
         "· NO INVENTES ARMADURAS QUE NADIE PIDIÓ. Cada armadura de la ficha es "
         "una barra distinta que se va a fabricar: si el usuario pide SOLO "
         "cabezales, el estribo va en null; si pide solo mallas, trabas y bordes "
@@ -999,6 +1033,9 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 # El modelo a veces llama la herramienta SIN texto (visto en la
                 # primera prueba real): la respuesta "…" parecia un cuelgue. Si
                 # hay receta y no hay palabras, se pone la frase de cierre.
+                if receta is None and not texto:
+                    texto = ("Me falta algo para armarlo. Dime al menos las "
+                             "dimensiones del muro y qué armadura quieres.")
                 if receta is not None and not texto:
                     texto = ("Listo — armé la receta y la cargué al editor como "
                              "borrador. Revísala en el 3D; si quieres ajustar "

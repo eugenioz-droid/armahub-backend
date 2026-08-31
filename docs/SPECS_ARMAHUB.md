@@ -1671,6 +1671,16 @@ miembro ∪ editores de catálogo ∪ área cubicaciones). Quien ve el TE, ve el
   **normaliza** (`_normalizar_ficha`): tipos coercionados (un «20» de texto vale 20), opcionales
   ausentes con su vacío, recubrimiento al default si no vino. Los datos CRÍTICOS que falten
   (dimensiones, mallas) no se inventan: cortan la receta y el asistente contesta preguntando.
+- **F1.13 — pedidos PARCIALES (31-ago, del chat real copiado por el usuario)**: pidió «SOLO
+  CABEZALES» y el asistente insistió en preguntarle las mallas, el estribo y el «largo confinado»
+  hasta agotar la conversación sin dibujar una barra. No era torpeza del modelo: **la ficha exigía
+  el muro completo** — mallas obligatorias y `bordes.largo` requerido. Ahora las mallas son
+  opcionales (`diam: 0` = «no lleva»), el largo del estribo solo importa si hay estribo, y basta
+  UNA armadura para construir; solo las dimensiones del muro son imprescindibles. El prompt lo dice
+  explícito: preguntar por armaduras que el usuario no mencionó es lo mismo que agregarlas.
+  Verificado con el pedido literal: salen 2 cabezales φ18 102A con pata 25 y empalme, nada más, y
+  el motor los valida. Se agregó también el botón **⧉ Copiar chat** (el hilo completo + la ficha)
+  para diagnosticar estos casos con el texto real y no con capturas.
 - **F3 — extrapolar** a viga/columna. **F4 (futuro)** — pisos inferiores irregulares, protocolo
   de cubicación como contexto, carga escalonada de barras (animación al recibir la receta).
 

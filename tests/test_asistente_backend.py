@@ -187,9 +187,36 @@ check("el estribo por defecto es la figura de la casa (106A), no la 104D",
                              "largo": 40}), CAT)["componentes"]
        if c["tipologia"] == "EC"][0]["figura"] == "106A")
 
+from armahub.asistente import _inventario, _system_prompt as _sp, _normalizar_ficha
+
+# --- SE PUEDE PEDIR SOLO UNA PARTE (31-ago, del chat real: el usuario pidio "SOLO
+#     CABEZALES" y la ficha, que exigia mallas, obligo al asistente a pedirlas una y
+#     otra vez; nunca llego a dibujar una barra)
+SOLO_CB = {"geometria": {"largo": 514, "alto": 315, "espesor": 20, "recubrimiento": 2},
+           "malla_vertical": {"diam": 0, "sep": 0},
+           "malla_horizontal": {"diam": 0, "sep": 0},
+           "doble_malla": True, "trabas": None,
+           "bordes": {"barras": {"diam": 18, "barras_capa": 2, "n_capas": 2,
+                                 "figura": "102A", "empalme": 118, "pata": 25,
+                                 "sep_capas": 0},
+                      "estribo": None, "largo": 0},
+           "origenes": {}}
+r_cb = _construir_receta_muro(SOLO_CB, CAT)
+check("«solo cabezales» produce SOLO los dos cabezales, sin mallas ni estribo",
+      [c["tipologia"] for c in r_cb["componentes"]] == ["CB", "CB"])
+check("el inventario lo dice tal cual", _inventario(_normalizar_ficha(SOLO_CB)) == "2 cabezales")
+check("una malla con diametro 0 se lee como «no lleva», no como dato faltante",
+      _normalizar_ficha(SOLO_CB)["malla_vertical"] is None)
+check("pero una ficha sin NINGUNA armadura si se rechaza",
+      _falla_critico({"geometria": {"largo": 514, "alto": 315, "espesor": 20},
+                      "malla_vertical": {"diam": 0}, "malla_horizontal": {"diam": 0},
+                      "trabas": None, "bordes": None}))
+check("el prompt prohibe pedir armaduras que el usuario no menciono",
+      "SE PUEDE PEDIR SOLO UNA PARTE" in _sp("muro"))
+
 # --- NO INVENTAR ARMADURAS + inventario visible (31-ago: pidio cabezales y el
 #     asistente agrego un estribo phi8@10 de 32 barras que nadie pidio)
-from armahub.asistente import _inventario, _system_prompt as _sp
+
 SPEC_SOLO_CB = dict(SPEC, bordes={"barras": {"diam": 22, "barras_capa": 2, "n_capas": 2,
                                              "figura": None, "empalme": None,
                                              "pata": None, "sep_capas": None},
