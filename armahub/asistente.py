@@ -374,6 +374,10 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                 return client.messages.create(
                     model=ASISTENTE_MODEL,
                     max_tokens=2048,
+                    # Velocidad (feedback usuario 31-ago: "muy lento"): esfuerzo
+                    # medio — la ficha es extraccion simple, no necesita pensar
+                    # largo. Si la calidad baja, subir a "high".
+                    output_config={"effort": "medium"},
                     system=_system_prompt(elemento),
                     tools=[TOOL_MURO],
                     tool_choice={"type": "auto"},
@@ -417,6 +421,13 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                     if receta is not None:
                         resumen = _resumen_de_spec(spec_ok)
 
+                # El modelo a veces llama la herramienta SIN texto (visto en la
+                # primera prueba real): la respuesta "…" parecia un cuelgue. Si
+                # hay receta y no hay palabras, se pone la frase de cierre.
+                if receta is not None and not texto:
+                    texto = ("Listo — armé la receta y la cargué al editor como "
+                             "borrador. Revísala en el 3D; si quieres ajustar "
+                             "algo, dime.")
                 return {"texto": texto or "…", "receta": receta, "resumen": resumen}
 
             except anthropic.AuthenticationError:
