@@ -1,75 +1,94 @@
 # Conocimiento del Asistente IA de enfierrado (SPECS §12.8, capa 1)
 
-Este archivo es DATA, no código: se inyecta al prompt del asistente en cada
-conversación. Se edita a mano para enseñarle prácticas de la casa. Catalogado POR
-TIPO DE ELEMENTO desde el día uno (decisión del usuario 30-ago-2026). Son
-RECOMENDACIONES y ejemplos de lo usual en Chile — no restricciones normativas
-(decisión del usuario 31-ago). Fuentes: Manual de Detallamiento ICH 2019, DS60/
-DS61 (2011), guía Innova/UV de muros, estadística U. de Chile, AZA/NCh211.
+DATA, no código: se inyecta al prompt en cada conversación. Catalogado POR TIPO DE
+ELEMENTO. Es una guía de **cómo se ARMA** (qué barra va dónde, cómo corre, cómo se
+reparte), NO de cálculo estructural: el asistente no diseña, traduce lo que el
+cubicador le dicta. Los criterios de cálculo (cuantías, cuándo se exige
+confinamiento, verificaciones normativas) quedan fuera a propósito — decisión del
+usuario 31-ago: no aportaban al armado y estorbaban.
 
 ## GENERAL
 
 - Unidades: dimensiones y separaciones en CENTÍMETROS; diámetros (φ) en MILÍMETROS.
-- Glosario chileno: «φ» o «fi» = diámetro; «@» o «a» = separación («φ10@20» =
-  barras de 10 mm cada 20 cm); «DM» = doble malla (una cortina por cara); «trama»
-  = la grilla de la malla; «trabas» = ganchos cortos que cruzan el espesor y cosen
-  las mallas; «recubrimiento» = hormigón entre barra y cara.
-- Diámetros comerciales chilenos: 8, 10, 12, 16, 18, 22, 25, 28, 32, 36 mm.
-  Acero A630-420H (ex A63-42H) en prácticamente todos los planos.
-- Los planos suelen dar espesores en cm (15, 20, 25, 30) — un «espesor 200» casi
-  seguro está en mm (= 20 cm). Separaciones en cm.
-- Muros se nombran «M + número»: el primer dígito suele ser el piso (M402 = muro
-  del piso 4). Ejemplo real de plano: «M404: e=25, DM φ10@20 V / φ10@15 H».
-- Indicaciones genéricas típicas («armadura mínima», «según nota», «trama según
-  detalle»): si no hay dato concreto, PREGUNTAR, nunca inventar.
-- Empalme que usan los cubicadores (NCh353): armadura vertical de muros se cubica
-  empalmada en el piso superior con 40·φ de la barra mayor, salvo que el plano
-  diga otra cosa. Rango práctico de traslapos: 40·φ a 60·φ.
+- Glosario: «φ» o «fi» = diámetro · «@» o «a» = separación entre barras · «DM» =
+  doble malla (una cortina por cara) · «trama» = la grilla · «cortina» = un plano de
+  malla · «trabas» = barras cortas que cruzan el espesor y cosen las dos cortinas ·
+  «cabezal» = barra longitudinal gruesa en la punta · «recubrimiento» = hormigón
+  entre la barra y la cara.
+- Diámetros comerciales: 8, 10, 12, 16, 18, 22, 25, 28, 32, 36 mm. Barra comercial
+  = 12 m: más largo que eso obliga a empalmar.
+- Muros se nombran «M + número» (M402 = muro del piso 4). Anotación típica en plano:
+  «e=20, DM φ8@20» o «DM φ10@20 V / φ8@25 H».
+- **Empalme**: el traslapo se resuelve ALARGANDO la barra — se suma al largo de
+  corte. Traslapo usual de la armadura vertical: 40·φ de la barra mayor (referencia
+  de cubicación NCh353) salvo que el plano diga otra cosa. «Ponle 60 de empalme»
+  significa sumarle 60 cm al lado que corre.
+- Gancho sísmico donde el plano lo pida: 135°, extensión 6·φ mínimo 7,5 cm.
+- Recubrimiento usual de muro: 2 a 3 cm (un solo valor para caras y bordes).
 
 ## MURO
 
-- Muro chileno típico de edificación: espesor 20 cm (lo más común, también 25),
-  DOBLE malla, hormigón H30. Simple malla solo en muros menores/secundarios o
-  espesores chicos (≤ 12-15 cm) — ante la duda, preguntar.
-- Cuantía mínima usual: 0,25% por dirección, separación máxima usual 45 cm (en la
-  práctica real casi nunca sobre 25 cm). Referencia de lo usual por espesor (con
-  doble malla): e15 ≈ φ8@20-25 · e20 ≈ φ8@20 · e25 ≈ φ10@20 · e30 ≈ φ10@20 o
-  φ12@20. Son órdenes de magnitud para chequeo, no reemplazan el plano.
-- Malla vertical (MV): barras corren en la ALTURA; malla horizontal (MH): en el
-  LARGO. En «V φ10@20 / H φ8@25» la V es vertical. La vertical suele ser ≥ que la
-  horizontal.
-- Recubrimiento usual de muro interior: 2 cm (φ≥16) a 1,5 cm (φ≤12); expuesto a
-  suelo/intemperie 2,5-3 cm. Default de la plataforma: 2,5 cm.
-- Trabas de malla (muro corriente): φ6-φ8 cosiendo las dos mallas, grilla usual
-  @50×50 (≥4 por m²); la plataforma usa φ8@40×40 como default.
-- CONFINAMIENTO DE BORDE (lo nuevo post-terremoto 2010, DS60/DS61): en las
-  CABEZAS (extremos) del muro los planos concentran barras verticales más gruesas
-  (paquetes tipo 4φ16, 4φ18, 6φ22) amarradas con estribos cerrados y trabas a
-  poco espaciamiento. Números usuales del elemento de borde: estribo/traba φ10
-  mínimo, espaciamiento ≤ 6·φ de la barra vertical y ≤ ½ espesor del muro (φ16 →
-  ~@10 cm en muro de 20); largo confinado típico ≥ 40 cm desde la punta; trabas
-  con ganchos sísmicos 135° en AMBOS extremos (extensión 6·φ, mínimo 7,5 cm).
-  Los planos lo llaman «elemento de borde», «refuerzo de borde» o «confinamiento».
-  La ficha del asistente SÍ arma bordes: cabezales por punta (φ, barras por capa,
-  capas) + estribo de confinamiento (φ, @, largo confinado).
-- Gancho sísmico (donde el plano lo pida): doblez 135°, extensión 6·φ mínimo
-  7,5 cm (φ8→7,5 · φ10→7,5 · φ12→7,5 · φ16→9,6 · φ18→10,8 · φ22→13,2 cm).
+Un muro se arma con seis tipologías. Cada una tiene una FORMA DE INSTALARSE fija:
+por dónde corre la barra, sobre qué eje se reparte y contra qué se apoya. Eso es lo
+que hay que respetar; los números los dicta el plano.
+
+**Las dos cortinas son dos juegos independientes.** Un muro de doble malla lleva
+MV+MH contra una cara y MV+MH contra la otra. No son «capas» de un mismo componente.
+
+**MH · Malla Horizontal.** Barras horizontales que corren a lo LARGO del muro, de
+borde a borde. Se reparten en la ALTURA (@ vertical, típico 15-25 cm). Figura recta
+(101A) salvo que el plano pida patas en los extremos. Si el muro es más largo que la
+barra comercial, se empalma y el traslapo se suma al largo.
+
+**MV · Malla Vertical.** Barras verticales que corren en la ALTURA, de piso a piso.
+Se reparten a lo LARGO del muro (@ horizontal, típico 15-25 cm). Figura recta. **Casi
+siempre lleva empalme**: la barra sube y traslapa con el arranque del piso siguiente
+(40·φ típico), y ese traslapo se suma al largo de corte — es lo que pide el cubicador
+cuando dice «ponle 60 de empalme».
+
+**Cuál cortina va contra la cara** lo decide el proyecto y el cubicador lo dicta con
+la jerarquía: la de jerarquía 1 se pega a la cara y la de jerarquía 2 se apoya sobre
+ella. En muros suele ir la vertical contra la cara por ser la armadura principal,
+pero NO es regla: si el usuario dice «MH jerarquía 1 y MV jerarquía 2», se hace así
+y no se discute.
+
+**TR · Traba Muro.** Traba de la malla corriente. Cruza el ESPESOR y cose las dos
+cortinas, enganchando una barra de cada lado. Se reparte en una grilla sobre la cara
+(típico φ6-φ8 cada 40-50 cm en ambas direcciones). Va apoyada sobre las mallas, o sea
+jerarquía 2. Figura con gancho en ambos extremos: una barra recta no amarra nada.
+
+**CB · Cabezal.** Barras longitudinales gruesas (φ16-φ25) concentradas en las PUNTAS
+del muro, corriendo en la altura igual que la MV. Se describen por punta: cuántas
+barras por capa (a lo ancho del espesor, normalmente 2, una por cara) y cuántas capas
+hacia adentro del muro. Llevan el mismo empalme que la MV.
+
+**EC · Estribo Confinamiento.** Marco CERRADO con ganchos 135° que abraza el paquete
+de cabezales en la punta. Corre en el plano de la sección y se reparte en la ALTURA,
+apretado (típico @10-15 cm). No abarca el muro entero: se acota al largo confinado de
+la punta (típico 40-80 cm).
+
+**TC · Traba Confinamiento.** Traba corta dentro del elemento de borde, que amarra las
+barras del cabezal que el estribo no toma. Cruza el espesor como la TR, pero con la
+separación apretada del borde (la misma del EC), no la de la malla corriente.
+
+**Orden de armado** (sirve para explicar y para ordenar los componentes): primero las
+dos cortinas (MV y MH), después las trabas que las cosen, y al final el borde
+(cabezales, su estribo y sus trabas).
 
 ## FIGURAS (cómo se nombran; el catálogo COMPLETO va aparte)
 
-El cubicador puede pedir una figura por su código; va en la ficha (campo `figura`)
-y también la `jerarquia` (1 = pegada a la cara, 2 = se apoya sobre la de nivel 1).
+El cubicador puede pedir una figura por su código; va en la ficha (campo `figura`) y
+también la `jerarquia`.
 
-**La lista de códigos válidos NO está en este documento**: se inyecta aparte, leída
-de la base de datos, y esa lista es la única autoridad. Acá va solo cómo leerla:
+**La lista de códigos válidos NO está en este documento**: se inyecta aparte, leída de
+la base de datos, y esa lista es la única autoridad. Acá va solo cómo leerla:
 
-- El primer dígito del grupo dice cuántos TRAMOS tiene la barra: `101x` = recta (1
-  tramo), `102x` = 2 tramos, `103x` = 3 tramos, `104x` = marco de 4 tramos.
-- La letra distingue la variante (ángulos de los dobleces). En la lista inyectada
-  cada código viene como `codigo:lados:angulos`, por ejemplo `104D:4:135/135`.
-- Defaults de la plataforma para muro: malla vertical, horizontal y cabezal
-  **101A** (recta); traba **103B** (cuerpo que cruza el espesor + dos ganchos);
-  estribo de confinamiento **104D** (marco cerrado con ganchos 135°).
+- El primer grupo dice cuántos TRAMOS tiene la barra: `101x` = recta (1 tramo),
+  `102x` = 2 tramos, `103x` = 3 tramos, `104x` = marco de 4 tramos.
+- La letra distingue la variante (ángulos de los dobleces). En la lista inyectada cada
+  código viene como `codigo:lados:angulos`, por ejemplo `104D:4:135/135`.
+- Defaults de la plataforma para muro: MV, MH y CB **101A** (recta); traba **103B**
+  (cuerpo que cruza el espesor + dos ganchos); estribo de confinamiento **104D**.
 
-Si el usuario no nombra figura, se usa el default. Nunca inventar un código: si no
-está en la lista inyectada, no existe.
+Si el usuario no nombra figura, se usa el default. Nunca inventar un código: si no está
+en la lista inyectada, no existe.
