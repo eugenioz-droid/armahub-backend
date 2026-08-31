@@ -105,7 +105,14 @@
     _agregar('user', txt);
 
     PENSANDO = true;
-    var esperando = _burbuja('asistente', 'Pensando…');
+    // Indicador VIVO (pedido del usuario 31-ago): contador de segundos para que
+    // no parezca detenido — la respuesta llega en bloque y puede tardar 5-15 s.
+    var esperando = _burbuja('asistente', 'Pensando… 0 s');
+    var t0 = Date.now();
+    var tick = setInterval(function () {
+      if (esperando) esperando.textContent =
+        'Pensando… ' + Math.round((Date.now() - t0) / 1000) + ' s';
+    }, 1000);
     var btn = $('te_iaEnviar');
     if (btn) btn.disabled = true;
 
@@ -122,6 +129,7 @@
       // la conversación con el modelo.
       _burbuja('asistente', '⚠ ' + ((e && e.message) || 'El asistente no respondió.'));
     }).finally(function () {
+      clearInterval(tick);
       PENSANDO = false;
       if (btn) btn.disabled = false;
       _marcarBtn();
