@@ -36,21 +36,61 @@ que hay que respetar; los números los dicta el plano.
 MV+MH contra una cara y MV+MH contra la otra. No son «capas» de un mismo componente.
 
 **MH · Malla Horizontal.** Barras horizontales que corren a lo LARGO del muro, de
-borde a borde. Se reparten en la ALTURA (@ vertical, típico 15-25 cm). Figura recta
-(101A) salvo que el plano pida patas en los extremos. Si el muro es más largo que la
-barra comercial, se empalma y el traslapo se suma al largo.
+borde a borde. Se reparten en la ALTURA (@ vertical, típico 15-25 cm). Si el muro es
+más largo que la barra comercial, se empalma y el traslapo se suma al largo.
+
+- **Figura por defecto: 104B.** Es la de la casa. Si el usuario no dice figura, va
+  104B; puede pedir variaciones (por ejemplo para dejar los ganchos abiertos).
+- **La barra de la cortina opuesta es LA MISMA ROTADA 180°.** No basta con
+  espejarla: espejo solo dejaría los dos ganchos del mismo lado. Rotada, el gancho
+  que en una queda en el extremo izquierdo queda en el derecho en la otra, y **los
+  dos apuntan hacia adentro**, cruzándose contra la cortina opuesta. En la
+  plataforma se consigue espejando y pulsando espacio; el resultado es el mismo.
+  Si el usuario pide una 104 y no dice más, **ya sabes cómo posicionarla**: no se
+  lo preguntes.
+- **Distribución: arranca y termina a la MITAD del espaciamiento del borde.** Con
+  @20 la primera y la última barra quedan a 10 cm de cada borde. Es el default; se
+  cambia sólo si el plano dice otra cosa.
+- **Alternativa 105C** (el usuario la puede pedir, no es default): las dos cortinas
+  van opuestas **SIN rotación**, de modo que los lados **B y D** caen en el costado
+  del rectángulo del muro y esos lados quedan repetidos. Es más difícil de instalar
+  en terreno, por eso normalmente se pide la 104B.
 
 **MV · Malla Vertical.** Barras verticales que corren en la ALTURA, de piso a piso.
-Se reparten a lo LARGO del muro (@ horizontal, típico 15-25 cm). Figura recta. **Casi
-siempre lleva empalme**: la barra sube y traslapa con el arranque del piso siguiente
-(60·φ, el traslapo de la casa), y ese traslapo se suma al largo de corte — es lo que pide el cubicador
-cuando dice «ponle 60 de empalme».
+Se reparten a lo LARGO del muro (@ horizontal, típico 15-25 cm). Como corre en la
+altura, **en la vista de sección se ve el CORTE de la barra, no su desarrollo**.
 
-**Cuál cortina va contra la cara** lo decide el proyecto y el cubicador lo dicta con
-la jerarquía: la de jerarquía 1 se pega a la cara y la de jerarquía 2 se apoya sobre
-ella. En muros suele ir la vertical contra la cara por ser la armadura principal,
-pero NO es regla: si el usuario dice «MH jerarquía 1 y MV jerarquía 2», se hace así
-y no se discute.
+- **Va SIEMPRE repartida entre los cabezales**, nunca por debajo de ellos. Si el
+  usuario no dice dónde arranca, la primera barra va a **la mitad del
+  espaciamiento** contada desde el cabezal.
+- **La figura depende de DÓNDE NACE el muro:**
+  - **103C** si es muro NACIENTE — el primero del eje, o nace sobre una losa.
+  - **101A** si es continuación o muro intermedio.
+- **Siempre lleva empalme HACIA ARRIBA**, para traslapar con el arranque del piso
+  siguiente: **60·φ + 10**, el de la casa. Se suma al largo de corte.
+- **El recubrimiento de abajo depende de la figura, y no es lo mismo:**
+  - **101A** → *sin* recubrimiento abajo: la barra nace **en el borde inferior del
+    hormigón**, hay que desplazarla para que llegue ahí.
+  - **103C** → *con* recubrimiento: **5 cm** si nace en una fundación, el
+    recubrimiento habitual si nace sobre una losa.
+- **Variante del muro naciente (NO por defecto, pero hay que conocerla):** en vez
+  de dos 103C iguales, una cara puede llevar **103C y la otra 102C**. Así la pata
+  del fondo no queda duplicada en el mismo borde. Es ASIMÉTRICO, así que sólo se
+  usa si el usuario lo pide expresamente — nunca se asume.
+
+**Cuál cortina va contra la cara** lo dice la jerarquía: la de jerarquía 1 se pega a
+la cara y la de jerarquía 2 se apoya sobre ella.
+
+**EL DEFAULT DE LA CASA: MH jerarquía 1, MV jerarquía 2.** La horizontal va contra
+la cara y **la vertical se repliega DENTRO de ella** — la MH contiene a la MV. Es lo
+normal y no hay que preguntarlo.
+
+**La excepción es el MURO PERIMETRAL**, donde se invierte: ahí la MH va adentro y la
+MV por fuera. Pero la plataforma no sabe si un muro es perimetral, así que **si el
+usuario no lo dice, se asume que NO lo es** y se aplica el default. Sólo se invierte
+si él lo menciona.
+
+Y si el usuario dicta jerarquías explícitas, mandan las suyas y no se discute.
 
 **TR · Traba Muro.** Traba de la malla corriente. Cruza el ESPESOR y cose las dos
 cortinas, enganchando una barra de cada lado. Se reparte en una grilla sobre la cara

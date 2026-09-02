@@ -763,6 +763,42 @@ check("el schema ya NO exige las dimensiones en la ficha",
 check("y el prompt le dice al modelo que el hormigon sale del formulario",
       "FORMULARIO del editor" in _sp("muro", {}))
 
+# ---------------------------------------------------------------------------
+# LOS DEFAULTS DEL MURO TIPO (dictados por el usuario, 1-sep)
+# ---------------------------------------------------------------------------
+# El documento ya describia cada tipologia por separado; lo que faltaba era QUE
+# LLEVA UN MURO DE LA CASA CUANDO NADIE DICE NADA. Sin eso, el usuario tenia que
+# dictar cada cosa en cada conversacion, que es exactamente lo que el asistente
+# viene a evitar («esto lo usaran usuarios no tan precisos en el lenguaje»).
+# Estos checks no miden prosa: miden que los DATOS que el modelo necesita para no
+# preguntar sigan en el documento. Si alguien lo reescribe y se lleva uno por
+# delante, el asistente vuelve a interrogar y nadie se entera hasta la demo.
+_CON_MURO = _con("muro")
+# Los saltos de linea del markdown parten las frases, asi que las aserciones se
+# hacen sobre el texto con los espacios NORMALIZADOS. Sin esto, reacomodar un
+# parrafo -sin cambiar una palabra- tumbaba el test: seria el test midiendo el
+# formato en vez del contenido.
+_CM = " ".join(_CON_MURO.split())
+
+check("MH: la figura por defecto es la 104B", "104B" in _CM)
+check("MH: la cortina opuesta es la MISMA barra ROTADA 180 (no solo espejada)",
+      "180" in _CM and "espejo solo" in _CM.lower())
+check("MH: la distribucion arranca a la MITAD del espaciamiento del borde",
+      "MITAD del espaciamiento" in _CM)
+check("MH: la 105C esta como alternativa, no como default",
+      "105C" in _CM and "no es default" in _CM)
+check("jerarquia de la casa: MH 1 y MV 2 (la MH contiene a la MV)",
+      "MH jerarqu" in _CM and "contiene a la MV" in _CM)
+check("perimetral: si el usuario no lo dice, se asume que NO lo es",
+      "PERIMETRAL" in _CM and "se asume que NO" in _CM)
+check("MV: 103C si es naciente, 101A si es continuacion",
+      "103C" in _CM and "101A" in _CM and "NACIENTE" in _CM)
+check("MV: empalme 60 phi + 10 hacia arriba", "60·φ + 10" in _CM)
+check("MV: el recubrimiento de abajo depende de la figura (101A al borde, 103C con rec)",
+      "borde inferior del hormig" in _CM and "5 cm" in _CM)
+check("MV: la variante 102C del naciente se conoce pero NO es default",
+      "102C" in _CM and "nunca se asume" in _CM)
+
 print()
 if FALLAS:
     print("FALLARON %d:" % len(FALLAS), FALLAS)
