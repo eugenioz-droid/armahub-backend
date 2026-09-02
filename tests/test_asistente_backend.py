@@ -728,6 +728,41 @@ check("conocimiento_asistente.md existe con seccion MURO",
       "## MURO" in io.open(os.path.join(BASE, "armahub", "data",
                                         "conocimiento_asistente.md"), encoding="utf-8").read())
 
+# ---------------------------------------------------------------------------
+# EL HORMIGON SALE DEL FORMULARIO, NO DEL CHAT (usuario 1-sep)
+# ---------------------------------------------------------------------------
+# «que el muro y rec lo tome siempre del formulario inicial, ya esta en la
+# plataforma creado eso». El modelo YA VE las medidas -el inventario que recibe
+# empieza con «Muro 600x250x20 rec 2.5»- y aun asi la ficha se las exigia de
+# vuelta: el usuario escribia dos veces el mismo dato, y si el modelo no las
+# repetia la ficha se rechazaba con «me falta largo y alto» sobre un muro que
+# estaba a la vista. Lo que se congela:
+#   . sin geometria en la ficha, se hereda del editor;
+#   . si la ficha la trae, MANDA (el usuario puede cambiarla conversando);
+#   . sin editor y sin ficha, se PREGUNTA (ahi si nadie sabe cuanto mide).
+_RECETA_EDITOR = {"geometria": {"largo": 600, "alto": 250, "ancho": 20, "recub_lat": 2.5}}
+_FICHA_SIN_GEO = {"malla_vertical": {"diam": 8, "sep": 20},
+                  "malla_horizontal": {"diam": 8, "sep": 20}}
+
+_g = _normalizar_ficha(_FICHA_SIN_GEO, _RECETA_EDITOR)["geometria"]
+check("ficha SIN dimensiones: las hereda del formulario del editor",
+      (_g["largo"], _g["alto"], _g["espesor"]) == (600.0, 250.0, 20.0))
+check("y el recubrimiento tambien sale del editor (recub_lat -> recubrimiento)",
+      _g["recubrimiento"] == 2.5)
+check("la ficha PISA al editor cuando el usuario dicta otra medida en el chat",
+      _normalizar_ficha(dict(_FICHA_SIN_GEO, geometria={"largo": 800}),
+                        _RECETA_EDITOR)["geometria"]["largo"] == 800.0)
+try:
+    _normalizar_ficha(_FICHA_SIN_GEO, None)
+    check("sin editor y sin ficha, PREGUNTA en vez de inventar", False)
+except ValueError as _e:
+    check("sin editor y sin ficha, PREGUNTA en vez de inventar", "falta" in str(_e))
+check("el schema ya NO exige las dimensiones en la ficha",
+      "largo" not in ((TOOL_MURO.get("input_schema", {}).get("properties", {})
+                       .get("geometria", {}) or {}).get("required", [])))
+check("y el prompt le dice al modelo que el hormigon sale del formulario",
+      "FORMULARIO del editor" in _sp("muro", {}))
+
 print()
 if FALLAS:
     print("FALLARON %d:" % len(FALLAS), FALLAS)

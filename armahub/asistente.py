@@ -215,14 +215,23 @@ TOOL_MURO = {
                                "sin rehacer=1 se rechaza: para cambios puntuales usa "
                                "operar_barras.",
             },
+            # EL HORMIGON LO PONE EL FORMULARIO, NO LA FICHA (usuario, 1-sep: «que el
+            # muro y rec lo tome siempre del formulario inicial, ya esta en la
+            # plataforma creado eso»). El modelo YA VE las medidas —el inventario que
+            # recibe empieza con «Muro 600x250x20 rec 2.5»— y aun asi se le exigian de
+            # vuelta: el usuario tenia que repetir cuatro numeros que la plataforma ya
+            # sabia, y si el modelo no los repetia la ficha se rechazaba con «me falta
+            # largo y alto» sobre un muro que estaba a la vista.
+            # Por eso NO son `required`: si vienen, mandan (el usuario dijo otra
+            # medida en el chat); si no, se rellenan del editor en _normalizar_ficha.
             "geometria": {
                 "type": "object", "additionalProperties": False,
-                "required": ["largo", "alto", "espesor"],
                 "properties": {
-                    "largo": {"type": "number", "description": "cm"},
-                    "alto": {"type": "number", "description": "cm"},
-                    "espesor": {"type": "number", "description": "cm"},
-                    "recubrimiento": {"type": "number", "description": "cm"},
+                    "largo": {"type": "number", "description":
+                              "cm. Solo si el usuario pide OTRA medida; si no, se toma del editor"},
+                    "alto": {"type": "number", "description": "cm. Idem: solo si la cambia"},
+                    "espesor": {"type": "number", "description": "cm. Idem: solo si lo cambia"},
+                    "recubrimiento": {"type": "number", "description": "cm. Idem: solo si lo cambia"},
                 },
             },
             "malla_vertical": _MALLA_SCHEMA,
@@ -369,22 +378,47 @@ def _num(v, porDefecto=0.0):
     return n
 
 
-def _normalizar_ficha(spec: dict) -> dict:
+def _geo_del_editor(receta_actual) -> dict:
+    """Las medidas del hormigon que YA tiene la plataforma (el formulario del editor).
+
+    El usuario las escribe UNA vez, arriba, antes de abrir el chat: «que el muro y rec
+    lo tome siempre del formulario inicial, ya esta en la plataforma creado eso»
+    (1-sep). Pedirselas de nuevo al chat es hacerle escribir dos veces el mismo dato."""
+    g = (receta_actual or {}).get("geometria") or {}
+    return {"largo": _num(g.get("largo")), "alto": _num(g.get("alto")),
+            # el motor guarda el espesor como `ancho`; la ficha lo llama `espesor`
+            "espesor": _num(g.get("ancho") if g.get("ancho") is not None else g.get("espesor")),
+            "recubrimiento": _num(g.get("recub_lat") if g.get("recub_lat") is not None
+                                  else g.get("recubrimiento"))}
+
+
+def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
     """La ficha que llega del modelo, con los tipos y vacios en su lugar.
 
     Existe porque el schema dejo de ser `strict` (la gramatica compilada topaba en
     tamano): sin esa garantia el modelo puede omitir un opcional o mandar un numero
-    como texto, y el constructor no puede caerse por eso. Lo que NO se inventa son
-    los datos criticos —dimensiones y mallas—: si faltan, se levanta ValueError y el
-    asistente contesta preguntando, que es exactamente lo que debe hacer."""
-    if not isinstance(spec, dict) or not isinstance(spec.get("geometria"), dict):
-        raise ValueError("me faltan las dimensiones del muro (largo, alto y espesor)")
-    g = spec["geometria"]
+    como texto, y el constructor no puede caerse por eso.
+
+    EL HORMIGON SALE DEL EDITOR (1-sep). Ya no es un dato que la ficha tenga que
+    traer: el usuario lo escribio en el formulario antes de abrir el chat, y hacerselo
+    repetir era pedirle dos veces lo mismo -- y rechazarle la ficha («me falta largo y
+    alto») sobre un muro que estaba a la vista. Ahora manda lo que diga la ficha SI lo
+    dice (el usuario puede cambiar la medida conversando) y, si no, se toma del
+    editor. Solo se pregunta cuando no hay ninguna de las dos, que es el unico caso en
+    que de verdad nadie sabe cuanto mide el muro."""
+    if not isinstance(spec, dict):
+        raise ValueError("no entendi la propuesta")
+    g = spec.get("geometria") if isinstance(spec.get("geometria"), dict) else {}
     geo = {k: _num(g.get(k)) for k in ("largo", "alto", "espesor", "recubrimiento")}
+    del_editor = _geo_del_editor(receta_actual)
+    for k in ("largo", "alto", "espesor", "recubrimiento"):
+        if geo[k] <= 0 and del_editor.get(k, 0) > 0:
+            geo[k] = del_editor[k]
     faltan = [n for n, k in (("largo", "largo"), ("alto", "alto"),
                              ("espesor", "espesor")) if geo[k] <= 0]
     if faltan:
-        raise ValueError("me falta " + " y ".join(faltan) + " del muro")
+        raise ValueError("me falta " + " y ".join(faltan) + " del muro, y tampoco "
+                         "estan en el formulario de arriba")
     if geo["recubrimiento"] <= 0:
         geo["recubrimiento"] = 2.5          # default declarado de la plataforma
 
@@ -873,9 +907,12 @@ def _aplicar_reglas(receta):
     return avisos
 
 
-def _construir_receta_muro(spec: dict, figuras=None) -> dict:
-    """Ficha normalizada -> receta, delegando cada armadura a _fabricar."""
-    spec = _normalizar_ficha(spec)
+def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict:
+    """Ficha normalizada -> receta, delegando cada armadura a _fabricar.
+
+    `receta_actual` es el muro abierto en el editor: de ahi sale el hormigon
+    cuando la ficha no lo trae (ver _normalizar_ficha)."""
+    spec = _normalizar_ficha(spec, receta_actual)
     geo = _geo_de({"geometria": spec["geometria"]})
     doble = bool(spec.get("doble_malla", True))
     comps = []
@@ -1332,9 +1369,13 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "REGLAS:\n"
         "· Unidades: dimensiones y separaciones en CENTÍMETROS, diámetros (φ) en "
         "MILÍMETROS. Convierte si el usuario habla en metros o mm.\n"
-        "· PROPONE, NO INTERROGUES (política del usuario). Lo ÚNICO que siempre "
-        "necesitas son las dimensiones del hormigón: si no hay muro abierto y no "
-        "te las dan, pregunta SOLO eso. Todo lo demás de las armaduras que el "
+        "· EL HORMIGÓN YA ESTÁ: largo, alto, espesor y recubrimiento salen del "
+        "FORMULARIO del editor, que el usuario llenó antes de abrir el chat y que "
+        "ves al principio del inventario. NO los pidas y NO los repitas en la "
+        "ficha; deja `geometria` vacía. Sólo escríbelos si el usuario pide en el "
+        "chat una medida DISTINTA a la del formulario.\n"
+        "· PROPONE, NO INTERROGUES (política del usuario). Si NO hay muro abierto "
+        "y tampoco te dan las medidas, pregunta SOLO eso. Todo lo demás de las armaduras que el "
         "usuario SÍ pidió es asumible con lo típico (malla φ8@20, traba φ8 "
         "40×40, cabezal φ16 2×2, estribo φ8@10, empalme 60φ): asume, marca "
         "'asumido', y cierra tu respuesta con una línea que diga qué asumiste y "
@@ -1367,8 +1408,8 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "· SE PUEDE PEDIR SOLO UNA PARTE. «Hazme solo los cabezales» es un "
         "pedido completo y valido: se llena esa armadura y las demas van vacias "
         "(diametro 0 en las mallas, null en trabas y bordes). NO le pidas las "
-        "mallas, ni el estribo, ni el largo del estribo si no los menciono — lo "
-        "unico imprescindible son las dimensiones del muro. Preguntar por "
+        "mallas, ni el estribo, ni el largo del estribo si no los menciono — y las "
+        "dimensiones NO me las preguntes: estan en el formulario. Preguntar por "
         "armaduras que no pidio es lo mismo que agregarlas.\n"
         "· NO INVENTES ARMADURAS QUE NADIE PIDIÓ. Cada armadura de la ficha es "
         "una barra distinta que se va a fabricar: si el usuario pide SOLO "
@@ -1679,7 +1720,10 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                     r, sp = None, None
                     if spec_x is not None:
                         try:
-                            nf = _normalizar_ficha(spec_x)
+                            # El hormigon sale del FORMULARIO del editor cuando la
+                            # ficha no lo trae (1-sep): el usuario ya lo escribio
+                            # arriba y no tiene por que repetirlo en el chat.
+                            nf = _normalizar_ficha(spec_x, body.receta_actual)
                             r, sp = _construir_receta_muro(nf, figuras), nf
                         except ValueError as exc:
                             log.info("asistente: ficha incompleta (%s): %s", email, exc)
