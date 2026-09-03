@@ -5061,6 +5061,7 @@
         // LO ÚLTIMO = encima de todo (igual que las cotas por lado): son números que
         // el usuario está leyendo MIENTRAS mueve, no se leen a medio tapar.
         if (_arrastrandoLinea(L.cual)) _cotasVivas(g, rango, eje, true, X, yy, VW, VH, cajaLen);
+        else if (_cotasBordeSel()) _cotasVivas(g, rango, eje, true, X, yy, VW, VH, cajaLen, true);
       } else {
         var xx = TE_RANGO_OFF_H + (L.segunda ? 16 : 0);
         var ya = Y(rango.from), yb = Y(rango.to);
@@ -5075,6 +5076,7 @@
         var cajaLenV = _rotuloLargoRango(g, rango, L.cual, eje, activa, false, ya, yb, xx, VW, VH, sfx);
         if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, false, Y, xx, plano, eje, L.cual);
         if (_arrastrandoLinea(L.cual)) _cotasVivas(g, rango, eje, false, Y, xx, VW, VH, cajaLenV);
+        else if (_cotasBordeSel()) _cotasVivas(g, rango, eje, false, Y, xx, VW, VH, cajaLenV, true);
       }
     });
   }
@@ -5260,6 +5262,27 @@
     return !!(dr && dr.ci === ST.selCi && (dr.cual || 'rango') === cual);
   }
 
+  // LAS DISTANCIAS AL BORDE SE VEN AL SELECCIONAR, NO SÓLO AL ARRASTRAR (1-sep).
+  // Antes había que AGARRAR el nodo del abanico para verlas, así que comprobar «¿esta
+  // malla arranca a 10 del borde?» —la regla de la casa: la mitad del espaciamiento—
+  // obligaba a mover algo para poder leerlo, con el riesgo de moverlo de verdad.
+  // Ahora con la barra seleccionada se ven las TRES de una vez: borde→primera, el
+  // reparto, y última→borde. Verificar deja de ser un gesto.
+  //
+  // SÓLO CON UNA BARRA SELECCIONADA: con varias, tres cotas por cada una es ruido
+  // ilegible, y ninguna de ellas es la que el usuario está mirando.
+  // Se dibujan en AMARILLO (clase `sel`) para no confundirlas con las cotas del
+  // hormigón, que son las otras líneas con número de la misma vista.
+  function _cotasBordeSel() {
+    // Se apaga sólo si se está arrastrando ESTA barra — ahí manda el camino de
+    // siempre y sus cotas van con la tinta del gesto. Un arrastre de OTRA no tiene
+    // por qué borrarle a ésta los números que el usuario está leyendo.
+    if (ST.dragRango && ST.dragRango.ci === ST.selCi) return false;
+    if (ST.selCi == null) return false;
+    var sel = (typeof _selTodos === 'function') ? _selTodos() : null;
+    return !sel || sel.length <= 1;
+  }
+
   // ANCLA de UN punto sobre un eje, para la COTA VIVA — la fórmula del motor, sin una
   // propia: `anclaDeCoord` es la misma que escribe el ancla real al arrastrar.
   //
@@ -5301,12 +5324,15 @@
   // Cota viva de UN extremo. `P` proyecta la coordenada del eje a px del viewBox y
   // `fija` es la línea de la flecha. `obst` son las cajas ya ocupadas (el rótulo del
   // largo y la cota del otro extremo). Devuelve la caja que ocupó, o null.
-  function _cotaVivaExtremo(g, coord, eje, horiz, P, fija, VW, VH, obst) {
+  function _cotaVivaExtremo(g, coord, eje, horiz, P, fija, VW, VH, obst, sel) {
+    // Sufijo de clase: '' mientras se arrastra (el look de siempre) · '-sel' cuando
+    // se dibuja por estar la barra seleccionada (amarillo). El color entra por CSS,
+    // no acá: el dibujante no elige paleta.
     var a = _anclaViva(coord, eje);
     var ref = _coordRefAncla(a, coord);
     if (ref == null || !isFinite(ref)) return null;
     return _cotaEntre(g, P(Number(coord)), P(ref), String(Math.round(Number(a.d))),
-      horiz, fija, VW, VH, obst, a.ref);
+      horiz, fija, VW, VH, obst, a.ref, sel);
   }
 
   // EL DIBUJO de una cota viva, ya en píxeles: trecho del punto (`p0`) a su
@@ -5315,7 +5341,11 @@
   // mide contra el ancla del rango y la de la pieza contra la cara del hormigón
   // (ver _cotasVivasPieza), pero se dibujan igual — y un segundo dibujo copiado
   // divergiría en el primer ajuste de encaje.
-  function _cotaEntre(g, p0, p1, txt, horiz, fija, VW, VH, obst, marca) {
+  function _cotaEntre(g, p0, p1, txt, horiz, fija, VW, VH, obst, marca, sel) {
+    // `sel` = la cota se dibuja porque la barra esta SELECCIONADA, no porque se
+    // este arrastrando: mismo dibujo, otra tinta (amarillo). El color vive en el
+    // CSS; aca solo se elige la clase.
+    var sfxSel = sel ? '-sel' : '';
     if (!isFinite(p0) || !isFinite(p1) || !isFinite(fija)) return null;
     var lim = horiz ? VW : VH;
     // Ni el punto ni su referencia entran en el cuadrante: no se dibuja (misma
@@ -5345,14 +5375,14 @@
     // número, que es exactamente el efecto que se busca.
     var T = 3;
     if (horiz) {
-      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: p0, y1: fija, x2: p1, y2: fija }));
-      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: p1, y1: fija - T, x2: p1, y2: fija + T }));
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL' + sfxSel, x1: p0, y1: fija, x2: p1, y2: fija }));
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL' + sfxSel, x1: p1, y1: fija - T, x2: p1, y2: fija + T }));
     } else {
-      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: fija, y1: p0, x2: fija, y2: p1 }));
-      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: fija - T, y1: p1, x2: fija + T, y2: p1 }));
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL' + sfxSel, x1: fija, y1: p0, x2: fija, y2: p1 }));
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL' + sfxSel, x1: fija - T, y1: p1, x2: fija + T, y2: p1 }));
     }
     var t = _svgEl('text', {
-      'class': 'te-rango-cota', 'text-anchor': 'middle',
+      'class': 'te-rango-cota' + sfxSel, 'text-anchor': 'middle',
       x: horiz ? m : (fija + 7 + w / 2), y: (horiz ? fija : m) + 3.5,
       'data-cota-viva': (marca || '')
     });
@@ -5367,12 +5397,14 @@
   }
 
   // Las DOS cotas de una línea. `cajaLen` es la del rótulo del largo (o null).
-  function _cotasVivas(g, rango, eje, horiz, P, fija, VW, VH, cajaLen) {
+  // `sel` = se dibujan porque la barra esta SELECCIONADA (no arrastrandose): van en
+  // amarillo para distinguirlas de las cotas del hormigon. Ver _cotasBordeSel.
+  function _cotasVivas(g, rango, eje, horiz, P, fija, VW, VH, cajaLen, sel) {
     if (!rango || rango.from == null || rango.to == null) return;
     var obst = cajaLen ? [cajaLen] : [];
-    var b = _cotaVivaExtremo(g, rango.from, eje, horiz, P, fija, VW, VH, obst);
+    var b = _cotaVivaExtremo(g, rango.from, eje, horiz, P, fija, VW, VH, obst, sel);
     if (b) obst.push(b);
-    _cotaVivaExtremo(g, rango.to, eje, horiz, P, fija, VW, VH, obst);
+    _cotaVivaExtremo(g, rango.to, eje, horiz, P, fija, VW, VH, obst, sel);
   }
 
   // ==========================================================================

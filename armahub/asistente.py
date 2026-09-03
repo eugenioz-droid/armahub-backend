@@ -470,7 +470,17 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
     orig = out["origenes"]
 
     def _la_invento(clave):
-        return str((orig or {}).get(clave) or "").strip().lower() == "asumido"
+        # NO BASTA CON DESCARTAR 'asumido' (1-sep). Ese gate se puso el 31-ago y el
+        # usuario volvio a ver trabas que no pidio: el modelo las marcaba 'config' -y
+        # 'config' pasaba-, asi que la puerta tenia un hueco del tamano de una etiqueta.
+        #
+        # LA RAIZ es que `origenes` mezclaba dos preguntas distintas: de donde salieron
+        # los NUMEROS de esa armadura, y quien decidio que esa armadura EXISTA. Para lo
+        # segundo solo hay una respuesta valida: la pidio el usuario.
+        # Por eso ahora una armadura solo se crea si su origen es 'leido'. Si el usuario
+        # la pide sin dar el diametro, sigue siendo 'leido' -el la pidio- aunque el
+        # numero venga de la config; eso lo dice el prompt.
+        return str((orig or {}).get(clave) or "").strip().lower() != "leido"
 
     tr = spec.get("trabas")
     if _la_invento("trabas"):
@@ -1411,6 +1421,12 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "mallas, ni el estribo, ni el largo del estribo si no los menciono — y las "
         "dimensiones NO me las preguntes: estan en el formulario. Preguntar por "
         "armaduras que no pidio es lo mismo que agregarlas.\n"
+        "· `origenes` DICE QUIÉN DECIDIÓ QUE ESA ARMADURA EXISTA, no de dónde "
+        "salieron sus números. Pon 'leido' SÓLO si el usuario mencionó esa "
+        "armadura — aunque los valores los pongas tú por defecto, sigue siendo "
+        "'leido' porque él la pidió. Si NO la mencionó, va 'asumido'. Una "
+        "armadura que no sea 'leido' NO SE CONSTRUYE: marcarla 'config' para "
+        "colarla es exactamente lo que el usuario reporta como error.\n"
         "· NO INVENTES ARMADURAS QUE NADIE PIDIÓ. Cada armadura de la ficha es "
         "una barra distinta que se va a fabricar: si el usuario pide SOLO "
         "cabezales, el estribo va en null; si pide solo mallas, trabas y bordes "

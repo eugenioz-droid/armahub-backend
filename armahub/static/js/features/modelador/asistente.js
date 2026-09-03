@@ -167,17 +167,44 @@
   // ---------------------------------------------------------------------------
   var ORG_TXT = { leido: 'leído', config: 'config', asumido: 'asumido', falta: 'falta' };
 
+  // LA FICHA VA PLEGADA (usuario 1-sep: «se pierde el espacio del texto»).
+  // Ocupaba hasta el 38% del panel de forma permanente, o sea que una conversacion
+  // con un formulario clavado en el medio no era ninguna de las dos cosas. Ahora es
+  // UNA LINEA que se abre al clic.
+  // Y esa linea no dice «ficha»: dice CUANTO ASUMIO. Es el unico dato por el que uno
+  // abriria el detalle -- si asumio algo, hay que mirarlo; si no, no hay nada que
+  // revisar. Un resumen que solo cuenta filas no ahorra el clic.
+  function _resumenFicha(filas) {
+    var datos = 0, asumidos = 0, faltan = 0;
+    filas.forEach(function (r) {
+      if (r.seccion) return;
+      datos++;
+      if (r.origen === 'asumido') asumidos++;
+      else if (r.origen === 'falta') faltan++;
+    });
+    var p = [datos + (datos === 1 ? ' dato' : ' datos')];
+    if (asumidos) p.push(asumidos + ' asumido' + (asumidos === 1 ? '' : 's'));
+    if (faltan) p.push(faltan + ' sin definir');
+    return 'Ficha · ' + p.join(' · ');
+  }
+
   function _pintarForm(filas) {
     var f = $('te_iaForm');
     if (!f) return;
     if (!filas || !filas.length) { f.innerHTML = ''; _mostrarCargar(false); return; }
-    var h = '';
+    var h = '<details class="te-ia-det"><summary class="te-ia-sum"></summary>'
+          + '<div class="te-ia-body">';
     filas.forEach(function (r) {
       if (r.seccion) { h += '<div class="te-ia-ft"></div>'; return; }
       h += '<div class="te-ia-fila"><span class="lbl"></span>'
         + '<span class="val"></span><span class="te-ia-org"></span></div>';
     });
+    h += '</div></details>';
     f.innerHTML = h;
+    // textContent: el resumen lleva numeros propios, pero se escribe igual por la
+    // misma puerta que el resto -- una sola regla para todo lo que pinta esta ficha.
+    var sum = f.querySelector('.te-ia-sum');
+    if (sum) sum.textContent = _resumenFicha(filas);
     // textContent, no innerHTML: valores y labels vienen del backend/modelo y no
     // deben poder inyectar markup.
     var fts = f.querySelectorAll('.te-ia-ft'), fi = 0;

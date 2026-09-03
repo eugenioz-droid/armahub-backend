@@ -6,7 +6,12 @@
 // Revit». Este test congela lo único que puede romperse sin que se note mirando el
 // cuadrante: QUÉ NÚMERO se dibuja y CUÁNDO.
 //
-//   A. SÓLO MIENTRAS SE ARRASTRA — sin arrastre no hay cotas; al soltar desaparecen.
+//   A. CUÁNDO SE VEN — arrastrando (las de siempre) y, desde el 1-sep, TAMBIÉN con
+//      la barra seleccionada y quieta, en AMARILLO. Antes había que agarrar el nodo
+//      del abanico para leer la distancia al borde, así que comprobar «¿arranca a la
+//      mitad del espaciamiento?» obligaba a mover algo — con el riesgo de moverlo de
+//      verdad. Sin selección no se pinta nada, y con VARIAS barras seleccionadas
+//      tampoco: tres cotas por cada una es ruido y ninguna es la que se está mirando.
 //   B. EL NÚMERO ES EL DEL ANCLAJE — el mismo { ref, d } que la receta guarda
 //      (reglas.anclarRango). Es EL punto del ejercicio: si el helper tuviera su
 //      propia cuenta de "distancia al borde", diría una cosa y el editor haría otra
@@ -145,7 +150,11 @@ function pintar(plano, px, py, esc) {
 function cotas(plano, px, py, esc) {
   return pintar(plano, px, py, esc)
     .filter(n => n.tag === 'text' && n.attrs['data-cota-viva'] != null)
+    // `cls` desde el 1-sep: la MISMA cota se dibuja en dos tintas -- la del arrastre
+    // y la amarilla de "barra seleccionada" -- y distinguirlas es parte de lo que hay
+    // que congelar, no un detalle de estilo.
     .map(n => ({ txt: n.textContent, ref: n.attrs['data-cota-viva'],
+                 cls: String(n.attrs['class'] || ''),
                  x: Number(n.attrs.x), y: Number(n.attrs.y) }));
 }
 // Las líneas de extensión (clase te-rango-cotaL). Las de TRECHO son las largas; las
@@ -160,16 +169,27 @@ function rotuloLargo(plano) {
 }
 
 // ---------------------------------------------------------------------------
-console.log('\nA · SÓLO MIENTRAS SE ARRASTRA');
+console.log('\nA · CUÁNDO SE VEN LAS COTAS AL BORDE');
 // ---------------------------------------------------------------------------
 {
   const c = montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' })]);
   R.reanclarReceta(ST.receta);
-  ok(cotas('largo').length === 0, 'quieto: NINGUNA cota viva (la vista no se llena de números)');
+  // QUIETO Y SELECCIONADA: se ven igual (cambio del 1-sep). Es el caso normal —
+  // seleccionas una barra para REVISARLA, no para moverla.
+  ok(cotas('largo').length === 2,
+     'quieto pero SELECCIONADO: se ven las dos distancias al borde [' + cotas('largo').length + ']');
+  ok(cotas('largo').every((n) => /-sel/.test(n.cls)),
+     '…y van en la clase amarilla, no en la del arrastre');
   agarrar('rango', 'to');
   ok(cotas('largo').length === 2, 'arrastrando: salen las DOS (un extremo cada una) [' + cotas('largo').length + ']');
+  ok(cotas('largo').every((n) => !/-sel/.test(n.cls)),
+     'y ahí vuelven a la tinta del arrastre: el gesto manda sobre la selección');
   soltar();
-  ok(cotas('largo').length === 0, 'al soltar desaparecen');
+  ok(cotas('largo').length === 2, 'al soltar SIGUEN, porque la barra sigue seleccionada');
+  // Sin selección no hay nada que medir: la vista queda limpia.
+  const _sel0 = ST.selCi; ST.selCi = null;
+  ok(cotas('largo').length === 0, 'sin barra seleccionada: NINGUNA cota (la vista no se llena de números)');
+  ST.selCi = _sel0;
 
   // La flecha de PREVIEW (distribución todavía inactiva) también las lleva: el
   // primer gesto sobre ella es el que activa la distribución, y sin números ese
@@ -186,7 +206,11 @@ console.log('\nA · SÓLO MIENTRAS SE ARRASTRA');
   R.reanclarReceta(ST.receta);
   agarrar('rango', 'to');
   ST.dragRango.ci = 7;
-  ok(cotas('largo').length === 0, 'el arrastre de otra barra no pinta cotas en ésta');
+  // Antes esto exigía CERO cotas. Ya no puede: la barra sigue seleccionada, así que
+  // sus cotas amarillas siguen ahí. Lo que NO puede pasar es que el arrastre AJENO se
+  // las pinte como si el usuario las estuviera moviendo — eso es lo que se congela.
+  ok(cotas('largo').length === 2 && cotas('largo').every((n) => /-sel/.test(n.cls)),
+     'el arrastre de OTRA barra no le roba la tinta: las suyas siguen en amarillo');
   soltar();
 }
 

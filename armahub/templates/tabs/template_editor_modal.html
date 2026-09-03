@@ -848,6 +848,19 @@
     stroke:var(--te-ov-cota-bg);stroke-width:3px;stroke-linejoin:round;pointer-events:none;user-select:none}
   #te_modal .te-rango-cotaL{stroke:var(--te-ov-rango-f);stroke-width:1.4;stroke-dasharray:4 2;
     pointer-events:none}
+  /* LAS MISMAS COTAS, PERO POR SELECCIÓN (1-sep). Se ven sin agarrar nada, para poder
+     comprobar de un vistazo que la malla arranca a la mitad del espaciamiento del
+     borde. Van en AMARILLO porque comparten vista con las cotas del hormigón y con
+     los rangos, y a esa altura tres números del mismo color no se distinguen.
+     El halo OSCURO (no el blanco de las otras) es lo que las sostiene sobre el tema
+     claro, donde el amarillo solo se pierde: el texto se lee por contraste con su
+     propio contorno y no con el fondo, así que aguanta los cinco temas.
+     Si el amarillo termina molestando, el escalón siguiente acordado es naranjo. */
+  #te_modal .te-rango-cota-sel{font-size:11.5px;font-weight:700;fill:#ffd600;
+    paint-order:stroke;stroke:#263238;stroke-width:3.2px;stroke-linejoin:round;
+    pointer-events:none;user-select:none}
+  #te_modal .te-rango-cotaL-sel{stroke:#ffd600;stroke-width:1.4;stroke-dasharray:4 2;
+    pointer-events:none}
   /* Fila de ángulos: tantas columnas como ángulos declare la figura (2 anchos, 4 caben). */
   #te_modal .te-angrow{display:grid;gap:8px;margin-bottom:6px}
   /* Δ heredado del lado espejo: BLOQUEADO y en azul — es la misma medida que su
@@ -1507,8 +1520,24 @@
     border:1px solid var(--te-line);border-bottom-left-radius:3px}
   /* FORMULARIO VIVO — los campos de la receta llenándose, cada uno con su chip de
      ORIGEN (§12.2.4): leído (azul) · config (verde) · asumido (ámbar) · falta (rojo). */
+  /* PLEGADA (1-sep). Antes reservaba hasta el 38% del panel de forma permanente y el
+     usuario reporto que «se pierde el espacio del texto»: un chat con un formulario
+     clavado en el medio no es ninguna de las dos cosas. Cerrada es UNA LINEA; abierta
+     conserva su tope y su scroll, asi que el detalle no vuelve a comerse la
+     conversacion. `flex:0 0 auto` para que crezca y encoja sin empujar el input. */
   #te_modal #te_iaForm{border-top:1px solid var(--te-line);background:var(--te-panel2);
-    padding:8px 12px;max-height:38%;overflow-y:auto;flex:0 0 auto}
+    flex:0 0 auto}
+  #te_modal .te-ia-sum{cursor:pointer;list-style:none;padding:6px 12px;font-size:11px;
+    font-weight:700;color:var(--te-muted);letter-spacing:.2px;user-select:none}
+  #te_modal .te-ia-sum::-webkit-details-marker{display:none}
+  /* El triangulo se dibuja aca para que gire al abrir sin depender del glifo del
+     sistema -- un caracter que no renderice dejaria el control mudo. */
+  #te_modal .te-ia-sum::before{content:'';display:inline-block;margin-right:6px;
+    border:4px solid transparent;border-left-color:currentColor;
+    transform:translateY(1px);transition:transform .12s}
+  #te_modal .te-ia-det[open] .te-ia-sum::before{transform:translateY(1px) rotate(90deg)}
+  #te_modal .te-ia-sum:hover{color:var(--te-ink)}
+  #te_modal .te-ia-body{padding:2px 12px 8px;max-height:34vh;overflow-y:auto}
   #te_modal .te-ia-ft{font-size:10.5px;font-weight:700;color:var(--te-muted);
     text-transform:uppercase;letter-spacing:.4px;margin:6px 0 3px}
   #te_modal .te-ia-fila{display:flex;align-items:center;gap:6px;font-size:11.5px;

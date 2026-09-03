@@ -100,7 +100,11 @@ SPEC = {
                "estribo": {"diam": 8, "sep": 10}, "largo": 40},
     "origenes": {"geometria": "leido", "recubrimiento": "leido",
                  "malla_vertical": "leido", "malla_horizontal": "leido",
-                 "doble_malla": "asumido", "trabas": "config", "bordes": "leido"},
+                 # `trabas` pasa de "config" a "leido": desde el 1-sep el origen dice QUIEN
+                 # DECIDIO que la armadura exista, no de donde salieron sus numeros,
+                 # y solo "leido" (la pidio el usuario) la construye. Este muro SI
+                 # llevaba trabas pedidas, asi que corresponde "leido".
+                 "doble_malla": "asumido", "trabas": "leido", "bordes": "leido"},
 }
 
 r = _construir_receta_muro(SPEC)
@@ -214,7 +218,10 @@ SOLO_CB = {"geometria": {"largo": 514, "alto": 315, "espesor": 20, "recubrimient
                                  "figura": "102A", "empalme": 118, "pata": 25,
                                  "sep_capas": 0},
                       "estribo": None, "largo": 0},
-           "origenes": {}}
+           # Desde el 1-sep una armadura solo se construye si su origen es
+           # "leido" (= la pidio el usuario). Este caso ES "solo cabezales", asi
+           # que bordes va leido y lo demas ni se nombra.
+           "origenes": {"bordes": "leido"}}
 r_cb = _construir_receta_muro(SOLO_CB, CAT)
 check("«solo cabezales» produce SOLO los dos cabezales, sin mallas ni estribo",
       [c["tipologia"] for c in r_cb["componentes"]] == ["CB", "CB"])
@@ -798,6 +805,38 @@ check("MV: el recubrimiento de abajo depende de la figura (101A al borde, 103C c
       "borde inferior del hormig" in _CM and "5 cm" in _CM)
 check("MV: la variante 102C del naciente se conoce pero NO es default",
       "102C" in _CM and "nunca se asume" in _CM)
+
+# ---------------------------------------------------------------------------
+# SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
+# ---------------------------------------------------------------------------
+# «me creó igual las trabas aunque no las pedí; si especifico solo malla
+# horizontal y vertical, sería bueno haga solo eso y no improvise».
+# El gate del 31-ago descartaba las armaduras marcadas 'asumido', pero el modelo
+# las colaba marcandolas 'config' -- y 'config' pasaba. La raiz: `origenes`
+# mezclaba DOS preguntas, de donde salieron los NUMEROS y quien decidio que la
+# armadura EXISTA. Para lo segundo solo vale una respuesta: la pidio el usuario.
+# Ahora se construye solo con origen 'leido', y esto lo congela con los tres.
+_PEDI_SOLO_MALLAS = {
+    "geometria": {"largo": 500, "alto": 250, "espesor": 20, "recubrimiento": 2},
+    "malla_vertical": {"diam": 8, "sep": 20},
+    "malla_horizontal": {"diam": 8, "sep": 20},
+    "doble_malla": True,
+    "trabas": {"diam": 8, "sx": 40, "sy": 40},
+    "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido"},
+}
+_tips = lambda o: [c["tipologia"] for c in
+                   _construir_receta_muro(dict(_PEDI_SOLO_MALLAS,
+                                               origenes=dict(_PEDI_SOLO_MALLAS["origenes"],
+                                                             **({"trabas": o} if o else {}))),
+                                          CAT)["componentes"]]
+check("pedi solo mallas: NO aparecen trabas (sin origen para ellas)",
+      "TR" not in _tips(None))
+check("…ni marcandolas 'asumido' (el gate viejo)", "TR" not in _tips("asumido"))
+check("…NI marcandolas 'config', que era el hueco por el que se colaban",
+      "TR" not in _tips("config"))
+check("y si las PIDO de verdad ('leido'), si se construyen", "TR" in _tips("leido"))
+check("el prompt explica que `origenes` dice QUIEN decidio que la armadura exista",
+      "QUIÉN DECIDIÓ QUE ESA ARMADURA EXISTA" in _sp("muro", {}))
 
 print()
 if FALLAS:
