@@ -857,13 +857,14 @@ def get_stats_timeline(
 
 @router.get("/stats/cubicado")
 def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional[str] = None,
-                 proyecto: Optional[str] = None, origen: str = "manual",
+                 proyecto: Optional[str] = None, origen: str = "cubicado",
                  user=Depends(get_current_user)):
     """Kilos LISTOS (excluye borrador) por cubicador, agregados según `periodo` — para el gráfico del
     editor. Períodos: S=semana actual por día; MS=mes actual por semana; MD=mes actual por día; A=año
     por mes (Ene-Dic). `anios` = CSV de años a totalizar (ej. '2026,2025'). Con 1 año, todos los
     períodos valen; con VARIOS años se FUERZA A (por mes) y se suman los años (los otros períodos no
-    cuadran por fecha). `anio` (singular) sigue soportado por compat. `proyecto` filtra la obra.
+    cuadran por fecha). `anio` (singular) sigue soportado por compat. `proyecto` filtra la obra. `origen`:
+    'cubicado' (default) = despieces a mano + enfierrador 3D; 'todos' = suma el CSV.
     Respuesta: {labels, cubicadores:[{nombre,valores}], anios(con data), forzadoA(bool)}."""
     import calendar as _cal
     from datetime import date
@@ -927,9 +928,17 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional
     if proyecto:
         obra_sql = " AND b.id_proyecto = %s"
         params.append(proyecto)
-    # M1.9: origen='manual' (default, editor) cuenta solo lo creado a mano;
-    # origen='todos' (Hub/Bar Manager) suma también lo cargado por CSV.
-    origen_sql = "" if origen == "todos" else " AND b.origen = 'manual'"
+    # QUÉ CUENTA CADA ORIGEN:
+    #   'todos'    (Hub / Bar Manager) — todo, CSV incluido.
+    #   'cubicado' (Despiece de Cubicación) — SOLO lo que cubicó alguien en la
+    #              plataforma: despieces a mano ('manual') Y el enfierrador 3D
+    #              ('template'). 'manual' se sigue aceptando como alias.
+    # EL FILTRO DEJABA FUERA AL 3D. Decía `origen = 'manual'` a secas, y las barras
+    # del enfierrador se guardan con origen='template' (lotes.py: "el 3D Template
+    # manda origen='template'"), así que no sumaban un kilo. Es la TERCERA vez que
+    # el mismo filtro muerde: en lotes.py ya está anotado dos veces que
+    # `origen='manual'` perdía las barras del enfierrador en silencio.
+    origen_sql = "" if origen == "todos" else " AND b.origen IN ('manual','template')"
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -953,6 +962,7 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional
             cur.execute("""
                 SELECT DISTINCT LEFT(fecha_carga,4)
                 FROM barras WHERE fecha_carga IS NOT NULL AND fecha_carga <> ''"""
+                + origen_sql.replace("b.origen", "origen")
                 + _sql_excluir_borrador() + """
                 ORDER BY 1 DESC
             """)

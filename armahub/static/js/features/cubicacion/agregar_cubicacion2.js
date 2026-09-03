@@ -965,13 +965,17 @@ window.ac2CargarGrafico=function(){
     if (!el || !window.PanelCubicacion) return;
     _ac2Panel=PanelCubicacion.crear(el, {
       getParams:  function(){
-        // Dentro de una obra: SOLO lo cubicado a mano en ESA obra (foco del cubicador).
-        // En la landing (sin obra): TODO (CSV + manual) de todas las obras, igual que el Hub.
-        return AC2.proyecto ? { proyecto: AC2.proyecto, origen: 'manual' } : { origen: 'todos' };
+        // ESTA SECCIÓN CUENTA SOLO LO CUBICADO EN LA PLATAFORMA: despieces a mano y
+        // enfierrador 3D. Nunca el CSV — eso es Bar Manager y el Hub, que miran el
+        // universo completo. Antes la landing (sin obra) pedía origen:'todos' y por
+        // eso al marcar el año aparecía toda la carga histórica importada.
+        var p = { origen: 'cubicado' };
+        if (AC2.proyecto) p.proyecto = AC2.proyecto;
+        return p;
       },
       getAlcance: function(){
         var enObra=!!(AC2.proyecto && AC2._nombreObra);
-        return { texto: enObra ? (' · '+AC2._nombreObra) : ' · todas las obras (CSV + creados)', resaltar: enObra };
+        return { texto: enObra ? (' · '+AC2._nombreObra) : ' · todas las obras', resaltar: enObra };
       }
     });
     if (!_ac2Panel) return;
