@@ -833,6 +833,141 @@ check("el default de MV que sale del codigo es el que declara el documento",
       _figs["MV"] == ["101A"] and "MV 101A" in _CM)
 
 # ---------------------------------------------------------------------------
+# CABEZALES (usuario 2-sep)
+# ---------------------------------------------------------------------------
+from armahub.asistente import (_gancho_90, _componentes_cabezal, _figura_cabezal,
+                               _lleva_empalme, _empalme_auto, _inventario)
+
+# LA PATA DEL ARRANQUE es el gancho normal de 90: 12*phi subido al multiplo de 5.
+# El usuario creia recordar 40*phi -- eso es anclaje/traslapo, otra medida.
+check("gancho de 90 = 12 phi",
+      all(abs(_gancho_90(d) - 12.0 * d / 10.0) < 5 for d in (8, 10, 12, 16, 22, 25)))
+check("...y siempre SUBIDO al multiplo de 5 (19 -> 20, 27 -> 30)",
+      [_gancho_90(d) for d in (8, 10, 12, 16, 18, 22, 25)]
+      == [10, 15, 15, 20, 25, 30, 30])
+check("nunca acorta por debajo de la norma",
+      all(_gancho_90(d) >= 12.0 * d / 10.0 for d in (8, 10, 12, 16, 18, 22, 25, 28, 32)))
+
+# LA FIGURA SALE DE DONDE VIVE EL MURO, no de un default suelto.
+check("cabezal: arranca y corona -> 103A y las capas ANIDAN (muro de un piso)",
+      _figura_cabezal(True, True) == ("103A", None, True))
+check("cabezal: solo arranca -> 102A con la pata ABAJO",
+      _figura_cabezal(True, False) == ("102A", "abajo", False))
+check("cabezal: solo corona -> 102A con la pata ARRIBA",
+      _figura_cabezal(False, True) == ("102A", "arriba", False))
+check("cabezal: muro intermedio -> 101A recta",
+      _figura_cabezal(False, False) == ("101A", None, False))
+
+# EL EMPALME DEPENDE DE SI EL MURO SIGUE SUBIENDO, no de si nace aca.
+check("empalme: arranca si, corona no, arranca y corona no, intermedio si",
+      [_lleva_empalme(a, b) for a, b in
+       ((True, False), (False, True), (True, True), (False, False))]
+      == [True, False, False, True])
+check("el empalme de la casa es 60 phi + 10", _empalme_auto(16) == 106
+      and _empalme_auto(8) == 58)
+
+_CATCB = {"101A": {"parciales": ["A"], "angulos": []},
+          "102A": {"parciales": ["A", "B"], "angulos": []},
+          "103A": {"parciales": ["A", "B", "C"], "angulos": []},
+          "103C": {"parciales": ["A", "B", "C"], "angulos": [45]},
+          "104B": {"parciales": ["A", "B", "C", "D"], "angulos": [45, 45]}}
+
+
+def _muro_cb(cond, bordes):
+    return _construir_receta_muro({
+        "geometria": {"largo": 500, "alto": 250, "espesor": 20, "recubrimiento": 2.5},
+        "malla_vertical": {"diam": 8, "sep": 20},
+        "malla_horizontal": {"diam": 8, "sep": 20},
+        "doble_malla": True, "condicion": cond, "bordes": bordes,
+        "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                     "bordes": "leido"}}, _CATCB)
+
+
+_BB = {"barras": {"diam": 16, "barras_capa": 2, "n_capas": 2}}
+_ini = [c for c in _muro_cb("inicia", _BB)["componentes"] if c["tipologia"] == "CB"]
+_fin = [c for c in _muro_cb("termina", _BB)["componentes"] if c["tipologia"] == "CB"]
+_uno = [c for c in _muro_cb("inicia_y_termina", _BB)["componentes"] if c["tipologia"] == "CB"]
+_med = [c for c in _muro_cb("", _BB)["componentes"] if c["tipologia"] == "CB"]
+
+check("la condicion del muro llega hasta la figura del cabezal construido",
+      [c[0]["figura"] for c in (_ini, _fin, _uno, _med)]
+      == ["102A", "102A", "103A", "101A"])
+check("la pata mira ABAJO si arranca y ARRIBA si corona",
+      _ini[0]["orient"]["spin"] != _fin[0]["orient"]["spin"])
+check("el muro de un piso trae las capas anidadas; los demas no",
+      _uno[0]["distribucion"].get("anidar") is True
+      and not _med[0]["distribucion"].get("anidar"))
+check("la pata sin dictar sale del gancho de 90 (phi16 -> 20)",
+      any(v.get("valor") == 20 for v in _ini[0]["dims"].values()))
+check("jerarquia 2 por defecto (la MH siempre esta)",
+      all(c["jerarquia"] == 2 for c in _ini + _med))
+check("separacion entre capas por defecto = 15, no 4",
+      _med[0]["distribucion"]["gap"] == 15)
+check("empalme automatico salvo que el muro corone",
+      _ini[0]["dims"]["B"].get("delta") == 106
+      and not _fin[0]["dims"]["B"].get("delta"))
+_mvi = [c for c in _muro_cb("inicia", _BB)["componentes"] if c["tipologia"] == "MV"]
+check("la MV naciente sale 103C sola, sin que nadie dicte la figura",
+      _mvi[0]["figura"] == "103C")
+
+# ESCALONADO: el usuario dice «2 capas con longitudes distintas» y NUNCA habla de
+# componentes. Un componente es una definicion de barra y una barra no puede tener
+# dos largos, asi que cada largo distinto es un componente -- y hay que intercalarlos
+# para que la pila se vea pareja a la separacion que el usuario nombro.
+_esc = _componentes_cabezal({"diam": 22, "n_capas": 4, "sep_capas": 15,
+                             "empalmes": [132, 90]})
+check("4 capas con 2 largos -> 2 componentes de 2 capas @30",
+      [(p["n_capas"], p["sep_capas"]) for p in _esc] == [(2, 30), (2, 30)])
+check("...el segundo arranca a 15, para que la pila quede en 0/15/30/45",
+      [p["arranque"] for p in _esc] == [0, 15])
+check("...y cada componente se lleva SU largo",
+      [p["empalme"] for p in _esc] == [132, 90])
+_esc3 = _componentes_cabezal({"diam": 22, "n_capas": 6, "sep_capas": 15,
+                              "empalmes": [132, 100, 70]})
+check("con 3 largos y 6 capas: gap 45 y arranques 0/15/30",
+      [(p["n_capas"], p["sep_capas"], p["arranque"]) for p in _esc3]
+      == [(2, 45, 0), (2, 45, 15), (2, 45, 30)])
+_esc_imp = _componentes_cabezal({"diam": 22, "n_capas": 3, "sep_capas": 15,
+                                 "empalmes": [132, 90]})
+check("y si las capas no se reparten parejas, no se pierde ninguna",
+      sum(p["n_capas"] for p in _esc_imp) == 3)
+check("un solo largo sigue siendo UN componente",
+      len(_componentes_cabezal({"diam": 16, "n_capas": 2})) == 1)
+
+_e2 = [c for c in _muro_cb("inicia", {"barras": dict(_BB["barras"], empalmes=[132, 90])})
+       ["componentes"] if c["tipologia"] == "CB"]
+check("el escalonado llega a la receta como 2 componentes POR PUNTA", len(_e2) == 4)
+check("...y el que arranca mas adentro lo hace con off_caras, NO con pos_hint",
+      _e2[1]["off_caras"] == {"x": {"max": 15.0}} and not _e2[1]["pos_hint"]
+      and _e2[3]["off_caras"] == {"x": {"min": 15.0}})
+
+# INFERIOR / CORONACION: la misma pieza girada 90 dentro del plano del muro.
+_4c = [c for c in _muro_cb("inicia_y_termina",
+                           dict(_BB, donde=["laterales", "inferior", "superior"]))
+       ["componentes"] if c["tipologia"] == "CB"]
+check("un muro de un piso puede llevar cabezales en los CUATRO costados",
+      len(_4c) == 4 and all(c["figura"] == "103A" for c in _4c))
+check("los laterales corren en la altura y los de borde a lo largo del muro",
+      [c["pose"]["rumbo"] for c in _4c] == ["y", "y", "x", "x"]
+      and [c["pose"]["cara"] for c in _4c] == ["extremo", "extremo", "inf", "sup"])
+check("el inventario cuenta las barras que van a aparecer DE VERDAD",
+      _inventario(_normalizar_ficha({
+          "geometria": {"largo": 500, "alto": 250, "espesor": 20, "recubrimiento": 2.5},
+          "malla_horizontal": {"diam": 8, "sep": 20},
+          "bordes": dict(_BB, donde=["laterales", "inferior"]),
+          "origenes": {"malla_horizontal": "leido", "bordes": "leido"}}))
+      .endswith("3 cabezales"))
+
+check("el conocimiento explica el escalonado en capas, no en componentes",
+      "longitudes distintas" in _CM and "gap = N" in _CM)
+check("...y que el que empalma es el que SIGUE SUBIENDO",
+      "SIGUE SUBIENDO" in _CM and "pata, no arranque" in _CM)
+check("el conocimiento trae la figura del cabezal por condicion del muro",
+      "103A" in _CM and "pata ABAJO" in _CM and "pata ARRIBA" in _CM)
+check("...y los cuatro costados del muro de un piso",
+      "cuatro costados" in _CM)
+
+# ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
 # ---------------------------------------------------------------------------
 # «me creó igual las trabas aunque no las pedí; si especifico solo malla

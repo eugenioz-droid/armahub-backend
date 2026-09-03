@@ -66,6 +66,8 @@ altura, **en la vista de sección se ve el CORTE de la barra, no su desarrollo**
 - **La figura depende de DÓNDE NACE el muro:**
   - **103C** si es muro NACIENTE — el primero del eje, o nace sobre una losa.
   - **101A** si es continuación o muro intermedio.
+  Eso sale solo del campo `condicion` de la ficha: basta con que el usuario mencione
+  que el muro arranca, es naciente o es el primer piso.
 - **Siempre lleva empalme HACIA ARRIBA**, para traslapar con el arranque del piso
   siguiente: **60·φ + 10**, el de la casa. Se suma al largo de corte.
 - **El recubrimiento de abajo depende de la figura, y no es lo mismo:**
@@ -128,9 +130,55 @@ una barra recta no amarra nada.
 **CB · Cabezal.** Barras longitudinales gruesas (φ16-φ25) concentradas en las PUNTAS
 del muro, corriendo en la altura igual que la MV. Se describen por punta: cuántas
 barras por capa (a lo ancho del espesor, normalmente 2, una por cara), cuántas capas
-hacia adentro y la separación entre capas. Llevan el mismo empalme que la MV. Si se
-pide con figura de pata (102A y similares), **hay que decir cuánto mide la pata**: el
-cuerpo corre en la altura y la pata entra hacia el núcleo.
+hacia adentro y la separación entre capas.
+
+- **Si el usuario no dice capas: 1 capa de 2 barras.** Si las dice, mandan las suyas.
+- **Separación entre capas: 15 cm** por defecto. Puede ser menos si lo pide.
+- **Jerarquía 2**, salvo que la dicte. Iría 1 si no hubiera MH, pero siempre la hay.
+- **Figura: la decide DÓNDE VIVE EL MURO**, no un default suelto:
+  - **arranca y corona** (muro de un piso) → **103A**, pata abajo y arriba. Y ahí
+    **las capas van ANIDADAS**. Un muro de un piso lleva 103A en los cuatro costados.
+  - **solo arranca** → **102A con la pata ABAJO** (entra en la fundación o la losa).
+  - **solo corona** → **102A con la pata ARRIBA** (remata; no arranca nada).
+  - **ninguna de las dos** (muro intermedio) → **101A** recta.
+- **La pata, si no la dictan, es el gancho normal de 90°: 12·φ subido al múltiplo de
+  5.** φ16 → 20 · φ22 → 30. (No confundir con los ~40·φ, que son anclaje/traslapo, ni
+  con el gancho sísmico de 135° de la traba, que sale de otra tabla.)
+
+**Dónde van.** Por defecto en **los dos costados**, y eso es lo que se hace si el
+usuario dice «ponle cabezales» a secas. Pueden ir además en el **borde inferior** o
+en el de **coronación**. Ahí el cabezal es **la misma pieza girada 90° dentro del
+plano del muro**: el lado dominante queda paralelo al borde inferior y las patas
+paralelas a los costados, así que de frente en elevación se ve una **C**. Las capas
+siguen apilándose hacia el núcleo y las barras de cada capa siguen repartiéndose por
+el espesor, igual que en los laterales.
+
+Los laterales van **primero**. Si el muro arranca o corona, después de instalarlos se
+**ofrecen** los otros en una línea («listos los de los costados; como el muro arranca
+aquí, ¿le pongo también los inferiores?»). Ofrecer, no preguntar dos veces.
+
+**EMPALME: lo lleva el que SIGUE SUBIENDO.** Se hormigona parado sobre la losa, así
+que si el muro continúa hacia arriba hay que dejar el arranque — de ahí el nombre:
+sólo se ve esa longitud de traslapo asomando. Si el muro **corona**, no hay nada con
+qué traslapar y lleva **pata, no arranque**. Por eso los que empalman son **CB y MV**;
+la MH sólo si el muro es muy largo, y eso se pide aparte.
+
+**EMPALMES ESCALONADOS (varias longitudes).** El calculista pide a veces que los
+traslapos no caigan todos en la misma línea. El usuario lo dice como «**2 capas de
+cabezales con longitudes distintas**» — nombra el total de capas y cuántos largos
+distintos hay, nunca componentes.
+
+Traducirlo es trabajo de la plataforma: **un componente es una definición de barra y
+una barra no puede tener dos largos**, así que cada largo distinto es un componente.
+Para que el resultado se vea como una sola pila pareja a la separación `s`:
+
+> con `N` largos distintos, cada componente se apila con **gap = N·s**, el componente
+> `k` **arranca a k·s** del testero y se lleva `ceil((total−k)/N)` capas.
+
+Con 4 capas, 2 largos y s=15: dos componentes de 2 capas @30, el segundo arrancando a
+15 → capas en 0, 15, 30 y 45. Con 2 capas y 2 largos: dos componentes de una capa, en
+0 y 15. **Si el usuario dice que son distintas pero no da los largos, hay que
+preguntárselos**: son números suyos.
 
 **EC · Estribo Confinamiento.** Marco CERRADO con ganchos (figura de la casa: 106A) que abraza el paquete
 de cabezales en la punta. Corre en el plano de la sección y se reparte en la ALTURA,

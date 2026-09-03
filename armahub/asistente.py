@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
-import os, json, logging
+import os, json, logging, math
 
 from .db import get_conn
 from .auth import get_current_user
@@ -108,6 +108,80 @@ def _gancho_sismico(diam_mm) -> float:
     if d in _GANCHO_NCH211:
         return _GANCHO_NCH211[d]
     return _r1(10.0 * d / 10.0)          # 10·φ, con φ en mm → cm
+
+
+# CONDICION DEL MURO: si ARRANCA (nace en este piso) y si CORONA (muere en este
+# piso). No es un adorno: de estos dos booleanos cuelgan la figura del cabezal, la
+# figura de la malla vertical, hacia donde mira la pata y si la barra lleva empalme.
+_COND = {"": (False, False), "inicia": (True, False), "termina": (False, True),
+         "inicia_y_termina": (True, True)}
+
+# Hacia donde apunta la pata de un cabezal 102A. `giro_patas` -> orient.spin.
+# ES UN SOLO NUMERO POR SI HAY QUE DARLO VUELTA: si en pantalla sale al reves,
+# se intercambian los dos valores y no se toca nada mas.
+_SPIN_PATA = {"abajo": 0, "arriba": 180}
+
+# Separacion entre capas de cabezales cuando el usuario no la dicta. 15 cm es lo
+# usual (usuario 2-sep); antes eran 4, que no era lo usual de nada.
+_SEP_CAPAS_DEF = 15.0
+
+
+def _condicion(spec):
+    """(inicia, termina) de la ficha. Tolera que el modelo escriba cualquier cosa."""
+    return _COND.get(str((spec or {}).get("condicion") or "").strip().lower(),
+                     (False, False))
+
+
+def _figura_cabezal(inicia, termina):
+    """(figura, pata_hacia, anida) del cabezal segun donde vive el muro (usuario
+    2-sep):
+
+      · arranca Y corona -> 103A, pata abajo y arriba. Es el muro de un piso, y
+        AHI LAS CAPAS VAN ANIDADAS («un muro de 1 piso tendra cabezales 103A en los
+        4 costados»).
+      · solo arranca     -> 102A con la pata ABAJO (entra en la fundacion/losa).
+      · solo corona      -> 102A con la pata ARRIBA (remata, no arranca).
+      · ninguna de las dos (muro intermedio) -> 101A recta, como siempre."""
+    if inicia and termina:
+        return "103A", None, True
+    if inicia:
+        return "102A", "abajo", False
+    if termina:
+        return "102A", "arriba", False
+    return "101A", None, False
+
+
+def _empalme_auto(diam_mm) -> float:
+    """El traslapo de la casa hacia arriba: 60·φ + 10, en cm."""
+    d = _num(diam_mm)
+    return _r1(6.0 * d + 10.0) if d > 0 else 0.0
+
+
+def _lleva_empalme(inicia, termina) -> bool:
+    """EL EMPALME ES EL ARRANQUE DEL PISO DE ARRIBA, asi que depende de si el muro
+    SIGUE SUBIENDO -- no de si nace aca (usuario 2-sep: «se hormigona teniendo el
+    piso hecho, lo que obliga a dejar arranque si el muro sigue subiendo; si el muro
+    corona necesita pata, no arranque»). Un muro que corona no empalma con nada.
+    Los tres casos que dicto el usuario caen solos: arranca -> si · corona -> no ·
+    arranca y corona -> no. Y el cuarto, el muro intermedio, tambien sigue subiendo."""
+    return not termina
+
+
+def _gancho_90(diam_mm) -> float:
+    """Pata del gancho NORMAL de 90°, en cm. Es la del ARRANQUE que entra en la
+    fundacion (el lado corto de un cabezal 102A/103A), y NO es el gancho sismico de
+    135° de la traba: aquella sale de la NCh 211 tabla 7, esta es la extension recta
+    de 12·φ de ACI 318 / NCh 430.
+
+    Y SE SUBE AL MULTIPLO DE 5 (usuario 2-sep: «si pide 19, vas a 20; si pide 27,
+    vas a 30»). Siempre hacia arriba: acortar una pata normativa la deja bajo norma,
+    alargarla solo gasta fierro. φ16 → 19,2 → 20 · φ22 → 26,4 → 30.
+
+    El usuario recordaba 40·φ; eso es la longitud de anclaje/traslapo, otra medida."""
+    d = _num(diam_mm)
+    if d <= 0:
+        return 0.0
+    return float(int(math.ceil(12.0 * d / 10.0 / 5.0)) * 5)
 
 
 def _modular_trabas(sep_mv, sep_mh, por_m2=6.0):
@@ -306,12 +380,32 @@ TOOL_MURO = {
             "malla_vertical": _MALLA_SCHEMA,
             "malla_horizontal": _MALLA_SCHEMA,
             "doble_malla": {"type": "boolean"},
+            "condicion": {
+                "type": "string",
+                "enum": ["", "inicia", "termina", "inicia_y_termina"],
+                "description": "donde vive el muro en la altura del edificio. "
+                               "\"inicia\" = arranca aqui (naciente, nace en "
+                               "fundacion o losa) · \"termina\" = corona aqui, no "
+                               "sigue subiendo · \"inicia_y_termina\" = muro de un "
+                               "solo piso · \"\" = intermedio o no lo dijo. De esto "
+                               "salen la figura del cabezal y de la malla vertical, "
+                               "hacia donde mira la pata y si llevan empalme",
+            },
             "bordes": {
                 "anyOf": [
                     {"type": "null"},
                     {"type": "object", "additionalProperties": False,
                      "required": ["barras"],
                      "properties": {
+                         "donde": {
+                             "type": "array",
+                             "items": {"type": "string",
+                                       "enum": ["laterales", "inferior", "superior"]},
+                             "description": "en que bordes van los cabezales. Vacio "
+                                            "= laterales (los dos costados), que es "
+                                            "lo usual. \"inferior\" y \"superior\" "
+                                            "solo si el usuario los pide",
+                         },
                          "barras": {
                              "type": "object", "additionalProperties": False,
                              "required": ["diam"],
@@ -327,7 +421,20 @@ TOOL_MURO = {
                                      "type": "number",
                                      "description": "separacion entre capas de "
                                                     "cabezales, eje a eje, en cm. "
-                                                    "0 = default",
+                                                    "0 = default (15)",
+                                 },
+                                 "empalmes": {
+                                     "type": "array",
+                                     "items": {"type": "number"},
+                                     "description": "LARGOS DE EMPALME DISTINTOS en "
+                                                    "cm, uno por cada largo que el "
+                                                    "usuario nombre («2 capas con "
+                                                    "longitudes distintas»). La "
+                                                    "plataforma parte eso en varios "
+                                                    "componentes y los intercala "
+                                                    "sola: tu solo pones n_capas "
+                                                    "TOTAL y la lista de largos. "
+                                                    "Vacio = un solo largo",
                                  },
                                  "color": _COLOR_PROP,
                              }},
@@ -526,8 +633,10 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
 
     mv, mh = _malla("malla_vertical"), _malla("malla_horizontal")
 
+    cond = str(spec.get("condicion") or "").strip().lower()
     out = {"geometria": geo, "malla_vertical": mv, "malla_horizontal": mh,
            "doble_malla": bool(spec.get("doble_malla", True)),
+           "condicion": cond if cond in _COND else "",
            "trabas": None, "bordes": None,
            "origenes": spec.get("origenes") if isinstance(spec.get("origenes"), dict) else {}}
 
@@ -588,14 +697,20 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
             barras = _armadura(bb, con_sep=False)
             barras["barras_capa"] = max(1, int(_num(bb.get("barras_capa"), 2)))
             barras["n_capas"] = max(1, int(_num(bb.get("n_capas"), 1)))
-            barras["sep_capas"] = _num(bb.get("sep_capas"))
+            barras["sep_capas"] = _num(bb.get("sep_capas")) or _SEP_CAPAS_DEF
+            barras["empalmes"] = [_num(e) for e in (bb.get("empalmes") or [])
+                                  if _num(e) > 0]
             est = bo.get("estribo")
             estribo = None
             if isinstance(est, dict) and _num(est.get("diam")) > 0:
                 estribo = _armadura(est)
                 if estribo["sep"] <= 0:
                     estribo["sep"] = 10.0
+            donde = [d for d in (bo.get("donde") or [])
+                     if str(d).strip().lower() in _PILA_CB]
             out["bordes"] = {"barras": barras, "estribo": estribo,
+                             "donde": [str(d).strip().lower() for d in donde]
+                                      or ["laterales"],
                              "largo": _num(bo.get("largo"), 40) or 40}
 
     # Una ficha sin NINGUNA armadura no es un muro a medias: es un muro vacio, y de
@@ -646,7 +761,10 @@ def _mk_dims(parciales, empalme=None, pata=None, phi=None, patas_fijas=False):
     dims = {L: {"modo": "auto"} for L in parciales}
     corre = _lado_que_corre(parciales)
     if pata or patas_fijas:
-        largo_pata = _r1(pata) if pata else _r1(max(7.5, float(phi or 8)))
+        # SIN PATA DICTADA MANDA LA NORMA, NO UNA CASUALIDAD DE UNIDADES. El valor
+        # de antes -- max(7.5, φ) con φ en mm leido como cm -- daba 10·φ de puro
+        # accidente. El gancho normal de 90° es 12·φ subido al multiplo de 5.
+        largo_pata = _r1(pata) if pata else _gancho_90(phi or 8)
         for L in parciales:
             if L != corre:
                 dims[L] = {"modo": "fija", "valor": largo_pata}
@@ -697,6 +815,56 @@ def _geo_de(receta_o_ficha):
     rec = g.get("recub_lat", g.get("recubrimiento"))
     return {"largo": _num(g.get("largo")), "alto": _num(g.get("alto")),
             "esp": _num(esp), "rec": _num(rec, 2.5) or 2.5}
+
+
+# EJE POR EL QUE SE APILAN LAS CAPAS, segun donde vive el cabezal. Es tambien el
+# eje por el que se recorta el hormigon cuando un componente arranca mas adentro.
+_PILA_CB = {"laterales": "x", "inferior": "y", "superior": "y"}
+
+
+def _componentes_cabezal(bb):
+    """Un pedido de cabezales -> la lista de COMPONENTES que hay que fabricar.
+
+    EL USUARIO NO HABLA DE COMPONENTES (2-sep). Dice «2 capas de cabezales con
+    longitudes distintas»: nombra el TOTAL de capas y cuantos largos distintos hay.
+    Traducir eso es trabajo de la plataforma, y esta es la traduccion.
+
+    POR QUE SON VARIOS COMPONENTES: un componente es UNA definicion de barra, y una
+    barra no puede tener dos largos. Dos empalmes distintos son dos componentes.
+    (El calculista los pide para que los traslapos no caigan todos en la misma
+    linea.)
+
+    COMO SE INTERCALAN, para que el resultado se vea como UNA sola pila pareja a la
+    separacion `s` que el usuario nombro:
+      · cada componente se apila con gap = N·s  (N = cuantos largos distintos hay)
+      · el componente k arranca a k·s del testero
+      · el componente k se lleva ceil((total-k)/N) capas
+    Con total=4, N=2, s=15: dos componentes de 2 capas @30, el segundo arrancando a
+    15 -> capas en 0, 15, 30 y 45. Cuatro capas @15 con dos empalmes. Con total=2 y
+    N=2 salen dos componentes de UNA capa, en 0 y 15, que es el caso que el usuario
+    describio.
+
+    EL ARRANQUE NO ES UN pos_hint: es `off_caras`, el recorte del hormigon que el
+    motor ya tiene. El componente se expande contra un testero recortado k·s y
+    aterriza donde corresponde CON EL ANCLA VIVA. Medir con el ancla y escribir en
+    el hint son dos regimenes distintos y ya nos costo una vez."""
+    emps = [_num(e) for e in (bb.get("empalmes") or []) if _num(e) > 0]
+    total = max(1, int(_num(bb.get("n_capas"), 1)))
+    s = _num(bb.get("sep_capas")) or _SEP_CAPAS_DEF
+    if len(emps) <= 1:
+        c = dict(bb, n_capas=total, sep_capas=s)
+        if emps:
+            c["empalme"] = emps[0]
+        return [c]
+    n = len(emps)
+    out = []
+    for k, e in enumerate(emps):
+        capas = -(-(total - k) // n)          # ceil((total-k)/n)
+        if capas <= 0:
+            continue
+        out.append(dict(bb, n_capas=capas, sep_capas=_r1(s * n), empalme=e,
+                        arranque=_r1(k * s)))
+    return out
 
 
 def _fabricar(clase, p, geo, figuras, lados):
@@ -776,19 +944,52 @@ def _fabricar(clase, p, geo, figuras, lados):
             int(_pedido(p, "jerarquia", 2)), dist), p), p))
 
     elif clase == "cabezales":
+        # DONDE VIVE: los dos costados (default) o el borde inferior / de coronacion.
+        # SON LA MISMA PIEZA GIRADA 90° DENTRO DEL PLANO DEL MURO, no otra tipologia:
+        # el lateral corre en la altura (rumbo y, de pie) apoyado en el testero; el
+        # inferior corre a lo largo (rumbo x, acostada) apoyado en el borde de abajo,
+        # con el lado dominante paralelo a ese borde y las patas A y C paralelas a
+        # los costados -- de frente en elevacion se ve una C (usuario 2-sep).
+        # El resto -- capas hacia el nucleo, 2 barras por capa a lo ancho del
+        # espesor -- es identico, porque `_marcoCara` reparte por el espesor tanto
+        # en la cara 'extremo' como en la 'inf'/'sup'.
+        donde = str(p.get("donde") or "laterales").strip().lower()
+        if donde == "inferior":
+            cara, rumbo, orient = "inf", "x", "acostada"
+        elif donde == "superior":
+            cara, rumbo, orient = "sup", "x", "acostada"
+        else:
+            cara, rumbo, orient = "extremo", "y", "de_pie"
         fig = _pedido(p, "figura", "101A")
         par, ang = _spec_figura(figuras, fig, ["A"], [])
         for lado in lados:
-            comps.append(_mk_extras(_mk_base(
-                "CB", fig, p["diam"], ang, "puntual", "extremo", lado, "y",
-                "de_pie", False,
+            dist = {"modo": "layered",
+                    "n_capas": max(1, int(_num(p.get("n_capas"), 1))),
+                    "barras_capa": max(1, int(_num(p.get("barras_capa"), 2))),
+                    "gap": _r1(p.get("sep_capas") or _SEP_CAPAS_DEF),
+                    "sentido": "nucleo", "justify": "repartir"}
+            if p.get("anidar_capas"):
+                # 103A = muro de un piso: las capas van ANIDADAS. Para una figura
+                # ABIERTA con patas el motor pide opt-in explicito (anidar === true),
+                # justamente para no cambiarle las dims a recetas que ya existen.
+                dist["anidar"] = True
+            c = _mk_extras(_mk_base(
+                "CB", fig, p["diam"], ang, "puntual", cara, lado, rumbo,
+                orient, False,
                 _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"],
-                         patas_fijas=True), int(_pedido(p, "jerarquia", 1)),
-                {"modo": "layered",
-                 "n_capas": max(1, int(_num(p.get("n_capas"), 1))),
-                 "barras_capa": max(1, int(_num(p.get("barras_capa"), 2))),
-                 "gap": _r1(p.get("sep_capas") or 4),
-                 "sentido": "nucleo", "justify": "repartir"}), p))
+                         patas_fijas=True), int(_pedido(p, "jerarquia", 2)),
+                dist), p)
+            if p.get("pata_hacia") in _SPIN_PATA:
+                c["orient"] = {"spin": _SPIN_PATA[p["pata_hacia"]]}
+            arr = _num(p.get("arranque"))
+            if arr > 0:
+                # ARRANQUE = recorte del hormigon por la cara en la que se apoya.
+                # Asi el componente escalonado nace k·s mas adentro sin tocar el
+                # ancla ni la pila (ver _componentes_cabezal).
+                eje = _PILA_CB.get(donde, "x")
+                ref = "max" if (lado >= 0 if eje == "x" else donde == "superior")                     else "min"
+                c["off_caras"] = {eje: {ref: _r1(arr)}}
+            comps.append(c)
 
     elif clase == "estribo":
         fig = _pedido(p, "figura", "106A")
@@ -1026,6 +1227,16 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
     doble = bool(spec.get("doble_malla", True))
     comps = []
     mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
+    inicia, termina = _condicion(spec)
+    if mv:
+        # LA MALLA VERTICAL TAMBIEN DEPENDE DE DONDE NACE EL MURO: 103C si es
+        # naciente (con recubrimiento abajo), 101A recta si es continuacion. Estaba
+        # escrito en el conocimiento y no habia ningun campo que lo dijera.
+        mv = dict(mv)
+        if not _dictado(mv, "figura") and inicia:
+            mv["figura"] = "103C"
+        if not _dictado(mv, "empalme") and _lleva_empalme(inicia, termina):
+            mv["empalme"] = _empalme_auto(mv.get("diam"))
     for lado in ([1, -1] if doble else [1]):
         if mv:
             comps += _fabricar("malla_vertical", mv, geo, figuras, [lado])
@@ -1036,13 +1247,41 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
         comps += _fabricar("trabas", tr, geo, figuras, [1])
     bo = spec.get("bordes")
     if bo:
-        bb, est = dict(bo["barras"]), bo.get("estribo")
-        for lado in (1, -1):
-            comps += _fabricar("cabezales", bb, geo, figuras, [lado])
-            if est:
-                e = dict(est)
-                e["largo"] = bo.get("largo") or 40
-                comps += _fabricar("estribo", e, geo, figuras, [lado])
+        est = bo.get("estribo")
+        fig_cb, pata_hacia, anida = _figura_cabezal(inicia, termina)
+        # LA FIGURA Y LA PATA SALEN DE DONDE VIVE EL MURO, no de un default suelto:
+        # 103A si arranca y corona (y ahi las capas anidan), 102A con la pata abajo
+        # si solo arranca, 102A con la pata arriba si solo corona, 101A recta si es
+        # intermedio. Lo que el usuario dicte manda sobre todo esto.
+        partes = []
+        for parte in _componentes_cabezal(bo["barras"]):
+            if not _dictado(parte, "figura"):
+                parte["figura"] = fig_cb
+                parte["pata_hacia"] = pata_hacia
+                parte["anidar_capas"] = anida
+            if not _dictado(parte, "empalme") and _lleva_empalme(inicia, termina):
+                parte["empalme"] = _empalme_auto(parte.get("diam"))
+            partes.append(parte)
+        # laterales = los dos testeros, y el estribo de borde va con ELLOS (el orden
+        # CB/EC por punta es el que ve el usuario en el listado). inferior y
+        # superior son un solo borde cada uno y no llevan estribo.
+        dondes = bo.get("donde") or ["laterales"]
+        if "laterales" in dondes:
+            for lado in (1, -1):
+                for parte in partes:
+                    comps += _fabricar("cabezales", dict(parte, donde="laterales"),
+                                       geo, figuras, [lado])
+                if est:
+                    e = dict(est)
+                    e["largo"] = bo.get("largo") or 40
+                    comps += _fabricar("estribo", e, geo, figuras, [lado])
+        for donde in dondes:
+            if donde == "laterales":
+                continue
+            lado = -1 if donde == "inferior" else 1
+            for parte in partes:
+                comps += _fabricar("cabezales", dict(parte, donde=donde),
+                                   geo, figuras, [lado])
     receta = {
         "tipo": "muro",
         "geometria": {"largo": _r1(geo["largo"]), "alto": _r1(geo["alto"]),
@@ -1391,7 +1630,15 @@ def _inventario(spec: dict) -> str:
         partes.append("1 traba")
     bo = spec.get("bordes")
     if bo:
-        partes.append("2 cabezales")
+        # YA NO SON SIEMPRE 2. Pueden ir en el borde inferior o de coronacion, y un
+        # pedido con empalmes escalonados se parte en varios componentes: el
+        # inventario tiene que decir cuantas barras van a aparecer DE VERDAD, que
+        # para eso existe.
+        n_bordes = sum(2 if d == "laterales" else 1
+                       for d in (bo.get("donde") or ["laterales"]))
+        n_comp = max(1, len(bo["barras"].get("empalmes") or []))
+        total = n_bordes * n_comp
+        partes.append("%d cabezal%s" % (total, "es" if total > 1 else ""))
         if bo.get("estribo"):
             partes.append("2 estribos de borde")
     return " + ".join(partes)
@@ -1427,6 +1674,13 @@ def _resumen_de_spec(spec: dict) -> list:
         {"label": "Mallas", "valor": "doble" if spec.get("doble_malla", True) else "simple",
          "origen": org("doble_malla")},
     ]
+    if spec.get("condicion"):
+        filas.append({"label": "Muro",
+                      "valor": {"inicia": "arranca en este piso",
+                                "termina": "corona en este piso",
+                                "inicia_y_termina": "de un piso (arranca y corona)"}
+                               [spec["condicion"]],
+                      "origen": org("condicion")})
     tr = spec.get("trabas")
     filas.append({"label": "Trabas",
                   "valor": ((f"φ{tr['diam']:g} · {tr['sx']:g} × {tr['sy']:g}"
@@ -1449,11 +1703,19 @@ def _resumen_de_spec(spec: dict) -> list:
             det += " @%g" % bb["sep_capas"]
         if bb.get("pata"):
             det += " · pata %g" % bb["pata"]
-        if bb.get("empalme"):
+        if bb.get("empalmes"):
+            # LOS EMPALMES ESCALONADOS SE MUESTRAN, y se dice en cuantos componentes
+            # se parte el pedido: es lo que el usuario va a ver aparecer en el
+            # listado, y no tiene por que deducirlo.
+            det += " · empalmes %s (%d componentes)" % (
+                "/".join("%g" % e for e in bb["empalmes"]), len(bb["empalmes"]))
+        elif bb.get("empalme"):
             det += " · emp %g" % bb["empalme"]
+        donde = bo.get("donde") or ["laterales"]
+        ubic = "por punta" if donde == ["laterales"] else "en " + ", ".join(donde)
         filas.append({"label": "Cabezales",
-                      "valor": f"{bb['barras_capa']}φ{bb['diam']:g} × {bb['n_capas']} capas por punta"
-                               + det + _detalle_fig(bb),
+                      "valor": f"{bb['barras_capa']}φ{bb['diam']:g} × {bb['n_capas']} capas "
+                               + ubic + det + _detalle_fig(bb),
                       "origen": org("bordes")})
         filas.append({"label": "Estribo borde",
                       "valor": (f"φ{est['diam']:g} @ {est['sep']:g} · largo {bo['largo']:g}" if est
@@ -1555,10 +1817,36 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "malla vertical y los cabezales.\n"
         "· PATA: si el usuario pide una figura con pata o gancho («cabezales "
         "102A con pata de 25»), ese largo va en el campo `pata`, en CM. Si elige "
-        "una figura con patas y NO dice cuanto miden, PREGUNTASELO: dejarlas "
-        "libres produce barras deformes.\n"
+        "una figura con patas y NO dice cuanto miden, NO SE LO PREGUNTES: "
+        "deja el campo vacio y la plataforma le pone el gancho normativo "
+        "(12·φ subido al multiplo de 5). Basta con que lo digas en la "
+        "respuesta: «pata 25, el gancho normal de 90°». Solo si el usuario "
+        "quiere otra medida la escribe.\n"
         "· CABEZALES: `sep_capas` = separacion entre capas en cm («capas cada "
         "15») y `barras_capa` = cuantas van por capa a lo ancho del espesor.\n"
+        "· DONDE VIVE EL MURO (`condicion`): si el usuario menciona que el muro "
+        "arranca, es naciente, es el primer piso, nace en la fundacion o en una "
+        "losa -> \"inicia\". Si dice que corona, remata o es el ultimo piso -> "
+        "\"termina\". Si dice las dos, o que es un muro de un solo piso -> "
+        "\"inicia_y_termina\". Si no lo menciona, dejalo en \"\": es un muro "
+        "intermedio y NO se lo preguntes. De ese campo salen solos la figura del "
+        "cabezal, la de la malla vertical, hacia donde mira la pata y el empalme; "
+        "tu no elijas nada de eso.\n"
+        "· CABEZALES EN OTROS BORDES (`bordes.donde`): vacio o [\"laterales\"] son "
+        "los dos costados, que es lo usual y lo que se hace si el usuario dice "
+        "«ponle cabezales» a secas. Solo agrega \"inferior\" o \"superior\" si el "
+        "usuario los pide. PERO si el muro arranca o corona, DESPUES de instalar "
+        "los laterales ofrecele en UNA linea los otros: «listos los cabezales de "
+        "los costados; como el muro arranca aqui, ¿le pongo tambien los "
+        "inferiores?». Es una sugerencia, no un formulario.\n"
+        "· EMPALMES ESCALONADOS (`bordes.barras.empalmes`): el calculista pide a "
+        "veces que los traslapos NO caigan todos en la misma linea, y el usuario lo "
+        "dice como «2 capas de cabezales con longitudes distintas». Tu escribes el "
+        "TOTAL de capas en `n_capas` y la lista de largos en `empalmes` -- uno por "
+        "cada largo distinto. La plataforma parte eso en varios componentes y los "
+        "intercala sola: NO calcules componentes ni separaciones. Si el usuario "
+        "dice que son distintas pero no da los largos, PREGUNTASELOS: son numeros "
+        "suyos y no se inventan.\n"
         "· COLOR: cada tipología ya trae su color (malla horizontal azul, "
         "vertical verde, trabas morado, estribo naranjo, cabezal azul) y ese es "
         "el default — no lo escribas. Solo llena `color` si el usuario pide otro "
