@@ -4732,7 +4732,7 @@
 
     // Flecha de RANGO del componente seleccionado (real si la distribución está
     // activa; "inactiva" en gris si todavía no lo está — arrastrarla la activa).
-    _dibujarFlechaRango(svg, plano, X, Y, VW, VH);
+    _dibujarFlechaRango(svg, plano, X, Y, VW, VH, rect);
 
     // COTAS POR LADO de la barra seleccionada (gate SHIFT). Van LO ÚLTIMO = encima
     // de todo lo demás del overlay: son texto y no se leen a medio tapar. No pelean
@@ -5004,10 +5004,31 @@
   //   V (flecha horizontal ↔): baja hasta 34 para NO toparse con la etiqueta de la
   //     vista (.te-vtitle: top 8px + ~19px de alto ⇒ ocupa hasta ~27).
   //   H (flecha vertical ↕): 30 para despegarla del borde izquierdo (antes 18).
+  // ESOS DOS SON EL MINIMO, NO LA POSICION. La flecha se cuelga DEL ELEMENTO, no del
+  // canvas (usuario 3-sep: «la cortina no tiene que estar pegada al borde, es mejor
+  // que esté a una distancia razonable del elemento»): se ubica por fuera del
+  // hormigón dejando un hueco, y los offsets de arriba solo evitan que se salga del
+  // viewBox cuando el elemento llega hasta el borde.
+  // El hueco de la vertical es MAS ANCHO porque su número se escribe A LA DERECHA de
+  // la línea (_cajaCota: fija + 7 + w): con un hueco chico el número caería encima
+  // del hormigón. El de la horizontal va centrado sobre la línea y no necesita tanto.
   var TE_RANGO_OFF_V = 34;
   var TE_RANGO_OFF_H = 30;
+  var TE_RANGO_GAP_V = 26;
+  var TE_RANGO_GAP_H = 46;
 
-  function _dibujarFlechaRango(svg, plano, X, Y, VW, VH) {
+  // Px del borde del hormigón por el lado donde vive la flecha (arriba para la
+  // horizontal, izquierda para la vertical). null si no hay rect que consultar.
+  function _bordeElementoPx(rect, X, Y, horiz) {
+    if (!rect || !(rect.W > 0) || !(rect.H > 0)) return null;
+    var a, b;
+    if (horiz) { a = Y(-rect.H / 2); b = Y(rect.H / 2); }
+    else { a = X(-rect.W / 2); b = X(rect.W / 2); }
+    if (!isFinite(a) || !isFinite(b)) return null;
+    return Math.min(a, b);
+  }
+
+  function _dibujarFlechaRango(svg, plano, X, Y, VW, VH, rect) {
     if (ST.selCi < 0 || !ST.receta) return;
     var c = ST.receta.componentes[ST.selCi];
     if (!c) return;
@@ -5046,7 +5067,9 @@
       if (eje === def.u) {
         // la 2ª línea horizontal se separa un poco para no pisar a la 1ª cuando
         // las dos caen en el mismo eje de la vista.
-        var yy = TE_RANGO_OFF_V + (L.segunda ? 16 : 0);
+        var bordeY = _bordeElementoPx(rect, X, Y, true);
+        var yy = Math.max(TE_RANGO_OFF_V,
+          (bordeY == null ? TE_RANGO_OFF_V : bordeY - TE_RANGO_GAP_V)) + (L.segunda ? 16 : 0);
         var xa = X(rango.from), xb = X(rango.to);
         g.appendChild(_svgEl('line', { 'class': 'te-rango-line' + sfx, x1: xa, y1: yy, x2: xb, y2: yy }));
         g.appendChild(_svgEl('path', { 'class': 'te-rango-arrow' + sfx, d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
@@ -5063,7 +5086,9 @@
         if (_arrastrandoLinea(L.cual)) _cotasVivas(g, rango, eje, true, X, yy, VW, VH, cajaLen);
         else if (_cotasBordeSel()) _cotasVivas(g, rango, eje, true, X, yy, VW, VH, cajaLen, true);
       } else {
-        var xx = TE_RANGO_OFF_H + (L.segunda ? 16 : 0);
+        var bordeX = _bordeElementoPx(rect, X, Y, false);
+        var xx = Math.max(TE_RANGO_OFF_H,
+          (bordeX == null ? TE_RANGO_OFF_H : bordeX - TE_RANGO_GAP_H)) + (L.segunda ? 16 : 0);
         var ya = Y(rango.from), yb = Y(rango.to);
         g.appendChild(_svgEl('line', { 'class': 'te-rango-line' + sfx, x1: xx, y1: ya, x2: xx, y2: yb }));
         g.appendChild(_svgEl('path', { 'class': 'te-rango-arrow' + sfx, d: 'M' + (xx - 4) + ',' + (ya + 7) + ' L' + xx + ',' + ya + ' L' + (xx + 4) + ',' + (ya + 7) }));

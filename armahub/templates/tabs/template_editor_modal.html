@@ -853,13 +853,16 @@
      borde. Van en AMARILLO porque comparten vista con las cotas del hormigón y con
      los rangos, y a esa altura tres números del mismo color no se distinguen.
      El halo OSCURO (no el blanco de las otras) es lo que las sostiene sobre el tema
-     claro, donde el amarillo solo se pierde: el texto se lee por contraste con su
-     propio contorno y no con el fondo, así que aguanta los cinco temas.
-     Si el amarillo termina molestando, el escalón siguiente acordado es naranjo. */
-  #te_modal .te-rango-cota-sel{font-size:11.5px;font-weight:700;fill:#ffd600;
+     claro: el texto se lee por contraste con su propio contorno y no con el fondo,
+     así que aguanta los cinco temas.
+     VERDE, NO AMARILLO (usuario 3-sep): el amarillo aguantaba con el halo pero
+     igual se perdía en los canvas claros. El verde funciona en los dos extremos.
+     Es un verde BRILLANTE a propósito, para que no se confunda con el #00897b de
+     la malla vertical, que es la barra que suele estar seleccionada al leerlas. */
+  #te_modal .te-rango-cota-sel{font-size:11.5px;font-weight:700;fill:#00e676;
     paint-order:stroke;stroke:#263238;stroke-width:3.2px;stroke-linejoin:round;
     pointer-events:none;user-select:none}
-  #te_modal .te-rango-cotaL-sel{stroke:#ffd600;stroke-width:1.4;stroke-dasharray:4 2;
+  #te_modal .te-rango-cotaL-sel{stroke:#00e676;stroke-width:1.4;stroke-dasharray:4 2;
     pointer-events:none}
   /* Fila de ángulos: tantas columnas como ángulos declare la figura (2 anchos, 4 caben). */
   #te_modal .te-angrow{display:grid;gap:8px;margin-bottom:6px}
