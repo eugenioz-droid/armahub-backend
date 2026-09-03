@@ -1796,6 +1796,26 @@ El documento de conocimiento (capa 1) se organiza **catalogado por tipo de eleme
 columna, losa...) desde el día uno, para que al extrapolar a otros elementos solo se agregue la
 sección nueva sin tocar lo demás.
 
+#### 12.8.1 Ganchos: DESARROLLO vs EXTENSIÓN RECTA (no son lo mismo)
+
+Fuente recurrente de confusión, aclarada por el usuario más de una vez. En un gancho
+sísmico de 135° conviven **dos medidas distintas y las dos son correctas**:
+
+| | Qué mide | Valor |
+|---|---|---|
+| **Desarrollo del gancho** — NCh 211 tabla 7, col. **H** | El **lado completo** de la figura (lados A y C de una traba 103B). Es el número que se le escribe al lado. | φ8 → **10,8 cm** · φ10 → 12,1 · φ12 → 13,5 · φ16 → 17,7 · φ18 → 19,9 · φ22 → 24,4 · φ25 → 27,7. Aproximación **10·φ** si el φ no está tabulado. |
+| **Extensión recta tras el doblez** — col. **K** | Sólo el **tramo recto que queda después de la curva**, sin la curva. | **6·φ, mínimo 7,5 cm** |
+
+Que un φ8 tenga «11 cm» y a la vez «6·φ mín 7,5» **no es una contradicción**: son dos
+cotas de partes distintas de la misma pieza. El código usa la columna H
+(`_gancho_sismico`, `armahub/asistente.py`) porque lo que se escribe en la receta es
+el lado de la figura. Sobre ambas manda **la medida que dé el plano**.
+
+Para el gancho **normal de 90°** (pata de arranque en fundación, cabezal 102B) la
+referencia es otra: **extensión recta de 12·φ** después del doblez (ACI 318 / NCh 430).
+No confundir con la longitud de anclaje/traslapo, que es del orden de 40·φ y es una
+medida de otra naturaleza.
+
 ### 12.9 Idea futura anotada (NO comprometida): muros irregulares por composición de cajas
 
 Visión del usuario (30-ago): elementos de hormigón no-caja se armarían **componiendo varias

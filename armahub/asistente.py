@@ -853,7 +853,7 @@ def _regla_jerarquias(comps):
             c["jerarquia"] = max(jers) + 1
     if dictadas:
         return None
-    return "malla vertical contra la cara (jer.1), horizontal encima (jer.2)"
+    return "malla horizontal contra la cara (jer.1), vertical replegada dentro (jer.2)"
 
 
 def _zona_de_borde(comps):
