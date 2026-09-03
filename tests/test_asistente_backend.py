@@ -538,9 +538,15 @@ _rr = _construir_receta_muro(SPEC_R, CAT)
 _tips = [c["tipologia"] for c in _rr["componentes"]]
 check("una armadura ENTERA marcada 'asumido' NO se crea (las trabas que nadie pidio)",
       "TC" not in _tips and _tips == ["MV", "MH", "MV", "MH", "CB", "CB"])
-check("regla: MV contra la cara (jer.1) y MH encima (jer.2)",
-      all(c["jerarquia"] == 1 for c in _rr["componentes"] if c["tipologia"] == "MV")
-      and all(c["jerarquia"] == 2 for c in _rr["componentes"] if c["tipologia"] == "MH"))
+# LA JERARQUIA ESTABA AL REVES (corregido 1-sep). Este check exigia MV=1 y MH=2, y
+# la regla lo hacia asi -- pero el default de la casa es el contrario: la MH va contra
+# la cara y la MV se repliega DENTRO de ella («la MH contiene a la MV»). El documento
+# de conocimiento tambien lo decia mal, y el usuario venia notando muro tras muro que
+# el asistente le ponia la MH en jerarquia 2. Se invierte solo en muro PERIMETRAL, y
+# eso lo dicta el usuario.
+check("regla: MH contra la cara (jer.1) y MV replegada dentro (jer.2)",
+      all(c["jerarquia"] == 1 for c in _rr["componentes"] if c["tipologia"] == "MH")
+      and all(c["jerarquia"] == 2 for c in _rr["componentes"] if c["tipologia"] == "MV"))
 _rx = 500 / 2 - 2.5
 _rango_mv = [c["distribucion"]["rango"] for c in _rr["componentes"] if c["tipologia"] == "MV"][0]
 check("regla: la MV se recorta para no repetirse sobre los cabezales",
@@ -837,6 +843,51 @@ check("…NI marcandolas 'config', que era el hueco por el que se colaban",
 check("y si las PIDO de verdad ('leido'), si se construyen", "TR" in _tips("leido"))
 check("el prompt explica que `origenes` dice QUIEN decidio que la armadura exista",
       "QUIÉN DECIDIÓ QUE ESA ARMADURA EXISTA" in _sp("muro", {}))
+
+# ---------------------------------------------------------------------------
+# LA TRABA DE MURO: diametro, grilla y gancho SE DERIVAN (usuario 1-sep)
+# ---------------------------------------------------------------------------
+# Antes habia que dictarle todo. Ahora: el phi sale de la malla (el MENOR si
+# difieren), la grilla se modula contra los cruces de MV y MH buscando 6 por m2
+# SIN QUEDARSE CORTO, y los ganchos salen de la NCh 211 tabla 7.
+from armahub.asistente import _gancho_sismico, _modular_trabas
+
+check("gancho: NCh 211 tabla 7 para los phi tabulados (phi8 -> 10,8 cm)",
+      _gancho_sismico(8) == 10.8 and _gancho_sismico(10) == 12.1
+      and _gancho_sismico(12) == 13.5)
+check("gancho: 10·phi cuando el diametro no esta en la tabla", _gancho_sismico(20) == 20.0)
+
+_m2 = lambda sx, sy: 10000.0 / (sx * sy)
+_g20 = _modular_trabas(20, 20)
+check("grilla con malla @20: 40x40 (el caso tipico de la casa)", _g20 == (40.0, 40.0))
+_g15 = _modular_trabas(15, 15)
+check("grilla con malla @15: los dos pasos DISTINTOS (45 y 30), como dijo el usuario",
+      sorted(_g15) == [30.0, 45.0])
+check("nunca por debajo de 6/m2: quedarse corto de trabas es defecto de obra",
+      all(_m2(*_modular_trabas(a, b)) >= 6.0
+          for a, b in ((20, 20), (15, 15), (20, 15), (25, 25), (10, 10))))
+check("y el modulo nunca es una tira (razon <= 2): con @15 ganaba 15x105",
+      all(max(g) <= 2.0 * min(g)
+          for g in (_modular_trabas(a, b)
+                    for a, b in ((20, 20), (15, 15), (20, 15), (25, 25)))))
+
+# El phi de la traba sale de la malla, y el MENOR si difieren.
+_SOLO_TR = {"geometria": {"largo": 500, "alto": 250, "espesor": 20, "recubrimiento": 2},
+            "malla_vertical": {"diam": 10, "sep": 20},
+            "malla_horizontal": {"diam": 8, "sep": 20},
+            "doble_malla": True, "trabas": {"diam": 0},
+            "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                         "trabas": "leido"}}
+_ntr = _normalizar_ficha(_SOLO_TR)["trabas"]
+check("traba sin phi dictado: toma el MENOR de las mallas (10 y 8 -> 8)",
+      _ntr and _ntr["diam"] == 8)
+check("…y su gancho sale de la tabla para ESE phi (10,8)", _ntr["pata"] == 10.8)
+check("…y su grilla se modulo contra la malla (40x40 con @20)",
+      (_ntr["sx"], _ntr["sy"]) == (40.0, 40.0))
+
+check("el conocimiento dice que el phi6 no existe", "φ6 no existe" in _CM)
+check("y trae el orden de armado como SUGERENCIA, no como interrogatorio",
+      "MH → cabezales" in _CM and "sin interrogar" in _CM)
 
 print()
 if FALLAS:

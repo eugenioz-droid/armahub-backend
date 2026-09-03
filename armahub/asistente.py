@@ -86,6 +86,75 @@ def _conocimiento(elemento: str) -> str:
 # ---------------------------------------------------------------------------
 _ORIGENES = ["leido", "config", "asumido"]
 
+# ---------------------------------------------------------------------------
+# GANCHO SISMICO — NCh 211 tabla 7 (135°), columna H: el DESARROLLO del gancho
+# ---------------------------------------------------------------------------
+# Es lo que miden los lados A y C de una traba. Verificado contra la norma: los
+# valores del usuario (11 / 12 / 13 cm para ø8 / ø10 / ø12) son esa columna
+# redondeada. OJO con no confundirla con la EXTENSION recta despues del doblez
+# (columna K: 6·φ con minimo 75 mm), que es otra medida y esta en el documento de
+# conocimiento — las dos son correctas porque miden cosas distintas.
+# El ø6 no esta: no se usa en obra (usuario 1-sep).
+_GANCHO_NCH211 = {8: 10.8, 10: 12.1, 12: 13.5, 16: 17.7, 18: 19.9, 22: 24.4, 25: 27.7}
+
+
+def _gancho_sismico(diam_mm) -> float:
+    """Largo del gancho (lados A y C de la traba), en cm. Tres escalones, en el
+    orden que el usuario pidió: la tabla de la NCh 211 si el diámetro está tabulado;
+    si no, 10·φ; y si el plano da una medida propia, esa manda y ni se llama acá."""
+    d = _num(diam_mm)
+    if d <= 0:
+        return 0.0
+    if d in _GANCHO_NCH211:
+        return _GANCHO_NCH211[d]
+    return _r1(10.0 * d / 10.0)          # 10·φ, con φ en mm → cm
+
+
+def _modular_trabas(sep_mv, sep_mh, por_m2=6.0):
+    """Pasos de la grilla de trabas, en cm: (sx, sy).
+
+    LA REGLA (usuario 1-sep): «lo usual son 6 trabas por m2 … repartidas de forma que
+    calcen en los CRUCES entre MV y MH». Eso amarra las dos cosas a la vez:
+      · el paso de cada eje tiene que ser MULTIPLO del espaciamiento de esa malla —
+        si no, la traba cae entre dos barras y no hay nada que enganchar;
+      · y el producto de los dos pasos tiene que dar ~6 trabas por metro cuadrado.
+    Asi que no es una formula: es elegir los dos enteros k que mejor aproximan la
+    densidad. Con malla @20 sale 40×40 (6,25/m²), que es el caso tipico del usuario.
+    Con @15, 45×45 se queda corto (4,9) y 30×30 se pasa (11,1): la combinacion
+    45×30 da 7,4 y es la que gana — por eso los dos pasos PUEDEN SER DISTINTOS
+    («cada 45 y cada 30 en cada eje»), y por eso no se fuerza el modulo cuadrado.
+    Se prefiere el mas parejo solo para desempatar: a igual error, se ve mejor."""
+    a, b = _num(sep_mv), _num(sep_mh)
+    if a <= 0 or b <= 0:
+        return 40.0, 40.0                # sin malla que respetar, el tipico de la casa
+    objetivo = por_m2 / 10000.0          # trabas por cm²
+    mejor, mejor_p = None, None
+    for kx in range(1, 9):
+        for ky in range(1, 9):
+            sx, sy = a * kx, b * ky
+            if sx > 120 or sy > 120:     # mas alla no es una grilla, es nada
+                continue
+            # EL MODULO NO PUEDE SER UNA TIRA. Sin este tope, con malla @15 ganaba
+            # 15×105 -- densidad correcta (6,35/m²) y un dibujo absurdo: una traba
+            # cada 15 cm en un eje y cada 105 en el otro. El 2 sale de que el propio
+            # usuario propuso 45 y 30 (razon 1,5) como el caso feo aceptable.
+            if max(sx, sy) > 2.0 * min(sx, sy):
+                continue
+            dens = 1.0 / (sx * sy)
+            # POR ARRIBA, NUNCA POR ABAJO. No se busca la densidad MAS CERCANA a 6:
+            # se busca la menor que llegue a 6. Quedarse corto de trabas es un defecto
+            # de obra; pasarse es fierro de mas. El usuario lo dijo asi: «si consideras
+            # cada 45 te quedas corto con los 6 por m2, por lo que bien podria ser cada
+            # 45 y cada 30». Con @15 eso descarta 45×45 (4,9/m²) y elige 45×30 (7,4),
+            # que es exactamente lo que el nombro.
+            if dens < objetivo * 0.999:
+                continue
+            desnivel = abs(sx - sy) / max(sx, sy)
+            puntaje = (round(dens, 9), round(desnivel, 6))   # menor exceso primero
+            if mejor_p is None or puntaje < mejor_p:
+                mejor, mejor_p = (sx, sy), puntaje
+    return (_r1(mejor[0]), _r1(mejor[1])) if mejor else (40.0, 40.0)
+
 # Figura y jerarquia SON PARTE DE LA FICHA (feedback del usuario 31-ago: le pidio
 # al asistente "malla horizontal 104B, jerarquia 1" y este contesto que no estaban
 # en su ficha, mandandolo a reportar un bug que no existia). El cubicador conoce
@@ -485,11 +554,30 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
     tr = spec.get("trabas")
     if _la_invento("trabas"):
         tr = None
-    if isinstance(tr, dict) and _num(tr.get("diam")) > 0:
+    if isinstance(tr, dict):
         t = _armadura(tr, con_sep=False)
-        t["sx"] = _num(tr.get("sx"), 40)
-        t["sy"] = _num(tr.get("sy"), 40)
-        out["trabas"] = t
+        # EL DIAMETRO DE LA TRABA SALE DE LA MALLA (usuario 1-sep): «el φ de la traba
+        # si no se indica debe ser el mismo φ de MH y/o MV; en caso de ser distintos,
+        # tomamos el menor». Antes se exigia que el modelo lo trajera, asi que pedir
+        # «ponle trabas» a secas no producia nada — o el modelo inventaba un numero.
+        if t["diam"] <= 0:
+            dm = [m["diam"] for m in (mv, mh) if m and m["diam"] > 0]
+            t["diam"] = min(dm) if dm else 0
+        # LA GRILLA SE MODULA CONTRA LA MALLA, no se asume 40×40: las trabas tienen
+        # que caer en los CRUCES de MV y MH y dar ~6 por m². Ver _modular_trabas.
+        sx, sy = _num(tr.get("sx")), _num(tr.get("sy"))
+        if sx <= 0 or sy <= 0:
+            mx, my = _modular_trabas(mv["sep"] if mv else 0, mh["sep"] if mh else 0)
+            if sx <= 0:
+                sx = mx
+            if sy <= 0:
+                sy = my
+        t["sx"], t["sy"] = sx, sy
+        # LOS GANCHOS: NCh 211 tabla 7 si el usuario no dio medida propia.
+        if _num(tr.get("pata")) <= 0:
+            t["pata"] = _gancho_sismico(t["diam"])
+        if t["diam"] > 0:
+            out["trabas"] = t
 
     bo = spec.get("bordes")
     if _la_invento("bordes"):
@@ -734,7 +822,13 @@ def _por_tip(comps, *tips):
 
 
 def _regla_jerarquias(comps):
-    """MV contra la cara, MH encima, trabas sobre las dos.
+    """MH contra la cara, MV replegada dentro, trabas sobre las dos.
+
+    LA MH CONTIENE A LA MV (regla de la casa, usuario 1-sep). Hasta hoy esto estaba
+    AL REVES en el codigo -MV 1 y MH 2- y el documento de conocimiento tambien lo
+    decia mal, asi que el asistente tendia a poner la MH en jerarquia 2 y el usuario
+    lo notaba muro tras muro. Se invierte en el MURO PERIMETRAL, pero la plataforma
+    no sabe si un muro lo es: eso lo dicta el usuario y entonces manda su jerarquia.
 
     NO TOCA si las mallas ya vienen con jerarquias DISTINTAS entre si: eso es
     senal de que alguien las diferencio a proposito (el usuario dicta cual cortina
@@ -745,9 +839,9 @@ def _regla_jerarquias(comps):
     jers = {c.get("jerarquia", 1) for c in mv} | {c.get("jerarquia", 1) for c in mh}
     dictadas = any(c.get("_jer_dictada") for c in mv + mh) or len(jers) > 1
     if not dictadas:
-        for c in mv:
-            c["jerarquia"] = 1
         for c in mh:
+            c["jerarquia"] = 1
+        for c in mv:
             c["jerarquia"] = 2
         jers = {1, 2}
     # LA TRABA VA SOBRE LAS DOS MALLAS SIEMPRE, tambien cuando el usuario dicto

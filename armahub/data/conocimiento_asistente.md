@@ -93,9 +93,37 @@ si él lo menciona.
 Y si el usuario dicta jerarquías explícitas, mandan las suyas y no se discute.
 
 **TR · Traba Muro.** Traba de la malla corriente. Cruza el ESPESOR y cose las dos
-cortinas, enganchando una barra de cada lado. Se reparte en una grilla sobre la cara
-(típico φ6-φ8 cada 40-50 cm en ambas direcciones). Va apoyada sobre las mallas, o sea
-jerarquía 2. Figura con gancho en ambos extremos: una barra recta no amarra nada.
+cortinas, enganchando una barra de cada lado. Figura con gancho en ambos extremos:
+una barra recta no amarra nada.
+
+- **Diámetro: el MISMO de la malla.** Si MH y MV tienen distinto, se toma **el
+  menor**. Sólo se cambia si el usuario lo dicta. **El φ6 no existe** — no se usa.
+- **Cantidad: 6 trabas por m²**, contadas sobre la ZONA EFECTIVA — el muro menos los
+  bordes donde van los cabezales.
+- **Y tienen que caer en los CRUCES de MV y MH**, así que el paso de cada eje es un
+  **múltiplo del espaciamiento de esa malla**. Las dos condiciones juntas fijan la
+  grilla: se eligen los múltiplos cuya densidad **llegue a 6/m² sin quedarse corta**.
+  Quedarse corto de trabas es un defecto de obra; pasarse es fierro de más.
+  Con malla @20 sale **40×40** (6,25/m²). Con @15, 45×45 se queda corto (4,9) y la
+  combinación que gana es **45×30** (7,4): **los dos pasos pueden ser distintos**, no
+  hay que forzar el módulo cuadrado.
+- **Engancha por FUERA de la horizontal**: el cuerpo se ajusta hacia afuera **1
+  diámetro por lado**. En un muro perimetral engancha la de fuera.
+  *Antecedente*: a veces se pide que enganche la VERTICAL, para no perder
+  recubrimiento. Es poco común y **lo tiene que pedir el usuario**.
+- **Figura 103B** por defecto. A veces se pide **103C**, para rematar el lado recto
+  en obra.
+- **Los lados A y C son el gancho sísmico**, en este orden de preferencia:
+  1. **NCh 211, tabla 7** (135°, desarrollo del gancho): **10,8 cm** para φ8,
+     **12,1** para φ10, **13,5** para φ12, **17,7** para φ16.
+  2. **10·φ** si el diámetro no está tabulado.
+  3. La medida que dé el plano, si la da — ésa manda sobre las dos anteriores.
+  (No confundir con la extensión recta después del doblez, que es 6·φ con mínimo
+  7,5 cm: son medidas distintas y las dos son correctas.)
+- **Se inserta en XY**, para que en esa cara se vea la figura.
+- **Jerarquía 1.** El ajuste fino se hace con offset, no moviéndole la jerarquía.
+- **Alineada en los cruces**: si calza en el eje, perfecto. No hay que forzarla con
+  fórmulas raras — el desplazamiento físico real es menor que la lectura del dibujo.
 
 **CB · Cabezal.** Barras longitudinales gruesas (φ16-φ25) concentradas en las PUNTAS
 del muro, corriendo en la altura igual que la MV. Se describen por punta: cuántas
@@ -140,9 +168,18 @@ defecto — no hay que pedirlo ni escribirlo: **MV verde · MH azul · TR (traba
 fucsia · EC y TC (confinamiento) ámbar · CB (cabezal) rojo**. Solo se cambia si el
 cubicador lo pide expresamente («pinta las trabas de rojo»).
 
-**Orden de armado** (sirve para explicar y para ordenar los componentes): primero las
-dos cortinas (MV y MH), después las trabas que las cosen, y al final el borde
-(cabezales, su estribo y sus trabas).
+**ORDEN DE ARMADO — y sirve para SUGERIR lo que falta.** El flujo natural es:
+
+> **MH → cabezales → MV o confinamiento (indistinto) → TR**
+
+Las dos primeras sí quieren ese orden: el cabezal se arma después de la MH porque se
+apoya en ella. Y la **TR va al final**, cuando ya existen MV y MH — antes no hay nada
+que coser.
+
+Cuando el usuario ha pedido una parte, **cierra la respuesta ofreciendo el siguiente
+paso de esa lista, en UNA línea y sin interrogar**. «Listo la MH. ¿Le pongo los
+cabezales?» es ayuda; una lista de preguntas es un formulario. **No es regla dura**:
+si el usuario salta el orden, se hace lo que pide y no se le corrige.
 
 ## FIGURAS (cómo se nombran; el catálogo COMPLETO va aparte)
 
