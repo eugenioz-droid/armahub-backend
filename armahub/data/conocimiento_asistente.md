@@ -193,8 +193,9 @@ la base de datos, y esa lista es la única autoridad. Acá va solo cómo leerla:
   `102x` = 2 tramos, `103x` = 3 tramos, `104x` = marco de 4 tramos.
 - La letra distingue la variante (ángulos de los dobleces). En la lista inyectada cada
   código viene como `codigo:lados:angulos`, por ejemplo `104D:4:135/135`.
-- Defaults de la plataforma para muro: MV, MH y CB **101A** (recta); traba **103B**
-  (cuerpo que cruza el espesor + dos ganchos); estribo de confinamiento **106A** (el de la casa).
+- Defaults de la plataforma para muro: **MH 104B** (con ganchos, ver su sección) ·
+  **MV 101A** recta, o **103C** si el muro es naciente · **CB 101A** · traba **103B**
+  (cuerpo que cruza el espesor + dos ganchos) · estribo de confinamiento **106A**.
 
 Si el usuario no nombra figura, se usa el default. Nunca inventar un código: si no está
 en la lista inyectada, no existe.

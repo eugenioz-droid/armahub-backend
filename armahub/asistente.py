@@ -728,8 +728,13 @@ def _fabricar(clase, p, geo, figuras, lados):
             comps.append(c)
 
     elif clase == "malla_horizontal":
-        fig = _pedido(p, "figura", "101A")
-        par, ang = _spec_figura(figuras, fig, ["A"], [])
+        # EL DEFAULT DE LA MH ES LA 104B, NO LA RECTA (usuario 2-sep: pidio «crea
+        # malla horizontal fi8@20» y salio 101A). La regla estaba escrita en el
+        # conocimiento desde el 1-sep pero el codigo seguia en 101A, y manda el
+        # codigo. La 104B trae ganchos en las dos puntas, que es lo que hace que la
+        # cortina opuesta se cruce con esta en el testero.
+        fig = _pedido(p, "figura", "104B")
+        par, ang = _spec_figura(figuras, fig, ["A", "B", "C", "D"], [45, 45])
         for lado in lados:
             c = _mk_extras(_mk_base(
                 "MH", fig, p["diam"], ang, "lineal", "lateral", lado, "x",

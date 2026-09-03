@@ -156,8 +156,8 @@ check("y la jerarquia DICTADA gana sobre la regla de jerarquias",
       all(c["jerarquia"] == 1 for c in mh_f))
 check("la figura y jerarquia pedidas para la traba de muro llegan a la receta",
       tc_f["figura"] == "103E" and tc_f["jerarquia"] == 3)
-check("sin figura pedida se mantiene el default de la plataforma",
-      [c["figura"] for c in r["componentes"] if c["tipologia"] == "MH"] == ["101A", "101A"])
+check("sin figura pedida la MH sale 104B, que es el default de la casa (NO la recta)",
+      [c["figura"] for c in r["componentes"] if c["tipologia"] == "MH"] == ["104B", "104B"])
 check("el resumen muestra la figura solo cuando el usuario la dicto",
       any("104B" in f.get("valor", "") for f in _resumen_de_spec(SPEC_FIG))
       and not any("101A" in f.get("valor", "") for f in _resumen_de_spec(SPEC)))
@@ -811,6 +811,26 @@ check("MV: el recubrimiento de abajo depende de la figura (101A al borde, 103C c
       "borde inferior del hormig" in _CM and "5 cm" in _CM)
 check("MV: la variante 102C del naciente se conoce pero NO es default",
       "102C" in _CM and "nunca se asume" in _CM)
+
+# EL DOCUMENTO Y EL CODIGO TIENEN QUE DECIR LO MISMO. Dos veces ya paso lo mismo:
+# se corrigio la regla en el conocimiento y el codigo siguio haciendo lo de antes
+# -- y manda el codigo. Paso con la jerarquia (doc MH=1, codigo MV=1) y volvio a
+# pasar con la figura de la MH (doc 104B desde el 1-sep, codigo 101A hasta que el
+# usuario pidio «crea malla horizontal fi8@20» y le salio una recta).
+# Esto ata las dos puntas: lo que el documento declara como default de la casa es
+# lo que sale de `_fabricar` cuando el usuario no dicta figura.
+_DEF = {"geometria": {"largo": 400, "alto": 250, "espesor": 20, "recubrimiento": 2},
+        "malla_vertical": {"diam": 8, "sep": 20},
+        "malla_horizontal": {"diam": 8, "sep": 20},
+        "doble_malla": True,
+        "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido"}}
+_rd = _construir_receta_muro(_normalizar_ficha(_DEF), None)
+_figs = {t: sorted({c["figura"] for c in _rd["componentes"] if c["tipologia"] == t})
+         for t in ("MH", "MV")}
+check("el default de MH que sale del codigo es el que declara el documento",
+      _figs["MH"] == ["104B"] and "MH 104B" in _CM)
+check("el default de MV que sale del codigo es el que declara el documento",
+      _figs["MV"] == ["101A"] and "MV 101A" in _CM)
 
 # ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
