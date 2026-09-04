@@ -467,16 +467,35 @@
           motivo: 'el lado ' + d + ' es el GANCHO de ' + spec.codigo + ' (el cuerpo es el otro tramo)' };
       }
     } else if (n > 2 && (iL === 0 || iL === n - 1)) {
-      // «terminal = gancho» vale en una cadena ABIERTA. En un contorno CERRADO el
-      // trazo vuelve sobre sí mismo, así que el primero y el último son lados del
-      // cuerpo como cualquier otro (un 104D no tiene ganchos declarados). Ahí los
-      // ganchos son los que la figura DECLARA (106x: A y F).
+      // «terminal = gancho» vale en un contorno CERRADO, donde los ganchos son los
+      // que la figura DECLARA (106x: A y F) — ahí el primero y el último son lados
+      // del cuerpo como cualquier otro (un 104D no tiene ganchos declarados).
+      //
+      // EN UNA CADENA ABIERTA «terminal ⇒ gancho» ES UNA SUPOSICIÓN, Y ESTÁ MAL
+      // (usuario 3-sep, medido con la 103C de una malla vertical naciente). Ahí la
+      // barra es: fierro recto que sube + pata cruzando el espesor + gancho. Los
+      // DOS quiebres viven en la misma punta, así que el lado que corre a lo alto
+      // es terminal. Con la regla vieja no había forma de decirlo: la cadena
+      // A→B→C sólo aceptaba B, o sea el cuerpo SIEMPRE al medio, y la figura salía
+      // con un quiebre en cada punta — el de arriba montado sobre el empalme, 66 cm
+      // por encima del hormigón.
+      //
+      // Por qué la suposición no se sostiene: el lado dominante es el que SE ESTIRA
+      // contra el marco, y cuál es eso depende de CÓMO SE USA la figura, no de su
+      // posición en la cadena. La 103C es el caso: como MV el cuerpo es A; en otra
+      // pieza puede ser B. Por eso quien lo sabe es quien coloca la barra.
+      //
+      // SE ABRE SÓLO PARA EL OVERRIDE EXPLÍCITO. La cascada por defecto no cambia
+      // (sigue siendo el declarado del catálogo, si no B, si no el primero), así que
+      // NINGUNA receta existente se mueve: esto sólo tiene efecto cuando alguien
+      // escribió `lado_dominante` en el componente a propósito.
       var cerradoV = _figuraEsContornoCerrado(f);
-      var gT = cerradoV ? ganchosTerminales(f, 'estribo') : null;
-      var esGancho = cerradoV ? !!(gT && (gT.ini === d || gT.fin === d)) : true;
-      if (esGancho) {
-        return { ok: false, lado: null,
-          motivo: 'el lado ' + d + ' es un GANCHO' + (cerradoV ? ' declarado de ' + spec.codigo : ' (tramo terminal de la cadena)') };
+      if (cerradoV) {
+        var gT = ganchosTerminales(f, 'estribo');
+        if (gT && (gT.ini === d || gT.fin === d)) {
+          return { ok: false, lado: null,
+            motivo: 'el lado ' + d + ' es un GANCHO declarado de ' + spec.codigo };
+        }
       }
     }
     if (!_figuraEsContornoCerrado(f)) {

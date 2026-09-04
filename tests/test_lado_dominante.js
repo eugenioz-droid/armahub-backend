@@ -271,25 +271,39 @@ console.log('\nC — sin mapeo fiable no se destaca nada (mejor eso que el lado 
 }
 
 // ================== D · el motor lee comp.lado_dominante, y un GANCHO lo rechaza
-console.log('\nD — comp.lado_dominante lo lee el motor; la C de una 103A es un gancho');
+console.log('\nD — comp.lado_dominante lo lee el motor, y un lado TERMINAL sí puede serlo');
 {
+  // ESTE BLOQUE CAMBIÓ DE SIGNO EL 3-sep, a pedido del usuario y con medida.
+  // Antes decía: «la C de una 103A es un gancho» y exigía que el motor la ignorara.
+  // La premisa era «tramo terminal ⇒ gancho», y NO se sostiene: cuál lado es el
+  // cuerpo depende de CÓMO SE USA la figura. El caso que lo rompió es la 103C de
+  // una malla vertical naciente — fierro recto que sube, pata cruzando el espesor,
+  // gancho: los dos quiebres viven en la misma punta, así que el cuerpo es TERMINAL.
+  // Con la regla vieja no había forma de decirlo y la barra salía con un quiebre en
+  // cada extremo, el de arriba montado sobre el empalme, 66 cm fuera del hormigón.
+  // Lo que NO cambió, y por eso sigue medido acá abajo: la cascada por DEFECTO
+  // (ninguna receta existente se mueve), los ganchos DECLARADOS de un contorno
+  // cerrado, y los lados diagonales.
   const base = comp('103A', 'CBS');
   const conElec = comp('103A', 'CBS', { lado_dominante: 'C' });
-  ok(R.ladoDominante(base) === 'B', 'sin elección el motor resuelve B');
-  ok(R.ladoDominante(conElec) === 'B',
-    'con lado_dominante:"C" resuelve B igual: C es el GANCHO final de la 103A, no su cuerpo');
-  ok(!FP.validarLadoDominante('103A', 'C').ok &&
-    FP.validarLadoDominante('103A', 'C').motivo.indexOf('GANCHO') > 0,
-    'y el motivo lo dice: ' + JSON.stringify(FP.validarLadoDominante('103A', 'C').motivo));
+  ok(R.ladoDominante(base) === 'B', 'sin elección el motor resuelve B (la cascada no cambia)');
+  ok(R.ladoDominante(conElec) === 'C',
+    'con lado_dominante:"C" el motor obedece: quien coloca la barra sabe cuál lado corre');
+  ok(FP.validarLadoDominante('103A', 'C').ok,
+    'y la validación lo acepta en una cadena ABIERTA');
   const a = primerPlacement(base), b = primerPlacement(conElec);
-  ok(JSON.stringify(a.pl.dims) === JSON.stringify(b.pl.dims),
-    'las dims resueltas no cambian (el auto estira el mismo lado)');
-  ok(JSON.stringify(a.pl.puntos) === JSON.stringify(b.pl.puntos),
-    'los puntos dibujados son idénticos (una elección rechazada no mueve el dibujo)');
-  // Lo que SÍ cambió respecto de antes: ya no es silencio. Rechazar sin decirlo
-  // dejaba al usuario mirando un botón marcado que no hacía nada.
-  ok((conElec._avisos || []).some(a2 => a2.indexOf('Lado dominante C ignorado') === 0),
-    'y queda el aviso de por qué se ignoró (antes se descartaba en silencio)');
+  ok(JSON.stringify(a.pl.dims) !== JSON.stringify(b.pl.dims),
+    'las dims resueltas CAMBIAN: el auto estira el lado elegido');
+  ok(JSON.stringify(a.pl.puntos) !== JSON.stringify(b.pl.puntos),
+    'y el dibujo lo refleja (una elección obedecida mueve la barra)');
+  ok(!(conElec._avisos || []).some(a2 => a2.indexOf('Lado dominante C ignorado') === 0),
+    'ya no hay aviso de ignorado: no se ignoró');
+  ok(!FP.validarLadoDominante('106A', 'A').ok,
+    'pero el GANCHO DECLARADO de un contorno cerrado (106A) se sigue rechazando');
+  ok(!FP.validarLadoDominante('103C', 'A').ok,
+    'y un lado DIAGONAL también (la A de una 103C sale del plano de trabajo)');
+  ok(FP.validarLadoDominante('103C', 'C').ok,
+    'la C de la 103C sí: es perpendicular a la pata, y es el fierro que sube');
   // Acá se fija además que el helper de la UI lee y escribe el campo, y que
   // 'auto' lo borra.
   const c = comp('103A', 'CBS');

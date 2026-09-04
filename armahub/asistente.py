@@ -132,6 +132,35 @@ def _condicion(spec):
                      (False, False))
 
 
+# LA MALLA VERTICAL, CASO POR CASO (usuario 3-sep). Solo tiene mas de un tramo
+# cuando el muro INICIA o TERMINA; en cualquier otro caso es una recta.
+#   (inicia, termina) -> (figura cortina 1, figura cortina 2 si es ASIMETRICA)
+_MV_POR_CONDICION = {
+    (False, False): ("101A", "101A"),   # intermedio: recta y punto
+    (True,  False): ("103C", "102C"),   # naciente: pata y gancho ABAJO
+    (False, True):  ("103C", "102C"),   # corona:   pata y gancho ARRIBA, sin empalme
+    (True,  True):  ("104B", "104B"),   # muro de un piso: default 104B (no 105C)
+}
+
+# EL LADO QUE CORRE de la MV, por figura. NO es el que el motor elige solo.
+# La cadena de una 103C es gancho -> pata -> cuerpo, o sea el cuerpo es TERMINAL, y
+# el motor por defecto estira el del medio (B) porque su convencion es "A y C son
+# patas, B es el cuerpo". Con eso la barra salia con un quiebre en CADA punta y el
+# de arriba montado sobre el empalme, 66 cm por encima del hormigon.
+# MEDIDO con lado_dominante='C': A=13 (gancho) · B=16 (la pata cruzando el espesor,
+# que sale sola en AUTO) · C=376 (306 utiles + 70 de empalme), los dos quiebres
+# abajo y la barra asomando 68 cm arriba. Que es el dibujo del usuario.
+# La 102C no lleva override: ahi el motor ya sabe cual es el cuerpo (con un solo
+# doblez el otro tramo ES el gancho).
+_MV_LADO_CORRE = {"103C": "C"}
+
+
+def _figura_mv(inicia, termina, asimetrica=False):
+    """(figura cortina 1, figura cortina 2) de la malla vertical."""
+    f1, f2 = _MV_POR_CONDICION.get((bool(inicia), bool(termina)), ("101A", "101A"))
+    return (f1, f2 if asimetrica else f1)
+
+
 def _figura_cabezal(inicia, termina):
     """(figura, pata_hacia, anida) del cabezal segun donde vive el muro (usuario
     2-sep):
@@ -380,6 +409,13 @@ TOOL_MURO = {
             "malla_vertical": _MALLA_SCHEMA,
             "malla_horizontal": _MALLA_SCHEMA,
             "doble_malla": {"type": "boolean"},
+            "mv_asimetrica": {
+                "type": "boolean",
+                "description": "true SOLO si el usuario dice que la malla vertical "
+                               "es asimetrica (las dos cortinas distintas). No "
+                               "preguntes cual figura va en cada una: eso lo pone "
+                               "la plataforma",
+            },
             "condicion": {
                 "type": "string",
                 "enum": ["", "inicia", "termina", "inicia_y_termina"],
@@ -637,6 +673,7 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
     out = {"geometria": geo, "malla_vertical": mv, "malla_horizontal": mh,
            "doble_malla": bool(spec.get("doble_malla", True)),
            "condicion": cond if cond in _COND else "",
+           "mv_asimetrica": bool(spec.get("mv_asimetrica")),
            "trabas": None, "bordes": None,
            "origenes": spec.get("origenes") if isinstance(spec.get("origenes"), dict) else {}}
 
@@ -754,12 +791,14 @@ def _lado_que_corre(parciales):
     return "B" if "B" in parciales else (parciales[0] if parciales else None)
 
 
-def _mk_dims(parciales, empalme=None, pata=None, phi=None, patas_fijas=False):
+def _mk_dims(parciales, empalme=None, pata=None, phi=None, patas_fijas=False,
+             corre=None, extremo="fin"):
     """Cuerpo en auto, patas fijas si corresponde, empalme como Delta del lado que
-    CORRE (B cuando existe). Las patas de un CABEZAL siempre van fijas: en su pose
-    el auto las resuelve contra el largo del muro (medido: 508 cm)."""
+    CORRE (B cuando existe, salvo que el llamador diga otro). Las patas de un
+    CABEZAL siempre van fijas: en su pose el auto las resuelve contra el largo del
+    muro (medido: 508 cm)."""
     dims = {L: {"modo": "auto"} for L in parciales}
-    corre = _lado_que_corre(parciales)
+    corre = corre if (corre in parciales) else _lado_que_corre(parciales)
     if pata or patas_fijas:
         # SIN PATA DICTADA MANDA LA NORMA, NO UNA CASUALIDAD DE UNIDADES. El valor
         # de antes -- max(7.5, φ) con φ en mm leido como cm -- daba 10·φ de puro
@@ -770,7 +809,7 @@ def _mk_dims(parciales, empalme=None, pata=None, phi=None, patas_fijas=False):
                 dims[L] = {"modo": "fija", "valor": largo_pata}
     if empalme and corre:
         dims[corre]["delta"] = _r1(empalme)
-        dims[corre]["extremo"] = "fin"
+        dims[corre]["extremo"] = extremo
     return dims
 
 
@@ -878,19 +917,39 @@ def _fabricar(clase, p, geo, figuras, lados):
     if clase == "malla_vertical":
         fig = _pedido(p, "figura", "101A")
         par, ang = _spec_figura(figuras, fig, ["A"], [])
+        corre = _MV_LADO_CORRE.get(fig)
         for lado in lados:
             c = _mk_extras(_mk_base(
                 "MV", fig, p["diam"], ang, "lineal", "lateral", lado, "y",
                 "de_pie", False,
-                _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"]),
+                _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"],
+                         corre=corre),
                 int(_pedido(p, "jerarquia", 1)),
                 _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p)
             _marcar_jer(c, p)
+            if corre:
+                # El motor no elegiria este lado solo (ver _MV_LADO_CORRE): se lo
+                # dice el componente, que es quien sabe COMO se usa la figura.
+                c["lado_dominante"] = corre
             if _num(p.get("holgura")) > 0:
                 c["_holgura"] = _num(p.get("holgura"))   # lo lee la regla del borde
-            if lado == -1 and len(par) > 1:
-                # regla de la casa: la cortina opuesta va en ESPEJO (los ganchos
-                # se cruzan en el testero, captura del usuario 31-ago)
+            # EL ESPEJO DE LA MV NO ES POR CORTINA (3-sep). Medido: en una MV el
+            # espejo da vuelta la barra de CABEZA -- los quiebres pasan de abajo a
+            # arriba. La regla "la cortina opuesta va en espejo" es de la MH, donde
+            # cruza los ganchos en el testero y es correcta; aca dejaria una cortina
+            # con la pata abajo y la otra con la pata arriba, en el mismo muro.
+            # La simetria de la MV entre cortinas la da el `lado` (+-1, el espesor).
+            # Asi que el espejo lo manda la CONDICION: un muro que corona lleva los
+            # quiebres arriba, y eso es la misma figura volteada.
+            if p.get("volteada"):
+                c["pose"]["espejo"] = True
+                c["espejo"] = True
+            elif lado == -1 and len(par) >= 4:
+                # SOLO EL MARCO DE 4 (la 104B del muro de un piso): esa figura sigue
+                # la logica de la MH -- cada lado corto cruza el espesor y los ganchos
+                # quedan simetricos opuestos -- y para eso la cortina opuesta va
+                # rotada. Una 102C/103C NO: ahi el espejo la voltearia de cabeza y
+                # dejaria una cortina con la pata abajo y la otra con la pata arriba.
                 c["pose"]["espejo"] = True
                 c["espejo"] = True
             comps.append(c)
@@ -1062,6 +1121,36 @@ def _regla_jerarquias(comps):
     return "malla horizontal contra la cara (jer.1), vertical replegada dentro (jer.2)"
 
 
+def _regla_cabezal_borde_en_la_mv(comps, geo):
+    """EL CABEZAL DE CORONACION Y EL DE BORDE INFERIOR VAN DENTRO DE LA MV.
+
+    Dictado por el usuario (3-sep) como dos numeros -- "jerarquia 2 si es perimetral
+    y jerarquia 3 si es un muro usual" -- pero es UNA sola regla, y conviene
+    escribirla asi porque los dos numeros SALEN de ella: el cabezal de borde se apoya
+    un nivel MAS ADENTRO que la malla vertical.
+      . muro usual   -> MH=1, MV=2  ->  cabezal 3
+      . perimetral   -> MV=1, MH=2  ->  cabezal 2
+    Escrita con los numeros a mano habria que volver a preguntar si el muro es
+    perimetral en un segundo lugar, y los dos podrian desincronizarse. Derivandola de
+    la MV no: si manana cambia la jerarquia de las cortinas, el cabezal la sigue.
+
+    NO TOCA los cabezales LATERALES (esos se quedan en 2) ni los que traigan la
+    jerarquia dictada por el usuario."""
+    bordes = [c for c in _por_tip(comps, "CB") if c.get("_cb_borde")]
+    mvs = _por_tip(comps, "MV")
+    if not (bordes and mvs):
+        return None
+    nivel = max(int(_num(c.get("jerarquia"), 1)) for c in mvs) + 1
+    tocado = False
+    for c in bordes:
+        if c.get("_jer_dictada") or int(_num(c.get("jerarquia"))) == nivel:
+            continue
+        c["jerarquia"] = nivel
+        tocado = True
+    return ("el cabezal de borde quedo en jerarquia %d, dentro de la malla vertical"
+            % nivel) if tocado else None
+
+
 def _zona_de_borde(comps):
     """Cuanto ocupa el paquete de cabezales medido desde el testero hacia adentro:
     las capas se apilan hacia el nucleo separadas por su gap."""
@@ -1201,6 +1290,7 @@ def _aplicar_reglas(receta):
     geo = _geo_de(receta)
     avisos = []
     for regla in (lambda: _regla_jerarquias(comps),
+                  lambda: _regla_cabezal_borde_en_la_mv(comps, geo),
                   lambda: _regla_mv_esquiva_cabezales(comps, geo),
                   lambda: _regla_traba_entre_cabezales(comps, geo),
                   lambda: _regla_trabas_en_los_cruces(comps)):
@@ -1228,18 +1318,21 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
     comps = []
     mv, mh = spec["malla_vertical"], spec["malla_horizontal"]
     inicia, termina = _condicion(spec)
+    # LA MV DEPENDE DE DONDE VIVE EL MURO, y las dos cortinas pueden ser DISTINTAS.
+    mv1 = mv2 = mv
     if mv:
-        # LA MALLA VERTICAL TAMBIEN DEPENDE DE DONDE NACE EL MURO: 103C si es
-        # naciente (con recubrimiento abajo), 101A recta si es continuacion. Estaba
-        # escrito en el conocimiento y no habia ningun campo que lo dijera.
-        mv = dict(mv)
-        if not _dictado(mv, "figura") and inicia:
-            mv["figura"] = "103C"
+        f1, f2 = _figura_mv(inicia, termina, bool(spec.get("mv_asimetrica")))
+        mv1, mv2 = dict(mv), dict(mv)
+        if not _dictado(mv, "figura"):
+            mv1["figura"], mv2["figura"] = f1, f2
         if not _dictado(mv, "empalme") and _lleva_empalme(inicia, termina):
-            mv["empalme"] = _empalme_auto(mv.get("diam"))
+            mv1["empalme"] = mv2["empalme"] = _empalme_auto(mv.get("diam"))
+        # Un muro que CORONA lleva la misma figura volteada: los quiebres arriba.
+        mv1["volteada"] = mv2["volteada"] = bool(termina and not inicia)
     for lado in ([1, -1] if doble else [1]):
         if mv:
-            comps += _fabricar("malla_vertical", mv, geo, figuras, [lado])
+            comps += _fabricar("malla_vertical", mv1 if lado == 1 else mv2,
+                               geo, figuras, [lado])
         if mh:
             comps += _fabricar("malla_horizontal", mh, geo, figuras, [lado])
     tr = spec.get("trabas")
@@ -1262,6 +1355,24 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
             if not _dictado(parte, "empalme") and _lleva_empalme(inicia, termina):
                 parte["empalme"] = _empalme_auto(parte.get("diam"))
             partes.append(parte)
+
+        def _de_borde(parte, donde):
+            """El cabezal de coronacion o de borde inferior NO es el lateral girado y
+            ya: corre ACOSTADO a lo largo del muro, asi que la logica del arranque no
+            le aplica. Dos diferencias, las dos dictadas por el usuario (3-sep):
+              . SIN EMPALME. El empalme es el arranque del piso de arriba y lo lleva
+                el que sigue subiendo; este corre horizontal y no sube a ninguna
+                parte -- igual que la MH.
+              . FIGURA 103A por default, que es la que CIERRA el muro por ese borde.
+            La jerarquia no se toca aca: la fija _regla_cabezal_borde_en_la_mv, que
+            necesita ver en que nivel quedo la malla vertical."""
+            p2 = dict(parte, donde=donde)
+            p2.pop("empalme", None)
+            p2.pop("pata_hacia", None)
+            if not _dictado(bo["barras"], "figura"):
+                p2["figura"] = "103A"
+                p2["anidar_capas"] = False
+            return p2
         # laterales = los dos testeros, y el estribo de borde va con ELLOS (el orden
         # CB/EC por punta es el que ve el usuario en el listado). inferior y
         # superior son un solo borde cada uno y no llevan estribo.
@@ -1280,8 +1391,11 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
                 continue
             lado = -1 if donde == "inferior" else 1
             for parte in partes:
-                comps += _fabricar("cabezales", dict(parte, donde=donde),
+                c0 = len(comps)
+                comps += _fabricar("cabezales", _de_borde(parte, donde),
                                    geo, figuras, [lado])
+                for c in comps[c0:]:
+                    c["_cb_borde"] = True
     receta = {
         "tipo": "muro",
         "geometria": {"largo": _r1(geo["largo"]), "alto": _r1(geo["alto"]),
@@ -1824,6 +1938,10 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "quiere otra medida la escribe.\n"
         "· CABEZALES: `sep_capas` = separacion entre capas en cm («capas cada "
         "15») y `barras_capa` = cuantas van por capa a lo ancho del espesor.\n"
+        "· MALLA VERTICAL: su figura sale SOLA de `condicion`, no la elijas tu. "
+        "Lo unico que puedes tener que marcar es `mv_asimetrica`: true si el "
+        "usuario dice que las dos cortinas son distintas. NO le preguntes que "
+        "figura va en cada una -- eso lo pone la plataforma.\n"
         "· DONDE VIVE EL MURO (`condicion`): si el usuario menciona que el muro "
         "arranca, es naciente, es el primer piso, nace en la fundacion o en una "
         "losa -> \"inicia\". Si dice que corona, remata o es el ultimo piso -> "

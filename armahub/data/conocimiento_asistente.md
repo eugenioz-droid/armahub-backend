@@ -63,11 +63,25 @@ altura, **en la vista de sección se ve el CORTE de la barra, no su desarrollo**
 - **Va SIEMPRE repartida entre los cabezales**, nunca por debajo de ellos. Si el
   usuario no dice dónde arranca, la primera barra va a **la mitad del
   espaciamiento** contada desde el cabezal.
-- **La figura depende de DÓNDE NACE el muro:**
-  - **103C** si es muro NACIENTE — el primero del eje, o nace sobre una losa.
-  - **101A** si es continuación o muro intermedio.
-  Eso sale solo del campo `condicion` de la ficha: basta con que el usuario mencione
-  que el muro arranca, es naciente o es el primer piso.
+- **La MV sólo tiene MÁS DE UN TRAMO cuando el muro inicia o termina.** En
+  cualquier otro caso es una recta. Los casos, y salen solos del campo `condicion`:
+
+  | Muro | Figuras | Empalme | Cómo queda |
+  |---|---|---|---|
+  | **Intermedio** | 101A + 101A | sí | Recta. |
+  | **Inicia** (naciente) | 103C + 103C | sí | El fierro recto sube · la **pata cruza el espesor en el borde inferior** · el gancho. Los dos quiebres ABAJO. |
+  | **Inicia, asimétrico** | 103C + **102C** | sí | El 102C engancha en el mismo punto donde ancla el gancho inferior del otro. |
+  | **Termina** (corona) | 103C + 103C **volteadas** | **NO** | Misma lógica invertida: la pata cruza el espesor en el borde **superior**. Nace del piso terminado y sólo cubre el borde de arriba. |
+  | **Termina, asimétrico** | 103C + 102C volteadas | **NO** | Igual, al revés. |
+  | **Un piso** (inicia y termina) | **104B + 104B** | **NO** | Default. Lógica de la MH: cada lado corto cruza el espesor y los ganchos quedan simétricos opuestos. La alternativa 105C+105C existe pero se pide. |
+
+  La **asimetría se infiere**: basta con que el usuario diga que el muro es
+  asimétrico. Nunca hay que preguntarle qué figura va en cada cortina.
+
+- **En la 103C el lado que corre a lo alto es el C, no el del medio.** La cadena es
+  gancho → pata → cuerpo, así que el cuerpo queda en la punta. El empalme va ahí.
+  (Sin decírselo, el motor estira el del medio y la barra sale con un quiebre en cada
+  extremo, el de arriba montado sobre el traslapo.)
 - **Siempre lleva empalme HACIA ARRIBA**, para traslapar con el arranque del piso
   siguiente: **60·φ + 10**, el de la casa. Se suma al largo de corte.
 - **El recubrimiento de abajo depende de la figura, y no es lo mismo:**
@@ -247,3 +261,9 @@ la base de datos, y esa lista es la única autoridad. Acá va solo cómo leerla:
 
 Si el usuario no nombra figura, se usa el default. Nunca inventar un código: si no está
 en la lista inyectada, no existe.
+
+**El usuario puede cambiar la figura, y la lógica se mantiene.** Lo pide él; no hay que
+sugerirlo. El caso típico: una **103C se cambia por una 103A** — lo que era gancho pasa a
+ser un doblez abierto porque en obra lo terminan de doblar a mano, y eso ocurre cuando el
+ángulo no permite llegar a los 90°. Puede ser cualquier otra figura: lo que no cambia es
+cómo se instala la barra.

@@ -273,8 +273,12 @@ console.log('\nE — pares espejo derivados de la geometría del contorno cerrad
 // ============================================== F · comp.lado_dominante MANDA
 console.log('\nF — comp.lado_dominante manda, y dibujo y medida usan EL MISMO');
 {
-  ok(JSON.stringify(FP.ladosDominantesElegibles('105A')) === JSON.stringify(['B', 'C', 'D']),
-    '105A: elegibles B/C/D (A y E son los ganchos terminales)');
+  // 3-sep: en una cadena ABIERTA los cinco lados son elegibles. Antes se excluían
+  // A y E por terminales, suponiendo que un terminal es siempre un gancho. Esa
+  // suposición se cayó con la 103C de una malla vertical naciente, donde el fierro
+  // que sube ES el terminal (ver test_lado_dominante.js, bloque D).
+  ok(JSON.stringify(FP.ladosDominantesElegibles('105A')) === JSON.stringify(['A', 'B', 'C', 'D', 'E']),
+    '105A: elegibles los cinco (cadena abierta: terminal ya no implica gancho)');
   ok(JSON.stringify(FP.ladosDominantesElegibles('104B')) === JSON.stringify(['B', 'C']),
     '104B: elegibles B/C');
   // ASSERTS INVERTIDOS (15-ago) POR CORRECCIÓN DEL USUARIO: «lo de que la figura
@@ -327,20 +331,29 @@ console.log('\nF — comp.lado_dominante manda, y dibujo y medida usan EL MISMO'
 }
 
 // ====================================== G · GANCHO / DIAGONAL: ignorados con aviso
-console.log('\nG — un gancho o una diagonal como dominante se ignoran con aviso');
+console.log('\nG — el gancho DECLARADO y la diagonal se ignoran con aviso; el terminal NO');
 {
-  // GANCHO — A y E son los tramos terminales de la 105A.
-  ['A', 'E'].forEach(malo => {
-    const c = comp('105A', 'CBS', { lado_dominante: malo });
+  // TERMINAL DE CADENA ABIERTA — se OBEDECE desde el 3-sep. Este bloque afirmaba lo
+  // contrario y era la misma suposición de siempre: «terminal ⇒ gancho». Cuál lado
+  // es el cuerpo depende de cómo se usa la figura, y quien coloca la barra lo sabe.
+  ['A', 'E'].forEach(term => {
+    const c = comp('105A', 'CBS', { lado_dominante: term });
     const pl = expandir(c)[0];
     const ref = expandir(comp('105A', 'CBS'))[0];
-    ok(R.ladoDominante(c) === 'B', '105A con dominante ' + malo + ' (gancho) → cae a la cascada (B)');
-    ok(JSON.stringify(pl.dims) === JSON.stringify(ref.dims), '…y las dims quedan idénticas a no elegir nada');
-    ok(JSON.stringify(pl.puntos) === JSON.stringify(ref.puntos), '…y los puntos también');
+    ok(R.ladoDominante(c) === term, '105A con dominante ' + term + ': se obedece');
+    ok(JSON.stringify(pl.dims) !== JSON.stringify(ref.dims),
+      '…y las dims cambian respecto de no elegir nada (el auto estira otro lado)');
+    const av = (c._avisos || []).filter(a => a.indexOf('Lado dominante') === 0);
+    ok(av.length === 0, '…sin aviso de ignorado: no se ignoró (' + JSON.stringify(av) + ')');
+  });
+  // Y lo que SIGUE rechazado, que es lo que la regla protegía de verdad:
+  {
+    const c = comp('106A', 'ES', { lado_dominante: 'A' });
+    expandir(c);
     const av = (c._avisos || []).filter(a => a.indexOf('Lado dominante') === 0);
     ok(av.length === 1 && av[0].indexOf('GANCHO') > 0,
-      '…y queda UN aviso que dice que es un gancho: ' + JSON.stringify(av[0] || null));
-  });
+      'el gancho DECLARADO de un contorno cerrado (106A · A) se sigue ignorando con aviso');
+  }
 
   // CONTORNO CERRADO — ahora SÍ acepta dominante (ver arriba): no debe avisar.
   {
@@ -379,8 +392,10 @@ console.log('\nG — un gancho o una diagonal como dominante se ignoran con avis
       const v = FP.validarLadoDominante(COD, 'C');
       ok(!v.ok && v.motivo.indexOf('DIAGONAL') > 0,
         'C (interior pero diagonal) NO es elegible: ' + JSON.stringify(v.motivo));
-      ok(JSON.stringify(FP.ladosDominantesElegibles(COD)) === JSON.stringify(['B']),
-        'sus elegibles son sólo B (A y D son terminales, C es diagonal)');
+      // 3-sep: los terminales A y D vuelven a la lista (ver bloque G); C sigue
+      // fuera, que es lo que este bloque mide de verdad -- la DIAGONAL.
+      ok(FP.ladosDominantesElegibles(COD).indexOf('C') < 0,
+        'la diagonal C sigue sin ser elegible: ' + JSON.stringify(FP.ladosDominantesElegibles(COD)));
       const c = comp(COD, 'CBS', { lado_dominante: 'C' });
       const pl = expandir(c);
       ok(R.ladoDominante(c) === 'B', 'el motor lo ignora y resuelve B');

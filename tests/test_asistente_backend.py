@@ -805,7 +805,7 @@ check("jerarquia de la casa: MH 1 y MV 2 (la MH contiene a la MV)",
 check("perimetral: si el usuario no lo dice, se asume que NO lo es",
       "PERIMETRAL" in _CM and "se asume que NO" in _CM)
 check("MV: 103C si es naciente, 101A si es continuacion",
-      "103C" in _CM and "101A" in _CM and "NACIENTE" in _CM)
+      "103C" in _CM and "101A" in _CM and "naciente" in _CM)
 check("MV: empalme 60 phi + 10 hacia arriba", "60·φ + 10" in _CM)
 check("MV: el recubrimiento de abajo depende de la figura (101A al borde, 103C con rec)",
       "borde inferior del hormig" in _CM and "5 cm" in _CM)
@@ -966,6 +966,122 @@ check("el conocimiento trae la figura del cabezal por condicion del muro",
       "103A" in _CM and "pata ABAJO" in _CM and "pata ARRIBA" in _CM)
 check("...y los cuatro costados del muro de un piso",
       "cuatro costados" in _CM)
+
+# ---------------------------------------------------------------------------
+# LA MALLA VERTICAL, CASO POR CASO (usuario 3-sep)
+# ---------------------------------------------------------------------------
+from armahub.asistente import _figura_mv, _MV_LADO_CORRE
+
+_CATMV = {"101A": {"parciales": ["A"], "angulos": []},
+          "102C": {"parciales": ["A", "B"], "angulos": [45]},
+          "103C": {"parciales": ["A", "B", "C"], "angulos": [45]},
+          "104B": {"parciales": ["A", "B", "C", "D"], "angulos": [45, 45]}}
+
+
+def _muro_mv(cond, asim=False):
+    return _construir_receta_muro({
+        "geometria": {"largo": 500, "alto": 310, "espesor": 20, "recubrimiento": 2},
+        "malla_vertical": {"diam": 10, "sep": 20},
+        "malla_horizontal": {"diam": 8, "sep": 20},
+        "doble_malla": True, "condicion": cond, "mv_asimetrica": asim,
+        "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido"}}, _CATMV)
+
+
+def _mvs(cond, asim=False):
+    return [c for c in _muro_mv(cond, asim)["componentes"] if c["tipologia"] == "MV"]
+
+
+def _figs(cond, asim=False):
+    return [c["figura"] for c in _mvs(cond, asim)]
+
+
+def _delta(c):
+    for L, v in (c.get("dims") or {}).items():
+        if v.get("delta"):
+            return L, v["delta"]
+    return None, 0
+
+
+check("MV intermedia: recta y punto (solo tiene mas tramos si inicia o termina)",
+      _figs("") == ["101A", "101A"] and _figs("", True) == ["101A", "101A"])
+check("MV naciente: 103C en las dos cortinas",
+      _figs("inicia") == ["103C", "103C"])
+check("MV naciente ASIMETRICA: 103C y 102C -- y la asimetria se INFIERE",
+      _figs("inicia", True) == ["103C", "102C"])
+check("MV de muro que corona: la misma figura, no otra",
+      _figs("termina") == ["103C", "103C"])
+check("MV de muro de UN PISO: 104B por default (la 105C se pide)",
+      _figs("inicia_y_termina") == ["104B", "104B"])
+
+# EL LADO QUE CORRE de la 103C es el C, no el del medio. La cadena es
+# gancho -> pata -> cuerpo, asi que el cuerpo queda TERMINAL. Sin decirselo, el
+# motor estira B y la barra sale con un quiebre en cada punta -- el de arriba
+# montado sobre el empalme, 66 cm por encima del hormigon (medido 2-sep).
+check("la 103C declara que su lado que corre es el C",
+      _MV_LADO_CORRE["103C"] == "C"
+      and all(c.get("lado_dominante") == "C" for c in _mvs("inicia")))
+check("...y el empalme cae AHI, no en el lado del medio",
+      _delta(_mvs("inicia")[0]) == ("C", 70.0))
+check("la 102C no lleva override: el motor ya sabe cual es su cuerpo",
+      _mvs("inicia", True)[1].get("lado_dominante") in (None, ""))
+
+# EL EMPALME LO LLEVA EL QUE SIGUE SUBIENDO -- la singularidad que marco el usuario.
+check("el muro que corona NO empalma (nace del piso terminado)",
+      all(not _delta(c)[1] for c in _mvs("termina")))
+check("el muro de un piso tampoco",
+      all(not _delta(c)[1] for c in _mvs("inicia_y_termina")))
+check("el naciente y el intermedio si",
+      _delta(_mvs("inicia")[0])[1] == 70 and _delta(_mvs("")[0])[1] == 70)
+
+# EL ESPEJO DE LA MV NO ES POR CORTINA. Medido: en una MV el espejo la voltea de
+# CABEZA. Aplicarlo a la cortina opuesta -- que es la regla de la MH -- dejaba una
+# con la pata abajo y la otra con la pata arriba en el mismo muro.
+check("las dos cortinas de un naciente miran igual (la pata abajo las dos)",
+      [c.get("espejo") for c in _mvs("inicia")] == [None, None])
+check("y las dos de un muro que corona tambien (la pata arriba las dos)",
+      all(c.get("espejo") for c in _mvs("termina")))
+check("el marco de 4 SI conserva la regla de la MH: la opuesta va rotada",
+      [bool(c.get("espejo")) for c in _mvs("inicia_y_termina")] == [False, True])
+check("_figura_mv devuelve la misma figura salvo que sea asimetrica",
+      _figura_mv(True, False) == ("103C", "103C")
+      and _figura_mv(True, False, True) == ("103C", "102C"))
+
+# CABEZAL DE BORDE: dentro de la MV, sin empalme y 103A.
+_BORDES = {"barras": {"diam": 16, "barras_capa": 2, "n_capas": 1},
+           "donde": ["laterales", "inferior", "superior"]}
+_rb = _construir_receta_muro({
+    "geometria": {"largo": 500, "alto": 310, "espesor": 20, "recubrimiento": 2},
+    "malla_vertical": {"diam": 10, "sep": 20},
+    "malla_horizontal": {"diam": 8, "sep": 20},
+    "doble_malla": True, "condicion": "inicia", "bordes": _BORDES,
+    "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                 "bordes": "leido"}}, dict(_CATMV, **{
+    "102A": {"parciales": ["A", "B"], "angulos": []},
+    "103A": {"parciales": ["A", "B", "C"], "angulos": []}}))
+_cbs = [c for c in _rb["componentes"] if c["tipologia"] == "CB"]
+_lat = [c for c in _cbs if not c.get("_cb_borde")]
+_bor = [c for c in _cbs if c.get("_cb_borde")]
+_mvj = max(c["jerarquia"] for c in _rb["componentes"] if c["tipologia"] == "MV")
+
+check("el cabezal de coronacion y el inferior quedan DENTRO de la MV",
+      _bor and all(c["jerarquia"] == _mvj + 1 for c in _bor))
+check("...o sea 3 en un muro usual (MH=1, MV=2), que es lo que dicto el usuario",
+      _mvj == 2 and all(c["jerarquia"] == 3 for c in _bor))
+check("los LATERALES no se mueven de 2", all(c["jerarquia"] == 2 for c in _lat))
+check("el cabezal de borde corre acostado y NO lleva empalme (no sube a ninguna parte)",
+      all(not any(v.get("delta") for v in c["dims"].values()) for c in _bor)
+      and all(c["pose"]["rumbo"] == "x" for c in _bor))
+check("...y su figura por default es la 103A, que cierra el muro por ese borde",
+      all(c["figura"] == "103A" for c in _bor))
+check("el lateral SI empalma, que para eso es el arranque",
+      all(any(v.get("delta") for v in c["dims"].values()) for c in _lat))
+
+check("el conocimiento trae la tabla de casos de la MV",
+      "Un piso** (inicia y termina)" in _CM and "los dos quiebres ABAJO" in _CM.replace("Los dos quiebres ABAJO", "los dos quiebres ABAJO"))
+check("...y dice que en la 103C el lado que corre es el C",
+      "el lado que corre a lo alto es el C" in _CM)
+check("...y deja anotado el antecedente de la 103A (gancho abierto, se dobla en obra)",
+      "103A" in _CM and "en obra lo terminan de doblar" in _CM)
 
 # ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
