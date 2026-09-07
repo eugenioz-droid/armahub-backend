@@ -984,7 +984,7 @@ check("...y los cuatro costados del muro de un piso",
 # ---------------------------------------------------------------------------
 # LA MALLA VERTICAL, CASO POR CASO (usuario 3-sep)
 # ---------------------------------------------------------------------------
-from armahub.asistente import _figura_mv, _MV_LADO_CORRE
+from armahub.asistente import _figura_mv, _MV_LADO_CORRE, _corre_de
 
 # LA 103C VA CON SU GEOMETRIA, la del Diseñador, que es la que usa la plataforma:
 # `tramosDeFigura` prefiere `geometria.tramos` y solo DERIVA el trazo de `angulos`
@@ -1070,6 +1070,30 @@ check("y las dos de un muro que corona tambien (la pata arriba las dos)",
       [c.get("espejo") for c in _mvs("termina")] == [None, None])
 check("el marco de 4 SI conserva la regla de la MH: la opuesta va rotada",
       [bool(c.get("espejo")) for c in _mvs("inicia_y_termina")] == [False, True])
+# LAS TRES PUERTAS TIENEN QUE DECIR LO MISMO SOBRE QUE LADO CORRE. La fabrica ya lo
+# sabia, pero EDITAR una barra volvia a preguntarselo a la convencion del catalogo
+# («B es el cuerpo»), que en la 103C es falsa: ahi B es la pata que cruza el espesor.
+# El usuario lo vio tal cual -- «la letra B se esta desarrollando en la altura y el
+# empalme se lo estas poniendo a B». Es la tercera vez que un criterio vive en un solo
+# camino de los varios que existen, asi que las tres se congelan juntas.
+_dom = lambda c: (c.get("lado_dominante"),
+                  [k for k, v in c["dims"].items() if v.get("delta")])
+_p1 = [c for c in _muro_mv("inicia")["componentes"] if c["tipologia"] == "MV"][0]
+_r_ag, _ = _aplicar_cambios(_muro_mv(""), [{"accion": "agregar",
+                                            "armadura": "malla_vertical",
+                                            "figura": "103C", "diam": 10, "sep": 20,
+                                            "empalme": 70}], _CATMV)
+_p2 = [c for c in _r_ag["componentes"] if c["tipologia"] == "MV"][-1]
+_r_ed, _ = _aplicar_cambios(_muro_mv(""), [{"accion": "editar", "barra": 1,
+                                            "figura": "103C", "empalme": 70}], _CATMV)
+_p3 = [c for c in _r_ed["componentes"] if c["tipologia"] == "MV"][0]
+check("la ficha, el agregar y el EDITAR ponen el empalme en A y el dominante en A",
+      _dom(_p1) == ("A", ["A"]) and _dom(_p2) == ("A", ["A"])
+      and _dom(_p3) == ("A", ["A"]))
+check("y una figura sin regla propia sigue con la convencion del catalogo",
+      _corre_de("104B", ["A", "B", "C", "D"]) == "B"
+      and _corre_de("103C", ["A", "B", "C"]) == "A")
+
 check("_figura_mv devuelve la misma figura salvo que sea asimetrica",
       _figura_mv(True, False) == ("103C", "103C")
       and _figura_mv(True, False, True) == ("103C", "102C"))

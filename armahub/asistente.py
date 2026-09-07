@@ -827,6 +827,23 @@ def _lado_que_corre(parciales):
     return "B" if "B" in parciales else (parciales[0] if parciales else None)
 
 
+def _corre_de(figura, parciales):
+    """EL LADO QUE CORRE, en UN solo lugar.
+
+    La convencion del catalogo -- «A y C son patas, B es el cuerpo» -- no vale para
+    todas las figuras: en la 103C de una malla vertical el cuerpo es el A y B es la
+    pata que cruza el espesor (ver _MV_LADO_CORRE). Esto ya estaba resuelto en la
+    fabrica, pero `_editar_comp` seguia preguntandoselo a `_lado_que_corre` a secas,
+    asi que EDITAR una barra le devolvia el empalme a B y le borraba el dominante --
+    el usuario vio exactamente eso: «la letra B se esta desarrollando en la altura y
+    el empalme se lo estas poniendo a B».
+    Es la tercera vez que un mismo criterio vive en un solo camino de los varios que
+    existen (paso con el estribo y con la traba de confinamiento). Por eso ahora es
+    una funcion y no una linea repetida."""
+    return (_MV_LADO_CORRE.get(str(figura or "").strip().upper())
+            or _lado_que_corre(parciales))
+
+
 def _mk_dims(parciales, empalme=None, pata=None, phi=None, patas_fijas=False,
              corre=None, extremo="fin"):
     """Cuerpo en auto, patas fijas si corresponde, empalme como Delta del lado que
@@ -960,7 +977,7 @@ def _fabricar(clase, p, geo, figuras, lados):
     if clase == "malla_vertical":
         fig = _pedido(p, "figura", "101A")
         par, ang = _spec_figura(figuras, fig, ["A"], [])
-        corre = _MV_LADO_CORRE.get(fig)
+        corre = _MV_LADO_CORRE.get(fig)   # None = manda la convencion del catalogo
         for lado in lados:
             c = _mk_extras(_mk_base(
                 "MV", fig, p["diam"], ang, "lineal", "lateral", lado, "y",
@@ -1786,7 +1803,7 @@ def _editar_comp(c, cb, geo, figuras):
     que escribiria el panel (dims/distribucion/orient), no campos inventados."""
     d = c.setdefault("distribucion", {})
     dims = c.setdefault("dims", {})
-    corre = _lado_que_corre(list(dims.keys()))
+    corre = _corre_de(c.get("figura"), list(dims.keys()))
 
     fig = str(cb.get("figura") or "").strip().upper()
     if fig:
@@ -1794,10 +1811,16 @@ def _editar_comp(c, cb, geo, figuras):
         c["figura"], c["angulos"] = fig, ang
         viejo = dims.get(corre, {}) if corre else {}
         dims = c["dims"] = {L: {"modo": "auto"} for L in par}
-        corre = _lado_que_corre(par)
+        corre = _corre_de(fig, par)
         if corre and viejo.get("delta"):
             dims[corre]["delta"] = viejo["delta"]
             dims[corre]["extremo"] = viejo.get("extremo", "fin")
+        # Y EL DOMINANTE VIAJA CON LA FIGURA. Sin esto el motor vuelve a su cascada
+        # -- que en la 103C elige B, la pata -- y la estira a lo largo de la altura.
+        if _MV_LADO_CORRE.get(fig):
+            c["lado_dominante"] = _MV_LADO_CORRE[fig]
+        elif c.get("lado_dominante"):
+            del c["lado_dominante"]
 
     if _num(cb.get("diam")) > 0:
         c["diam"] = _num(cb.get("diam"))
