@@ -1824,7 +1824,7 @@ def _editar_comp(c, cb, geo, figuras):
     return c
 
 
-def _confinamiento_sobre_receta(comps, geo, figuras, cb):
+def _confinamiento_sobre_receta(comps, geo, figuras, cb, solo=None):
     """El confinamiento de un muro que YA está armado en el editor.
 
     EXISTE PORQUE HABÍA DOS PUERTAS Y SÓLO UNA SABÍA LA REGLA (usuario 7-sep). La
@@ -1846,6 +1846,11 @@ def _confinamiento_sobre_receta(comps, geo, figuras, cb):
     if not cbs:
         return []
     d0 = cbs[0].get("distribucion") or {}
+    # SI YA HAY ESTRIBOS EN EL EDITOR, sus rangos mandan: las trabas EMH son las capas
+    # que ELLOS no cubren. Asi pedir «agregale las trabas» despues de haber puesto los
+    # estribos da el complemento correcto en vez de suponer el default.
+    rangos_ya = [tuple(c["_capas"]) for c in _por_tip(comps, "EC")
+                 if isinstance(c.get("_capas"), (list, tuple)) and len(c["_capas"]) == 2]
     mhs = _por_tip(comps, "MH")
     mh = (mhs[0] if mhs else {}) or {}
     sep_mh = ((mh.get("distribucion") or {}).get("rango") or {}).get("sep")
@@ -1856,13 +1861,16 @@ def _confinamiento_sobre_receta(comps, geo, figuras, cb):
         # Lo que el usuario dicte en el cambio manda; lo que no, se deriva.
         "estribo": {"diam": _num(cb.get("diam")), "sep": _num(cb.get("sep")),
                     "figura": str(cb.get("figura") or "").strip().upper(),
-                    "tramos": cb.get("tramos") or []},
+                    "tramos": cb.get("tramos") or [],
+                    "capas": [list(r) for r in dict.fromkeys(rangos_ya)] or None},
         "largo": _num(cb.get("largo")),
     }
     out = []
     for lado in (1, -1):
         out += _confinamiento_de_punta(bo, geo, figuras, sep_mh,
                                        _num(mh.get("diam")), lado)
+    if solo:
+        out = [c for c in out if c["tipologia"] == solo]
     return out
 
 
@@ -1935,11 +1943,24 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
                 lados = [-1]
             else:
                 lados = [1, -1]
-            if clase == "estribo":
-                # CONFINAMIENTO = las dos zonas, no un estribo suelto. Se arma con lo
-                # que YA hay en el editor (capas del cabezal, @ de la malla). Si no
-                # hay cabezales que confinar, cae al estribo de siempre.
-                nuevos = _confinamiento_sobre_receta(comps, geo, figuras, cb)
+            if clase in ("estribo", "trabas_confinamiento"):
+                # CONFINAMIENTO = las dos zonas, no una pieza suelta. Se arma con lo
+                # que YA hay en el editor (capas del cabezal, @ de la malla).
+                #
+                # LA TRABA DE CONFINAMIENTO TENIA LA MISMA PUERTA ABIERTA QUE EL
+                # ESTRIBO (usuario 7-sep): pedida suelta salia por `_fabricar` con la
+                # geometria de la traba de MURO -- arreglo sobre el paño entero-- y
+                # solo se le cambiaba el nombre a TC. En la captura eran 364 unidades
+                # sembradas por todo el muro, y el aviso de «452 barras» venia de ahi.
+                # Ahora las dos clases entran por la misma puerta y se sientan en su
+                # capa. Si no hay cabezales que confinar, cae a la fabrica de siempre.
+                # «Ponle confinamiento» (armadura `estribo`) trae el conjunto
+                # COMPLETO -- estribos y trabas -- porque eso es lo que la palabra
+                # significa en obra. Pedir `trabas_confinamiento` es un pedido
+                # especifico y trae solo las trabas.
+                nuevos = _confinamiento_sobre_receta(
+                    comps, geo, figuras, cb,
+                    solo=(None if clase == "estribo" else "TC"))
                 comps.extend(nuevos or _fabricar(clase, p, geo, figuras, lados))
             else:
                 comps.extend(_fabricar(clase, p, geo, figuras, lados))

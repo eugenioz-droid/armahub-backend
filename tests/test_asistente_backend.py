@@ -1243,6 +1243,24 @@ check("con UNA capa la segunda puerta tampoco pone estribo: solo la traba EMH",
       [c["tipologia"] for c in _r2["componentes"]
        if c["tipologia"] in ("EC", "TC")] == ["TC", "TC"])
 
+# LA TRABA DE CONFINAMIENTO TENIA LA MISMA PUERTA ABIERTA (usuario 7-sep). Pedida
+# suelta salia con la geometria de la traba de MURO -- arreglo sobre el paño entero --
+# y solo se le cambiaba el nombre a TC: en la captura del usuario eran 364 unidades
+# sembradas por todo el muro, y de ahi venia el aviso de «452 barras». Con 2 capas de
+# 2 barras tiene que salir UNA sola traba JMH por punta.
+_r3, _ = _aplicar_cambios(
+    _construir_receta_muro(dict(_SIN_CONF, malla_vertical=None), _CATC),
+    [{"accion": "agregar", "armadura": "trabas_confinamiento", "sep": 15, "sep2": 20}],
+    _CATC)
+_tc3 = [c for c in _r3["componentes"] if c["tipologia"] == "TC"]
+check("«agrega trabas de confinamiento» da UNA por punta con 2 capas, no un pañuelo",
+      len(_tc3) == 2 and all(c["_zona"] == "JMH" and c["_capa"] == 2 for c in _tc3))
+check("...y cada una se sienta en UNA columna, no se reparte por todo el muro",
+      all(c["distribucion"]["rango"]["from"] == c["distribucion"]["rango"]["to"]
+          for c in _tc3))
+check("...con la traba de MURO, que si va por todo el paño, sin tocar",
+      _tr and _tr[0]["distribucion"]["rango"]["from"] < -200)
+
 # ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
 # ---------------------------------------------------------------------------
