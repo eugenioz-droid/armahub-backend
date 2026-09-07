@@ -668,6 +668,21 @@ check("la separacion entre capas de cabezales es la pedida",
 #     una malla" y piso cabezales; y confundio espejo con giro de patas) ---
 check("proponer_muro declara el candado rehacer",
       "rehacer" in TOOL_MURO["input_schema"]["properties"])
+# EL RECHAZO NO PUEDE ENSEÑAR EL BYPASS (usuario 7-sep: «tiende a redibujarlas
+# todas»). El tool_result decia textualmente «repite proponer_muro con rehacer=1»,
+# o sea entregaba la llave junto con la puerta: un modelo que ya decidio reconstruir
+# reintenta con la bandera y la compuerta queda en baden. Ahora el mensaje solo dice
+# QUE hacer, y la bandera se juzga por la PRIMERA intencion.
+import inspect as _insp
+from armahub import asistente as _asis
+_src_chat = _insp.getsource(_asis)
+check("el rechazo NO le dice al modelo como saltarse la compuerta",
+      "repite proponer_muro" not in _src_chat
+      and "toca SOLO lo que el usuario " in _src_chat)
+check("...y la bandera no se gana reintentando: manda la primera llamada",
+      "rehacer_1a" in _src_chat and 'spec["rehacer"] = 0' in _src_chat)
+check("el prompt dice que con barras en el editor NO se rehace el muro",
+      "NO REHAGAS EL MURO" in _sp("muro"))
 check("operar_barras tiene el campo espejo",
       "espejo" in TOOL_OPERAR["input_schema"]["properties"]["cambios"]["items"]["properties"])
 _r7, _ = _aplicar_cambios(_RECETA_EJ, [{"accion": "editar", "barra": 1, "espejo": 1}], CAT)

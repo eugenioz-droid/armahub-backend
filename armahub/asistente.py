@@ -2365,6 +2365,13 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "quiere otra medida la escribe.\n"
         "· CABEZALES: `sep_capas` = separacion entre capas en cm («capas cada "
         "15») y `barras_capa` = cuantas van por capa a lo ancho del espesor.\n"
+        "· CON BARRAS YA EN EL EDITOR, NO REHAGAS EL MURO. `proponer_muro` "
+        "construye de cero y BORRA lo que hay -- incluido lo que el usuario "
+        "ajusto a mano, que es lo que mas le duele perder. Para cualquier "
+        "cambio sobre un muro ya armado usa `operar_barras` y toca SOLO las "
+        "barras que el usuario nombro: agregar una malla es agregar una malla, "
+        "no volver a dibujar las otras ocho. Reconstruir se reserva para cuando "
+        "el usuario lo pide con esas palabras («rehazlo», «partamos de cero»).\n"
         "· MALLA VERTICAL: su figura sale SOLA de `condicion`, no la elijas tu. "
         "Lo unico que puedes tener que marcar es `mv_asimetrica`: true si el "
         "usuario dice que las dos cortinas son distintas. NO le preguntes que "
@@ -2704,23 +2711,37 @@ def asistente_chat(body: ChatBody, user=Depends(get_current_user)):
                             and (body.receta_actual or {}).get("componentes")
                             and int(_num(sp.get("rehacer"))) != 1)
 
+                # EL RECHAZO YA NO ENSEÑA COMO SALTARSE LA COMPUERTA (usuario 7-sep:
+                # «al hablarle al agente y tener ya barras creadas, tiende a
+                # redibujarlas todas»). El mensaje de vuelta terminaba diciendole que
+                # reintentara con la bandera puesta, o sea le entregaba la llave junto
+                # con la puerta: un modelo que ya decidio reconstruir simplemente
+                # reintenta con ella y la compuerta queda en baden. (Esa frase esta
+                # borrada a proposito y hay un test que vigila que no vuelva.)
+                # Ahora el rechazo solo dice QUE hacer -- operar_barras -- y la bandera
+                # se juzga por la PRIMERA intencion: si en la primera llamada no venia
+                # rehacer=1, no se acepta en el reintento. Es la unica forma de
+                # distinguir «el usuario pidio rehacerlo» de «el modelo lo intento y
+                # le dijeron que no».
+                rehacer_1a = int(_num((spec or {}).get("rehacer")))
                 if _bloqueado(spec) and tu_ids:
                     n_barras = len(body.receta_actual["componentes"])
                     contenido = [{"type": "tool_result", "tool_use_id": t,
                                   "is_error": True,
                                   "content": "Hay %d barras en el editor. Reconstruir "
-                                             "con proponer_muro las BORRARIA. Para "
-                                             "cambios puntuales llama operar_barras "
-                                             "con los numeros del listado; solo si el "
-                                             "usuario pidio rehacer el muro completo, "
-                                             "repite proponer_muro con rehacer=1."
-                                             % n_barras} for t in tu_ids]
+                                             "con proponer_muro las BORRARIA. Usa "
+                                             "operar_barras con los numeros del "
+                                             "listado y toca SOLO lo que el usuario "
+                                             "pidio cambiar; el resto se queda como "
+                                             "esta." % n_barras} for t in tu_ids]
                     resp = _llamar(mensajes + [
                         {"role": "assistant", "content": resp.content},
                         {"role": "user", "content": contenido},
                     ])
                     texto2, spec, cambios, tu_ids = _extraer(resp)
                     texto = texto2 or texto
+                    if isinstance(spec, dict) and rehacer_1a != 1:
+                        spec["rehacer"] = 0     # la bandera no se gana reintentando
                     figuras = _figuras_para(cur, spec, cambios)
                 if receta is None and isinstance(spec, dict):
                     pass
