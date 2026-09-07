@@ -10692,10 +10692,12 @@
       // un usuario que solo puede ver le sirve igual recorrer las vistas.
       // Solo actúa si YA hay una agrandada: si no, V no hace nada y la tecla queda
       // libre para el resto del modal.
+      // CARRUSEL: V siempre AVANZA. Shift+V se retiro (7-sep) -- SHIFT ya conmuta las
+      // cotas dos lineas mas arriba, asi que Shift+V disparaba las dos cosas.
       if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey
           && _vistaMaximizada()) {
         e.preventDefault();
-        if (!e.repeat) _cicloVistaMaximizada(e.shiftKey ? -1 : 1);
+        if (!e.repeat) _cicloVistaMaximizada(1);
         return;
       }
       // SOLO VISTA - de aqui para abajo TODOS los atajos mutan (Ctrl+Z deshace,
@@ -12259,7 +12261,7 @@
   // salir del modal. Pedido del usuario (6-sep): con la lupa se entra a una vista y
   // con V se recorren todas en orden, que es como se revisa un muro — sección,
   // elevación, planta, 3D — sin tener que encoger y volver a agrandar cada vez.
-  // Shift+V las recorre al revés.
+  // Siempre avanza: es un carrusel, da la vuelta y sigue.
   // NO abre la primera: entrar sigue siendo la lupa, tal cual lo pidió.
   function _cicloVistaMaximizada(paso) {
     var quad = $('te_quad'); if (!quad) return;
@@ -12270,7 +12272,7 @@
     _maximizarVista(sig);         // sig !== la actual, así que agranda (no encoge)
     var t = sig.querySelector('.te-vtitle');
     _actualizarStatus((t ? t.textContent.trim() : 'Vista') +
-      ' — V pasa a la siguiente, Esc vuelve a los 4.');
+ + ' — V pasa a la siguiente, Esc vuelve a los 4.');
   }
 
   function _bindLupas() {

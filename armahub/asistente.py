@@ -1317,6 +1317,13 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
                           "to": z["to"], "sep": z["sep"]}
         c = _mk_base("TC", fig, diam, ang, "arreglo", "sup", 1, "z",
                      "volteada", True, dims, 1, dist)
+        # LOS GANCHOS EN EL PLANO DEL MURO, no colgando hacia abajo (usuario 7-sep).
+        # El cuerpo cruza el espesor en las dos poses; lo que cambia es hacia donde
+        # abren los ganchos. Sin girar salian en Y -- se veian caer -- y en elevacion
+        # la figura quedaba de canto. Medido: con spin 90 el desarrollo pasa a X
+        # (Δx=11,3 · Δy=0 · Δz=15), o sea la traba se dibuja en el plano del muro y
+        # ahi se le ve la forma, que es lo que el usuario pidio.
+        c["orient"] = {"spin": 90}
         c["_zona"] = "EMH" if emh else "JMH"
         c["_capa"] = k + 1
         return c

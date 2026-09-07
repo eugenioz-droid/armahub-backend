@@ -1208,6 +1208,11 @@ check("el confinamiento va en TODA la altura, y NADA se sale del hormigon",
 check("el ancho de confinamiento es espesor - 2 recubrimientos",
       _ancho_confinado({"esp": 20, "rec": 2}) == 16
       and _ancho_confinado({"esp": 25, "rec": 3}) == 19)
+# LOS GANCHOS DE LA TC VAN EN EL PLANO DEL MURO, no colgando. Medido: sin girar el
+# desarrollo cae en Y (Δy=11,3) y en elevacion la figura queda de canto; con spin 90
+# pasa a X (Δx=11,3 · Δz=15, el cuerpo sigue cruzando el espesor).
+check("la traba de confinamiento se dibuja en el plano del muro",
+      all(c.get("orient", {}).get("spin") == 90 for c in _c3 if c["tipologia"] == "TC"))
 check("la TC lo lleva FIJO, no auto con sobrelargo como la traba de muro",
       all(c["dims"]["B"] == {"modo": "fija", "valor": 16.0}
           for c in _c3 if c["tipologia"] == "TC"))
