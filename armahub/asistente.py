@@ -142,17 +142,27 @@ _MV_POR_CONDICION = {
     (True,  True):  ("104B", "104B"),   # muro de un piso: default 104B (no 105C)
 }
 
-# EL LADO QUE CORRE de la MV, por figura. NO es el que el motor elige solo.
-# La cadena de una 103C es gancho -> pata -> cuerpo, o sea el cuerpo es TERMINAL, y
-# el motor por defecto estira el del medio (B) porque su convencion es "A y C son
-# patas, B es el cuerpo". Con eso la barra salia con un quiebre en CADA punta y el
-# de arriba montado sobre el empalme, 66 cm por encima del hormigon.
-# MEDIDO con lado_dominante='C': A=13 (gancho) · B=16 (la pata cruzando el espesor,
-# que sale sola en AUTO) · C=376 (306 utiles + 70 de empalme), los dos quiebres
-# abajo y la barra asomando 68 cm arriba. Que es el dibujo del usuario.
+# EL LADO QUE CORRE de la MV, por figura. NO es el que el motor elige solo: su cascada
+# por defecto toma B, y en la 103C B es LA PATA -- la que cruza el espesor. Sin
+# decirselo, el motor estira la pata a lo largo de la altura, que es exactamente lo
+# que el usuario vio en pantalla.
+#
+# ES EL LADO A, Y ME COSTO LLEGAR PORQUE MEDI CONTRA EL CATALOGO EQUIVOCADO.
+# La plataforma dibuja la figura como viene del catalogo: `tramosDeFigura` usa
+# `geometria.tramos`, el trazo del Diseñador, que es el mismo que muestra la caluga
+# del catalogo -- A recto, 90 grados, B, 45 grados, C el gancho. Mi banco de pruebas,
+# en cambio, corre contra la tabla de RESPALDO de catalogo_figuras.js, que no trae
+# geometria: ahi el trazo se DERIVA de `angulos` y sale otra figura, con el doblez de
+# 45 en la primera esquina en vez de la ultima. O sea que todo lo que medi de la 103C
+# era de una figura que no existe en produccion.
+# MEDIDO con la geometria real: dominante 'A' se ACEPTA · dominante 'C' se RECHAZA
+# («el lado C es DIAGONAL»), asi que mi override anterior caia en silencio a B, la
+# pata. Con 'A' sale A=376 (306 utiles + 70 de empalme) · B=16 (la pata cruzando el
+# espesor, sola en AUTO) · C=13 (el gancho), de y=-153 a y=223: asoma 68 cm arriba y
+# los dos quiebres abajo. El dibujo del usuario.
 # La 102C no lleva override: ahi el motor ya sabe cual es el cuerpo (con un solo
 # doblez el otro tramo ES el gancho).
-_MV_LADO_CORRE = {"103C": "C"}
+_MV_LADO_CORRE = {"103C": "A"}
 
 
 def _figura_mv(inicia, termina, asimetrica=False):
@@ -956,7 +966,7 @@ def _fabricar(clase, p, geo, figuras, lados):
                 "MV", fig, p["diam"], ang, "lineal", "lateral", lado, "y",
                 "de_pie", False,
                 _mk_dims(par, p.get("empalme"), p.get("pata"), p["diam"],
-                         corre=corre),
+                         corre=corre, extremo=("ini" if corre else "fin")),
                 int(_pedido(p, "jerarquia", 1)),
                 _mk_lin(p["sep"], "x", -rx, rx, p.get("tramos"))), p)
             _marcar_jer(c, p)
@@ -975,6 +985,10 @@ def _fabricar(clase, p, geo, figuras, lados):
             # Asi que el espejo lo manda la CONDICION: un muro que corona lleva los
             # quiebres arriba, y eso es la misma figura volteada.
             if p.get("volteada"):
+                # ESPEJO = los quiebres ABAJO (medido con la geometria real). Con el
+                # Δ al INICIO del lado que corre, el espejo deja la pata y el gancho
+                # en el borde inferior y el empalme asomando por arriba, que es el
+                # muro naciente. Sin espejo quedan arriba, que es el que corona.
                 c["pose"]["espejo"] = True
                 c["espejo"] = True
             elif lado == -1 and len(par) >= 4:
@@ -1564,8 +1578,11 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
             mv1["figura"], mv2["figura"] = f1, f2
         if not _dictado(mv, "empalme") and _lleva_empalme(inicia, termina):
             mv1["empalme"] = mv2["empalme"] = _empalme_auto(mv.get("diam"))
-        # Un muro que CORONA lleva la misma figura volteada: los quiebres arriba.
-        mv1["volteada"] = mv2["volteada"] = bool(termina and not inicia)
+        # NACIENTE = quiebres ABAJO = espejo. El que CORONA lleva la misma figura sin
+        # espejo, y ahi quedan arriba. (Estaba al reves: se lo ponia al que corona.)
+        # (…y NO en el muro de un piso: ahi la figura es la 104B, que sigue la regla
+        # de la MH -- la cortina opuesta rotada -- y no la de las dos volteadas.)
+        mv1["volteada"] = mv2["volteada"] = bool(inicia and not termina)
     for lado in ([1, -1] if doble else [1]):
         if mv:
             comps += _fabricar("malla_vertical", mv1 if lado == 1 else mv2,

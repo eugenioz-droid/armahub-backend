@@ -986,9 +986,19 @@ check("...y los cuatro costados del muro de un piso",
 # ---------------------------------------------------------------------------
 from armahub.asistente import _figura_mv, _MV_LADO_CORRE
 
+# LA 103C VA CON SU GEOMETRIA, la del Diseñador, que es la que usa la plataforma:
+# `tramosDeFigura` prefiere `geometria.tramos` y solo DERIVA el trazo de `angulos`
+# cuando la figura no la trae. La tabla de respaldo de catalogo_figuras.js no la trae,
+# asi que medir contra ella daba otra figura -- el doblez de 45 en la primera esquina
+# en vez de la ultima -- y sobre ESA figura elegi mal el lado que corre. El banco tiene
+# que traer lo mismo que produccion o mide otra cosa (ver feedback_test_mide_lo_publicado).
+_GEO_103C = {"tramos": [{"lado": "A", "giro": 0, "sentido": None},
+                        {"lado": "B", "giro": 90, "sentido": "izq"},
+                        {"lado": "C", "giro": 135, "sentido": "izq"}]}
 _CATMV = {"101A": {"parciales": ["A"], "angulos": []},
           "102C": {"parciales": ["A", "B"], "angulos": [45]},
-          "103C": {"parciales": ["A", "B", "C"], "angulos": [45]},
+          "103C": {"parciales": ["A", "B", "C"], "angulos": [45],
+                   "geometria": _GEO_103C},
           "104B": {"parciales": ["A", "B", "C", "D"], "angulos": [45, 45]}}
 
 
@@ -1031,11 +1041,13 @@ check("MV de muro de UN PISO: 104B por default (la 105C se pide)",
 # gancho -> pata -> cuerpo, asi que el cuerpo queda TERMINAL. Sin decirselo, el
 # motor estira B y la barra sale con un quiebre en cada punta -- el de arriba
 # montado sobre el empalme, 66 cm por encima del hormigon (medido 2-sep).
-check("la 103C declara que su lado que corre es el C",
-      _MV_LADO_CORRE["103C"] == "C"
-      and all(c.get("lado_dominante") == "C" for c in _mvs("inicia")))
-check("...y el empalme cae AHI, no en el lado del medio",
-      _delta(_mvs("inicia")[0]) == ("C", 70.0))
+# EL LADO QUE CORRE ES A, no el del medio ni el gancho. La cascada del motor toma B
+# -- que en la 103C es LA PATA -- y por eso la estiraba a lo largo de la altura.
+check("la 103C declara que su lado que corre es el A (el recto)",
+      _MV_LADO_CORRE["103C"] == "A"
+      and all(c.get("lado_dominante") == "A" for c in _mvs("inicia")))
+check("...y el empalme cae AHI, no en la pata ni en el gancho",
+      _delta(_mvs("inicia")[0]) == ("A", 70.0))
 check("la 102C no lleva override: el motor ya sabe cual es su cuerpo",
       _mvs("inicia", True)[1].get("lado_dominante") in (None, ""))
 
@@ -1050,10 +1062,12 @@ check("el naciente y el intermedio si",
 # EL ESPEJO DE LA MV NO ES POR CORTINA. Medido: en una MV el espejo la voltea de
 # CABEZA. Aplicarlo a la cortina opuesta -- que es la regla de la MH -- dejaba una
 # con la pata abajo y la otra con la pata arriba en el mismo muro.
+# El naciente lleva ESPEJO en las DOS cortinas: con el Δ al inicio del lado que
+# corre, es lo que deja la pata y el gancho en el borde INFERIOR (medido).
 check("las dos cortinas de un naciente miran igual (la pata abajo las dos)",
-      [c.get("espejo") for c in _mvs("inicia")] == [None, None])
+      all(c.get("espejo") for c in _mvs("inicia")))
 check("y las dos de un muro que corona tambien (la pata arriba las dos)",
-      all(c.get("espejo") for c in _mvs("termina")))
+      [c.get("espejo") for c in _mvs("termina")] == [None, None])
 check("el marco de 4 SI conserva la regla de la MH: la opuesta va rotada",
       [bool(c.get("espejo")) for c in _mvs("inicia_y_termina")] == [False, True])
 check("_figura_mv devuelve la misma figura salvo que sea asimetrica",
