@@ -1307,56 +1307,43 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     def _tc(k, emh):
         """Una traba de confinamiento sentada en la capa k, subiendo por la altura.
 
-        LA POSE ES LA DE LA TRABA DE MURO; LO QUE CAMBIA ES EL REPARTO. Lo medi en el
-        motor antes de elegir, porque las dos opciones se veian razonables:
-          . pose del ESTRIBO (cara lateral, de pie): reparte bien -13 unidades- pero
-            el cuerpo corre a lo LARGO de la altura en vez de cruzar el espesor
-            (medido: Δy=15, Δz=11,3). O sea la traba no engancha nada.
-          . pose de la TRABA (cara sup, volteada): la geometria es la correcta
-            (Δz=15, el cuerpo cruzando el espesor) pero con un reparto LINEAL sobre Y
-            sale UNA sola barra -- que es el bug que reporto el usuario: una traba,
-            arriba, con los ganchos mirando abajo. La causa es que esa pose ancla en
-            el eje Y, asi que pedirle que ademas se reparta por Y anula el reparto.
-        La que sirve es la segunda CON EL REPARTO EN ARREGLO, igual que la traba de
-        muro pero con la columna de x reducida a un punto: la capa donde vive.
-        Medido: 13 unidades, una sola columna en su capa, cuerpo cruzando el espesor.
+        POSE: CARA 'extremo' RUMBO z -- la logica del cabezal, girada al plano
+        horizontal. Es el TERCER intento y esta medido contra la geometria REAL del
+        gancho sismico (135/135), porque los dos anteriores se midieron contra la
+        tabla de respaldo (dobleces de 45) y por eso engañaron:
+          . reparto lineal con la pose de la traba de muro -> el ancla en Y anulaba
+            el reparto: salia UNA barra pegada arriba.
+          . arreglo con orient.spin=90 -> el spin gira SOLO los ganchos sobre el eje
+            del cuerpo, no la figura entera: con los arcos reales del gancho la
+            pieza quedaba TORCIDA (medido: Δy=8,8 y Δz=8,8 A LA VEZ -- la "figura
+            incoherente en un plano inclinado" del JSON del usuario, 8-sep).
+        Con cara 'extremo' la figura queda PLANA en el plano horizontal (Δy=0 con
+        TODOS los puntos), el cuerpo cruza el espesor (Δz=14) y los ganchos abren
+        hacia el nucleo: la forma se ve en la SECCION, que es lo que pidio el
+        usuario. El ancla vive en X y el reparto en Y, asi que no pelean.
 
-        El ANCHO es el mismo del estribo -- espesor menos dos recubrimientos -- porque
-        los dos abrazan el cabezal y no la malla."""
+        LA CAPA SE ALCANZA CON off_caras, no con pos_hint: el ancla de una cara no
+        es un dato libre (mismo criterio que el cabezal escalonado). El cuerpo
+        natural cae en rx - φ/2 (medido: 197,0 con rx 197,5 y φ10) y el recorte lo
+        corre exacto a su capa (off 16,6 -> cuerpo en 180,4, clavado).
+
+        Y CON LOS GANCHOS EN HORIZONTAL YA NO CUELGA NADA HACIA ABAJO: la traba JMH
+        arranca en la MISMA linea que la malla, sin margen de gancho ni saltos de
+        paso. El desfase que reporto el usuario ("parte bien arriba y se va
+        corriendo") muere aqui de raiz.
+
+        El ANCHO es el del estribo -- espesor menos dos recubrimientos -- porque los
+        dos abrazan el cabezal y no la malla."""
         fig = _pedido(est, "figura_traba", "103B")
         par, ang = _spec_figura(figuras, fig, ["A", "B", "C"], [45, 45])
         dims = {L: {"modo": "auto"} for L in par}
         cuerpo = _lado_que_corre(par)
         if cuerpo:
             dims[cuerpo] = {"modo": "fija", "valor": _r1(_ancho_confinado(geo))}
-        x = _x_de_capa(k)
-        dist = _mk_lin(sep, "x", x, x, None)      # UNA columna: from == to
-        dist["modo"] = "arreglo"
-        # SE SALTA LA PRIMERA POSICION, Y SE SALTA POR UN PASO EXACTO.
-        # Los ganchos cuelgan hacia abajo, asi que la traba de mas abajo dejaba las
-        # patas fuera del hormigon. Lo tape con un margen fijo (6·φ+5, el de la traba
-        # de muro) y eso INTRODUJO EL DEFECTO QUE REPORTO EL USUARIO: «parte bien
-        # arriba pero se va desfasando hacia abajo». Es el mismo error que ya me
-        # habia mordido con el estribo -- mover un extremo del rango no lo desplaza,
-        # le cambia el PASO -- y lo volvi a cometer aca.
-        # MEDIDO: con el margen de 11 el paso pasaba de 18,92 a 19,58 y el desfase
-        # contra la malla iba de -9 a +9 barra a barra. Subiendo el arranque UN PASO
-        # REAL, el paso queda en 18,92 -identico al de la malla- y el desfase se
-        # vuelve constante (-2,43 en las 13). Ademas la mas baja sube a -106,5, bien
-        # dentro del hormigon.
-        z = _zona(emh)["rango"]
-        paso = _paso_real(z["from"], z["to"], z["sep"])
-        dist["rango2"] = {"eje": "y", "from": _r1(z["from"] + paso),
-                          "to": z["to"], "sep": z["sep"]}
-        c = _mk_base("TC", fig, diam, ang, "arreglo", "sup", 1, "z",
-                     "volteada", True, dims, 1, dist)
-        # LOS GANCHOS EN EL PLANO DEL MURO, no colgando hacia abajo (usuario 7-sep).
-        # El cuerpo cruza el espesor en las dos poses; lo que cambia es hacia donde
-        # abren los ganchos. Sin girar salian en Y -- se veian caer -- y en elevacion
-        # la figura quedaba de canto. Medido: con spin 90 el desarrollo pasa a X
-        # (Δx=11,3 · Δy=0 · Δz=15), o sea la traba se dibuja en el plano del muro y
-        # ahi se le ve la forma, que es lo que el usuario pidio.
-        c["orient"] = {"spin": 90}
+        c = _mk_base("TC", fig, diam, ang, "lineal", "extremo", lado, "z",
+                     "volteada", True, dims, 1, _zona(emh))
+        off = _r1((rx - diam / 20.0) - (x0 - k * gap))
+        c["off_caras"] = {"x": {("max" if lado > 0 else "min"): off}}
         c["_zona"] = "EMH" if emh else "JMH"
         c["_capa"] = k + 1
         return c
@@ -1969,6 +1956,19 @@ def _confinamiento_sobre_receta(comps, geo, figuras, cb, solo=None):
     return out
 
 
+def _firma_cb(comps):
+    """Lo del cabezal que el confinamiento MIRA: si esto cambia entre el antes y el
+    despues de un lote de cambios, el confinamiento auto se rearma."""
+    out = []
+    for c in comps:
+        if c.get("tipologia") != "CB" or c.get("_cb_borde"):
+            continue
+        d = c.get("distribucion") or {}
+        out.append((c.get("lado"), _num(c.get("diam")),
+                    int(_num(d.get("n_capas"), 1)), _num(d.get("gap"))))
+    return sorted(out)
+
+
 def _aplicar_cambios(receta_actual, cambios, figuras):
     """Los cambios de operar_barras sobre la receta del editor. Devuelve
     (receta_nueva, avisos). Un indice invalido AVISA en vez de reventar: el resto
@@ -1977,6 +1977,7 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
     comps = receta.setdefault("componentes", [])
     geo = _geo_de(receta)
     avisos = []
+    firma_cb0 = _firma_cb(comps)
     for cb in cambios or []:
         if not isinstance(cb, dict):
             continue
@@ -2056,9 +2057,41 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
                 nuevos = _confinamiento_sobre_receta(
                     comps, geo, figuras, cb,
                     solo=(None if clase == "estribo" else "TC"))
-                comps.extend(nuevos or _fabricar(clase, p, geo, figuras, lados))
+                if nuevos:
+                    # LAS PIEZAS AUTO ANTERIORES SE RETIRAN: pedir confinamiento de
+                    # nuevo lo REHACE, no lo duplica. En el JSON del usuario (8-sep)
+                    # habia 6 TC repetidas byte a byte porque el modelo llamo
+                    # "trabas" y despues "estribo", y nadie borro las de antes.
+                    quita = ("EC", "TC") if clase == "estribo" else ("TC",)
+                    comps[:] = [c for c in comps
+                                if not (c.get("tipologia") in quita and c.get("_zona"))]
+                    comps.extend(nuevos)
+                else:
+                    comps.extend(_fabricar(clase, p, geo, figuras, lados))
             else:
                 comps.extend(_fabricar(clase, p, geo, figuras, lados))
+    # EL CONFINAMIENTO SIGUE A LOS CABEZALES (la "revision organica" que pidio el
+    # usuario, 8-sep): si un cambio les movio las capas, el gap, el diametro o una
+    # punta entera, las piezas de confinamiento AUTO (las marcadas con _zona) se
+    # rearman contra el cabezal nuevo -- una traba JMH por capa nueva, el estribo
+    # estirado, las EMH recalculadas -- conservando el diametro y el @ que ya tenian.
+    # Lo que el cubicador haya agregado a mano (sin marca) no se toca. Y si los
+    # cabezales desaparecen, el confinamiento se va con ellos: no queda nada que
+    # confinar.
+    if _firma_cb(comps) != firma_cb0:
+        autos = [c for c in comps if c.get("_zona")]
+        if autos:
+            ec0 = next((c for c in autos if c.get("tipologia") == "EC"), None)
+            prm = {"diam": _num((ec0 or autos[0]).get("diam"))}
+            if ec0:
+                prm["sep"] = _num(((ec0.get("distribucion") or {})
+                                   .get("rango") or {}).get("sep"))
+            comps[:] = [c for c in comps if not c.get("_zona")]
+            nuevos = _confinamiento_sobre_receta(comps, geo, figuras, prm)
+            comps.extend(nuevos)
+            avisos.append("reacomodé el confinamiento a los cabezales que quedaron"
+                          if nuevos else
+                          "quité el confinamiento: no quedaron cabezales que confinar")
     if not comps:
         raise ValueError("El muro quedaria sin ninguna barra; no aplique los cambios.")
     avisos.extend(_aplicar_reglas(receta))

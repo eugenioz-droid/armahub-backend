@@ -319,6 +319,16 @@
     if (est.soloVista) return;
     var comps = (PROPUESTA.receta.componentes || []).slice();
     if (!comps.length) { _cargarBorrador(true); return; }
+    // CON BARRAS YA EN EL EDITOR NO HAY SHOW (usuario 8-sep: «me vuelve a dibujar
+    // todo de nuevo»). La instalacion en vivo era para VER armarse el muro la
+    // primera vez; en un cambio puntual («agregale la tercera capa») volver a
+    // colocar todo de a una se lee como que el asistente redibujo el muro entero.
+    // Asi que con el editor ocupado la receta se aplica DE UNA y lo que cambio
+    // simplemente cambia en pantalla.
+    if (est.abierto && ((est.receta || {}).componentes || []).length > 0) {
+      _cargarBorrador(true);
+      return;
+    }
 
     _abrirConReceta({ tipo: PROPUESTA.receta.tipo,
                       geometria: PROPUESTA.receta.geometria,

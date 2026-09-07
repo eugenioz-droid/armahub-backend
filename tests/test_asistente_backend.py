@@ -1233,17 +1233,17 @@ check("las dos zonas van desfasadas MEDIO PASO, con el @ de la MH",
 check("el paso REAL sale de dividir el rango, no de la separacion pedida",
       abs(_paso_real(-123, 123, 20) - 18.923) < 0.01
       and abs(_paso_real(-113, 113, 20) - 18.833) < 0.01)
-check("la traba arranca UN PASO mas arriba que su zona, para no dejar los ganchos "
-      "fuera del hormigon SIN cambiarle el paso",
-      all(abs((_rango_y(c)["from"] - (-153.0))
-              - _paso_real(-153.0, 153.0, 20)) < 0.1
+# Con los ganchos en el plano HORIZONTAL ya no cuelga nada hacia abajo: la traba JMH
+# arranca EXACTAMENTE donde arranca la malla, sin margen de gancho ni saltos de paso.
+check("la traba JMH arranca en la misma linea que la malla",
+      all(_rango_y(c)["from"] == -153.0
           for c in _c3 if c["tipologia"] == "TC" and _zona(c) == "JMH"))
-# Las x salen del EJE REAL de las capas -- la primera no esta en la linea de
-# recubrimiento, sino φmalla + φcabezal/2 mas adentro -- y de ahi hacia el nucleo, una
-# por gap. Se mide la RELACION y no los numeros congelados.
-_xj = [c["distribucion"]["rango"]["from"] for c in _c3 if _zona(c) == "JMH"]
+# La capa se alcanza con el RECORTE (off_caras), no con pos_hint: cuerpo natural en
+# rx - φ/2 (247,6 aqui) menos el eje real de su capa. Capa 2 -> 16,5 · capa 3 ->
+# 31,5, separadas un gap exacto.
+_offs = [list(c["off_caras"]["x"].values())[0] for c in _c3 if _zona(c) == "JMH"]
 check("cada traba se sienta en SU capa (a un gap de la anterior)",
-      _xj == [231.1, 216.1] and (_xj[0] - _xj[1]) == 15.0
+      _offs == [16.5, 31.5] and (_offs[1] - _offs[0]) == 15.0
       and [c["_capa"] for c in _c3 if _zona(c) == "JMH"] == [2, 3])
 check("el diametro del confinamiento sale de la MH si no se dicta",
       all(c["diam"] == 8 for c in _c3))
@@ -1256,11 +1256,15 @@ check("el confinamiento va en TODA la altura, y NADA se sale del hormigon",
 check("el ancho de confinamiento es espesor - 2 recubrimientos",
       _ancho_confinado({"esp": 20, "rec": 2}) == 16
       and _ancho_confinado({"esp": 25, "rec": 3}) == 19)
-# LOS GANCHOS DE LA TC VAN EN EL PLANO DEL MURO, no colgando. Medido: sin girar el
-# desarrollo cae en Y (Δy=11,3) y en elevacion la figura queda de canto; con spin 90
-# pasa a X (Δx=11,3 · Δz=15, el cuerpo sigue cruzando el espesor).
-check("la traba de confinamiento se dibuja en el plano del muro",
-      all(c.get("orient", {}).get("spin") == 90 for c in _c3 if c["tipologia"] == "TC"))
+# LA TC VA PLANA EN EL PLANO HORIZONTAL, anclada como un cabezal (cara extremo) y
+# corrida a su capa con off_caras. El spin quedo PROHIBIDO aca: gira solo los ganchos
+# sobre el eje del cuerpo, y con los arcos reales del gancho sismico dejaba la figura
+# torcida en un plano inclinado (JSON del usuario, 8-sep; medido: Δy=8,8 y Δz=8,8 a
+# la vez con la geometria 135/135).
+check("la traba de confinamiento se ancla como cabezal, plana y SIN spin",
+      all(c["pose"]["cara"] == "extremo" and "orient" not in c
+          and c.get("off_caras", {}).get("x")
+          for c in _c3 if c["tipologia"] == "TC"))
 check("la TC lo lleva FIJO, no auto con sobrelargo como la traba de muro",
       all(c["dims"]["B"] == {"modo": "fija", "valor": 16.0}
           for c in _c3 if c["tipologia"] == "TC"))
@@ -1336,11 +1340,33 @@ _r3, _ = _aplicar_cambios(
 _tc3 = [c for c in _r3["componentes"] if c["tipologia"] == "TC"]
 check("«agrega trabas de confinamiento» da UNA por punta con 2 capas, no un pañuelo",
       len(_tc3) == 2 and all(c["_zona"] == "JMH" and c["_capa"] == 2 for c in _tc3))
-check("...y cada una se sienta en UNA columna, no se reparte por todo el muro",
-      all(c["distribucion"]["rango"]["from"] == c["distribucion"]["rango"]["to"]
-          for c in _tc3))
+check("...y cada una vive en UNA capa via off_caras, no repartida por el muro",
+      all(c.get("off_caras", {}).get("x") for c in _tc3)
+      and all(c["distribucion"]["rango"]["eje"] == "y" for c in _tc3))
 check("...con la traba de MURO, que si va por todo el paño, sin tocar",
       _tr and _tr[0]["distribucion"]["rango"]["from"] < -200)
+
+# PEDIR CONFINAMIENTO DOS VECES NO LO DUPLICA (JSON del usuario 8-sep: 6 TC repetidas
+# byte a byte -- el modelo llamo "trabas" y despues "estribo", y nadie retiro las
+# anteriores). Volver a pedirlo lo REHACE.
+_cnt = lambda r, t: len([c for c in r["componentes"] if c["tipologia"] == t])
+_rda, _ = _aplicar_cambios(_r1, [{"accion": "agregar", "armadura": "estribo"}], _CATC)
+check("pedir confinamiento de nuevo lo rehace, no lo duplica",
+      _cnt(_rda, "TC") == _cnt(_r1, "TC") and _cnt(_rda, "EC") == _cnt(_r1, "EC"))
+
+# Y EL CONFINAMIENTO SIGUE A LOS CABEZALES (la "revision organica"): al pasar de 2 a
+# 3 capas se rearma solo -- una traba JMH nueva en la capa 3 y la EMH de la capa 2
+# que el estribo 1-3 no cubre -- avisando lo que hizo.
+_idx_cb = [i + 1 for i, c in enumerate(_r1["componentes"]) if c["tipologia"] == "CB"]
+_r3c, _av3 = _aplicar_cambios(_r1, [{"accion": "editar", "barra": i, "n_capas": 3}
+                                    for i in _idx_cb], _CATC)
+check("cambiar las capas del cabezal reacomoda el confinamiento solo",
+      _cnt(_r3c, "TC") == 6 and _cnt(_r3c, "EC") == 2
+      and any("reacomod" in a for a in _av3))
+check("...y quitar los cabezales lo quita: no queda nada que confinar",
+      _cnt(_aplicar_cambios(_r1, [{"accion": "quitar", "barra": i}
+                                  for i in sorted(_idx_cb, reverse=True)],
+                            _CATC)[0], "TC") == 0)
 
 # ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
