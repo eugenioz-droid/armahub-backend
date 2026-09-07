@@ -1205,8 +1205,12 @@ check("...la traba junto a la MH y el estribo entre medio",
       [c["distribucion"]["rango"]["from"] for c in _conf1[:2]]
       == [_mh0["distribucion"]["rango"]["from"],
           _mh0["distribucion"]["rango"]["from"] + _sep0 / 2])
-check("...y el estribo con el largo del PAQUETE de cabezales (15 + phi22 + phi10)",
-      [c for c in _conf1 if c["tipologia"] == "EC"][0]["dims"]["B"]["valor"] == 18.2)
+# 15 de paquete + φ22 de cabezal + DOS φ10 de estribo. El segundo φest no sale de la
+# geometria sino del trazo REAL medido: el marco dibuja 1 cm menos de lo que dice su B
+# (se lo comen los dobleces), y sin compensarlo el estribo mordia la capa 2 -- holgura
+# 1,6 afuera y 0,6 adentro. Con esto quedan 1,6 y 1,6.
+check("...y el estribo con el largo del PAQUETE de cabezales mas su holgura",
+      [c for c in _conf1 if c["tipologia"] == "EC"][0]["dims"]["B"]["valor"] == 19.2)
 _r2, _ = _aplicar_cambios(_construir_receta_muro(
     dict(_SIN_CONF, bordes=dict(_SIN_CONF["bordes"], barras={"diam": 22, "barras_capa": 2,
                                                              "n_capas": 1, "sep_capas": 15})),

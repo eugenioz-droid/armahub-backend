@@ -1140,8 +1140,15 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     # ANTES eran (capas-1)*gap + 30, un margen inventado: con 2 capas @15 daba 45, y
     # el usuario lo leyo tal cual -- «asumiria que los cabezales son de separacion 45
     # y 3 capas, pero en este caso tenemos 2».
+    # EL MARGEN SON DOS DIAMETROS DE ESTRIBO, NO UNO (medido 7-sep). El calculo
+    # geometrico -- medio cabezal + medio estribo por punta, o sea φcab + φest -- daba
+    # 18,2 y el estribo salia MORDIENDO la capa 2: medido contra el motor, el trazo
+    # cubria 17,2 de los 18,2 escritos, asi que dejaba 1,6 de holgura en la punta de
+    # afuera y solo 0,6 en la de adentro. El centimetro que falta se lo comen los
+    # dobleces del marco. Se compensa con un φest mas, y las dos holguras quedan en
+    # 1,6. (Es una correccion MEDIDA sobre el trazo real, no una formula nueva.)
     lconf = _num(bo.get("largo")) or _r1((capas - 1) * gap
-                                         + (_num(bb.get("diam")) + diam) / 10.0)
+                                         + (_num(bb.get("diam")) + 2 * diam) / 10.0)
     comps = []
 
     # LA FASE SE CORRE EN LOS DOS EXTREMOS, NO EN UNO (medido en el motor 7-sep).
