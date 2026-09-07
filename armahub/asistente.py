@@ -739,16 +739,26 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
                                   if _num(e) > 0]
             est = bo.get("estribo")
             estribo = None
-            if isinstance(est, dict) and _num(est.get("diam")) > 0:
+            if isinstance(est, dict):
+                # EL DIAMETRO DEL CONFINAMIENTO SALE DE LA MH (usuario 6-sep), asi
+                # que un estribo pedido SIN diametro ya no se descarta: se hereda.
+                # `null` sigue significando «no lleva» -- eso es lo que distingue
+                # «no lo pidio» de «lo pidio y no dio el numero».
                 estribo = _armadura(est)
+                if estribo["diam"] <= 0:
+                    estribo["diam"] = (mh or {}).get("diam") or (mv or {}).get("diam") or 0
                 if estribo["sep"] <= 0:
-                    estribo["sep"] = 10.0
+                    estribo["sep"] = (mh or {}).get("sep") or 10.0
             donde = [d for d in (bo.get("donde") or [])
                      if str(d).strip().lower() in _PILA_CB]
             out["bordes"] = {"barras": barras, "estribo": estribo,
                              "donde": [str(d).strip().lower() for d in donde]
                                       or ["laterales"],
-                             "largo": _num(bo.get("largo"), 40) or 40}
+                             # 0 = no lo dicto: el largo confinado se DERIVA del
+                             # paquete de cabezales (ver _confinamiento_de_punta).
+                             # Un default fijo de 40 dejaba el estribo mas corto que
+                             # lo que tiene que abrazar en cuanto hay 4 capas.
+                             "largo": _num(bo.get("largo"))}
 
     # Una ficha sin NINGUNA armadura no es un muro a medias: es un muro vacio, y de
     # eso no sale ninguna barra. Ahi si corresponde volver a preguntar.
@@ -906,6 +916,13 @@ def _componentes_cabezal(bb):
     return out
 
 
+def _ancho_confinado(geo) -> float:
+    """Ancho de los elementos de confinamiento, en cm: ESPESOR MENOS DOS
+    RECUBRIMIENTOS (usuario 6-sep). Vale igual para el estribo EC y para la traba
+    TC, porque los dos abrazan el cabezal y no la malla."""
+    return max(1.0, _num(geo.get("esp")) - 2.0 * _num(geo.get("rec"), 2.5))
+
+
 def _fabricar(clase, p, geo, figuras, lados):
     """Los componentes de UNA armadura: clase en malla_vertical / malla_horizontal /
     trabas / cabezales / estribo. `p` ya viene normalizado; `lados` dice en que
@@ -993,10 +1010,23 @@ def _fabricar(clase, p, geo, figuras, lados):
         # agarrarlas (regla de la casa, usuario 31-ago: «2 cm mas en su lado B»).
         dims_tr = {L: {"modo": "auto"} for L in par}
         cuerpo = _lado_que_corre(par)
-        sobre = _num(p.get("sobrelargo"), 2) if p.get("sobrelargo") is not None else 2
-        if cuerpo and sobre:
-            dims_tr[cuerpo]["delta"] = _r1(sobre)
-            dims_tr[cuerpo]["extremo"] = "centro"   # crece por las dos puntas
+        if tip == "TC":
+            # LA TC NO MIDE LO MISMO QUE LA TR (usuario 6-sep). La traba de MURO
+            # engancha la malla, asi que su cuerpo pasa por FUERA del eje de las dos
+            # cortinas y por eso lleva sobrelargo. La de CONFINAMIENTO engancha el
+            # CABEZAL, que vive por dentro de la malla, asi que es mas corta: su
+            # ancho es el del estribo de confinamiento, ESPESOR MENOS DOS
+            # RECUBRIMIENTOS, y nada de sobrelargo.
+            # Hasta hoy las dos se fabricaban IDENTICAS y solo cambiaba el nombre.
+            # (Puede coincidir que TR y TC midan igual, pero es lo inusual.)
+            if cuerpo:
+                dims_tr[cuerpo] = {"modo": "fija",
+                                   "valor": _r1(_ancho_confinado(geo))}
+        else:
+            sobre = _num(p.get("sobrelargo"), 2) if p.get("sobrelargo") is not None else 2
+            if cuerpo and sobre:
+                dims_tr[cuerpo]["delta"] = _r1(sobre)
+                dims_tr[cuerpo]["extremo"] = "centro"   # crece por las dos puntas
         comps.append(_marcar_jer(_mk_extras(_mk_base(
             tip, fig, p["diam"], ang, "arreglo", "sup", 1, "z", "volteada",
             True, dims_tr,
@@ -1068,6 +1098,79 @@ def _fabricar(clase, p, geo, figuras, lados):
             ec["pos_hint"] = {"x": _r1(lado * (geo["largo"] / 2.0 - geo["rec"]
                                                - lconf / 2.0))}
             comps.append(_mk_extras(ec, p))
+    return comps
+
+
+def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
+    """EC + TC de UNA punta del muro (usuario 6-sep).
+
+    DOS ZONAS a lo largo de la altura, con la separacion de la MH y desfasadas media
+    separacion entre si:
+      · JMH — «junto a la malla horizontal»: en la MISMA linea que la MH.
+      · EMH — «entre la malla horizontal»: en el hueco que queda entre dos de ellas.
+
+    QUE VA EN CADA UNA, y por que no es lo mismo: en la linea de la MH la propia
+    malla YA confina la capa 1 del cabezal, asi que sobra con una traba por cada capa
+    SUCESIVA. Entre medio no hay nada que ayude, asi que va un ESTRIBO que toma de la
+    capa 1 a la ultima, mas una traba por cada capa INTERMEDIA que el estribo no
+    agarra. Con 2 capas de 2 barras -- el caso usual -- eso da una traba en JMH y un
+    estribo en EMH, y las 4 barras quedan confinadas en las dos lineas. Con 3 capas:
+    dos trabas en JMH, y en EMH el estribo largo (capa 1 a 3) mas una traba.
+
+      JMH:  n-1 trabas          EMH:  1 estribo (capa 1..n)  +  n-2 trabas
+
+    EL ESTRIBO DE 1 A n ES EL DEFAULT, NO LA UNICA FORMA. Con 4 capas se podria pedir
+    dos estribos (1-2 y 3-4); cuando el usuario dicte que capas toma cada estribo,
+    esto es lo que hay que variar.
+
+    El confinamiento va en TODA la altura del muro."""
+    bb = bo["barras"]
+    est = bo.get("estribo") or {}
+    capas = max(1, int(_num(bb.get("n_capas"), 1)))
+    gap = _num(bb.get("sep_capas")) or _SEP_CAPAS_DEF
+    # El diametro del confinamiento es el de la MH, salvo que se dicte (usuario 6-sep).
+    diam = _num(est.get("diam")) or _num(diam_mh) or _num(bb.get("diam"))
+    sep = _num(est.get("sep")) or _num(sep_mh) or 20.0
+    ry = geo["alto"] / 2.0 - geo["rec"]
+    rx = geo["largo"] / 2.0 - geo["rec"]
+    # Lo que el estribo tiene que abrazar: de la capa 1 a la ultima, mas el margen
+    # que ya traia la ficha para darle la vuelta a las barras.
+    lconf = _num(bo.get("largo")) or _r1((capas - 1) * gap + 2.0 * _SEP_CAPAS_DEF)
+    comps = []
+
+    def _x_de_capa(k):
+        """cm del eje de la capa k (0 = la de mas afuera), medidos desde el testero."""
+        return _r1(lado * (rx - k * gap))
+
+    def _tc(k, fase):
+        p = {"diam": diam, "figura": "", "jerarquia": 0, "tramos": [],
+             "sobrelargo": 0}
+        c = _fabricar("trabas_confinamiento", p, geo, figuras, [1])[0]
+        # La TC de confinamiento NO se reparte en arreglo x*y como la de muro: vive
+        # en UNA capa del cabezal y sube por la altura con la separacion del borde.
+        c["modo"] = "lineal"
+        c["distribucion"] = _mk_lin(sep, "y", -ry + fase, ry, None)
+        c["pos_hint"] = {"x": _x_de_capa(k)}
+        return c
+
+    # --- JMH: en la linea de la MH. La malla cubre la capa 1; una traba por cada
+    #     capa siguiente.
+    for k in range(1, capas):
+        comps.append(_tc(k, 0.0))
+    # --- EMH: el estribo de la capa 1 a la ultima, desfasado media separacion.
+    e = dict(est, diam=diam, sep=sep, largo=lconf)
+    ec = _fabricar("estribo", e, geo, figuras, [lado])[0]
+    # El reparto se REESCRIBE para desfasarlo a EMH, asi que lo que el usuario haya
+    # dictado (multi-@ por tramos, anidado) tiene que viajar: si no, moverlo media
+    # separacion se lo comeria en silencio.
+    anid = (ec.get("distribucion") or {}).get("anidar")
+    ec["distribucion"] = _mk_lin(sep, "y", -ry + sep / 2.0, ry, est.get("tramos"))
+    if anid is not None:
+        ec["distribucion"]["anidar"] = anid
+    comps.append(ec)
+    #     …mas una traba por cada capa INTERMEDIA (las que el estribo no agarra).
+    for k in range(1, capas - 1):
+        comps.append(_tc(k, sep / 2.0))
     return comps
 
 
@@ -1383,9 +1486,9 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
                     comps += _fabricar("cabezales", dict(parte, donde="laterales"),
                                        geo, figuras, [lado])
                 if est:
-                    e = dict(est)
-                    e["largo"] = bo.get("largo") or 40
-                    comps += _fabricar("estribo", e, geo, figuras, [lado])
+                    comps += _confinamiento_de_punta(
+                        bo, geo, figuras,
+                        (mh or {}).get("sep"), (mh or {}).get("diam"), lado)
         for donde in dondes:
             if donde == "laterales":
                 continue
@@ -1832,7 +1935,8 @@ def _resumen_de_spec(spec: dict) -> list:
                                + ubic + det + _detalle_fig(bb),
                       "origen": org("bordes")})
         filas.append({"label": "Estribo borde",
-                      "valor": (f"φ{est['diam']:g} @ {est['sep']:g} · largo {bo['largo']:g}" if est
+                      "valor": ((f"φ{est['diam']:g} @ {est['sep']:g}"
+                                 + (f" · largo {bo['largo']:g}" if bo.get("largo") else "")) if est
                                 else "sin estribo"),
                       "origen": org("bordes")})
     else:

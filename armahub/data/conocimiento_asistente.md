@@ -194,14 +194,41 @@ Con 4 capas, 2 largos y s=15: dos componentes de 2 capas @30, el segundo arranca
 0 y 15. **Si el usuario dice que son distintas pero no da los largos, hay que
 preguntárselos**: son números suyos.
 
-**EC · Estribo Confinamiento.** Marco CERRADO con ganchos (figura de la casa: 106A) que abraza el paquete
-de cabezales en la punta. Corre en el plano de la sección y se reparte en la ALTURA,
-apretado (típico @10-15 cm). No abarca el muro entero: se acota al largo confinado de
-la punta (típico 40-80 cm).
+**CONFINAMIENTO — EC y TC.** Los dos existen para lo mismo: confinar los cabezales.
+Hay más de una forma de hacerlo; ésta es la usual y es la que la plataforma arma sola.
 
-**TC · Traba Confinamiento.** Traba corta dentro del elemento de borde, que amarra las
-barras del cabezal que el estribo no toma. Cruza el espesor como la TR, pero con la
-separación apretada del borde (la misma del EC), no la de la malla corriente.
+**DOS ZONAS a lo largo de la altura**, con la separación de la MH y desfasadas media
+separación entre sí:
+
+- **JMH — «junto a la malla horizontal»**: en la misma línea que ella, con su misma
+  distribución.
+- **EMH — «entre la malla horizontal»**: en el hueco que queda entre dos de ellas.
+
+**Qué va en cada una, y por qué no es lo mismo.** En la línea de la MH la propia malla
+**ya confina la capa 1** del cabezal, así que basta **una traba por cada capa
+siguiente**. Entre medio no hay nada que ayude, así que va un **estribo** que toma de
+la capa 1 a la última, más una traba por cada capa **intermedia** que el estribo no
+agarra.
+
+> **JMH: n−1 trabas** · **EMH: 1 estribo (capa 1 → n) + n−2 trabas**
+
+Con **2 capas de 2 barras** — el caso usual — eso es **una traba en JMH y un estribo en
+EMH**, y las 4 barras quedan confinadas en las dos líneas. Con **3 capas**: dos trabas
+en JMH, y en EMH el estribo largo más una traba.
+
+**El estribo de 1 a n es el DEFAULT, no la única forma.** Con 4 capas se podría pedir
+dos estribos (1-2 y 3-4); eso lo dicta el usuario.
+
+- **Diámetro: el de la MH**, salvo que lo dicten.
+- **Ancho de los dos: espesor − 2·recubrimiento.** En el otro sentido, el estribo mide
+  lo suficiente para darle la vuelta a los cabezales.
+- **El confinamiento va en TODA la altura** del muro.
+
+**EC · Estribo.** Marco CERRADO con ganchos (figura de la casa: **106A**).
+
+**TC · Traba.** **Engancha el CABEZAL, no la malla**, y por eso es más corta que la
+traba de muro: la TR pasa por fuera del eje de las dos cortinas y lleva sobrelargo, la
+TC no. Puede coincidir que las dos midan igual, pero es lo inusual.
 
 **Dónde vive la traba de muro** (regla de la casa): solo en el tramo COMPRENDIDO
 ENTRE los cabezales — el borde ya tiene su propio confinamiento y no se le

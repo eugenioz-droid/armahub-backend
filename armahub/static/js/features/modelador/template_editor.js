@@ -10687,6 +10687,17 @@
       // decenas de veces por segundo, y un interruptor que se dispara con cada
       // repetición parpadearía en vez de conmutar.
       if (e.key === 'Shift') { if (!e.repeat) _setCotas(!ST.cotas); return; }
+      // V → SIGUIENTE VISTA mientras hay un cuadrante agrandado. Va ARRIBA del corte
+      // de solo-lectura junto con SHIFT y por la misma razón: mirar no es mutar, y a
+      // un usuario que solo puede ver le sirve igual recorrer las vistas.
+      // Solo actúa si YA hay una agrandada: si no, V no hace nada y la tecla queda
+      // libre para el resto del modal.
+      if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey
+          && _vistaMaximizada()) {
+        e.preventDefault();
+        if (!e.repeat) _cicloVistaMaximizada(e.shiftKey ? -1 : 1);
+        return;
+      }
       // SOLO VISTA - de aqui para abajo TODOS los atajos mutan (Ctrl+Z deshace,
       // ESPACIO y R giran, Supr borra). Se cortan en el dispatch y se DICE por que:
       // una tecla muerta y muda parece un cuelgue. SHIFT queda arriba a proposito
@@ -12233,14 +12244,33 @@
       // estado ya lo canta el fondo verde (.on) y hace falta un icono que se LEA como
       // "encoger", no como una segunda lupa.
       b.textContent = esta ? '⤡' : '🔍';
-      b.title = esta ? 'Volver a los 4 cuadrantes (Esc)' : 'Agrandar este cuadrante';
+      b.title = esta ? 'Volver a los 4 cuadrantes (Esc) — V pasa a la siguiente vista'
+                     : 'Agrandar este cuadrante';
     });
     quad.classList.toggle('te-maxon', !!destino);
     _marcarSucio();               // render-on-demand: los viewports cambiaron de rect
     _sincronizarOverlayOrto();    // …y el overlay SVG hay que recalcularlo (ver la nota)
     _actualizarStatus(destino
-      ? 'Cuadrante agrandado — la lupa o Esc vuelven a los 4.'
+      ? 'Cuadrante agrandado — V pasa a la siguiente vista · la lupa o Esc vuelven a los 4.'
       : 'De vuelta a los 4 cuadrantes.');
+  }
+
+  // V (con un cuadrante agrandado) → PASA AL SIGUIENTE, sin volver a los 4 y sin
+  // salir del modal. Pedido del usuario (6-sep): con la lupa se entra a una vista y
+  // con V se recorren todas en orden, que es como se revisa un muro — sección,
+  // elevación, planta, 3D — sin tener que encoger y volver a agrandar cada vez.
+  // Shift+V las recorre al revés.
+  // NO abre la primera: entrar sigue siendo la lupa, tal cual lo pidió.
+  function _cicloVistaMaximizada(paso) {
+    var quad = $('te_quad'); if (!quad) return;
+    var vistas = Array.prototype.slice.call(quad.querySelectorAll('.te-vista'));
+    var i = vistas.indexOf(_vistaMaximizada());
+    if (i < 0 || vistas.length < 2) return;
+    var sig = vistas[(i + paso + vistas.length) % vistas.length];
+    _maximizarVista(sig);         // sig !== la actual, así que agranda (no encoge)
+    var t = sig.querySelector('.te-vtitle');
+    _actualizarStatus((t ? t.textContent.trim() : 'Vista') +
+      ' — V pasa a la siguiente, Esc vuelve a los 4.');
   }
 
   function _bindLupas() {

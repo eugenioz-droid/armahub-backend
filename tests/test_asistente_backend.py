@@ -109,8 +109,13 @@ SPEC = {
 
 r = _construir_receta_muro(SPEC)
 tips = [c["tipologia"] for c in r["componentes"]]
-check("tipologias REALES del muro (MV/MH x2 cortinas + TC + CB/EC x2 puntas)",
-      tips == ["MV", "MH", "MV", "MH", "TR", "CB", "EC", "CB", "EC"])
+# El confinamiento dejo de ser UN estribo por punta: son las dos ZONAS que dicto el
+# usuario el 6-sep -- una traba JUNTO a la malla horizontal (la MH ya confina la capa
+# 1, asi que basta una por cada capa siguiente) y un estribo ENTRE dos de ellas, que
+# toma las 4 barras porque ahi no hay malla que ayude. Con 2 capas: 1 TC + 1 EC.
+check("tipologias REALES del muro (MV/MH x2 cortinas + TR + CB y su confinamiento)",
+      tips == ["MV", "MH", "MV", "MH", "TR",
+               "CB", "TC", "EC", "CB", "TC", "EC"])
 mvs = [c for c in r["componentes"] if c["tipologia"] == "MV"]
 check("cada cortina es UN componente con lado +-1 (no capas)",
       [c["lado"] for c in mvs] == [1, -1]
@@ -1082,6 +1087,88 @@ check("...y dice que en la 103C el lado que corre es el C",
       "el lado que corre a lo alto es el C" in _CM)
 check("...y deja anotado el antecedente de la 103A (gancho abierto, se dobla en obra)",
       "103A" in _CM and "en obra lo terminan de doblar" in _CM)
+
+# ---------------------------------------------------------------------------
+# CONFINAMIENTO: las dos zonas JMH / EMH (usuario 6-sep)
+# ---------------------------------------------------------------------------
+from armahub.asistente import _ancho_confinado
+
+_CATC = dict(_CATMV, **{"102A": {"parciales": ["A", "B"], "angulos": []},
+                        "103A": {"parciales": ["A", "B", "C"], "angulos": []},
+                        "103B": {"parciales": ["A", "B", "C"], "angulos": [45, 45]},
+                        "106A": {"parciales": ["A", "B", "C", "D", "E", "F"],
+                                 "angulos": [45, 45]}})
+
+
+def _conf(capas, sep_capas=15):
+    r = _construir_receta_muro({
+        "geometria": {"largo": 500, "alto": 310, "espesor": 20, "recubrimiento": 2},
+        "malla_vertical": {"diam": 10, "sep": 20},
+        "malla_horizontal": {"diam": 8, "sep": 20},
+        "doble_malla": True, "condicion": "inicia",
+        "bordes": {"barras": {"diam": 22, "barras_capa": 2, "n_capas": capas,
+                              "sep_capas": sep_capas},
+                   "estribo": {"diam": 0, "sep": 0}},
+        "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                     "bordes": "leido"}}, _CATC)
+    conf = [c for c in r["componentes"] if c["tipologia"] in ("EC", "TC")]
+    return conf[:len(conf) // 2]          # UNA punta (las dos son iguales)
+
+
+def _zona(c):
+    """JMH = en la linea de la MH · EMH = desfasada media separacion."""
+    y0 = ((c.get("distribucion") or {}).get("rango") or {}).get("from", 0)
+    return "JMH" if abs(y0 - (-153.0)) < 0.6 else "EMH"
+
+
+_c2, _c3, _c4 = _conf(2), _conf(3), _conf(4)
+
+# EL CASO USUAL: 2 capas de 2 barras -> UNA traba junto a la MH (la malla ya confina
+# la capa 1) y UN estribo entre medio, que toma las 4 porque ahi no hay malla.
+check("2 capas: una traba en JMH y un estribo en EMH",
+      [(c["tipologia"], _zona(c)) for c in _c2] == [("TC", "JMH"), ("EC", "EMH")])
+check("3 capas: dos trabas JMH, y en EMH el estribo mas una traba",
+      [(c["tipologia"], _zona(c)) for c in _c3]
+      == [("TC", "JMH"), ("TC", "JMH"), ("EC", "EMH"), ("TC", "EMH")])
+check("la cuenta generaliza: JMH n-1 trabas, EMH un estribo + n-2 trabas",
+      [len([c for c in g if _zona(c) == "JMH"]) for g in (_c2, _c3, _c4)] == [1, 2, 3]
+      and [len([c for c in g if _zona(c) == "EMH" and c["tipologia"] == "TC"])
+           for g in (_c2, _c3, _c4)] == [0, 1, 2]
+      and all(len([c for c in g if c["tipologia"] == "EC"]) == 1
+              for g in (_c2, _c3, _c4)))
+check("las dos zonas van desfasadas MEDIA separacion, con el @ de la MH",
+      all(((c["distribucion"].get("rango") or {}).get("sep")) == 20 for c in _c3)
+      and abs(_c3[0]["distribucion"]["rango"]["from"]
+              - _c3[2]["distribucion"]["rango"]["from"]) == 10)
+check("cada traba se sienta en SU capa (a un gap de la anterior)",
+      [c["pos_hint"]["x"] for c in _c3 if _zona(c) == "JMH"] == [233.0, 218.0])
+check("el diametro del confinamiento sale de la MH si no se dicta",
+      all(c["diam"] == 8 for c in _c3))
+check("el confinamiento va en TODA la altura",
+      all((c["distribucion"].get("rango") or {}).get("to") == 153.0 for c in _c3))
+
+# EL ANCHO. Los dos abrazan el CABEZAL, no la malla: espesor menos dos recubrimientos.
+check("el ancho de confinamiento es espesor - 2 recubrimientos",
+      _ancho_confinado({"esp": 20, "rec": 2}) == 16
+      and _ancho_confinado({"esp": 25, "rec": 3}) == 19)
+check("la TC lo lleva FIJO, no auto con sobrelargo como la traba de muro",
+      all(c["dims"]["B"] == {"modo": "fija", "valor": 16.0}
+          for c in _c3 if c["tipologia"] == "TC"))
+_tr = [c for c in _construir_receta_muro({
+    "geometria": {"largo": 500, "alto": 310, "espesor": 20, "recubrimiento": 2},
+    "malla_vertical": {"diam": 10, "sep": 20},
+    "malla_horizontal": {"diam": 8, "sep": 20}, "doble_malla": True,
+    "trabas": {"diam": 8, "sx": 40, "sy": 40},
+    "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                 "trabas": "leido"}}, _CATC)["componentes"] if c["tipologia"] == "TR"]
+check("la TR en cambio sigue con su sobrelargo: engancha la malla, no el cabezal",
+      _tr and _tr[0]["dims"]["B"].get("delta") == 2
+      and _tr[0]["dims"]["B"]["modo"] == "auto")
+
+check("el conocimiento explica las dos zonas y por que no llevan lo mismo",
+      "JMH" in _CM and "EMH" in _CM and "ya confina la capa 1" in _CM)
+check("...y que el estribo de 1 a n es el DEFAULT, no la unica forma",
+      "no la única forma" in _CM)
 
 # ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
