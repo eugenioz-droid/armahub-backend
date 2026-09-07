@@ -1173,6 +1173,48 @@ check("el conocimiento explica las dos zonas y por que no llevan lo mismo",
 check("...y que el estribo de 1 a n es el DEFAULT, no la unica forma",
       "no la única forma" in _CM)
 
+# LAS DOS PUERTAS TIENEN QUE ARMAR LO MISMO (usuario 7-sep). La ficha completa sabia
+# la regla de las zonas y `operar_barras` -> «agregale confinamiento» NO: llamaba
+# directo a la fabrica del estribo, sin zonas, con su propio @10 y el largo que
+# dijera el modelo. Y como el muro se arma POR PARTES -que es el flujo que pedimos-
+# el confinamiento entra casi siempre por esa segunda puerta, asi que el arreglo
+# desplegado no se veia por ninguna parte.
+from armahub.asistente import _aplicar_cambios
+
+_SIN_CONF = {"geometria": {"largo": 400, "alto": 250, "espesor": 20, "recubrimiento": 2},
+             "malla_vertical": {"diam": 10, "sep": 20},
+             "malla_horizontal": {"diam": 10, "sep": 20},
+             "doble_malla": True, "condicion": "inicia",
+             "bordes": {"barras": {"diam": 22, "barras_capa": 2, "n_capas": 2,
+                                   "sep_capas": 15}, "estribo": None},
+             "origenes": {"malla_vertical": "leido", "malla_horizontal": "leido",
+                          "bordes": "leido"}}
+_r0 = _construir_receta_muro(_SIN_CONF, _CATC)
+check("un muro pedido sin confinamiento no lo trae",
+      not [c for c in _r0["componentes"] if c["tipologia"] in ("EC", "TC")])
+_r1, _av1 = _aplicar_cambios(_r0, [{"accion": "agregar", "armadura": "estribo"}], _CATC)
+_conf1 = [c for c in _r1["componentes"] if c["tipologia"] in ("EC", "TC")]
+check("«agregale confinamiento» arma las DOS zonas, no un estribo suelto",
+      [c["tipologia"] for c in _conf1] == ["TC", "EC", "TC", "EC"])
+_mh0 = [c for c in _r1["componentes"] if c["tipologia"] == "MH"][0]
+_sep0 = _mh0["distribucion"]["rango"]["sep"]
+check("...con el @ y el phi de la malla horizontal, no con un 10 fijo",
+      all(c["diam"] == _mh0["diam"]
+          and c["distribucion"]["rango"]["sep"] == _sep0 for c in _conf1))
+check("...la traba junto a la MH y el estribo entre medio",
+      [c["distribucion"]["rango"]["from"] for c in _conf1[:2]]
+      == [_mh0["distribucion"]["rango"]["from"],
+          _mh0["distribucion"]["rango"]["from"] + _sep0 / 2])
+check("...y el estribo con el largo del PAQUETE de cabezales (15 + phi22 + phi10)",
+      [c for c in _conf1 if c["tipologia"] == "EC"][0]["dims"]["B"]["valor"] == 18.2)
+_r2, _ = _aplicar_cambios(_construir_receta_muro(
+    dict(_SIN_CONF, bordes=dict(_SIN_CONF["bordes"], barras={"diam": 22, "barras_capa": 2,
+                                                             "n_capas": 1, "sep_capas": 15})),
+    _CATC), [{"accion": "agregar", "armadura": "estribo"}], _CATC)
+check("con UNA capa la segunda puerta tampoco pone estribo: solo la traba EMH",
+      [c["tipologia"] for c in _r2["componentes"]
+       if c["tipologia"] in ("EC", "TC")] == ["TC", "TC"])
+
 # ---------------------------------------------------------------------------
 # SI NO LA PEDISTE, NO SE CONSTRUYE (usuario 1-sep, segunda vuelta)
 # ---------------------------------------------------------------------------

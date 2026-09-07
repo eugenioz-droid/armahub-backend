@@ -1715,6 +1715,48 @@ def _editar_comp(c, cb, geo, figuras):
     return c
 
 
+def _confinamiento_sobre_receta(comps, geo, figuras, cb):
+    """El confinamiento de un muro que YA está armado en el editor.
+
+    EXISTE PORQUE HABÍA DOS PUERTAS Y SÓLO UNA SABÍA LA REGLA (usuario 7-sep). La
+    ficha completa arma el confinamiento por zonas (JMH / EMH) desde el 6-sep, pero
+    `operar_barras` -> «agrégale confinamiento» llamaba DIRECTO a la fábrica del
+    estribo: sin zonas, con su propio @10 por defecto y el largo que dijera el
+    modelo. Y como el muro se arma por partes -- que es el flujo que pedimos -- el
+    confinamiento entra casi siempre por esa segunda puerta. El usuario vio el
+    estribo pegado a la malla horizontal y con un largo que no correspondía al
+    paquete de cabezales, con el arreglo ya desplegado.
+
+    Los datos NO se le piden al modelo: se LEEN de lo que ya hay en el editor —
+    cuántas capas de cabezal, con qué separación y qué diámetro tiene la malla
+    horizontal. Es la misma información que usaría el cubicador mirando la pantalla.
+
+    Devuelve [] si no hay cabezales: sin ellos no hay nada que confinar y
+    corresponde el estribo suelto de siempre."""
+    cbs = [c for c in _por_tip(comps, "CB") if not c.get("_cb_borde")]
+    if not cbs:
+        return []
+    d0 = cbs[0].get("distribucion") or {}
+    mhs = _por_tip(comps, "MH")
+    mh = (mhs[0] if mhs else {}) or {}
+    sep_mh = ((mh.get("distribucion") or {}).get("rango") or {}).get("sep")
+    bo = {
+        "barras": {"diam": _num(cbs[0].get("diam")),
+                   "n_capas": max(1, int(_num(d0.get("n_capas"), 1))),
+                   "sep_capas": _num(d0.get("gap")) or _SEP_CAPAS_DEF},
+        # Lo que el usuario dicte en el cambio manda; lo que no, se deriva.
+        "estribo": {"diam": _num(cb.get("diam")), "sep": _num(cb.get("sep")),
+                    "figura": str(cb.get("figura") or "").strip().upper(),
+                    "tramos": cb.get("tramos") or []},
+        "largo": _num(cb.get("largo")),
+    }
+    out = []
+    for lado in (1, -1):
+        out += _confinamiento_de_punta(bo, geo, figuras, sep_mh,
+                                       _num(mh.get("diam")), lado)
+    return out
+
+
 def _aplicar_cambios(receta_actual, cambios, figuras):
     """Los cambios de operar_barras sobre la receta del editor. Devuelve
     (receta_nueva, avisos). Un indice invalido AVISA en vez de reventar: el resto
@@ -1748,6 +1790,17 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
                         "trabas": (8, 40), "trabas_confinamiento": (8, 10),
                         "cabezales": (16, 0), "estribo": (8, 10)}
             ddiam, dsep = defaults[clase]
+            # EL CONFINAMIENTO SIGUE A LA MALLA HORIZONTAL, no a un numero fijo: su
+            # diametro y su separacion son los de ella (usuario 6-sep). El @10 de la
+            # tabla dejaba el estribo al doble de densidad que la malla, y ahi las dos
+            # zonas -junto a la MH y entre medio- dejan de existir: uno de cada dos
+            # estribos cae sobre una barra de malla por pura aritmetica.
+            if clase in ("estribo", "trabas_confinamiento"):
+                _mh0 = _por_tip(comps, "MH")
+                if _mh0:
+                    _r0 = (_mh0[0].get("distribucion") or {}).get("rango") or {}
+                    ddiam = _num(_mh0[0].get("diam")) or ddiam
+                    dsep = _num(_r0.get("sep")) or dsep
             p = {"diam": _num(cb.get("diam")) or ddiam,
                  "sep": _num(cb.get("sep")) or dsep,
                  "sx": _num(cb.get("sep")) or 40, "sy": _num(cb.get("sep2")) or 40,
@@ -1773,7 +1826,14 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
                 lados = [-1]
             else:
                 lados = [1, -1]
-            comps.extend(_fabricar(clase, p, geo, figuras, lados))
+            if clase == "estribo":
+                # CONFINAMIENTO = las dos zonas, no un estribo suelto. Se arma con lo
+                # que YA hay en el editor (capas del cabezal, @ de la malla). Si no
+                # hay cabezales que confinar, cae al estribo de siempre.
+                nuevos = _confinamiento_sobre_receta(comps, geo, figuras, cb)
+                comps.extend(nuevos or _fabricar(clase, p, geo, figuras, lados))
+            else:
+                comps.extend(_fabricar(clase, p, geo, figuras, lados))
     if not comps:
         raise ValueError("El muro quedaria sin ninguna barra; no aplique los cambios.")
     avisos.extend(_aplicar_reglas(receta))
