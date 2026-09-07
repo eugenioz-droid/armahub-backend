@@ -482,6 +482,19 @@ TOOL_MURO = {
                                   "properties": {
                                       "diam": {"type": "number", "description": "φ estribo en mm"},
                                       "sep": {"type": "number", "description": "@ en cm (usual ≤6φ y ≤½ espesor)"},
+                                      "capas": {
+                                          "type": "array",
+                                          "items": {"type": "array",
+                                                    "items": {"type": "integer"}},
+                                          "description": "QUE CAPAS TOMA CADA "
+                                                         "ESTRIBO, como pares. "
+                                                         "[[1,4]] = uno solo de la "
+                                                         "capa 1 a la 4 (default). "
+                                                         "[[1,2],[3,4]] = dos "
+                                                         "estribos. Las trabas EMH "
+                                                         "salen SOLAS de aqui: no "
+                                                         "las calcules",
+                                      },
                                       "figura": _FIGURA_PROP,
                                       "tramos": _TRAMOS_PROP,
                                       "anidar": {
@@ -745,6 +758,9 @@ def _normalizar_ficha(spec: dict, receta_actual=None) -> dict:
                 # `null` sigue significando «no lleva» -- eso es lo que distingue
                 # «no lo pidio» de «lo pidio y no dio el numero».
                 estribo = _armadura(est)
+                estribo["capas"] = [[int(_num(x)) for x in par[:2]]
+                                    for par in (est.get("capas") or [])
+                                    if isinstance(par, (list, tuple)) and len(par) >= 2]
                 if estribo["diam"] <= 0:
                     estribo["diam"] = (mh or {}).get("diam") or (mv or {}).get("diam") or 0
                 if estribo["sep"] <= 0:
@@ -1101,6 +1117,25 @@ def _fabricar(clase, p, geo, figuras, lados):
     return comps
 
 
+def _rangos_estribo(pedidos, capas):
+    """Qué capas toma cada estribo, como lista de pares (a, b) en base 1.
+
+    Default: UN estribo de la capa 1 a la última. Con una sola capa no hay paquete
+    que abrazar, así que no va estribo y la lista queda vacía.
+    Lo que el usuario dicte manda: «uno en 1-2 y otro en 3-4» son dos estribos."""
+    if capas <= 1:
+        return []
+    out = []
+    for par in (pedidos or []):
+        if not isinstance(par, (list, tuple)) or len(par) < 2:
+            continue
+        a, b = int(_num(par[0])), int(_num(par[1]))
+        a, b = max(1, min(a, b)), min(capas, max(a, b))
+        if b > a:                       # un estribo de una sola capa no abraza nada
+            out.append((a, b))
+    return out or [(1, capas)]
+
+
 def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     """EC + TC de UNA punta del muro (usuario 6-sep).
 
@@ -1147,9 +1182,13 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     # afuera y solo 0,6 en la de adentro. El centimetro que falta se lo comen los
     # dobleces del marco. Se compensa con un φest mas, y las dos holguras quedan en
     # 1,6. (Es una correccion MEDIDA sobre el trazo real, no una formula nueva.)
-    lconf = _num(bo.get("largo")) or _r1((capas - 1) * gap
-                                         + (_num(bb.get("diam")) + 2 * diam) / 10.0)
+    rangos = _rangos_estribo(est.get("capas"), capas)
     comps = []
+
+    def _largo_estribo(a, b):
+        """Lo que mide un estribo que va de la capa `a` a la `b`, en cm."""
+        return _num(bo.get("largo")) or _r1((b - a) * gap
+                                            + (_num(bb.get("diam")) + 2 * diam) / 10.0)
 
     # LA FASE SE CORRE EN LOS DOS EXTREMOS, NO EN UNO (medido en el motor 7-sep).
     # El reparto mete N barras DENTRO del rango, asi que mover solo `from` acorta el
@@ -1169,40 +1208,103 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         """cm del eje de la capa k (0 = la de mas afuera), medidos desde el testero."""
         return _r1(lado * (rx - k * gap))
 
-    def _tc(k, fase):
-        p = {"diam": diam, "figura": "", "jerarquia": 0, "tramos": [],
-             "sobrelargo": 0}
-        c = _fabricar("trabas_confinamiento", p, geo, figuras, [1])[0]
-        # La TC de confinamiento NO se reparte en arreglo x*y como la de muro: vive
-        # en UNA capa del cabezal y sube por la altura con la separacion del borde.
-        c["modo"] = "lineal"
-        c["distribucion"] = _zona(fase)
-        c["pos_hint"] = {"x": _x_de_capa(k)}
+    def _ec(a, b):
+        """El estribo que abraza de la capa `a` a la `b` (base 1)."""
+        lconf = _largo_estribo(a, b)
+        e = dict(est, diam=diam, sep=sep, largo=lconf)
+        c = _fabricar("estribo", e, geo, figuras, [lado])[0]
+        # El reparto se REESCRIBE para desfasarlo a EMH, asi que lo que el usuario
+        # haya dictado (multi-@ por tramos, anidado) tiene que viajar: si no, moverlo
+        # media separacion se lo comeria en silencio.
+        anid = (c.get("distribucion") or {}).get("anidar")
+        c["distribucion"] = _zona(sep / 2.0, est.get("tramos"))
+        if anid is not None:
+            c["distribucion"]["anidar"] = anid
+        # DONDE SE CENTRA. Con el largo DERIVADO se centra entre las dos capas que
+        # abraza -- asi la holgura queda pareja en las dos puntas (medido: 1,6 y 1,6)
+        # y, con varios estribos, el de mas adentro se corre solo hacia el nucleo.
+        # Con el largo DICTADO por el usuario manda la lectura clasica: ese numero es
+        # el LARGO CONFINADO medido desde el testero, asi que el estribo arranca en la
+        # linea de recubrimiento y crece hacia adentro. Centrarlo sobre el paquete con
+        # un largo dictado mucho mayor lo sacaba del hormigon -- lo cazo el test de
+        # motor con un `largo` de 40 sobre un paquete de 15 (x hasta -267 en un muro
+        # que termina en -255).
+        c["pos_hint"] = {"x": _r1(lado * (rx - (a - 1) * gap - lconf / 2.0))
+                         if _num(bo.get("largo")) else
+                         _r1(lado * (rx - ((a - 1) + (b - 1)) / 2.0 * gap))}
+        c["_zona"] = "EMH"
+        c["_capas"] = [a, b]
         return c
 
-    # --- UNA SOLA CAPA: no hay paquete que abrazar, asi que no va estribo. En JMH la
-    #     malla ya confina esa capa, y en EMH basta UNA TRABA (usuario 7-sep).
-    if capas <= 1:
-        return [_tc(0, sep / 2.0)]
+    def _tc(k, fase):
+        """Una traba de confinamiento sentada en la capa k, subiendo por la altura.
 
-    # --- JMH: en la linea de la MH. La malla cubre la capa 1; una traba por cada
-    #     capa siguiente.
+        LA POSE ES LA DE LA TRABA DE MURO; LO QUE CAMBIA ES EL REPARTO. Lo medi en el
+        motor antes de elegir, porque las dos opciones se veian razonables:
+          . pose del ESTRIBO (cara lateral, de pie): reparte bien -13 unidades- pero
+            el cuerpo corre a lo LARGO de la altura en vez de cruzar el espesor
+            (medido: Δy=15, Δz=11,3). O sea la traba no engancha nada.
+          . pose de la TRABA (cara sup, volteada): la geometria es la correcta
+            (Δz=15, el cuerpo cruzando el espesor) pero con un reparto LINEAL sobre Y
+            sale UNA sola barra -- que es el bug que reporto el usuario: una traba,
+            arriba, con los ganchos mirando abajo. La causa es que esa pose ancla en
+            el eje Y, asi que pedirle que ademas se reparta por Y anula el reparto.
+        La que sirve es la segunda CON EL REPARTO EN ARREGLO, igual que la traba de
+        muro pero con la columna de x reducida a un punto: la capa donde vive.
+        Medido: 13 unidades, una sola columna en su capa, cuerpo cruzando el espesor.
+
+        El ANCHO es el mismo del estribo -- espesor menos dos recubrimientos -- porque
+        los dos abrazan el cabezal y no la malla."""
+        fig = _pedido(est, "figura_traba", "103B")
+        par, ang = _spec_figura(figuras, fig, ["A", "B", "C"], [45, 45])
+        dims = {L: {"modo": "auto"} for L in par}
+        cuerpo = _lado_que_corre(par)
+        if cuerpo:
+            dims[cuerpo] = {"modo": "fija", "valor": _r1(_ancho_confinado(geo))}
+        x = _x_de_capa(k)
+        dist = _mk_lin(sep, "x", x, x, None)      # UNA columna: from == to
+        dist["modo"] = "arreglo"
+        # MARGEN DE GANCHO ABAJO, igual que la traba de muro: los ganchos cuelgan
+        # HACIA ABAJO del cuerpo, asi que si el reparto arranca en el borde util la
+        # primera traba deja sus patas fuera del hormigon. Lo cazo el test de motor
+        # (y hasta -165 en un muro que termina en -155,5). Misma formula que la TR
+        # para no tener dos criterios que se puedan desincronizar.
+        z = _zona(fase)["rango"]
+        m_gancho = 6.0 * float(diam) / 10.0 + 5.0
+        dist["rango2"] = {"eje": "y", "from": _r1(z["from"] + m_gancho),
+                          "to": z["to"], "sep": z["sep"]}
+        c = _mk_base("TC", fig, diam, ang, "arreglo", "sup", 1, "z",
+                     "volteada", True, dims, 1, dist)
+        c["_zona"] = "JMH" if not fase else "EMH"
+        c["_capa"] = k + 1
+        return c
+
+    # --- JMH: en la linea de la MH. La malla ya confina la capa 1, asi que va una
+    #     traba por cada capa SIGUIENTE. Esta columna no mira los estribos.
     for k in range(1, capas):
         comps.append(_tc(k, 0.0))
-    # --- EMH: el estribo de la capa 1 a la ultima, desfasado media separacion.
-    e = dict(est, diam=diam, sep=sep, largo=lconf)
-    ec = _fabricar("estribo", e, geo, figuras, [lado])[0]
-    # El reparto se REESCRIBE para desfasarlo a EMH, asi que lo que el usuario haya
-    # dictado (multi-@ por tramos, anidado) tiene que viajar: si no, moverlo media
-    # separacion se lo comeria en silencio.
-    anid = (ec.get("distribucion") or {}).get("anidar")
-    ec["distribucion"] = _zona(sep / 2.0, est.get("tramos"))
-    if anid is not None:
-        ec["distribucion"]["anidar"] = anid
-    comps.append(ec)
-    #     …mas una traba por cada capa INTERMEDIA (las que el estribo no agarra).
-    for k in range(1, capas - 1):
-        comps.append(_tc(k, sep / 2.0))
+
+    # --- EMH: los estribos, y las trabas que ellos NO cubren.
+    #
+    # AQUI NO HAY RAMAS, Y ESE ES EL PUNTO (usuario 7-sep). Los dos casos que planteo
+    # -- 4 capas con estribos 1-2 y 3-4 (sin trabas) contra un estribo 1-4 con trabas
+    # en 2 y 3 -- no son dos reglas: son la MISMA consecuencia de donde quedaron los
+    # estribos. UN ESTRIBO CONFINA LAS CAPAS DE SUS DOS EXTREMOS, asi que:
+    #
+    #     trabas EMH = las capas que no son extremo de ningun estribo
+    #
+    # Con eso la configuracion la dicta el usuario poniendo estribos y las trabas se
+    # DEDUCEN, sin agregar una rama por cada forma nueva. Y el caso de una sola capa
+    # deja de ser la excepcion escrita a mano que era hasta hoy: sin estribo no hay
+    # ninguna capa tomada, asi que sale su traba sola.
+    tomadas = set()
+    for (a, b) in rangos:
+        tomadas.add(a)
+        tomadas.add(b)
+        comps.append(_ec(a, b))
+    for k in range(capas):
+        if (k + 1) not in tomadas:
+            comps.append(_tc(k, sep / 2.0))
     return comps
 
 
@@ -1882,10 +1984,23 @@ def _estado_corto(receta) -> str:
     receta: el historial del chat pasa a llevar el estado real turno a turno, y el
     modelo (que solo ve texto) deja de 'olvidar' lo que el mismo armo — el 31-ago
     piso los cabezales y despues no recordaba que existian."""
+    # SE JUNTAN LOS IGUALES (usuario 7-sep). Enumerar uno por uno volvia la linea
+    # ilegible en cuanto el muro llevaba confinamiento -- «7. TC 103B φ8 · 8. TC
+    # 103B φ8 · 10. TC 103B φ8 · …» -- cuando lo unico que dice es que hay cuatro.
+    # El despiece ya los junta (medido: dos componentes identicos dan UNA fila con
+    # cantidad 28); esta linea, que es la que LEE el usuario, tambien.
+    # Los numeros no se pierden: el modelo referencia las barras por el inventario
+    # (_inventario_receta), que va aparte y sigue numerado una por una.
     comps = receta.get("componentes") or []
-    partes = ["%d. %s %s \u03c6%g" % (i, c.get("tipologia") or "?",
-                                      c.get("figura") or "?", _num(c.get("diam")))
-              for i, c in enumerate(comps, start=1)]
+    orden, cuenta = [], {}
+    for c in comps:
+        k = "%s %s \u03c6%g" % (c.get("tipologia") or "?", c.get("figura") or "?",
+                                _num(c.get("diam")))
+        if k not in cuenta:
+            orden.append(k)
+        cuenta[k] = cuenta.get(k, 0) + 1
+    partes = [("%d\u00d7 %s" % (cuenta[k], k)) if cuenta[k] > 1 else k
+              for k in orden]
     return " \u00b7 ".join(partes[:14]) + (" (+%d mas)" % (len(partes) - 14)
                                            if len(partes) > 14 else "")
 

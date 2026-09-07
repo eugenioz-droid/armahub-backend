@@ -688,9 +688,18 @@ check("con barra recta no se escribe espejo (no cambia nada)",
       all(not c["pose"]["espejo"] for c in _rmr["componentes"]
           if c["tipologia"] == "MH"))
 from armahub.asistente import _estado_corto
-check("el rastro de estado lista lo que quedo, numerado",
-      _estado_corto(_RECETA_EJ).startswith("1. MV")
-      and "2. CB" in _estado_corto(_RECETA_EJ))
+# El rastro DEJO DE ENUMERAR uno por uno (7-sep): con confinamiento la linea se
+# llenaba de «7. TC 103B φ8 · 8. TC 103B φ8 · …» cuando lo unico que dice es cuantas
+# hay. Ahora junta los iguales con su cuenta, igual que el despiece. Los numeros para
+# referenciar barras siguen en _inventario_receta, que es lo que lee el modelo.
+_ec_ej = _estado_corto(_RECETA_EJ)
+check("el rastro de estado junta los componentes iguales, con su cuenta",
+      _ec_ej.startswith("MV") and "CB" in _ec_ej and "1. " not in _ec_ej)
+check("...y cuando hay repetidos lo dice con un multiplicador",
+      "2× TC" in _estado_corto(
+          {"componentes": [{"tipologia": "TC", "figura": "103B", "diam": 8},
+                           {"tipologia": "TC", "figura": "103B", "diam": 8},
+                           {"tipologia": "EC", "figura": "106A", "diam": 8}]}))
 check("el prompt distingue espejo de giro de patas y fija el listado como memoria",
       "ESPEJO vs GIRO" in _sp("muro") and "TU MEMORIA ES EL LISTADO" in _sp("muro"))
 
@@ -1115,10 +1124,23 @@ def _conf(capas, sep_capas=15):
     return conf[:len(conf) // 2]          # UNA punta (las dos son iguales)
 
 
+def _rango_y(c):
+    """El reparto EN LA ALTURA. El estribo lo lleva en `rango`; la traba en `rango2`,
+    porque su `rango` es la COLUMNA (una sola x: la capa donde se sienta)."""
+    d = c.get("distribucion") or {}
+    for k in ("rango", "rango2"):
+        r = d.get(k)
+        if isinstance(r, dict) and r.get("eje") == "y":
+            return r
+    return {}
+
+
 def _zona(c):
-    """JMH = en la linea de la MH · EMH = desfasada media separacion."""
-    y0 = ((c.get("distribucion") or {}).get("rango") or {}).get("from", 0)
-    return "JMH" if abs(y0 - (-153.0)) < 0.6 else "EMH"
+    """La zona la DECLARA la pieza. Antes se deducia comparando su `from` con el de la
+    MH, y eso dejo de servir en cuanto la traba llevo margen de gancho: su reparto ya
+    no arranca donde el de la malla. La zona es un hecho del componente, no una
+    coincidencia de coordenadas."""
+    return c.get("_zona")
 
 
 _c2, _c3, _c4 = _conf(2), _conf(3), _conf(4)
@@ -1136,19 +1158,23 @@ check("la cuenta generaliza: JMH n-1 trabas, EMH un estribo + n-2 trabas",
            for g in (_c2, _c3, _c4)] == [0, 1, 2]
       and all(len([c for c in g if c["tipologia"] == "EC"]) == 1
               for g in (_c2, _c3, _c4)))
+# Se comparan las dos TRABAS de la MISMA capa, una por zona: sus repartos llevan el
+# mismo margen de gancho, asi que lo unico que queda entre ellas es la fase.
+_tc_j = [c for c in _c3 if _zona(c) == "JMH" and c["_capa"] == 2][0]
+_tc_e = [c for c in _c3 if _zona(c) == "EMH" and c.get("_capa") == 2][0]
 check("las dos zonas van desfasadas MEDIA separacion, con el @ de la MH",
-      all(((c["distribucion"].get("rango") or {}).get("sep")) == 20 for c in _c3)
-      and abs(_c3[0]["distribucion"]["rango"]["from"]
-              - _c3[2]["distribucion"]["rango"]["from"]) == 10)
+      all(_rango_y(c).get("sep") == 20 for c in _c3)
+      and _rango_y(_tc_e)["from"] - _rango_y(_tc_j)["from"] == 10)
 check("cada traba se sienta en SU capa (a un gap de la anterior)",
-      [c["pos_hint"]["x"] for c in _c3 if _zona(c) == "JMH"] == [233.0, 218.0])
+      [c["distribucion"]["rango"]["from"] for c in _c3 if _zona(c) == "JMH"]
+      == [233.0, 218.0]
+      and [c["_capa"] for c in _c3 if _zona(c) == "JMH"] == [2, 3])
 check("el diametro del confinamiento sale de la MH si no se dicta",
       all(c["diam"] == 8 for c in _c3))
 check("el confinamiento va en TODA la altura, y NADA se sale del hormigon",
-      all(-153.0 <= (c["distribucion"]["rango"]["from"]) <= 153.0
-          and -153.0 <= (c["distribucion"]["rango"]["to"]) <= 153.0
-          and (c["distribucion"]["rango"]["to"]
-               - c["distribucion"]["rango"]["from"]) > 280 for c in _c3))
+      all(-153.0 <= _rango_y(c)["from"] <= 153.0
+          and -153.0 <= _rango_y(c)["to"] <= 153.0
+          and (_rango_y(c)["to"] - _rango_y(c)["from"]) > 270 for c in _c3))
 
 # EL ANCHO. Los dos abrazan el CABEZAL, no la malla: espesor menos dos recubrimientos.
 check("el ancho de confinamiento es espesor - 2 recubrimientos",
@@ -1200,11 +1226,9 @@ _mh0 = [c for c in _r1["componentes"] if c["tipologia"] == "MH"][0]
 _sep0 = _mh0["distribucion"]["rango"]["sep"]
 check("...con el @ y el phi de la malla horizontal, no con un 10 fijo",
       all(c["diam"] == _mh0["diam"]
-          and c["distribucion"]["rango"]["sep"] == _sep0 for c in _conf1))
+          and _rango_y(c)["sep"] == _sep0 for c in _conf1))
 check("...la traba junto a la MH y el estribo entre medio",
-      [c["distribucion"]["rango"]["from"] for c in _conf1[:2]]
-      == [_mh0["distribucion"]["rango"]["from"],
-          _mh0["distribucion"]["rango"]["from"] + _sep0 / 2])
+      [_zona(c) for c in _conf1[:2]] == ["JMH", "EMH"])
 # 15 de paquete + φ22 de cabezal + DOS φ10 de estribo. El segundo φest no sale de la
 # geometria sino del trazo REAL medido: el marco dibuja 1 cm menos de lo que dice su B
 # (se lo comen los dobleces), y sin compensarlo el estribo mordia la capa 2 -- holgura
