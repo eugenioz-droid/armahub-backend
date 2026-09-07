@@ -1114,7 +1114,7 @@ check("...y deja anotado el antecedente de la 103A (gancho abierto, se dobla en 
 # ---------------------------------------------------------------------------
 # CONFINAMIENTO: las dos zonas JMH / EMH (usuario 6-sep)
 # ---------------------------------------------------------------------------
-from armahub.asistente import _ancho_confinado
+from armahub.asistente import _ancho_confinado, _paso_real
 
 _CATC = dict(_CATMV, **{"102A": {"parciales": ["A", "B"], "angulos": []},
                         "103A": {"parciales": ["A", "B", "C"], "angulos": []},
@@ -1176,9 +1176,23 @@ check("la cuenta generaliza: JMH n-1 trabas, EMH un estribo + n-2 trabas",
 # mismo margen de gancho, asi que lo unico que queda entre ellas es la fase.
 _tc_j = [c for c in _c3 if _zona(c) == "JMH" and c["_capa"] == 2][0]
 _tc_e = [c for c in _c3 if _zona(c) == "EMH" and c.get("_capa") == 2][0]
-check("las dos zonas van desfasadas MEDIA separacion, con el @ de la MH",
+# MEDIO PASO REAL, no media separacion pedida: es lo unico que deja el mismo paso en
+# las dos zonas y, con el, un desfase constante en toda la altura.
+check("las dos zonas van desfasadas MEDIO PASO, con el @ de la MH",
       all(_rango_y(c).get("sep") == 20 for c in _c3)
-      and _rango_y(_tc_e)["from"] - _rango_y(_tc_j)["from"] == 10)
+      and abs((_rango_y(_tc_e)["from"] - _rango_y(_tc_j)["from"])
+              - _paso_real(-153.0, 153.0, 20) / 2) < 0.2)
+# EL PASO NO ES `sep`: el reparto mete N barras dentro del rango y divide. Saberlo es
+# lo que permite MOVER un reparto sin desfasarlo, y no saberlo fue el defecto que
+# reporto el usuario -- «parte bien arriba y se va desfasando hacia abajo».
+check("el paso REAL sale de dividir el rango, no de la separacion pedida",
+      abs(_paso_real(-123, 123, 20) - 18.923) < 0.01
+      and abs(_paso_real(-113, 113, 20) - 18.833) < 0.01)
+check("la traba arranca UN PASO mas arriba que su zona, para no dejar los ganchos "
+      "fuera del hormigon SIN cambiarle el paso",
+      all(abs((_rango_y(c)["from"] - (-153.0))
+              - _paso_real(-153.0, 153.0, 20)) < 0.1
+          for c in _c3 if c["tipologia"] == "TC" and _zona(c) == "JMH"))
 check("cada traba se sienta en SU capa (a un gap de la anterior)",
       [c["distribucion"]["rango"]["from"] for c in _c3 if _zona(c) == "JMH"]
       == [233.0, 218.0]
@@ -1188,7 +1202,7 @@ check("el diametro del confinamiento sale de la MH si no se dicta",
 check("el confinamiento va en TODA la altura, y NADA se sale del hormigon",
       all(-153.0 <= _rango_y(c)["from"] <= 153.0
           and -153.0 <= _rango_y(c)["to"] <= 153.0
-          and (_rango_y(c)["to"] - _rango_y(c)["from"]) > 270 for c in _c3))
+          and (_rango_y(c)["to"] - _rango_y(c)["from"]) > 250 for c in _c3))
 
 # EL ANCHO. Los dos abrazan el CABEZAL, no la malla: espesor menos dos recubrimientos.
 check("el ancho de confinamiento es espesor - 2 recubrimientos",

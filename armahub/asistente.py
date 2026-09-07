@@ -1131,6 +1131,20 @@ def _fabricar(clase, p, geo, figuras, lados):
     return comps
 
 
+def _paso_real(lo, hi, sep):
+    """El paso que el motor va a usar DE VERDAD dentro de [lo, hi] con esa separacion.
+
+    No es `sep`: el reparto mete N barras dentro del rango y reparte, asi que el paso
+    sale de la division. Medido y verificado en dos casos independientes -- span 246
+    con sep 20 da 14 barras a 18,92, y span 226 da 13 a 18,83.
+    Hace falta saberlo para MOVER un reparto sin desfasarlo (ver _tc)."""
+    span = float(hi) - float(lo)
+    if span <= 0 or sep <= 0:
+        return 0.0
+    n = int(math.ceil(span / sep)) + 1
+    return span / (n - 1) if n > 1 else 0.0
+
+
 def _rangos_estribo(pedidos, capas):
     """Qué capas toma cada estribo, como lista de pares (a, b) en base 1.
 
@@ -1215,8 +1229,15 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     # hormigon (lo cazo el test de motor: y=160,5 con el muro terminando en 155).
     # Metido por las dos puntas, la zona EMH queda estrictamente ENTRE las barras
     # extremas de la MH, que es donde tiene que estar.
-    def _zona(fase, tramos=None):
-        return _mk_lin(sep, "y", -ry + fase, ry - fase, tramos)
+    # LA MEDIA SEPARACION QUE SEPARA LAS DOS ZONAS ES MEDIO PASO REAL, no medio `sep`.
+    # Con sep/2 el estribo quedaba a 18,83 contra los 18,92 de la malla y se corria un
+    # centimetro a lo largo de la altura; con paso/2 el paso queda IDENTICO y el
+    # estribo cae exactamente entre dos barras de malla en todo el muro.
+    paso_zona = _paso_real(-ry, ry, sep)
+
+    def _zona(emh, tramos=None):
+        f = (paso_zona / 2.0) if emh else 0.0
+        return _mk_lin(sep, "y", -ry + f, ry - f, tramos)
 
     def _x_de_capa(k):
         """cm del eje de la capa k (0 = la de mas afuera), medidos desde el testero."""
@@ -1231,7 +1252,7 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         # haya dictado (multi-@ por tramos, anidado) tiene que viajar: si no, moverlo
         # media separacion se lo comeria en silencio.
         anid = (c.get("distribucion") or {}).get("anidar")
-        c["distribucion"] = _zona(sep / 2.0, est.get("tramos"))
+        c["distribucion"] = _zona(True, est.get("tramos"))
         if anid is not None:
             c["distribucion"]["anidar"] = anid
         # DONDE SE CENTRA. Con el largo DERIVADO se centra entre las dos capas que
@@ -1250,7 +1271,7 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         c["_capas"] = [a, b]
         return c
 
-    def _tc(k, fase):
+    def _tc(k, emh):
         """Una traba de confinamiento sentada en la capa k, subiendo por la altura.
 
         LA POSE ES LA DE LA TRABA DE MURO; LO QUE CAMBIA ES EL REPARTO. Lo medi en el
@@ -1278,25 +1299,32 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         x = _x_de_capa(k)
         dist = _mk_lin(sep, "x", x, x, None)      # UNA columna: from == to
         dist["modo"] = "arreglo"
-        # MARGEN DE GANCHO ABAJO, igual que la traba de muro: los ganchos cuelgan
-        # HACIA ABAJO del cuerpo, asi que si el reparto arranca en el borde util la
-        # primera traba deja sus patas fuera del hormigon. Lo cazo el test de motor
-        # (y hasta -165 en un muro que termina en -155,5). Misma formula que la TR
-        # para no tener dos criterios que se puedan desincronizar.
-        z = _zona(fase)["rango"]
-        m_gancho = 6.0 * float(diam) / 10.0 + 5.0
-        dist["rango2"] = {"eje": "y", "from": _r1(z["from"] + m_gancho),
+        # SE SALTA LA PRIMERA POSICION, Y SE SALTA POR UN PASO EXACTO.
+        # Los ganchos cuelgan hacia abajo, asi que la traba de mas abajo dejaba las
+        # patas fuera del hormigon. Lo tape con un margen fijo (6·φ+5, el de la traba
+        # de muro) y eso INTRODUJO EL DEFECTO QUE REPORTO EL USUARIO: «parte bien
+        # arriba pero se va desfasando hacia abajo». Es el mismo error que ya me
+        # habia mordido con el estribo -- mover un extremo del rango no lo desplaza,
+        # le cambia el PASO -- y lo volvi a cometer aca.
+        # MEDIDO: con el margen de 11 el paso pasaba de 18,92 a 19,58 y el desfase
+        # contra la malla iba de -9 a +9 barra a barra. Subiendo el arranque UN PASO
+        # REAL, el paso queda en 18,92 -identico al de la malla- y el desfase se
+        # vuelve constante (-2,43 en las 13). Ademas la mas baja sube a -106,5, bien
+        # dentro del hormigon.
+        z = _zona(emh)["rango"]
+        paso = _paso_real(z["from"], z["to"], z["sep"])
+        dist["rango2"] = {"eje": "y", "from": _r1(z["from"] + paso),
                           "to": z["to"], "sep": z["sep"]}
         c = _mk_base("TC", fig, diam, ang, "arreglo", "sup", 1, "z",
                      "volteada", True, dims, 1, dist)
-        c["_zona"] = "JMH" if not fase else "EMH"
+        c["_zona"] = "EMH" if emh else "JMH"
         c["_capa"] = k + 1
         return c
 
     # --- JMH: en la linea de la MH. La malla ya confina la capa 1, asi que va una
     #     traba por cada capa SIGUIENTE. Esta columna no mira los estribos.
     for k in range(1, capas):
-        comps.append(_tc(k, 0.0))
+        comps.append(_tc(k, False))
 
     # --- EMH: los estribos, y las trabas que ellos NO cubren.
     #
@@ -1318,7 +1346,7 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         comps.append(_ec(a, b))
     for k in range(capas):
         if (k + 1) not in tomadas:
-            comps.append(_tc(k, sep / 2.0))
+            comps.append(_tc(k, True))
     return comps
 
 
