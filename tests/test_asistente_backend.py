@@ -140,7 +140,10 @@ ecs = [c for c in r["componentes"] if c["tipologia"] == "EC"]
 check("estribo de borde acotado: dims.B fija 40 extremo centro + pos_hint.x en la punta",
       all(c["dims"]["B"] == {"modo": "fija", "valor": 40.0, "extremo": "centro"}
           for c in ecs)
-      and ecs[0]["pos_hint"]["x"] == 235.0 and ecs[1]["pos_hint"]["x"] == -235.0)
+      # 234,2 y no 235: el estribo se centra sobre el EJE REAL de la primera capa,
+      # que no esta en la linea de recubrimiento sino φmalla + φcabezal/2 mas adentro
+      # (medido 7-sep; antes salia corrido 2,1 cm hacia afuera).
+      and ecs[0]["pos_hint"]["x"] == 234.2 and ecs[1]["pos_hint"]["x"] == -234.2)
 # La MH no la recorta ninguna regla, asi que es la que mide «de recub a recub».
 _mh0 = [c for c in r["componentes"] if c["tipologia"] == "MH"][0]
 check("rangos sin ancla (la deriva normalizarReceta) y de recub a recub",
@@ -1062,10 +1065,13 @@ check("el naciente y el intermedio si",
 # EL ESPEJO DE LA MV NO ES POR CORTINA. Medido: en una MV el espejo la voltea de
 # CABEZA. Aplicarlo a la cortina opuesta -- que es la regla de la MH -- dejaba una
 # con la pata abajo y la otra con la pata arriba en el mismo muro.
-# El naciente lleva ESPEJO en las DOS cortinas: con el Δ al inicio del lado que
-# corre, es lo que deja la pata y el gancho en el borde INFERIOR (medido).
+# LOS QUIEBRES VAN ABAJO POR DEFECTO, no solo cuando el naciente es explicito: una MV
+# con la figura dictada y sin condicion salia como si el muro coronara (usuario
+# 7-sep). Es la misma condicion que decide el empalme.
 check("las dos cortinas de un naciente miran igual (la pata abajo las dos)",
       all(c.get("espejo") for c in _mvs("inicia")))
+check("...y un muro SIN condicion tambien lleva los quiebres abajo, no arriba",
+      all(c.get("espejo") for c in _mvs("", True)))
 check("y las dos de un muro que corona tambien (la pata arriba las dos)",
       [c.get("espejo") for c in _mvs("termina")] == [None, None])
 check("el marco de 4 SI conserva la regla de la MH: la opuesta va rotada",
@@ -1217,9 +1223,12 @@ check("la traba arranca UN PASO mas arriba que su zona, para no dejar los gancho
       all(abs((_rango_y(c)["from"] - (-153.0))
               - _paso_real(-153.0, 153.0, 20)) < 0.1
           for c in _c3 if c["tipologia"] == "TC" and _zona(c) == "JMH"))
+# Las x salen del EJE REAL de las capas -- la primera no esta en la linea de
+# recubrimiento, sino φmalla + φcabezal/2 mas adentro -- y de ahi hacia el nucleo, una
+# por gap. Se mide la RELACION y no los numeros congelados.
+_xj = [c["distribucion"]["rango"]["from"] for c in _c3 if _zona(c) == "JMH"]
 check("cada traba se sienta en SU capa (a un gap de la anterior)",
-      [c["distribucion"]["rango"]["from"] for c in _c3 if _zona(c) == "JMH"]
-      == [233.0, 218.0]
+      _xj == [231.1, 216.1] and (_xj[0] - _xj[1]) == 15.0
       and [c["_capa"] for c in _c3 if _zona(c) == "JMH"] == [2, 3])
 check("el diametro del confinamiento sale de la MH si no se dicta",
       all(c["diam"] == 8 for c in _c3))

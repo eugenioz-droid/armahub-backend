@@ -1213,6 +1213,7 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     sep = _num(est.get("sep")) or _num(sep_mh) or 20.0
     ry = geo["alto"] / 2.0 - geo["rec"]
     rx = geo["largo"] / 2.0 - geo["rec"]
+    cbs_jer = bo.get("_jer_cabezal") or 2
     # LARGO DEL ESTRIBO A LO LARGO DEL MURO: la distancia entre los EJES de la capa 1
     # y la ultima, MAS lo que necesita para pasar por FUERA de esas barras en vez de
     # quedar montado sobre su eje (usuario 7-sep). Ese margen es medio diametro de
@@ -1256,9 +1257,23 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         f = (paso_zona / 2.0) if emh else 0.0
         return _mk_lin(sep, "y", -ry + f, ry - f, tramos)
 
+    # DONDE ESTA DE VERDAD LA PRIMERA CAPA (medido 7-sep). No esta en la linea de
+    # recubrimiento: el motor apoya el cabezal en su cara descontando (a) las barras
+    # de los niveles de jerarquia que tiene por debajo y (b) su propio radio. Con
+    # jerarquia 2 debajo va la malla, asi que la capa 0 queda en
+    #     rx - φmalla - φcabezal/2
+    # Verificado: muro de 400 rec 2, φ22 sobre malla φ10 -> 198 - 1,0 - 1,1 = 195,9,
+    # que es exactamente donde el motor la puso.
+    # SIN ESTO EL ESTRIBO SALIA CORRIDO 2,1 CM HACIA AFUERA -- el usuario lo vio: "el
+    # EC me lo desplazo un poco". Las holguras quedaban 3,70 por fuera y -0,50 por
+    # dentro, o sea mordiendo la capa 2 de nuevo, y asomaba 1,6 cm de la linea de
+    # recubrimiento.
+    pila = (_num(diam_mh) / 10.0) if int(_num(cbs_jer, 2)) > 1 else 0.0
+    x0 = rx - pila - _num(bb.get("diam")) / 20.0
+
     def _x_de_capa(k):
         """cm del eje de la capa k (0 = la de mas afuera), medidos desde el testero."""
-        return _r1(lado * (rx - k * gap))
+        return _r1(lado * (x0 - k * gap))
 
     def _ec(a, b):
         """El estribo que abraza de la capa `a` a la `b` (base 1)."""
@@ -1281,9 +1296,10 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         # un largo dictado mucho mayor lo sacaba del hormigon -- lo cazo el test de
         # motor con un `largo` de 40 sobre un paquete de 15 (x hasta -267 en un muro
         # que termina en -255).
-        c["pos_hint"] = {"x": _r1(lado * (rx - (a - 1) * gap - lconf / 2.0))
+        c["pos_hint"] = {"x": _r1(lado * (x0 - (a - 1) * gap - lconf / 2.0
+                                          + _num(bb.get("diam")) / 20.0))
                          if _num(bo.get("largo")) else
-                         _r1(lado * (rx - ((a - 1) + (b - 1)) / 2.0 * gap))}
+                         _r1(lado * (x0 - ((a - 1) + (b - 1)) / 2.0 * gap))}
         c["_zona"] = "EMH"
         c["_capas"] = [a, b]
         return c
@@ -1630,11 +1646,15 @@ def _construir_receta_muro(spec: dict, figuras=None, receta_actual=None) -> dict
             mv1["figura"], mv2["figura"] = f1, f2
         if not _dictado(mv, "empalme") and _lleva_empalme(inicia, termina):
             mv1["empalme"] = mv2["empalme"] = _empalme_auto(mv.get("diam"))
-        # NACIENTE = quiebres ABAJO = espejo. El que CORONA lleva la misma figura sin
-        # espejo, y ahi quedan arriba. (Estaba al reves: se lo ponia al que corona.)
-        # (…y NO en el muro de un piso: ahi la figura es la 104B, que sigue la regla
-        # de la MH -- la cortina opuesta rotada -- y no la de las dos volteadas.)
-        mv1["volteada"] = mv2["volteada"] = bool(inicia and not termina)
+        # LOS QUIEBRES VAN ABAJO POR DEFECTO, y solo el muro que CORONA los sube
+        # (usuario 7-sep: «debiera priorizar que vayan abajo, salvo que el usuario le
+        # diga que es muro de termino»). Antes se lo exigia al naciente EXPLICITO, asi
+        # que una MV con la figura dictada y sin condicion salia como si coronara.
+        # Es la MISMA condicion que decide el empalme -- el que no corona, empalma y
+        # lleva los quiebres abajo -- y por eso se escribe igual.
+        # En el muro de un piso da False, que es lo que corresponde: ahi la figura es
+        # la 104B y manda la regla de la MH (la cortina opuesta rotada).
+        mv1["volteada"] = mv2["volteada"] = not termina
     for lado in ([1, -1] if doble else [1]):
         if mv:
             comps += _fabricar("malla_vertical", mv1 if lado == 1 else mv2,
@@ -2354,7 +2374,10 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "losa -> \"inicia\". Si dice que corona, remata o es el ultimo piso -> "
         "\"termina\". Si dice las dos, o que es un muro de un solo piso -> "
         "\"inicia_y_termina\". Si no lo menciona, dejalo en \"\": es un muro "
-        "intermedio y NO se lo preguntes. De ese campo salen solos la figura del "
+        "intermedio y NO se lo preguntes. EN LA DUDA VA VACIO: marcar "
+        "\"termina\" sin que el usuario lo haya dicho le quita el empalme a la "
+        "malla vertical y a los cabezales, y eso sale caro en obra. "
+        "De ese campo salen solos la figura del "
         "cabezal, la de la malla vertical, hacia donde mira la pata y el empalme; "
         "tu no elijas nada de eso.\n"
         "· CABEZALES EN OTROS BORDES (`bordes.donde`): vacio o [\"laterales\"] son "
