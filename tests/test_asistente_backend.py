@@ -1144,8 +1144,11 @@ check("cada traba se sienta en SU capa (a un gap de la anterior)",
       [c["pos_hint"]["x"] for c in _c3 if _zona(c) == "JMH"] == [233.0, 218.0])
 check("el diametro del confinamiento sale de la MH si no se dicta",
       all(c["diam"] == 8 for c in _c3))
-check("el confinamiento va en TODA la altura",
-      all((c["distribucion"].get("rango") or {}).get("to") == 153.0 for c in _c3))
+check("el confinamiento va en TODA la altura, y NADA se sale del hormigon",
+      all(-153.0 <= (c["distribucion"]["rango"]["from"]) <= 153.0
+          and -153.0 <= (c["distribucion"]["rango"]["to"]) <= 153.0
+          and (c["distribucion"]["rango"]["to"]
+               - c["distribucion"]["rango"]["from"]) > 280 for c in _c3))
 
 # EL ANCHO. Los dos abrazan el CABEZAL, no la malla: espesor menos dos recubrimientos.
 check("el ancho de confinamiento es espesor - 2 recubrimientos",

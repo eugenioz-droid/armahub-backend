@@ -1133,10 +1133,30 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     sep = _num(est.get("sep")) or _num(sep_mh) or 20.0
     ry = geo["alto"] / 2.0 - geo["rec"]
     rx = geo["largo"] / 2.0 - geo["rec"]
-    # Lo que el estribo tiene que abrazar: de la capa 1 a la ultima, mas el margen
-    # que ya traia la ficha para darle la vuelta a las barras.
-    lconf = _num(bo.get("largo")) or _r1((capas - 1) * gap + 2.0 * _SEP_CAPAS_DEF)
+    # LARGO DEL ESTRIBO A LO LARGO DEL MURO: la distancia entre los EJES de la capa 1
+    # y la ultima, MAS lo que necesita para pasar por FUERA de esas barras en vez de
+    # quedar montado sobre su eje (usuario 7-sep). Ese margen es medio diametro de
+    # cabezal + medio de estribo por punta, o sea la suma de los dos diametros.
+    # ANTES eran (capas-1)*gap + 30, un margen inventado: con 2 capas @15 daba 45, y
+    # el usuario lo leyo tal cual -- «asumiria que los cabezales son de separacion 45
+    # y 3 capas, pero en este caso tenemos 2».
+    lconf = _num(bo.get("largo")) or _r1((capas - 1) * gap
+                                         + (_num(bb.get("diam")) + diam) / 10.0)
     comps = []
+
+    # LA FASE SE CORRE EN LOS DOS EXTREMOS, NO EN UNO (medido en el motor 7-sep).
+    # El reparto mete N barras DENTRO del rango, asi que mover solo `from` acorta el
+    # tramo y cambia el PASO: con from=-143/to=153 el estribo arrancaba 10 cm mas
+    # abajo pero avanzaba de a 19,7 contra los 19,1 de la MH, y a la tercera barra ya
+    # se le habia montado encima -- por eso el usuario lo vio JUNTO a la malla y no
+    # entre medio. Corriendo los dos extremos el paso es IDENTICO y el desfase se
+    # mantiene parejo. Y se corre HACIA ADENTRO en los dos, no hacia arriba: correr
+    # los dos extremos en el mismo sentido sacaba el ultimo estribo fuera del
+    # hormigon (lo cazo el test de motor: y=160,5 con el muro terminando en 155).
+    # Metido por las dos puntas, la zona EMH queda estrictamente ENTRE las barras
+    # extremas de la MH, que es donde tiene que estar.
+    def _zona(fase, tramos=None):
+        return _mk_lin(sep, "y", -ry + fase, ry - fase, tramos)
 
     def _x_de_capa(k):
         """cm del eje de la capa k (0 = la de mas afuera), medidos desde el testero."""
@@ -1149,9 +1169,14 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
         # La TC de confinamiento NO se reparte en arreglo x*y como la de muro: vive
         # en UNA capa del cabezal y sube por la altura con la separacion del borde.
         c["modo"] = "lineal"
-        c["distribucion"] = _mk_lin(sep, "y", -ry + fase, ry, None)
+        c["distribucion"] = _zona(fase)
         c["pos_hint"] = {"x": _x_de_capa(k)}
         return c
+
+    # --- UNA SOLA CAPA: no hay paquete que abrazar, asi que no va estribo. En JMH la
+    #     malla ya confina esa capa, y en EMH basta UNA TRABA (usuario 7-sep).
+    if capas <= 1:
+        return [_tc(0, sep / 2.0)]
 
     # --- JMH: en la linea de la MH. La malla cubre la capa 1; una traba por cada
     #     capa siguiente.
@@ -1164,7 +1189,7 @@ def _confinamiento_de_punta(bo, geo, figuras, sep_mh, diam_mh, lado):
     # dictado (multi-@ por tramos, anidado) tiene que viajar: si no, moverlo media
     # separacion se lo comeria en silencio.
     anid = (ec.get("distribucion") or {}).get("anidar")
-    ec["distribucion"] = _mk_lin(sep, "y", -ry + sep / 2.0, ry, est.get("tramos"))
+    ec["distribucion"] = _zona(sep / 2.0, est.get("tramos"))
     if anid is not None:
         ec["distribucion"]["anidar"] = anid
     comps.append(ec)
