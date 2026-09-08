@@ -74,7 +74,9 @@ def _conocimiento(elemento: str) -> str:
             # y comparar la linea entera dejaba la seccion fuera del prompt en
             # silencio — que es peor que no tenerla, porque parece cargada.
             titulo = linea[3:].strip().split("(")[0].strip().upper()
-            quedarse = titulo in ("GENERAL", "FIGURAS", elemento.upper())
+            # RECORTES vale para todos los elementos, igual que GENERAL: leer
+            # una foto del plano no depende de que se este armando.
+            quedarse = titulo in ("GENERAL", "FIGURAS", "RECORTES", elemento.upper())
         if quedarse:
             partes.append(linea)
     return "\n".join(partes)

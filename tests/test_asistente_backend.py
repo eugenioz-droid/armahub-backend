@@ -720,6 +720,20 @@ check("un tipo de imagen no soportado se IGNORA en vez de reventar el chat",
       _m5[-1]["content"] == "x")
 check("el prompt le enseña a leer recortes sin inventar numeros",
       "RECORTE DEL PLANO" in _sp("muro") and "NUNCA" in _sp("muro"))
+
+# La leccion de LECTURA vive en el conocimiento (seccion RECORTES) y vale para todo
+# elemento, asi que el filtro tiene que dejarla pasar igual que GENERAL.
+from armahub.asistente import _conocimiento
+_CR = _conocimiento("muro")
+check("la seccion RECORTES pasa el filtro por elemento",
+      "RECORTES" in _CR and "M.H.A." in _CR)
+check("...con la regla del piso: el de MAS ABAJO que se lea completo, avisando",
+      "SE LEA COMPLETO" in _CR and "cuál se tomó" in _CR)
+check("...el vocabulario de viñeta (la a es @, 2ø18 = cabezales, +E = confinamiento)",
+      "la «a» es «@»" in _CR and "2 barras por punta" in _CR
+      and "CONFINAMIENTO del borde" in _CR)
+check("...y que el largo del muro se pregunta porque la foto es un recorte",
+      "LARGO del muro" in _CR and "SE PREGUNTA" in _CR)
 check("operar_barras tiene el campo espejo",
       "espejo" in TOOL_OPERAR["input_schema"]["properties"]["cambios"]["items"]["properties"])
 _r7, _ = _aplicar_cambios(_RECETA_EJ, [{"accion": "editar", "barra": 1, "espejo": 1}], CAT)

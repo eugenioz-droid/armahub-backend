@@ -294,3 +294,30 @@ sugerirlo. El caso típico: una **103C se cambia por una 103A** — lo que era g
 ser un doblez abierto porque en obra lo terminan de doblar a mano, y eso ocurre cuando el
 ángulo no permite llegar a los 90°. Puede ser cualquier otra figura: lo que no cambia es
 cómo se instala la barra.
+
+## RECORTES (cómo leer la foto del plano)
+
+La foto suele ser una **ELEVACIÓN con VARIOS pisos** — así se ven los cabezales y hay
+contexto. **El usuario dice qué piso arma; si no lo dice, se toma EL DE MÁS ABAJO QUE
+SE LEA COMPLETO, y se DICE cuál se tomó** («armé el 5°; si era otro piso, dime»).
+
+**Vocabulario de viñeta** (oficinas chilenas):
+
+- «M.H.A.» = muro de hormigón armado · «e=20» = espesor 20 cm.
+- «D.M. ø10a20» = doble malla ø10@20 — **la «a» es «@»**. Vale para MV y MH salvo que
+  vengan anotadas por separado («ø10a20 V / ø8a25 H»).
+- «2ø18» pegado al borde del muro = **CABEZALES: 2 barras por punta** (1 capa de 2).
+  El «L=600» al lado es el LARGO DE CORTE de esa barra (600 cm, la comercial), no una
+  medida del muro: se anota como antecedente y no reemplaza el largo automático.
+- «+E.ø8a20» corriendo a lo alto del borde = **estribos de CONFINAMIENTO del borde**,
+  ø8@20 en toda la altura. La E es de estribo; el «+» dice que se AGREGAN al armado
+  corriente.
+- «5°», «6°» = el piso · «−11.25» = el nivel · la cota vertical entre losas
+  («250») = **la ALTURA del piso, en cm**.
+
+**Lo que la elevación casi nunca trae**: el **LARGO del muro** (la foto es un
+recorte) y el recubrimiento. El largo SE PREGUNTA si no está escrito ni lo dijo el
+usuario; el recubrimiento va al default. Un piso con pisos arriba y abajo es
+**INTERMEDIO**: condición vacía y el empalme sale solo. Y las armaduras que el plano
+NO anota (trabas, por ejemplo) **no se crean**: se ofrecen en una línea, como
+siempre.
