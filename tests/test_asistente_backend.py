@@ -718,6 +718,11 @@ _m5 = _mensajes_api(_bdy([{"rol": "user", "texto": "x",
                            "imagen": {"media_type": "image/bmp", "data": "QQ=="}}]))
 check("un tipo de imagen no soportado se IGNORA en vez de reventar el chat",
       _m5[-1]["content"] == "x")
+check("la pasante se dicta como un empalme por capa y borrarla no toca el resto",
+      "PASANTE" in _sp("muro") and "un empalme POR" in _sp("muro"))
+from armahub.asistente import _conocimiento as _cnc
+check("...y la leccion de recortes tambien lo dice",
+      "PASANDO del piso de abajo" in _cnc("muro"))
 check("el prompt le enseña a leer recortes sin inventar numeros",
       "RECORTE DEL PLANO" in _sp("muro") and "NUNCA" in _sp("muro"))
 
@@ -1416,6 +1421,15 @@ _r3c, _av3 = _aplicar_cambios(_r1, [{"accion": "editar", "barra": i, "n_capas": 
 check("cambiar las capas del cabezal reacomoda el confinamiento solo",
       _cnt(_r3c, "TC") == 6 and _cnt(_r3c, "EC") == 2
       and any("reacomod" in a for a in _av3))
+# QUITAR capas CONSERVA el confinamiento (flujo de la capa PASANTE, 8-sep): el
+# asistente dibuja todas las capas para que el estribo salga del tamaño real y la
+# pasante se borra despues -- y ese borrado no puede encoger el estribo. Agregar
+# capas si regenera (medido mas arriba); quitar TODOS los cabezales tambien.
+_r2menos, _avm = _aplicar_cambios(_r3c, [{"accion": "editar", "barra": _idx_cb[0],
+                                          "n_capas": 2}], _CATC)
+check("quitar una capa del cabezal NO achica el confinamiento (capa pasante)",
+      _cnt(_r2menos, "TC") == _cnt(_r3c, "TC") and _cnt(_r2menos, "EC") == _cnt(_r3c, "EC")
+      and any("pasante" in a for a in _avm))
 check("...y quitar los cabezales lo quita: no queda nada que confinar",
       _cnt(_aplicar_cambios(_r1, [{"accion": "quitar", "barra": i}
                                   for i in sorted(_idx_cb, reverse=True)],

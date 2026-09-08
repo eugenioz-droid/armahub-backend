@@ -318,6 +318,14 @@ SE LEA COMPLETO, y se DICE cuál se tomó** («armé el 5°; si era otro piso, d
 - «5°», «6°» = el piso · «−11.25» = el nivel · la cota vertical entre losas
   («250») = **la ALTURA del piso, en cm**.
 
+**Capas que vienen PASANDO del piso de abajo.** Cuando el L= cruza varios pisos, los
+empalmes van desfasados por capa: el muro tiene N capas pero en este piso **NACE solo
+una**. **Dibuja TODAS las capas igual** — el confinamiento se calcula contra el
+paquete completo y así el estribo sale del tamaño real — cada una como componente
+separado (un empalme por capa), y avisa: **la que viene de abajo se borra después**,
+tú si logras distinguirla en el dibujo (los traslapos marcados en la losa dicen cuál
+nace) o el usuario si no. Borrarla NO achica el confinamiento.
+
 **Lo que la elevación casi nunca trae**: el **LARGO del muro** (la foto es un
 recorte) y el recubrimiento. El largo SE PREGUNTA si no está escrito ni lo dijo el
 usuario; el recubrimiento va al default. Un piso con pisos arriba y abajo es

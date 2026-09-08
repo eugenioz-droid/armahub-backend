@@ -2080,9 +2080,26 @@ def _aplicar_cambios(receta_actual, cambios, figuras):
     # Lo que el cubicador haya agregado a mano (sin marca) no se toca. Y si los
     # cabezales desaparecen, el confinamiento se va con ellos: no queda nada que
     # confinar.
-    if _firma_cb(comps) != firma_cb0:
+    firma_cb1 = _firma_cb(comps)
+    if firma_cb1 != firma_cb0:
         autos = [c for c in comps if c.get("_zona")]
-        if autos:
+        # PERO SOLO HACIA ARRIBA (usuario 8-sep, flujo de la capa PASANTE). En los
+        # muros con empalmes desfasados el asistente dibuja TODAS las capas para que
+        # el estribo salga del tamaño real, y la que viene pasando del piso de abajo
+        # se borra despues -- la borra el o la borra el usuario. Si ese borrado
+        # regenerara el confinamiento, lo encogeria a las capas que quedan y
+        # desharia justo lo que se buscaba. Asi que QUITAR capas CONSERVA el
+        # confinamiento (con aviso de como reajustarlo si el retiro era genuino);
+        # agregar capas, cambiar diametro o gap, o quedarse sin cabezales, si
+        # regeneran como siempre.
+        quedan_cb = any(c.get("tipologia") == "CB" and not c.get("_cb_borde")
+                        for c in comps)
+        if (autos and quedan_cb
+                and sum(f[2] for f in firma_cb1) < sum(f[2] for f in firma_cb0)):
+            avisos.append("dejé el confinamiento tal como estaba (así se retira una "
+                          "capa pasante sin achicar el estribo); si el retiro era de "
+                          "verdad, pídeme el confinamiento de nuevo y lo reajusto")
+        elif autos:
             ec0 = next((c for c in autos if c.get("tipologia") == "EC"), None)
             prm = {"diam": _num((ec0 or autos[0]).get("diam"))}
             if ec0:
@@ -2443,7 +2460,11 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "cada largo distinto. La plataforma parte eso en varios componentes y los "
         "intercala sola: NO calcules componentes ni separaciones. Si el usuario "
         "dice que son distintas pero no da los largos, PREGUNTASELOS: son numeros "
-        "suyos y no se inventan.\n"
+        "suyos y no se inventan. La MISMA lista sirve para la capa PASANTE (la "
+        "que viene del piso de abajo y no nace aqui): escribe un empalme POR "
+        "CAPA -- repetido si es el mismo -- para que cada capa salga como "
+        "componente separado y la pasante se pueda borrar sola despues, sin "
+        "tocar el resto ni el confinamiento..\n"
         "· COLOR: cada tipología ya trae su color (malla horizontal azul, "
         "vertical verde, trabas morado, estribo naranjo, cabezal azul) y ese es "
         "el default — no lo escribas. Solo llena `color` si el usuario pide otro "
