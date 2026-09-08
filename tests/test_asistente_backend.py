@@ -734,6 +734,8 @@ check("...el vocabulario de viñeta (la a es @, 2ø18 = cabezales, +E = confinam
       and "CONFINAMIENTO del borde" in _CR)
 check("...y que el largo del muro se pregunta porque la foto es un recorte",
       "LARGO del muro" in _CR and "SE PREGUNTA" in _CR)
+check("...y que el L= del cabezal se traduce a empalme = L - altura del piso",
+      "L − altura del piso" in _CR and "empalme **350**" in _CR)
 check("operar_barras tiene el campo espejo",
       "espejo" in TOOL_OPERAR["input_schema"]["properties"]["cambios"]["items"]["properties"])
 _r7, _ = _aplicar_cambios(_RECETA_EJ, [{"accion": "editar", "barra": 1, "espejo": 1}], CAT)

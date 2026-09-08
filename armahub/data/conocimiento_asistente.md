@@ -307,8 +307,11 @@ SE LEA COMPLETO, y se DICE cuál se tomó** («armé el 5°; si era otro piso, d
 - «D.M. ø10a20» = doble malla ø10@20 — **la «a» es «@»**. Vale para MV y MH salvo que
   vengan anotadas por separado («ø10a20 V / ø8a25 H»).
 - «2ø18» pegado al borde del muro = **CABEZALES: 2 barras por punta** (1 capa de 2).
-  El «L=600» al lado es el LARGO DE CORTE de esa barra (600 cm, la comercial), no una
-  medida del muro: se anota como antecedente y no reemplaza el largo automático.
+- **«L=600» junto al cabezal = el LARGO DE CORTE de esa barra**, no una medida del
+  muro. Se traduce a la ficha así: el cuerpo sigue en automático (la altura del piso)
+  y **el empalme del cabezal = L − altura del piso**, hacia arriba. Con L=600 y piso
+  de 250: empalme **350**. Ese número dictado por el plano manda sobre el 60·φ+10 de
+  la casa.
 - «+E.ø8a20» corriendo a lo alto del borde = **estribos de CONFINAMIENTO del borde**,
   ø8@20 en toda la altura. La E es de estribo; el «+» dice que se AGREGAN al armado
   corriente.
