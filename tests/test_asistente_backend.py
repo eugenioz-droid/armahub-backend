@@ -683,6 +683,43 @@ check("...y la bandera no se gana reintentando: manda la primera llamada",
       "rehacer_1a" in _src_chat and 'spec["rehacer"] = 0' in _src_chat)
 check("el prompt dice que con barras en el editor NO se rehace el muro",
       "NO REHAGAS EL MURO" in _sp("muro"))
+
+# ---------------------------------------------------------------------------
+# FOTOS (F2, 8-sep): el recorte de plano viaja como bloque de imagen NATIVO
+# ---------------------------------------------------------------------------
+from armahub.asistente import _mensajes_api
+import types as _t
+
+
+def _bdy(hist, receta=None):
+    return _t.SimpleNamespace(historial=hist, receta_actual=receta)
+
+
+_m1 = _mensajes_api(_bdy([{"rol": "user", "texto": "hola"}]))
+check("sin imagen NADA cambia: el contenido sigue siendo texto plano",
+      _m1[-1]["content"] == "hola" and isinstance(_m1[-1]["content"], str))
+_IMGB = {"media_type": "image/jpeg", "data": "QUJD"}
+_m2 = _mensajes_api(_bdy([{"rol": "user", "texto": "lee el recorte", "imagen": _IMGB}]))
+_c2 = _m2[-1]["content"]
+check("con imagen el turno va en BLOQUES: imagen primero, texto despues",
+      isinstance(_c2, list) and _c2[0]["type"] == "image"
+      and _c2[0]["source"]["media_type"] == "image/jpeg"
+      and _c2[0]["source"]["data"] == "QUJD"
+      and _c2[1] == {"type": "text", "text": "lee el recorte"})
+_m3 = _mensajes_api(_bdy([{"rol": "user", "texto": "", "imagen": _IMGB}]))
+check("una foto SIN texto tambien es un mensaje valido",
+      isinstance(_m3[-1]["content"], list) and _m3[-1]["content"][0]["type"] == "image")
+_m4 = _mensajes_api(_bdy([{"rol": "user", "texto": "mira", "imagen": _IMGB}],
+                         receta={"geometria": {}, "componentes": []}))
+check("el inventario del editor se anexa al bloque de TEXTO sin romper la lista",
+      any(b.get("type") == "text" and "Barras HOY" in b.get("text", "")
+          for b in _m4[-1]["content"]))
+_m5 = _mensajes_api(_bdy([{"rol": "user", "texto": "x",
+                           "imagen": {"media_type": "image/bmp", "data": "QQ=="}}]))
+check("un tipo de imagen no soportado se IGNORA en vez de reventar el chat",
+      _m5[-1]["content"] == "x")
+check("el prompt le enseña a leer recortes sin inventar numeros",
+      "RECORTE DEL PLANO" in _sp("muro") and "NUNCA" in _sp("muro"))
 check("operar_barras tiene el campo espejo",
       "espejo" in TOOL_OPERAR["input_schema"]["properties"]["cambios"]["items"]["properties"])
 _r7, _ = _aplicar_cambios(_RECETA_EJ, [{"accion": "editar", "barra": 1, "espejo": 1}], CAT)

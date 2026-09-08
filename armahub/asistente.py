@@ -2405,6 +2405,13 @@ def _system_prompt(elemento: str, catalogo: str = "") -> str:
         "barras que el usuario nombro: agregar una malla es agregar una malla, "
         "no volver a dibujar las otras ocho. Reconstruir se reserva para cuando "
         "el usuario lo pide con esas palabras («rehazlo», «partamos de cero»).\n"
+        "· RECORTE DEL PLANO (foto pegada al chat): leelo como si el usuario te "
+        "dictara -- espesor, φ y @ de cada malla, alturas, figuras, condicion "
+        "del muro -- y marca esos datos con origen 'leido', que para eso los "
+        "dicta el plano. Lo que no se LEA con claridad se PREGUNTA: NUNCA "
+        "adivines un numero desde una foto borrosa, que un φ mal leido se corta "
+        "y se dobla. Si la imagen no es un plano de enfierradura, dilo y pide el "
+        "dato en texto.\n"
         "· MALLA VERTICAL: su figura sale SOLA de `condicion`, no la elijas tu. "
         "Lo unico que puedes tener que marcar es `mv_asimetrica`: true si el "
         "usuario dice que las dos cortinas son distintas. NO le preguntes que "
@@ -2460,18 +2467,62 @@ class ChatBody(BaseModel):
     obra: Optional[str] = None
 
 
+# FOTOS (F2, 8-sep). El recorte de plano viaja como BLOQUE DE IMAGEN nativo de la
+# API, sin betas: content deja de ser texto plano y pasa a lista de bloques SOLO en
+# los turnos que traen foto. Un tipo raro o un base64 gigante se IGNORAN con gracia
+# (queda el texto y el chat sigue) en vez de reventar el request completo.
+_IMG_TIPOS = ("image/jpeg", "image/png", "image/webp", "image/gif")
+_IMG_MAX_B64 = 7_000_000    # ~5 MB reales; el front ya reduce a lado maximo 1568 px
+
+
+def _bloque_imagen(img):
+    if not isinstance(img, dict):
+        return None
+    mt = str(img.get("media_type") or "").strip().lower()
+    datos = img.get("data")
+    if mt not in _IMG_TIPOS or not isinstance(datos, str) or not datos:
+        return None
+    if len(datos) > _IMG_MAX_B64:
+        return None
+    return {"type": "image",
+            "source": {"type": "base64", "media_type": mt, "data": datos}}
+
+
+def _anexar_texto(msg, texto):
+    """Suma texto a un turno que puede ser string plano o lista de bloques."""
+    c = msg["content"]
+    if isinstance(c, list):
+        for b in reversed(c):
+            if b.get("type") == "text":
+                b["text"] += texto
+                return
+        c.append({"type": "text", "text": texto.strip()})
+    else:
+        msg["content"] = c + texto
+
+
 def _mensajes_api(body: ChatBody) -> list:
-    """historial [{rol,texto}] → messages de la API. El último debe ser del
+    """historial [{rol,texto,imagen?}] → messages de la API. El último debe ser del
     usuario; la receta actual del editor viaja pegada a ese último turno
     (§12.2.6: el asistente siempre ve lo que hay en pantalla AHORA)."""
     msgs = []
     for h in body.historial:
         rol = "user" if (h.get("rol") == "user") else "assistant"
         texto = str(h.get("texto") or "").strip()
-        if not texto:
+        bimg = _bloque_imagen(h.get("imagen")) if rol == "user" else None
+        if not texto and bimg is None:
             continue
-        if msgs and msgs[-1]["role"] == rol:          # la API exige alternancia
-            msgs[-1]["content"] += "\n" + texto
+        if bimg is not None:
+            bloques = [bimg] + ([{"type": "text", "text": texto}] if texto else [])
+            if msgs and msgs[-1]["role"] == rol:
+                c = msgs[-1]["content"]
+                if not isinstance(c, list):
+                    c = [{"type": "text", "text": c}] if c else []
+                msgs[-1]["content"] = c + bloques
+            else:
+                msgs.append({"role": rol, "content": bloques})
+        elif msgs and msgs[-1]["role"] == rol:        # la API exige alternancia
+            _anexar_texto(msgs[-1], "\n" + texto)
         else:
             msgs.append({"role": rol, "content": texto})
     if not msgs or msgs[-1]["role"] != "user":
@@ -2480,9 +2531,9 @@ def _mensajes_api(body: ChatBody) -> list:
     if body.receta_actual:
         # INVENTARIO NUMERADO, no el JSON crudo: el modelo necesita poder decir
         # «la barra 3» para operar_barras, y el JSON entero solo gastaba tokens.
-        msgs[-1]["content"] += (
-            "\n\n[Barras HOY en el editor — para operar_barras usa estos numeros]\n"
-            + _inventario_receta(body.receta_actual))
+        _anexar_texto(msgs[-1],
+                      "\n\n[Barras HOY en el editor — para operar_barras usa estos numeros]\n"
+                      + _inventario_receta(body.receta_actual))
     return msgs
 
 

@@ -54,7 +54,9 @@
   function _preguntar() {
     var est = _estadoEditor();
     var body = {
-      historial: CHAT.slice(),
+      historial: CHAT.map(function (m) {
+        return { rol: m.rol, texto: m.texto, imagen: m.imagen };
+      }),
       receta_actual: (est && est.receta) || null,
       elemento: (est && est.elemento) || 'muro',
       obra: (est && est.ctxObra && est.ctxObra.id_proyecto) || (est && est.obra) || null
@@ -82,12 +84,22 @@
   // ---------------------------------------------------------------------------
   // MENSAJES
   // ---------------------------------------------------------------------------
-  function _burbuja(rol, texto) {
+  function _burbuja(rol, texto, miniatura) {
     var box = $('te_iaMsgs');
     if (!box) return null;
     var d = document.createElement('div');
     d.className = 'te-ia-msg ' + (rol === 'user' ? 'user' : 'bot');
     d.textContent = texto;
+    if (miniatura) {
+      // El recorte se VE en el historial: sin esto un mensaje de pura foto era
+      // una burbuja vacia y el usuario no sabia si llego.
+      var im = document.createElement('img');
+      im.src = miniatura;
+      im.alt = 'recorte del plano';
+      im.style.cssText = 'display:block;max-width:190px;max-height:140px;' +
+        'border-radius:6px;margin-top:' + (texto ? '6px' : '0') + ';';
+      d.appendChild(im);
+    }
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
     return d;
@@ -97,7 +109,7 @@
     var box = $('te_iaMsgs');
     if (!box) return;
     box.innerHTML = '';
-    CHAT.forEach(function (m) { _burbuja(m.rol, m.texto); });
+    CHAT.forEach(function (m) { _burbuja(m.rol, m.texto, m._thumb); });
   }
 
   function _agregar(rol, texto) {
@@ -115,16 +127,92 @@
     inp.style.height = alto + 'px';
   }
 
+  // ---------------------------------------------------------------------------
+  // RECORTE DEL PLANO (F2, 8-sep) — se PEGA al chat con Ctrl+V. La imagen se
+  // reduce en el navegador (lado mayor 1568 px, JPEG) antes de viajar: la API
+  // topa en ~5 MB por imagen y una captura de plano en PNG los pasa facil.
+  // Queda como ADJUNTO PENDIENTE (chip sobre el campo, con su ✕) hasta el Enviar.
+  // ---------------------------------------------------------------------------
+  var IMG_PENDIENTE = null;           // { media_type, data (base64 pelado), url }
+  var IMG_LADO_MAX = 1568;
+
+  function _tomarImagen(archivo) {
+    if (!archivo) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var esc = Math.min(1, IMG_LADO_MAX / Math.max(img.width || 1, img.height || 1));
+        var w = Math.max(1, Math.round((img.width || 1) * esc));
+        var h = Math.max(1, Math.round((img.height || 1) * esc));
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        var cx = cv.getContext('2d');
+        cx.fillStyle = '#fff';                 // PNG transparente → fondo blanco
+        cx.fillRect(0, 0, w, h);
+        cx.drawImage(img, 0, 0, w, h);
+        var url = cv.toDataURL('image/jpeg', 0.85);
+        var b64 = url.split(',')[1] || '';
+        if (!b64 || b64.length > 6500000) {
+          _burbuja('asistente', '⚠ La imagen quedó demasiado grande incluso reducida. ' +
+            'Recorta solo la zona del plano que importa y pégala de nuevo.');
+          return;
+        }
+        IMG_PENDIENTE = { media_type: 'image/jpeg', data: b64, url: url };
+        _pintarAdjunto();
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(archivo);
+  }
+
+  function _pintarAdjunto() {
+    var inp = $('te_iaInput');
+    if (!inp || !inp.parentNode || !inp.parentNode.parentNode) return;
+    var chip = $('te_iaAdj');
+    if (!IMG_PENDIENTE) { if (chip) chip.remove(); return; }
+    if (!chip) {
+      chip = document.createElement('div');
+      chip.id = 'te_iaAdj';
+      chip.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 6px;' +
+        'margin:0 0 4px;border:1px dashed #90a4ae;border-radius:8px;' +
+        'font-size:11px;color:#546e7a;';
+      inp.parentNode.parentNode.insertBefore(chip, inp.parentNode);
+    }
+    chip.innerHTML = '';
+    var im = document.createElement('img');
+    im.src = IMG_PENDIENTE.url;
+    im.style.cssText = 'width:46px;height:34px;object-fit:cover;border-radius:4px;';
+    var tx = document.createElement('span');
+    tx.textContent = 'recorte listo — se envía con tu mensaje';
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.textContent = '✕';
+    x.title = 'Quitar el recorte';
+    x.style.cssText = 'margin-left:auto;border:0;background:transparent;' +
+      'cursor:pointer;color:#90a4ae;font-size:13px;';
+    x.addEventListener('click', function () { IMG_PENDIENTE = null; _pintarAdjunto(); });
+    chip.appendChild(im); chip.appendChild(tx); chip.appendChild(x);
+  }
+
   function _enviar() {
     if (PENSANDO) return;
     _reiniciarSiOtroElemento();
     var inp = $('te_iaInput');
     if (!inp) return;
     var txt = (inp.value || '').trim();
-    if (!txt) return;
+    var foto = IMG_PENDIENTE;
+    if (!txt && !foto) return;
     inp.value = '';
     _autoAltoInput();                 // vuelve a una linea al vaciarse
-    _agregar('user', txt);
+    // La foto entra AL HISTORIAL como parte del turno: el backend la convierte en
+    // bloque de imagen. `_thumb` es solo para pintar la burbuja y NO viaja.
+    CHAT.push({ rol: 'user', texto: txt,
+                imagen: foto ? { media_type: foto.media_type, data: foto.data } : undefined,
+                _thumb: foto ? foto.url : undefined });
+    _burbuja('user', txt || '📷 recorte del plano', foto ? foto.url : null);
+    IMG_PENDIENTE = null;
+    _pintarAdjunto();
 
     PENSANDO = true;
     // Indicador VIVO (pedido del usuario 31-ago): contador de segundos para que
@@ -407,7 +495,8 @@
     _agregar('asistente', 'Hola 👋 Soy el asistente de enfierrado. Descríbeme el ' +
       'muro (dimensiones, mallas, trabas) y armo la receta: lo que no sepa te lo ' +
       'pregunto, y nada queda guardado hasta que tú lo decidas. Por ahora sé de ' +
-      'muros; los recortes de plano vienen en la próxima etapa.');
+      'muros. Puedes pegarme un recorte del plano (Ctrl+V aquí mismo) y leo lo ' +
+      'que traiga.');
   }
 
   function _abrir() {
@@ -498,6 +587,18 @@
       // vaciarse. Se engancha a 'input' —no a keyup— para que tambien crezca al
       // PEGAR un pedido largo, que es justo cuando molestaba.
       inp.addEventListener('input', _autoAltoInput);
+      // Ctrl+V con una imagen en el portapapeles → adjunto pendiente. El paste de
+      // TEXTO sigue exactamente igual (solo se intercepta si viene imagen).
+      inp.addEventListener('paste', function (e) {
+        var its = (e.clipboardData && e.clipboardData.items) || [];
+        for (var i = 0; i < its.length; i++) {
+          if (its[i].type && its[i].type.indexOf('image/') === 0) {
+            e.preventDefault();
+            _tomarImagen(its[i].getAsFile());
+            return;
+          }
+        }
+      });
       _autoAltoInput();
     }
     var cargar = $('te_iaCargar');
