@@ -419,17 +419,21 @@ async function loadDashKpis() {
       '</div>';
     var total = data.con_causa || 1;
     (c.subcausas || []).forEach(function (sc) {
-      // La barra mas larga llega al 80% del carril, no al 100%: el rotulo va pegado
-      // a su derecha y con el 100% se salia del cuadro (captura del usuario 21-sep).
-      var pct = Math.max(3, Math.round(80 * sc.n / max));
+      // EL ROTULO VA EN UNA COLUMNA FIJA a la derecha del carril, no pegado al final
+      // de cada barra (usuario 21-sep: «mejor alineados al final, despues de donde
+      // termina la sombra»). Asi los numeros forman una columna y se comparan de un
+      // vistazo; la barra solo dice el largo. Con el rotulo fuera del carril, la
+      // barra puede llegar al 100% sin que nada se salga.
+      var pct = Math.max(2, Math.round(100 * sc.n / max));
       var share = Math.round(100 * sc.n / total);
-      html += '<div style="display:grid; grid-template-columns:minmax(220px, 34%) 1fr; gap:10px; align-items:center; padding:2px 0 2px 18px;">' +
+      html += '<div style="display:grid; grid-template-columns:minmax(220px, 34%) 1fr 84px; gap:10px; align-items:center; padding:2px 0 2px 18px;">' +
         '<div style="color:#37474f; white-space:normal; line-height:1.25;" title="' + _escDash(sc.sub) + '">' + _escDash(sc.sub) + '</div>' +
-        '<div style="position:relative; height:18px; background:#f1f3f4; border-radius:3px;">' +
+        '<div style="height:18px; background:#f1f3f4; border-radius:3px;">' +
           '<div style="width:' + pct + '%; height:100%; background:' + col + '; border-radius:3px; opacity:.85;"></div>' +
-          '<span style="position:absolute; left:' + pct + '%; top:0; line-height:18px; padding-left:6px; white-space:nowrap; color:#263238;" title="' + sc.n + ' de ' + total + ' con causa">' +
-            '<b>' + sc.n + '</b> <span style="color:#78909c;">· ' + share + '%</span></span>' +
-        '</div></div>';
+        '</div>' +
+        '<div style="white-space:nowrap; color:#263238; text-align:left;" title="' + sc.n + ' de ' + total + ' con causa">' +
+          '<b>' + sc.n + '</b> <span style="color:#78909c;">· ' + share + '%</span></div>' +
+        '</div>';
     });
     html += '</div>';
   });
