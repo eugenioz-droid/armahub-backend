@@ -411,15 +411,20 @@ async function loadDashKpis() {
       '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:4px;">' +
         '<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:' + col + ';"></span>' +
         '<span style="font-weight:700; color:#263238;">' + _escDash(labels[c.causa] || c.causa) + '</span>' +
-        '<span style="color:#78909c;">' + c.n + ' reclamo' + (c.n === 1 ? '' : 's') + '</span>' +
+        '<span style="color:#78909c;">' + c.n + ' reclamo' + (c.n === 1 ? '' : 's') + ' · ' + Math.round(100 * c.n / (data.con_causa || 1)) + '%</span>' +
       '</div>';
+    var total = data.con_causa || 1;
     (c.subcausas || []).forEach(function (sc) {
-      var pct = Math.max(4, Math.round(100 * sc.n / max));
+      // La barra mas larga llega al 80% del carril, no al 100%: el rotulo va pegado
+      // a su derecha y con el 100% se salia del cuadro (captura del usuario 21-sep).
+      var pct = Math.max(3, Math.round(80 * sc.n / max));
+      var share = Math.round(100 * sc.n / total);
       html += '<div style="display:grid; grid-template-columns:minmax(220px, 34%) 1fr; gap:10px; align-items:center; padding:2px 0 2px 18px;">' +
         '<div style="color:#37474f; white-space:normal; line-height:1.25;" title="' + _escDash(sc.sub) + '">' + _escDash(sc.sub) + '</div>' +
         '<div style="position:relative; height:18px; background:#f1f3f4; border-radius:3px;">' +
           '<div style="width:' + pct + '%; height:100%; background:' + col + '; border-radius:3px; opacity:.85;"></div>' +
-          '<span style="position:absolute; left:' + pct + '%; top:0; line-height:18px; padding-left:6px; font-weight:700; color:#263238;">' + sc.n + '</span>' +
+          '<span style="position:absolute; left:' + pct + '%; top:0; line-height:18px; padding-left:6px; white-space:nowrap; color:#263238;" title="' + sc.n + ' de ' + total + ' con causa">' +
+            '<b>' + sc.n + '</b> <span style="color:#78909c;">· ' + share + '%</span></span>' +
         '</div></div>';
     });
     html += '</div>';
