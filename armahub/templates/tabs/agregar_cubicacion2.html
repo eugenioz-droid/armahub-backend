@@ -302,20 +302,25 @@
         <thead><tr style="color:#666; background:#fafafa;">
           <th style="text-align:left; padding:4px 8px;">Despiece</th>
           <th style="text-align:left; padding:4px 8px;">Sector · Estruct · Eje</th>
-          <th style="text-align:left; padding:4px 8px;">Estado</th>
-          <th style="text-align:right; padding:4px 8px;" title="Entradas / filas ingresadas">Items</th>
-          <th style="text-align:right; padding:4px 8px;" title="Barras físicas = Σ (cantidad × multiplicador)">Barras</th>
-          <th style="text-align:right; padding:4px 8px;">Kg</th>
+          <th style="text-align:left; padding:4px 8px; width:110px;">Estado</th>
+          <!-- PISOS con barras en el despiece, resumido (P1, P2, P3…). Es la columna
+               ancha a propósito: las numéricas de al lado se apretaron para dársela. -->
+          <th style="text-align:left; padding:4px 8px;" title="Pisos en los que este despiece tiene barras">Pisos</th>
+          <!-- Las 6 numéricas van APRETADAS (ancho fijo, padding 4px): antes cada una se
+               llevaba un sexto de la tabla y los números quedaban flotando en el vacío. -->
+          <th style="text-align:right; padding:4px 4px; width:44px;" title="Entradas / filas ingresadas">Items</th>
+          <th style="text-align:right; padding:4px 4px; width:52px;" title="Barras físicas = Σ (cantidad × multiplicador)">Barras</th>
+          <th style="text-align:right; padding:4px 4px; width:62px;">Kg</th>
           <!-- KPIs del despiece (azul fuerte): Ø ponderado por peso · PPB = kg/barra
                física · PPI = kg/item (entrada). Van antes de Creado. -->
-          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Diámetro promedio ponderado por peso: Σ(φ×kg)/Σkg">Ø prom</th>
-          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Peso Por Barra física = Kg / Barras">PPB</th>
-          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Peso Por Item (entrada/fila) = Kg / Items">PPI</th>
-          <th style="text-align:left; padding:4px 8px;">Creado</th>
+          <th style="text-align:right; padding:4px 4px; width:52px; color:#0d47a1;" title="Diámetro promedio ponderado por peso: Σ(φ×kg)/Σkg">Ø prom</th>
+          <th style="text-align:right; padding:4px 4px; width:44px; color:#0d47a1;" title="Peso Por Barra física = Kg / Barras">PPB</th>
+          <th style="text-align:right; padding:4px 4px; width:48px; color:#0d47a1;" title="Peso Por Item (entrada/fila) = Kg / Items">PPI</th>
+          <th style="text-align:left; padding:4px 8px; width:84px;">Creado</th>
           <th style="padding:4px 8px;"></th>
         </tr></thead>
         <tbody id="ac2_lotesBody">
-          <tr><td colspan="11" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>
+          <tr><td colspan="12" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>
         </tbody>
       </table>
       <div class="muted" style="font-size:10px; margin-top:4px;">Terminado = solo lectura aquí. Corregir una barra → Bar Manager (preserva procedencia).</div>

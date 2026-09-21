@@ -383,9 +383,27 @@ function ac2CeldaOff(){ return '<td style="'+AC2_TDS+' background:#fafafa;"></td
 //   Tab / → / Enter  → siguiente celda a la DERECHA   ·  Shift+Tab / ←  → anterior
 //   ↓ → misma columna, fila de abajo  ·  ↑ → fila de arriba
 // Trabaja sobre el orden VISUAL de los inputs .ac2nav en el DOM y el nº de columnas por fila.
+// TAB SOBRE UNA CELDA QUE RE-RENDERIZA LA FILA (figura, φ) — el defecto que reportaban
+// (21-sep: «con TAB se sale del box o no avanza»). La navegacion corre en keydown y
+// elige la celda siguiente de la fila VIEJA; recien despues, en el blur, dispara el
+// onchange de la figura, que re-renderiza la fila (cambian las celdas de dims) y
+// re-enfoca la celda editada. Dos resultados, los dos malos: el foco vuelve a
+// «figura» en vez de avanzar, o cae en una celda que ya no existe y se va al body.
+// Solucion: el handler deja anotada la INTENCION («me quiero mover a la columna X de
+// la fila Y»), y el re-render la respeta en vez de volver a la celda editada.
+var _ac2NavPendiente=null;   // { row, col } o null
+
 window.ac2NavKey=function(ev, el){
   var k=ev.key;
   var navKeys={'Tab':1,'ArrowRight':1,'ArrowLeft':1,'ArrowUp':1,'ArrowDown':1,'Enter':1};
+  // «+» DEL TECLADO NUMERICO = agregar una barra debajo de la fila actual, con su
+  // tipologia (mismo gesto que el «+» verde de la fila). Solo el numerico: el «+» de
+  // la fila superior (Shift+=) se deja pasar por si alguien lo escribe en un texto.
+  if (k==='+' && ev.location===3 && !ac2SoloLectura()){
+    var idMas=el.getAttribute('data-row');
+    if (idMas){ ev.preventDefault(); ac2CopiarTipologia(Number(idMas)); }
+    return;
+  }
   if (!navKeys[k]) return;
   // Datalist abierto (figura): ↑/↓ navegan la lista nativa; no interceptar.
   if ((k==='ArrowUp'||k==='ArrowDown') && el.getAttribute('list')) return;
@@ -414,7 +432,17 @@ window.ac2NavKey=function(ev, el){
     // Enter/Tab en la última celda: prevenir el default (submit/blur) para no perder el foco.
     if (!target && (k==='Enter'||k==='Tab')){ ev.preventDefault(); return; }
   }
-  if (target){ ev.preventDefault(); target.focus(); if(target.select) target.select(); }
+  if (target){
+    ev.preventDefault();
+    // Si la celda que se abandona re-renderiza su fila al perder el foco (figura, φ),
+    // el destino se anota para que el re-render lo honre. Se guarda por fila+columna
+    // (no el elemento), porque el elemento destino puede ser reemplazado.
+    var colAct=el.getAttribute('data-col');
+    if (colAct==='figura' || colAct==='diam'){
+      _ac2NavPendiente={ row:target.getAttribute('data-row'), col:target.getAttribute('data-col') };
+    }
+    target.focus(); if(target.select) target.select();
+  }
 };
 
 // FONDO + TÍTULO de una fila de la grilla — UNA sola escala de prioridades, en un solo lugar.
@@ -1218,6 +1246,9 @@ function ac2ActualizarRevHabilitado(id, b){
 // re-enfocamos tras re-pintar. focoCol = data-col a re-enfocar (por si el foco ya se movió).
 function ac2ReRenderFila(id, focoCol){
   var b=ac2BarraPorId(id); if(!b) return;
+  // La INTENCION de navegacion manda sobre la celda editada (ver ac2NavKey): si el
+  // usuario ya tabulo hacia otra celda, el re-render lo lleva AHI, no de vuelta.
+  if (_ac2NavPendiente){ focoCol=_ac2NavPendiente; _ac2NavPendiente=null; }
   // Si no se indicó, deducir la celda activa (la que tiene el foco ahora).
   if (focoCol===undefined){
     var act=document.activeElement;
@@ -1232,6 +1263,14 @@ function ac2ReRenderFila(id, focoCol){
             'select.ac2nav[data-row="'+focoCol.row+'"][data-col="'+focoCol.col+'"]';
     var again=document.querySelector(sel);
     if (again){ again.focus(); if(again.select) again.select(); }
+    else {
+      // La celda destino ya no existe en la fila nueva (la figura nueva tiene menos
+      // lados que la anterior): en vez de dejar el foco en el body, ir a la PRIMERA
+      // celda navegable de esa fila que quede a la derecha de la figura.
+      var tr2=document.getElementById('ac2row_'+focoCol.row);
+      var sig=tr2 && tr2.querySelector('input.ac2nav[data-col^="dim_"], input.ac2nav[data-col="cant"]');
+      if (sig){ sig.focus(); if(sig.select) sig.select(); }
+    }
   }
 }
 // Refresca contador de revisadas + rollup sin reconstruir la tabla.
@@ -1275,8 +1314,16 @@ window.ac2AgregarBarra=function(){
 window.ac2CopiarTipologia=function(id){
   var b=ac2BarraPorId(id); if(!b) return;
   var idx=AC2.barras.indexOf(b);
-  AC2.barras.splice(idx+1,0, ac2NuevaBarra({ marca:b.marca, piso:b.piso }));
+  var nueva=ac2NuevaBarra({ marca:b.marca, piso:b.piso });
+  AC2.barras.splice(idx+1,0, nueva);
   ac2Render();
+  // EL FOCO SE VA A LA FILA NUEVA (primera celda editable: el φ, que es lo primero
+  // que falta). Con el «+» del teclado numerico (21-sep) esto es lo que hace que el
+  // atajo sirva: sin foco el usuario tenia que ir al mouse, que es justo lo que el
+  // atajo evita. Con el «+» del mouse tambien ayuda: la fila nueva queda lista.
+  var tr=document.getElementById('ac2row_'+nueva._id);
+  var c=tr && tr.querySelector('select.ac2nav[data-col="diam"], input.ac2nav[data-col="figura"], .ac2nav');
+  if (c){ c.focus(); if(c.select) c.select(); }
 };
 window.ac2Duplicar=function(id){
   var b=ac2BarraPorId(id); if(!b) return;
@@ -1929,7 +1976,7 @@ async function ac2CargarLotes(){
   catch(e){ lotes=[]; }
   // Filtrar eliminados salvo que el checkbox esté marcado.
   if (!_ac2VerEliminados) lotes=lotes.filter(function(l){ return l.estado!=='eliminado'; });
-  if (!lotes.length){ tb.innerHTML='<tr><td colspan="11" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">'+(_ac2VerEliminados?'Esta obra aún no tiene despieces.':'Esta obra no tiene despieces activos.')+'</td></tr>'; return; }
+  if (!lotes.length){ tb.innerHTML='<tr><td colspan="12" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">'+(_ac2VerEliminados?'Esta obra aún no tiene despieces.':'Esta obra no tiene despieces activos.')+'</td></tr>'; return; }
   tb.innerHTML=lotes.map(function(l){
     var esta=(l.id===AC2.loteId);
     var eliminado=(l.estado==='eliminado');
@@ -1941,7 +1988,7 @@ async function ac2CargarLotes(){
     var fecha=(l.creado_fecha||'').slice(0,10);
     // KPIs del despiece (azul fuerte). Fórmula y formato en ac2KpisTd — los mismos que
     // usa el índice de estructuras, para que las dos tablas se lean igual.
-    var kpis=ac2KpisTd(l,'6px 8px');
+    var kpis=ac2KpisTd(l,'6px 4px');
     // LÁPIDA (eliminado): fila en gris, CLICKEABLE para VER su contenido en solo-lectura (desde el
     // snapshot congelado). Muestra quién/cuándo lo eliminó.
     if (eliminado){
@@ -1950,9 +1997,10 @@ async function ac2CargarLotes(){
         '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
         '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
         '<td style="padding:6px 8px;">'+estado+'</td>'+
-        '<td style="padding:6px 8px; text-align:right;" title="Items que tenía al eliminarse">'+(l.n_items||0)+'</td>'+
-        '<td style="padding:6px 8px; text-align:right;" title="Barras que tenía al eliminarse">'+ac2Num(l.n_barras||0)+'</td>'+
-        '<td style="padding:6px 8px; text-align:right;" title="Kg que tenía al eliminarse">'+ac2Num(l.kg,1)+'</td>'+
+        ac2PisosTd(l,'6px 8px')+
+        '<td style="padding:6px 4px; text-align:right;" title="Items que tenía al eliminarse">'+(l.n_items||0)+'</td>'+
+        '<td style="padding:6px 4px; text-align:right;" title="Barras que tenía al eliminarse">'+ac2Num(l.n_barras||0)+'</td>'+
+        '<td style="padding:6px 4px; text-align:right;" title="Kg que tenía al eliminarse">'+ac2Num(l.kg,1)+'</td>'+
         kpis+
         '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
         '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:10px;">'+
@@ -1966,9 +2014,10 @@ async function ac2CargarLotes(){
       '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
       '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
       '<td style="padding:6px 8px;">'+estado+'</td>'+
-      '<td style="padding:6px 8px; text-align:right;">'+(l.n_items||0)+'</td>'+
-      '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.n_barras||0)+'</td>'+
-      '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
+      ac2PisosTd(l,'6px 8px')+
+      '<td style="padding:6px 4px; text-align:right;">'+(l.n_items||0)+'</td>'+
+      '<td style="padding:6px 4px; text-align:right;">'+ac2Num(l.n_barras||0)+'</td>'+
+      '<td style="padding:6px 4px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
       kpis+
       '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
       '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:11px;">'+
@@ -1976,6 +2025,20 @@ async function ac2CargarLotes(){
         '<span style="color:#558B2F;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</span>'+
       '</td></tr>';
   }).join('');
+}
+
+// PISOS de un despiece en una celda: 'P1, P2, P10, SUB1'. Orden NATURAL (P2 antes que
+// P10, y los subterráneos primero), no alfabético — con sort() a secas 'P10' iba antes
+// que 'P2'. Vacío = '—' (un despiece recién creado sin barras).
+function ac2PisosTd(l, pad){
+  var ps=(l.pisos||[]).slice().filter(Boolean);
+  var clave=function(p){
+    var m=/^(SUB|S|Z|-)\s*-?\s*(\d+)/i.exec(p); if(m) return [-1, -Number(m[2]), p];   // subterráneos, del más profundo
+    var n=/(\d+)/.exec(p); return [n?0:1, n?Number(n[1]):0, p];                      // P1, P2… luego los sin número
+  };
+  ps.sort(function(a,b){ var ka=clave(a), kb=clave(b); return (ka[0]-kb[0]) || (ka[1]-kb[1]) || ka[2].localeCompare(kb[2]); });
+  var txt=ps.length?ps.map(ac2Esc).join(', '):'—';
+  return '<td style="padding:'+pad+'; color:'+(ps.length?'#37474f':'#b0bec5')+'; white-space:normal;" title="'+(ps.length?ps.length+' piso(s) con barras':'Sin barras todavía')+'">'+txt+'</td>';
 }
 
 // DUPLICAR LOTE: abre un mini-popup para elegir Ciclo y Eje del NUEVO lote (el resto de la data se

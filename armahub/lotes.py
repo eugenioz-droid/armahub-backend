@@ -1277,7 +1277,11 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
                        -- obra en barras.py): Σ(diam·peso)/Σ(peso). No es el promedio
                        -- simple de diámetros — pondera por cuánto acero aporta cada uno.
                        COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) /
-                                NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) AS diam_prom
+                                NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) AS diam_prom,
+                       -- PISOS con barras en el despiece (columna del listado, 21-sep):
+                       -- distintos, sin vacios. El orden lo pone el front, que sabe
+                       -- leer 'P1 / P2 / SUB1'; aca solo se recogen.
+                       ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(TRIM(b.piso), '')), NULL) AS pisos
                 FROM lotes l
                 LEFT JOIN barras b ON b.lote_id = l.id
                 WHERE l.id_proyecto = %s
@@ -1291,13 +1295,14 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
             )
             # Columnas: 0 id, 1 estado, 2 creado_por, 3 creado_fecha, 4 terminado_fecha, 5 n_items,
             # 6 n_barras(físicas), 7 kg, 8 sector, 9 ciclo, 10 eje, 11 num_obra, 12 eliminado_por,
-            # 13 eliminado_fecha, 14 snap_barras, 15 diam_prom.
+            # 13 eliminado_fecha, 14 snap_barras, 15 diam_prom, 16 pisos.
             import json as _json
             lotes = []
             for r in cur.fetchall():
                 n_items = int(r[5] or 0)
                 n_barras = float(r[6] or 0)
                 kg = float(r[7] or 0)
+                snap = None
                 if r[1] == "eliminado":
                     # Lápida: si el snapshot de resumen (snap_n_barras/snap_kg) quedó vacío pero hay
                     # detalle (snap_barras), derivar items/barras/kg del detalle. Barras físicas =
@@ -1318,6 +1323,11 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
                     # KPIs del despiece. PPB/PPI se derivan en el front (kg/barras,
                     # kg/items); el Ø prom viene ponderado por peso desde el SQL.
                     "diam_prom": float(r[15] or 0),
+                    # Un despiece eliminado ya no tiene barras vivas: sus pisos salen
+                    # del snapshot, igual que su n_items.
+                    "pisos": (list(r[16] or []) if r[1] != "eliminado"
+                              else sorted({str(x.get("piso") or "").strip()
+                                           for x in (snap or []) if x.get("piso")})),
                 })
     return {"ok": True, "lotes": lotes}
 
