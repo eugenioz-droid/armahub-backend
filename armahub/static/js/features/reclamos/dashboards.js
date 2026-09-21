@@ -47,6 +47,7 @@ function _applyRecSubTabsVisibility() {
   });
 }
 
+window.switchDashSubTab = switchDashSubTab;
 function switchRecSubTab(sub) {
   // Guardia: si el sub-tab pedido no es visible para el rol, caer a 'clientes'
   // (siempre disponible). Evita restaurar desde hash a un tab prohibido.
@@ -348,6 +349,84 @@ async function loadRecLanding() {
     }
   }
 }
+
+// ── SUB-TABS DE DASHBOARDS (21-sep) ──────────────────────────────────────────────
+// Mismo mecanismo que REC_SUBTABS: un registro, un switch que muestra el panel y
+// pinta el botón. Los tableros de siempre viven en 'tableros' y no se tocaron;
+// 'kpis' es la sección nueva, que carga su data la primera vez que se abre.
+var DASH_SUBTABS = {
+  tableros: { panel: 'dashSubTableros', btn: 'dashSubBtnTableros', color: '#1565C0' },
+  kpis:     { panel: 'dashSubKpis',     btn: 'dashSubBtnKpis',     color: '#00897b' }
+};
+var _dashSubActual = 'tableros';
+var _dashKpisLoaded = false;
+
+function switchDashSubTab(sub) {
+  if (!DASH_SUBTABS[sub]) sub = 'tableros';
+  _dashSubActual = sub;
+  Object.keys(DASH_SUBTABS).forEach(function (key) {
+    var cfg = DASH_SUBTABS[key];
+    var el = document.getElementById(cfg.panel);
+    if (el) el.style.display = (key === sub) ? '' : 'none';
+    var btn = document.getElementById(cfg.btn);
+    if (btn) {
+      btn.style.borderBottomColor = (key === sub) ? cfg.color : 'transparent';
+      btn.style.color = (key === sub) ? cfg.color : '#999';
+    }
+  });
+  if (sub === 'tableros') loadRecAdminDashboards();
+  if (sub === 'kpis') loadDashKpis();
+}
+
+// KPI: causas de los reclamos CERRADOS, como árbol causa → sub-causa. La sub-causa
+// es la que importa (pedido del usuario); la causa gruesa solo agrupa. Barras
+// horizontales con la cantidad escrita encima: legible sin leyenda ni tooltip.
+async function loadDashKpis() {
+  if (_dashKpisLoaded) return;
+  var data = await apiGet('/reclamos/kpi-causas');
+  if (!data) return;
+  _dashKpisLoaded = true;
+  var uni = document.getElementById('dashKpiUniverso');
+  if (uni) uni.textContent = '· ' + (data.cerrados || 0) + ' cerrados, ' +
+    (data.con_causa || 0) + ' con causa' +
+    ((data.cerrados || 0) > (data.con_causa || 0)
+      ? ' (' + ((data.cerrados || 0) - (data.con_causa || 0)) + ' cerrados sin causa quedan fuera)' : '');
+  var cont = document.getElementById('dashKpiArbol');
+  if (!cont) return;
+  var arbol = data.arbol || [];
+  if (!arbol.length) {
+    cont.innerHTML = '<div class="muted" style="font-style:italic;">Todavía no hay reclamos cerrados con causa asignada.</div>';
+    return;
+  }
+  var max = 1;
+  arbol.forEach(function (c) { (c.subcausas || []).forEach(function (sc) { if (sc.n > max) max = sc.n; }); });
+  // Rótulos y colores de las causas: los MISMOS de constants.js que usa el resto de
+  // Reclamos (donut de Ishikawa, matriz RCA), para que una causa se vea igual en todos.
+  var labels = (typeof _recIshikawaLabels !== 'undefined') ? _recIshikawaLabels : {};
+  var colores = (typeof _ishikawaCatColors !== 'undefined') ? _ishikawaCatColors : {};
+  var html = '';
+  arbol.forEach(function (c) {
+    var col = colores[c.causa] || '#546e7a';
+    html += '<div style="margin-bottom:14px;">' +
+      '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:4px;">' +
+        '<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:' + col + ';"></span>' +
+        '<span style="font-weight:700; color:#263238;">' + _escDash(labels[c.causa] || c.causa) + '</span>' +
+        '<span style="color:#78909c;">' + c.n + ' reclamo' + (c.n === 1 ? '' : 's') + '</span>' +
+      '</div>';
+    (c.subcausas || []).forEach(function (sc) {
+      var pct = Math.max(4, Math.round(100 * sc.n / max));
+      html += '<div style="display:grid; grid-template-columns:minmax(220px, 34%) 1fr; gap:10px; align-items:center; padding:2px 0 2px 18px;">' +
+        '<div style="color:#37474f; white-space:normal; line-height:1.25;" title="' + _escDash(sc.sub) + '">' + _escDash(sc.sub) + '</div>' +
+        '<div style="position:relative; height:18px; background:#f1f3f4; border-radius:3px;">' +
+          '<div style="width:' + pct + '%; height:100%; background:' + col + '; border-radius:3px; opacity:.85;"></div>' +
+          '<span style="position:absolute; left:' + pct + '%; top:0; line-height:18px; padding-left:6px; font-weight:700; color:#263238;">' + sc.n + '</span>' +
+        '</div></div>';
+    });
+    html += '</div>';
+  });
+  cont.innerHTML = html;
+}
+function _escDash(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
 async function loadRecAdminDashboards() {
   if (_adminDashLoaded) return;

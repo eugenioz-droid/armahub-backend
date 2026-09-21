@@ -638,6 +638,40 @@ def siguiente_numero_calidad(anio: int, tipo_origen: str = "externo", user=Depen
     return {"anio": anio, "siguiente": (max_num or 0) + 1}
 
 
+@router.get("/reclamos/kpi-causas")
+def reclamos_kpi_causas(user=Depends(get_current_user)):
+    """KPI de causas (sub-tab KPIs de Dashboards, 21-sep): reclamos de clientes CERRADOS
+    con causa asignada, como árbol causa → sub-causa con conteos. Los sin causa no
+    entran (no hay nada que tabular), pero se informa cuántos cerrados quedan fuera
+    para que el universo del gráfico sea explícito. Solo admin/admin_calidad."""
+    if user.get("role") not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo administradores")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*),
+                       COUNT(*) FILTER (WHERE categoria_ishikawa IS NOT NULL AND categoria_ishikawa <> '')
+                FROM reclamos
+                WHERE tipo_origen = 'externo' AND estado IN ('cerrado', 'rechazado')""")
+            cerrados, con_causa = cur.fetchone()
+            cur.execute("""
+                SELECT categoria_ishikawa, COALESCE(NULLIF(TRIM(sub_causa), ''), '(sin sub-causa)'), COUNT(*)
+                FROM reclamos
+                WHERE tipo_origen = 'externo' AND estado IN ('cerrado', 'rechazado')
+                  AND categoria_ishikawa IS NOT NULL AND categoria_ishikawa <> ''
+                GROUP BY 1, 2
+                ORDER BY 1, 3 DESC, 2""")
+            arbol, idx = [], {}
+            for cat, sub, n in cur.fetchall():
+                if cat not in idx:
+                    idx[cat] = {"causa": cat, "n": 0, "subcausas": []}
+                    arbol.append(idx[cat])
+                idx[cat]["n"] += int(n)
+                idx[cat]["subcausas"].append({"sub": sub, "n": int(n)})
+            arbol.sort(key=lambda c: -c["n"])
+    return {"cerrados": int(cerrados or 0), "con_causa": int(con_causa or 0), "arbol": arbol}
+
+
 @router.get("/reclamos/mi-resumen")
 def reclamos_mi_resumen(tipo_origen: Optional[str] = None, user=Depends(get_current_user)):
     """Landing page stats filtered by role.

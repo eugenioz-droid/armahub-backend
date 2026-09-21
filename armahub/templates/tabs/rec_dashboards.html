@@ -1,5 +1,31 @@
   <!-- TAB: CALIDAD / RECLAMOS — DASHBOARDS -->
   <div id="tab-rec_dashboards" class="tab-content">
+
+    <!-- SUB-TABS DE DASHBOARDS (21-sep): misma estructura y mismo mecanismo que los
+         sub-tabs de Reclamos (botones con subrayado de color + un panel por sub-tab,
+         registro DASH_SUBTABS en dashboards.js). "Tableros" es lo que había hasta hoy,
+         intacto; "KPIs" es la sección nueva. -->
+    <div style="display:flex; gap:4px; border-bottom:1px solid #e0e0e0; margin-bottom:12px;">
+      <button id="dashSubBtnTableros" onclick="switchDashSubTab('tableros')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">Tableros</button>
+      <button id="dashSubBtnKpis" onclick="switchDashSubTab('kpis')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">KPIs</button>
+    </div>
+
+    <!-- Sub-panel: KPIs -->
+    <div id="dashSubKpis" style="display:none;">
+      <div class="card" style="border-top:3px solid #00897b;">
+        <h3 style="margin:0 0 4px 0; color:#00897b;">📌 Causas de los reclamos cerrados</h3>
+        <div class="muted" style="font-size:11px; margin-bottom:12px;">
+          Solo reclamos de clientes <b>cerrados</b> y <b>con causa asignada</b>. Árbol causa → sub-causa, con la cantidad en cada barra.
+          <span id="dashKpiUniverso" style="margin-left:8px; color:#37474f;"></span>
+        </div>
+        <div id="dashKpiArbol" style="font-size:12px;">
+          <div class="muted" style="font-style:italic;">Cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-panel: Tableros (el contenido que ya existía, sin cambios) -->
+    <div id="dashSubTableros">
     <div class="card" style="border-top:3px solid #1565C0;">
       <h3 style="margin:0 0 16px 0; color:#1565C0;">📊 Dashboards de Reclamos</h3>
 
@@ -67,4 +93,5 @@
       </div>
 
     </div>
+    </div><!-- /dashSubTableros -->
   </div>
