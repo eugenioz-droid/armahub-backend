@@ -301,8 +301,12 @@
       <table style="width:100%; font-size:11px; border-collapse:collapse;">
         <thead><tr style="color:#666; background:#fafafa;">
           <th style="text-align:left; padding:4px 8px;">Despiece</th>
-          <th style="text-align:left; padding:4px 8px;">Sector · Estruct · Eje</th>
-          <th style="text-align:left; padding:4px 8px; width:110px;">Estado</th>
+          <!-- Sector con ancho ACOTADO: era la columna elástica y se comía la mitad de la
+               tabla, empujando Estado a la derecha y estrujándolo hasta partir la píldora
+               en dos líneas ("🏁 En / edición"). Ahora Estado tiene sus 130px y no se parte;
+               el espacio sobrante se lo lleva Pisos, que es la que crece. -->
+          <th style="text-align:left; padding:4px 8px; width:210px;">Sector · Estruct · Eje</th>
+          <th style="text-align:left; padding:4px 8px; width:130px; white-space:nowrap;">Estado</th>
           <!-- PISOS con barras en el despiece, resumido (P1, P2, P3…). Es la columna
                ancha a propósito: las numéricas de al lado se apretaron para dársela. -->
           <th style="text-align:left; padding:4px 8px;" title="Pisos en los que este despiece tiene barras">Pisos</th>

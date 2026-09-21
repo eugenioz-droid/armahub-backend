@@ -1981,10 +1981,10 @@ async function ac2CargarLotes(){
     var esta=(l.id===AC2.loteId);
     var eliminado=(l.estado==='eliminado');
     var estado = eliminado
-      ? '<span style="background:#f5f5f5; color:#9e9e9e; border:1px solid #e0e0e0; padding:1px 8px; border-radius:8px;">🗑 Eliminado</span>'
+      ? '<span style="background:#f5f5f5; color:#9e9e9e; border:1px solid #e0e0e0; padding:1px 8px; border-radius:8px; white-space:nowrap;">🗑 Eliminado</span>'
       : (l.estado==='terminada'
-        ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
-        : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>');
+        ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px; white-space:nowrap;">🏁 Terminado</span>'
+        : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px; white-space:nowrap;">🚩 En edición</span>');
     var fecha=(l.creado_fecha||'').slice(0,10);
     // KPIs del despiece (azul fuerte). Fórmula y formato en ac2KpisTd — los mismos que
     // usa el índice de estructuras, para que las dos tablas se lean igual.
@@ -1996,7 +1996,7 @@ async function ac2CargarLotes(){
       return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Ver el contenido de este despiece eliminado (solo lectura)" style="border-top:1px solid #f0f0f0; color:#9e9e9e; background:#fafafa; cursor:pointer;">'+
         '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
         '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
-        '<td style="padding:6px 8px;">'+estado+'</td>'+
+        '<td style="padding:6px 8px; white-space:nowrap;">'+estado+'</td>'+
         ac2PisosTd(l,'6px 8px')+
         '<td style="padding:6px 4px; text-align:right;" title="Items que tenía al eliminarse">'+(l.n_items||0)+'</td>'+
         '<td style="padding:6px 4px; text-align:right;" title="Barras que tenía al eliminarse">'+ac2Num(l.n_barras||0)+'</td>'+
@@ -2013,7 +2013,7 @@ async function ac2CargarLotes(){
     return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este despiece para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
       '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
       '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
-      '<td style="padding:6px 8px;">'+estado+'</td>'+
+      '<td style="padding:6px 8px; white-space:nowrap;">'+estado+'</td>'+
       ac2PisosTd(l,'6px 8px')+
       '<td style="padding:6px 4px; text-align:right;">'+(l.n_items||0)+'</td>'+
       '<td style="padding:6px 4px; text-align:right;">'+ac2Num(l.n_barras||0)+'</td>'+
