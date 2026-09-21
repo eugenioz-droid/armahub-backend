@@ -402,40 +402,44 @@ async function loadDashKpis() {
     cont.innerHTML = '<div class="muted" style="font-style:italic;">Todavía no hay reclamos cerrados con causa asignada.</div>';
     return;
   }
-  var max = 1;
-  arbol.forEach(function (c) { (c.subcausas || []).forEach(function (sc) { if (sc.n > max) max = sc.n; }); });
-  // Rótulos y colores de las causas: los MISMOS de constants.js que usa el resto de
-  // Reclamos (donut de Ishikawa, matriz RCA), para que una causa se vea igual en todos.
+  // PARETO (usuario 21-sep): lista PLANA ordenada por ocurrencia, la categoría como
+  // columna en vez de como grupo, y el corte del 80% acumulado resaltado. El árbol
+  // por grupo escondía lo que importa: que UNA sub-causa es el 40% y con la segunda
+  // ya se va en el 56%. Las filas hasta el 80% van sombreadas ("los pocos vitales")
+  // y bajo la última de ellas una línea con el rótulo.
   var labels = (typeof _recIshikawaLabels !== 'undefined') ? _recIshikawaLabels : {};
   var colores = (typeof _ishikawaCatColors !== 'undefined') ? _ishikawaCatColors : {};
-  var html = '';
+  var filas = [];
   arbol.forEach(function (c) {
-    var col = colores[c.causa] || '#546e7a';
-    html += '<div style="margin-bottom:14px;">' +
-      '<div style="display:flex; align-items:baseline; gap:8px; margin-bottom:4px;">' +
-        '<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:' + col + ';"></span>' +
-        '<span style="font-weight:700; color:#263238;">' + _escDash(labels[c.causa] || c.causa) + '</span>' +
-        '<span style="color:#78909c;">' + c.n + ' reclamo' + (c.n === 1 ? '' : 's') + ' · ' + Math.round(100 * c.n / (data.con_causa || 1)) + '%</span>' +
+    (c.subcausas || []).forEach(function (sc) { filas.push({ causa: c.causa, sub: sc.sub, n: sc.n }); });
+  });
+  filas.sort(function (a, b) { return (b.n - a.n) || String(a.sub).localeCompare(b.sub); });
+  var total = data.con_causa || 1, max = filas.length ? filas[0].n : 1;
+  var acum = 0, corte = -1;
+  filas.forEach(function (f, k) { acum += f.n; f.acum = Math.round(100 * acum / total); if (corte < 0 && acum >= 0.8 * total) corte = k; });
+  var COLS = 'minmax(220px, 30%) 150px 1fr 76px 64px';
+  var html = '<div style="display:grid; grid-template-columns:' + COLS + '; gap:10px; padding:2px 0 6px; font-size:10px; color:#78909c; text-transform:uppercase; letter-spacing:.4px;">' +
+    '<div>Sub-causa</div><div>Categoría</div><div></div><div>Reclamos</div><div style="text-align:right;">Acum.</div></div>';
+  filas.forEach(function (f, k) {
+    var col = colores[f.causa] || '#546e7a';
+    var pct = Math.max(2, Math.round(100 * f.n / max));
+    var share = Math.round(100 * f.n / total);
+    var vital = (k <= corte);
+    html += '<div style="display:grid; grid-template-columns:' + COLS + '; gap:10px; align-items:center; padding:3px 6px; margin:0 -6px; border-radius:4px;' +
+        (vital ? ' background:#f1f8e9;' : '') + '">' +
+      '<div style="color:#37474f; line-height:1.25;" title="' + _escDash(f.sub) + '">' + _escDash(f.sub) + '</div>' +
+      '<div style="display:flex; align-items:center; gap:6px; color:#546e7a; font-size:11px;">' +
+        '<span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:' + col + '; flex:none;"></span>' +
+        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + _escDash(labels[f.causa] || f.causa) + '</span></div>' +
+      '<div style="height:18px; background:#f1f3f4; border-radius:3px;">' +
+        '<div style="width:' + pct + '%; height:100%; background:' + col + '; border-radius:3px; opacity:.85;"></div></div>' +
+      '<div style="white-space:nowrap; color:#263238;" title="' + f.n + ' de ' + total + ' con causa"><b>' + f.n + '</b> <span style="color:#78909c;">· ' + share + '%</span></div>' +
+      '<div style="text-align:right; font-weight:' + (vital ? '700' : '400') + '; color:' + (vital ? '#2e7d32' : '#90a4ae') + ';">' + f.acum + '%</div>' +
       '</div>';
-    var total = data.con_causa || 1;
-    (c.subcausas || []).forEach(function (sc) {
-      // EL ROTULO VA EN UNA COLUMNA FIJA a la derecha del carril, no pegado al final
-      // de cada barra (usuario 21-sep: «mejor alineados al final, despues de donde
-      // termina la sombra»). Asi los numeros forman una columna y se comparan de un
-      // vistazo; la barra solo dice el largo. Con el rotulo fuera del carril, la
-      // barra puede llegar al 100% sin que nada se salga.
-      var pct = Math.max(2, Math.round(100 * sc.n / max));
-      var share = Math.round(100 * sc.n / total);
-      html += '<div style="display:grid; grid-template-columns:minmax(220px, 34%) 1fr 84px; gap:10px; align-items:center; padding:2px 0 2px 18px;">' +
-        '<div style="color:#37474f; white-space:normal; line-height:1.25;" title="' + _escDash(sc.sub) + '">' + _escDash(sc.sub) + '</div>' +
-        '<div style="height:18px; background:#f1f3f4; border-radius:3px;">' +
-          '<div style="width:' + pct + '%; height:100%; background:' + col + '; border-radius:3px; opacity:.85;"></div>' +
-        '</div>' +
-        '<div style="white-space:nowrap; color:#263238; text-align:left;" title="' + sc.n + ' de ' + total + ' con causa">' +
-          '<b>' + sc.n + '</b> <span style="color:#78909c;">· ' + share + '%</span></div>' +
-        '</div>';
-    });
-    html += '</div>';
+    if (k === corte) {
+      html += '<div style="display:flex; align-items:center; gap:8px; margin:4px 0 6px; color:#2e7d32; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">' +
+        '<div style="flex:1; border-top:2px dashed #66bb6a;"></div><span>80% acumulado · ' + (corte + 1) + ' de ' + filas.length + ' sub-causas</span><div style="flex:1; border-top:2px dashed #66bb6a;"></div></div>';
+    }
   });
   cont.innerHTML = html;
 }
