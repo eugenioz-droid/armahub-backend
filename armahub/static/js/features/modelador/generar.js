@@ -248,32 +248,49 @@
   // una estructura y regenerarla ACTUALIZA la barra que ya existía (conserva su id, su
   // historia y su marca de revisión) en vez de borrarla y crear otra.
   //
-  // Trazar CAMBIA LA AGRUPACIÓN a propósito: con traza, dos componentes distintos que
-  // producen barras idénticas quedan en items SEPARADOS. Sin esa separación el item
-  // resultante no tendría un origen único y el cruce sería ambiguo — y en un despiece
-  // son dos posiciones distintas del elemento, no una. En la biblioteca (trazar=false)
-  // la agrupación queda EXACTAMENTE como estaba: mismas claves, mismos items.
+  // LA AGRUPACIÓN ES LA MISMA CON O SIN TRAZA (21-sep, corrección del usuario).
+  // Hasta hoy trazar metía el componente en la llave, así que dos componentes que
+  // producen la misma barra —la doble malla: dos MH idénticas, una por cara— salían
+  // como DOS items al despiece. Para producción es una sola barra con el doble de
+  // cantidad, y el usuario lo había definido así desde el principio; el trazado lo
+  // rompió sin que nadie lo notara porque en la biblioteca (sin traza) seguía bien.
   //
-  // LÍMITE MEDIDO: el ordinal es la posición del item DENTRO de su componente. Cambiar
-  // una medida no lo mueve (el item sigue siendo el mismo, se actualiza); agregar o
-  // quitar capas/tramos sí corre los ordinales de ese componente, y ahí el cruce trata
-  // la diferencia como creación/borrado — que es lo correcto.
+  // El trazado NO se pierde: un item que nace de varios componentes lleva TODOS sus
+  // orígenes, separados por ';' — 'u0#3;u1#3' — y el sync del backend cruza por
+  // cualquiera de ellos. Así se conserva lo que el origen_ref protege (reabrir y
+  // regenerar ACTUALIZA la barra en vez de borrarla y crearla de nuevo).
+  //
+  // El ordinal sigue siendo la posición del item DENTRO de cada componente, contada
+  // sobre los items YA fusionados en el orden en que aparecen: dos generaciones de la
+  // misma receta dan los mismos refs (hay un test que lo mide). Cambiar una medida no
+  // lo mueve; agregar o quitar capas/tramos sí corre los ordinales de ese componente,
+  // y ahí el cruce trata la diferencia como creación/borrado — que es lo correcto.
   function agruparBarras(barras, trazar) {
     var mapa = {}, orden = [];
     barras.forEach(function (b) {
-      var k = (trazar ? ((b._uid || '?') + '\u0000') : '') + _claveBarra(b);
-      if (!mapa[k]) { mapa[k] = Object.assign({}, b, { cant: 0 }); orden.push(k); }
+      var k = _claveBarra(b);
+      if (!mapa[k]) {
+        mapa[k] = Object.assign({}, b, { cant: 0 });
+        mapa[k]._uids = [];
+        orden.push(k);
+      }
       mapa[k].cant += 1;
+      if (trazar) {
+        var u = b._uid || 'c?';
+        if (mapa[k]._uids.indexOf(u) < 0) mapa[k]._uids.push(u);
+      }
     });
     var items = orden.map(function (k) { return mapa[k]; });
     var cont = {};
     items.forEach(function (b) {
       if (trazar) {
-        var u = b._uid || 'c?';
-        cont[u] = (cont[u] == null) ? 0 : (cont[u] + 1);
-        b.origen_ref = u + '#' + cont[u];
+        b.origen_ref = b._uids.map(function (u) {
+          cont[u] = (cont[u] == null) ? 0 : (cont[u] + 1);
+          return u + '#' + cont[u];
+        }).join(';');
       }
-      delete b._uid;   // clave de trabajo: nunca sale del generador
+      delete b._uid;    // claves de trabajo: nunca salen del generador
+      delete b._uids;
     });
     return items;
   }

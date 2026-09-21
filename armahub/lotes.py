@@ -928,12 +928,22 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
                 "SELECT id, origen_ref, sector, piso, ciclo FROM barras "
                 "WHERE lote_id = %s AND template_instancia_id = %s",
                 (lote_id, body.instancia_id))
-            existentes, sobrantes = {}, []
+            # UN ITEM PUEDE TRAER VARIOS ORÍGENES (21-sep): desde que el generador fusiona
+            # los componentes que producen la misma barra, el origen_ref es 'u0#3;u1#3'.
+            # Se indexa por CADA origen, así una barra guardada con un solo origen
+            # (cargada antes de la fusión) la encuentra el item nuevo que lo contiene, y
+            # un item fusionado la encuentra por cualquiera de los suyos. Lo que no cruce
+            # con nada sigue siendo sobrante y se borra, como siempre.
+            existentes, sobrantes, ids_vistos = {}, [], set()
             for bid, ref, sec, pis, cic in cur.fetchall():
                 sectores_tocados.add((sec, pis, cic))
-                if ref and ref not in existentes:
-                    existentes[ref] = bid
-                else:
+                partes = [p for p in (ref or "").split(";") if p.strip()]
+                nuevos = [p for p in partes if p not in existentes]
+                if nuevos and bid not in ids_vistos:
+                    for p in nuevos:
+                        existentes[p] = bid
+                    ids_vistos.add(bid)
+                elif bid not in ids_vistos:
                     sobrantes.append(bid)
 
             # El catálogo de figuras, UNA vez para toda la regeneración (ver
@@ -967,7 +977,7 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
                                    %s, %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s)"""
             params_upd, params_ins = [], []
 
-            vistas = set()
+            vistas, ids_actualizados = set(), set()
             for i, b in enumerate(body.barras):
                 v = _valores_barra(figuras, b, i, factor)
                 ref = (b.origen_ref or "").strip() or None
@@ -975,9 +985,19 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))
                 dim_vals = tuple(getattr(b, f"dim_{L}") for L in "abcdefghi")
                 ang_vals = (b.ang1, b.ang2, b.ang3, b.ang4, b.radio)
-                barra_id = existentes.get(ref) if ref else None
-                if barra_id is not None and ref not in vistas:
-                    vistas.add(ref)
+                # El item cruza por CUALQUIERA de sus orígenes; se toma la primera barra
+                # existente que responda. Si varias responden (dos barras viejas que ahora
+                # son un item), una se actualiza y las demás quedan sobrantes: se borran
+                # copiadas a barras_eliminadas, que es exactamente la reconciliación.
+                barra_id = None
+                for p in [x for x in (ref or "").split(";") if x.strip()]:
+                    if existentes.get(p) is not None and p not in vistas:
+                        barra_id = existentes[p]
+                        break
+                if barra_id is not None and barra_id not in ids_actualizados:
+                    ids_actualizados.add(barra_id)
+                    for p in [x for x in (ref or "").split(";") if x.strip()]:
+                        vistas.add(p)
                     # ACTUALIZAR. NO se tocan: id, id_unico, creado_por, fecha_carga ni
                     # `revisada` — la marca del cubicador es SUYA, y una regeneración no
                     # es motivo para borrarle el trabajo de revisión.
@@ -996,8 +1016,8 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
                         ((b.suf_tipo or "").strip() or None,
                          _origen_valido(b.origen), body.instancia_id, ref,
                          lote_id, now, email, email, now))
-                    if ref:
-                        vistas.add(ref)
+                    for p in [x for x in (ref or "").split(";") if x.strip()]:
+                        vistas.add(p)
             if params_upd:
                 cur.executemany(SQL_UPD, params_upd)
                 actualizadas = len(params_upd)
@@ -1008,7 +1028,14 @@ def sincronizar_barras_estructura(lote_id: int, body: BarrasSync, user=Depends(g
             # BORRAR lo que dejó de existir. Borrado REAL (sin barras fantasma), pero NO
             # sin rastro: antes se copia a `barras_eliminadas` con quién y cuándo, igual
             # que el borrado del Bar Manager.
-            a_borrar = sobrantes + [bid for ref, bid in existentes.items() if ref not in vistas]
+            # SE BORRA TODA BARRA QUE NO FUE ACTUALIZADA. No se mira por origen: cuando dos
+            # barras viejas (u0#0 y u1#0, separadas) pasan a ser UN item fusionado, el item
+            # actualiza a una y la otra tiene que irse -- pero su origen quedo "visto" en el
+            # mismo item, asi que filtrar por origenes la dejaba como fantasma duplicada.
+            # (Lo cazo la simulacion del caso 1 antes de tocar la BD.) La lista es unica
+            # porque varios origenes pueden apuntar a la misma barra.
+            a_borrar = list(dict.fromkeys(
+                sobrantes + [bid for bid in existentes.values() if bid not in ids_actualizados]))
             if a_borrar:
                 cols_src = ", ".join(_SNAP_COLS_BARRA)
                 cols_dst = ", ".join(_SNAP_COLS_DEST)

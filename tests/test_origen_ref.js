@@ -100,22 +100,36 @@ console.log('O4 — cambiar una medida actualiza el item, no lo reemplaza');
 }
 
 // ---------------------------------------------------------------- O5
-console.log('O5 — dos componentes iguales no se funden en un item');
+console.log('O5 — dos componentes iguales SÍ se funden en un item (y la traza sobrevive)');
 {
-  // Mismo φ, misma figura, misma tipología y misma cara: sin traza el generador los
-  // colapsa en un item ×N (es su regla de fabricación); con traza tienen que separarse
-  // o el item quedaría sin un origen único.
+  // ESTE BLOQUE CAMBIÓ DE SIGNO EL 21-sep, por corrección del usuario. Antes exigía
+  // que con traza los gemelos salieran SEPARADOS, "o el item quedaría sin un origen
+  // único". Eso dejaba la doble malla —dos MH idénticas, una por cara— como DOS items
+  // en el despiece, que para producción es la misma barra con el doble de cantidad.
+  // El origen único no era necesario: el item lleva TODOS sus orígenes ('A#0;B#0') y
+  // el sync cruza por cualquiera. La agrupación es ahora la misma con y sin traza.
   const gemelos = [cabezal('A', 'CBS', 'sup'), cabezal('B', 'CBS', 'sup')];
   const sinTraza = G.generarViga(receta(gemelos), { sector: 'X', piso: 'P', ciclo: 'C', eje: 'E' });
   const conTraza = G.generarViga(receta(gemelos), CTX);
-  ok(conTraza.barras.length >= 2, 'con traza salen items separados (' + conTraza.barras.length + ')');
-  ok(new Set(refs(conTraza)).size === conTraza.barras.length, 'cada uno con su propio ref');
-  ok(sinTraza.barras.length <= conTraza.barras.length,
-    'sin traza la agrupación sigue siendo la de fabricación (' + sinTraza.barras.length + ' item/s)');
+  ok(conTraza.barras.length === sinTraza.barras.length,
+    'con traza salen los MISMOS items que sin traza (' + conTraza.barras.length + ')');
   const total = (out) => out.barras.reduce((s, b) => s + (b.cant || 0) * (b.mult || 1), 0);
-  ok(total(sinTraza) === total(conTraza), 'y en las dos sale el MISMO número de barras físicas');
+  ok(total(sinTraza) === total(conTraza), 'y el mismo número de barras físicas');
+  const fundido = conTraza.barras.find(b => (b.origen_ref || '').indexOf(';') > 0);
+  ok(!!fundido, 'el item fundido lleva VARIOS orígenes separados por ; (' + (fundido && fundido.origen_ref) + ')');
+  ok(fundido && fundido.origen_ref.indexOf('A#') === 0 && fundido.origen_ref.indexOf(';B#') > 0,
+    'uno por cada componente que lo produjo, cada uno con su ordinal');
+  // Cada gemelo solo produce N barras; el item fundido tiene que traer 2N.
+  const soloA = G.generarViga(receta([cabezal('A', 'CBS', 'sup')]), CTX);
+  const cantA = soloA.barras.reduce((s, b) => s + (b.cant || 0), 0);
+  ok(fundido && fundido.cant === 2 * cantA,
+    'y la cantidad es la SUMA de los dos (' + (fundido && fundido.cant) + ' = 2 × ' + cantA + ')');
+  // La tipología SIGUE en la llave: mismo φ y figura pero otra marca NO se funden.
+  const distintos = [cabezal('A', 'CBS', 'sup'), cabezal('B', 'CBI', 'sup')];
+  const dt = G.generarViga(receta(distintos), CTX);
+  ok(dt.barras.every(b => (b.origen_ref || '').indexOf(';') < 0),
+    'dos tipologías distintas no se funden aunque midan igual');
 }
-
 // ---------------------------------------------------------------- O6
 console.log('O6 — determinista');
 {

@@ -56,11 +56,18 @@ except ImportError:
     _stub("fastapi", APIRouter=_Router, Depends=lambda x: x,
           HTTPException=_HTTPException)
     _stub("pydantic", BaseModel=_BaseModel)
+# db y auth se stubean POR SEPARADO, cada uno segun SU dependencia (21-sep, segunda
+# vuelta): usar psycopg como proxy de "entorno real" fallo en cuanto se instalo el
+# driver -- auth.py importa jwt, que no estaba, y el test murio en el import.
 try:
     import psycopg  # noqa: F401 — el driver real solo si esta
 except ImportError:
     _stub("armahub.db", get_conn=lambda: None, audit=lambda *a, **k: None)
+try:
+    import jwt  # noqa: F401 — lo que necesita armahub.auth
+except ImportError:
     _stub("armahub.auth", get_current_user=lambda: None)
+if "armahub.db" in sys.modules and not hasattr(sys.modules["armahub.db"], "__file__"):
     import armahub
     sys.modules["armahub.db"].__package__ = "armahub"
 
