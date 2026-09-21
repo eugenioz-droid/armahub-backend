@@ -79,7 +79,15 @@
         <h3 style="margin:0; color:#00897b;">Editar obra</h3>
         <button onclick="cerrarModalObra()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
       </div>
-      <p class="muted" style="font-size:11px; margin:0 0 12px 0;" id="obraModalNombre"></p>
+      <!-- El nombre ES editable: el backend siempre supo renombrar (PATCH acepta
+           nombre_proyecto y lo propaga a las barras); el modal era el unico que lo
+           mostraba como texto fijo. El ID de la obra, ese si, no se toca. -->
+      <div class="col" style="margin:0 0 12px 0;">
+        <label style="font-size:10px; color:#888;">Nombre de la obra</label>
+        <input type="text" id="obraModalNombre" maxlength="120"
+               style="width:100%; font-size:12px;" />
+        <span class="muted" style="font-size:10px;" id="obraModalId"></span>
+      </div>
       <input type="hidden" id="obraId" />
       <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
         <div class="col" style="max-width:150px;">

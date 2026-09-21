@@ -45,17 +45,24 @@ class _BaseModel:
             setattr(self, k, v)
 
 
-if "fastapi" not in sys.modules:
-    try:
-        import fastapi  # noqa: F401 — si existe de verdad, se usa la real
-    except ImportError:
-        _stub("fastapi", APIRouter=_Router, Depends=lambda x: x,
-              HTTPException=_HTTPException)
-        _stub("pydantic", BaseModel=_BaseModel)
-        _stub("armahub.db", get_conn=lambda: None, audit=lambda *a, **k: None)
-        _stub("armahub.auth", get_current_user=lambda: None)
-        import armahub
-        sys.modules["armahub.db"].__package__ = "armahub"
+# CADA DEPENDENCIA SE STUBEA POR SEPARADO (21-sep). El guard viejo era uno solo
+# sobre fastapi: si fastapi estaba instalado de verdad pero psycopg no (paso en la
+# maquina del usuario tras un cambio de entorno), el stub de armahub.db no se
+# activaba y el import real reventaba con ModuleNotFoundError sin que el test
+# tuviera un solo defecto.
+try:
+    import fastapi  # noqa: F401 — si existe de verdad, se usa la real
+except ImportError:
+    _stub("fastapi", APIRouter=_Router, Depends=lambda x: x,
+          HTTPException=_HTTPException)
+    _stub("pydantic", BaseModel=_BaseModel)
+try:
+    import psycopg  # noqa: F401 — el driver real solo si esta
+except ImportError:
+    _stub("armahub.db", get_conn=lambda: None, audit=lambda *a, **k: None)
+    _stub("armahub.auth", get_current_user=lambda: None)
+    import armahub
+    sys.modules["armahub.db"].__package__ = "armahub"
 
 FALLAS = []
 

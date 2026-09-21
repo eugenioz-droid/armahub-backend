@@ -174,7 +174,9 @@
     var o = _obrasData.filter(function(x) { return x.id_proyecto === idProyecto; })[0];
     if (!o) return;
     document.getElementById('obraId').value = o.id_proyecto;
-    document.getElementById('obraModalNombre').textContent = o.nombre_proyecto || '';
+    document.getElementById('obraModalNombre').value = o.nombre_proyecto || '';
+    var lblId = document.getElementById('obraModalId');
+    if (lblId) lblId.textContent = 'ID: ' + o.id_proyecto + ' (no se puede cambiar)';
     document.getElementById('obraClasificacion').value = o.clasificacion || 'obra';
     // Selector de empresa (entidades)
     var empSel = document.getElementById('obraEmpresa');
@@ -209,6 +211,9 @@
     var msg = document.getElementById('obraModalMsg');
     var id = document.getElementById('obraId').value;
     if (!id) return;
+    // El nombre viaja solo si quedo NO VACIO: borrar el campo no borra el nombre
+    // (el PATCH del backend solo toca lo enviado — regla de la casa).
+    var nombreNuevo = document.getElementById('obraModalNombre').value.trim();
     var body = {
       clasificacion: document.getElementById('obraClasificacion').value || 'obra',
       constructora_id: parseInt(document.getElementById('obraEmpresa').value) || 0,
@@ -216,6 +221,7 @@
       descripcion: document.getElementById('obraDescripcion').value.trim(),
       fecha_inicio: document.getElementById('obraFechaInicio').value || ''
     };
+    if (nombreNuevo) body.nombre_proyecto = nombreNuevo;
     msg.textContent = 'Guardando...'; msg.style.color = '#666';
     var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id)), {
       method: 'PATCH',
@@ -228,6 +234,7 @@
       // Optimistic update (SPECS §2.4): actualizar en memoria, no recargar /proyectos.
       var o = _obrasData.filter(function(x) { return x.id_proyecto === id; })[0];
       if (o) {
+        if (body.nombre_proyecto) o.nombre_proyecto = body.nombre_proyecto;
         o.clasificacion = body.clasificacion;
         o.constructora_id = body.constructora_id || null;
         o.constructora_nombre = body.constructora_id ? _empNombre(body.constructora_id) : null;
