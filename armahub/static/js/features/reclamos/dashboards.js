@@ -387,10 +387,14 @@ async function loadDashKpis() {
   if (!data) return;
   _dashKpisLoaded = true;
   var uni = document.getElementById('dashKpiUniverso');
-  if (uni) uni.textContent = '· ' + (data.cerrados || 0) + ' cerrados, ' +
-    (data.con_causa || 0) + ' con causa' +
-    ((data.cerrados || 0) > (data.con_causa || 0)
-      ? ' (' + ((data.cerrados || 0) - (data.con_causa || 0)) + ' cerrados sin causa quedan fuera)' : '');
+  if (uni) {
+    // Universo explicito y SEPARADO: "no aplica" no lleva causa por definicion; "por
+    // clasificar" es el pendiente real (cerrado, si aplica, sin causa).
+    var partes = ['<b>' + (data.cerrados || 0) + '</b> cerrados', '<b>' + (data.con_causa || 0) + '</b> con causa'];
+    if (data.no_aplica) partes.push(data.no_aplica + ' no aplica');
+    if (data.por_clasificar) partes.push('<span style="color:#e65100; font-weight:700;">' + data.por_clasificar + ' por clasificar</span>');
+    uni.innerHTML = '· ' + partes.join(' · ');
+  }
   var cont = document.getElementById('dashKpiArbol');
   if (!cont) return;
   var arbol = data.arbol || [];

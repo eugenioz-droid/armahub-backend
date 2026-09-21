@@ -648,12 +648,20 @@ def reclamos_kpi_causas(user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Solo administradores")
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Los cerrados SIN causa no son todos iguales (medido 21-sep: 7 sin causa,
+            # 5 "no aplica" y 2 "si aplica"): al que NO APLICA nunca le corresponde
+            # causa, pero al que SI aplica y esta cerrado sin causa le FALTA. Se separan
+            # para que el rotulo diga cuantos quedan realmente por clasificar.
             cur.execute("""
                 SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE categoria_ishikawa IS NOT NULL AND categoria_ishikawa <> '')
+                       COUNT(*) FILTER (WHERE categoria_ishikawa IS NOT NULL AND categoria_ishikawa <> ''),
+                       COUNT(*) FILTER (WHERE (categoria_ishikawa IS NULL OR categoria_ishikawa = '')
+                                          AND aplica = 'no'),
+                       COUNT(*) FILTER (WHERE (categoria_ishikawa IS NULL OR categoria_ishikawa = '')
+                                          AND COALESCE(aplica, '') <> 'no')
                 FROM reclamos
                 WHERE tipo_origen = 'externo' AND estado IN ('cerrado', 'rechazado')""")
-            cerrados, con_causa = cur.fetchone()
+            cerrados, con_causa, no_aplica, por_clasificar = cur.fetchone()
             cur.execute("""
                 SELECT categoria_ishikawa, COALESCE(NULLIF(TRIM(sub_causa), ''), '(sin sub-causa)'), COUNT(*)
                 FROM reclamos
@@ -669,7 +677,9 @@ def reclamos_kpi_causas(user=Depends(get_current_user)):
                 idx[cat]["n"] += int(n)
                 idx[cat]["subcausas"].append({"sub": sub, "n": int(n)})
             arbol.sort(key=lambda c: -c["n"])
-    return {"cerrados": int(cerrados or 0), "con_causa": int(con_causa or 0), "arbol": arbol}
+    return {"cerrados": int(cerrados or 0), "con_causa": int(con_causa or 0),
+            "no_aplica": int(no_aplica or 0), "por_clasificar": int(por_clasificar or 0),
+            "arbol": arbol}
 
 
 @router.get("/reclamos/mi-resumen")
