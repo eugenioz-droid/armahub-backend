@@ -639,17 +639,25 @@ def siguiente_numero_calidad(anio: int, tipo_origen: str = "externo", user=Depen
 
 
 @router.get("/reclamos/mi-resumen")
-def reclamos_mi_resumen(user=Depends(get_current_user)):
+def reclamos_mi_resumen(tipo_origen: Optional[str] = None, user=Depends(get_current_user)):
     """Landing page stats filtered by role.
     USC: own reclamos (creado_por or asignado_a).
     Cubicador/Externo: reclamos assigned to them (cubicador_asignado) or responded (respuesta_por).
-    Admin/Admin Calidad: all reclamos."""
+    Admin/Admin Calidad: all reclamos.
+
+    `tipo_origen` ('externo' | 'interno') acota el resumen a esa serie. Sin el, cuenta
+    TODO -- y eso era lo que veia el usuario en la pestaña de CLIENTES: un "Total
+    reclamos 106" que sumaba los 19 internos a los 87 de clientes (21-sep). La pestaña
+    de clientes pide 'externo'; la de internos, si algun dia pone resumen, 'interno'."""
     email = user.get("email", "")
     role = user.get("role", "usc")
 
     with get_conn() as conn:
         with conn.cursor() as cur:
             role_filter, role_params = build_role_filter(user, cur)
+            if tipo_origen in ("externo", "interno"):
+                role_filter += " AND r.tipo_origen = %s"
+                role_params = list(role_params) + [tipo_origen]
             total = q_total(cur, role_filter, role_params)
             abiertos = q_abiertos(cur, role_filter, role_params)
             por_tipo = q_por_tipo(cur, role_filter, role_params)

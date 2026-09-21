@@ -237,7 +237,10 @@ function rcaRecVolverAreas() {
 }
 
 async function loadRecLanding() {
-  var data = await apiGet('/reclamos/mi-resumen');
+  // Este landing vive en la pestaña de reclamos de CLIENTES: cuenta solo los
+  // externos. Sin el filtro sumaba los internos y el total no cuadraba con la lista
+  // de abajo (usuario 21-sep: 106 arriba, 87 en la lista).
+  var data = await apiGet('/reclamos/mi-resumen?tipo_origen=externo');
   if (!data) return;
 
   var isAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad' || currentRole === 'coordinador');
