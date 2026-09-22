@@ -799,18 +799,22 @@ async function _loadValidacionCalidad() {
 }
 
 // Render compacto reutilizando el formato de la lista oficial de reclamos,
-// recortado a lo esencial (N° · Título · Proyecto · Aplica). Clic en la fila
+// recortado a lo esencial (N° · Título · Proyecto · CUBICADOR · Aplica). Clic en la fila
 // abre el modal completo (verReclamo). Sin botones en la fila: las acciones
 // (Aprobar/Validar/Devolver) viven dentro del modal.
 function _renderColaReclamos(reclamos) {
   if (!reclamos || reclamos.length === 0) {
     return '<div class="muted" style="padding:8px 0; font-size:12px;">Sin pendientes.</div>';
   }
-  var head = '<table style="width:100%; border-collapse:collapse; font-size:12px;">' +
+  var head = '<table style="width:100%; border-collapse:collapse; font-size:11px;">' +
     '<tr style="background:#f5f5f5; text-align:left;">' +
     '<th style="padding:4px 6px;">N°</th>' +
     '<th style="padding:4px 6px;">Título</th>' +
     '<th style="padding:4px 6px;">Proyecto</th>' +
+    // CUBICADOR RESPONSABLE (usuario 22-sep): es lo que se necesita para saber a quién
+    // reclamarle el pendiente. Se toma `responsable`, el MISMO campo que muestra la
+    // lista oficial en su columna "Cub. Resp.", y la tabla baja a 11px para que quepa.
+    '<th style="padding:4px 6px;">Cub. Resp.</th>' +
     '<th style="padding:4px 6px;">Aplica</th>' +
     '</tr>';
   var rows = reclamos.map(function(r) {
@@ -818,11 +822,14 @@ function _renderColaReclamos(reclamos) {
     var aplLabel = _recAplicaLabels[r.aplica] || 'Pendiente';
     var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
     var titulo = r.titulo || '';
-    if (titulo.length > 55) titulo = titulo.substring(0, 55) + '…';
+    if (titulo.length > 45) titulo = titulo.substring(0, 45) + '…';
+    // Solo el nombre: el correo entero no cabe y no aporta en una cola de pendientes.
+    var cub = (r.responsable || '').split('@')[0] || '—';
     return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ', {origen:\'validaciones\'})" title="Ver ficha completa">' +
       '<td style="padding:4px 6px; font-weight:600; white-space:nowrap;">' + idLabel + '</td>' +
       '<td style="padding:4px 6px;">' + titulo + '</td>' +
       '<td style="padding:4px 6px; color:#666;">' + (r.nombre_proyecto || '—') + '</td>' +
+      '<td style="padding:4px 6px; color:#37474f; white-space:nowrap;" title="' + _escDash(r.responsable || '') + '">' + _escDash(cub) + '</td>' +
       '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
       '</tr>';
   }).join('');

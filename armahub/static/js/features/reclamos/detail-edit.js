@@ -528,10 +528,19 @@ async function guardarRespuesta() {
       body.cinco_por_que = null; // limpiar si cambia de método
     } else {
       var pqs = _get5PQData();
-      body.cinco_por_que = pqs.length > 0 ? pqs : null;
-      body.categoria_ishikawa = null; // limpiar si cambia de método
-      body.sub_causa = null;
-      body.cod_causa = null;
+      // NO SE BORRA LA CAUSA SI NO HAY CON QUE REEMPLAZARLA (bug del 51, 22-sep).
+      // Al elegir 5 Por Qué esto mandaba categoria/sub/cod en null SIEMPRE, asi que
+      // una respuesta posterior -aunque el cubicador no tocara el metodo- borraba la
+      // causa que ya estaba clasificada. Medido en la auditoria del reclamo 51: la
+      // causa se puso el 23-may y la devolucion del 18-jun la dejo vacia.
+      // Ahora solo se limpia cuando el 5 Por Qué trae contenido de verdad, o sea
+      // cuando hay un analisis nuevo que efectivamente reemplaza al anterior.
+      if (pqs.length > 0) {
+        body.cinco_por_que = pqs;
+        body.categoria_ishikawa = null;   // el 5 Por Qué reemplaza a la causa Ishikawa
+        body.sub_causa = null;
+        body.cod_causa = null;
+      }
     }
     // area_aplica ya no se envía: el área real vive en area_id (inferida del responsable).
     _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);

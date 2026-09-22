@@ -1790,6 +1790,23 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 # "" → NULL solo para campos nullable enviados explícitamente vacíos
                 params.append(val if (val != "" or field not in nullable_fields) else None)
 
+            # LA CAUSA NO SE BORRA SIN REEMPLAZO (bug del reclamo 51, 22-sep). El front
+            # mandaba categoria/sub/cod en null cada vez que el metodo era 5 Por Que,
+            # asi que una respuesta posterior borraba la causa ya clasificada aunque
+            # nadie la tocara. El front ya no lo hace; esta guarda es la de fondo,
+            # porque el dato lo protege quien lo escribe: poner la causa en NULL solo
+            # se acepta cuando la peticion trae un 5 Por Que CON contenido, que es su
+            # reemplazo legitimo. (La transicion a "no aplica" si la nulifica, mas
+            # abajo y a proposito.)
+            _pq = body.cinco_por_que if "cinco_por_que" in body.__fields_set__ else None
+            if not _pq:
+                for _f in ("categoria_ishikawa", "sub_causa", "cod_causa"):
+                    if _f in body.__fields_set__ and getattr(body, _f) in (None, ""):
+                        _i = next((k for k, c in enumerate(sets) if c.startswith(_f + " =")), None)
+                        if _i is not None:
+                            sets.pop(_i)
+                            params.pop(_i)
+
             # Borrado de Ishikawa solo en la transición explícita a "no aplica"
             if cambia_aplica_a_no:
                 for ishikawa_field in ishikawa_fields:
