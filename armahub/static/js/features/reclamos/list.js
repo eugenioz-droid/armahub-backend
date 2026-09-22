@@ -147,6 +147,8 @@ function populateRecFilterProyecto() {
     loadReclamos();
   };
 
+var _recTotalBase = null;   // cuantos hay antes de los filtros de pantalla
+
 async function loadReclamos() {
   _initScopeToggle();
   var container = document.getElementById('reclamosList');
@@ -186,12 +188,15 @@ async function loadReclamos() {
   }
   var reclamos = (data.data || data.reclamos || []).map(_normalizeReclamoListItem);
   _reclamosListaIds = reclamos.map(function(r) { return r.id; });
+  // Universo contra el que se esta filtrando (ver total_base en el endpoint).
+  _recTotalBase = (typeof data.total_base === 'number') ? data.total_base : null;
   
   // Load USC users for assignment dropdowns
   await loadUsuariosUsc();
 
   if (reclamos.length === 0) {
     container.innerHTML = '<div class="muted">No hay reclamos con los filtros seleccionados</div>';
+    _pintarConteoReclamos(0);   // "0 de N": el filtro dejo la lista vacia, y se ve
     return;
   }
 
@@ -245,6 +250,33 @@ async function loadReclamos() {
     }).join('') +
     '</table>' +
     '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + reclamos.length + ' reclamo(s)</div>';
+  _pintarConteoReclamos(reclamos.length);
+}
+
+// CONTEO EN LA BARRA VERDE DEL TITULO (usuario 22-sep). El "Mostrando N" ya existia,
+// pero al pie de la tabla: con 100 filas hay que bajar hasta el fondo para verlo,
+// justo cuando se acaba de filtrar arriba. Aca queda pegado a los filtros, y el
+// "de N" dice de inmediato cuanto recorto el filtro.
+function _pintarConteoReclamos(n) {
+  var h3 = document.querySelector('#recSubClientes h3');
+  if (!h3 || !h3.parentElement) return;
+  var bar = h3.parentElement;
+  if (bar.style.display !== 'flex') {
+    bar.style.display = 'flex';
+    bar.style.alignItems = 'center';
+    bar.style.justifyContent = 'space-between';
+  }
+  var el = document.getElementById('recListaConteo');
+  if (!el) {
+    el = document.createElement('span');
+    el.id = 'recListaConteo';
+    el.style.cssText = 'font-size:12px; font-weight:600; color:#fff; opacity:.95; white-space:nowrap;';
+    bar.appendChild(el);
+  }
+  var base = (typeof _recTotalBase === 'number') ? _recTotalBase : null;
+  var filtrando = (base != null && n !== base);
+  el.textContent = filtrando ? (n + ' de ' + base) : (n + ' reclamo' + (n === 1 ? '' : 's'));
+  el.title = filtrando ? 'Filtro activo: ' + n + ' de ' + base + ' reclamos' : 'Sin filtros de pantalla';
 }
 
 function limpiarFiltrosReclamos() {

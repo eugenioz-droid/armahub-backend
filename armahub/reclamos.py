@@ -408,6 +408,12 @@ def listar_reclamos(
             if tipo_origen in ("externo", "interno"):
                 where += " AND COALESCE(r.tipo_origen, 'externo') = %s"
                 params.append(tipo_origen)
+            # BASE DEL CONTEO: hasta aqui el WHERE tiene solo lo que NO es filtro de
+            # pantalla -- el alcance del rol, la obra del contexto y la lista
+            # (clientes/internos). Se guarda para poder contar el universo contra el
+            # que el usuario esta filtrando, y que la lista pueda decir "13 de 109"
+            # en vez de un 13 suelto (pedido del usuario 22-sep).
+            where_base, params_base = where, list(params)
             if estado:
                 where += " AND r.estado = %s"
                 params.append(estado)
@@ -470,8 +476,13 @@ def listar_reclamos(
                     r.id DESC
             """, params)
             rows = cur.fetchall()
+            cur.execute("SELECT COUNT(*) FROM reclamos r " + where_base, params_base)
+            total_base = cur.fetchone()[0]
 
     return {
+        # `total_base` = cuantos hay ANTES de los filtros de pantalla (mismo rol, misma
+        # obra, misma lista). `len(data)` es lo que quedo despues.
+        "total_base": int(total_base or 0),
         "data": [
             {
                 "id": r.get("id"), "id_proyecto": r.get("id_proyecto"), "titulo": r.get("titulo"), "descripcion": r.get("descripcion"),
