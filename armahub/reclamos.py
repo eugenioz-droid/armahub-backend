@@ -476,8 +476,13 @@ def listar_reclamos(
                     r.id DESC
             """, params)
             rows = cur.fetchall()
-            cur.execute("SELECT COUNT(*) FROM reclamos r " + where_base, params_base)
-            total_base = cur.fetchone()[0]
+            # OJO: este cursor devuelve filas como DICT (por eso abajo se lee r.get()),
+            # asi que fetchone()[0] revienta con KeyError: 0 -- fue el 500 que vio el
+            # usuario. Se nombra la columna y se lee de las dos formas, igual que
+            # cargar_figuras y get_figura en catalogo.py.
+            cur.execute("SELECT COUNT(*) AS n FROM reclamos r " + where_base, params_base)
+            _fila = cur.fetchone()
+            total_base = (_fila.get("n") if isinstance(_fila, dict) else _fila[0]) if _fila else 0
 
     return {
         # `total_base` = cuantos hay ANTES de los filtros de pantalla (mismo rol, misma
