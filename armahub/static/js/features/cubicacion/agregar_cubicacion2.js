@@ -65,21 +65,37 @@ var AC2_TIPOS=AC2_TIPOS_MAP.MURO.map(function(t){return t.codigo;});
 var AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
 // Tamaños del render. Se agrandaron para que las ETIQUETAS (cotas/ángulos, que salen fuera del
 // contorno) quepan sin cortarse. + XL para figuras densas.
-var AC2_TAM={ s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160} };
+// TAMAÑOS DEL DIBUJO (26-sep, maqueta aprobada). S y M son SILUETA MUDA: la forma —U, L,
+// estribo— sin rótulos, porque las medidas que el dibujo repetía ya están en las celdas de
+// al lado. Con eso la fila baja de ~88 px a ~42 y caben el doble de barras. L y XL conservan
+// los rótulos para quien quiera leer el dibujo completo.
+var AC2_TAM={ s:{w:56,h:28,mudo:true}, m:{w:72,h:34,mudo:true}, l:{w:160,h:118}, xl:{w:220,h:160} };
 var AC2_DIAMS=[8,10,12,16,18,22,25,28,32,36];        // diámetros estándar (diametros.py)
-// Resalte de color por diámetro para detectar de un vistazo un φ equivocado (p.ej. 18 donde iba 16).
-// Rampa MONOCROMÁTICA azul-acero, de claro (φ fino) a oscuro (φ grueso): sobria, sin ruido cromático;
-// los vecinos (16 vs 18, etc.) se distinguen por INTENSIDAD. El color va en la CELDA del φ (fondo), no
-// en la fila, así no choca con el azul de "fila seleccionada" (celeste #e3f2fd, distinto del acero), el
-// rosado de "inválida" ni el verde de "lote activo". Mapa fijo: mismo φ = mismo color, siempre.
-var AC2_DIAM_COLOR={
-  8:'#eceff1', 10:'#cfd8dc', 12:'#b0bec5', 16:'#90a4ae', 18:'#78909c',
-  22:'#607d8b', 25:'#546e7a', 28:'#455a64', 32:'#37474f', 36:'#263238'
-};
-function ac2DiamColor(d){ return AC2_DIAM_COLOR[Number(d)] || ''; }
-// Los tonos más oscuros (φ grueso) necesitan texto claro para leerse; los claros, texto oscuro.
-var AC2_DIAM_TXT_CLARO={22:1, 25:1, 28:1, 32:1, 36:1};
-function ac2DiamTexto(d){ return AC2_DIAM_TXT_CLARO[Number(d)] ? '#fff' : '#37474f'; }
+// EL DIÁMETRO MARCA EL CAMBIO, NO EL VALOR (26-sep). Antes cada φ llevaba un gris de una
+// rampa de diez tonos, para "ver de un vistazo un 18 donde iba 16". Fallaba justo ahí: 16 y
+// 18 eran dos grises casi iguales, y además había que memorizar la rampa. Lo que el
+// cubicador quiere es que el cambio le SALTE: ahora, cuando el φ de una fila es distinto al
+// de la fila de arriba (dentro de su grupo), esa celda lleva barra ámbar y negrita. Un 18
+// colado entre dieciséis queda rodeado por dos marcas. Un solo color, sin leyenda.
+// El mapa se calcula en ac2Render sobre las filas VISIBLES en su orden (ac2CalcMarcasDiam);
+// las filas se pintan leyendo de aquí, porque una fila sola no sabe quién tiene arriba.
+var _ac2MarcaDiam={};
+// Aire a la izquierda de la primera columna de cada grupo (φ · Largo · Figura · primer lado).
+var AC2_PL=16;
+// Id de la barra cuya fila está ACTIVA (tiene el foco). null = ninguna. Ver _ac2Init.
+var _ac2FilaActiva=null;
+function ac2CalcMarcasDiam(){
+  var m={}, grupoCampo=ac2AgrupaPor(), prev=null, grupo=null;
+  ac2Visibles().forEach(function(b){
+    var g=grupoCampo?b[grupoCampo]:null;
+    if (g!==grupo){ grupo=g; prev=null; }   // cada grupo parte de cero: la primera fila no marca
+    var d=(b.diam==null||b.diam==='')?null:Number(b.diam);
+    m[b._id]=(prev!=null && d!=null && d!==prev);
+    prev=d;
+  });
+  _ac2MarcaDiam=m;
+  return m;
+}
 var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
 
 // Catálogo de figuras (GET /figuras-catalogo). _ac2Figuras[codigo] = {parciales,angulos,radio,geometria}.
@@ -271,7 +287,11 @@ function ac2FigSvg(b){
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
       // Trazo = φ real solo si los puntos se reconstruyeron en cm (escalable); si no, el motor
       // cae al nominal (`scale` no sería px/cm). φ en mm, como lo guarda la barra.
-      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22),
+      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h,
+        // Silueta MUDA en S y M: sin letras ni ángulos, y menos margen porque no hay rótulos
+        // que reservar sitio (el motor agranda el pad para que quepan; sin ellos, sobra).
+        pad:Math.round(Math.min(t.w,t.h)*(t.mudo?0.12:0.22)),
+        labels_auto:(t.mudo?false:undefined), angulos:(t.mudo?false:undefined),
         diam_mm:b.diam, metrico:(escalable && todoCm),
         // TINTA: la barra nacida del Enfierrador se DIBUJA azul, no sólo su fila. El criterio es
         // el VÍNCULO a la instancia (ac2BarraDeEstructura), el mismo del candado y del fondo de
@@ -376,14 +396,23 @@ function ac2Thead(){
   // Dice OPCIONAL en la cabecera: es un campo vacío en medio del recorrido con Tab y se leía
   // como obligatorio (hay barras guardadas con un "." puesto sólo para poder avanzar).
   h+='<th style="text-align:left; padding:3px 6px;" title="OPCIONAL. Sufijo que se concatena a la tipología SOLO al exportar a aSa; no altera la tipología del sistema ni es necesario para guardar.">Sufijo <span style="font-weight:400; color:#b0bec5; font-size:10px;">(opc.)</span></th>';
-  // Cant (unitaria) · Mult · Cant.T (= cant×mult, solo lectura) · Largo · Peso Tot.
-  h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
-  if (AC2.verMult) h+='<th style="text-align:right; padding:3px 6px;" title="Multiplicador (doble/triple malla)">Mult</th>';
-  h+='<th style="text-align:right; padding:3px 6px;" title="Cantidad total = Cant × Mult">Cant.T</th>';
-  h+='<th style="text-align:right; padding:3px 6px;">Largo</th><th style="text-align:right; padding:3px 10px 3px 6px;">Peso Tot</th>';
-  // Figura + Dibujo separados del bloque numérico (Peso Tot) con un borde suave y aire.
-  h+='<th style="text-align:left; padding:3px 6px 3px 14px; border-left:1px solid #e0e0e0;">Figura</th>';
-  if (AC2.render) h+='<th style="text-align:left; padding:3px 6px;">Dibujo</th>';
+  // GRUPOS DE COLUMNAS CON AIRE ENTRE SÍ (26-sep, maqueta): identidad · cantidades ·
+  // resultados · figura · medidas. El aire (padding-left en la primera columna de cada
+  // grupo, AC2_PL) separa lo que es distinto sin dibujar una línea más. Y la UNIDAD va en
+  // la cabecera (mm, cm, kg), como en cualquier tabla de ingeniería.
+  h+='<th style="text-align:right; padding:3px 6px 3px '+AC2_PL+'px;">φ<small style="display:block; font-weight:400; color:#90a4ae; font-size:9px;">mm</small></th>'+
+     '<th style="text-align:right; padding:3px 6px;">Cant</th>';
+  // Cant.T SÓLO CON MULTIPLICADOR (26-sep): con el multiplicador oculto valía siempre lo mismo
+  // que Cant — "1 → 1" treinta veces. Aparece cuando puede ser distinto, que es con Mult.
+  if (AC2.verMult){
+    h+='<th style="text-align:right; padding:3px 6px;" title="Multiplicador (doble/triple malla)">Mult</th>';
+    h+='<th style="text-align:right; padding:3px 6px;" title="Cantidad total = Cant × Mult">Cant.T</th>';
+  }
+  h+='<th style="text-align:right; padding:3px 6px 3px '+AC2_PL+'px;">Largo<small style="display:block; font-weight:400; color:#90a4ae; font-size:9px;">cm</small></th>'+
+     '<th style="text-align:right; padding:3px 10px 3px 6px;">Peso<small style="display:block; font-weight:400; color:#90a4ae; font-size:9px;">kg</small></th>';
+  h+='<th style="text-align:left; padding:3px 6px 3px '+AC2_PL+'px;">Figura</th>';
+  // "Forma", no "Dibujo": en S y M es una silueta muda que dice la forma; las medidas van al lado.
+  if (AC2.render) h+='<th style="text-align:left; padding:3px 6px;">Forma</th>';
   // SOLO LAS COLUMNAS DE GEOMETRÍA QUE ESTA VISTA PUEDE USAR (25-sep). La grilla reservaba
   // siempre 9 lados + 4 ángulos + radio; medido contra los 200 despieces con barras de la
   // base: NINGUNO pasa de 6 lados ni de 2 ángulos, y el radio no lo usa ni uno. O sea G, H,
@@ -391,7 +420,7 @@ function ac2Thead(){
   // 8 de las 14. Eso es la mitad del ancho de la tabla gastada en aire.
   var _g = ac2ColsGeom();
   _ac2SigCols = _g.sig;   // queda anotado lo que se PINTÓ (ver ac2SetBarra)
-  _g.dims.forEach(function(k){ h+='<th style="text-align:right; padding:3px 6px;">'+AC2_LADOS[AC2_DIMKEYS.indexOf(k)]+'</th>'; });
+  _g.dims.forEach(function(k,i){ h+='<th style="text-align:right; padding:3px 6px 3px '+(i===0?AC2_PL:6)+'px;">'+AC2_LADOS[AC2_DIMKEYS.indexOf(k)]+'</th>'; });
   for (var _a=1; _a<=_g.angs; _a++) h+='<th style="text-align:right; padding:3px 6px;">α'+_a+'</th>';
   if (_g.radio) h+='<th style="text-align:right; padding:3px 6px;">R</th>';
   h+='<th style="padding:3px 6px; text-align:center;" title="Revisada por el cubicador">Rev</th>';
@@ -409,7 +438,11 @@ function ac2Thead(){
 // una grilla de ~30 columnas, una linea de guiones repetida fila a fila genera un
 // patron que vibra al recorrerla con la vista, y ademas una linea discontinua se lee
 // como "provisional / cortar por aqui". Lo que hacia falta era CONTRASTE, no textura.
-var AC2_TDS='padding:2px 5px; border-top:1px solid #78909c;';
+// (26-sep, maqueta aprobada) La línea oscura se reemplaza por CEBREADO: el fondo alternado
+// separa las filas sin dibujar una raya por fila — el contraste que se pedía, sin reja. La
+// línea queda muy tenue; la fuerte pasa al ENCABEZADO DE GRUPO (ac2GrupoHdr), que es donde
+// de verdad cambia algo. El cebreado vive en CSS (agregar_cubicacion2.html, #ac2_grid).
+var AC2_TDS='padding:2px 5px; border-top:1px solid #edf0f3;';
 // input numérico editable en celda (clase .ac2cell = estilo Bar Manager). class ac2nav marca
 // las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). data-col/data-row para que
 // ↑↓ vayan a la MISMA columna de la fila de arriba/abajo (robusto aunque las filas difieran).
@@ -422,7 +455,10 @@ function ac2Inp(id, campo, val, w, rojo, bloq){
     'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" onkeydown="ac2NavKey(event,this)"/>';
 }
 // celda deshabilitada (la figura no usa ese slot).
-function ac2CeldaOff(){ return '<td style="'+AC2_TDS+' background:#fafafa;"></td>'; }
+// Celda que la figura NO usa: vacía y transparente, para no pelear con el cebreado ni con el
+// fondo de la fila activa (antes traía su propio gris). `pl` = aire a la izquierda cuando es
+// la primera columna de un grupo (ver AC2_PL).
+function ac2CeldaOff(pl){ return '<td style="'+AC2_TDS+(pl?' padding-left:'+pl+'px;':'')+'"></td>'; }
 
 // Navegación tipo Excel entre celdas editables (.ac2nav) de la grilla:
 //   Tab / → / Enter  → siguiente celda a la DERECHA   ·  Shift+Tab / ←  → anterior
@@ -550,14 +586,16 @@ function ac2Fila(b){
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
   var bloq = ac2BarraDeEstructura(b);   // barra nacida del Enfierrador: solo lectura
   var dis = bloq ? ' disabled' : '';
-  var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo],bloq)+'</td>'; };
+  var tdDato=function(campo,w,pl){ return '<td style="'+AC2_TDS+' text-align:right;'+(pl?' padding-left:'+pl+'px;':'')+'">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo],bloq)+'</td>'; };
   // Fondo/título de la fila: la escala completa vive en ac2EstiloFila (rosado inválida > celeste
   // seleccionada > azul Enfierrador > verde guardada > blanco). Se reusa la validación ya
   // calculada arriba para no validar la misma barra dos veces por fila.
   var est = ac2EstiloFila(b, val);
   var trStyle = est.bg ? ' style="background:'+est.bg+';"' : '';
   var trTitle = est.tit ? ' title="'+ac2Esc(est.tit)+'"' : '';
-  var h='<tr id="ac2row_'+b._id+'"'+trStyle+trTitle+'>';
+  // FILA ACTIVA (26-sep): la que tiene el foco lleva la clase; con ella se ven ⎘ y ✕ (＋ se ve
+  // siempre) y una franja verde al borde. Sigue al FOCO, nunca al hover — ver _ac2Init.
+  var h='<tr id="ac2row_'+b._id+'"'+(b._id===_ac2FilaActiva?' class="ac2activa"':'')+trStyle+trTitle+'>';
   // data-grp = valor del campo por el que se agrupa (piso o marca), para que el maestro del
   // header de grupo encuentre a sus hijos. En "creación" (sin agrupar) no hay maestro, da igual.
   if (AC2.masiva){ var gc=ac2AgrupaPor(); var grpVal=(gc==='piso')?(b.piso||''):b.marca;
@@ -587,34 +625,39 @@ function ac2Fila(b){
   // "opcional" en vez de un guión: como campo vacío en el recorrido del Tab se leía como
   // obligatorio y hay barras guardadas con un "." puesto sólo para salir del paso.
   h+='<td style="'+AC2_TDS+'"><input type="text"'+dis+' value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="opcional" title="OPCIONAL: no hace falta para guardar. Se concatena a la tipología solo al exportar a aSa."/></td>';
-  // φ (diámetro) — select de lista fija, navegable con teclado. Cada <option> lleva SU color (así el
-  // desplegable ayuda a elegir, no toma el del actual). El estilado de <option> depende del navegador;
-  // si lo ignora, cae a blanco (fallback limpio). La celda cerrada sí muestra el color del φ actual.
-  var opd='<option value="" style="background:#fff; color:#37474f;"></option>'+
-    AC2_DIAMS.map(function(d){ var c=ac2DiamColor(d);
-      return '<option'+(Number(b.diam)===d?' selected':'')+' style="background:'+(c||'#fff')+'; color:'+ac2DiamTexto(d)+';">'+d+'</option>'; }).join('');
-  var _dcol=ac2DiamColor(b.diam);
-  h+='<td style="'+AC2_TDS+' text-align:right;"><select'+dis+' class="ac2cell ac2nav" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;'+(_dcol?' background:'+_dcol+'; color:'+ac2DiamTexto(b.diam)+'; font-weight:600;':'')+'">'+opd+'</select></td>';
+  // φ (diámetro) — select de lista fija, navegable con teclado. Sin colores por valor (ver
+  // ac2CalcMarcasDiam): lo que se marca es el CAMBIO respecto de la fila de arriba.
+  var opd='<option value=""></option>'+
+    AC2_DIAMS.map(function(d){ return '<option'+(Number(b.diam)===d?' selected':'')+'>'+d+'</option>'; }).join('');
+  var _chg=!!_ac2MarcaDiam[b._id];
+  h+='<td style="'+AC2_TDS+' text-align:right; padding-left:'+AC2_PL+'px;"'+(_chg?' title="Diámetro distinto al de la fila de arriba"':'')+'>'+
+     '<select'+dis+' class="ac2cell ac2nav'+(_chg?' ac2chg':'')+'" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;">'+opd+'</select></td>';
   // Cant (unitaria) · Mult (multiplicador) · Cant.T (= cant×mult, SOLO LECTURA — no re-multiplica
   // el peso, que ya usa cant×mult; solo informa el total).
   // 56px (= .ac2cell, como las dims): con 40 una cantidad de 3+ cifras se CORTABA.
   h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,56,false,bloq)+'</td>';
-  if (AC2.verMult) h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,56,false,bloq)+'</td>';
-  h+='<td id="ac2cantt_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#607d8b; font-weight:600;">'+ac2CantTotal(b)+'</td>';
+  // Mult y Cant.T van JUNTOS: Cant.T sólo tiene sentido cuando el multiplicador está a la
+  // vista (si no, repite Cant). ac2ActualizarLargoPeso ya tolera que la celda no exista.
+  if (AC2.verMult){
+    h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,56,false,bloq)+'</td>';
+    h+='<td id="ac2cantt_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#607d8b; font-weight:600;">'+ac2CantTotal(b)+'</td>';
+  }
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
-  h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
+  h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; padding-left:'+AC2_PL+'px; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
   // Peso (calculado en vivo) — solo lectura. Si hay largo pero falta φ, muestra "—" (falta φ).
   h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2PesoTxt(b)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
-  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text"'+dis+' list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
+  // Aire en vez de línea antes de Figura (AC2_PL): el grupo se separa sin dibujar una raya más.
+  h+='<td style="'+AC2_TDS+' padding-left:'+AC2_PL+'px;"><input type="text"'+dis+' list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
   if (AC2.render) h+='<td id="ac2dib_'+b._id+'" style="'+AC2_TDS+'">'+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
   // Sólo las columnas que ESTA VISTA muestra (ac2ColsGeom). Dentro de ellas, cada barra sigue
   // teniendo input donde su figura lo pide y celda apagada donde no: dos barras con figuras
   // distintas conviven en la misma tabla, como siempre.
   var cg = ac2ColsGeom();
-  cg.dims.forEach(function(k){
-    h+= (info.dims.indexOf(k)!==-1) ? tdDato(k,54) : ac2CeldaOff();
+  cg.dims.forEach(function(k,i){
+    var pl=(i===0)?AC2_PL:0;   // el primer lado abre el grupo "medidas" con aire
+    h+= (info.dims.indexOf(k)!==-1) ? tdDato(k,54,pl) : ac2CeldaOff(pl);
   });
   // Ángulos: input si la figura usa ese ángulo. Ancho para 3 cifras (135) sin cortar.
   for (var j=0;j<cg.angs;j++){ var ak='ang'+(j+1);
@@ -636,9 +679,12 @@ function ac2Fila(b){
        '<span title="Barra generada por el Enfierrador: se modifica reabriendo su estructura" style="color:#90a4ae;">🔒</span></td></tr>';
   } else {
     h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
+       // ＋ SIEMPRE (es la acción que se usa todo el rato); ⎘ y ✕ sólo en la fila ACTIVA (clase
+       // ac2accx, ocultas por CSS fuera de ella). Cuesta un clic más para borrar una fila lejana
+       // —hay que entrar a ella—; ahorra unos sesenta glifos por pantalla. Maqueta aprobada 26-sep.
        '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#558B2F; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
-       '<span onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
-       '<span onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
+       '<span class="ac2accx" onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
+       '<span class="ac2accx" onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
   }
   return h;
 }
@@ -650,8 +696,9 @@ function ac2GrupoHdr(valor, cnt, porPiso){
   //           + [Dibujo] + 9 lados + 4 áng + R + Rev + acciones.
   // Tipología + Sufijo SIEMPRE suman 2 (25-sep: dejaron de aparecer sólo en TODOS). Las de
   // geometría son las que esta vista muestra, no las 14 de antes (ver ac2ColsGeom).
+  // Fijas: φ · Cant · Largo · Peso · Figura = 5. Mult y Cant.T van juntas (26-sep).
   var _cg = ac2ColsGeom();
-  var cols = (AC2.masiva?1:0) + 1 + 2 + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) +
+  var cols = (AC2.masiva?1:0) + 1 + 2 + 5 + (AC2.verMult?2:0) + (AC2.render?1:0) +
              _cg.dims.length + _cg.angs + (_cg.radio?1:0) + 1 + 1;
   // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
   // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
@@ -663,7 +710,10 @@ function ac2GrupoHdr(valor, cnt, porPiso){
     ? '<span style="float:right; white-space:nowrap; font-weight:400;"><span style="font-size:10px; color:#78909c; margin-right:2px;">mover piso</span>'+
       b(-1,'▲','Subir este piso')+b(1,'▼','Bajar este piso')+'</span>'
     : '';
-  return '<tr style="background:#eef2f3;"><td colspan="'+cols+'" style="padding:3px 8px; border-top:1px solid #ddd; font-weight:700; color:#37474f;">'+
+  // El encabezado de grupo lleva AHORA la línea fuerte (2px) que antes iba en cada fila: es
+  // donde de verdad cambia algo (otro piso, otra tipología). Clase ac2grupo: el cebreado del
+  // CSS lo salta y ac2CalcMarcasDiam no lo cuenta.
+  return '<tr class="ac2grupo" style="background:#f1f4f6;"><td colspan="'+cols+'" style="padding:5px 8px; border-top:2px solid #cfd8dc; font-weight:700; color:#37474f;">'+
     (AC2.masiva?'<input type="checkbox" class="ac2grp" data-grp="'+ac2Esc(valor)+'" onclick="ac2SelGrupo(this)" style="vertical-align:middle; margin-right:6px;" title="Marcar/desmarcar todo el grupo"/>':'')+
     '▎'+ac2Esc(valor||'(sin '+(porPiso?'piso':'tipo')+')')+' · '+cnt+' barra'+(cnt>1?'s':'')+flechas+'</td></tr>';
 }
@@ -698,7 +748,10 @@ window.ac2Render=function(){
     return;
   }
   var grupoCampo=ac2AgrupaPor();   // 'piso' | 'marca' | null (creación = sin agrupar)
-  var html='<table style="width:100%; min-width:1150px; font-size:11px; border-collapse:collapse; white-space:nowrap;"><thead>'+ac2Thead()+'</thead><tbody>';
+  ac2CalcMarcasDiam();             // qué φ cambia respecto de la fila de arriba (las filas lo leen)
+  // tabular-nums: cifras del mismo ancho, así los números quedan alineados en columna aunque
+  // la fuente sea proporcional. Es lo que hace que una tabla se lea como de ingeniería.
+  var html='<table style="width:100%; min-width:1000px; font-size:11px; border-collapse:collapse; white-space:nowrap; font-variant-numeric:tabular-nums;"><thead>'+ac2Thead()+'</thead><tbody>';
   if (grupoCampo) {
     var porPiso=(grupoCampo==='piso'), actual=null;
     arr.forEach(function(b){
@@ -1383,6 +1436,13 @@ window.ac2SetBarra=function(id,campo,valor){
     // cuando el conjunto cambia se repinta ENTERA; cuando no, se sigue con el re-render
     // granular de siempre, que es el que conserva el foco mientras se escribe.
     if (campo==='figura' && _ac2SigCols && ac2ColsGeom().sig !== _ac2SigCols){ ac2Render(); return; }
+    // CAMBIAR EL φ mueve las marcas de cambio de esta fila Y de la de abajo (que ahora tiene
+    // otro vecino arriba). Se recalculan y se repintan SÓLO las filas cuya marca cambió —la
+    // editada se repinta igual más abajo—, sin re-render completo (que perdería el foco).
+    if (campo==='diam'){
+      var antes=_ac2MarcaDiam, ahora=ac2CalcMarcasDiam();
+      Object.keys(ahora).forEach(function(k){ if (String(k)!==String(id) && !!antes[k]!==!!ahora[k]) ac2ReRenderFila(Number(k)); });
+    }
     // Cambian QUÉ celdas existen (dims/ángulos según figura) o los defaults → re-render de fila.
     // Pasamos focoCol EXPLÍCITO (no lo deducimos de document.activeElement, que en un <input list>
     // o <select> ya perdió el foco al disparar el change → antes el cursor desaparecía).
@@ -2950,6 +3010,20 @@ function _ac2Init(){
   // orden y el tamaño que dejó el usuario, sin un parpadeo al valor por defecto.
   _ac2CargarPrefs();
   _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera(); ac2SetTipo('TODOS');
+  // FILA ACTIVA = la del FOCO (26-sep). Un solo listener delegado sobre la grilla: entrar a
+  // una celda (Tab, clic, flechas) o clicar cualquier parte de la fila la vuelve activa, y la
+  // anterior deja de serlo. Nada depende del hover. ac2Fila ya pinta la clase al re-renderizar,
+  // así que la marca sobrevive a los repintados granulares.
+  var _grid=document.getElementById('ac2_grid');
+  var _activar=function(ev){
+    var tr=ev.target && ev.target.closest ? ev.target.closest('tr[id^="ac2row_"]') : null;
+    if (!tr) return;
+    var id=Number(tr.id.slice(7)); if (id===_ac2FilaActiva) return;
+    var ant=document.getElementById('ac2row_'+_ac2FilaActiva); if (ant) ant.classList.remove('ac2activa');
+    _ac2FilaActiva=id; tr.classList.add('ac2activa');
+  };
+  _grid.addEventListener('focusin', _activar);
+  _grid.addEventListener('click', _activar);
   _ac2CargarFiguras(); _ac2CargarTipologias(); _ac2CargarObras();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _ac2Init);

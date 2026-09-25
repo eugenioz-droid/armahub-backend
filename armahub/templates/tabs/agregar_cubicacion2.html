@@ -388,11 +388,26 @@
   .ac2tab.vista { font-size:11px; padding:5px 12px; font-weight:600; color:#78909c;
                   border:1px solid #cfd8dc; border-radius:4px; background:#fff; }
   .ac2tab.vista.on { background:#546e7a; color:#fff; border-color:#546e7a; box-shadow:none; }
-  /* Celdas editables de la grilla — estilo homologado al Bar Manager. */
-  .ac2cell { width:56px; font-size:11px; text-align:right; padding:2px 4px; border:1px solid #d5dbdb;
-             border-radius:3px; box-sizing:border-box; }
-  .ac2cell:focus { outline:none; border-color:#8BC34A; box-shadow:0 0 0 2px rgba(139,195,74,.25); }
+  /* Celdas editables de la grilla — MARCO TENUE (26-sep, maqueta aprobada). Conservan borde
+     (una celda vacía sin borde sería invisible) pero apenas se insinúa: lo que domina son los
+     valores, no la reja. El borde fuerte es sólo para la celda con el foco. Fondo transparente
+     para que el cebreado y la fila activa se vean a través. */
+  .ac2cell { width:56px; font-size:11px; text-align:right; padding:3px 4px; border:1px solid #e6e9ed;
+             border-radius:3px; box-sizing:border-box; background:transparent; }
+  .ac2cell:focus { outline:none; border-color:#8BC34A; box-shadow:0 0 0 2px rgba(139,195,74,.28); background:#fff; }
   .ac2cell.rojo { border-color:#e57373; background:#ffebee; }
+  /* CAMBIO DE DIÁMETRO respecto de la fila de arriba: barra ámbar + negrita en la celda del φ.
+     Un solo color, sin rampa ni leyenda (ac2CalcMarcasDiam). */
+  .ac2cell.ac2chg { border-left:3px solid #f9a825; font-weight:700; padding-left:2px; }
+  /* CEBREADO en vez de línea oscura entre filas. Se salta los encabezados de grupo (.ac2grupo)
+     y las filas que YA traen un fondo de estado en su style (inválida rosada, seleccionada
+     celeste): el estado manda sobre la banda. */
+  #ac2_grid tbody tr:nth-child(even):not(.ac2grupo):not(.ac2sep):not([style]) td { background:#fafbfc; }
+  /* FILA ACTIVA (la del foco): franja verde al borde y fondo suave si no tiene estado propio. */
+  #ac2_grid tr.ac2activa:not([style]) td { background:#f1f8e9; }
+  #ac2_grid tr.ac2activa td:first-child { box-shadow:inset 3px 0 0 #8BC34A; }
+  /* ⎘ y ✕ sólo en la fila activa; ＋ se ve siempre. Siguen al FOCO, no al hover. */
+  #ac2_grid tr:not(.ac2activa) .ac2accx { display:none; }
   /* Fila del repositorio de lotes / landing como hiperlink: hover la resalta (click abre). */
   .ac2loterow { transition: background-color .12s ease; }
   .ac2loterow:hover { background:#f1f8e9 !important; }

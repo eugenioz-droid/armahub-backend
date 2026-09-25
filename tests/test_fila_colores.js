@@ -146,21 +146,38 @@ check('el azul va NOMBRADO (TINTA_3D), no escrito como hex suelto en la grilla',
 check('el botón que abre el 3D dice "3D" con letras, no un emoji de ladrillo',
       src3.indexOf('🧱') < 0 && /class="b3d/.test(src3));
 
-// ── 4. La línea que separa filas se ve ──────────────────────────────────────
-// Estaba en #f0f0f0 y el usuario reportó que «está demasiado tenue». Se congela que
-// no vuelva a un gris casi blanco.
-// (Planteó una segmentada en negro como primera opción; se descartó: en una grilla de
-// ~30 columnas los guiones repetidos fila a fila vibran al recorrerla con la vista, y
-// una línea discontinua se lee como «provisional / cortar por aquí». Lo que faltaba
-// era CONTRASTE, no textura.)
-console.log('\n4. El separador de filas tiene contraste');
+// ── 4. Las filas se distinguen entre sí ─────────────────────────────────────
+// HISTORIA. En agosto la línea entre filas estaba en #f0f0f0 y el usuario reportó que
+// «está demasiado tenue»; se subió a un gris oscuro (#78909c) y este test congelaba que
+// no volviera a un gris casi blanco. El 26-sep el usuario aprobó la maqueta de la grilla
+// (static/demo/grilla_despiece.html) que cambia el MECANISMO: las filas se separan por
+// CEBREADO (fondo alternado) y la línea fuerte pasa al encabezado de grupo, que es donde
+// de verdad cambia algo. La línea por fila vuelve a ser tenue A PROPÓSITO, porque ya no es
+// ella la que separa. Lo que se congela ahora es que el contraste siga existiendo: por
+// el cebreado y por la línea de grupo. Si alguien quita el cebreado "porque la línea es
+// muy clara", este test lo dice, y la respuesta es reponer el cebreado, no oscurecer.
+console.log('\n4. Las filas se distinguen: cebreado + línea fuerte en el grupo');
+const HTML3 = fs.readFileSync(path.join(__dirname, '..', 'armahub', 'templates', 'tabs', 'agregar_cubicacion2.html'), 'utf8');
 const mSep = src3.match(/var AC2_TDS='[^']*border-top:1px solid (#[0-9a-fA-F]{6})/);
 check('AC2_TDS define el borde de la fila', !!mSep);
-if (mSep) {
-  const hexSep = mSep[1].toLowerCase();
-  // Un gris casi blanco no se ve sobre blanco: #f0f0f0 es 0.94 de claridad.
-  const claridad = parseInt(hexSep.slice(1, 3), 16) / 255;
-  check('y NO es un gris casi blanco como el #f0f0f0 de antes (=' + hexSep + ')', claridad < 0.85);
+const mCebra = HTML3.match(/#ac2_grid tbody tr:nth-child\(even\)([^{]*)\{\s*background:\s*(#[0-9a-fA-F]{6})/);
+check('el CSS de la grilla cebra las filas pares (#ac2_grid … nth-child(even))', !!mCebra);
+if (mCebra) {
+  check('el cebreado se salta los encabezados de grupo (.ac2grupo)', /:not\(\.ac2grupo\)/.test(mCebra[1]));
+  check('y se salta las filas que traen fondo de ESTADO (inválida, seleccionada): el estado manda',
+        /:not\(\[style\]\)/.test(mCebra[1]));
+  // La banda tiene que verse: distinta del blanco, pero suave (no es un resalte).
+  const cl = parseInt(mCebra[2].slice(1, 3), 16) / 255;
+  check('la banda es un tono distinto del blanco y suave (=' + mCebra[2] + ')', cl < 1 && cl > 0.9);
+}
+// La línea FUERTE vive en el encabezado de grupo: 2px, más gruesa que la de fila (1px).
+const iGrp = src3.indexOf('function ac2GrupoHdr');
+const srcGrp = iGrp >= 0 ? src3.slice(iGrp, iGrp + 2500) : '';
+const mGrp = srcGrp.match(/class="ac2grupo"[^]*?border-top:2px solid (#[0-9a-fA-F]{6})/);
+check('el encabezado de grupo lleva la línea fuerte (2px) y la clase ac2grupo', !!mGrp);
+if (mGrp && mSep) {
+  const clG = parseInt(mGrp[1].slice(1, 3), 16) / 255, clF = parseInt(mSep[1].slice(1, 3), 16) / 255;
+  check('y es más oscura que la línea de fila (' + mGrp[1] + ' vs ' + mSep[1] + ')', clG < clF);
 }
 
 console.log(fallos ? '\n❌ ' + fallos + ' fallo(s)' : '\n✅ Todo OK');
