@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Grilla del despiece</title>
+<!--
+  MAQUETA VISUAL — SIN LÓGICA (25-sep). Página suelta para MIRAR y comentar, como
+  /static/demo/config_modelador.html: no guarda, no lee la base en vivo, no toca el editor.
+
+  Compara la grilla del editor de despieces TAL COMO ESTÁ DESPLEGADA HOY (después de
+  d1bb56e: ya sin las columnas de geometría que nadie usa) contra la PROPUESTA de diseño,
+  sobre el MISMO despiece real: lote 291 (#24 de su obra), 29 barras, 3 diámetros,
+  5 figuras, 7 pisos. Los datos vienen de grilla_datos.json, sacados de la base.
+
+  Las siluetas de las figuras son ESQUEMÁTICAS (una polilínea a partir de los lados y
+  los ángulos del catálogo). En producción las dibuja el motor del Diseñador con la
+  geometría real; aquí sólo importa cuánto ESPACIO ocupan y qué rotulan.
+
+  Cuando el diseño esté aprobado, se implementa EDITANDO agregar_cubicacion2.js /
+  agregar_cubicacion2.html (ac2Thead, ac2Fila, ac2GrupoHdr, AC2_TDS, ac2Dibujo),
+  no creando una grilla nueva.
+-->
+<style>
+  :root{
+    --ln:#e3e8ef; --mut:#6b7a8d; --tx:#1f2a37; --bg:#f5f7fa; --card:#fff;
+    --verde:#8BC34A; --verde-tx:#33691e; --warn:#e65100; --amb:#f9a825;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--ln);padding:14px 20px}
+  header h1{margin:0;font-size:17px}
+  header p{margin:4px 0 0;color:var(--mut);font-size:12px;max-width:980px}
+  .maqueta{display:inline-block;background:#fff3e0;color:var(--warn);border:1px solid #ffcc80;
+           border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
+  main{padding:18px 20px 80px}
+  .bloque{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:14px 16px;margin-bottom:22px}
+  .bloque h2{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .bloque h2 .tag{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+                  padding:2px 8px;border-radius:4px}
+  .tag.hoy{background:#eceff1;color:#546e7a}
+  .tag.prop{background:#e8f5e9;color:#2e7d32}
+  .bloque .sub{color:var(--mut);font-size:12px;margin:0 0 10px}
+  .wrap{overflow-x:auto;border:1px solid #e0e0e0;border-radius:6px}
+  .rollup{display:flex;align-items:center;gap:14px;margin-top:8px;padding:7px 12px;background:#f5f5f5;
+          border:1px solid #e0e0e0;border-radius:6px;font-size:11px;color:#666}
+  .rollup b{color:#37474f}
+  .rollup .rev{color:#2e7d32;font-weight:600;font-size:12px}
+  .rollup .sp{flex:1}
+  .toggles{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:0 0 10px;font-size:12px;color:#455a64}
+  .toggles label{cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .toggles .grp{display:inline-flex;border:1px solid #cfd8dc;border-radius:4px;overflow:hidden}
+  .toggles .grp button{border:0;background:#fff;color:#607d8b;font:inherit;font-size:11px;padding:3px 10px;cursor:pointer}
+  .toggles .grp button+button{border-left:1px solid #cfd8dc}
+  .toggles .grp button.on{background:var(--verde);color:#fff}
+  .cambios{margin:14px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px 18px}
+  .cambios li{display:flex;gap:9px;font-size:12px;color:#37474f;line-height:1.4}
+  .cambios li b.n{flex:none;width:20px;height:20px;border-radius:50%;background:var(--verde);color:#fff;
+                  font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+  .nota{margin-top:10px;padding:8px 12px;background:#fffde7;border:1px solid #fff59d;border-radius:6px;font-size:12px;color:#5d4037}
+
+  /* ════════════ TABLA BASE (lo común a las dos) ════════════ */
+  table{width:100%;min-width:1100px;border-collapse:collapse;white-space:nowrap;font-size:11px}
+  thead tr{color:#666;background:#fafafa}
+  th{text-align:right;padding:3px 6px;font-weight:600}
+  th.l{text-align:left}
+  th.c{text-align:center}
+  td{padding:2px 5px;text-align:right}
+  td.l{text-align:left}
+  td.c{text-align:center}
+  .grp td{background:#eef2f3;border-top:1px solid #ddd;padding:3px 8px;font-weight:700;color:#37474f;text-align:left}
+  .grp .mv{float:right;font-weight:400;font-size:10px;color:#78909c}
+  .grp .mv span{display:inline-block;margin-left:4px;padding:1px 6px;border:1px solid var(--verde);border-radius:3px;color:#558B2F;background:#fff}
+  select,input.cell{font:inherit;font-size:11px;color:#1f2a37;background:#fff}
+  .calc{color:#607d8b;font-weight:600}
+  .peso{color:#558B2F;font-weight:600}
+  .largo{color:#1565c0;font-weight:600}
+  .acc span{cursor:pointer;margin-right:6px;font-weight:700}
+  .acc .mas{color:#558B2F} .acc .dup{color:#1565c0} .acc .del{color:#c62828;margin-right:0}
+  svg.fig{display:inline-block;vertical-align:middle}
+  svg.fig path{fill:none;stroke:#37474f;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+  svg.fig text{font-size:9px;fill:#2e7d32;font-weight:700}
+  svg.fig text.ang{fill:#9e9e9e;font-weight:400}
+
+  /* ════════════ HOY ════════════ */
+  .hoy td{border-top:1px solid #78909c}
+  .hoy .grp td{border-top:1px solid #ddd}
+  .hoy .cell{width:54px;padding:2px 4px;border:1px solid #d5dbdb;border-radius:3px;text-align:right}
+  .hoy select.cell{text-align:left}
+  .hoy .off{display:inline-block;width:54px;height:18px;background:#f5f5f5;border:1px dashed #e0e0e0;border-radius:3px}
+  .hoy .sepfig{padding-left:14px;border-left:1px solid #e0e0e0}
+  .hoy th.sepfig{border-left:1px solid #e0e0e0}
+
+  /* ════════════ PROPUESTA ════════════ */
+  .prop{font-variant-numeric:tabular-nums}
+  .prop td{border-top:1px solid #edf0f3}
+  .prop.cebra tbody tr:nth-child(even):not(.grp) td{background:#fafbfc}
+  .prop.lineas td{border-top:1px solid #78909c}
+  .prop .grp td{border-top:2px solid #cfd8dc;padding:5px 8px;background:#f1f4f6}
+  .prop .cell{width:54px;padding:3px 4px;border:1px solid #e6e9ed;border-radius:3px;text-align:right;background:transparent}
+  .prop select.cell{text-align:left}
+  .prop .cell:focus,.prop .cell.foco{outline:none;border-color:var(--verde);box-shadow:0 0 0 2px rgba(139,195,74,.28);background:#fff}
+  .prop .off{display:inline-block;width:54px;height:18px}
+  .prop th{color:#546e7a;padding:6px 6px 5px}
+  .prop th small{display:block;font-weight:400;color:#90a4ae;font-size:9px;letter-spacing:.3px}
+  /* separación ENTRE GRUPOS de columnas: identidad · cantidades · resultados · figura · medidas */
+  .prop .g1,.prop .g2,.prop .g3,.prop .g4{padding-left:14px}
+  .prop th.g1,.prop th.g2,.prop th.g3,.prop th.g4{padding-left:14px}
+  /* el CAMBIO de diámetro, no el valor: la celda del φ se marca cuando difiere de la de arriba */
+  .prop .chg select.cell{border-left:3px solid var(--amb);font-weight:700;padding-left:2px}
+  /* acciones: ＋ siempre; ⎘ y ✕ sólo en la fila activa (modo 'activa') */
+  .prop.acc-activa tr:not(.activa) .acc .dup,.prop.acc-activa tr:not(.activa) .acc .del{display:none}
+  .prop tr.activa td{background:#f1f8e9 !important}
+  .prop tr.activa td:first-child{box-shadow:inset 3px 0 0 var(--verde)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Grilla del despiece — hoy y propuesta <span class="maqueta">MAQUETA · sin lógica</span></h1>
+  <p id="intro">Cargando el despiece…</p>
+</header>
+<main>
+
+  <div class="bloque">
+    <h2><span class="tag hoy">Hoy</span> Lo que está desplegado ahora</h2>
+    <p class="sub">Con el cambio de esta mañana ya aplicado: sólo las columnas de geometría que este despiece usa (A–D, α1–α2). Todo lo demás, como lo ves en producción.</p>
+    <div class="wrap"><table class="hoy" id="tHoy"></table></div>
+    <div class="rollup" id="rHoy"></div>
+  </div>
+
+  <div class="bloque">
+    <h2><span class="tag prop">Propuesta</span> La misma información, con menos marco</h2>
+    <p class="sub">Mismos datos, mismas columnas, mismos controles. Cambia cómo se lee. Los dos interruptores de abajo son para comparar las dos decisiones que son tuyas.</p>
+    <div class="toggles">
+      <span>Separación de filas:</span>
+      <span class="grp" id="tgFilas">
+        <button data-v="cebra" class="on">Cebreado</button>
+        <button data-v="lineas">Línea oscura (como hoy)</button>
+      </span>
+      <span style="width:1px;height:18px;background:#cfd8dc"></span>
+      <span>Acciones de fila:</span>
+      <span class="grp" id="tgAcc">
+        <button data-v="activa" class="on">＋ siempre · ⎘ ✕ en la fila activa</button>
+        <button data-v="todas">Las tres en todas las filas (como hoy)</button>
+      </span>
+    </div>
+    <div class="wrap"><table class="prop cebra acc-activa" id="tProp"></table></div>
+    <div class="rollup" id="rProp"></div>
+
+    <ul class="cambios">
+      <li><b class="n">1</b><span><b>Marco tenue.</b> Las celdas siguen teniendo borde (una vacía sin borde sería invisible), pero apenas se insinúa. El borde fuerte es sólo para la celda donde estás escribiendo.</span></li>
+      <li><b class="n">2</b><span><b>Silueta muda.</b> El dibujo dice la <i>forma</i> —U, L, estribo—; las medidas ya están en las celdas de al lado. Sin rótulos la fila baja de ~88 px a ~42 px: caben el doble.</span></li>
+      <li><b class="n">3</b><span><b>Cant.T sólo con multiplicador.</b> Con el multiplicador oculto valía siempre lo mismo que Cant: "1 → 1" treinta veces.</span></li>
+      <li><b class="n">4</b><span><b>Aire entre grupos de columnas:</b> identidad · cantidades · resultados · figura · medidas. Hoy hay una sola separación (antes de Figura).</span></li>
+      <li><b class="n">5</b><span><b>Números de ingeniería:</b> cifras tabulares alineadas a la derecha, unidad en la cabecera (cm, kg), lo calculado en un color y lo editable en otro.</span></li>
+      <li><b class="n">6</b><span><b>Cebreado en vez de línea oscura.</b> En agosto pediste contraste entre filas; el fondo alternado lo da sin dibujar una línea por fila. Compáralo con el interruptor.</span></li>
+      <li><b class="n">7</b><span><b>El diámetro marca el cambio, no el valor.</b> La rampa de grises fallaba justo en 16 vs 18 (dos tonos casi iguales). Ahora: cuando el φ es distinto al de la fila de arriba, la celda lleva barra ámbar y negrita. Un 18 colado entre dieciséis queda rodeado por dos marcas. Un solo color, sin leyenda.</span></li>
+      <li><b class="n">8</b><span><b>Acciones de fila:</b> ＋ (la que se usa todo el rato) siempre visible; ⎘ y ✕ en la fila donde estás. Nada aparece por hover: siguen al foco. Cuesta un clic más para borrar una fila lejana; ahorra ~60 glifos por pantalla.</span></li>
+    </ul>
+    <div class="nota">Las siluetas son esquemáticas (polilínea a partir de lados y ángulos del catálogo). En producción las dibuja el motor del Diseñador con la geometría real; aquí sólo importa cuánto espacio ocupan y qué rotulan.</div>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  'use strict';
+  var LADOS = ['A','B','C','D','E','F','G','H','I'];
+  var ORD_TIPO = { MH:0, MV:1, TR:2, EC:3, TC:4, CB:5 };
+  var DIAMS = [8,10,12,16,18,22,25,28,32,36];
+  // rampa de hoy (agregar_cubicacion2.js:75-82), para pintar "Hoy" tal cual
+  var DIAM_COLOR = { 8:'#eceff1', 10:'#cfd8dc', 12:'#b0bec5', 16:'#90a4ae', 18:'#78909c',
+                     22:'#607d8b', 25:'#546e7a', 28:'#455a64', 32:'#37474f', 36:'#263238' };
+  var DIAM_TXT_CLARO = { 22:1, 25:1, 28:1, 32:1, 36:1 };
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+  var num = function(v,d){ if(v==null||v===''||isNaN(v)) return ''; return d ? Number(v).toFixed(d) : String(Math.round(Number(v))); };
+
+  // ── silueta esquemática: polilínea con los lados y los ángulos del catálogo ──
+  // Codos por defecto de 90°; los ángulos del catálogo (cuando hay) van en los codos
+  // EXTREMOS (ganchos), que es donde viven en las figuras de este despiece.
+  function polilinea(fig, b){
+    if (!fig) return null;
+    var lados = fig.parciales || [], n = lados.length;
+    var L = lados.map(function(l){ var v = b['dim_'+String(l).toLowerCase()]; return (v!=null && !isNaN(v)) ? Number(v) : 100; });
+    var bends = [];
+    for (var i=0;i<n-1;i++) bends.push(90);
+    var angs = (fig.angulos||[]).slice();
+    if (angs.length && n>1){
+      if (angs.length===1) bends[0] = Number(angs[0]);
+      else { bends[0] = Number(angs[0]); bends[n-2] = Number(angs[angs.length-1]); }
+    }
+    var pts=[[0,0]], x=0, y=0, h=0, segs=[];
+    for (var k=0;k<n;k++){
+      var rad = h*Math.PI/180, x2 = x + L[k]*Math.cos(rad), y2 = y + L[k]*Math.sin(rad);
+      segs.push({ x1:x, y1:y, x2:x2, y2:y2, lado:lados[k], val:L[k] });
+      pts.push([x2,y2]); x=x2; y=y2;
+      if (k<n-1) h -= (180 - bends[k]);   // giro a la izquierda: el interior queda arriba
+    }
+    return { pts:pts, segs:segs, bends:bends };
+  }
+  function svgFig(fig, b, w, hgt, rotular){
+    var p = polilinea(fig, b);
+    if (!p) return '<span style="display:inline-block;width:'+w+'px;height:'+hgt+'px;color:#cfd8dc;text-align:center;line-height:'+hgt+'px">▱</span>';
+    var xs = p.pts.map(function(q){return q[0];}), ys = p.pts.map(function(q){return q[1];});
+    var minx=Math.min.apply(null,xs), maxx=Math.max.apply(null,xs), miny=Math.min.apply(null,ys), maxy=Math.max.apply(null,ys);
+    var bw = Math.max(maxx-minx, 1), bh = Math.max(maxy-miny, 1), pad = rotular ? 16 : 5;
+    var sc = Math.min((w-2*pad)/bw, (hgt-2*pad)/bh);
+    var ox = pad + ((w-2*pad) - bw*sc)/2 - minx*sc, oy = pad + ((hgt-2*pad) - bh*sc)/2 - miny*sc;
+    var d = p.pts.map(function(q,i){ return (i?'L':'M') + (q[0]*sc+ox).toFixed(1) + ' ' + (q[1]*sc+oy).toFixed(1); }).join(' ');
+    var out = '<svg class="fig" width="'+w+'" height="'+hgt+'"><path d="'+d+'"/>';
+    if (rotular){
+      p.segs.forEach(function(s){
+        var mx=(s.x1+s.x2)/2*sc+ox, my=(s.y1+s.y2)/2*sc+oy;
+        var dx=s.x2-s.x1, dy=s.y2-s.y1, len=Math.sqrt(dx*dx+dy*dy)||1;
+        var nx=-dy/len*8, ny=dx/len*8;   // desplazar el rótulo hacia afuera
+        out += '<text x="'+(mx-nx).toFixed(1)+'" y="'+(my-ny+3).toFixed(1)+'" text-anchor="middle">'+num(s.val)+'</text>';
+      });
+      p.bends.forEach(function(bd,i){
+        if (bd===90) return;
+        var q=p.pts[i+1]; out += '<text class="ang" x="'+(q[0]*sc+ox+3).toFixed(1)+'" y="'+(q[1]*sc+oy-3).toFixed(1)+'">'+bd+'°</text>';
+      });
+    }
+    return out + '</svg>';
+  }
+
+  // ── orden como el editor: piso natural → tipología (orden del catálogo) → id ──
+  function ordPiso(p){ var m=/(\d+)/.exec(p||''); return m?Number(m[1]):999; }
+  function ordenar(barras){
+    return barras.slice().sort(function(a,b){
+      return (ordPiso(a.piso)-ordPiso(b.piso)) ||
+             ((ORD_TIPO[a.marca]!=null?ORD_TIPO[a.marca]:90)-(ORD_TIPO[b.marca]!=null?ORD_TIPO[b.marca]:90)) ||
+             (a.id-b.id);
+    });
+  }
+  // columnas de geometría que ESTA vista usa (misma regla que ac2ColsGeom)
+  function colsGeom(barras, figs){
+    var usa={}, angs=0, radio=false;
+    barras.forEach(function(b){ var f=figs[b.figura]; if(!f) return;
+      (f.parciales||[]).forEach(function(l){ usa['dim_'+String(l).toLowerCase()]=1; });
+      angs=Math.max(angs,(f.angulos||[]).length); if(f.radio) radio=true; });
+    var dims=LADOS.map(function(l){return 'dim_'+l.toLowerCase();}).filter(function(k){return usa[k];});
+    if(!dims.length) dims=['dim_a','dim_b','dim_c'];
+    return { dims:dims, angs:angs, radio:radio };
+  }
+
+  function selDiam(b, hoy){
+    var st='';
+    if (hoy){ var c=DIAM_COLOR[Number(b.diam)]||''; if(c) st=' style="background:'+c+';color:'+(DIAM_TXT_CLARO[Number(b.diam)]?'#fff':'#37474f')+';font-weight:600"'; }
+    var op=DIAMS.map(function(d){ return '<option'+(Number(b.diam)===d?' selected':'')+'>'+d+'</option>'; }).join('');
+    return '<select class="cell"'+st+'>'+op+'</select>';
+  }
+  function selPiso(b, pisos){ return '<select class="cell" style="width:56px">'+pisos.map(function(p){return '<option'+(p===b.piso?' selected':'')+'>'+esc(p)+'</option>';}).join('')+'</select>'; }
+  function selTipo(b, tipos){ return '<select class="cell" style="width:50px">'+tipos.map(function(t){return '<option'+(t===b.marca?' selected':'')+'>'+esc(t)+'</option>';}).join('')+'</select>'; }
+  function inp(v, w, extra){ return '<input class="cell'+(extra||'')+'" style="width:'+(w||54)+'px" value="'+esc(v==null?'':v)+'">'; }
+
+  // ══════════ HOY ══════════
+  function pintarHoy(D, barras, cg, pisos, tipos){
+    var h='<thead><tr>'+
+      '<th class="l">Piso ▲▼</th><th class="l">Tipología</th><th class="l">Sufijo <span style="font-weight:400;color:#b0bec5;font-size:10px">(opc.)</span></th>'+
+      '<th>φ</th><th>Cant</th><th>Cant.T</th><th>Largo</th><th style="padding-right:10px">Peso Tot</th>'+
+      '<th class="l sepfig">Figura</th><th class="l">Dibujo</th>';
+    cg.dims.forEach(function(k){ h+='<th>'+k.slice(4).toUpperCase()+'</th>'; });
+    for (var a=1;a<=cg.angs;a++) h+='<th>α'+a+'</th>';
+    h+='<th class="c">Rev</th><th></th></tr></thead><tbody>';
+    var cols = 10 + cg.dims.length + cg.angs + 2, grupo=null;
+    barras.forEach(function(b){
+      if (b.piso!==grupo){ grupo=b.piso; var n=barras.filter(function(x){return x.piso===grupo;}).length;
+        h+='<tr class="grp"><td colspan="'+cols+'">▎'+esc(grupo)+' · '+n+' barra'+(n>1?'s':'')+'<span class="mv">mover piso <span>▲</span><span>▼</span></span></td></tr>'; }
+      var f=D.figuras[b.figura], usa=(f?f.parciales:[]).map(function(l){return 'dim_'+String(l).toLowerCase();});
+      h+='<tr><td class="l">'+selPiso(b,pisos)+'</td><td class="l">'+selTipo(b,tipos)+'</td><td class="l">'+inp(b.suf_tipo||'',56)+'</td>'+
+         '<td>'+selDiam(b,true)+'</td><td>'+inp(num(b.cant),56)+'</td><td class="calc">'+num((b.cant||0)*(b.mult||1))+'</td>'+
+         '<td class="largo">'+num(b.largo_total)+'</td><td class="peso" style="padding-right:10px">'+num(b.peso_total,1)+'</td>'+
+         '<td class="l sepfig">'+inp(b.figura,54)+'</td><td class="l">'+svgFig(f,b,110,80,true)+'</td>';
+      cg.dims.forEach(function(k){ h+='<td>'+(usa.indexOf(k)>=0?inp(num(b[k]),54):'<span class="off"></span>')+'</td>'; });
+      for (var a=1;a<=cg.angs;a++){ h+='<td>'+((f&&(f.angulos||[]).length>=a)?inp(num(b['ang'+a]),52):'<span class="off"></span>')+'</td>'; }
+      h+='<td class="c"><input type="checkbox"'+(b.revisada?' checked':'')+'></td>'+
+         '<td class="acc"><span class="mas">＋</span><span class="dup">⎘</span><span class="del">✕</span></td></tr>';
+    });
+    return h+'</tbody>';
+  }
+
+  // ══════════ PROPUESTA ══════════
+  function pintarProp(D, barras, cg, pisos, tipos, filaActiva){
+    var h='<thead><tr>'+
+      '<th class="l">Piso ▲▼</th><th class="l">Tipología</th><th class="l">Sufijo<small>opcional</small></th>'+
+      '<th class="g1">φ<small>mm</small></th><th>Cant</th>'+
+      '<th class="g2">Largo<small>cm</small></th><th>Peso<small>kg</small></th>'+
+      '<th class="l g3">Figura</th><th class="l">Forma</th>';
+    cg.dims.forEach(function(k,i){ h+='<th'+(i===0?' class="g4"':'')+'>'+k.slice(4).toUpperCase()+'</th>'; });
+    for (var a=1;a<=cg.angs;a++) h+='<th>α'+a+'</th>';
+    h+='<th class="c">Rev</th><th></th></tr></thead><tbody>';
+    var cols = 9 + cg.dims.length + cg.angs + 2, grupo=null, prevDiam=null, idx=0;
+    barras.forEach(function(b){
+      if (b.piso!==grupo){ grupo=b.piso; prevDiam=null; var n=barras.filter(function(x){return x.piso===grupo;}).length;
+        h+='<tr class="grp"><td colspan="'+cols+'">▎'+esc(grupo)+' · '+n+' barra'+(n>1?'s':'')+'<span class="mv">mover piso <span>▲</span><span>▼</span></span></td></tr>'; }
+      var f=D.figuras[b.figura], usa=(f?f.parciales:[]).map(function(l){return 'dim_'+String(l).toLowerCase();});
+      var chg = (prevDiam!=null && Number(b.diam)!==prevDiam); prevDiam=Number(b.diam);
+      var activa = (idx===filaActiva); idx++;
+      h+='<tr'+(activa?' class="activa"':'')+'><td class="l">'+selPiso(b,pisos)+'</td><td class="l">'+selTipo(b,tipos)+'</td><td class="l">'+inp(b.suf_tipo||'',56)+'</td>'+
+         '<td class="g1'+(chg?' chg':'')+'"'+(chg?' title="Diámetro distinto al de la fila de arriba"':'')+'>'+selDiam(b,false)+'</td>'+
+         '<td>'+inp(num(b.cant),56, activa?' foco':'')+'</td>'+
+         '<td class="g2 largo">'+num(b.largo_total)+'</td><td class="peso">'+num(b.peso_total,1)+'</td>'+
+         '<td class="l g3">'+inp(b.figura,54)+'</td><td class="l">'+svgFig(f,b,72,34,false)+'</td>';
+      cg.dims.forEach(function(k,i){ h+='<td'+(i===0?' class="g4"':'')+'>'+(usa.indexOf(k)>=0?inp(num(b[k]),54):'<span class="off"></span>')+'</td>'; });
+      for (var a=1;a<=cg.angs;a++){ h+='<td>'+((f&&(f.angulos||[]).length>=a)?inp(num(b['ang'+a]),52):'<span class="off"></span>')+'</td>'; }
+      h+='<td class="c"><input type="checkbox"'+(b.revisada?' checked':'')+'></td>'+
+         '<td class="acc"><span class="mas" title="Agregar barra debajo">＋</span><span class="dup" title="Duplicar">⎘</span><span class="del" title="Quitar">✕</span></td></tr>';
+    });
+    return h+'</tbody>';
+  }
+
+  function rollup(barras){
+    var rev=barras.filter(function(b){return b.revisada;}).length;
+    var fis=barras.reduce(function(s,b){return s+(Number(b.cant)||0)*(Number(b.mult)||1);},0);
+    var kg=barras.reduce(function(s,b){return s+(Number(b.peso_total)||0);},0);
+    return '<span class="rev">✓ '+rev+' de '+barras.length+' revisadas</span><span class="sp"></span>'+
+           '<span><b>'+barras.length+'</b> items · <b>'+num(fis)+'</b> barras · <b style="color:#558B2F">'+num(kg,1)+'</b> kg</span>';
+  }
+
+  fetch('grilla_datos.json').then(function(r){ return r.json(); }).then(function(D){
+    var barras = ordenar(D.barras);
+    var cg = colsGeom(barras, D.figuras);
+    var pisos = barras.map(function(b){return b.piso;}).filter(function(p,i,a){return a.indexOf(p)===i;});
+    var tipos = ['MH','MV','TR','EC','TC','CB'];
+    var L = D.lote;
+    $('intro').textContent = 'Despiece #'+L.num_obra+' · '+L.sector+' · '+L.ciclo+' · '+L.eje+' · '+L.estructura+' — '+
+      barras.length+' barras reales, '+pisos.length+' pisos, diámetros '+
+      barras.map(function(b){return Number(b.diam);}).filter(function(d,i,a){return a.indexOf(d)===i;}).sort(function(a,b){return a-b;}).join(' / ')+
+      ', figuras '+Object.keys(D.figuras).sort().join(' · ')+'. Las dos tablas muestran exactamente lo mismo.';
+    $('tHoy').innerHTML = pintarHoy(D, barras, cg, pisos, tipos);
+    $('rHoy').innerHTML = rollup(barras);
+    $('tProp').innerHTML = pintarProp(D, barras, cg, pisos, tipos, 5);
+    $('rProp').innerHTML = rollup(barras);
+  }).catch(function(e){
+    $('intro').textContent = 'No se pudo leer grilla_datos.json ('+e.message+'). Abre esta página desde la app (/static/demo/…).';
+  });
+
+  // interruptores (sólo de vista)
+  function grupo(id, cls, prefijo){
+    var g=$(id); g.addEventListener('click', function(ev){
+      var b=ev.target.closest('button'); if(!b) return;
+      Array.prototype.forEach.call(g.querySelectorAll('button'), function(x){ x.classList.toggle('on', x===b); });
+      var t=$('tProp'); cls.forEach(function(c){ t.classList.remove(c); }); t.classList.add(prefijo+b.getAttribute('data-v'));
+    });
+  }
+  grupo('tgFilas', ['cebra','lineas'], '');
+  grupo('tgAcc', ['acc-activa','acc-todas'], 'acc-');
+})();
+</script>
+</body>
+</html>
