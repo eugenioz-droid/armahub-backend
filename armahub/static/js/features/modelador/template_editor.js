@@ -13058,7 +13058,7 @@
       if (global.console && global.console.warn) {
         global.console.warn('[TE] templateEditorAbrirEnObra necesita { loteId, ... }.');
       }
-      return;
+      return false;
     }
     opts = opts || {};
     // EL ELEMENTO LO DICE EL DESPIECE, NO EL EDITOR. El lote guarda su estructura
@@ -13071,6 +13071,22 @@
     if (!TPL_DIMS_POR_ELEMENTO[fijo]) fijo = '';
     var elem = _figKey(opts.elemento || fijo || 'VIGA');
     if (!TPL_DIMS_POR_ELEMENTO[elem]) elem = 'VIGA';
+    // NO SE ABRE UN ELEMENTO QUE EL EDITOR NO SABE MODELAR (25-sep).
+    // TPL_DIMS_POR_ELEMENTO no alcanza como filtro: tiene fila para LOSA, pero a la
+    // losa le faltan las tres tablas que de verdad la harian funcionar (planos de
+    // vista, campos de hormigon y caras de obra). Con el filtro viejo un despiece de
+    // losa entraba, caia EN SILENCIO a la configuracion de viga y ademas se armaba con
+    // la geometria rota — el usuario terminaba modelando una viga creyendo que era su
+    // losa. Ahora se pregunta a la MISMA funcion que decide que botones de elemento se
+    // ofrecen adentro (_elementoConDatos), asi no puede haber dos criterios distintos.
+    // El despiece antiguo sin estructura no entra por aca: cayo a VIGA mas arriba y
+    // sigue eligiendo su elemento adentro, como siempre.
+    if (!_elementoConDatos(elem)) {
+      alert('El editor 3D todavia no modela ' + _capitalizar(elem) + '.\n\n' +
+        'Este despiece es de ' + _capitalizar(elem) + ', asi que por ahora sus barras ' +
+        'se ingresan a mano en la grilla (＋ barra / ＋ barras M).');
+      return false;
+    }
     global.templateEditorAbrir({
       elemento: elem,
       nombre: opts.nombre || '',
@@ -13089,6 +13105,15 @@
       // Sin la opcion todo queda EXACTAMENTE como estaba: el editor es el de hoy.
       soloVista: (opts.soloVista === true)
     });
+    return true;
+  };
+
+  // ¿SABE EL EDITOR MODELAR ESTE ELEMENTO? Unica fuente de verdad para preguntarlo
+  // desde fuera. Existe para que el despiece pueda APAGAR el boton "3D Enfierrador"
+  // en vez de dejar clicar hacia un aviso — y para que ese boton no tenga que
+  // mantener su propia lista de elementos, que es justo lo que se desincroniza.
+  global.templateEditorPuedeModelar = function (elemento) {
+    return _elementoConDatos(elemento);
   };
 
   // Payload de barras: lo que YA genero el motor, sin las claves de trabajo (las que
@@ -13523,10 +13548,16 @@
       recubs: [{ k: 'recub_lat', ks: ['recub_lat', 'recub_sup', 'recub_inf'], lbl: 'Recub', def: 4 }],
       checks: [['recub_lat', 'recub_lat', 'ancho'], ['recub_lat', 'recub_lat', 'largo']]
     },
+    // LOSA — todavía no se puede abrir (le faltan planos/campos/caras), pero sus dims
+    // se dejan en las claves CANÓNICAS igual que las de columna: 'espesor' era una
+    // clave propia que el motor no conoce (generar.js lee largo/alto/ancho), y una
+    // clave propia es exactamente lo que tuvo a columna, fundación y gen sin poder
+    // abrirse. Se deja arreglada de raíz para que el día que la losa se habilite no
+    // reviva el mismo bug: alto = el espesor (la losa es la caja acostada).
     LOSA: {
-      dims:   [{ k: 'largo', lbl: 'Largo', def: 500 }, { k: 'ancho', lbl: 'Ancho', def: 400 }, { k: 'espesor', lbl: 'Espesor', def: 15 }],
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 500 }, { k: 'ancho', lbl: 'Ancho', def: 400 }, { k: 'alto', lbl: 'Espesor', def: 15 }],
       recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 2.5 }, { k: 'recub_inf', lbl: 'Inf', def: 2.5 }],
-      checks: [['recub_sup', 'recub_inf', 'espesor']]
+      checks: [['recub_sup', 'recub_inf', 'alto']]
     },
     // FUNDACIÓN — igual que la viga (instrucción del usuario). Recubrimientos por cara
     // como la viga: el sello suele ir con más recubrimiento que el resto.
@@ -13540,7 +13571,10 @@
     GEN: {
       dims:   [{ k: 'largo', lbl: 'Largo', def: 300 }, { k: 'alto', lbl: 'Alto', def: 100 }, { k: 'ancho', lbl: 'Ancho', def: 100 }],
       recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 4 }, { k: 'recub_inf', lbl: 'Inf', def: 4 }, { k: 'recub_lat', lbl: 'Lat', def: 4 }],
-      checks: [['recub', 'recub', 'alto'], ['recub', 'recub', 'ancho']]
+      // Los checks apuntaban a 'recub', clave que este bloque no escribe: la validación
+      // leía undefined, daba NaN y por eso NUNCA declaraba inválida una geometría de
+      // GEN. Ahora mide contra las claves que sí existen, como viga y fundación.
+      checks: [['recub_sup', 'recub_inf', 'alto'], ['recub_lat', 'recub_lat', 'ancho']]
     }
   };
 
@@ -13665,9 +13699,11 @@
   //   · GEO_CAMPOS_POR_ELEMENTO    → los campos del grupo HORMIGÓN del ribbon
   //   · TPL_TIPOLOGIAS             → los chips de tipología
   //   · TPL_DIMS_POR_ELEMENTO      → los defaults (cm) de esas dims
-  // Hoy dan VIGA y MURO. Los demás salen DESHABILITADOS con "(próximamente)": a
-  // medias sería peor que no estar (el usuario dijo explícitamente que no quiere
-  // empezar columna sin terminar el muro).
+  // Hoy dan VIGA, MURO, COLUMNA, FUNDACION y GEN. La única que NO es LOSA, a la que
+  // le faltan planos de vista, campos de hormigón y caras de obra (decisión de
+  // 3325-3348, no olvido). Sale DESHABILITADA con "(próximamente)": a medias sería
+  // peor que no estar. La MISMA respuesta la usa el despiece para apagar su botón
+  // "3D Enfierrador" — vía global.templateEditorPuedeModelar.
   // ==========================================================================
   function _elementoConDatos(elem) {
     var min = String(elem || '').toLowerCase();

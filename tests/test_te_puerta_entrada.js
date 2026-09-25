@@ -451,6 +451,50 @@ function sinComentariosJs(src) {
       'y manda el identificador de origen de cada barra, que es con lo que se cruzan');
   }
 
+  // ============================================================== E10
+  // LA PUERTA NO ABRE UN ELEMENTO QUE EL EDITOR NO SABE MODELAR (25-sep).
+  // El bug: la puerta validaba la estructura del despiece contra TPL_DIMS_POR_ELEMENTO,
+  // que SÍ tiene fila para LOSA — pero a la losa le faltan las tres tablas que la harían
+  // funcionar. Entraba, caía en silencio a la configuración de VIGA y además con la
+  // geometría rota: el usuario modelaba una viga creyendo que modelaba su losa, y no
+  // había ni un aviso. En producción hay 2 despieces de losa, así que era alcanzable.
+  // Lo que se fija: la puerta usa el MISMO criterio que decide qué botones de elemento
+  // se ofrecen adentro (_elementoConDatos), no un criterio propio.
+  console.log('E10 — un elemento que el editor no modela NO abre (cae con aviso, no en silencio)');
+  {
+    const w = sesion();
+    const base = { loteId: 42, id_proyecto: 'EXPLORA', sector: 'LCIELO', ciclo: 'C1', eje: 'E3' };
+
+    const r = w.templateEditorAbrirEnObra(Object.assign({}, base, { estructura: 'LOSA' }), {});
+    ok(r === false, 'un despiece de LOSA no abre el editor');
+    ok(w._abierto() === false, 'y el modal se queda cerrado (antes abría disfrazado de viga)');
+    ok(w._alerts.length === 1 && /losa/i.test(w._alerts[0]),
+      'se avisa, y el aviso NOMBRA el elemento');
+    ok(/grilla/i.test(w._alerts[0]),
+      'y dice qué hacer en cambio: cubicar a mano en la grilla');
+
+    // El que SÍ se modela entra como siempre: la guarda no puede cerrarle la puerta al muro.
+    const w2 = sesion();
+    const r2 = w2.templateEditorAbrirEnObra(
+      Object.assign({}, base, { sector: 'ELEV', estructura: 'MURO' }), {});
+    ok(r2 === true && w2._abierto() === true, 'un despiece de MURO abre igual que siempre');
+    ok(w2._alerts.length === 0, 'y sin avisos');
+
+    // Despiece ANTIGUO sin estructura: no se le cierra la puerta — cae a viga y elige adentro.
+    const w3 = sesion();
+    const r3 = w3.templateEditorAbrirEnObra(Object.assign({}, base, { estructura: '' }), {});
+    ok(r3 === true && w3._abierto() === true, 'un despiece sin estructura sigue abriendo');
+    ok(w3.TemplateEditor._st.elemFijo == null, 'y sin traba: el elemento se elige adentro');
+
+    // La respuesta que consume el botón "3D Enfierrador" del despiece es LA MISMA.
+    ok(typeof w.templateEditorPuedeModelar === 'function',
+      'el editor publica templateEditorPuedeModelar para que el despiece pregunte');
+    ok(w.templateEditorPuedeModelar('LOSA') === false &&
+       w.templateEditorPuedeModelar('MURO') === true &&
+       w.templateEditorPuedeModelar('COLUMNA') === true,
+      'y responde lo mismo que la puerta: sólo losa queda fuera');
+  }
+
   // ============================================================== E6
   console.log('E6 — la puerta es UNA: nadie más llama al modal');
   {
@@ -496,10 +540,22 @@ function sinComentariosJs(src) {
        abrenEnObra.every(n => PUERTA_OBRA.indexOf(n) !== -1),
       'y la puerta del despiece la usan sólo Agregar Cubicación y el tab Muros (hay: ' + abrenEnObra.join(', ') + ')');
 
+    // Fuera de template_editor.js hay UNA sola puerta más, y está declarada acá:
+    // el asistente IA, que al aceptar su propuesta reabre el editor con esa receta
+    // (asistente.js · _abrirConReceta). Se declara en vez de seguir afirmando "ninguna":
+    // el test estaba en rojo permanente desde que nació el chat, y un test que siempre
+    // falla deja de avisar cuando aparece la puerta de verdad.
+    // PENDIENTE conocido: esa puerta entra por templateEditorAbrir, no por la del
+    // despiece, así que se salta la guarda de elemento modelable. Hoy no es un hueco
+    // —el asistente sólo produce muros y fija elemento:'MURO'— pero deja de ser cierto
+    // el día que el asistente sepa de otro elemento.
+    const PUERTA_EXTRA = ['asistente.js'];
     const otros = archivos(path.join(RAIZ, 'static', 'js'), '.js')
       .filter(p => path.basename(p) !== 'template_editor.js')
-      .filter(p => /templateEditorAbrir\s*\(/.test(sinComentariosJs(fs.readFileSync(p, 'utf8'))));
-    ok(otros.length === 0, 'ningún otro archivo JS del front abre el modal por su cuenta');
+      .filter(p => /templateEditorAbrir\s*\(/.test(sinComentariosJs(fs.readFileSync(p, 'utf8'))))
+      .map(p => path.basename(p)).sort();
+    ok(otros.length === PUERTA_EXTRA.length && otros.every(n => PUERTA_EXTRA.indexOf(n) !== -1),
+      'ningún archivo JS abre el modal sin estar declarado acá (hay: ' + (otros.join(', ') || '—') + ')');
 
     // En las plantillas se busca el patrón real de invocación (onclick="…"), no la
     // mención: los comentarios del HTML nombran la función para documentar de dónde

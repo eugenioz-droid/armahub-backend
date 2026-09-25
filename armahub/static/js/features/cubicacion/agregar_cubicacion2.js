@@ -737,6 +737,9 @@ window.ac2SetEstructura=function(e){
   AC2_TIPOS=(AC2_TIPOS_MAP[e]||[]).map(function(t){return t.codigo;});
   AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
   ac2PintarSectorEstructura(); ac2PintarSubtabs();
+  // El botón "3D Enfierrador" depende del elemento, así que se repinta al cambiarlo: si no,
+  // quedaba encendido/apagado según la estructura ANTERIOR hasta la próxima recarga del lote.
+  ac2ActualizarCabecera();
   // Entrar por defecto a la PRIMERA tipología (no a TODOS) → los botones de crear ya quedan
   // habilitados y el flujo es directo. Si la estructura no tuviera tipologías, cae a TODOS.
   ac2SetTipo(AC2_TIPOS.length ? AC2_TIPOS[0] : 'TODOS');
@@ -835,6 +838,22 @@ function ac2ActualizarCabecera(){
   show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
   // Botón "3D Enfierrador" (Modelador): visible en un despiece BORRADOR (donde se pueden agregar barras).
   show('ac2_modelador3dBtn', hayLote && !eliminado && !terminado);
+  // ...y APAGADO si el editor todavía no sabe modelar el elemento de este despiece (hoy: losa).
+  // No se decide con una lista de acá: se le pregunta al propio editor, que es quien sabe qué
+  // elementos tiene completos. Con el editor aún sin cargar no se opina (queda encendido): la
+  // puerta templateEditorAbrirEnObra lo frena igual y con el motivo escrito. Esto es la cortesía
+  // de no dejar clicar hacia un aviso, no la protección.
+  var b3d=document.getElementById('ac2_modelador3dBtn');
+  if (b3d){
+    var puede3d = (typeof window.templateEditorPuedeModelar!=='function') || !AC2.estructura ||
+                  window.templateEditorPuedeModelar(AC2.estructura);
+    b3d.disabled=!puede3d;
+    b3d.style.opacity=puede3d?'1':'0.45';
+    b3d.style.cursor=puede3d?'pointer':'not-allowed';
+    b3d.title=puede3d ? 'Modelar la estructura y cargar sus barras al despiece'
+      : ('El editor 3D todavía no modela '+String(AC2.estructura||'').toLowerCase()+
+         ': las barras de este despiece se ingresan a mano en la grilla.');
+  }
   // Editar ciclo/eje: en un despiece BORRADOR (con o sin barras) se puede corregir la ubicación. Con
   // barras es más delicado (reasigna todas), pero también sin barras (recién creado). En
   // terminado/eliminado no aplica.
