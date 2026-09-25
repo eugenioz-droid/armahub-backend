@@ -215,36 +215,37 @@
       <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
               style="display:none; font-size:11px; font-weight:600; padding:5px 10px; background:#fff; color:#33691e; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
 
-      <!-- Empuja el control de VISTA hacia la DERECHA. -->
+      <!-- Empuja los controles de VISTA hacia la DERECHA. -->
       <div style="flex:1;"></div>
 
-      <!-- ── VISTA (25-sep) ──────────────────────────────────────────────────────────────
-           Orden, Multiplicador, Render y tamaño del dibujo se fijan UNA vez y no se vuelven
-           a tocar, pero ocupaban media barra con el mismo peso visual que "＋ barra", que se
-           usa todo el rato. Ahora viven bajo un solo botón y se RECUERDAN por usuario
-           (localStorage), así no hay que reponerlos en cada sesión. -->
-      <div style="position:relative; display:inline-block;">
-        <button id="ac2_vistaBtn" onclick="ac2ToggleVista()" title="Orden de la grilla, columna Multiplicador, dibujo y su tamaño"
-                style="font-size:11px; padding:5px 12px; background:#fff; color:#546e7a; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">👁 Vista ▾</button>
-        <div id="ac2_vistaMenu" style="display:none; position:absolute; z-index:20; top:32px; right:0; min-width:230px; background:#fff; border:1px solid #cfd8dc; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:10px;">
-          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:4px;">Ordenar y agrupar por</div>
-          <div id="ac2_ordenWrap" style="display:flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden; margin-bottom:10px;">
-            <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" style="flex:1; font-size:11px; padding:5px 8px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Creación</button>
-            <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="flex:1; font-size:11px; padding:5px 8px; border:none; border-left:1px solid #8BC34A; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
-            <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="flex:1; font-size:11px; padding:5px 8px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
+      <!-- ── CONTROLES DE VISTA — SIEMPRE A LA VISTA (25-sep) ────────────────────────────
+           Estuvieron un rato metidos bajo un botón "Vista ▾" y el usuario lo rechazó, con
+           razón: son de uso constante y esconderlos agrega un paso a algo que se hace todo
+           el rato. La regla de la casa es que los controles se ven siempre y con palabra.
+           Lo que sí se conserva de aquel intento es que ahora se RECUERDAN por usuario
+           (localStorage), así no hay que reponerlos en cada sesión.
+           Lo que se mejora aquí es la LEGIBILIDAD, no la visibilidad: van en una caja con
+           su etiqueta, separados de los botones de acción (verdes) con los que antes se
+           confundían por tener el mismo peso. -->
+      <div style="display:inline-flex; align-items:center; gap:10px; padding:4px 10px; background:#fafafa; border:1px solid #e4e7e9; border-radius:6px;">
+        <span style="font-size:10px; color:#90a4ae; font-weight:700; letter-spacing:.4px; text-transform:uppercase;">Vista</span>
+        <!-- Orden/agrupación de la grilla: Creación (sin agrupar) · Piso · Tipología. -->
+        <span id="ac2_ordenWrap" style="display:inline-flex; align-items:center; gap:5px;">
+          <span style="font-size:11px; color:#78909c;">Agrupar</span>
+          <div style="display:inline-flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden;">
+            <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" title="Sin agrupar: en el orden en que se crearon" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Creación</button>
+            <button id="ac2o_piso" onclick="ac2SetOrden('piso')" title="Agrupar por piso" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
+            <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" title="Agrupar por tipología" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
           </div>
-          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:4px;">Columnas y dibujo</div>
-          <label style="display:block; font-size:12px; color:#455a64; cursor:pointer; padding:2px 0;" title="Mostrar/ocultar la columna Multiplicador"><input type="checkbox" id="ac2_verMult" onchange="ac2ToggleMult(this.checked)"/> Columna Multiplicador</label>
-          <label style="display:block; font-size:12px; color:#455a64; cursor:pointer; padding:2px 0;"><input type="checkbox" id="ac2_render" checked onchange="ac2ToggleRender(this.checked)"/> Dibujo de la figura</label>
-          <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-            <span style="font-size:11px; color:#607d8b;">Tamaño</span>
-            <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
-              <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 9px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
-              <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 9px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
-              <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 9px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
-              <button id="ac2r_xl" onclick="ac2SetTam('xl')" style="font-size:13px; padding:3px 9px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
-            </div>
-          </div>
+        </span>
+        <span style="width:1px; height:20px; background:#e0e0e0;"></span>
+        <label style="font-size:11px; color:#546e7a; cursor:pointer; white-space:nowrap;" title="Mostrar/ocultar la columna Multiplicador"><input type="checkbox" id="ac2_verMult" onchange="ac2ToggleMult(this.checked)" style="vertical-align:middle;"/> Mult</label>
+        <label style="font-size:11px; color:#546e7a; cursor:pointer; white-space:nowrap;" title="Mostrar/ocultar el dibujo de la figura"><input type="checkbox" id="ac2_render" checked onchange="ac2ToggleRender(this.checked)" style="vertical-align:middle;"/> Dibujo</label>
+        <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;" title="Tamaño del dibujo">
+          <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
+          <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
+          <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
+          <button id="ac2r_xl" onclick="ac2SetTam('xl')" style="font-size:13px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
         </div>
       </div>
     </div>

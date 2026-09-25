@@ -216,5 +216,68 @@ console.log('\n7 — el "no hay barras" trae los botones de agregar');
   ok(/tipolog/i.test(htmlTodos), 'se dice que hay que entrar a una tipología');
 }
 
+// ── 8 · La grilla no reserva espacio para geometría que nadie usa ──
+// Medido contra los 200 despieces con barras de la base: ninguno pasa de 6 lados ni de 2
+// ángulos, y el radio no lo usa NINGUNO. La grilla reservaba siempre 9 + 4 + 1, así que G, H,
+// I, α3, α4 y R estaban vacías en el 100% de los casos y en un despiece corriente sobraban 8
+// de las 14 columnas — media tabla en blanco.
+console.log('\n8 — las columnas de geometría son las que la vista usa, no 14 siempre');
+{
+  const t = montar(); enEditor(t);
+  // 103A: 3 lados y 1 ángulo. 105A: 5 lados, sin ángulos.
+  t.caja._ac2Figuras = {
+    '103A': { codigo: '103A', parciales: ['A', 'B', 'C'], angulos: [90], radio: false },
+    '105A': { codigo: '105A', parciales: ['A', 'B', 'C', 'D', 'E'], angulos: [], radio: false },
+  };
+  const barra = (fig) => {
+    const b = t.caja.ac2NuevaBarra({ piso: 'P1', marca: 'Fi', diam: 10, cant: 1, mult: 1, figura: fig });
+    b.dim_a = 83; b.dim_b = 12; b.dim_c = 480; b.ang1 = 90;
+    return b;
+  };
+  const cuentaTh = (html) => (html.match(/<th\b/g) || []).length;
+  const cuentaTd = (html) => (html.match(/<td\b/g) || []).length;
+
+  t.AC2.tipo = 'Fi'; t.AC2.barras = [barra('103A')];
+  const g1 = t.caja.ac2ColsGeom();
+  ok(g1.dims.length === 3 && g1.angs === 1 && g1.radio === false,
+    'con sólo 103A la vista pide 3 lados, 1 ángulo y ningún radio (pedía 9+4+1)');
+  const th1 = t.caja.ac2Thead();
+  ok(th1.indexOf('>G<') < 0 && th1.indexOf('>I<') < 0, 'G e I no se pintan');
+  ok(th1.indexOf('>α3<') < 0 && th1.indexOf('>α4<') < 0, 'α3 y α4 tampoco');
+  ok(th1.indexOf('>R<') < 0, 'ni la columna de radio, que no usa ningún despiece de la base');
+  ok(th1.indexOf('>A<') >= 0 && th1.indexOf('>C<') >= 0 && th1.indexOf('>α1<') >= 0,
+    'y sí están A, C y α1, que es lo que la figura pide');
+
+  // LA INVARIANTE: cabecera, fila y encabezado de grupo tienen que cuadrar SIEMPRE.
+  ok(cuentaTd(t.caja.ac2Fila(t.AC2.barras[0])) === cuentaTh(th1),
+    'la fila tiene exactamente tantas celdas como columnas la cabecera ('+cuentaTh(th1)+')');
+  const m1 = /colspan="(\d+)"/.exec(t.caja.ac2GrupoHdr('P1', 1, true));
+  ok(m1 && Number(m1[1]) === cuentaTh(th1), 'y el encabezado de grupo abarca esas mismas ' + cuentaTh(th1));
+
+  // Una figura más ancha AGRANDA el juego de columnas, y entonces hay que repintar la tabla
+  // entera: si sólo se repintara la fila, quedaría descuadrada contra la cabecera.
+  t.AC2.barras = [barra('103A'), barra('105A')];
+  const g2 = t.caja.ac2ColsGeom();
+  ok(g2.dims.length === 5, 'al convivir con 105A la vista pasa a 5 lados');
+  ok(g2.angs === 1, 'y conserva el ángulo que pide la otra figura');
+  ok(g2.sig !== g1.sig, 'el juego de columnas cambió, y su firma lo detecta');
+  const th2 = t.caja.ac2Thead();
+  ok(cuentaTd(t.caja.ac2Fila(t.AC2.barras[0])) === cuentaTh(th2) &&
+     cuentaTd(t.caja.ac2Fila(t.AC2.barras[1])) === cuentaTh(th2),
+    'las DOS filas siguen cuadrando, aunque sus figuras usen distintos lados');
+
+  // Filas recién creadas (sin figura): piso mínimo, no una tabla sin medidas.
+  t.AC2.barras = [t.caja.ac2NuevaBarra({ piso: 'P2', marca: 'Fi' })];
+  const g3 = t.caja.ac2ColsGeom();
+  ok(g3.dims.length === 3 && g3.angs === 0 && !g3.radio,
+    'una vista de filas nuevas muestra 3 lados y ninguna columna de ángulo');
+  ok(cuentaTd(t.caja.ac2Fila(t.AC2.barras[0])) === cuentaTh(t.caja.ac2Thead()),
+    'y también cuadra');
+
+  // Y esa fila nueva no reserva la caja de dibujo entera.
+  const dib = t.caja.ac2Fila(t.AC2.barras[0]);
+  ok(/height:16px/.test(dib), 'sin figura el dibujo no ocupa una fila entera (marca de 16px)');
+}
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

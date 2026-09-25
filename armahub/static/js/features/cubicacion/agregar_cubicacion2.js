@@ -282,8 +282,14 @@ function ac2FigSvg(b){
   // Fallback: la figura NO tiene geometría dibujada en el catálogo (o el motor no cargó). Antes
   // mostraba el código crudo (parecía "letras" = un error). Ahora muestra "sin dibujo" + el código
   // en chico, con tooltip, para que se entienda que hay que dibujarla en el Diseñador (Catálogo).
-  var falta = b.figura ? ('sin dibujo · '+ac2Esc(b.figura)) : '▱';
-  return '<span title="'+(b.figura?('La figura '+ac2Esc(b.figura)+' no tiene dibujo en el catálogo. Dibújala en el Diseñador (tab Catálogo).'):'')+'" style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:1.1; color:#b0bec5; font-size:8px; padding:2px; box-sizing:border-box; overflow:hidden;">'+falta+'</span>';
+  // SIN FIGURA NO SE RESERVA LA CAJA ENTERA (25-sep). Una fila recién creada no tiene nada que
+  // dibujar, y el recuadro punteado de 70 px la hacía tan alta como una fila con dibujo: tres
+  // filas nuevas ocupaban media pantalla para mostrar tres rectángulos vacíos. Se deja una marca
+  // discreta; la caja aparece cuando hay figura, que es cuando hay algo que ver.
+  if (!b.figura){
+    return '<span title="Elige la figura para ver su dibujo" style="display:inline-block; width:'+t.w+'px; height:16px; vertical-align:middle; text-align:center; line-height:16px; color:#cfd8dc; font-size:11px;">▱</span>';
+  }
+  return '<span title="La figura '+ac2Esc(b.figura)+' no tiene dibujo en el catálogo. Dibújala en el Diseñador (tab Catálogo)." style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:1.1; color:#b0bec5; font-size:8px; padding:2px; box-sizing:border-box; overflow:hidden;">'+('sin dibujo · '+ac2Esc(b.figura))+'</span>';
 }
 
 // Orden de marca para agrupar (las conocidas primero en su orden; el resto al final alfabético).
@@ -316,6 +322,34 @@ function ac2Visibles(){
 // ¿Se agrupa la vista? (por piso o por tipología). En creación no se agrupa.
 function ac2AgrupaPor(){ return (AC2.orden==='piso') ? 'piso' : (AC2.orden==='tipo' ? 'marca' : null); }
 function ac2BarraPorId(id){ for(var i=0;i<AC2.barras.length;i++){ if(AC2.barras[i]._id===id) return AC2.barras[i]; } return null; }
+
+// ── QUÉ COLUMNAS DE GEOMETRÍA NECESITA ESTA VISTA (25-sep) ────────────────────────────────
+// La unión de lo que piden las figuras de las barras VISIBLES. Lo que no pide nadie no se
+// pinta: reservar 9 lados + 4 ángulos + radio "por si acaso" dejaba media tabla en blanco
+// (ningún despiece de la base pasa de 6 lados ni de 2 ángulos, y el radio no lo usa ninguno).
+// Al cambiar una figura el conjunto puede crecer o encogerse; de eso se encarga ac2SetBarra,
+// que en ese caso re-renderiza la tabla ENTERA (si no, la fila quedaría con más o menos
+// celdas que la cabecera y la tabla se descuadra).
+// Firma del último juego de columnas PINTADO. La usa ac2SetBarra para saber si un cambio de
+// figura obliga a repintar la tabla entera en vez de sólo su fila.
+var _ac2SigCols='';
+function ac2ColsGeom(){
+  var usa={}, angs=0, radio=false;
+  ac2Visibles().forEach(function(b){
+    if (!b.figura) return;
+    var info=ac2DimsDeFigura(b.figura);
+    info.dims.forEach(function(k){ usa[k]=1; });
+    if (info.angs>angs) angs=info.angs;
+    if (info.radio) radio=true;
+  });
+  var dims=AC2_DIMKEYS.filter(function(k){ return usa[k]; });
+  // PISO MÍNIMO: una vista de filas recién creadas (todavía sin figura) no puede quedarse sin
+  // ninguna columna de medidas — se vería rota y no habría dónde mirar. Se muestran las tres
+  // primeras hasta que la primera figura diga cuántas hacen falta de verdad.
+  if (!dims.length) dims=AC2_DIMKEYS.slice(0,3);
+  return { dims:dims, angs:angs, radio:radio,
+           sig:dims.join(',')+'|'+angs+'|'+(radio?'r':'') };
+}
 
 function ac2Thead(){
   var h='<tr style="color:#666; background:#fafafa;">';
@@ -350,9 +384,16 @@ function ac2Thead(){
   // Figura + Dibujo separados del bloque numérico (Peso Tot) con un borde suave y aire.
   h+='<th style="text-align:left; padding:3px 6px 3px 14px; border-left:1px solid #e0e0e0;">Figura</th>';
   if (AC2.render) h+='<th style="text-align:left; padding:3px 6px;">Dibujo</th>';
-  AC2_LADOS.forEach(function(L){ h+='<th style="text-align:right; padding:3px 6px;">'+L+'</th>'; });
-  ['α1','α2','α3','α4'].forEach(function(a){ h+='<th style="text-align:right; padding:3px 6px;">'+a+'</th>'; });
-  h+='<th style="text-align:right; padding:3px 6px;">R</th>';
+  // SOLO LAS COLUMNAS DE GEOMETRÍA QUE ESTA VISTA PUEDE USAR (25-sep). La grilla reservaba
+  // siempre 9 lados + 4 ángulos + radio; medido contra los 200 despieces con barras de la
+  // base: NINGUNO pasa de 6 lados ni de 2 ángulos, y el radio no lo usa ni uno. O sea G, H,
+  // I, α3, α4 y R estaban vacías en el 100% de los casos, y en un despiece corriente sobran
+  // 8 de las 14. Eso es la mitad del ancho de la tabla gastada en aire.
+  var _g = ac2ColsGeom();
+  _ac2SigCols = _g.sig;   // queda anotado lo que se PINTÓ (ver ac2SetBarra)
+  _g.dims.forEach(function(k){ h+='<th style="text-align:right; padding:3px 6px;">'+AC2_LADOS[AC2_DIMKEYS.indexOf(k)]+'</th>'; });
+  for (var _a=1; _a<=_g.angs; _a++) h+='<th style="text-align:right; padding:3px 6px;">α'+_a+'</th>';
+  if (_g.radio) h+='<th style="text-align:right; padding:3px 6px;">R</th>';
   h+='<th style="padding:3px 6px; text-align:center;" title="Revisada por el cubicador">Rev</th>';
   h+='<th style="padding:3px 6px;"></th></tr>';
   return h;
@@ -568,15 +609,19 @@ function ac2Fila(b){
   h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text"'+dis+' list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
   if (AC2.render) h+='<td id="ac2dib_'+b._id+'" style="'+AC2_TDS+'">'+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
-  for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
+  // Sólo las columnas que ESTA VISTA muestra (ac2ColsGeom). Dentro de ellas, cada barra sigue
+  // teniendo input donde su figura lo pide y celda apagada donde no: dos barras con figuras
+  // distintas conviven en la misma tabla, como siempre.
+  var cg = ac2ColsGeom();
+  cg.dims.forEach(function(k){
     h+= (info.dims.indexOf(k)!==-1) ? tdDato(k,54) : ac2CeldaOff();
-  }
-  // Ángulos α1-α4: input si la figura usa ese ángulo. Ancho para 3 cifras (135) sin cortar.
-  for (var j=0;j<4;j++){ var ak='ang'+(j+1);
+  });
+  // Ángulos: input si la figura usa ese ángulo. Ancho para 3 cifras (135) sin cortar.
+  for (var j=0;j<cg.angs;j++){ var ak='ang'+(j+1);
     h+= (j<info.angs) ? tdDato(ak,52) : ac2CeldaOff();
   }
-  // Radio.
-  h+= info.radio ? tdDato('radio',52) : ac2CeldaOff();
+  // Radio: la columna sólo existe si alguna barra de la vista lo usa.
+  if (cg.radio) h+= info.radio ? tdDato('radio',52) : ac2CeldaOff();
   // Rev (revisada): solo marcable si la barra está COMPLETA y VÁLIDA (φ+figura+medidas ok).
   var lista=ac2BarraLista(b);
   h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2rev"'+(b.rev&&lista?' checked':'')+(lista?'':' disabled')+' onclick="ac2ToggleRev('+b._id+',this)" title="'+(lista?'Marcar/desmarcar revisada':'Completa la barra (φ, figura y sus medidas) para poder revisarla.')+'"/></td>';
@@ -603,8 +648,11 @@ function ac2Fila(b){
 function ac2GrupoHdr(valor, cnt, porPiso){
   // Columnas: [masiva] + Piso + [Tipología + Sufijo] + φ,Cant,[Mult],Cant.T,Largo,PesoTot,Figura(6+mult)
   //           + [Dibujo] + 9 lados + 4 áng + R + Rev + acciones.
-  // Tipología + Sufijo SIEMPRE suman 2 (25-sep: dejaron de aparecer sólo en TODOS).
-  var cols = (AC2.masiva?1:0) + 1 + 2 + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
+  // Tipología + Sufijo SIEMPRE suman 2 (25-sep: dejaron de aparecer sólo en TODOS). Las de
+  // geometría son las que esta vista muestra, no las 14 de antes (ver ac2ColsGeom).
+  var _cg = ac2ColsGeom();
+  var cols = (AC2.masiva?1:0) + 1 + 2 + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) +
+             _cg.dims.length + _cg.angs + (_cg.radio?1:0) + 1 + 1;
   // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
   // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
   // El nombre del grupo va en data-grp y el onclick lo lee de ahí — misma regla que los botones
@@ -1031,9 +1079,11 @@ function _ac2PintarResumen(){
   if (AC2.estructura) partes.push(dato(AC2.estructura, 'Estructura'));
   // El PLANO es identidad del despiece, igual que el ciclo y el eje — por eso se muestra
   // acá y no perdido en la fila de tipologías, con la que no tiene nada que ver.
+  // El plano va un punto MÁS GRANDE que el resto (pedido del usuario): es el dato que el
+  // cubicador cruza contra el papel que tiene al lado, así que tiene que saltar sin buscarlo.
   partes.push(AC2.plano
-    ? '<span title="Plano" style="font-weight:600;">Plano '+ac2Esc(AC2.plano)+'</span>'
-    : '<span title="Este despiece aún no tiene plano: se escribe con ✎ Editar" style="color:#80cbc4; font-style:italic;">sin plano</span>');
+    ? '<span title="Plano de este despiece" style="font-size:14px; font-weight:700; color:#004d40; background:#b2dfdb; padding:1px 9px; border-radius:10px;">📐 '+ac2Esc(AC2.plano)+'</span>'
+    : '<span title="Este despiece aún no tiene plano: se escribe con ✎ Editar" style="font-size:13px; color:#80cbc4; font-style:italic;">📐 sin plano</span>');
   el.innerHTML = partes.join(' '+sep+' ');
 }
 // "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje). Parte NO fijado.
@@ -1199,22 +1249,6 @@ function _ac2PintarBotonesVista(){
   ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x);
     if(b){var on=(AC2.tam===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
 }
-// Abre/cierra el menú Vista. Se cierra al clicar fuera, como cualquier desplegable.
-window.ac2ToggleVista=function(){
-  var m=document.getElementById('ac2_vistaMenu'); if(!m) return;
-  var abrir=(m.style.display==='none'||!m.style.display);
-  m.style.display=abrir?'block':'none';
-  if (abrir && !m._ac2Fuera){
-    m._ac2Fuera=true;
-    document.addEventListener('click', function(ev){
-      var menu=document.getElementById('ac2_vistaMenu'), btn=document.getElementById('ac2_vistaBtn');
-      if (!menu || menu.style.display==='none') return;
-      if (menu.contains(ev.target) || (btn && btn.contains(ev.target))) return;
-      menu.style.display='none';
-    });
-  }
-};
-
 window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[]; _ac2PisoDir=1;   // reset orden manual + dirección
   ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
   _ac2GuardarPrefs();
@@ -1343,6 +1377,12 @@ window.ac2SetBarra=function(id,campo,valor){
   if (campo==='figura') ac2AplicarDefaults(b,'figura');
   else if (campo==='diam') ac2AplicarDefaults(b,'diam');
   if (campo==='figura' || campo==='diam'){
+    // CAMBIAR LA FIGURA PUEDE CAMBIAR EL JUEGO DE COLUMNAS de toda la tabla (ac2ColsGeom):
+    // pasar de 103A a 105A agrega lados que antes no existían. Si sólo se re-renderizara esta
+    // fila, quedaría con más o menos celdas que la cabecera y la tabla se descuadra. Así que
+    // cuando el conjunto cambia se repinta ENTERA; cuando no, se sigue con el re-render
+    // granular de siempre, que es el que conserva el foco mientras se escribe.
+    if (campo==='figura' && _ac2SigCols && ac2ColsGeom().sig !== _ac2SigCols){ ac2Render(); return; }
     // Cambian QUÉ celdas existen (dims/ángulos según figura) o los defaults → re-render de fila.
     // Pasamos focoCol EXPLÍCITO (no lo deducimos de document.activeElement, que en un <input list>
     // o <select> ya perdió el foco al disparar el change → antes el cursor desaparecía).
