@@ -795,12 +795,18 @@ function limpiarFormularioAcciones() {
 // ---- Imágenes: Drop Zone System ----
 var _recCreateStagedFiles = [];
 
-function _initDropZone(zoneId, fileInputId, onFiles) {
-  return bindDropZone(zoneId, fileInputId, onFiles, {
+// `extra` lleva lo que necesita el pegado con Ctrl+V (shared/uploads.js):
+//   scopeId — el trozo de pantalla al que pertenece la zona. Tener el foco ahí adentro
+//             la ARMA, así el recorte cae donde el usuario está trabajando.
+//   hintId  — el texto de la zona, para poder decir "o pega con Ctrl+V" cuando está armada.
+function _initDropZone(zoneId, fileInputId, onFiles, extra) {
+  var opts = {
     fileFilter: function(file) {
       return !!(file && file.type && file.type.startsWith('image/'));
     }
-  });
+  };
+  if (extra) for (var k in extra) if (extra.hasOwnProperty(k)) opts[k] = extra[k];
+  return bindDropZone(zoneId, fileInputId, onFiles, opts);
 }
 
 
@@ -844,9 +850,16 @@ async function _uploadFilesWithTipo(files, tipo, msgElId) {
 }
 
 function initRecImageDropZones() {
-  _initDropZone('recCreateDropZone', 'recCreateFileInput', _addCreatePreview);
-  _initDropZone('recDetailDropZone', 'recDetailFileInput', function(files) { _uploadFilesWithTipo(files, 'antecedente', 'recImagenMsg'); });
-  _initDropZone('recRespDropZone', 'recRespFileInput', function(files) { _uploadFilesWithTipo(files, 'respuesta', 'recRespImagenMsg'); });
+  // El formulario de CREAR es la única zona visible mientras ese modal está abierto, así
+  // que no necesita scope: el pegado la encuentra por descarte.
+  _initDropZone('recCreateDropZone', 'recCreateFileInput', _addCreatePreview,
+    { hintId: 'recCreateDropMsg', activeBorderColor: '#7b1fa2' });
+  _initDropZone('recDetailDropZone', 'recDetailFileInput',
+    function(files) { _uploadFilesWithTipo(files, 'antecedente', 'recImagenMsg'); },
+    { scopeId: 'recSeccionAntecedentes', hintId: 'recDetailDropMsg', activeBorderColor: '#c62828' });
+  _initDropZone('recRespDropZone', 'recRespFileInput',
+    function(files) { _uploadFilesWithTipo(files, 'respuesta', 'recRespImagenMsg'); },
+    { scopeId: 'recSeccionAnalisis', hintId: 'recRespDropMsg', activeBorderColor: '#1565c0' });
 }
 
 async function eliminarImagen(imgId) {

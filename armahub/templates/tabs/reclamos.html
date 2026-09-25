@@ -287,7 +287,10 @@
         </div>
       </div>
       <!-- ============ SECCIÓN 1: ANTECEDENTES ============ -->
-        <div style="margin-bottom:10px; padding:10px; background:#ffebee; border-radius:6px; border:1px solid #ffcdd2;">
+      <!-- El id lo usa el pegado con Ctrl+V (shared/uploads.js): tener el foco DENTRO de
+           esta sección arma su zona de imágenes, para que un recorte pegado caiga en los
+           antecedentes y no en el análisis. -->
+        <div id="recSeccionAntecedentes" style="margin-bottom:10px; padding:10px; background:#ffebee; border-radius:6px; border:1px solid #ffcdd2;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <h4 style="margin:0; font-size:13px; color:#b42318;">📋 Antecedentes del Reclamo</h4>
           <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
@@ -450,7 +453,10 @@
       </div>
 
       <!-- ============ SECCIÓN 2: ANÁLISIS CAUSA RAÍZ (Cubicador) ============ -->
-      <div style="margin-bottom:10px; padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb;">
+      <!-- El id lo usa el pegado con Ctrl+V (shared/uploads.js): escribir el análisis arma
+           ESTA zona, que es justo lo que fallaba cuando el pegado existía antes (siempre
+           mandaba la imagen al formulario de registro). -->
+      <div id="recSeccionAnalisis" style="margin-bottom:10px; padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
           <h4 style="margin:0; font-size:13px; color:#1565C0;">💬 Análisis Causa Raíz</h4>
           <div style="display:flex; gap:12px; align-items:center;">
