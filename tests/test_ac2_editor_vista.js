@@ -208,12 +208,24 @@ console.log('\n7 — el "no hay barras" trae los botones de agregar');
   ok(html.indexOf('ac2AgregarBarra()') >= 0, 'el mensaje trae ＋ barra adentro');
   ok(html.indexOf('ac2AgregarBarrasMulti()') >= 0, 'y ＋ barras M');
 
-  // En TODOS no se pueden crear barras: se dice ESO, no "usa ＋ barra" (que está apagado).
+  // EN TODOS TAMBIÉN SE AGREGA (26-sep, pedido del usuario): el bloqueo viejo existía porque la
+  // barra nacía sin tipología y no había dónde ponérsela. Ahora la tipología se edita en la fila:
+  // los botones se ofrecen, la barra nace sin tipología (celda roja) y no se guarda hasta tenerla.
   t.AC2.tipo = 'TODOS';
   t.caja.window.ac2Render();
   const htmlTodos = t.el('ac2_grid').innerHTML;
-  ok(htmlTodos.indexOf('ac2AgregarBarra()') < 0, 'en TODOS no se ofrecen botones que no funcionan');
-  ok(/tipolog/i.test(htmlTodos), 'se dice que hay que entrar a una tipología');
+  ok(htmlTodos.indexOf('ac2AgregarBarra()') >= 0, 'en TODOS también se ofrecen los botones de agregar');
+  ok(/tipolog/i.test(htmlTodos), 'y se avisa que la tipología se elige en la fila');
+  t.AC2.loteId = 305; t.AC2.loteEstado = 'borrador'; t.AC2.sector = 'LCIELO'; t.AC2.estructura = 'LOSA';
+  ok(t.caja.ac2PuedeCrear() === true, 'ac2PuedeCrear ya no rechaza TODOS');
+  t.caja.ac2ActualizarBotonesCrear();
+  ok(t.el('ac2_barraBtn').disabled === false && t.el('ac2_barrasMBtn').disabled === false,
+    'y ＋ barra / ＋ barras M quedan habilitados en TODOS');
+  const nueva = t.caja.ac2NuevaBarra({});
+  ok(nueva.marca === '', 'la barra nueva en TODOS nace sin tipología');
+  ok(/— tipo —/.test(t.caja.ac2Fila(nueva)) && /ffebee/.test(t.caja.ac2Fila(nueva)),
+    'su celda de tipología ofrece "— tipo —" y va en rojo');
+  ok(t.caja.ac2BarraLista(nueva) === false, 'y no cuenta como completa hasta elegirla');
 }
 
 // ── 8 · La grilla no reserva espacio para geometría que nadie usa ──

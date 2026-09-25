@@ -768,12 +768,11 @@ window.ac2Render=function(){
     var msg, acciones='';
     if (!AC2.proyecto){
       msg = 'Elige una <b>obra</b> arriba para empezar a cubicar.';
-    } else if (AC2.tipo==='TODOS'){
-      // En TODOS no se pueden crear barras (hay que estar en una tipología): se dice eso,
-      // no "usa ＋ barra", que está deshabilitado.
-      msg = 'Entra a una <b>tipología</b> de arriba para empezar a agregar barras.';
     } else {
-      msg = 'Este despiece todavía no tiene barras en <b>'+ac2Esc(AC2.tipo)+'</b>.';
+      // En TODOS también se agregan barras (26-sep): nacen sin tipología y se les elige en la fila.
+      msg = (AC2.tipo==='TODOS')
+        ? 'Este despiece todavía no tiene barras. Al agregar una aquí, elígele la <b>tipología</b> en su fila.'
+        : 'Este despiece todavía no tiene barras en <b>'+ac2Esc(AC2.tipo)+'</b>.';
       acciones = '<div style="margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">'+
         '<button onclick="ac2AgregarBarra()" style="font-size:13px; font-weight:600; padding:7px 16px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>'+
         '<button onclick="ac2AgregarBarrasMulti()" title="Una barra por cada piso seleccionado" style="font-size:13px; font-weight:600; padding:7px 16px; background:#7cb342; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barras M</button>'+
@@ -980,12 +979,17 @@ function ac2PintarSubtabs(){
 }
 
 // Habilita ＋barra/＋barras M solo con LOTE creado + sector + estructura + un subtab (no TODOS).
+// TAMBIÉN EN TODOS (26-sep, pedido del usuario). El bloqueo «entra a una tipología para
+// agregar» existía porque la barra nueva nacía sin tipología y no había dónde ponérsela: la
+// columna Tipología sólo se veía en TODOS y ahí no se podía crear. Desde que la tipología se
+// ve y se edita en cada fila (25-sep) el bloqueo sobra: en TODOS la barra nace sin
+// tipología, la celda queda en rojo y no cuenta como completa hasta que se elige.
 function ac2ActualizarBotonesCrear(){
-  var puede = AC2.loteId && AC2.sector && AC2.estructura && AC2.tipo!=='TODOS' && AC2.loteEstado!=='terminada';
+  var puede = AC2.loteId && AC2.sector && AC2.estructura && AC2.loteEstado!=='terminada';
   ['ac2_barraBtn','ac2_barrasMBtn'].forEach(function(bid){
     var btn=document.getElementById(bid); if(!btn) return;
     btn.disabled=!puede; btn.style.opacity=puede?'1':'0.45'; btn.style.cursor=puede?'pointer':'not-allowed';
-    btn.title=puede?'':(!AC2.loteId?'Crea el lote primero (Obra, Ciclo y Eje).':(!AC2.sector||!AC2.estructura?'Elige Sector y Estructura primero.':'Entra a una tipología (no TODOS) para agregar barras.'));
+    btn.title=puede?'':(!AC2.loteId?'Crea el lote primero (Obra, Ciclo y Eje).':(!AC2.sector||!AC2.estructura?'Elige Sector y Estructura primero.':'El despiece está terminado.'));
   });
 }
 
@@ -1638,15 +1642,22 @@ function ac2PuedeCrear(){
   if (!AC2.loteId){ alert('Crea el lote primero (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return false; }
   if (AC2.loteEstado==='terminada'){ alert('El despiece está terminado; se edita desde Bar Manager.'); return false; }
   if (!AC2.sector || !AC2.estructura){ alert('Elige Sector y Estructura antes de agregar barras.'); return false; }
-  if (AC2.tipo==='TODOS'){ alert('Para agregar barras, entra a una tipología (no TODOS).'); return false; }
+  // En TODOS también se puede (26-sep): la barra nace sin tipología y se le elige en su fila.
   return true;
 }
 window.ac2AgregarBarra=function(){
   if (!ac2PuedeCrear()) return;
   // Nace en el piso MÁS BAJO configurado (ya poblado); el cubicador lo cambia si quiere.
-  AC2.barras.push(ac2NuevaBarra({ piso:_ac2PisoMasBajo() }));
+  var nb=ac2NuevaBarra({ piso:_ac2PisoMasBajo() });
+  AC2.barras.push(nb);
   ac2PintarSectorEstructura();   // al haber barras, sector/estructura se bloquean
   ac2Render();
+  // EL FOCO VA A LO PRIMERO QUE FALTA. En TODOS la barra nace sin tipología (26-sep): el
+  // foco cae en esa celda, que es la que está en rojo. En un subtab la tipología ya viene
+  // puesta y lo primero que falta es el φ.
+  var col=(AC2.tipo==='TODOS')?'marca':'diam';
+  var el=document.querySelector('select.ac2nav[data-row="'+nb._id+'"][data-col="'+col+'"]');
+  if (el){ el.focus(); }
 };
 window.ac2CopiarTipologia=function(id){
   var b=ac2BarraPorId(id); if(!b) return;
