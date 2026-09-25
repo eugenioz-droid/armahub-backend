@@ -318,7 +318,6 @@ function ac2AgrupaPor(){ return (AC2.orden==='piso') ? 'piso' : (AC2.orden==='ti
 function ac2BarraPorId(id){ for(var i=0;i<AC2.barras.length;i++){ if(AC2.barras[i]._id===id) return AC2.barras[i]; } return null; }
 
 function ac2Thead(){
-  var mostrarTipo = (AC2.tipo==='TODOS');   // en subtab se oculta la columna Tipología
   var h='<tr style="color:#666; background:#fafafa;">';
   // Solo en modo masivo, el check MACRO al inicio: marca/desmarca TODAS las barras visibles.
   // Borde derecho para separarlo VISUALMENTE de la columna Piso (antes se confundían).
@@ -332,12 +331,17 @@ function ac2Thead(){
     '<span onclick="ac2OrdenarPisos(1)" title="Ordenar por piso, ascendente" style="cursor:pointer; font-size:10px; color:'+((pisoActivo&&_ac2PisoDir>0)?'#8BC34A':'#b0bec5')+';">▲</span>'+
     '<span onclick="ac2OrdenarPisos(-1)" title="Ordenar por piso, descendente" style="cursor:pointer; font-size:10px; margin-left:2px; color:'+((pisoActivo&&_ac2PisoDir<0)?'#8BC34A':'#b0bec5')+';">▼</span></span>';
   h+='<th style="text-align:left; padding:3px 6px 3px '+(AC2.masiva?'12px':'6px')+';">Piso'+ordPiso+'</th>';
-  if (mostrarTipo){
-    h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
-    // Sufijo: texto libre que se CONCATENA a la tipología SOLO al exportar a aSa (no cambia la
-    // tipología interna → dashboards sin inconsistencias). Va a la derecha de Tipología.
-    h+='<th style="text-align:left; padding:3px 6px;" title="Sufijo que se concatena a la tipología SOLO al exportar (no altera la tipología del sistema)">Sufijo</th>';
-  }
+  // TIPOLOGÍA Y SUFIJO SIEMPRE VISIBLES (25-sep, pedido del usuario). Antes salían sólo en
+  // la vista TODOS, con dos consecuencias: dentro de un subtab no se podía CORREGIR la
+  // tipología de una barra mal clasificada (había que salir a TODOS), y el sufijo era
+  // invisible justo donde se cubica. Que la tipología esté implícita en el subtab no es
+  // razón para esconder el dato: se ve y se puede cambiar, como cualquier otra celda.
+  h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
+  // Sufijo: texto libre que se CONCATENA a la tipología SOLO al exportar a aSa (no cambia la
+  // tipología interna → dashboards sin inconsistencias). Va a la derecha de Tipología.
+  // Dice OPCIONAL en la cabecera: es un campo vacío en medio del recorrido con Tab y se leía
+  // como obligatorio (hay barras guardadas con un "." puesto sólo para poder avanzar).
+  h+='<th style="text-align:left; padding:3px 6px;" title="OPCIONAL. Sufijo que se concatena a la tipología SOLO al exportar a aSa; no altera la tipología del sistema ni es necesario para guardar.">Sufijo <span style="font-weight:400; color:#b0bec5; font-size:10px;">(opc.)</span></th>';
   // Cant (unitaria) · Mult · Cant.T (= cant×mult, solo lectura) · Largo · Peso Tot.
   h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
   if (AC2.verMult) h+='<th style="text-align:right; padding:3px 6px;" title="Multiplicador (doble/triple malla)">Mult</th>';
@@ -498,7 +502,6 @@ function ac2EstiloFila(b, val){
 }
 
 function ac2Fila(b){
-  var mostrarTipo=(AC2.tipo==='TODOS');
   var info = b.figura ? ac2DimsDeFigura(b.figura) : {dims:[],angs:0,radio:false};
   var val = ac2Validar(b);                          // {ok, rojas:{campo:1}}
   var td='<td style="'+AC2_TDS+'">';
@@ -528,16 +531,21 @@ function ac2Fila(b){
   // que las medidas faltantes) para que el cubicador vea que debe elegirlo antes de guardar/revisar.
   var _pisoFalta = (b.figura && !ac2TienePiso(b));
   h+='<td style="'+AC2_TDS+(AC2.masiva?' padding-left:12px;':'')+'"><select'+dis+' class="ac2cell ac2nav'+(_pisoFalta?' rojo':'')+'" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;'+(_pisoFalta?' background:#ffebee;':'')+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
-  // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
-  // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
-  if (mostrarTipo){
-    var op='<option value=""'+(b.marca?'':' selected')+'>— tipo —</option>'+
-      AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
-    h+='<td style="'+AC2_TDS+'"><select'+dis+' class="ac2cell ac2nav" data-col="marca" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
-    // Sufijo de tipología: texto libre. Se concatena a la tipología SOLO al exportar (aSa); NO
-    // altera b.marca. Estado en b.suf_tipo. Input directo (no re-render).
-    h+='<td style="'+AC2_TDS+'"><input type="text"'+dis+' value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="—" title="Se concatena a la tipología solo al exportar"/></td>';
-  }
+  // Tipología (marca) — SIEMPRE visible y editable, también dentro de un subtab: una barra mal
+  // clasificada se corrige donde se está cubicando. Cambiarla en un subtab la saca de esta vista
+  // (se va a la suya) — eso lo resuelve el re-render de ac2SetBarra.
+  // La opción vacía "— tipo —" SOLO existe mientras la barra no tenga tipología: ofrecerla
+  // siempre permitía DEJAR una barra sin tipología, que es data mala (en toda la BD no hay
+  // ninguna así). Sin tipología la barra no cuenta como completa y no se guarda.
+  var _tipoFalta = !(b.marca && String(b.marca).trim());
+  var op=(_tipoFalta ? '<option value="" selected>— tipo —</option>' : '')+
+    AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
+  h+='<td style="'+AC2_TDS+'"><select'+dis+' class="ac2cell ac2nav'+(_tipoFalta?' rojo':'')+'" data-col="marca" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;'+(_tipoFalta?' background:#ffebee;':'')+'">'+op+'</select></td>';
+  // Sufijo de tipología: OPCIONAL. Se concatena a la tipología SOLO al exportar (aSa); NO
+  // altera b.marca. Estado en b.suf_tipo. Input directo (no re-render). El placeholder dice
+  // "opcional" en vez de un guión: como campo vacío en el recorrido del Tab se leía como
+  // obligatorio y hay barras guardadas con un "." puesto sólo para salir del paso.
+  h+='<td style="'+AC2_TDS+'"><input type="text"'+dis+' value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="opcional" title="OPCIONAL: no hace falta para guardar. Se concatena a la tipología solo al exportar a aSa."/></td>';
   // φ (diámetro) — select de lista fija, navegable con teclado. Cada <option> lleva SU color (así el
   // desplegable ayuda a elegir, no toma el del actual). El estilado de <option> depende del navegador;
   // si lo ignora, cae a blanco (fallback limpio). La celda cerrada sí muestra el color del φ actual.
@@ -595,7 +603,8 @@ function ac2Fila(b){
 function ac2GrupoHdr(valor, cnt, porPiso){
   // Columnas: [masiva] + Piso + [Tipología + Sufijo] + φ,Cant,[Mult],Cant.T,Largo,PesoTot,Figura(6+mult)
   //           + [Dibujo] + 9 lados + 4 áng + R + Rev + acciones.
-  var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?2:0) + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
+  // Tipología + Sufijo SIEMPRE suman 2 (25-sep: dejaron de aparecer sólo en TODOS).
+  var cols = (AC2.masiva?1:0) + 1 + 2 + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
   // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
   // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
   // El nombre del grupo va en data-grp y el onclick lo lee de ahí — misma regla que los botones
@@ -1216,7 +1225,15 @@ window.ac2SetBarra=function(id,campo,valor){
     // cuando ordenas por tipo), hay que re-renderizar para REUBICAR la fila en su grupo. Antes solo
     // se reordenaba al cambiar la marca → cambiar el PISO no movía la barra a su grupo de piso.
     var campoOrden = ac2AgrupaPor();   // 'piso' | 'marca' | null
-    if ((campo===campoOrden) || (campo==='marca' && AC2.masiva)){ ac2Render(); return; }
+    // CAMBIAR LA TIPOLOGÍA DENTRO DE UN SUBTAB saca la barra de esta vista: ya pertenece a otra
+    // tipología. Hay que re-renderizar para que se vaya de aquí — si no, la fila se queda a la
+    // vista rotulada con una tipología que no es la del subtab, y el siguiente re-render la
+    // hace desaparecer "sola". Esto se volvió alcanzable al dejar la tipología editable en
+    // todas las vistas (25-sep).
+    var saleDeLaVista = (campo==='marca' && AC2.tipo!=='TODOS' && b.marca!==AC2.tipo);
+    if ((campo===campoOrden) || (campo==='marca' && AC2.masiva) || saleDeLaVista){ ac2Render(); return; }
+    // Quitar/poner la tipología cambia si la barra está COMPLETA → refrescar su check Rev.
+    if (campo==='marca') ac2ActualizarRevHabilitado(id, b);
   }
   ac2ActualizarContadores();                              // rollup (items/barras/kg/revisadas)
 };
@@ -1258,7 +1275,12 @@ function ac2ActualizarGeom(id){
 function ac2TienePiso(b){ return !!(b.piso && String(b.piso).trim()); }
 // Habilita/deshabilita el checkbox Rev de una fila según si la barra está lista para revisar.
 // Exige φ, figura, geometría válida Y piso (obligatorio → no se guardan barras sin ubicar).
-function ac2BarraLista(b){ return b.diam!=null && b.figura && ac2TienePiso(b) && ac2Validar(b).ok; }
+// TIPOLOGÍA obligatoria igual que el piso (25-sep): antes no se pedía, así que una barra a la
+// que se le dejaba "— tipo —" se guardaba con marca vacía y quedaba fuera de todo subtab y de
+// cualquier agrupación por tipología. En la BD no hay ninguna así; la puerta se cierra ahora
+// que la tipología es editable desde cualquier vista.
+function ac2TieneTipo(b){ return !!(b.marca && String(b.marca).trim()); }
+function ac2BarraLista(b){ return b.diam!=null && b.figura && ac2TienePiso(b) && ac2TieneTipo(b) && ac2Validar(b).ok; }
 function ac2ActualizarRevHabilitado(id, b){
   b=b||ac2BarraPorId(id); if(!b) return;
   var chk=document.querySelector('#ac2row_'+id+' input.ac2rev'); if(!chk) return;
