@@ -163,6 +163,46 @@ _FIGURAS_POR_TIPO_SEED = {
 }
 
 
+# ---------------------------------------------------------------------------
+# HOMOLOGACIÓN DE MARCAS (25-sep, pedido del usuario: "deben ser IGUALES")
+# ---------------------------------------------------------------------------
+# El CSV de ArmaDetailer traía la tipología en MAYÚSCULAS (F'S, FI, CBSN, RP…) y el
+# catálogo la escribe como se usa en obra (F's, Fi, CBSn, Rp). Convivían dos escrituras
+# del MISMO código: 2.990 barras, todas de losa, fundación y viga — por eso no se había
+# notado en muro. Cualquier filtro o agrupación que compare texto exacto las trata como
+# tipologías distintas.
+#
+# La regla se escribe UNA vez y se usa en los dos sitios que la necesitan: la migración
+# 110 (el histórico, una sola pasada) y CADA importación de CSV (el origen — sin esto,
+# la próxima carga vuelve a ensuciar). Se deriva del catálogo, no de una lista de siete
+# casos: si mañana aparece otra tipología con el mismo desajuste, queda cubierta sola.
+#
+# Sólo corrige MAYÚSCULAS/minúsculas de un código que YA existe en el catálogo. Una
+# marca que no esté en el catálogo se deja intacta: no se inventa a qué debería parecerse.
+# El HAVING es el candado: si dos tipologías se escribieran igual salvo por las
+# mayúsculas, no habría forma de saber cuál es y esa clave queda fuera.
+SQL_HOMOLOGAR_MARCAS = """
+UPDATE {tabla} b
+   SET marca = m.codigo
+  FROM (SELECT UPPER(codigo) AS clave, MIN(codigo) AS codigo
+          FROM tipologias_catalogo
+         GROUP BY UPPER(codigo)
+        HAVING COUNT(DISTINCT codigo) = 1) m
+ WHERE UPPER(TRIM(b.marca)) = m.clave
+   AND b.marca IS DISTINCT FROM m.codigo
+"""
+
+
+def homologar_marcas(cur, tabla: str = "barras", extra_where: str = "", params=()) -> int:
+    """Deja las marcas de `tabla` escritas como el catálogo. Devuelve cuántas corrigió.
+    Idempotente: correrla dos veces no cambia nada la segunda."""
+    sql = SQL_HOMOLOGAR_MARCAS.format(tabla=tabla)
+    if extra_where:
+        sql += " AND " + extra_where
+    cur.execute(sql, params)
+    return cur.rowcount or 0
+
+
 def seed_catalogo(cur) -> dict:
     """Carga el catálogo semilla de forma idempotente. Solo inserta lo que falta
     (no pisa ediciones futuras hechas desde la UI). Se llama al arrancar la app,

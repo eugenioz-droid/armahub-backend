@@ -726,6 +726,24 @@ async def import_armadetailer(
                         f"Integridad post-carga fallida: se esperaban {len(rows_to_upsert)} barras "
                         f"pero quedaron {actual_en_db} en la BD. Se revirtio la importacion."
                     )
+                # HOMOLOGAR LA MARCA CON EL CATÁLOGO, en la misma transacción (25-sep).
+                # ArmaDetailer manda la tipología en MAYÚSCULAS (F'S, FI, CBSN, RP) y el
+                # catálogo la escribe como se usa en obra (F's, Fi, CBSn, Rp). Sin esto
+                # conviven dos escrituras del mismo código y los subtabs de tipología del
+                # editor —que comparan contra el catálogo— no muestran esas barras.
+                # La migración 110 limpió el histórico UNA vez; ésta es la otra mitad, la
+                # que impide que la próxima carga lo vuelva a ensuciar. Es la MISMA regla
+                # (catalogo.homologar_marcas), acotada a lo que acaba de entrar.
+                try:
+                    from .catalogo import homologar_marcas
+                    n_homol = homologar_marcas(cur, "barras", "b.import_id = %s", (import_id,))
+                    if n_homol:
+                        print(f"[import] marcas homologadas con el catalogo: {n_homol}")
+                except Exception as _e:
+                    # La escritura de la marca no puede tumbar una importación válida:
+                    # las barras ya están bien cargadas, sólo quedarían con la mayúscula
+                    # del CSV (que es como venían antes de esto).
+                    print(f"[import] no se pudo homologar marcas: {_e}")
                 # 5N.4 (Rediseño B): el reimport cambió el contenido de sus sectores →
                 # marcarlos 'modificado' (mismo cursor = misma transacción). Se hace en
                 # bloque por los sectores distintos que trajo este import.
