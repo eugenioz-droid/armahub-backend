@@ -598,7 +598,9 @@ function ac2GrupoHdr(valor, cnt, porPiso){
   var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?2:0) + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
   // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
   // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
-  var b=function(dir,fl,tit){ return '<button onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\','+dir+')" title="'+tit+'" '+
+  // El nombre del grupo va en data-grp y el onclick lo lee de ahí — misma regla que los botones
+  // de tipología: un piso con apóstrofe rompía el texto del onclick y la flecha no hacía nada.
+  var b=function(dir,fl,tit){ return '<button data-grp="'+ac2Esc(valor)+'" onclick="ac2MoverGrupo(this.dataset.grp,'+dir+')" title="'+tit+'" '+
     'style="font-size:11px; line-height:1; padding:2px 6px; margin-left:4px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:3px; cursor:pointer;">'+fl+'</button>'; };
   var flechas = porPiso
     ? '<span style="float:right; white-space:nowrap; font-weight:400;"><span style="font-size:10px; color:#78909c; margin-right:2px;">mover piso</span>'+
@@ -794,7 +796,14 @@ window.ac2FijarPlano=async function(){
 function ac2PintarSubtabs(){
   var cont=document.getElementById('ac2_subtabs'); if(!cont) return;
   var h='<span style="font-size:11px; color:#607d8b; font-weight:700; margin-right:8px;">Tipología:</span>';
-  AC2_TIPOS.forEach(function(t){ h+='<button id="ac2t_'+ac2Esc(t)+'" onclick="ac2SetTipo(\''+t+'\')" class="ac2tab">'+ac2Esc(t)+'</button>'; });
+  // EL CÓDIGO VA EN data-tipo, NO PEGADO DENTRO DEL onclick (bug reportado 25-sep). Con F'i,
+  // F's y F' (losa, fundación, gen) el apóstrofe cerraba el texto del onclick antes de tiempo y
+  // el clic moría sin ningún error visible: esas tipologías estuvieron muertas en el editor
+  // desde que existe (0 barras manuales con ellas; las 1.929 que hay entraron por CSV).
+  // Escapar con ac2Esc NO lo arregla: el navegador decodifica la entidad ANTES de que el JS
+  // lea el onclick, así que 'F&#39;i' vuelve a ser 'F'i' adentro. Lo que sirve es no construir
+  // código a partir de datos: el dato vive en un atributo y el onclick lo LEE de ahí.
+  AC2_TIPOS.forEach(function(t){ h+='<button id="ac2t_'+ac2Esc(t)+'" data-tipo="'+ac2Esc(t)+'" onclick="ac2SetTipo(this.dataset.tipo)" class="ac2tab">'+ac2Esc(t)+'</button>'; });
   h+='<span style="width:1px; height:22px; background:#ddd; margin:0 6px;"></span>';
   h+='<button id="ac2t_TODOS" onclick="ac2SetTipo(\'TODOS\')" class="ac2tab">TODOS</button>';
   cont.innerHTML=h;
@@ -2646,7 +2655,9 @@ function ac2CfgSeccionLista(titulo, tipo, lista, exist, ayuda){
     var bloq=!!exist[v];
     return '<span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; padding:3px 8px; margin:2px; border-radius:12px; border:1px solid #cfd8dc; background:'+(bloq?'#eceff1':'#f1f8e9')+'; color:#37474f;">'+
       ac2Esc(v)+ (bloq?' <span title="Tiene barras — no se puede quitar">🔒</span>'
-        : ' <span onclick="ac2CfgQuitar(\''+tipo+'\',\''+ac2Esc(v)+'\')" title="Quitar" style="cursor:pointer; color:#c62828; font-weight:700;">✕</span>')+'</span>';
+        // `v` lo escribió el usuario (nombre de piso/ciclo): va en data-val, no dentro del
+        // onclick — un apóstrofe ahí dejaba la ✕ muerta. `tipo` es constante del código.
+        : ' <span data-val="'+ac2Esc(v)+'" onclick="ac2CfgQuitar(\''+tipo+'\',this.dataset.val)" title="Quitar" style="cursor:pointer; color:#c62828; font-weight:700;">✕</span>')+'</span>';
   }).join(' ');
   return '<div style="margin-bottom:12px;">'+
     '<div style="font-weight:700; color:#37474f; font-size:13px;">'+titulo+'</div>'+
