@@ -1787,7 +1787,22 @@ window.ac2Guardar=async function(opts){
   var editIncompletas=editadas.length-editListas.length;
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length - listas.length;
   if (!listas.length && !editListas.length){
-    if(!silencioso) alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el despiece las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.'+(editIncompletas?'\n\n('+editIncompletas+' barra(s) guardadas tienen ediciones a medio llenar: complétalas para poder guardarlas.)':''));
+    // EL MENSAJE TIENE QUE DECIR LA VERDAD (25-sep). Antes había UNO solo —"Aún no hay
+    // ninguna barra COMPLETA para guardar"— y saltaba también cuando TODO estaba guardado
+    // y sin cambios, que es el caso normal de volver a apretar 💾. El cubicador leía que
+    // sus barras estaban incompletas, miraba la fila buscando qué le faltaba y concluía
+    // que era la única celda vacía que veía: el Sufijo. De ahí salieron las barras del
+    // lote 305 guardadas con un "." — el sufijo nunca tuvo nada que ver.
+    if (!silencioso){
+      var sinGuardar=AC2.barras.filter(function(b){ return !b._guardada; }).length;
+      if (!AC2.barras.length){
+        alert('Este despiece todavía no tiene barras.\n\nAgrégalas con ＋ barra o ＋ barras M y vuelve a guardar.');
+      } else if (!sinGuardar && !editIncompletas){
+        alert('✅ Todo guardado.\n\nLas '+AC2.barras.length+' barra(s) de este despiece ya están en la base y no hay cambios pendientes.\n\nPara cerrarlo marca "Rev" en cada barra y usa 🏁 Terminar.');
+      } else {
+        alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el despiece las barras que ya tienen φ, figura, piso y tipología, con sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.\n\nEl Sufijo es OPCIONAL: nunca hace falta para guardar.'+(editIncompletas?'\n\n('+editIncompletas+' barra(s) guardadas tienen ediciones a medio llenar: complétalas para poder guardarlas.)':''));
+      }
+    }
     return;
   }
   _ac2LeerContexto();   // reconciliar ciclo/eje por si el usuario los ajustó justo antes de guardar

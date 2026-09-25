@@ -1255,7 +1255,24 @@ def _get_table_columns(cur, table_name: str):
         """,
         (cache_key,),
     )
-    columns = {row.get("column_name") for row in cur.fetchall() if row.get("column_name")}
+    # NO DEPENDE DEL row_factory DEL LLAMADOR (bug del 25-sep: un cubicador no podía
+    # subir imágenes al análisis — "'tuple' object has no attribute 'get'").
+    # Esto leía row.get("column_name"), o sea exigía un cursor dict_row, pero en este
+    # módulo la mayoría de los cursores son de TUPLAS (get_conn no fija row_factory) y
+    # subir_imagen es uno de ellos. Un ayudante de ESQUEMA no puede tener como requisito
+    # oculto cómo configuró su cursor quien lo llama: son 30+ cursores en este archivo y
+    # cualquiera puede llamarlo mañana. Se lee la única columna del SELECT en las dos
+    # formas.
+    # Por qué fallaba SOLO a veces: _schema_columns_cache. Si otra petición ya había
+    # cacheado la tabla (el GET del reclamo la pide con cursor dict_row), esto ni se
+    # ejecutaba. Reventaba cuando la subida de imagen era lo PRIMERO que tocaba esa
+    # tabla tras reiniciar el servidor.
+    def _nombre(row):
+        if isinstance(row, dict):
+            return row.get("column_name")
+        return row[0] if row else None
+
+    columns = {c for c in (_nombre(row) for row in cur.fetchall()) if c}
     _schema_columns_cache[cache_key] = columns
     return columns
 

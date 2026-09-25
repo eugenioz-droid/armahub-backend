@@ -23,7 +23,8 @@ const SRC = 'C:\\EZ Developer\\Rep\\armahub-backend\\armahub\\static\\js\\featur
 const noop = () => {}; const el = {}; let cargando = true;
 function E(id){ if(!el[id]) el[id]={id,style:{},textContent:'',value:'',checked:false,disabled:false,innerHTML:'',className:'',appendChild:noop,addEventListener:noop,setAttribute:noop,getAttribute:()=>null,focus:noop,select:noop,classList:{add:noop,remove:noop,toggle:noop}}; return el[id]; }
 const doc={getElementById:(id)=>(cargando?null:E(id)),querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>E('_'+Math.random()),body:E('_b')};
-const S={console,window:{},document:doc,setTimeout:(f)=>f&&f(),alert:noop};
+const avisos=[];
+const S={console,window:{},document:doc,setTimeout:(f)=>f&&f(),alert:(m)=>avisos.push(String(m))};
 S.window.document=doc; vm.createContext(S); vm.runInContext(fs.readFileSync(SRC,'utf8'),S,{filename:'ac2.js'}); cargando=false;
 
 const AC2=S.AC2;
@@ -77,4 +78,38 @@ ok(b.marca==='Fi', 'cambiar la tipología en el subtab sí cambia el dato');
 ok(repinto===true, 'y re-renderiza para que la fila se vaya a su tipología');
 ok(S.ac2Visibles().length===0, 'ya no se ve en Fs');
 
-console.log(f?('\nFALLOS: '+f):'\nTODO OK'); process.exit(f?1:0);
+// --- 6) el 💾 dice la VERDAD segun el caso -------------------------------------------
+// ESTE ERA EL MISTERIO DE HANS. Con TODO ya guardado y sin cambios, volver a apretar 💾
+// soltaba "Aún no hay ninguna barra COMPLETA para guardar". El cubicador leía que sus
+// barras estaban incompletas, miraba la fila buscando el hueco y concluía que era la
+// única celda vacía a la vista: el Sufijo. De ahí salieron las 4 barras del lote 305
+// guardadas con un "." — el sufijo nunca tuvo nada que ver.
+(async () => {
+  S._ac2Post=async()=>({ok:true,status:200,data:{ok:true,creadas:1,ids:[1]}});
+  S._ac2Patch=async()=>({ok:true,status:200,data:{}});
+  S.ac2PintarEstado=noop; S.ac2ActualizarCabecera=noop; S.ac2Render=noop;
+  S.ac2CargarLotes=noop; S._ac2LeerContexto=noop;
+  AC2.tipo='TODOS';
+
+  const completa=(marca)=>{ const x=S.ac2NuevaBarra({piso:'P1',marca:marca,diam:8,cant:1,mult:1,figura:'105A'});
+    x.dim_a=85;x.dim_b=11;x.dim_c=617;x.dim_d=11;x.dim_e=86; return x; };
+
+  // a) despiece sin ninguna barra
+  AC2.barras=[]; avisos.length=0; await S.window.ac2Guardar();
+  ok(/todavía no tiene barras/i.test(avisos[0]||''), 'sin barras: dice que hay que agregarlas — ['+(avisos[0]||'').split('\n')[0]+']');
+
+  // b) TODO guardado y sin cambios = el caso de Hans
+  const g1=completa('Fi'), g2=completa('Fs');
+  [g1,g2].forEach(x=>{ x._guardada=true; x._dbid=1; x._sync=S._ac2Snapshot(x); });
+  AC2.barras=[g1,g2]; avisos.length=0; await S.window.ac2Guardar();
+  ok(/Todo guardado/i.test(avisos[0]||''), 'todo guardado: lo dice, ya no acusa barras incompletas — ['+(avisos[0]||'').split('\n')[0]+']');
+  ok(!/COMPLETA para guardar/.test(avisos[0]||''), 'y NO sale el mensaje que hizo creer que faltaba el sufijo');
+
+  // c) hay una barra de verdad incompleta → ahí sí corresponde el mensaje, y aclara el sufijo
+  const mala=S.ac2NuevaBarra({piso:'P1',marca:'Fi',cant:1,mult:1});   // sin φ ni figura
+  AC2.barras=[g1,g2,mala]; avisos.length=0; await S.window.ac2Guardar();
+  ok(/COMPLETA para guardar/.test(avisos[0]||''), 'con una barra a medio llenar sí sale el aviso de incompleta');
+  ok(/Sufijo es OPCIONAL/i.test(avisos[0]||''), 'y ese aviso ahora dice que el sufijo es OPCIONAL');
+
+  console.log(f?('\nFALLOS: '+f):'\nTODO OK'); process.exit(f?1:0);
+})();
