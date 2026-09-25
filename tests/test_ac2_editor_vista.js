@@ -279,5 +279,61 @@ console.log('\n8 — las columnas de geometría son las que la vista usa, no 14 
   ok(/height:16px/.test(dib), 'sin figura el dibujo no ocupa una fila entera (marca de 16px)');
 }
 
+// ── 9 · Disposición FIJA y en el orden pedido (26-sep) ──
+// El usuario: «la grilla se acomoda y ajusta y es mejor que las cosas sean fijas», y el
+// orden piso · tipología · sufijo | φ · cant · figura · forma · largo · peso | medidas |
+// … rev · acciones pegadas a la derecha. Y «que las posiciones no varíen»: las columnas de
+// medidas son las de la figura más ancha que la tipología OFRECE, no sólo las que ya se usan.
+console.log('\n9 — disposición fija: un solo layout para cabecera, filas y colgroup');
+{
+  const t = montar(); enEditor(t);
+  t.caja._ac2Figuras = {
+    '102A': { codigo: '102A', parciales: ['A', 'B'], angulos: [], radio: false },
+    '103A': { codigo: '103A', parciales: ['A', 'B', 'C'], angulos: [90], radio: false },
+    '105A': { codigo: '105A', parciales: ['A', 'B', 'C', 'D', 'E'], angulos: [], radio: false },
+  };
+  const barra = (fig) => { const b = t.caja.ac2NuevaBarra({ piso: 'P1', marca: 'Fi', diam: 10, cant: 1, mult: 1, figura: fig }); b.dim_a = 1; b.dim_b = 1; b.dim_c = 1; return b; };
+  const ids = (lay) => lay.cols.map(c => c.id);
+
+  // Orden pedido.
+  t.AC2.tipo = 'Fi'; t.AC2.barras = [barra('103A')];
+  const lay = t.caja.ac2Layout(), o = ids(lay);
+  const pos = (id) => o.indexOf(id);
+  ok(pos('piso') === 0 && pos('marca') === 1 && pos('suf') === 2, 'piso · tipología · sufijo, juntas y primero');
+  ok(pos('diam') === 3 && pos('cant') === 4 && pos('figura') === 5 && pos('forma') === 6,
+    'luego φ · cant · figura · forma');
+  ok(pos('largo') === 7 && pos('peso') === 8, 'y largo · peso DESPUÉS de figura y forma');
+  ok(pos('dim_a') === 9, 'las medidas vienen después');
+  ok(o[o.length - 1] === 'acc' && o[o.length - 2] === 'rev' && o[o.length - 3] === 'esp',
+    'y al final la columna elástica, Rev y acciones (pegadas a la derecha)');
+  ok(lay.cols.filter(c => c.id === 'esp')[0].w === null, 'la elástica es la única sin ancho fijo');
+  ok(lay.cols.filter(c => c.id !== 'esp').every(c => c.w > 0), 'todas las demás tienen ancho fijo');
+  ok(lay.cols.filter(c => c.pl > 0).map(c => c.id).join() === 'diam,dim_a',
+    'el aire de grupo va sólo antes de φ y del primer lado (pequeño, no mucho)');
+
+  // Cabecera, colgroup y fila cuentan lo mismo.
+  const nTh = (t.caja.ac2Thead().match(/<th\b/g) || []).length;
+  const nCol = (t.caja.ac2Colgroup(lay).match(/<col\b/g) || []).length;
+  const nTd = (t.caja.ac2Fila(t.AC2.barras[0]).match(/<td\b/g) || []).length;
+  ok(nTh === lay.cols.length && nCol === lay.cols.length && nTd === lay.cols.length,
+    'cabecera (' + nTh + '), colgroup (' + nCol + ') y fila (' + nTd + ') = ' + lay.cols.length + ' columnas');
+  const th = t.caja.ac2Thead();
+  ok(th.indexOf('>Largo') > th.indexOf('>Forma<'), 'la cabecera también pone Largo después de Forma');
+
+  // ESTABILIDAD: la tipología Fi ofrece 105A (5 lados) → aunque sólo haya un 103A en pantalla,
+  // se reservan 5 lados, y escribir un 105A después NO mueve nada.
+  t.caja.AC2_TIPOS_MAP.LOSA = [{ codigo: 'Fi', figuras: ['102A', '103A', '105A'] }, { codigo: 'Fs', figuras: ['102A'] }];
+  const g1 = t.caja.ac2ColsGeom();
+  ok(g1.dims.length === 5 && g1.angs === 1, 'en Fi se reservan los 5 lados de su figura más ancha (y el ángulo de 103A)');
+  t.AC2.barras = [barra('103A'), barra('105A')];
+  ok(t.caja.ac2ColsGeom().sig === g1.sig, 'y al aparecer un 105A el juego de columnas NO cambia');
+  // Piso mínimo de 3 aunque la tipología sólo ofrezca figuras de 2 lados.
+  t.AC2.tipo = 'Fs'; t.AC2.barras = [barra('102A')];
+  ok(t.caja.ac2ColsGeom().dims.length === 3, 'nunca menos de 3 lados ("si no se ve raro")');
+  // En TODOS: la unión de todas las tipologías de la estructura.
+  t.AC2.tipo = 'TODOS'; t.AC2.barras = [];
+  ok(t.caja.ac2ColsGeom().dims.length === 5, 'en TODOS manda la figura más ancha de toda la estructura');
+}
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);
