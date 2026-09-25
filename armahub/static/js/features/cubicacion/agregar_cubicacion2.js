@@ -626,10 +626,24 @@ window.ac2Render=function(){
   var arr=ac2Visibles();
   // EMPTY STATE: sin barras aún, mostrar un mensaje según haya obra elegida o no.
   if (!arr.length) {
-    var msg = AC2.proyecto
-      ? 'Aún no has agregado barras. Usa <b>＋ barra</b> o <b>＋ barras M</b> para empezar.'
-      : 'Elige una <b>obra</b> arriba para empezar a cubicar.';
-    cont.innerHTML='<div style="padding:26px 16px; text-align:center; color:#90a4ae; font-size:13px;">'+msg+'</div>';
+    // LOS BOTONES VAN DENTRO DEL MENSAJE (25-sep): decir "usa ＋ barra" y dejar que el
+    // usuario los busque arriba es mandarlo de viaje justo la primera vez, que es cuando
+    // menos sabe dónde están. Son los MISMOS botones (llaman a lo mismo); arriba siguen.
+    var msg, acciones='';
+    if (!AC2.proyecto){
+      msg = 'Elige una <b>obra</b> arriba para empezar a cubicar.';
+    } else if (AC2.tipo==='TODOS'){
+      // En TODOS no se pueden crear barras (hay que estar en una tipología): se dice eso,
+      // no "usa ＋ barra", que está deshabilitado.
+      msg = 'Entra a una <b>tipología</b> de arriba para empezar a agregar barras.';
+    } else {
+      msg = 'Este despiece todavía no tiene barras en <b>'+ac2Esc(AC2.tipo)+'</b>.';
+      acciones = '<div style="margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">'+
+        '<button onclick="ac2AgregarBarra()" style="font-size:13px; font-weight:600; padding:7px 16px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>'+
+        '<button onclick="ac2AgregarBarrasMulti()" title="Una barra por cada piso seleccionado" style="font-size:13px; font-weight:600; padding:7px 16px; background:#7cb342; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barras M</button>'+
+        '</div>';
+    }
+    cont.innerHTML='<div style="padding:26px 16px; text-align:center; color:#90a4ae; font-size:13px;">'+msg+acciones+'</div>';
     var rc=document.getElementById('ac2_revcount'); if(rc) rc.textContent='';
     var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML='';
     var cx=document.getElementById('ac2_ctx'); if(cx) cx.innerHTML=ac2CtxText();
@@ -739,6 +753,7 @@ window.ac2SetSector=function(s){ if(ac2Bloqueado()) return;
   // Si la estructura ya elegida NO aplica al nuevo sector, se resetea (evita ELEV+Losa colgado).
   if (AC2.estructura && !ac2EstructValida(AC2.estructura, s)){ AC2.estructura=''; AC2_TIPOS=[]; ac2PintarSubtabs(); }
   ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
+  ac2ActualizarCabecera();   // el sector se lee en la línea de contexto: hay que repintarla
 };
 window.ac2SetEstructura=function(e){
   if(ac2Bloqueado()) return;
@@ -794,6 +809,7 @@ window.ac2FijarPlano=async function(){
   if (nuevo===(AC2.plano||'')){ ac2PintarPlano(); return; }   // sin cambio
   AC2.plano=nuevo;
   ac2PintarPlano();
+  _ac2PintarResumen();   // el plano se muestra en la línea de contexto del editor
   // Persistir si ya hay lote (si aún no, se guarda al crearlo — ver ac2CrearLote).
   if (AC2.loteId && AC2.loteEstado==='borrador'){
     var r=await _ac2Patch('/lotes/'+AC2.loteId+'/plano', { plano:nuevo });
@@ -813,8 +829,10 @@ function ac2PintarSubtabs(){
   // lea el onclick, así que 'F&#39;i' vuelve a ser 'F'i' adentro. Lo que sirve es no construir
   // código a partir de datos: el dato vive en un atributo y el onclick lo LEE de ahí.
   AC2_TIPOS.forEach(function(t){ h+='<button id="ac2t_'+ac2Esc(t)+'" data-tipo="'+ac2Esc(t)+'" onclick="ac2SetTipo(this.dataset.tipo)" class="ac2tab">'+ac2Esc(t)+'</button>'; });
-  h+='<span style="width:1px; height:22px; background:#ddd; margin:0 6px;"></span>';
-  h+='<button id="ac2t_TODOS" onclick="ac2SetTipo(\'TODOS\')" class="ac2tab">TODOS</button>';
+  // TODOS no es una tipología, es una VISTA (ver todas juntas). Va separado y con otra
+  // pinta: mezclado entre los chips parecía una tipología más de la estructura.
+  h+='<span style="width:1px; height:22px; background:#ddd; margin:0 10px;"></span>';
+  h+='<button id="ac2t_TODOS" onclick="ac2SetTipo(\'TODOS\')" class="ac2tab vista" title="Ver todas las tipologías juntas (no es una tipología)">TODOS</button>';
   cont.innerHTML=h;
 }
 
@@ -929,7 +947,17 @@ function ac2AplicarEtapa(){
   // Fila de contexto (caja turquesa): SIEMPRE con su fondo. Es un contenedor FLEX (campos en línea);
   // por eso se muestra con 'flex'. Los divs de campo (ac2_fld*) también son flex-column → 'flex'.
   var _ctxDesde2 = (e>=2);
-  show('ac2_filaContexto', true, 'flex');
+  // ── CONTEXTO COMPRIMIDO EN EL EDITOR (25-sep) ───────────────────────────────────────
+  // Cubicando, lo YA DECIDIDO se muestra decidido: una línea con obra · despiece · ciclo ·
+  // eje · sector · estructura · plano, en vez de tres filas de formulario abierto que
+  // ocupaban el tercio superior repitiendo datos que no se vuelven a tocar. "✎ Editar"
+  // devuelve las filas de siempre cuando hay que corregir algo de verdad.
+  // Fuera del editor NO aplica: ahí esas filas SON el trabajo (elegir obra, escribir el eje).
+  var enEditor = (e===4);
+  var ctxAbierto = !enEditor || _ac2CtxAbierto;
+  show('ac2_resumenCtx', enEditor, 'flex');
+  if (enEditor) _ac2PintarResumen();
+  show('ac2_filaContexto', ctxAbierto, 'flex');
   show('ac2_fldObra', e<=1, 'flex');
   // En la landing el campo obra es un BUSCADOR (elegir obra); el label lo refleja.
   var _lbl=document.getElementById('ac2_lblObra'); if(_lbl) _lbl.textContent = (e===0) ? 'Buscar obra' : 'Obra';
@@ -945,19 +973,68 @@ function ac2AplicarEtapa(){
   var _hint=document.getElementById('ac2_ctxHint');
   if (_fijar) _fijar.style.display = (e===2 && _ctxListo) ? '' : 'none';
   if (_hint)  _hint.style.display  = (e===2 && !_ctxListo) ? '' : 'none';
-  var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=_ctxDesde2?'':'none';
+  // ⚙ Configuración: en el editor lo lleva la línea de resumen, así que el de esta fila se
+  // apaga — si no, con el contexto abierto quedarían dos botones iguales a 20 cm.
+  var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=(_ctxDesde2 && !enEditor)?'':'none';
   // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4). Todos son
   // contenedores FLEX en su HTML original → se muestran con 'flex' (el grid es block normal).
-  show('ac2_filaSector', e>=3, 'flex');
+  show('ac2_filaSector', (e>=3) && ctxAbierto, 'flex');
   show('ac2_filaTipologia', e===4, 'flex');   // fila con subtabs de tipología + campo Plano
   show('ac2_toolbar', e===4, 'flex');
   show('ac2_grid', e===4);            // grid: div block normal
   show('ac2_rollupWrap', e===4, 'flex');
-  // Histórico de despieces: protagonista en etapa 1, y visible también en el editor (4) como hoy.
-  show('ac2_historicoWrap', e===1 || e===4);
+  // HISTÓRICO: SÓLO en etapa 1 (25-sep). Estaba también dentro del editor, donde era lo más
+  // grande de la pantalla; su única razón era poder cambiarse de despiece a mitad de camino,
+  // y lo sano es terminar el eje que se está cubicando antes de mirar otra cosa. Se vuelve a
+  // ver al cerrar el despiece (✕) o al elegir obra.
+  show('ac2_historicoWrap', e===1);
   // Título: nombre de la obra desde etapa 1; genérico en la landing.
   var tit = document.getElementById('ac2_tituloObra');
   if (tit) tit.textContent = (e>=1 && AC2._nombreObra) ? ('📋 ' + AC2._nombreObra) : '📋 Despiece de Cubicación';
+  // EL ASTERISCO ES DEL ALTA, NO DEL DESPIECE YA CREADO: marcaba "obligatorio para crear" y
+  // seguía ahí cuando el despiece llevaba rato existiendo, pidiendo algo que ya estaba dado.
+  var _lo=document.getElementById('ac2_lblObra');
+  if (_lo && e>=1) _lo.textContent = AC2.loteId ? 'Obra' : (e===0 ? 'Buscar obra' : 'Obra *');
+  var _le=document.getElementById('ac2_lblEje');
+  if (_le) _le.textContent = AC2.loteId ? 'Eje / Losa' : 'Eje / Losa *';
+}
+
+// ── LÍNEA DE CONTEXTO DEL EDITOR ────────────────────────────────────────────────────────
+// Abierta = se ven las filas de formulario de siempre (corregir ciclo/eje/sector). Cerrada =
+// sólo la línea de resumen. Arranca CERRADA en cada despiece que se abre: el caso normal es
+// cubicar, no corregir la ubicación.
+var _ac2CtxAbierto = false;
+window.ac2ToggleCtxAbierto = function(){
+  _ac2CtxAbierto = !_ac2CtxAbierto;
+  ac2AplicarEtapa();
+};
+function _ac2PintarResumen(){
+  var el = document.getElementById('ac2_resumenTxt');
+  var btn = document.getElementById('ac2_resumenEditar');
+  if (btn) btn.textContent = _ac2CtxAbierto ? '✕ Listo' : '✎ Editar';
+  if (btn) btn.title = _ac2CtxAbierto
+    ? 'Volver a la línea compacta'
+    : 'Corregir ciclo, eje, sector o estructura de este despiece';
+  if (!el) return;
+  // Cada dato con su etiqueta implícita por posición, separados por puntos medios: es una
+  // FRASE, no una tabla. El estado va como píldora al final porque es lo que cambia.
+  var sep = '<span style="color:#80cbc4;">·</span>';
+  var dato = function(v, tit){
+    return '<b title="'+ac2Esc(tit)+'" style="font-weight:700;">'+ac2Esc(v)+'</b>';
+  };
+  var partes = [];
+  if (AC2._nombreObra) partes.push(dato(AC2._nombreObra, 'Obra'));
+  if (AC2.loteId) partes.push(dato('Despiece #'+(AC2.loteNum||AC2.loteId), 'Número del despiece en esta obra'));
+  if (AC2.ciclo) partes.push(dato(AC2.ciclo, 'Ciclo'));
+  if (AC2.eje) partes.push(dato(AC2.eje, 'Eje / Losa'));
+  if (AC2.sector) partes.push(dato(AC2.sector, 'Sector constructivo'));
+  if (AC2.estructura) partes.push(dato(AC2.estructura, 'Estructura'));
+  // El PLANO es identidad del despiece, igual que el ciclo y el eje — por eso se muestra
+  // acá y no perdido en la fila de tipologías, con la que no tiene nada que ver.
+  partes.push(AC2.plano
+    ? '<span title="Plano" style="font-weight:600;">Plano '+ac2Esc(AC2.plano)+'</span>'
+    : '<span title="Este despiece aún no tiene plano: se escribe con ✎ Editar" style="color:#80cbc4; font-style:italic;">sin plano</span>');
+  el.innerHTML = partes.join(' '+sep+' ');
 }
 // "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje). Parte NO fijado.
 window.ac2IniciarCreacion=function(){ AC2.creando=true; AC2.ctxFijado=false; ac2ActualizarCabecera(); };
@@ -1067,7 +1144,12 @@ window.ac2VolverObras=function(){
 
 window.ac2SetTipo=function(t){
   AC2.tipo=t;
-  AC2_TIPOS.concat(['TODOS']).forEach(function(x){ var b=document.getElementById('ac2t_'+x); if(b) b.className='ac2tab'+(x===t?' on':''); });
+  AC2_TIPOS.concat(['TODOS']).forEach(function(x){
+    var b=document.getElementById('ac2t_'+x); if(!b) return;
+    // TODOS conserva su clase de VISTA (ver ac2PintarSubtabs): sin esto, el primer clic lo
+    // convertía en un chip de tipología más.
+    b.className='ac2tab'+(x==='TODOS'?' vista':'')+(x===t?' on':'');
+  });
   // Al cambiar de tipología, la selección masiva NO debe arrastrar barras que dejan de verse (si
   // marqué en TODOS y entro a MH, no quiero seguir con la traba marcada por detrás). Se depura la
   // selección para dejar SOLO lo visible en la nueva vista → estado coherente con lo que veo.
@@ -1083,8 +1165,59 @@ function _ac2DepurarSeleccionVisible(){
   var vis={}; ac2Visibles().forEach(function(b){ vis[b._id]=true; });
   Object.keys(AC2.seleccion).forEach(function(k){ if(!vis[k]) delete AC2.seleccion[k]; });
 }
+// ── PREFERENCIAS DE VISTA, RECORDADAS POR USUARIO (25-sep) ──────────────────────────────
+// Orden, columna Multiplicador, dibujo y su tamaño se fijan UNA vez y no se vuelven a tocar,
+// pero se perdían en cada recarga y había que reponerlos. Viven en localStorage (son gusto
+// de quien mira la pantalla, no dato del despiece: no tienen por qué viajar al servidor).
+var AC2_PREFS_KEY='ac2.vista.v1';
+function _ac2GuardarPrefs(){
+  try{
+    localStorage.setItem(AC2_PREFS_KEY, JSON.stringify({
+      orden:AC2.orden, verMult:!!AC2.verMult, render:!!AC2.render, tam:AC2.tam
+    }));
+  }catch(e){}   // modo incógnito / almacenamiento bloqueado: se sigue sin recordar, no es un error
+}
+// Se llama UNA vez al montar el editor. Aplica lo guardado a los controles y al estado, sin
+// re-renderizar (todavía no hay grilla): el primer ac2Render ya sale con la preferencia puesta.
+function _ac2CargarPrefs(){
+  var p=null;
+  try{ p=JSON.parse(localStorage.getItem(AC2_PREFS_KEY)||'null'); }catch(e){}
+  if(!p) return;
+  if (['creacion','piso','tipo'].indexOf(p.orden)>=0) AC2.orden=p.orden;
+  if (['s','m','l','xl'].indexOf(p.tam)>=0) AC2.tam=p.tam;
+  if (typeof p.verMult==='boolean') AC2.verMult=p.verMult;
+  if (typeof p.render==='boolean') AC2.render=p.render;
+  var cm=document.getElementById('ac2_verMult'); if(cm) cm.checked=!!AC2.verMult;
+  var cr=document.getElementById('ac2_render');  if(cr) cr.checked=!!AC2.render;
+  _ac2PintarBotonesVista();
+}
+// Deja los botones del menú Vista mostrando lo que está activo (los pinta el propio setter,
+// pero al cargar preferencias no se pasa por él).
+function _ac2PintarBotonesVista(){
+  ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x);
+    if(b){var on=(AC2.orden===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
+  ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x);
+    if(b){var on=(AC2.tam===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+}
+// Abre/cierra el menú Vista. Se cierra al clicar fuera, como cualquier desplegable.
+window.ac2ToggleVista=function(){
+  var m=document.getElementById('ac2_vistaMenu'); if(!m) return;
+  var abrir=(m.style.display==='none'||!m.style.display);
+  m.style.display=abrir?'block':'none';
+  if (abrir && !m._ac2Fuera){
+    m._ac2Fuera=true;
+    document.addEventListener('click', function(ev){
+      var menu=document.getElementById('ac2_vistaMenu'), btn=document.getElementById('ac2_vistaBtn');
+      if (!menu || menu.style.display==='none') return;
+      if (menu.contains(ev.target) || (btn && btn.contains(ev.target))) return;
+      menu.style.display='none';
+    });
+  }
+};
+
 window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[]; _ac2PisoDir=1;   // reset orden manual + dirección
   ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
+  _ac2GuardarPrefs();
   ac2Render(); };
 // Orden GLOBAL de pisos ascendente (dir=1) o descendente (dir=-1). Los iconos ▲/▼ del header de
 // Piso están visibles en las 3 vistas; al presionarlos, si no estabas ordenando por piso, se
@@ -1115,9 +1248,14 @@ window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
   else ac2LimpiarSeleccion();               // al apagar masivas, limpiar selección
   ac2Render(); };
 // Muestra/oculta la columna Multiplicador en la grilla (checkbox "Mult").
-window.ac2ToggleMult=function(on){ AC2.verMult=!!on; ac2Render(); };
+window.ac2ToggleMult=function(on){ AC2.verMult=!!on; _ac2GuardarPrefs(); ac2Render(); };
+// El dibujo tiene su propio setter (antes el checkbox llamaba a ac2Render y éste leía la
+// casilla): así la preferencia se guarda al CAMBIARLA, y no en cada uno de los cientos de
+// re-render que hace la grilla mientras se cubica.
+window.ac2ToggleRender=function(on){ AC2.render=!!on; _ac2GuardarPrefs(); ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
   ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+  _ac2GuardarPrefs();
   ac2Render(); };
 window.ac2ToggleRev=function(id,el){
   // Revisión de a 1 (proceso real). Solo se puede marcar si la barra está completa y válida
@@ -1343,6 +1481,13 @@ function ac2ActualizarContadores(){
   if(rc){ rc.innerHTML = !arr.length ? '' :
     ('✓ '+rev+' de '+arr.length+' revisadas' + (inval?(' · <b style="color:#c62828; cursor:help;" title="'+ac2Esc(detalle)+'">⚠ '+inval+' con geometría inválida</b>'):'')); }
   var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> items · <b style="color:#37474f;">'+ac2Num(barrasFis)+'</b> barras · <b style="color:#558B2F;">'+ac2Num(kg,1)+'</b> kg'):'';
+  // LA LEYENDA SE ENCIENDE SOLO CUANDO APLICA (25-sep). Explicar el dibujo azul en un
+  // despiece sin ninguna barra del Enfierrador, o el fondo rosado sin ninguna medida mala,
+  // son dos líneas permanentes que el ojo tiene que descartar cada vez. Se decide acá
+  // porque esta función ya recorre las barras visibles: no cuesta un recorrido extra.
+  var hay3d=arr.some(function(b){ return ac2BarraDeEstructura(b); });
+  var l3=document.getElementById('ac2_leyenda3d'); if(l3) l3.style.display=hay3d?'':'none';
+  var lm=document.getElementById('ac2_leyendaMal'); if(lm) lm.style.display=inval?'':'none';
 }
 
 // ── Agregar / copiar / duplicar / quitar barras (cambios estructurales → re-render completo) ──
@@ -1576,8 +1721,11 @@ function ac2PintarEstado(){
   var terminado=(AC2.loteEstado==='terminada');
   // Mostramos el correlativo POR OBRA (AC2.loteNum), no el id global. Fallback al id si no vino.
   // Incluye el nombre de la obra para que NUNCA se pierda del encabezado.
+  // CON DESPIECE ABIERTO el badge dice SÓLO el estado: la obra y el número ya los lleva la
+  // línea de contexto justo debajo, y el título de arriba repite la obra otra vez — eran
+  // tres veces el mismo nombre en 40 píxeles (25-sep).
   var obraTxt=(AC2._nombreObra?(AC2._nombreObra+' · '):'');
-  var lote=AC2.loteId?(obraTxt+'Despiece #'+(AC2.loteNum||AC2.loteId)+' · '):obraTxt;
+  var lote=AC2.loteId?'':obraTxt;
   if (b){ b.textContent=terminado?'🏁':'🚩';
     b.style.background=terminado?'#e8f5e9':'#ffebee'; b.style.color=terminado?'#2e7d32':'#c62828'; b.style.borderColor=terminado?'#a5d6a7':'#ef9a9a'; }
   if (badge){
@@ -2366,6 +2514,9 @@ window.ac2RetomarLote=async function(id, forzar){
   var d=await _ac2Get('/lotes/'+id);
   if (!d || !d.lote){ alert('No se pudo abrir el despiece.'); return; }
   var L=d.lote, bs=d.barras||[];
+  // Cada despiece que se abre parte con el contexto COMPRIMIDO: lo normal es cubicar, no
+  // corregir la ubicación. Si el usuario lo dejó abierto en el anterior, no se arrastra.
+  _ac2CtxAbierto=false;
   AC2.loteId=L.id; AC2.loteNum=L.num_obra||null; AC2.loteEstado=L.estado;
   AC2.plano=L.plano||'';   // M1.10: recuperar el plano del lote
   // Reponer el nombre de la obra si se perdió (título/cabecera): del input visible o del nombre guardado.
@@ -2755,6 +2906,9 @@ async function _ac2Put(url, body){
 // tab se monta por esta ruta y no por loadAgregarCubicacion2).
 function _ac2Init(){
   if(!document.getElementById('ac2_grid')) return;
+  // Las preferencias de vista ANTES de la primera pintada: así el editor abre ya con el
+  // orden y el tamaño que dejó el usuario, sin un parpadeo al valor por defecto.
+  _ac2CargarPrefs();
   _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera(); ac2SetTipo('TODOS');
   _ac2CargarFiguras(); _ac2CargarTipologias(); _ac2CargarObras();
 }

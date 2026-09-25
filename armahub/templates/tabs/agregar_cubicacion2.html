@@ -13,21 +13,39 @@
       <!-- ← Volver a obras: regresa a la landing (etapa 0). Visible en etapas 1-3 (en la 4 la ✕ hace de volver). -->
       <button id="ac2_volverObras" onclick="ac2VolverObras()" style="display:none; font-size:12px; padding:5px 12px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:6px; cursor:pointer; font-weight:600;">← Volver a obras</button>
       <!-- SIN lote: el botón CREAR LOTE vive junto a los campos de contexto (era "＋ Crear Eje").
-           CON lote: Terminar (bandera ROJO→VERDE), Guardar, Descartar, Eliminar. -->
-      <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar el despiece"
-              style="display:none; font-size:16px; padding:5px 12px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🚩</button>
-      <button id="ac2_guardarBtn" onclick="ac2Guardar()" style="display:none; font-size:14px; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el despiece">💾</button>
+           CON lote: Terminar (bandera ROJO→VERDE), Guardar, Descartar.
+           LOS DOS PRINCIPALES LLEVAN PALABRA (25-sep): eran 🚩 y 💾 a secas y había que
+           adivinar cuál era cuál o pasar el mouse. ELIMINAR ya no vive aquí — se fue al
+           final de la línea de contexto, lejos de Guardar: son cosas de distinta gravedad
+           y estaban pegadas. El 3D Enfierrador tampoco: bajó junto a "＋ barras M", que es
+           lo que realmente es (otra forma de agregar barras, no una acción de cabecera). -->
+      <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar el despiece: lo cierra y pasa a solo lectura"
+              style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🚩 Terminar</button>
+      <button id="ac2_guardarBtn" onclick="ac2Guardar()" style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el despiece">💾 Guardar</button>
       <!-- X: DESCARTAR lo no guardado (distinto de "Eliminar lote", que borra uno ya guardado). -->
-      <button id="ac2_descartarBtn" onclick="ac2Descartar()" title="Descartar lo no guardado" style="display:none; font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
-      <!-- 🗑 ELIMINAR LOTE: única forma de borrar un lote (pide escribir ELIMINAR). Aplica incluso a terminados. -->
-      <button id="ac2_eliminarBtn" onclick="ac2EliminarLote()" title="Eliminar este despiece y sus barras (irreversible)" style="display:none; font-size:14px; padding:6px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Eliminar</button>
-      <!-- ENFIERRADOR: abre el TEMPLATE EDITOR con contexto de obra (un solo modal,
-           un solo motor — lo que cambia es el contexto que entra por la puerta). Solo
-           visible con lote activo (AC2.loteId). El modal viejo ("3D Template") se retiró
-           el 25-ago tras verificar este camino; el id del botón conserva su nombre
-           histórico para no romper el show/hide que lo referencia. -->
-      <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
-              style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
+      <button id="ac2_descartarBtn" onclick="ac2Descartar()" title="Descartar lo no guardado y cerrar el despiece" style="display:none; font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
+    </div>
+
+    <!-- ── LÍNEA DE CONTEXTO (25-sep) ────────────────────────────────────────────────────
+         Mientras se cubica, lo YA DECIDIDO se muestra decidido: una sola línea con obra,
+         despiece, ciclo, eje, sector, estructura y plano. Antes eran TRES filas de
+         formulario abierto (contexto turquesa + sector/estructura + plano) ocupando el
+         tercio superior de la pantalla para repetir datos que no se vuelven a tocar.
+         "✎ Editar" devuelve esas filas cuando de verdad hay que corregir algo.
+         Sólo existe en el editor (etapa 4); en la creación mandan las filas de siempre. -->
+    <div id="ac2_resumenCtx" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; padding:8px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
+      <span id="ac2_resumenTxt" style="font-size:13px; color:#00695c; display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;"></span>
+      <div style="flex:1;"></div>
+      <button id="ac2_resumenEditar" onclick="ac2ToggleCtxAbierto()" title="Corregir ciclo, eje, sector o estructura de este despiece"
+              style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #80cbc4; border-radius:4px; cursor:pointer; font-weight:600;">✎ Editar</button>
+      <button id="ac2_resumenCfg" onclick="ac2AbrirConfig()" title="Pisos, ciclos, factores y restricciones de la obra"
+              style="font-size:12px; padding:5px 12px; background:#fff; color:#546e7a; border:1px solid #b0bec5; border-radius:4px; cursor:pointer;">⚙ Configuración de obra</button>
+      <!-- 🗑 ELIMINAR LOTE: única forma de borrar un lote (pide escribir ELIMINAR). Aplica
+           incluso a terminados. Vive AQUÍ y no junto a Guardar (decisión del usuario: que
+           siga siendo difícil, pero sin mezclarse con las acciones de trabajo). El margen
+           izquierdo es a propósito: separa lo irreversible del resto. -->
+      <button id="ac2_eliminarBtn" onclick="ac2EliminarLote()" title="Eliminar este despiece y sus barras (irreversible)"
+              style="display:none; margin-left:18px; font-size:12px; padding:5px 12px; background:transparent; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🗑 Eliminar</button>
     </div>
 
     <!-- ── LANDING (etapas 0-1): gráfico de kilos + lista de obras con despieces. Se rellenan en la
@@ -51,7 +69,7 @@
       </div>
       <!-- Eje: combobox de TEXTO LIBRE (sugiere ejes existentes, pero puedes escribir uno nuevo). -->
       <div id="ac2_fldEje" style="display:flex; flex-direction:column; width:180px;">
-        <label style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
+        <label id="ac2_lblEje" style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
         <input type="text" id="ac2_eje" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
       <!-- Crear lote: exige Obra + Ciclo + Eje; ac2ActualizarCabecera lo pinta VIVO al completarlos.
@@ -190,26 +208,44 @@
            AZUL estilo Bar Manager (off = borde azul; on = azul lleno, vía ac2ToggleMasiva). -->
       <button id="ac2_masivaBtn" onclick="ac2ToggleMasiva()" style="font-size:11px; padding:5px 10px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
 
-      <!-- Empuja el grupo de VISUALIZACIÓN (orden + render + tamaños) hacia la DERECHA. -->
+      <!-- ENFIERRADOR 3D: bajó de la cabecera a aquí (25-sep). Es otra forma de AGREGAR
+           barras, así que vive con las otras dos y no como acción de cabecera. Más chico
+           que ellas porque se usa mucho menos. El id conserva su nombre histórico para no
+           romper el show/hide que lo referencia. -->
+      <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
+              style="display:none; font-size:11px; font-weight:600; padding:5px 10px; background:#fff; color:#33691e; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
+
+      <!-- Empuja el control de VISTA hacia la DERECHA. -->
       <div style="flex:1;"></div>
 
-      <!-- Orden/agrupación de la grilla: Creación (sin agrupar) · Piso · Tipología. -->
-      <span id="ac2_ordenWrap" style="display:inline-flex; align-items:center; gap:6px;">
-        <span style="font-size:11px; color:#666; font-weight:600;">Orden:</span>
-        <div style="display:inline-flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden;">
-          <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Creación</button>
-          <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
-          <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
+      <!-- ── VISTA (25-sep) ──────────────────────────────────────────────────────────────
+           Orden, Multiplicador, Render y tamaño del dibujo se fijan UNA vez y no se vuelven
+           a tocar, pero ocupaban media barra con el mismo peso visual que "＋ barra", que se
+           usa todo el rato. Ahora viven bajo un solo botón y se RECUERDAN por usuario
+           (localStorage), así no hay que reponerlos en cada sesión. -->
+      <div style="position:relative; display:inline-block;">
+        <button id="ac2_vistaBtn" onclick="ac2ToggleVista()" title="Orden de la grilla, columna Multiplicador, dibujo y su tamaño"
+                style="font-size:11px; padding:5px 12px; background:#fff; color:#546e7a; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">👁 Vista ▾</button>
+        <div id="ac2_vistaMenu" style="display:none; position:absolute; z-index:20; top:32px; right:0; min-width:230px; background:#fff; border:1px solid #cfd8dc; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:10px;">
+          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:4px;">Ordenar y agrupar por</div>
+          <div id="ac2_ordenWrap" style="display:flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden; margin-bottom:10px;">
+            <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" style="flex:1; font-size:11px; padding:5px 8px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Creación</button>
+            <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="flex:1; font-size:11px; padding:5px 8px; border:none; border-left:1px solid #8BC34A; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
+            <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="flex:1; font-size:11px; padding:5px 8px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
+          </div>
+          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:4px;">Columnas y dibujo</div>
+          <label style="display:block; font-size:12px; color:#455a64; cursor:pointer; padding:2px 0;" title="Mostrar/ocultar la columna Multiplicador"><input type="checkbox" id="ac2_verMult" onchange="ac2ToggleMult(this.checked)"/> Columna Multiplicador</label>
+          <label style="display:block; font-size:12px; color:#455a64; cursor:pointer; padding:2px 0;"><input type="checkbox" id="ac2_render" checked onchange="ac2ToggleRender(this.checked)"/> Dibujo de la figura</label>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+            <span style="font-size:11px; color:#607d8b;">Tamaño</span>
+            <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
+              <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 9px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
+              <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 9px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
+              <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 9px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
+              <button id="ac2r_xl" onclick="ac2SetTam('xl')" style="font-size:13px; padding:3px 9px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
+            </div>
+          </div>
         </div>
-      </span>
-      <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
-      <label style="font-size:11px; color:#666; cursor:pointer;" title="Mostrar/ocultar la columna Multiplicador"><input type="checkbox" id="ac2_verMult" onchange="ac2ToggleMult(this.checked)"/> Mult</label>
-      <label style="font-size:11px; color:#666; cursor:pointer;"><input type="checkbox" id="ac2_render" checked onchange="ac2Render()"/> Render</label>
-      <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
-        <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
-        <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
-        <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
-        <button id="ac2r_xl" onclick="ac2SetTam('xl')" style="font-size:13px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
       </div>
     </div>
 
@@ -251,10 +287,13 @@
            queda pintando fondo son sólo cosas TRANSITORIAS y accionables (geometría mal), y el
            origen de la barra lo dice su DIBUJO. Esta leyenda muestra lo que de verdad se ve —si
            vuelve a listar un color que ya no existe, miente y hay que adivinar otra vez.
-           Estática: no depende de ningún estado, por eso vive en el markup y no en el render. -->
+           CADA MITAD SE MUESTRA SÓLO CUANDO APLICA (25-sep): explicar el dibujo azul en un
+           despiece sin ninguna barra del Enfierrador, o el fondo rosado sin ninguna medida
+           mala, son dos líneas que el ojo tiene que descartar cada vez. Las enciende
+           ac2ActualizarContadores, que ya recorre las barras. -->
       <span style="font-size:11px; color:#607d8b; display:inline-flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <span><span class="b3d" style="color:#01579b; margin-right:4px; vertical-align:middle;">3D</span>del Enfierrador (dibujo azul, solo lectura)</span>
-        <span><span style="display:inline-block; width:10px; height:10px; background:#fff5f5; border:1px solid #ef9a9a; vertical-align:middle; margin-right:4px;"></span>medidas inválidas</span>
+        <span id="ac2_leyenda3d" style="display:none;"><span class="b3d" style="color:#01579b; margin-right:4px; vertical-align:middle;">3D</span>del Enfierrador (dibujo azul, solo lectura)</span>
+        <span id="ac2_leyendaMal" style="display:none;"><span style="display:inline-block; width:10px; height:10px; background:#fff5f5; border:1px solid #ef9a9a; vertical-align:middle; margin-right:4px;"></span>medidas inválidas</span>
       </span>
       <div style="flex:1;"></div>
       <span id="ac2_rollup" style="font-size:11px; color:#666;"></span>
@@ -336,10 +375,18 @@
 <style>
   /* Tab de tipología: activo con FONDO COMPLETO verde Armacero (#8BC34A), homologado al
      color primario de la plataforma. */
-  .ac2tab { font-size:12px; padding:5px 14px; border:none; background:transparent; color:#546e7a;
-            cursor:pointer; border-radius:4px 4px 0 0; margin:0 1px; font-weight:600; }
+  /* MÁS PESO VISUAL (25-sep): la fila de tipologías es el control que más se clica del
+     editor —se entra a Fi, se carga, se pasa a Fs— y era una hilera de chips pálidos bajo
+     dos filas de contexto. Con el contexto comprimido a una línea, ésta pasa a ser la fila
+     principal, y el tamaño lo tiene que decir. */
+  .ac2tab { font-size:13px; padding:7px 16px; border:none; background:transparent; color:#455a64;
+            cursor:pointer; border-radius:4px 4px 0 0; margin:0 1px; font-weight:700; }
   .ac2tab:hover { background:#f1f8e9; color:#558B2F; }
-  .ac2tab.on { background:#8BC34A; color:#fff; }
+  .ac2tab.on { background:#8BC34A; color:#fff; box-shadow:0 -2px 0 inset rgba(0,0,0,.12); }
+  /* TODOS no es una tipología, es una VISTA: se distingue de las que sí lo son. */
+  .ac2tab.vista { font-size:11px; padding:5px 12px; font-weight:600; color:#78909c;
+                  border:1px solid #cfd8dc; border-radius:4px; background:#fff; }
+  .ac2tab.vista.on { background:#546e7a; color:#fff; border-color:#546e7a; box-shadow:none; }
   /* Celdas editables de la grilla — estilo homologado al Bar Manager. */
   .ac2cell { width:56px; font-size:11px; text-align:right; padding:2px 4px; border:1px solid #d5dbdb;
              border-radius:3px; box-sizing:border-box; }
