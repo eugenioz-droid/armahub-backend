@@ -69,6 +69,33 @@
   .leg{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--mut)}
   .leg b{color:#e65100}
 
+  /* Equipo: obras + calendario mensual compacto + lista */
+  .eq-lay{display:grid;grid-template-columns:250px 1fr;gap:12px;align-items:start}
+  @media(max-width:1000px){.eq-lay{grid-template-columns:1fr}}
+  .obras{max-height:340px;overflow:auto}
+  .obras .o{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:5px;cursor:pointer;font-size:12px;border:1px solid transparent}
+  .obras .o:hover{background:#f5f7fa} .obras .o.on{background:#f1f8e9;border-color:#c5e1a5}
+  .obras .o .n{flex:1;font-weight:600;line-height:1.2} .obras .o .k{font-size:11px;color:var(--mut)} .obras .o .k b{color:#e65100}
+  .cal{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:11px}
+  .cal th{background:#fafbfc;border-bottom:1px solid var(--ln);padding:5px 4px;text-align:center;font-weight:600;color:#546e7a}
+  .cal th.w{width:74px;text-align:left}
+  .cal td{border-bottom:1px solid #edf0f3;border-right:1px solid #f0f2f5;vertical-align:top;padding:3px 4px;height:58px}
+  .cal td.w{font-weight:600;color:#546e7a;vertical-align:middle;font-size:11px;background:#fafbfc}
+  .cal td.w small{display:block;font-weight:400;color:var(--mut);font-size:10px}
+  .cal tr.hoy td.w{color:var(--vos)} .cal td.hoy{background:#fbfdf8}
+  .cal td.pas{background:#fafafa;color:#b0bec5}
+  .cal .chip{font-size:9.5px;padding:1px 5px;margin-bottom:2px;border-radius:3px}
+  .cal .mas{display:block;font-size:9.5px;color:var(--mut);padding-left:3px}
+  .cal .ch{display:block;font-size:9.5px;color:var(--rojo);font-weight:700;margin-bottom:2px}
+  .cal td.choque{box-shadow:inset 0 0 0 2px var(--rojo);background:#fff5f5}
+  .lista{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .lista th{text-align:left;color:#546e7a;font-weight:600;padding:5px 7px;border-bottom:1px solid var(--ln);white-space:nowrap}
+  .lista td{padding:4px 7px;border-top:1px solid #edf0f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lista tbody tr:nth-child(even) td{background:#fafbfc}
+  .lista tr.hecho td{color:#b0bec5} .lista tr.atr td:first-child{color:var(--rojo);font-weight:700}
+  .lista .st{font-size:10px;font-weight:700;border-radius:99px;padding:1px 7px}
+  .st.p{background:#eceff1;color:#546e7a} .st.h{background:#e8f5e9;color:#2e7d32} .st.a{background:#ffebee;color:#c62828} .st.t{background:#fff8e1;color:#8d6e00}
+
   /* USC: cola + tablero */
   .usc-lay{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}
   @media(max-width:1000px){.usc-lay{grid-template-columns:1fr}}
@@ -133,7 +160,25 @@
 
   <section id="s-equipo" class="on">
     <div class="kpis" id="kpis"></div>
-    <div class="card"><table class="board" id="boardEq"></table><div class="leg" id="legEq"></div></div>
+    <div class="eq-lay">
+      <div class="card" style="padding:10px 12px">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px"><b style="font-size:12px">Obras con tareas</b><button class="pill" id="fObraX" style="display:none">✕ todas</button></div>
+        <div class="obras" id="obrasEq"></div>
+      </div>
+      <div class="card" style="padding:10px 12px">
+        <div class="row" style="margin-bottom:8px">
+          <span class="mut">Cubicador</span><span id="fCub"></span>
+          <span style="width:1px;height:18px;background:#e0e0e0;margin:0 4px"></span>
+          <span class="mut">USC</span><span id="fUsc"></span>
+        </div>
+        <table class="cal" id="calEq"></table>
+        <div class="leg" id="legEq"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;padding:10px 12px">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px"><b style="font-size:12px">Tareas programadas <span class="mut" id="listaEqN"></span></b><span class="mut">la más próxima primero</span></div>
+      <table class="lista" id="listaEq"></table>
+    </div>
   </section>
 
   <section id="s-usc">
@@ -202,16 +247,30 @@
       m[f.obra].frentes.push(f);
     });
     OBRAS=Object.keys(m).map(function(k){return m[k];}).sort(function(a,b){return b.frentes.length-a.frentes.length;});
+    // USC de ejemplo repartido PAREJO sobre las obras CON TRABAJO PENDIENTE (por turnos, de la
+    // que más pendiente tiene a la que menos): con un reparto al azar —o por tamaño— a un USC le
+    // tocaban sólo obras al día, y su filtro vaciaba la pantalla, que parece un error.
+    var porPend=OBRAS.slice().sort(function(a,b){
+      var pa=a.frentes.filter(function(f){return f.estado!=='exportado';}).length, pb=b.frentes.filter(function(f){return f.estado!=='exportado';}).length;
+      return pb-pa; });
+    porPend.forEach(function(o,i){ o.usc=USCS[i%USCS.length]; });
     OBRAS.forEach(function(o){ o.est=estructuraDe(o); });
     // programa de ejemplo: frentes no al día, repartidos en la semana
     var cand=[]; OBRAS.forEach(function(o){ o.frentes.forEach(function(f){ if(f.estado!=='exportado') cand.push({o:o,f:f}); }); });
     cand.sort(function(a,b){ return hash(a.f.obra+a.f.sector+a.f.piso+a.f.ciclo)-hash(b.f.obra+b.f.sector+b.f.piso+b.f.ciclo); });
-    var sem=semana();
-    cand.slice(0,34).forEach(function(c){
-      var k=c.f.obra+c.f.sector+c.f.piso+c.f.ciclo, dia=sem[hash('d'+k)%5], tarde=(hash('t'+k)%5===0);
+    // Programa de ejemplo repartido en las PRÓXIMAS CINCO SEMANAS (el calendario del equipo
+    // muestra ese horizonte); lo hecho y lo atrasado sólo tiene sentido en la semana actual.
+    // La muestra se toma POR USC (18 cada uno): tomada de corrido, un USC quedaba sin tareas y
+    // su filtro vaciaba la pantalla.
+    var sem=semana(), muestra=[];
+    USCS.forEach(function(u){ muestra=muestra.concat(cand.filter(function(c){return c.o.usc===u;}).slice(0,18)); });
+    muestra.forEach(function(c){
+      var k=c.f.obra+c.f.sector+c.f.piso+c.f.ciclo, w=hash('s'+k)%5, dia=new Date(sem[hash('d'+k)%5].getTime());
+      dia.setDate(dia.getDate()+7*w);
+      var tarde=(hash('t'+k)%6===0);
       PROG.push({o:c.o,f:c.f,cub:(hash('m'+k)%4===0)?elige(CUBS,'x'+k):c.o.cub,dia:dia,
         fObra:sumaHabiles(dia,tarde?(2+hash('y'+k)%4):LEAD),tarde:tarde,ton:Math.round((3+hash('w'+k)%22)*10)/10,
-        hecho:(hash('h'+k)%3!==0),atraso:(hash('a'+k)%7===0)});
+        hecho:(w===0&&hash('h'+k)%3!==0),atraso:(w===0&&hash('a'+k)%7===0)});
     });
     CUB_SEL=CUBS[0];
     $('intro').textContent=D.frentes.length+' frentes · '+OBRAS.length+' obras · '+CUBS.length+' cubicadores';
@@ -227,7 +286,68 @@
 
   function todo(){
     var s=semana(); $('semTxt').textContent=corta(s[0])+' – '+corta(s[4])+(semOff===0?' · esta semana':'');
-    pintarKpis(); pintarBoard('boardEq','legEq',false); pintarUsc(); pintarBoard('boardUsc','legUsc',true); pintarCub();
+    pintarEquipo(); pintarUsc(); pintarBoard('boardUsc','legUsc',true); pintarCub();
+  }
+
+  // ══ EQUIPO: obras con tareas · filtros · calendario de 5 semanas · lista por prioridad ══
+  var F_OBRA=null, F_CUB=null, F_USC=null;
+  function semanas5(){ var out=[]; for(var w=0;w<5;w++){ var l=new Date(HOY.getTime()); l.setDate(l.getDate()+7*(semOff+w));
+    out.push([0,1,2,3,4].map(function(i){ var d=new Date(l.getTime()); d.setDate(d.getDate()+i); return d; })); } return out; }
+  function filtrados(){ return PROG.filter(function(x){ return (!F_OBRA||x.o===F_OBRA)&&(!F_CUB||x.cub.quien===F_CUB)&&(!F_USC||x.o.usc.ini===F_USC); }); }
+  function pintarEquipo(){
+    var S=semanas5(), ini=S[0][0], fin=S[4][4], enH=filtrados().filter(function(x){return x.dia>=ini&&x.dia<=fin;});
+    // KPIs sobre lo filtrado y el horizonte visible
+    var tot=enH.length, aT=enH.filter(function(x){return x.hecho&&!x.atraso;}).length, tarde=enH.filter(function(x){return x.tarde;}).length;
+    var tE=enH.reduce(function(a,x){return a+x.ton;},0), tR=enH.reduce(function(a,x){return a+(x.hecho?x.ton*(0.7+(hash('r'+x.f.piso+x.f.ciclo)%80)/100):0);},0);
+    $('kpis').innerHTML='<span class="kpi"><b>'+tot+'</b><span>frentes en 5 semanas</span></span>'+
+      '<span class="kpi ok"><b>'+(tot?Math.round(100*aT/tot):0)+'%</b><span>a tiempo</span></span>'+
+      '<span class="kpi"><b>'+tR.toFixed(0)+'<span style="font-size:13px;color:#b0bec5"> / '+tE.toFixed(0)+'</span></b><span>t real / est.</span></span>'+
+      '<span class="kpi ojo"><b>'+tarde+'</b><span>fuera de plazo</span></span>';
+    // OBRAS con tareas programadas (respetando cubicador/USC, no la obra elegida)
+    var base=PROG.filter(function(x){ return (!F_CUB||x.cub.quien===F_CUB)&&(!F_USC||x.o.usc.ini===F_USC); });
+    var porObra={}; base.forEach(function(x){ var k=x.o.obra; (porObra[k]=porObra[k]||{o:x.o,n:0,p:0}); porObra[k].n++; if(!x.hecho) porObra[k].p++; });
+    var obras=Object.keys(porObra).map(function(k){return porObra[k];}).sort(function(a,b){return b.p-a.p||b.n-a.n;});
+    $('obrasEq').innerHTML=obras.map(function(r){ return '<div class="o'+(r.o===F_OBRA?' on':'')+'" data-o="'+esc(r.o.obra)+'">'+
+      '<span class="usc" style="background:'+r.o.usc.color+'">'+r.o.usc.ini+'</span><span class="n">'+esc(r.o.obra)+'</span>'+
+      '<span class="k"><b>'+r.p+'</b>/'+r.n+'</span></div>'; }).join('')||'<span class="mut">Sin tareas.</span>';
+    $('obrasEq').querySelectorAll('.o').forEach(function(el){ el.addEventListener('click',function(){
+      var o=OBRAS.filter(function(x){return x.obra===el.getAttribute('data-o');})[0]; F_OBRA=(F_OBRA===o)?null:o; pintarEquipo(); }); });
+    $('fObraX').style.display=F_OBRA?'':'none'; $('fObraX').onclick=function(){ F_OBRA=null; pintarEquipo(); };
+    // FILTROS: dos grupos de pastillas
+    $('fCub').innerHTML=CUBS.map(function(c){ return '<button class="pill'+(F_CUB===c.quien?' on':'')+'" data-c="'+esc(c.quien)+'">'+esc(c.quien.split(' ')[0])+'</button>'; }).join(' ');
+    $('fCub').querySelectorAll('button').forEach(function(b){ b.addEventListener('click',function(){ var v=b.getAttribute('data-c'); F_CUB=(F_CUB===v)?null:v; pintarEquipo(); }); });
+    $('fUsc').innerHTML=USCS.map(function(u){ return '<button class="pill'+(F_USC===u.ini?' on':'')+'" data-u="'+u.ini+'"><span class="dot" style="background:'+u.color+'"></span>'+u.ini+'</button>'; }).join(' ');
+    $('fUsc').querySelectorAll('button').forEach(function(b){ b.addEventListener('click',function(){ var v=b.getAttribute('data-u'); F_USC=(F_USC===v)?null:v; pintarEquipo(); }); });
+    // CALENDARIO: 5 semanas × 5 días, compacto. El choque se marca en el día, nombrando al cubicador.
+    var h='<thead><tr><th class="w"></th>'+DIAS.map(function(d){return '<th>'+d+'</th>';}).join('')+'</tr></thead><tbody>';
+    S.forEach(function(sem,w){
+      var esHoy=sem.some(function(d){return mismoDia(d,HOY);});
+      h+='<tr'+(esHoy?' class="hoy"':'')+'><td class="w">Sem '+(w+1)+'<small>'+corta(sem[0])+'</small></td>';
+      sem.forEach(function(d){
+        var dd=enH.filter(function(x){return mismoDia(x.dia,d);}), pas=(d<HOY&&!mismoDia(d,HOY));
+        var choques=[]; CUBS.forEach(function(c){ var m=dd.filter(function(x){return x.cub.quien===c.quien;}), u={}; m.forEach(function(x){u[x.o.usc.ini]=1;});
+          if(m.length>=3&&Object.keys(u).length>=2) choques.push(c.ini); });
+        h+='<td class="'+(choques.length?'choque ':'')+(mismoDia(d,HOY)?'hoy':(pas?'pas':''))+'">'+
+          (choques.length?'<span class="ch">⚠ '+choques.join(' ')+'</span>':'')+
+          dd.slice(0,6).map(function(x){ return '<span class="chip'+(x.tarde?' tarde':'')+(x.hecho?' ok':'')+'" style="background:'+x.o.usc.color+'" title="'+
+            esc(x.o.obra+' · '+nomFrente(x.f)+' · '+x.cub.quien+' · '+x.o.usc.ini+(x.tarde?' · fuera de plazo':''))+'">'+esc(nomObra(x.o)+' '+nomFrente(x.f)+' · '+x.cub.ini)+'</span>'; }).join('')+
+          (dd.length>6?'<span class="mas">+'+(dd.length-6)+'</span>':'')+'</td>';
+      });
+      h+='</tr>';
+    });
+    $('calEq').innerHTML=h+'</tbody>';
+    var tardePor={}; PROG.forEach(function(x){ if(x.tarde) tardePor[x.o.usc.ini]=(tardePor[x.o.usc.ini]||0)+1; });
+    $('legEq').innerHTML=USCS.map(function(u){ return '<span><span class="dot" style="background:'+u.color+'"></span> '+u.ini+(tardePor[u.ini]?' <b title="pedidos fuera de plazo">'+tardePor[u.ini]+'</b>':'')+'</span>'; }).join('')+
+      '<span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #f9a825"></span> fuera de plazo</span><span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #c62828"></span> choque (3+ de 2+ USC)</span>';
+    // LISTA por prioridad: pendientes por fecha, la más próxima primero; los cubicados al final.
+    var l=filtrados().slice().sort(function(a,b){ return (a.hecho?1:0)-(b.hecho?1:0) || a.dia-b.dia; });
+    $('listaEqN').textContent='· '+l.length;
+    $('listaEq').innerHTML='<thead><tr><th>Cubicar</th><th>En obra</th><th>Obra</th><th>Frente</th><th>Cubicador</th><th>USC</th><th style="text-align:right">t est.</th><th>Estado</th></tr></thead><tbody>'+
+      l.map(function(x){ var atr=!x.hecho&&x.dia<HOY&&!mismoDia(x.dia,HOY);
+        var st=x.hecho?'<span class="st h">cubicado</span>':(atr?'<span class="st a">atrasado</span>':(x.tarde?'<span class="st t">fuera de plazo</span>':'<span class="st p">programado</span>'));
+        return '<tr class="'+(x.hecho?'hecho':'')+(atr?' atr':'')+'"><td>'+DIAS[(x.dia.getDay()+6)%7]+' '+corta(x.dia)+'</td><td>'+corta(x.fObra)+'</td>'+
+          '<td>'+esc(x.o.obra)+'</td><td>'+esc(x.f.sector+' · '+nomFrente(x.f))+'</td><td>'+esc(x.cub.quien)+'</td>'+
+          '<td><span class="usc" style="background:'+x.o.usc.color+'">'+x.o.usc.ini+'</span></td><td style="text-align:right">'+(x.ton?x.ton.toFixed(1):'—')+'</td><td>'+st+'</td></tr>'; }).join('')+'</tbody>';
   }
 
   // ══ ESTRUCTURA DE LA OBRA: pisos con nº de ciclos heredado hacia arriba ══
@@ -293,20 +413,7 @@
     $('drawer').classList.remove('on'); todo();
   }
 
-  // ══ KPIs (una línea) ══
-  function pintarKpis(){
-    var s=semana(), enSem=PROG.filter(function(x){ return x.dia>=s[0]&&x.dia<=s[4]; });
-    var tot=enSem.length, hechos=enSem.filter(function(x){return x.hecho;}).length, aT=enSem.filter(function(x){return x.hecho&&!x.atraso;}).length;
-    var tarde=enSem.filter(function(x){return x.tarde;}).length;
-    var tE=enSem.reduce(function(a,x){return a+x.ton;},0), tR=enSem.reduce(function(a,x){return a+(x.hecho?x.ton*(0.7+(hash('r'+x.f.piso+x.f.ciclo)%80)/100):0);},0);
-    $('kpis').innerHTML=
-      '<span class="kpi"><b>'+tot+'</b><span>frentes</span></span>'+
-      '<span class="kpi ok"><b>'+(tot?Math.round(100*aT/tot):0)+'%</b><span>a tiempo</span></span>'+
-      '<span class="kpi"><b>'+tR.toFixed(0)+'<span style="font-size:13px;color:#b0bec5"> / '+tE.toFixed(0)+'</span></b><span>t real / est.</span></span>'+
-      '<span class="kpi ojo"><b>'+tarde+'</b><span>pedidos fuera de plazo</span></span>';
-  }
-
-  // ══ TABLERO (Equipo y USC comparten el mismo) ══
+  // ══ TABLERO semanal por cubicador (lo usa la pestaña USC para colocar frentes) ══
   function pintarBoard(id,legId,interactivo){
     var s=semana(), h='<thead><tr><th class="q"></th>'+s.map(function(d,i){
       return '<th'+(mismoDia(d,HOY)?' class="hoy"':'')+'>'+DIAS[i]+' '+corta(d)+'</th>'; }).join('')+'</tr></thead><tbody>';
