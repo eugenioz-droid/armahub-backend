@@ -72,10 +72,13 @@
   /* Equipo: obras + calendario mensual compacto + lista */
   .eq-lay{display:grid;grid-template-columns:250px 1fr;gap:12px;align-items:start}
   @media(max-width:1000px){.eq-lay{grid-template-columns:1fr}}
+  /* una línea por obra: nombre recortado con «…», badge del USC y pendientes/total a la derecha */
   .obras{max-height:340px;overflow:auto}
-  .obras .o{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:5px;cursor:pointer;font-size:12px;border:1px solid transparent}
+  .obras .o{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid transparent;white-space:nowrap}
   .obras .o:hover{background:#f5f7fa} .obras .o.on{background:#f1f8e9;border-color:#c5e1a5}
-  .obras .o .n{flex:1;font-weight:600;line-height:1.2} .obras .o .k{font-size:11px;color:var(--mut)} .obras .o .k b{color:#e65100}
+  .obras .o .usc{width:17px;height:17px;font-size:8.5px}
+  .obras .o .n{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+  .obras .o .k{font-size:10.5px;color:var(--mut);flex:none;font-variant-numeric:tabular-nums} .obras .o .k b{color:#e65100}
   .cal{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:11px}
   .cal th{background:#fafbfc;border-bottom:1px solid var(--ln);padding:5px 4px;text-align:center;font-weight:600;color:#546e7a}
   .cal th.w{width:74px;text-align:left}
@@ -307,7 +310,7 @@
     var base=PROG.filter(function(x){ return (!F_CUB||x.cub.quien===F_CUB)&&(!F_USC||x.o.usc.ini===F_USC); });
     var porObra={}; base.forEach(function(x){ var k=x.o.obra; (porObra[k]=porObra[k]||{o:x.o,n:0,p:0}); porObra[k].n++; if(!x.hecho) porObra[k].p++; });
     var obras=Object.keys(porObra).map(function(k){return porObra[k];}).sort(function(a,b){return b.p-a.p||b.n-a.n;});
-    $('obrasEq').innerHTML=obras.map(function(r){ return '<div class="o'+(r.o===F_OBRA?' on':'')+'" data-o="'+esc(r.o.obra)+'">'+
+    $('obrasEq').innerHTML=obras.map(function(r){ return '<div class="o'+(r.o===F_OBRA?' on':'')+'" data-o="'+esc(r.o.obra)+'" title="'+esc(r.o.obra)+' · '+r.p+' pendientes de '+r.n+'">'+
       '<span class="usc" style="background:'+r.o.usc.color+'">'+r.o.usc.ini+'</span><span class="n">'+esc(r.o.obra)+'</span>'+
       '<span class="k"><b>'+r.p+'</b>/'+r.n+'</span></div>'; }).join('')||'<span class="mut">Sin tareas.</span>';
     $('obrasEq').querySelectorAll('.o').forEach(function(el){ el.addEventListener('click',function(){
