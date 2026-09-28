@@ -411,7 +411,17 @@
       var a = await req('GET', '/programacion/usc');
       var b = await req('GET', '/programacion/obras-asignacion');
       USC = (a && a.usc) || []; ASIG = (b && b.obras) || [];
-    } catch (e) { aviso(e.message); return; }
+    } catch (e) {
+      // Si falla, la caja NO puede quedar en blanco: un panel vacío se lee como «no hay
+      // nada», y lo que pasó fue un error. Pasó de verdad —una consulta rota dejó el tab
+      // mudo— y por eso el mensaje va DENTRO de la caja, no sólo en un toast que se va.
+      aviso(e.message);
+      $('prgUscAviso').className = 'prgaviso mal';
+      $('prgUscAviso').innerHTML = '<b>No se pudo cargar la lista de obras.</b> ' + esc(e.message);
+      $('prgAsig').innerHTML = '';
+      $('prgAsigN').textContent = '';
+      return;
+    }
     // Hoy no existe ningún usuario con rol USC (el usuario los va a crear). Sin decirlo,
     // el selector se vería vacío y parecería un error del sistema.
     $('prgUscAviso').className = USC.length ? 'prgaviso' : 'prgaviso mal';

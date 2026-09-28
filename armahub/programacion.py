@@ -687,11 +687,15 @@ def listar_usc(user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT u.id, u.email, u.nombre || ' ' || COALESCE(u.apellido,'') AS nombre, u.rol,
+                # OJO con los dos nombres de la misma idea: en `users` la columna es `role`
+                # (inglés) y en `proyecto_usuarios` es `rol` (español). Escribir `u.rol` no
+                # da un resultado vacío: revienta la consulta entera, y el tab se ve en
+                # blanco sin decir por qué. Ya pasó una vez.
+                """SELECT u.id, u.email, u.nombre || ' ' || COALESCE(u.apellido,'') AS nombre, u.role,
                           (SELECT COUNT(*) FROM proyecto_usuarios pu
                             WHERE pu.user_id = u.id AND pu.rol = 'usc') AS obras
                      FROM users u
-                    WHERE u.rol = 'usc' AND COALESCE(u.activo, TRUE)
+                    WHERE u.role = 'usc' AND COALESCE(u.activo, TRUE)
                     ORDER BY 3"""
             )
             usc = [{"id": r[0], "email": r[1], "nombre": (r[2] or "").strip() or r[1],
