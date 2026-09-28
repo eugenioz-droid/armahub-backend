@@ -52,25 +52,70 @@ sirve igual el listado de pasos.
 
 ---
 
-## 2. La superficie técnica (a completar con el Power Query)
+## 2. La superficie técnica
 
 | Dato | Valor |
 |---|---|
-| URL base | _(pendiente)_ |
-| Autenticación | _(¿header `Authorization`? ¿`ApiKey`? ¿query string?)_ |
-| Endpoint de obras | _(pendiente)_ |
-| Endpoint de cubicaciones / códigos de control | _(pendiente)_ |
-| ¿Acepta filtro por texto? | _(pendiente — define si el buscador es server-side)_ |
-| ¿Acepta paginación? | _(pendiente)_ |
-| Formato | _(JSON / OData / XML)_ |
+| Host conocido | `qa254.asahq.com` — **ambiente QA**, en internet público (no red interna) |
+| Ruta base | `/api/public/` |
+| Documentación viva | `/api/public/doc` — lista todos los endpoints con sus campos |
+| Protocolo | **OData** — confirmado por el ejemplo `?$filter=OrderID eq 'O-0000350'` |
+| URL de producción | _(pendiente)_ |
+| Autenticación | _(pendiente — ¿header, query string, campo "API Key" de Power BI?)_ |
 
-### Campos que nos interesan de una obra
+### Que sea OData cambia el diseño, para bien
 
-_(pendiente: id, nombre, cliente, estado. Nada más hasta que haga falta.)_
+Power Query lo habla de forma nativa; por eso funciona en BI sin configurar nada. Nosotros
+aprovechamos lo mismo:
 
-### Campos que nos interesan de una cubicación
+- `$select` — pedir sólo los campos que usamos. Las tablas traen ~60 columnas; nos sirven 6.
+- `$top` / `$skip` — tope duro y paginación. Nunca "tráeme todo de golpe".
+- `$filter` — el filtrado lo hace aSa, no Render.
+- **`$filter=LastModified gt <ayer>` — sincronización INCREMENTAL.** Varios endpoints traen
+  `LastModified` (DateTimeOffset). La primera carga del espejo es grande; las diarias
+  siguientes traen sólo lo que cambió. Esto es lo que hace que el espejo diario sea barato
+  para aSa.
 
-_(pendiente: código de control, obra, fecha, kilos. Nada más.)_
+### Glosario aSa → Armacero
+
+| aSa | Nosotros |
+|---|---|
+| Job | obra / proyecto |
+| Order | pedido / cubicación |
+| Control Code (`CtrlCode`) | el CC |
+| WBS | desglose del job (¿sectores?) |
+| Shipping Ticket | guía de despacho |
+| Load | carga / camión |
+| Business Partner | cliente / constructora |
+
+### Endpoints
+
+| Endpoint | Para qué | Prioridad |
+|---|---|---|
+| `getJobData` | las obras. Alimenta el espejo `asa_obras` | **1 — esencial** |
+| `getOrderSummary` | "Control Code Summary": el CC agregado. Ya lo usa el usuario en BI | **1 — esencial** |
+| `getWBSData` | desglose del job. A confirmar si trae los sectores constructivos | 2 — evaluar |
+| `getShippingTickets` | fecha REAL de despacho vs. la programada | 3 — cierra el círculo |
+| `getScheduling` | la programación de producción de aSa. Puede chocar conceptualmente con la nuestra | 3 — mirar antes |
+| `getLoad` | cargas/camión, para cuadrar kilaje | 4 — más adelante |
+| `getOrderItemView` | línea por línea (`BarMark`, `BarSizeDescr`). **Grano demasiado fino: NO se espeja** | — |
+| `getBusPartnerData`, `*Contact*` | **NO se consumen**: ahí viven nombres, correos y teléfonos de personas | — |
+
+### Regla dura: ArmaHub sólo lee
+
+La mitad del catálogo son `create*` / `update*` / `approveOrder`. **ArmaHub no llama a
+ninguno, nunca.** Si aSa puede emitir una key de sólo lectura, se pide: esa es la
+protección real, no una promesa en un documento.
+
+### Campos que nos interesan de una obra (Job)
+
+_(pendiente: id, nombre, cliente, estado, LastModified. Nada más hasta que haga falta.)_
+
+### Campos que nos interesan de un Order Summary
+
+Confirmados en la doc de `getOrderItemView`, probablemente presentes también en el summary:
+`CtrlCode`, `JobID` / `JobKey` / `JobName`, `LastModified`. Falta ver dónde están los
+**kilos** y la fecha de la cubicación.
 
 ---
 
