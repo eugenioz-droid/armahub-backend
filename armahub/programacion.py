@@ -463,9 +463,23 @@ _CAMPOS_ASA = {
     "job_key":    ("JobKey", "JobKeyID"),
     "nombre":     ("JobName", "Name", "Descr", "Description"),
     "cliente":    ("CustomerName", "Customer", "BusPartnerName"),
-    "descripcion": ("Descr", "Description", "JobDescr"),
-    "estado":     ("Status", "JobStatus", "StatusID"),
+    "descripcion": ("DetailingLocName", "Descr", "Description", "JobDescr"),
+    "estado":     ("JobStatusDescr", "JobStatusID", "Status", "JobStatus", "StatusID"),
 }
+
+# Los ÚNICOS campos que se le piden a aSa para las obras. Esto no es una optimización:
+# getJobData devuelve 131 columnas, y entre ellas van PrimaryContactFirstName,
+# PrimaryPhoneDetail, PrimaryEmailDetail y nueve líneas de dirección. Con el $select
+# esos datos NUNCA SALEN DE aSa — no es que los protejamos después, es que no los
+# pedimos. De paso, la respuesta pesa una fracción. Ver docs/asa_campos.md.
+_SELECT_OBRAS = ["JobID", "JobKey", "JobName", "CustomerName",
+                 "JobStatusID", "JobStatusDescr", "DetailingLocName", "LastModified"]
+
+# Sólo las obras ABIERTAS. aSa tiene entre 600 y 1.400 jobs, la mayoría cerrados o
+# inactivos, y una obra cerrada no se programa: traerla sería ensuciar el buscador con
+# ruido histórico y hacer esperar al usuario por datos que no va a usar. El filtro lo
+# aplica aSa (OData `$filter`), no nosotros: así viaja menos y el servidor trabaja menos.
+_FILTRO_OBRAS = "JobStatusID eq 'O'"
 
 
 def _primer(fila: dict, nombres) -> Optional[str]:
@@ -509,7 +523,8 @@ def asa_estado(user=Depends(get_current_user)):
 
 
 @router.post("/programacion/asa/sincronizar")
-def asa_sincronizar(endpoint: str = "getJobData", user=Depends(get_current_user)):
+def asa_sincronizar(endpoint: str = "getJobData", todas: bool = False,
+                    user=Depends(get_current_user)):
     """Trae las obras de aSa al espejo. Es el «Refrescar ahora» — la misma función que
     después va a correr sola una vez al día.
 
@@ -532,7 +547,16 @@ def asa_sincronizar(endpoint: str = "getJobData", user=Depends(get_current_user)
         conn.commit()
 
     try:
-        filas = asa.consultar_todo(endpoint)
+        # El $select y el filtro sólo aplican al endpoint de obras, que es el que
+        # conocemos. Para cualquier otro se pide completo, porque no sabemos qué columnas
+        # tiene. `todas=true` trae también las cerradas, por si alguna vez hace falta
+        # programar sobre una obra que aSa ya dio por terminada.
+        es_obras = (endpoint == "getJobData")
+        filas = asa.consultar_todo(
+            endpoint,
+            select=_SELECT_OBRAS if es_obras else None,
+            filtro=(None if (todas or not es_obras) else _FILTRO_OBRAS),
+        )
     except asa.AsaError as e:
         with get_conn() as conn:
             with conn.cursor() as cur:

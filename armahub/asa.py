@@ -140,8 +140,27 @@ def _aplicar_auth(url: str, headers: Dict[str, str]) -> str:
     return url
 
 
+def _extra_headers() -> Dict[str, str]:
+    """Cabeceras adicionales, de `ASA_EXTRA_HEADERS`, con formato `Nombre: valor; Otro: x`.
+
+    Existe porque aSa no usa UNA cabecera de credencial sino DOS: `Authorize: api-key`
+    declara el método y `AsaStudioApiKey: <clave>` lleva la clave. Ninguna de las formas
+    estándar servía, y adivinarlas fue imposible: sólo apareció al mirar el M de Power
+    Query. Queda genérico para que la próxima sorpresa sea un cambio de variable y no de
+    código.
+    """
+    crudo = _cfg("ASA_EXTRA_HEADERS")
+    extra: Dict[str, str] = {}
+    for par in crudo.split(";"):
+        nombre, sep, valor = par.partition(":")
+        if sep and nombre.strip():
+            extra[nombre.strip()] = valor.strip()
+    return extra
+
+
 def _pedir(url: str, intento: int = 0) -> Any:
     headers = {"Accept": "application/json", "User-Agent": "ArmaHub/1.0 (+programacion)"}
+    headers.update(_extra_headers())
     url_con_auth = _aplicar_auth(url, headers)
     req = urllib.request.Request(url_con_auth, headers=headers, method="GET")
     try:

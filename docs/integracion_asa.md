@@ -61,7 +61,36 @@ sirve igual el listado de pasos.
 | Ruta base | `/api/public/` |
 | Documentación viva | `/api/public/doc` — lista todos los endpoints con sus campos |
 | Protocolo | **OData** — `$select` y `$filter` confirmados en uso real |
-| Autenticación | **no viaja en la URL** → cabecera o almacén de credenciales de Power BI. _(falta confirmar cuál)_ |
+| Autenticación | **dos cabeceras** (ver abajo) — RESUELTO 28-sep |
+
+### Cómo se autentica (resuelto 28-sep, y no era adivinable)
+
+aSa no usa UNA cabecera de credencial sino **dos**:
+
+```
+Authorize:       api-key          ← el literal "api-key": declara el método
+AsaStudioApiKey: <la clave>       ← la clave, un GUID
+Accept:          application/json
+```
+
+Se probaron 13 formas estándar (`Authorization: Bearer`, `x-api-key`, `ApiKey`,
+`Authorize`, cookie, query string, Basic…) y **las 13 dieron 401**. La respuesta sólo
+apareció al leer el M de Power Query. Vale la pena dejarlo escrito porque nadie lo
+deduciría: `Authorize: api-key` parece una cabecera de credencial y no lo es.
+
+En ArmaHub esto se configura sin tocar código:
+
+```
+ASA_AUTH_MODE=header
+ASA_AUTH_HEADER=AsaStudioApiKey
+ASA_AUTH_PREFIX=              (vacío: la clave va sola, sin "Bearer")
+ASA_EXTRA_HEADERS=Authorize: api-key
+```
+
+Dos detalles del 401 que ayudaron a descartar caminos: el servidor es **IIS/ASP.NET** y
+responde borrando una cookie `aSa-Studio-AuthToken` (eso hizo pensar en un token de
+sesión, que resultó ser una pista falsa); y respondía igual desde la propia red de
+Armacero, lo que descartó una lista blanca de IPs.
 
 Los dos hosts son de internet público, no de la red interna de Armacero: **Render puede
 alcanzarlos** salvo que haya lista blanca de IPs.

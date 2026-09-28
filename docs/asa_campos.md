@@ -23,13 +23,17 @@ protección real de datos personales: no es una política, es que no se pide.
 ## Host y forma de la consulta
 
 ```
-https://matco.asa.studio/api/public/getScheduling?$select=CtrlCode,LoadLastModified,ProjFabDate,ProjShipDate,SchedStatusDescr,SchedStatusID,ShipID,TotalWeight
+GET https://matco.asa.studio/api/public/getScheduling?$select=CtrlCode,ProjShipDate,…
+
+Accept:          application/json
+Authorize:       api-key            ← el literal "api-key"
+AsaStudioApiKey: <la clave>
 ```
 
 - Host de producción: **`matco.asa.studio`** (el `qa254.asahq.com` de la doc es el QA).
 - Ruta: `/api/public/<endpoint>`
-- La clave **no viaja en la URL** → va en una cabecera o en el almacén de credenciales de
-  Power BI. Falta confirmar cuál.
+- Autenticación: dos cabeceras. El detalle y por qué no era adivinable, en
+  [integracion_asa.md](integracion_asa.md).
 
 ---
 
@@ -152,8 +156,53 @@ LoadLastModified
 | `getBusPartnerData`, todo lo `*Contact*` | Ahí viven nombres, correos y teléfonos de personas |
 | Todos los `create*`, `update*`, `approveOrder` | **ArmaHub sólo lee.** Nunca se llaman |
 
+---
+
+## `getJobData` — las obras (documentado 28-sep)
+
+**131 campos**, uno por obra. Entre ellos van `PrimaryContactFirstName`,
+`PrimaryPhoneDetail`, `PrimaryEmailDetail` y nueve líneas de dirección: por eso el
+`$select` acotado no es una optimización, es lo que impide que esos datos salgan de aSa.
+
+**Volumen medido:** entre 600 y 1.400 jobs en total; **376 abiertos**
+(`JobStatusID eq 'O'`), que se traen en **3,4 segundos** con el `$select` de abajo. Una
+obra cerrada no se programa, así que el espejo sólo guarda las abiertas.
+
+| Campo | Ejemplo real | | Para qué |
+|---|---|:-:|---|
+| `JobID` | `1023495B` | ✔ | la clave de la obra en aSa → `proyectos.asa_job_id` |
+| `JobKey` | `510` | ✔ | id numérico |
+| `JobName` | `PROMINCO - BARRAS` | ✔ | el nombre que se busca |
+| `CustomerName` | `PROMINCO` | ✔ | cliente (empresa, no persona) |
+| `JobStatusID` / `JobStatusDescr` | `O` / `Open` | ✔ | el filtro: sólo `O` |
+| `DetailingLocName` | `Santiago` | ✔ | dónde se cubica |
+| `LastModified` | `2025-10-09T19:50:04Z` | ✔ | para la sync incremental |
+| `CustomerID`, `BillToID`, `BusPartnerKey` | `1023495` | ○ | |
+| `CompanyID` / `CompanyName` | `MAT` / `Armacero Matco S.A.` | ○ | |
+| `RegionID` / `RegionName` | `METRO` / `Metropolitana…` | ○ | útil si algún día se filtra por zona |
+| `SalesLocID`, `BillingLocID`, `DetailingLocID` | `SCL` | ○ | |
+| `Detailer` / `DetailerName` | (vacío en la muestra) | ○ | el cubicador asignado en aSa |
+| `Created` / `CreatedBy` / `LastModifiedBy` | `HMONDACA` | ○ | |
+| `WeightStandard` / `WeightCalcID` | `Kgs` / `T` | ○ | |
+| `BldgCodeID` / `BldgCodeDescr` | `ACI` | ○ | |
+| `JobCustomFieldsUsed` | lista | ○ | **campos personalizados del job.** Candidato a guardar la Key de ArmaHub |
+| `ProjStartDate` / `ProjEndDate` | null | ○ | |
+| `CurrencyID`, `CreditLimit`, `RetntPct`, `TaxOnCost`… | | ✖ | condiciones comerciales |
+| `PrimaryContact*`, `PrimaryPhone*`, `PrimaryEmail*` | | ✖ | **datos de una persona** |
+| `PrimaryAddr*`, `ShipAddr*`, `PrimaryJobAddr`, `ShipToID` | | ✖ | direcciones |
+
+**`$select` en uso** (el que aplica `programacion.py`):
+
+```
+JobID,JobKey,JobName,CustomerName,JobStatusID,JobStatusDescr,DetailingLocName,LastModified
+```
+
+Ocho columnas de 131, **ninguna personal** — verificado por el test.
+
+---
+
 ## Pendientes de documentar
 
-- `getJobData` — las obras. Hace falta para poder programar una obra que todavía no tiene
-  ningún pedido en aSa.
 - `getShippingTickets` — si `ShipID` de Scheduling no basta.
+- `JobCustomFieldsUsed` — ver qué campos personalizados existen; podría ser el lugar
+  natural para estampar la Key de ArmaHub en el job.
