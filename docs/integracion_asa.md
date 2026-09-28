@@ -76,33 +76,44 @@ _(pendiente: código de control, obra, fecha, kilos. Nada más.)_
 
 ## 3. Los tres cuidados que puso el usuario
 
-### 3.1 No reventar aSa
+### 3.1 No reventar aSa — el espejo diario
 
-Reglas de diseño, en orden de importancia:
+**Decisión del usuario (28-sep), y es mejor que la alternativa.** No se consulta aSa cada
+vez que alguien busca. Se trae la data **una vez al día** a una tabla espejo en Supabase
+(el "cubo"), y todas las pantallas de ArmaHub leen de ahí.
 
-1. **aSa nunca se consulta al cargar una pantalla.** Sólo cuando el usuario escribe en el
-   buscador y aprieta. Cero polling, cero sincronización masiva, cero job nocturno
-   mientras no haga falta.
-2. **Se pide filtrado y acotado.** El buscador manda el texto a aSa y pide un tope (20–50
-   resultados). Nunca "tráeme todas las obras".
-3. **Lo que se trae se guarda.** Una obra se consulta una vez; después vive en Supabase y
-   nadie vuelve a molestar a aSa por ella. Refrescar es una acción explícita.
-4. **Timeout corto y sin reintentos ciegos.** 10 s; si aSa no contesta, el buscador dice
-   "aSa no respondió" y no vuelve a golpear. Un 4xx nunca se reintenta.
-5. **Debounce en el buscador**: no se dispara por cada tecla, sino cuando el usuario
-   deja de escribir (~400 ms) y con mínimo 3 caracteres.
+|  | buscador contra aSa en vivo | espejo diario ← ELEGIDO |
+|---|---|---|
+| Velocidad del buscador | 1–3 s por búsqueda | instantáneo (es una query local) |
+| Carga sobre aSa | impredecible, cada tecla | 1 vez, en horario muerto |
+| Si aSa se cae o cambia IP | el buscador no sirve | ArmaHub sigue andando con lo de ayer |
+| Data desactualizada | no | hasta 24 h — irrelevante para obras |
 
-Con esto, el volumen es del orden de **decenas de consultas al día**, no miles.
+El "delay de traer todo de una" deja de importar porque **nadie está mirando la pantalla**
+cuando corre el job. La latencia sólo molesta cuando hay un humano esperando.
+
+Reglas que se mantienen:
+
+1. **Cero consultas a aSa desde una pantalla.** Ninguna petición de usuario toca aSa.
+   La única excepción es un botón explícito "Refrescar ahora" para cuando se creó una obra
+   hoy y no se quiere esperar al job.
+2. **Timeout y sin reintentos ciegos.** Si aSa no contesta, el job falla, lo dice en el
+   log y el espejo se queda con lo de ayer. Un 4xx nunca se reintenta.
+3. **Se guardan sólo los campos de la sección 2**, no el JSON completo.
+4. **Se avisa a aSa.** Render sale por IPs fijas de datacenter, no por la red de Armacero.
+   Si aSa tiene lista blanca de IPs nos bloquea, y si vigila el uso de la key puede
+   levantar una alerta al verla desde un lugar nuevo. Hay que avisarles la IP y la
+   frecuencia **antes** de encender el job, no después.
 
 ### 3.2 No reventar Render
 
-El riesgo real no es el volumen, es el **bloqueo**: la llamada a aSa ocurre dentro de una
-petición web, así que si aSa se demora, el worker de Render queda ocupado. Por eso el
-timeout corto es tan importante como el punto anterior.
+Con el espejo, el riesgo del worker bloqueado desaparece: ninguna petición de usuario
+espera a aSa. Queda sólo la pregunta de **cómo se dispara el job diario** — Render Cron
+Job (servicio aparte) o un endpoint protegido por token que llame un cron externo. Se
+decide cuando sepamos si Render alcanza a aSa; antes es teoría.
 
-Lo demás es cómodo: se guardan sólo los campos de la tabla de arriba, no el JSON completo;
-no se pagina en memoria; no se sube ningún archivo. Supabase ni se entera — hoy
-`sector_estado` tiene 435 filas y `barras` decenas de miles.
+El volumen no es tema: unas cientos de obras y sus cubicaciones. Hoy `barras` tiene
+decenas de miles de filas y Supabase ni se despeina.
 
 **Lo que sí hay que verificar antes de codear:** que Render **pueda alcanzar** aSa. Si la
 API vive dentro de la red corporativa de Armacero (que es lo normal cuando Power BI la
@@ -139,23 +150,31 @@ sobre esto**. Vale la pena preguntarlo antes de pedir la key.
 Tienen que poder programarse igual. Y cuando después esa obra se cree en ArmaHub (o ya
 exista con otro nombre), debe poder enlazarse sin perder la programación hecha.
 
-**Diseño propuesto** — el mínimo que resuelve las dos cosas:
+**Diseño: dos capas.** El espejo por un lado, las obras adoptadas por otro. Esto sale
+directo de cómo lo planteó el usuario: *"un listado vacío al cual podamos poblar con un
+buscador que busque en este cubo de datos de aSa"*.
 
-- La obra traída de aSa entra a la tabla `proyectos` **normal**, con dos campos nuevos:
-  `asa_id` (el identificador en aSa) y `origen='asa'`. No es una tabla aparte: es una obra
-  de Armacero como cualquier otra, sólo que todavía sin barras. Hoy `proyectos` ya tiene 37
-  filas y `sector_estado` sólo 18 obras — obras sin despiece ya son la norma, no una
-  excepción que haya que inventar.
-- `asa_id` es **el campo de enlace** que pidió el usuario ("un campo Key para que las
-  importaciones a aSa guarden ese dato"). Homologar más adelante = escribir el `asa_id` en
-  la obra de ArmaHub que corresponda. Una línea, sin migrar nada.
-- Si la misma obra ya existía en ArmaHub con otro nombre, `proyecto_aliases` (tabla que ya
-  existe, con `alias` / `id_proyecto`, y hoy casi vacía) es donde se registra el alias sin
-  duplicar la obra.
+- **`asa_obras`** — el espejo. TODO lo que aSa tiene, refrescado a diario. Es data cruda:
+  nadie la ve en la interfaz salvo a través del buscador. Campos: `asa_id` (PK), nombre,
+  cliente, estado, `visto_el`.
+- **`proyectos`** — sólo las obras que el usuario **adopta** desde el buscador. Se le
+  agregan `asa_id` y `origen='asa'`. Es una obra de Armacero normal, sólo que todavía sin
+  barras (hoy `proyectos` ya tiene 37 filas y `sector_estado` sólo 18 obras: obras sin
+  despiece ya son la norma).
+
+Por qué dos capas y no volcar el espejo directo a `proyectos`: aSa tiene cientos de obras
+y `proyectos` alimenta el selector de obras de **toda** la plataforma. Volcarlo lo
+ensuciaría para todos. Con el espejo aparte, las obras entran de a una, cuando el usuario
+decide.
+
+Sobre el enlace:
+
+- `asa_id` es **el campo Key** que pidió el usuario ("un campo Key para que las
+  importaciones a aSa guarden ese dato"). Homologar más adelante una obra que ya existía en
+  ArmaHub = escribirle su `asa_id`. Una línea, sin migrar nada.
+- Si la misma obra existe con otro nombre, `proyecto_aliases` (ya existe, con
+  `alias` / `id_proyecto`, hoy casi vacía) registra el alias sin duplicar la obra.
 - La tarea de programación sigue apuntando a `id_proyecto`. No cambia nada del módulo.
-
-Lo que **no** se hace: una tabla `obras_asa` paralela. Duplicaría el selector de obras, los
-permisos y las consultas, y el día de la homologación habría que fusionar dos mundos.
 
 ### 4.2 El código de control (CC) de las cubicaciones hechas en aSa
 
@@ -183,11 +202,17 @@ de ADetailer, qué de ArmaHub y qué se cubica directo en aSa. El CC es ese cruc
 
 | # | Paso | Depende de |
 |---|---|---|
-| 0 | Probar desde el shell de Render que aSa es alcanzable | la URL |
+| 0 | Probar desde el shell de Render que aSa es alcanzable (y avisarle a aSa) | la URL |
 | 1 | Cargar las variables en Render | la key |
-| 2 | Cliente HTTP `armahub/asa.py`: una función de búsqueda, con timeout y tope | 0 y 1 |
-| 3 | Campos `asa_id` / `origen` en `proyectos` + buscador de obras en Programación | 2 |
-| 4 | Campos `asa_cc*` en `tareas_programacion` + buscador de CC | 2 |
-| 5 | Toneladas reales desde aSa para las tareas con CC | 4 |
+| 2 | Cliente HTTP `armahub/asa.py`: leer un endpoint, con timeout | 0 y 1 |
+| 3 | Tabla espejo `asa_obras` + job de refresco diario + botón "Refrescar ahora" | 2 |
+| 4 | Campos `asa_id` / `origen` en `proyectos` + buscador contra el espejo | 3 |
+| 5 | Espejo de cubicaciones + `asa_cc*` en `tareas_programacion` + buscador de CC | 3 |
+| 6 | Toneladas reales desde aSa para las tareas con CC | 5 |
 
-Los pasos 3 y 4 son independientes entre sí. Nada de esto arranca antes del paso 0.
+Los pasos 4 y 5 son independientes entre sí. Nada de esto arranca antes del paso 0: si
+Render no alcanza a aSa, la integración no existe y hay que hablar con TI (VPN, publicar
+la API, o un puente).
+
+**Pendiente de decidir:** cómo se dispara el job diario (Render Cron Job vs. endpoint con
+token llamado por un cron externo). Se define en el paso 3.
