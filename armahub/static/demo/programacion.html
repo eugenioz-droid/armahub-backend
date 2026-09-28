@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Programación de Cubicaciones</title>
+<!--
+  MAQUETA VISUAL — SIN LÓGICA (28-sep). Página suelta para MIRAR y comentar, como
+  /static/demo/grilla_despiece.html y config_modelador.html: no guarda, no toca la base,
+  no existe ningún backend detrás.
+
+  QUÉ ES REAL: las 18 obras, los 435 frentes (obra·sector·piso·ciclo, de `sector_estado`),
+  su estado en ArmaHub y los kilos ya cubicados (de `barras`). Salen de programacion_datos.json.
+  QUÉ ES DE EJEMPLO: la asignación USC↔obra, el cubicador de cada frente y todas las fechas.
+  Nada de eso existe todavía en la base — es justamente lo que este módulo vendría a guardar.
+  Los USC tampoco existen como usuarios: van con las iniciales de la planilla actual.
+
+  LA IDEA QUE ORDENA TODO: hoy cinco USC arman cinco planillas sin hablarse, un cubicador las
+  consolida a mano cada semana y saca lo cubicado de aSa a mano. El módulo no automatiza esa
+  consolidación: hace que no exista. Y como el departamento ya cumple, la medición deja de
+  apuntar al cubicador y pasa a medir la PLANIFICACIÓN: cuántas veces se pide fuera de plazo.
+-->
+<style>
+  :root{
+    --ln:#e3e8ef; --mut:#6b7a8d; --tx:#1f2a37; --bg:#f5f7fa; --card:#fff;
+    --verde:#8BC34A; --verde-os:#33691e; --amb:#f9a825; --rojo:#c62828; --azul:#1565c0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--ln);padding:14px 20px}
+  header h1{margin:0;font-size:17px}
+  header p{margin:5px 0 0;color:var(--mut);font-size:12px;max-width:1000px}
+  .maqueta{display:inline-block;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;
+           border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
+  .tabs{display:flex;gap:2px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--ln)}
+  .tabs button{border:0;background:transparent;padding:11px 16px;font:inherit;color:var(--mut);
+               cursor:pointer;border-bottom:2px solid transparent;font-weight:600}
+  .tabs button.on{color:var(--verde-os);border-bottom-color:var(--verde);background:#f7faf3}
+  main{padding:18px 20px 70px}
+  section{display:none} section.on{display:block}
+  .card{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+  .card h2{margin:0 0 3px;font-size:15px}
+  .card .sub{color:var(--mut);font-size:12px;margin:0 0 12px}
+  .fila{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+  .campo{display:flex;flex-direction:column;gap:3px}
+  .campo label{font-size:11px;color:var(--mut);font-weight:700}
+  select,input[type=date],input[type=text]{font:inherit;font-size:13px;padding:5px 8px;
+    border:1px solid #cfd8dc;border-radius:5px;background:#fff;color:var(--tx)}
+  button.acc{font:inherit;font-size:12px;font-weight:600;padding:6px 14px;border:none;border-radius:5px;
+             background:var(--verde);color:#fff;cursor:pointer}
+  button.acc.sec{background:#fff;color:#546e7a;border:1px solid #cfd8dc}
+  table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+  th{text-align:left;color:#546e7a;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--ln);white-space:nowrap}
+  td{padding:5px 8px;border-top:1px solid #edf0f3}
+  tbody tr:nth-child(even) td{background:#fafbfc}
+  .num{text-align:right}
+  .pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap}
+  .pend{background:#eceff1;color:#546e7a} .expo{background:#e8f5e9;color:#2e7d32}
+  .modi{background:#fff3e0;color:#e65100}
+  .usc{display:inline-block;width:22px;height:22px;line-height:22px;border-radius:50%;text-align:center;
+       font-size:10px;font-weight:700;color:#fff}
+  .mini{color:var(--mut);font-size:11px}
+  .aviso{margin-top:10px;padding:9px 12px;border-radius:6px;font-size:12px;display:none}
+  .aviso.plazo{background:#fff8e1;border:1px solid #ffe082;color:#8d6e00;display:block}
+  .aviso.ok{background:#f1f8e9;border:1px solid #c5e1a5;color:#33691e;display:block}
+  /* ── tablero de carga ── */
+  .board{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+  .board th{background:#fafbfc;border-bottom:1px solid var(--ln);text-align:center;padding:7px 6px}
+  .board th.q{text-align:left;width:150px}
+  .board td{border:1px solid #edf0f3;vertical-align:top;padding:5px;height:74px;width:calc((100% - 150px)/5)}
+  .board td.hoy{background:#fbfdf8}
+  .board .cel{display:flex;flex-direction:column;gap:3px}
+  .chip{display:block;border-radius:4px;padding:2px 6px;font-size:10.5px;color:#fff;font-weight:600;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+  .chip.tarde{box-shadow:inset 0 0 0 2px var(--amb)}
+  .quien{display:flex;align-items:center;gap:7px;font-weight:600}
+  .carga{font-size:10px;color:var(--mut);font-weight:400}
+  .choque{outline:2px solid var(--rojo);outline-offset:-2px;background:#fff5f5 !important}
+  .choque .aviso-ch{display:block;font-size:10px;color:var(--rojo);font-weight:700;margin-bottom:2px}
+  .aviso-ch{display:none}
+  .leyenda{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:11px;color:var(--mut)}
+  /* ── KPIs ── */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:6px}
+  .kpi{border:1px solid var(--ln);border-radius:8px;padding:11px 13px;background:#fff}
+  .kpi .n{font-size:24px;font-weight:700;line-height:1.1}
+  .kpi .t{font-size:11px;color:var(--mut);margin-top:2px}
+  .kpi.bien .n{color:#2e7d32} .kpi.ojo .n{color:#e65100} .kpi.mal .n{color:var(--rojo)}
+  .barra{height:8px;background:#eceff1;border-radius:99px;overflow:hidden;margin-top:6px}
+  .barra i{display:block;height:100%;border-radius:99px}
+  .nota{margin-top:12px;padding:9px 12px;background:#fffde7;border:1px solid #fff59d;border-radius:6px;
+        font-size:12px;color:#5d4037}
+  ul.razon{margin:10px 0 0;padding:0;list-style:none;display:grid;
+           grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:7px 18px}
+  ul.razon li{display:flex;gap:9px;font-size:12px;color:#37474f;line-height:1.4}
+  ul.razon b.n{flex:none;width:19px;height:19px;border-radius:50%;background:var(--verde);color:#fff;
+               font-size:10.5px;display:inline-flex;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Programación de Cubicaciones <span class="maqueta">MAQUETA · sin lógica</span></h1>
+  <p id="intro">Cargando…</p>
+</header>
+<div class="tabs" id="tabs">
+  <button data-v="programar" class="on">Programar <span class="mini">· USC</span></button>
+  <button data-v="carga">Carga semanal <span class="mini">· el choque</span></button>
+  <button data-v="mio">Mi programa <span class="mini">· cubicador</span></button>
+  <button data-v="cumpl">Cumplimiento</button>
+</div>
+<main>
+
+  <!-- ═══════════ 1 · PROGRAMAR ═══════════ -->
+  <section id="s-programar" class="on">
+    <div class="card">
+      <h2>Pedir un frente</h2>
+      <p class="sub">El USC elige la obra, el frente y <b>cuándo lo necesita en obra</b>. La fecha en que
+        debe estar cubicado se calcula sola (10 días hábiles antes) y se puede corregir. Mientras elige,
+        ve la carga del cubicador y si está pidiendo fuera de plazo.</p>
+      <div class="fila">
+        <div class="campo" style="min-width:280px"><label>Obra</label><select id="selObra"></select></div>
+        <div class="campo" style="min-width:230px"><label>Frente</label><select id="selFrente"></select></div>
+        <div class="campo"><label>Cubicador</label><select id="selCub"></select></div>
+        <div class="campo"><label>Necesario en obra</label><input type="date" id="fObra"></div>
+        <div class="campo"><label>Debe estar cubicado</label><input type="date" id="fCub" disabled></div>
+        <div class="campo"><label>Ton estimadas <span style="font-weight:400">(opc.)</span></label>
+          <input type="text" id="ton" style="width:80px" placeholder="—"></div>
+        <button class="acc" id="btnProg">Programar</button>
+      </div>
+      <div class="aviso" id="avisoPlazo"></div>
+      <div id="cargaCub" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Frentes de la obra <span class="mini" id="cntFrentes"></span></h2>
+      <p class="sub">Los frentes <b>ya existen</b>: ArmaHub los conoce desde que se cubica. Nadie los teclea.
+        Para obras de infraestructura, que no tienen estos sectores, se agrega un frente con nombre libre
+        («Pedido N°1», «Estribo muro sur»).</p>
+      <div class="fila" style="margin-bottom:8px">
+        <div class="campo"><label>Agregar frente libre</label><input type="text" id="libre" placeholder="Ej: Pedido N°1" style="width:220px"></div>
+        <button class="acc sec" id="btnLibre">＋ agregar</button>
+      </div>
+      <table id="tFrentes"></table>
+    </div>
+  </section>
+
+  <!-- ═══════════ 2 · CARGA SEMANAL ═══════════ -->
+  <section id="s-carga">
+    <div class="card">
+      <h2>Carga de la semana <span class="mini" id="rotSemana"></span></h2>
+      <p class="sub">Esto es lo que hoy no existe: los cinco USC piden por separado y nadie ve el total
+        hasta que alguien junta las cinco planillas el viernes. Aquí se ve <b>mientras se pide</b>.
+        Cada chip es un frente, con el color del USC que lo pidió.</p>
+      <table class="board" id="board"></table>
+      <div class="leyenda" id="leyenda"></div>
+      <div class="nota">El día marcado en rojo tiene <b>tres o más frentes de USC distintos</b> sobre el
+        mismo cubicador. No lo bloquea —a veces hay que atender igual— pero deja de ser invisible, y el
+        que lo provoca lo ve en el momento de pedirlo.</div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 3 · MI PROGRAMA ═══════════ -->
+  <section id="s-mio">
+    <div class="card">
+      <h2>Mi programa <span class="mini">— lo que ve el cubicador</span></h2>
+      <p class="sub">Sin planilla, sin consolidar, sin copiar de aSa. Lo atrasado arriba. En obras que se
+        cubican en ArmaHub el «cubicado» se marca solo; en las demás, a mano.</p>
+      <div class="fila">
+        <div class="campo"><label>Cubicador</label><select id="selMio"></select></div>
+      </div>
+      <table id="tMio"></table>
+    </div>
+  </section>
+
+  <!-- ═══════════ 4 · CUMPLIMIENTO ═══════════ -->
+  <section id="s-cumpl">
+    <div class="card">
+      <h2>Las dos mediciones, con los mismos datos</h2>
+      <p class="sub">La de hoy (toneladas) y la nueva (tareas entregadas a tiempo), lado a lado. Así se
+        puede comparar si programar por tarea es mejor <b>sin mantener la planilla en paralelo</b>.</p>
+      <div class="kpis" id="kpis"></div>
+    </div>
+    <div class="card">
+      <h2>Lo que hoy nadie mide: pedidos fuera de plazo, por USC</h2>
+      <p class="sub">El departamento cumple —eso ya se sabe—. Lo que no está medido es cuántas veces se
+        pide con menos de los 10 días hábiles. Se atiende igual, porque es servicio. Pero queda el registro,
+        y la responsabilidad queda donde se toma la decisión.</p>
+      <table id="tUsc"></table>
+      <div class="nota">Nada de esto bloquea a nadie. Un pedido fuera de plazo entra igual: lo único que
+        cambia es que <b>queda contado</b>.</div>
+    </div>
+  </section>
+
+  <div class="card">
+    <h2>Por qué así</h2>
+    <ul class="razon">
+      <li><b class="n">1</b><span><b>La consolidación no se automatiza: desaparece.</b> Si los cinco USC piden en el mismo lugar, no hay cinco planillas que juntar ni un cubicador haciendo de secretario cada semana.</span></li>
+      <li><b class="n">2</b><span><b>El frente es el compromiso; la tonelada, el resultado.</b> No se puede comprometer un número que solo existe después de cubicar. La tonelada estimada queda opcional, y la real la pone ArmaHub.</span></li>
+      <li><b class="n">3</b><span><b>El choque se ve al pedir, no el viernes.</b> Es la única forma de que cinco personas que no se coordinan entre sí queden coordinadas por el sistema.</span></li>
+      <li><b class="n">4</b><span><b>Los frentes ya existen.</b> 435 en 18 obras, con su estado. No hay que teclear un catálogo: se lee el que ArmaHub ya tiene.</span></li>
+      <li><b class="n">5</b><span><b>Las obras que no se cubican acá caben igual.</b> Se crean a mano, con frentes de nombre libre, y su avance se marca a mano hasta que exista el enlace con aSa.</span></li>
+      <li><b class="n">6</b><span><b>Cada obra dice de dónde sale su acero</b> (ArmaHub · ADetailer · directo en aSa) y si es cubicación o digitación. Es lo que después permite cruzar con aSa enlazando la obra una sola vez.</span></li>
+    </ul>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+
+  // ── USC de ejemplo: las iniciales de la planilla actual. NO existen como usuarios todavía ──
+  var USCS = [
+    { ini:'DI', nombre:'USC · DI', color:'#1565c0' },
+    { ini:'AT', nombre:'USC · AT', color:'#6a1b9a' },
+    { ini:'OO', nombre:'USC · OO', color:'#00838f' },
+    { ini:'GM', nombre:'Gerardo Mendoza', color:'#ad1457' }
+  ];
+  var TIPOS_OBRA = ['Cubicación','Digitación'];
+  var ORIGENES   = ['ArmaHub','ADetailer','Directo en aSa'];
+  var HOY = new Date(2026,8,28);           // lunes 28-sep-2026 (las pestañas de la planilla son lunes)
+  var LEAD = 10;                           // días hábiles entre "cubicado" y "en obra"
+
+  // ── fechas: sólo lunes a viernes (sin feriados, por ahora) ──
+  function habil(d){ var x=d.getDay(); return x>=1 && x<=5; }
+  function sumaHabiles(desde, n){
+    var d=new Date(desde.getTime()), paso=(n<0?-1:1), q=Math.abs(n);
+    while(q>0){ d.setDate(d.getDate()+paso); if(habil(d)) q--; }
+    return d;
+  }
+  function habilesEntre(a,b){
+    var d=new Date(a.getTime()), n=0, paso=(b>=a?1:-1);
+    while((paso>0 && d<b) || (paso<0 && d>b)){ d.setDate(d.getDate()+paso); if(habil(d)) n+=paso; }
+    return n;
+  }
+  function iso(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function corta(d){ return ('0'+d.getDate()).slice(-2)+'-'+['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()]; }
+  var DIAS=['lun','mar','mié','jue','vie'];
+  var SEMANA=[0,1,2,3,4].map(function(i){ var d=new Date(HOY.getTime()); d.setDate(d.getDate()+i); return d; });
+
+  // ── pseudoaleatorio determinista: la maqueta se ve igual cada vez que se abre ──
+  function hash(s){ var h=2166136261; for(var i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0); }
+  function elige(lista, semilla){ return lista[hash(semilla)%lista.length]; }
+
+  var D=null, OBRAS=[], PROG=[], CUBS=[];
+
+  fetch('programacion_datos.json').then(function(r){ return r.json(); }).then(function(datos){
+    D=datos;
+    CUBS=D.cubicadores.filter(function(c){ return c.ini!=='GM'; });   // GM quedó del lado USC
+    // Obras: se les cuelga USC responsable, cubicador responsable, tipo y origen (de ejemplo).
+    var porObra={};
+    D.frentes.forEach(function(f){
+      if(!porObra[f.obra]) porObra[f.obra]={ obra:f.obra, id:f.id_proyecto, frentes:[],
+        usc:elige(USCS,'u'+f.obra), cub:elige(CUBS,'c'+f.obra),
+        tipo:elige(TIPOS_OBRA,'t'+f.obra), origen:elige(ORIGENES,'o'+f.obra) };
+      porObra[f.obra].frentes.push(f);
+    });
+    OBRAS=Object.keys(porObra).map(function(k){ return porObra[k]; })
+      .sort(function(a,b){ return b.frentes.length-a.frentes.length; });
+
+    // PROGRAMA DE EJEMPLO de la semana: se toman frentes que aún no están al día
+    // ('pendiente' o 'modificado'), repartidos entre los cubicadores y los cinco días.
+    var candidatos=[];
+    OBRAS.forEach(function(o){ o.frentes.forEach(function(f){
+      if(f.estado!=='exportado') candidatos.push({ o:o, f:f });
+    }); });
+    candidatos.sort(function(a,b){ return hash(a.f.obra+a.f.sector+a.f.piso+a.f.ciclo) - hash(b.f.obra+b.f.sector+b.f.piso+b.f.ciclo); });
+    candidatos.slice(0,34).forEach(function(c,i){
+      var k=c.f.obra+c.f.sector+c.f.piso+c.f.ciclo;
+      var dia=SEMANA[hash('d'+k)%5];
+      // Uno de cada cinco se pidió FUERA DE PLAZO: la obra lo necesita antes de lo que alcanza.
+      var tarde=(hash('t'+k)%5===0);
+      var fObra=sumaHabiles(dia, tarde ? (2+hash('x'+k)%4) : LEAD);
+      // El cubicador es el responsable de la obra, salvo algunos que se reparten (trabajo en equipo).
+      var cub=(hash('m'+k)%4===0) ? elige(CUBS,'mix'+k) : c.o.cub;
+      PROG.push({ obra:c.o, f:c.f, cub:cub, dia:dia, fObra:fObra, tarde:tarde,
+                  ton:Math.round((3+hash('w'+k)%22)*10)/10,
+                  hecho:(hash('h'+k)%3!==0), atraso:(hash('a'+k)%7===0) });
+    });
+
+    $('intro').innerHTML = '<b>'+D.frentes.length+' frentes reales</b> en '+OBRAS.length+' obras, con su estado en ArmaHub y los kilos ya cubicados — todo de la base. '+
+      'Los cubicadores también son los de verdad ('+CUBS.map(function(c){return c.ini;}).join(' · ')+'). '+
+      '<b>Las fechas, los USC y quién hace qué son de ejemplo</b>: nada de eso existe hoy, y es justo lo que este módulo guardaría. Semana del '+corta(SEMANA[0])+' al '+corta(SEMANA[4])+'.';
+
+    pintarObras(); pintarBoard(); pintarMio(); pintarCumpl();
+  }).catch(function(e){
+    $('intro').textContent='No se pudo leer programacion_datos.json ('+e.message+'). Abre la página desde la app (/static/demo/…).';
+  });
+
+  // ══════════════ 1 · PROGRAMAR ══════════════
+  function pintarObras(){
+    $('selObra').innerHTML = OBRAS.map(function(o,i){
+      return '<option value="'+i+'">'+esc(o.obra)+' ('+o.frentes.length+')</option>'; }).join('');
+    $('selCub').innerHTML = CUBS.map(function(c){ return '<option>'+esc(c.quien)+'</option>'; }).join('');
+    $('selMio').innerHTML = CUBS.map(function(c){ return '<option>'+esc(c.quien)+'</option>'; }).join('');
+    $('fObra').value = iso(sumaHabiles(HOY, LEAD+2));
+    $('selObra').addEventListener('change', pintarFrentes);
+    $('fObra').addEventListener('change', recalc);
+    $('selCub').addEventListener('change', recalc);
+    $('selMio').addEventListener('change', pintarMio);
+    $('btnProg').addEventListener('click', function(){
+      var a=$('avisoPlazo'); a.className='aviso ok';
+      a.innerHTML='✓ Quedaría programado. <span class="mini">(Maqueta: no guarda nada.)</span>';
+    });
+    $('btnLibre').addEventListener('click', function(){
+      var v=$('libre').value.trim(); if(!v) return;
+      var o=OBRAS[Number($('selObra').value)];
+      o.frentes.unshift({ obra:o.obra, id_proyecto:o.id, sector:'—', piso:'—', ciclo:v,
+                          estado:'pendiente', kg:0, despieces:0, libre:true });
+      $('libre').value=''; pintarFrentes();
+    });
+    pintarFrentes();
+  }
+  function pintarFrentes(){
+    var o=OBRAS[Number($('selObra').value)];
+    $('selFrente').innerHTML = o.frentes.slice(0,60).map(function(f,i){
+      return '<option value="'+i+'">'+esc(f.libre ? f.ciclo : (f.sector+' · '+f.piso+' · '+f.ciclo))+'</option>'; }).join('');
+    $('cntFrentes').textContent = '· '+o.frentes.length+' · '+esc(o.tipo)+' · acero de '+esc(o.origen)+
+      ' · USC '+esc(o.usc.ini)+' · responsable '+esc(o.cub.quien);
+    var filas=o.frentes.slice(0,14).map(function(f){
+      var cls=f.estado==='exportado'?'expo':(f.estado==='modificado'?'modi':'pend');
+      var txt=f.estado==='exportado'?'al día':(f.estado==='modificado'?'cambió tras exportar':'sin exportar');
+      return '<tr><td>'+esc(f.libre?f.ciclo:f.sector)+'</td><td>'+esc(f.libre?'—':f.piso)+'</td><td>'+esc(f.libre?'—':f.ciclo)+'</td>'+
+        '<td><span class="pill '+cls+'">'+txt+'</span></td>'+
+        '<td class="num">'+(f.kg>0?(f.kg/1000).toFixed(1):'—')+'</td>'+
+        '<td class="num mini">'+(f.despieces||'—')+'</td></tr>';
+    }).join('');
+    $('tFrentes').innerHTML='<thead><tr><th>Sector</th><th>Piso</th><th>Ciclo</th><th>Estado en ArmaHub</th>'+
+      '<th class="num">Ton cubicadas</th><th class="num">Despieces</th></tr></thead><tbody>'+filas+'</tbody>'+
+      (o.frentes.length>14?'<tfoot><tr><td colspan="6" class="mini">… y '+(o.frentes.length-14)+' frentes más</td></tr></tfoot>':'');
+    recalc();
+  }
+  function recalc(){
+    var fo=$('fObra').value; if(!fo) return;
+    var p=fo.split('-'), dObra=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));
+    var dCub=sumaHabiles(dObra,-LEAD);
+    $('fCub').value=iso(dCub);
+    var margen=habilesEntre(HOY,dCub);
+    var a=$('avisoPlazo');
+    if (margen<0){
+      a.className='aviso plazo';
+      a.innerHTML='⚠ <b>Fuera de plazo.</b> Para estar en obra el '+corta(dObra)+' habría que haberlo cubicado el '+
+        corta(dCub)+', que ya pasó. <b>Se atiende igual</b>, pero queda registrado como pedido fuera de plazo de este USC.';
+    } else if (margen<3){
+      a.className='aviso plazo';
+      a.innerHTML='⚠ <b>Al límite:</b> quedan '+margen+' día(s) hábil(es) para cubicarlo. El estándar son '+LEAD+' antes de la fecha en obra.';
+    } else { a.className='aviso'; a.innerHTML=''; }
+    // Carga del cubicador elegido en la semana de la fecha comprometida
+    var cub=$('selCub').value;
+    var mismos=PROG.filter(function(x){ return x.cub.quien===cub; });
+    var porDia=SEMANA.map(function(d){ return mismos.filter(function(x){ return x.dia.getTime()===d.getTime(); }); });
+    $('cargaCub').innerHTML='<div class="mini" style="margin-bottom:5px"><b>'+esc(cub)+'</b> esta semana:</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+SEMANA.map(function(d,i){
+        var n=porDia[i].length, uscs={}; porDia[i].forEach(function(x){ uscs[x.obra.usc.ini]=1; });
+        var choque=(n>=3 && Object.keys(uscs).length>=2);
+        return '<div style="border:1px solid '+(choque?'#ef9a9a':'#e0e0e0')+';background:'+(choque?'#fff5f5':'#fff')+
+          ';border-radius:6px;padding:5px 10px;min-width:74px;text-align:center">'+
+          '<div class="mini">'+DIAS[i]+' '+corta(d)+'</div>'+
+          '<div style="font-size:16px;font-weight:700;color:'+(choque?'#c62828':'#37474f')+'">'+n+'</div>'+
+          '<div class="mini">'+Object.keys(uscs).join(' ')+'</div></div>';
+      }).join('')+'</div>';
+  }
+
+  // ══════════════ 2 · CARGA SEMANAL ══════════════
+  function pintarBoard(){
+    $('rotSemana').textContent='· '+corta(SEMANA[0])+' al '+corta(SEMANA[4])+' de 2026';
+    var h='<thead><tr><th class="q">Cubicador</th>'+SEMANA.map(function(d,i){
+      return '<th>'+DIAS[i]+'<div class="mini" style="font-weight:400">'+corta(d)+'</div></th>'; }).join('')+'</tr></thead><tbody>';
+    CUBS.forEach(function(c){
+      var mios=PROG.filter(function(x){ return x.cub.quien===c.quien; });
+      h+='<tr><td style="vertical-align:middle"><div class="quien">'+esc(c.quien)+'</div>'+
+         '<div class="carga">'+mios.length+' frentes · '+mios.reduce(function(s,x){return s+x.ton;},0).toFixed(1)+' t est.</div></td>';
+      SEMANA.forEach(function(d,i){
+        var deldia=mios.filter(function(x){ return x.dia.getTime()===d.getTime(); });
+        var uscs={}; deldia.forEach(function(x){ uscs[x.obra.usc.ini]=1; });
+        var choque=(deldia.length>=3 && Object.keys(uscs).length>=2);
+        h+='<td class="'+(choque?'choque':'')+(i===0?' hoy':'')+'">'+
+           (choque?'<span class="aviso-ch">⚠ '+deldia.length+' de '+Object.keys(uscs).length+' USC</span>':'')+
+           '<div class="cel">'+deldia.map(function(x){
+             return '<span class="chip'+(x.tarde?' tarde':'')+'" style="background:'+x.obra.usc.color+'" title="'+
+               esc(x.obra.obra+' · '+x.f.sector+' '+x.f.piso+' '+x.f.ciclo+' — pidió '+x.obra.usc.nombre+
+               (x.tarde?' (FUERA DE PLAZO)':'')+' · '+x.ton+' t est.')+'">'+
+               esc(x.f.sector+' '+x.f.piso+'·'+x.f.ciclo)+'</span>';
+           }).join('')+'</div></td>';
+      });
+      h+='</tr>';
+    });
+    h+='</tbody>';
+    $('board').innerHTML=h;
+    $('leyenda').innerHTML=USCS.map(function(u){
+      return '<span><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:'+u.color+';vertical-align:middle;margin-right:4px"></span>'+esc(u.nombre)+'</span>';
+    }).join('')+'<span><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#fff;box-shadow:inset 0 0 0 2px #f9a825;vertical-align:middle;margin-right:4px"></span>pedido fuera de plazo</span>';
+  }
+
+  // ══════════════ 3 · MI PROGRAMA ══════════════
+  function pintarMio(){
+    var q=$('selMio').value;
+    var mios=PROG.filter(function(x){ return x.cub.quien===q; })
+      .sort(function(a,b){ return (b.atraso?1:0)-(a.atraso?1:0) || a.dia-b.dia; });
+    $('tMio').innerHTML='<thead><tr><th>Debe estar cubicado</th><th>Obra</th><th>Frente</th><th>Pidió</th>'+
+      '<th class="num">Ton est.</th><th>Estado</th><th></th></tr></thead><tbody>'+
+      (mios.length?mios.map(function(x){
+        var est = x.atraso ? '<span class="pill modi">atrasado</span>'
+                : x.hecho ? '<span class="pill expo">cubicado</span>'
+                : '<span class="pill pend">por hacer</span>';
+        return '<tr><td><b>'+DIAS[SEMANA.map(Number).indexOf(Number(x.dia))]+' '+corta(x.dia)+'</b>'+
+          (x.tarde?' <span class="mini" style="color:#e65100">· pedido fuera de plazo</span>':'')+'</td>'+
+          '<td>'+esc(x.obra.obra)+'</td><td>'+esc(x.f.sector+' · '+x.f.piso+' · '+x.f.ciclo)+'</td>'+
+          '<td><span class="usc" style="background:'+x.obra.usc.color+'">'+esc(x.obra.usc.ini)+'</span></td>'+
+          '<td class="num">'+x.ton.toFixed(1)+'</td><td>'+est+'</td>'+
+          '<td class="mini">'+(x.obra.origen==='ArmaHub'?'se marca solo':'<button class="acc sec">marcar cubicado</button>')+'</td></tr>';
+      }).join('') : '<tr><td colspan="7" class="mini">Sin frentes esta semana.</td></tr>')+'</tbody>';
+  }
+
+  // ══════════════ 4 · CUMPLIMIENTO ══════════════
+  function pintarCumpl(){
+    var total=PROG.length, hechos=PROG.filter(function(x){return x.hecho;}).length;
+    var aTiempo=PROG.filter(function(x){return x.hecho && !x.atraso;}).length;
+    var tProg=PROG.reduce(function(s,x){return s+x.ton;},0);
+    var tReal=PROG.reduce(function(s,x){return s+(x.hecho?x.ton*(0.7+(hash('r'+x.f.piso+x.f.ciclo)%80)/100):0);},0);
+    var tarde=PROG.filter(function(x){return x.tarde;}).length;
+    var pct=function(a,b){ return b? Math.round(100*a/b) : 0; };
+    $('kpis').innerHTML=
+      '<div class="kpi bien"><div class="n">'+pct(aTiempo,total)+'%</div><div class="t">Frentes entregados a tiempo<br><span class="mini">'+aTiempo+' de '+total+' — <b>la medición nueva</b></span></div>'+
+        '<div class="barra"><i style="width:'+pct(aTiempo,total)+'%;background:#8BC34A"></i></div></div>'+
+      '<div class="kpi"><div class="n">'+tReal.toFixed(0)+' / '+tProg.toFixed(0)+'</div><div class="t">Toneladas reales vs programadas<br><span class="mini">la medición de hoy — la real la pone ArmaHub</span></div>'+
+        '<div class="barra"><i style="width:'+Math.min(100,pct(tReal,tProg))+'%;background:#1565c0"></i></div></div>'+
+      '<div class="kpi ojo"><div class="n">'+tarde+'</div><div class="t">Pedidos fuera de plazo<br><span class="mini">'+pct(tarde,total)+'% de la semana — <b>lo que hoy nadie mide</b></span></div>'+
+        '<div class="barra"><i style="width:'+pct(tarde,total)+'%;background:#f9a825"></i></div></div>'+
+      '<div class="kpi"><div class="n">'+hechos+'</div><div class="t">Frentes cubicados<br><span class="mini">de '+total+' comprometidos</span></div>'+
+        '<div class="barra"><i style="width:'+pct(hechos,total)+'%;background:#607d8b"></i></div></div>';
+
+    var porUsc=USCS.map(function(u){
+      var suyos=PROG.filter(function(x){ return x.obra.usc.ini===u.ini; });
+      var t=suyos.filter(function(x){ return x.tarde; });
+      return { u:u, n:suyos.length, tarde:t.length, ton:suyos.reduce(function(s,x){return s+x.ton;},0) };
+    }).sort(function(a,b){ return b.tarde-a.tarde; });
+    $('tUsc').innerHTML='<thead><tr><th>USC</th><th class="num">Frentes pedidos</th><th class="num">Ton estimadas</th>'+
+      '<th class="num">Fuera de plazo</th><th style="width:34%">Proporción</th></tr></thead><tbody>'+
+      porUsc.map(function(r){
+        var p=r.n?Math.round(100*r.tarde/r.n):0;
+        return '<tr><td><span class="usc" style="background:'+r.u.color+'">'+esc(r.u.ini)+'</span> '+esc(r.u.nombre)+'</td>'+
+          '<td class="num">'+r.n+'</td><td class="num">'+r.ton.toFixed(1)+'</td>'+
+          '<td class="num"><b style="color:'+(r.tarde?'#e65100':'#2e7d32')+'">'+r.tarde+'</b></td>'+
+          '<td><div class="barra" style="margin:0"><i style="width:'+p+'%;background:'+(p>25?'#e65100':'#f9a825')+'"></i></div>'+
+          '<span class="mini">'+p+'%</span></td></tr>';
+      }).join('')+'</tbody>';
+  }
+
+  // sub-tabs
+  $('tabs').addEventListener('click', function(ev){
+    var b=ev.target.closest('button'); if(!b) return;
+    Array.prototype.forEach.call($('tabs').children, function(x){ x.classList.toggle('on', x===b); });
+    ['programar','carga','mio','cumpl'].forEach(function(v){ $('s-'+v).classList.toggle('on', v===b.getAttribute('data-v')); });
+  });
+})();
+</script>
+</body>
+</html>
