@@ -69,12 +69,16 @@
   }
 
   global.prgSubTab = function (v) {
-    [['usc','prgSubUsc','prgPanelUsc'], ['equipo','prgSubEquipo','prgPanelEquipo'], ['cub','prgSubCub','prgPanelCub']]
+    [['usc','prgSubUsc','prgPanelUsc'], ['obras','prgSubObras','prgPanelObras'],
+     ['equipo','prgSubEquipo','prgPanelEquipo'], ['cub','prgSubCub','prgPanelCub']]
       .forEach(function (t) {
         var on = (t[0] === v), b = $(t[1]), p = $(t[2]);
         if (b) { b.style.borderBottomColor = on ? '#8BC34A' : 'transparent'; b.style.color = on ? '#33691e' : '#aaa'; }
         if (p) p.style.display = on ? '' : 'none';
       });
+    // El tab de Obras se carga al abrirlo, no al cargar el módulo: consulta el estado de
+    // aSa y eso puede tardar. Nadie paga ese costo si no entra a la pestaña.
+    if (v === 'obras' && !OBRAS_CARGADO) cargarObras();
   };
 
   // ── CAJA 1 · obras ───────────────────────────────────────────────────────────
@@ -271,6 +275,191 @@
     $('prgCalMsg').innerHTML = cortas
       ? '<b style="color:#e65100">' + cortas + '</b> tarea(s) de esta semana se programaron con menos de 7 días hábiles de margen.'
       : '';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAB OBRAS · traer de aSa + asignar USC
+  //
+  // El buscador consulta el ESPEJO en Postgres, no aSa. Por eso responde al instante y
+  // sigue sirviendo aunque aSa esté caído. A aSa se le habla sólo al pulsar «Refrescar»
+  // (y, cuando se configure, una vez al día). Ver docs/integracion_asa.md.
+  // ═══════════════════════════════════════════════════════════════════════════
+  var OBRAS_CARGADO = false, ASA = null, USC = [], ASIG = [], BUSCA_T = null;
+
+  async function cargarObras() {
+    OBRAS_CARGADO = true;
+    await Promise.all([cargarEstadoAsa(), cargarAsignacion()]);
+    bindObras();
+    buscarAsa();
+  }
+
+  var _boundObras = false;
+  function bindObras() {
+    if (_boundObras) return; _boundObras = true;
+    $('prgAsaSync').addEventListener('click', sincronizarAsa);
+    // Debounce: no se dispara una consulta por tecla. Aunque la búsqueda sea local, pintar
+    // en cada pulsación hace saltar la lista mientras se escribe.
+    $('prgAsaQ').addEventListener('input', function () {
+      clearTimeout(BUSCA_T); BUSCA_T = setTimeout(buscarAsa, 220);
+    });
+    $('prgSoloSinUsc').addEventListener('change', pintarAsignacion);
+  }
+
+  async function cargarEstadoAsa() {
+    try { ASA = await req('GET', '/programacion/asa/estado'); }
+    catch (e) { ASA = { configurado: false, ok: false, detalle: e.message }; }
+    pintarEstadoAsa();
+  }
+
+  function pintarEstadoAsa() {
+    var chip = $('prgAsaChip'), av = $('prgAsaEstado');
+    if (!ASA) return;
+    var esp = ASA.espejo || {}, n = esp.obras || 0;
+
+    if (!ASA.configurado) {
+      chip.className = 'prgchip sin'; chip.textContent = 'sin configurar';
+      av.className = 'prgaviso';
+      av.innerHTML = 'Falta la credencial de aSa. Se carga como variable de entorno —nunca ' +
+        'en el código—: <code>' + esc((ASA.faltan || []).join('</code>, <code>')) + '</code>.<br>' +
+        'En tu PC van en el archivo <code>.env</code>; en producción, en Render → Environment. ' +
+        'Para probar: <code>python scripts/asa_ping.py</code>';
+      $('prgAsaRes').innerHTML = vacio('El espejo está vacío porque aSa todavía no está conectado.');
+      return;
+    }
+    if (ASA.ok) { chip.className = 'prgchip ok'; chip.textContent = 'conectado'; }
+    else { chip.className = 'prgchip no'; chip.textContent = 'no responde'; }
+
+    var txt = '';
+    if (!ASA.ok) {
+      av.className = 'prgaviso mal';
+      txt = '<b>aSa no contestó.</b> ' + esc(ASA.detalle || '') + '<br>' +
+            'El buscador sigue funcionando con lo último que se trajo.';
+    } else {
+      av.className = 'prgaviso';
+      txt = n ? ('<b>' + n + '</b> obras en el espejo' +
+                 (esp.ultima_sync ? ', traídas el ' + esc(fechaHora(esp.ultima_sync)) : '') + '.')
+              : 'El espejo está vacío. Pulsa <b>↻ Refrescar</b> para traer las obras de aSa.';
+      var ui = esp.ultimo_intento;
+      if (ui && !ui.ok && ui.detalle) txt += '<br><span style="color:#c62828">Último intento falló: ' + esc(ui.detalle) + '</span>';
+    }
+    av.innerHTML = txt;
+  }
+
+  function fechaHora(s) {
+    var d = new Date(s); if (isNaN(d)) return s;
+    return d.getDate() + ' ' + MES[d.getMonth()] + ' ' +
+           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  function vacio(m) { return '<div class="muted" style="padding:16px 8px; font-size:11px; text-align:center;">' + esc(m) + '</div>'; }
+
+  async function sincronizarAsa() {
+    var b = $('prgAsaSync'), antes = b.textContent;
+    b.disabled = true; b.textContent = '↻ consultando aSa…';
+    try {
+      var r = await req('POST', '/programacion/asa/sincronizar');
+      if (global.showToast) global.showToast(r.filas + ' obras leídas de aSa · ' + r.nuevas + ' nuevas', 'success');
+      await cargarEstadoAsa();
+      buscarAsa();
+    } catch (e) {
+      aviso(e.message);
+      await cargarEstadoAsa();
+    } finally { b.disabled = false; b.textContent = antes; }
+  }
+
+  async function buscarAsa() {
+    if (!ASA || !ASA.configurado) return;
+    var q = $('prgAsaQ').value.trim();
+    try {
+      var d = await req('GET', '/programacion/asa/buscar?limite=40&q=' + encodeURIComponent(q));
+      pintarResultados((d && d.resultados) || [], q);
+    } catch (e) { $('prgAsaRes').innerHTML = vacio(e.message); }
+  }
+
+  function pintarResultados(filas, q) {
+    if (!filas.length) {
+      $('prgAsaRes').innerHTML = vacio(q ? 'Ninguna obra coincide con «' + q + '».'
+                                         : 'El espejo está vacío. Pulsa ↻ Refrescar.');
+      return;
+    }
+    $('prgAsaRes').innerHTML = filas.map(function (o) {
+      var sub = [o.asa_job_id, o.cliente].filter(Boolean).join(' · ');
+      return '<div class="prgar">' +
+        '<div class="n"><b>' + esc(o.nombre || o.asa_job_id) + '</b><small>' + esc(sub) + '</small></div>' +
+        (o.adoptada
+          ? '<span class="ya" title="Ya existe en ArmaHub como ' + esc(o.id_proyecto) + '">✓ en ArmaHub</span>'
+          : '<button data-job="' + esc(o.asa_job_id) + '">Traer</button>') +
+        '</div>';
+    }).join('');
+    $('prgAsaRes').querySelectorAll('button[data-job]').forEach(function (b) {
+      b.addEventListener('click', function () { adoptar(b.dataset.job, b); });
+    });
+  }
+
+  async function adoptar(job, boton) {
+    boton.disabled = true;
+    try {
+      var r = await req('POST', '/programacion/asa/adoptar', { asa_job_id: job });
+      if (global.showToast) global.showToast('Obra traída a ArmaHub como ' + r.id_proyecto, 'success');
+      await cargarAsignacion();
+      buscarAsa();
+    } catch (e) { aviso(e.message); boton.disabled = false; }
+  }
+
+  // ── Asignación de USC ────────────────────────────────────────────────────────
+  async function cargarAsignacion() {
+    try {
+      var a = await req('GET', '/programacion/usc');
+      var b = await req('GET', '/programacion/obras-asignacion');
+      USC = (a && a.usc) || []; ASIG = (b && b.obras) || [];
+    } catch (e) { aviso(e.message); return; }
+    // Hoy no existe ningún usuario con rol USC (el usuario los va a crear). Sin decirlo,
+    // el selector se vería vacío y parecería un error del sistema.
+    $('prgUscAviso').className = USC.length ? 'prgaviso' : 'prgaviso mal';
+    $('prgUscAviso').innerHTML = USC.length ? ''
+      : '<b>Todavía no hay usuarios con rol USC.</b> Se crean en Administración → Usuarios; ' +
+        'apenas existan, aparecen en el selector de cada obra.';
+    pintarAsignacion();
+  }
+
+  function pintarAsignacion() {
+    var solo = $('prgSoloSinUsc').checked;
+    var filas = solo ? ASIG.filter(function (o) { return !o.usc_id; }) : ASIG;
+    var sin = ASIG.filter(function (o) { return !o.usc_id; }).length;
+    $('prgAsigN').textContent = '· ' + ASIG.length + (sin ? ' · ' + sin + ' sin USC' : '');
+    if (!filas.length) { $('prgAsig').innerHTML = ''; return; }
+
+    var opciones = function (sel) {
+      return '<option value="">— sin asignar —</option>' + USC.map(function (u) {
+        return '<option value="' + u.id + '"' + (u.id === sel ? ' selected' : '') + '>' + esc(u.nombre) + '</option>';
+      }).join('');
+    };
+    $('prgAsig').innerHTML =
+      '<thead><tr><th>Obra</th><th>Origen</th><th style="text-align:right">Frentes</th>' +
+      '<th style="text-align:right">Tareas</th><th>USC</th></tr></thead><tbody>' +
+      filas.map(function (o) {
+        return '<tr' + (o.usc_id ? '' : ' class="sinusc"') + '>' +
+          '<td class="tar" title="' + esc(o.id_proyecto) + '">' + esc(o.obra) + '</td>' +
+          '<td><span class="prgor ' + (o.origen === 'asa' ? 'asa">aSa' : 'armahub">ArmaHub') + '</span></td>' +
+          '<td style="text-align:right">' + o.frentes + '</td>' +
+          '<td style="text-align:right">' + o.tareas + '</td>' +
+          '<td><select class="usc" data-obra="' + esc(o.id_proyecto) + '"' + (USC.length ? '' : ' disabled') + '>' +
+            opciones(o.usc_id) + '</select></td></tr>';
+      }).join('') + '</tbody>';
+
+    $('prgAsig').querySelectorAll('select.usc').forEach(function (s) {
+      s.addEventListener('change', function () { asignarUsc(s.dataset.obra, s.value, s); });
+    });
+  }
+
+  async function asignarUsc(idProyecto, valor, sel) {
+    sel.disabled = true;
+    try {
+      await req('POST', '/programacion/obras/' + encodeURIComponent(idProyecto) + '/usc',
+                { user_id: valor ? parseInt(valor, 10) : null });
+      var o = ASIG.filter(function (x) { return x.id_proyecto === idProyecto; })[0];
+      if (o) { o.usc_id = valor ? parseInt(valor, 10) : null; }
+      pintarAsignacion();
+    } catch (e) { aviso(e.message); sel.disabled = false; }
   }
 
 })(window);

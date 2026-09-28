@@ -446,3 +446,318 @@ def semana(desde: Optional[str] = None, user=Depends(get_current_user)):
             cubicadores = [{"email": r[0], "nombre": (r[1] or "").strip()} for r in cur.fetchall()]
     return {"lunes": lunes.isoformat(), "viernes": viernes.isoformat(),
             "celdas": celdas, "cubicadores": cubicadores}
+
+
+# ---------------------------------------------------------------------------
+# OBRAS: el espejo de aSa y la asignación de USC
+# ---------------------------------------------------------------------------
+# Las obras NO se crean a mano acá: se traen de aSa. Pero no se consulta aSa en vivo —el
+# usuario reporta que se atora con consultas grandes—, sino que se sincroniza a un espejo
+# en Postgres y el buscador lee de ahí. Ver docs/integracion_asa.md.
+
+# Nombres posibles de cada dato en aSa. Todavía no conocemos el esquema de getJobData, así
+# que en vez de adivinar UNO y fallar, se acepta cualquiera de los que aparecen en los
+# endpoints ya documentados. Cuando se confirme, esto sigue funcionando igual.
+_CAMPOS_ASA = {
+    "asa_job_id": ("JobID", "JobId", "Job", "ID", "Id"),
+    "job_key":    ("JobKey", "JobKeyID"),
+    "nombre":     ("JobName", "Name", "Descr", "Description"),
+    "cliente":    ("CustomerName", "Customer", "BusPartnerName"),
+    "descripcion": ("Descr", "Description", "JobDescr"),
+    "estado":     ("Status", "JobStatus", "StatusID"),
+}
+
+
+def _primer(fila: dict, nombres) -> Optional[str]:
+    """El primer campo presente y no vacío. aSa no siempre nombra igual el mismo dato."""
+    for n in nombres:
+        v = fila.get(n)
+        if v not in (None, ""):
+            return v
+    return None
+
+
+def _exigir_admin(user):
+    if user.get("role") not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo administración puede hacer esto.")
+
+
+@router.get("/programacion/asa/estado")
+def asa_estado(user=Depends(get_current_user)):
+    """Si aSa está configurado y contesta. Existe para que el tab diga QUÉ falta en vez de
+    mostrar una lista vacía sin explicación."""
+    from . import asa
+    _exigir_admin(user)
+    info = asa.estado()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_obras")
+            n, ultimo = cur.fetchone()
+            cur.execute(
+                """SELECT endpoint, fin, filas, ok, detalle FROM asa_sync
+                    ORDER BY id DESC LIMIT 1"""
+            )
+            ult = cur.fetchone()
+    info["espejo"] = {
+        "obras": n or 0,
+        "ultima_sync": ultimo.isoformat() if ultimo else None,
+        "ultimo_intento": ({"endpoint": ult[0],
+                            "fin": ult[1].isoformat() if ult[1] else None,
+                            "filas": ult[2], "ok": ult[3], "detalle": ult[4]} if ult else None),
+    }
+    return info
+
+
+@router.post("/programacion/asa/sincronizar")
+def asa_sincronizar(endpoint: str = "getJobData", user=Depends(get_current_user)):
+    """Trae las obras de aSa al espejo. Es el «Refrescar ahora» — la misma función que
+    después va a correr sola una vez al día.
+
+    Se usa `getJobData` (una fila por obra) y NUNCA `getOrderSummary`, que viene al grano de
+    CC × diámetro × producto: serían decenas de miles de filas para sacar un listado de
+    obras, y es justo el tipo de consulta con la que aSa se atora."""
+    from . import asa
+    _exigir_admin(user)
+    if not asa.configurado():
+        raise HTTPException(status_code=503,
+                            detail="aSa no está configurado. Faltan las variables ASA_API_URL / ASA_API_KEY.")
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO asa_sync (endpoint, lanzado_por) VALUES (%s, %s) RETURNING id",
+                (endpoint, email),
+            )
+            sync_id = cur.fetchone()[0]
+        conn.commit()
+
+    try:
+        filas = asa.consultar_todo(endpoint)
+    except asa.AsaError as e:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE asa_sync SET fin=now(), ok=FALSE, detalle=%s WHERE id=%s",
+                            (str(e)[:400], sync_id))
+            conn.commit()
+        raise HTTPException(status_code=502, detail=str(e))
+
+    nuevas = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for fila in filas:
+                if not isinstance(fila, dict):
+                    continue
+                job_id = _primer(fila, _CAMPOS_ASA["asa_job_id"])
+                if not job_id:
+                    continue
+                key = _primer(fila, _CAMPOS_ASA["job_key"])
+                try:
+                    key = int(key) if key is not None else None
+                except (TypeError, ValueError):
+                    key = None
+                cur.execute(
+                    """
+                    INSERT INTO asa_obras (asa_job_id, job_key, nombre, cliente, descripcion,
+                                           estado, visto_el, sync_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, now(), %s)
+                    ON CONFLICT (asa_job_id) DO UPDATE
+                       SET job_key = EXCLUDED.job_key, nombre = EXCLUDED.nombre,
+                           cliente = EXCLUDED.cliente, descripcion = EXCLUDED.descripcion,
+                           estado = EXCLUDED.estado, visto_el = now(),
+                           sync_id = EXCLUDED.sync_id
+                     RETURNING (xmax = 0) AS insertada
+                    """,
+                    (str(job_id)[:120], key,
+                     str(_primer(fila, _CAMPOS_ASA["nombre"]) or "")[:250],
+                     (str(_primer(fila, _CAMPOS_ASA["cliente"]) or "") or None),
+                     (str(_primer(fila, _CAMPOS_ASA["descripcion"]) or "") or None),
+                     (str(_primer(fila, _CAMPOS_ASA["estado"]) or "") or None),
+                     sync_id),
+                )
+                r = cur.fetchone()
+                if r and r[0]:
+                    nuevas += 1
+            cur.execute(
+                "UPDATE asa_sync SET fin=now(), ok=TRUE, filas=%s, nuevas=%s WHERE id=%s",
+                (len(filas), nuevas, sync_id),
+            )
+        conn.commit()
+    audit(email, "asa_sync", f"{endpoint}: {len(filas)} filas, {nuevas} nuevas")
+    return {"ok": True, "filas": len(filas), "nuevas": nuevas, "endpoint": endpoint}
+
+
+@router.get("/programacion/asa/buscar")
+def asa_buscar(q: str = "", limite: int = 30, user=Depends(get_current_user)):
+    """Busca en el ESPEJO, no en aSa. Por eso es instantáneo y funciona aunque aSa esté
+    caído. Marca cuáles ya están adoptadas para no traer dos veces la misma."""
+    _exigir_admin(user)
+    termino = "%" + (q or "").strip().lower() + "%"
+    limite = max(1, min(int(limite or 30), 100))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT a.asa_job_id, a.nombre, a.cliente, a.estado, a.descripcion,
+                       p.id_proyecto, COALESCE(p.nombre_proyecto, '')
+                  FROM asa_obras a
+                  LEFT JOIN proyectos p ON p.asa_job_id = a.asa_job_id
+                 WHERE lower(a.nombre) LIKE %s
+                    OR lower(a.asa_job_id) LIKE %s
+                    OR lower(COALESCE(a.cliente,'')) LIKE %s
+                 ORDER BY (p.id_proyecto IS NOT NULL), a.nombre
+                 LIMIT %s
+                """,
+                (termino, termino, termino, limite),
+            )
+            filas = [
+                {"asa_job_id": r[0], "nombre": r[1], "cliente": r[2], "estado": r[3],
+                 "descripcion": r[4], "adoptada": r[5] is not None,
+                 "id_proyecto": r[5], "nombre_armahub": r[6] or None}
+                for r in cur.fetchall()
+            ]
+    return {"resultados": filas}
+
+
+class AdoptarBody(BaseModel):
+    asa_job_id: str
+    id_proyecto: Optional[str] = None     # si viene, ENLAZA a una obra que ya existe
+    nombre: Optional[str] = None
+
+
+@router.post("/programacion/asa/adoptar")
+def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
+    """Trae una obra del espejo a ArmaHub. Dos caminos, y la diferencia importa:
+
+      - Sin `id_proyecto`: la obra no existe en ArmaHub → se CREA con origen='asa'.
+      - Con `id_proyecto`: la obra ya existe con otro nombre → se ENLAZA escribiéndole el
+        asa_job_id. Nunca se duplica.
+    """
+    _exigir_admin(user)
+    email = user.get("email", "?")
+    job = (body.asa_job_id or "").strip()
+    if not job:
+        raise HTTPException(status_code=400, detail="Falta el identificador de la obra en aSa.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nombre, cliente FROM asa_obras WHERE asa_job_id = %s", (job,))
+            fila = cur.fetchone()
+            if not fila:
+                raise HTTPException(status_code=404, detail="Esa obra no está en el espejo de aSa.")
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE asa_job_id = %s", (job,))
+            ya = cur.fetchone()
+            if ya:
+                raise HTTPException(status_code=409,
+                                    detail="Esa obra de aSa ya está enlazada a «%s»." % ya[0])
+
+            if body.id_proyecto:
+                cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (body.id_proyecto,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="La obra de ArmaHub no existe.")
+                cur.execute("UPDATE proyectos SET asa_job_id = %s WHERE id_proyecto = %s",
+                            (job, body.id_proyecto))
+                audit(email, "asa_enlazar", f"{job} -> {body.id_proyecto}")
+                return {"ok": True, "id_proyecto": body.id_proyecto, "creada": False}
+
+            nombre = (body.nombre or fila[0] or job).strip()[:250]
+            # El id del proyecto en ArmaHub lo manda aSa: así el enlace es evidente al
+            # mirar la tabla, sin tener que cruzar por otra columna.
+            id_proyecto = job[:60]
+            cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ya existe una obra con el código «%s» en ArmaHub. Enlázala en vez "
+                           "de crearla." % id_proyecto)
+            cur.execute(
+                """INSERT INTO proyectos (id_proyecto, nombre_proyecto, asa_job_id, origen)
+                   VALUES (%s, %s, %s, 'asa')""",
+                (id_proyecto, nombre, job),
+            )
+            audit(email, "asa_adoptar", f"{job} -> creada {id_proyecto} «{nombre}»")
+    return {"ok": True, "id_proyecto": id_proyecto, "creada": True}
+
+
+@router.get("/programacion/usc")
+def listar_usc(user=Depends(get_current_user)):
+    """Los usuarios que pueden ser USC, y las obras asignadas a cada uno.
+
+    Devuelve también `hay_usc`: hoy todavía no existen usuarios con rol 'usc' (el usuario
+    los va a crear). Sin ese dato el tab se vería vacío y parecería roto."""
+    _exigir_admin(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT u.id, u.email, u.nombre || ' ' || COALESCE(u.apellido,'') AS nombre, u.rol,
+                          (SELECT COUNT(*) FROM proyecto_usuarios pu
+                            WHERE pu.user_id = u.id AND pu.rol = 'usc') AS obras
+                     FROM users u
+                    WHERE u.rol = 'usc' AND COALESCE(u.activo, TRUE)
+                    ORDER BY 3"""
+            )
+            usc = [{"id": r[0], "email": r[1], "nombre": (r[2] or "").strip() or r[1],
+                    "rol": r[3], "obras": r[4]} for r in cur.fetchall()]
+    return {"usc": usc, "hay_usc": bool(usc)}
+
+
+@router.get("/programacion/obras-asignacion")
+def obras_asignacion(user=Depends(get_current_user)):
+    """Todas las obras de ArmaHub con su USC. Es la lista de la derecha del tab: se ve de
+    una qué obras no tienen dueño, que es el dato que hoy no existe en ninguna parte."""
+    _exigir_admin(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT p.id_proyecto, COALESCE(p.nombre_proyecto, p.id_proyecto),
+                       p.asa_job_id, COALESCE(p.origen, 'armahub'),
+                       u.id, u.email, COALESCE(u.nombre || ' ' || COALESCE(u.apellido,''), u.email),
+                       (SELECT COUNT(*) FROM tareas_programacion t WHERE t.id_proyecto = p.id_proyecto),
+                       (SELECT COUNT(*) FROM sector_estado se WHERE se.id_proyecto = p.id_proyecto)
+                  FROM proyectos p
+                  LEFT JOIN proyecto_usuarios pu ON pu.id_proyecto = p.id_proyecto AND pu.rol = 'usc'
+                  LEFT JOIN users u ON u.id = pu.user_id
+                 ORDER BY (u.id IS NOT NULL), COALESCE(p.nombre_proyecto, p.id_proyecto)
+                """
+            )
+            obras = [
+                {"id_proyecto": r[0], "obra": r[1], "asa_job_id": r[2], "origen": r[3],
+                 "usc_id": r[4], "usc_email": r[5],
+                 "usc": (r[6] or "").strip() if r[4] else None,
+                 "tareas": r[7], "frentes": r[8]}
+                for r in cur.fetchall()
+            ]
+    return {"obras": obras}
+
+
+class AsignarBody(BaseModel):
+    user_id: Optional[int] = None          # None = quitar la asignación
+
+
+@router.post("/programacion/obras/{id_proyecto}/usc")
+def asignar_usc(id_proyecto: str, body: AsignarBody, user=Depends(get_current_user)):
+    """Asigna (o quita) el USC de una obra. Una obra tiene UN USC: por eso se borra la
+    asignación anterior antes de poner la nueva, en vez de acumular filas."""
+    _exigir_admin(user)
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Obra no encontrada.")
+            cur.execute("DELETE FROM proyecto_usuarios WHERE id_proyecto = %s AND rol = 'usc'",
+                        (id_proyecto,))
+            if body.user_id is None:
+                audit(email, "usc_quitar", id_proyecto)
+                return {"ok": True, "usc_id": None}
+            cur.execute("SELECT rol FROM users WHERE id = %s", (body.user_id,))
+            fila = cur.fetchone()
+            if not fila:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+            cur.execute(
+                """INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
+                   VALUES (%s, %s, 'usc')
+                   ON CONFLICT (id_proyecto, user_id) DO UPDATE SET rol = 'usc'""",
+                (id_proyecto, body.user_id),
+            )
+            audit(email, "usc_asignar", f"{id_proyecto} -> user {body.user_id}")
+    return {"ok": True, "usc_id": body.user_id}

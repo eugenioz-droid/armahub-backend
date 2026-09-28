@@ -21,6 +21,7 @@
     <!-- Sub-tabs: hoy sólo USC tiene contenido. -->
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:12px;">
       <button id="prgSubUsc" onclick="prgSubTab('usc')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #8BC34A; background:none; color:#33691e; cursor:pointer;">USC</button>
+      <button id="prgSubObras" onclick="prgSubTab('obras')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Obras</button>
       <button id="prgSubEquipo" onclick="prgSubTab('equipo')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Equipo</button>
       <button id="prgSubCub" onclick="prgSubTab('cub')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Cubicador</button>
     </div>
@@ -52,6 +53,39 @@
       <div class="card" style="margin-top:12px; padding:9px 11px;">
         <table class="prgcal" id="prgCal"></table>
         <div id="prgCalMsg" class="muted" style="font-size:11px; margin-top:7px;"></div>
+      </div>
+    </div>
+
+    <!-- ══════════ OBRAS: traer de aSa + asignar USC ══════════
+         Las obras NO se crean a mano: se buscan en el espejo de aSa y se adoptan. El
+         buscador consulta Postgres, no aSa — aSa se toca sólo al refrescar. -->
+    <div id="prgPanelObras" style="display:none;">
+      <div class="prgob">
+
+        <div class="card prgc" style="width:430px;">
+          <div class="prgh">Traer de aSa
+            <span id="prgAsaChip" class="prgchip">···</span>
+            <div style="flex:1"></div>
+            <button id="prgAsaSync" class="secondary" style="font-size:10.5px; padding:2px 8px;"
+                    title="Consulta aSa y actualiza el espejo. Normalmente corre solo una vez al día.">↻ Refrescar</button>
+          </div>
+          <div id="prgAsaEstado" class="prgaviso"></div>
+          <input type="text" id="prgAsaQ" placeholder="Buscar obra por nombre, código o cliente…"
+                 style="width:100%; box-sizing:border-box; font-size:11.5px; padding:5px 8px; border:1px solid #cfd8dc; border-radius:5px; margin-bottom:6px;">
+          <div class="prgbd" style="height:330px;" id="prgAsaRes"></div>
+        </div>
+
+        <div class="card prgc" style="flex:1 1 560px; min-width:520px;">
+          <div class="prgh">Obras de ArmaHub y su USC <span class="muted" id="prgAsigN"></span>
+            <div style="flex:1"></div>
+            <label style="font-weight:400; font-size:10.5px; color:#546e7a; display:inline-flex; align-items:center; gap:4px; cursor:pointer;">
+              <input type="checkbox" id="prgSoloSinUsc" style="margin:0;"> solo sin USC
+            </label>
+          </div>
+          <div id="prgUscAviso" class="prgaviso"></div>
+          <div class="prgbd" style="height:358px;"><table class="prgt" id="prgAsig"></table></div>
+        </div>
+
       </div>
     </div>
 
@@ -117,4 +151,37 @@
   .prgcal td.hoy{background:#fbfdf8} .prgcal td.vac{color:#cfd8dc; font-weight:400}
   .prgcal td.choque{background:#fff5f5; box-shadow:inset 0 0 0 2px #c62828; color:#c62828}
   .prgcal td.tot{background:#fafbfc; color:#33691e}
+
+  /* ── Tab Obras ─────────────────────────────────────────────────────────────
+     Dos cajas del mismo alto: el buscador de aSa (fijo, porque su contenido no
+     crece) y la lista de obras (elástica, porque los nombres son largos). */
+  .prgob{display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;}
+  .prgob .prgc{padding:8px 10px; margin:0;}
+  /* El chip de estado dice de un vistazo si aSa contesta. Sin esto, una lista vacía
+     podría ser "no hay obras" o "la clave está mala", y son cosas muy distintas. */
+  .prgchip{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
+  .prgchip.ok{background:#e8f5e9; color:#2e7d32}
+  .prgchip.no{background:#ffebee; color:#c62828}
+  .prgchip.sin{background:#eceff1; color:#607d8b}
+  .prgaviso{font-size:10.5px; line-height:1.45; color:#78909c; margin-bottom:6px;}
+  .prgaviso:empty{display:none}
+  .prgaviso b{color:#455a64}
+  .prgaviso code{background:#f4f6f8; padding:0 3px; border-radius:3px; font-size:10px;}
+  .prgaviso.mal{color:#c62828} .prgaviso.mal b{color:#b71c1c}
+  /* una fila del buscador de aSa */
+  .prgar{display:flex; align-items:center; gap:7px; padding:4px 5px; border-top:1px solid #f0f2f5; font-size:11px;}
+  .prgar:first-child{border-top:0}
+  .prgar .n{flex:1; min-width:0; overflow:hidden;}
+  .prgar .n b{display:block; font-weight:600; color:#263238; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .prgar .n small{color:#90a4ae; font-size:10px;}
+  .prgar button{font-size:10.5px; font-weight:600; padding:2px 9px; border:none; border-radius:4px;
+                background:#8BC34A; color:#fff; cursor:pointer; flex:none;}
+  .prgar button:hover{background:#7cb342}
+  .prgar .ya{font-size:10px; color:#2e7d32; font-weight:600; flex:none;}
+  /* origen de la obra */
+  .prgor{font-size:9px; font-weight:700; border-radius:3px; padding:0 4px; letter-spacing:.3px;}
+  .prgor.asa{background:#e3f2fd; color:#1565c0}
+  .prgor.armahub{background:#f1f8e9; color:#558b2f}
+  .prgt select.usc{font-size:10.5px; padding:1px 3px; border:1px solid #e0e4e8; border-radius:4px; max-width:170px;}
+  .prgt tr.sinusc td{background:#fffdf5}
 </style>
