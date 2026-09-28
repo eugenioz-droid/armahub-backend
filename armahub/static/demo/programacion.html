@@ -126,16 +126,25 @@
   .t .o{font-weight:700} .t .fr{color:#37474f} .t .m{display:flex;justify-content:space-between;align-items:center;margin-top:4px;color:var(--mut);font-size:10.5px}
   .t.hecho{opacity:.55} .t.tarde .fr::after{content:" · < 7 días";color:#e65100;font-size:10px}
 
-  /* USC: tres cajas + calendario de números */
-  .usc3{display:grid;grid-template-columns:220px 250px 1fr;gap:12px;align-items:start}
-  @media(max-width:1100px){.usc3{grid-template-columns:1fr 1fr;} .usc3 .c3{grid-column:1/-1}}
-  .usc3 .card{padding:9px 11px} .usc3 .h{font-size:12px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
-  .c2 .t{display:flex;align-items:center;gap:7px;padding:3px 4px;border-top:1px solid #f0f2f5;font-size:11.5px;cursor:pointer}
-  .c2 .t:first-of-type{border-top:0} .c2 .t small{color:var(--mut);font-size:10px;margin-left:auto}
-  .c2 .lista2{max-height:300px;overflow:auto}
-  .c3 .lista td{white-space:nowrap} .c3 input[type=date]{font-size:11px;padding:2px 5px} .c3 input.ton{width:46px;text-align:right;font-size:11px;padding:2px 4px}
-  .c3 .cb{cursor:pointer;border-bottom:1px dashed #b0bec5} .c3 .q{border:0;background:none;color:#cfd8dc;cursor:pointer} .c3 .q:hover{color:var(--rojo)}
-  .f7{background:#fff8e1;color:#8d6e00;font-size:10px;font-weight:700;border-radius:99px;padding:1px 6px;white-space:nowrap}
+  /* USC: cuatro cajas del MISMO ALTO + calendario de números */
+  .usc3{display:grid;grid-template-columns:190px 215px 1fr 1fr;gap:10px;align-items:start}
+  @media(max-width:1300px){.usc3{grid-template-columns:190px 215px 1fr} .usc3 .c4{grid-column:2/-1}}
+  @media(max-width:900px){.usc3{grid-template-columns:1fr} .usc3 .c4{grid-column:auto}}
+  .usc3 .card{padding:8px 10px}
+  .usc3 .h{font-size:11.5px;font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
+  .usc3 .h .mut{font-weight:400;overflow:hidden;text-overflow:ellipsis}
+  /* el cuerpo de las cuatro mide lo mismo: simetría sin importar cuánto traiga cada una */
+  .usc3 .bd{height:252px;overflow:auto}
+  .c2 .t{display:flex;align-items:center;gap:6px;padding:2px 3px;border-top:1px solid #f0f2f5;font-size:11px;cursor:pointer}
+  .c2 .t:first-of-type{border-top:0} .c2 .t small{color:var(--mut);font-size:9.5px;margin-left:auto}
+  .c3 .lista td,.c4 .lista td{white-space:nowrap;padding:3px 5px}
+  .c3 .lista th,.c4 .lista th{padding:3px 5px;font-size:10.5px}
+  .c3 input[type=date]{font-size:10.5px;padding:1px 3px;border-color:#e0e4e8}
+  .c3 input.ton,.c4 input.ton{width:40px;text-align:right;font-size:10.5px;padding:1px 3px;border-color:#e0e4e8}
+  .c3 .q{border:0;background:none;color:#cfd8dc;cursor:pointer;padding:0 2px} .c3 .q:hover{color:var(--rojo)}
+  .c3 .tar,.c4 .tar{font-weight:700;color:#263238}
+  .c4 .dif{font-weight:700} .c4 .dif.mas{color:#e65100} .c4 .dif.menos{color:#1565c0} .c4 .dif.ok{color:#2e7d32}
+  .f7{background:#fff8e1;color:#8d6e00;font-size:9.5px;font-weight:700;border-radius:99px;padding:0 5px;white-space:nowrap}
   .cal2{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px}
   .cal2 th{background:#fafbfc;border-bottom:1px solid var(--ln);padding:6px 4px;text-align:center;font-weight:600;color:#546e7a}
   .cal2 th.q{text-align:left;width:150px} .cal2 th.hoy{color:var(--vos)}
@@ -207,20 +216,18 @@
   <section id="s-usc">
     <div class="row" style="margin-bottom:10px"><span class="mut">Sesión</span><span id="uscPills"></span></div>
     <div class="usc3">
-      <div class="card c1"><div class="h">Obras</div><div class="obras" id="c1"></div></div>
+      <div class="card c1"><div class="h">Obras</div><div class="bd obras" id="c1"></div></div>
       <div class="card c2">
         <div class="h">Por programar <span class="mut" id="c2n"></span></div>
-        <div class="row" style="gap:6px;margin-bottom:6px">
-          <span class="mut">Despacho</span><input type="date" id="c2Fecha" title="Fecha de despacho">
-          <input type="text" id="c2Ton" placeholder="t" title="Toneladas estimadas por el USC" style="width:44px">
-          <button class="b" id="c2Go" title="Programar las seleccionadas con esa fecha">→</button>
+        <div class="row" style="gap:4px;margin-bottom:5px">
+          <input type="date" id="c2Fecha" title="Fecha de despacho" style="font-size:10.5px;padding:2px 4px">
+          <input type="text" id="c2Ton" placeholder="t" title="Toneladas estimadas por el USC" style="width:36px;font-size:10.5px;padding:2px 4px">
+          <button class="b" id="c2Go" title="Programar las marcadas con esa fecha de despacho" style="padding:3px 10px">→</button>
         </div>
-        <div class="lista2" id="c2"></div>
+        <div class="bd" style="height:221px" id="c2"></div>
       </div>
-      <div class="card c3">
-        <div class="h" id="c3h"></div>
-        <table class="lista" id="c3"></table>
-      </div>
+      <div class="card c3"><div class="h" id="c3h"></div><div class="bd"><table class="lista" id="c3"></table></div></div>
+      <div class="card c4"><div class="h" id="c4h"></div><div class="bd"><table class="lista" id="c4"></table></div></div>
     </div>
     <div class="card" style="margin-top:12px;padding:9px 11px">
       <table class="cal2" id="calUsc"></table>
@@ -459,12 +466,12 @@
     $('drawer').classList.remove('on'); todo();
   }
 
-  // ══ USC: tres cajas (obras · por programar · programadas) y el calendario de números ══
-  // Caja 2 son TAREAS sin fecha (tarea = sector constructivo). Programar = ponerles fecha de
-  // DESPACHO; la cubicación se calcula 10 hábiles antes. Toneladas las escribe el USC (sin
-  // predicción del sistema, por ahora). Cubicador = el responsable de la obra, cambiable.
-  var OB_SEL=null, CAL_CUB=null, ED_CUB=null;
+  // ══ USC: cuatro cajas (obras · por programar · programadas · cubicadas) + calendario ══
+  // Tarea = sector constructivo. Programar = ponerle fecha de DESPACHO; la cubicación se calcula
+  // 10 hábiles antes y es la que manda para el programa semanal. Toneladas las escribe el USC.
+  var OB_SEL=null, CAL_CUB=null;
   function estaProg(f){ return PROG.some(function(x){return x.f===f;}); }
+  function nomTarea(f){ return f.libre ? f.ciclo : (f.sector+' '+((f.piso||'').trim()||'—')+' '+((f.ciclo||'').trim()||'—')); }
   function programarTarea(o,f,despacho,ton){
     var dia=sumaHabiles(despacho,-LEAD), corto=habilesEntre(HOY,dia)<CORTO;
     PROG.push({o:o,f:f,cub:o.cub,dia:dia,fObra:despacho,corto:corto,tarde:corto,ton:ton||0,hecho:false,atraso:false,estado:'propuesta'});
@@ -472,19 +479,19 @@
   function pintarUsc(){
     $('uscPills').innerHTML=USCS.map(function(u){ return '<button class="pill'+(u.ini===USC_SEL.ini?' on':'')+'" data-u="'+u.ini+'"><span class="dot" style="background:'+u.color+'"></span>'+u.ini+'</button>'; }).join(' ');
     $('uscPills').querySelectorAll('button').forEach(function(b){ b.addEventListener('click',function(){
-      USC_SEL=USCS.filter(function(u){return u.ini===b.getAttribute('data-u');})[0]; OB_SEL=null; CAL_CUB=null; ED_CUB=null; todo(); }); });
+      USC_SEL=USCS.filter(function(u){return u.ini===b.getAttribute('data-u');})[0]; OB_SEL=null; CAL_CUB=null; todo(); }); });
     var mias=OBRAS.filter(function(o){return o.usc.ini===USC_SEL.ini;});
     if(!OB_SEL||mias.indexOf(OB_SEL)<0) OB_SEL=mias[0]||null;
     // CAJA 1 · obras del USC, con cuántas tareas siguen sin fecha
     $('c1').innerHTML=mias.map(function(o){ var n=o.frentes.filter(function(f){return f.estado!=='exportado'&&!estaProg(f);}).length;
       return '<div class="o'+(o===OB_SEL?' on':'')+'" data-o="'+esc(o.obra)+'" title="'+esc(o.obra)+'"><span class="n">'+esc(o.obra)+'</span><span class="k"><b>'+n+'</b></span></div>'; }).join('')||'<span class="mut">Sin obras.</span>';
     $('c1').querySelectorAll('.o').forEach(function(el){ el.addEventListener('click',function(){
-      OB_SEL=OBRAS.filter(function(x){return x.obra===el.getAttribute('data-o');})[0]; CAL_CUB=null; ED_CUB=null; pintarUsc(); }); });
-    // CAJA 2 · tareas sin fecha de la obra abierta; se marcan y se pasan con → y una fecha de despacho
+      OB_SEL=OBRAS.filter(function(x){return x.obra===el.getAttribute('data-o');})[0]; CAL_CUB=null; pintarUsc(); }); });
+    // CAJA 2 · tareas SIN FECHA de la obra abierta: se marcan y pasan con → y la fecha de despacho
     var disp=OB_SEL?OB_SEL.frentes.filter(function(f){return f.estado!=='exportado'&&!estaProg(f);}):[];
     $('c2n').textContent='· '+disp.length;
     $('c2').innerHTML=disp.slice(0,40).map(function(f){ return '<label class="t"><input type="checkbox" data-f="'+OB_SEL.frentes.indexOf(f)+'">'+
-      esc(f.sector+' · '+nomFrente(f))+'<small>'+(f.estado==='modificado'?'cambió':'')+'</small></label>'; }).join('')+
+      esc(nomTarea(f))+'<small>'+(f.estado==='modificado'?'cambió':'')+'</small></label>'; }).join('')+
       (disp.length>40?'<div class="mut" style="padding:4px">+'+(disp.length-40)+'</div>':'')||'<div class="mut" style="padding:6px 4px">Todo programado.</div>';
     if(!$('c2Fecha').value) $('c2Fecha').value=iso(sumaHabiles(HOY,LEAD+CORTO+3));
     $('c2Go').onclick=function(){
@@ -495,67 +502,83 @@
       marc.forEach(function(i){ programarTarea(OB_SEL, OB_SEL.frentes[Number(i.getAttribute('data-f'))], d, t); });
       $('c2Ton').value=''; todo();
     };
-    pintarC3(); pintarCalUsc();
+    pintarC3(); pintarC4(); pintarCalUsc();
   }
-  // CAJA 3 · programadas de la obra — o la carga de un cubicador en la semana, si se tocó su
-  // nombre en el calendario (así "con cuánto quedó Emilio" se contesta acá y no ensucia el calendario)
+  // Qué alimenta las cajas 3 y 4: la obra abierta, o —si se tocó un cubicador en el
+  // calendario— sus tareas de la semana. Las dos cajas siguen la misma selección.
+  function seleccion(){
+    var s=semana();
+    if(CAL_CUB) return { filas:PROG.filter(function(x){return x.cub.quien===CAL_CUB&&x.dia>=s[0]&&x.dia<=s[4];}),
+                         rot:esc(CAL_CUB)+' · semana', cub:true };
+    return { filas:OB_SEL?PROG.filter(function(x){return x.o===OB_SEL;}):[], rot:esc(OB_SEL?OB_SEL.obra:''), cub:false };
+  }
+  // CAJA 3 · POR CUBICAR. Sin columna de estado: todo lo de aquí está por cubicar, por
+  // definición. La cubicación no se escribe — se deriva del despacho y es la que manda para el
+  // programa semanal.
   function pintarC3(){
-    var s=semana(), filas, tit;
-    if(CAL_CUB){ filas=PROG.filter(function(x){return x.cub.quien===CAL_CUB&&x.dia>=s[0]&&x.dia<=s[4];});
-      tit='Carga de '+esc(CAL_CUB)+' · semana <button class="pill" id="c3Volver">← volver a la obra</button>'; }
-    else { filas=OB_SEL?PROG.filter(function(x){return x.o===OB_SEL;}):[]; tit='Programadas <span class="mut">· '+esc(OB_SEL?OB_SEL.obra:'')+'</span>'; }
-    filas=filas.slice().sort(function(a,b){return a.dia-b.dia;});
+    var s=seleccion(), filas=s.filas.filter(function(x){return !x.hecho;}).sort(function(a,b){return a.dia-b.dia;});
     var tot=filas.reduce(function(a,x){return a+(x.ton||0);},0);
-    $('c3h').innerHTML=tit+'<span class="mut" style="margin-left:auto">'+filas.length+' tareas · '+tot.toFixed(1)+' t</span>';
+    $('c3h').innerHTML='Por cubicar <span class="mut">· '+s.rot+'</span>'+
+      (CAL_CUB?' <button class="pill" id="c3Volver">← obra</button>':'')+
+      '<span class="mut" style="margin-left:auto">'+filas.length+' · '+tot.toFixed(1)+' t</span>';
     var vol=$('c3Volver'); if(vol) vol.addEventListener('click',function(){ CAL_CUB=null; pintarUsc(); });
-    $('c3').innerHTML='<thead><tr><th>Despacho</th><th>Cubicación</th>'+(CAL_CUB?'<th>Obra</th>':'')+'<th>Tarea</th><th>Cubicador</th><th style="text-align:right">t</th><th>Estado</th><th></th></tr></thead><tbody>'+
-      (filas.length?filas.map(function(x,i){
-        var m=habilesEntre(HOY,x.dia), atr=(!x.hecho&&x.dia<HOY&&!mismoDia(x.dia,HOY));
-        var st=x.hecho?'<span class="st h">cubicada</span>':(atr?'<span class="st a">atrasada</span>':'<span class="st p">'+esc(x.estado||'propuesta')+'</span>');
-        var ro=(x.o===OB_SEL||CAL_CUB)?1:0;
-        return '<tr'+(x.hecho?' class="hecho"':'')+'>'+
-          '<td><input type="date" data-i="'+PROG.indexOf(x)+'" value="'+iso(x.fObra)+'"'+(CAL_CUB?' disabled':'')+'></td>'+
-          '<td>'+DIAS[(x.dia.getDay()+6)%7]+' '+corta(x.dia)+(x.corto&&!x.hecho?' <span class="f7" title="Quedan '+m+' días hábiles; el estándar son '+CORTO+'">&lt; 7 días</span>':'')+'</td>'+
-          (CAL_CUB?'<td>'+esc(nomObra(x.o))+'</td>':'')+
-          '<td>'+esc(x.f.sector+' · '+nomFrente(x.f))+'</td>'+
-          '<td><span class="cb" data-c="'+PROG.indexOf(x)+'" title="Cambiar cubicador">'+esc(x.cub.quien.split(' ')[0])+'</span>'+
-            (ED_CUB===PROG.indexOf(x)?'<div class="row" style="gap:4px;margin-top:4px">'+CUBS.map(function(c){return '<button class="pill'+(c===x.cub?' on':'')+'" data-set="'+PROG.indexOf(x)+'|'+esc(c.quien)+'">'+esc(c.quien.split(' ')[0])+(c===x.o.cub?' ★':'')+'</button>';}).join('')+'</div>':'')+'</td>'+
-          '<td style="text-align:right"><input class="ton" data-t="'+PROG.indexOf(x)+'" value="'+(x.ton?x.ton:'')+'" placeholder="—"'+(CAL_CUB?' disabled':'')+'></td>'+
-          '<td>'+st+'</td><td>'+(CAL_CUB||x.hecho?'':'<button class="q" data-q="'+PROG.indexOf(x)+'" title="Quitar del programa">✕</button>')+'</td></tr>';
-      }).join(''):'<tr><td colspan="8" class="mut">Nada programado todavía.</td></tr>')+'</tbody>';
+    $('c3').innerHTML='<thead><tr><th>Tarea</th><th>Despacho</th><th>Cubicación</th><th style="text-align:right">Ton</th><th></th></tr></thead><tbody>'+
+      (filas.length?filas.map(function(x){ var i=PROG.indexOf(x);
+        return '<tr><td class="tar" title="'+esc(x.o.obra)+'">'+esc(nomTarea(x.f))+'</td>'+
+          '<td><input type="date" data-i="'+i+'" value="'+iso(x.fObra)+'"></td>'+
+          '<td>'+corta(x.dia)+(x.corto?' <span class="f7" title="Quedan menos de '+CORTO+' días hábiles">&lt;7d</span>':'')+'</td>'+
+          '<td style="text-align:right"><input class="ton" data-t="'+i+'" value="'+(x.ton?x.ton:'')+'" placeholder="—"></td>'+
+          '<td><button class="q" data-q="'+i+'" title="Quitar del programa">✕</button></td></tr>';
+      }).join(''):'<tr><td colspan="5" class="mut">Nada por cubicar.</td></tr>')+'</tbody>';
     $('c3').querySelectorAll('input[data-i]').forEach(function(inp){ inp.addEventListener('change',function(){
       var x=PROG[Number(inp.getAttribute('data-i'))], d=deIso(inp.value); if(!valida(d)) return;
       x.fObra=d; x.dia=sumaHabiles(d,-LEAD); x.corto=x.tarde=habilesEntre(HOY,x.dia)<CORTO; todo(); }); });
     $('c3').querySelectorAll('input[data-t]').forEach(function(inp){ inp.addEventListener('change',function(){
       PROG[Number(inp.getAttribute('data-t'))].ton=parseFloat(String(inp.value).replace(',','.'))||0; todo(); }); });
-    $('c3').querySelectorAll('.cb').forEach(function(el){ el.addEventListener('click',function(){
-      var i=Number(el.getAttribute('data-c')); ED_CUB=(ED_CUB===i)?null:i; pintarC3(); }); });
-    $('c3').querySelectorAll('[data-set]').forEach(function(b){ b.addEventListener('click',function(){
-      var p=b.getAttribute('data-set').split('|'); PROG[Number(p[0])].cub=CUBS.filter(function(c){return c.quien===p[1];})[0]; ED_CUB=null; todo(); }); });
     $('c3').querySelectorAll('[data-q]').forEach(function(b){ b.addEventListener('click',function(){
-      PROG.splice(Number(b.getAttribute('data-q')),1); ED_CUB=null; todo(); }); });
+      PROG.splice(Number(b.getAttribute('data-q')),1); todo(); }); });
   }
+  // CAJA 4 · CUBICADAS. Tampoco lleva estado. Lo que aporta es el contraste entre lo que el USC
+  // estimó y lo que de verdad pesó: el peso real sale de ArmaHub (kilos de las barras del
+  // frente), nadie lo teclea. Es la evidencia con la que después se decide si la estimación
+  // sirve o hay que ayudarla.
+  function pintarC4(){
+    var s=seleccion(), filas=s.filas.filter(function(x){return x.hecho;}).sort(function(a,b){return b.dia-a.dia;});
+    var est=filas.reduce(function(a,x){return a+(x.ton||0);},0), real=filas.reduce(function(a,x){return a+tonReal(x);},0);
+    $('c4h').innerHTML='Cubicadas <span class="mut">· '+s.rot+'</span>'+
+      '<span class="mut" style="margin-left:auto">'+est.toFixed(1)+' est · <b style="color:#2e7d32">'+real.toFixed(1)+' real</b></span>';
+    $('c4').innerHTML='<thead><tr><th>Tarea</th><th>Cubicada</th><th style="text-align:right">Est</th><th style="text-align:right">Real</th><th style="text-align:right">Δ</th></tr></thead><tbody>'+
+      (filas.length?filas.map(function(x){ var r=tonReal(x), d=(x.ton?r-x.ton:null);
+        var cls=d==null?'':(Math.abs(d)<=(x.ton*0.1)?'ok':(d>0?'mas':'menos'));
+        return '<tr><td class="tar" title="'+esc(x.o.obra)+'">'+esc(nomTarea(x.f))+'</td>'+
+          '<td>'+corta(x.dia)+'</td><td style="text-align:right">'+(x.ton?x.ton.toFixed(1):'—')+'</td>'+
+          '<td style="text-align:right">'+(r?r.toFixed(1):'—')+'</td>'+
+          '<td style="text-align:right" class="dif '+cls+'">'+(d==null||!r?'—':(d>0?'+':'')+d.toFixed(1))+'</td></tr>';
+      }).join(''):'<tr><td colspan="5" class="mut">Todavía nada cubicado.</td></tr>')+'</tbody>';
+  }
+  // Peso REAL del frente: los kilos de sus barras en ArmaHub. Es dato de la base, no estimación.
+  function tonReal(x){ return (x.f.kg||0)/1000; }
   // CALENDARIO DE NÚMEROS · una semana, una fila por cubicador, «n · t» por día y el total.
-  // Sirve para lo único que tiene que servir: ver el choque y la carga. Los chips con nombre
-  // de obra viven en la pestaña Equipo, que es la de la reunión.
+  // Sirve para lo único que tiene que servir: choque y carga. Los chips con nombre de obra
+  // viven en la pestaña Equipo, que es la de la reunión.
   function pintarCalUsc(){
     var s=semana();
     var h='<thead><tr><th class="q">Cubicador</th>'+s.map(function(d,i){ return '<th'+(mismoDia(d,HOY)?' class="hoy"':'')+'>'+DIAS[i]+'<small style="font-weight:400;color:#90a4ae">'+corta(d)+'</small></th>'; }).join('')+'<th>Semana</th></tr></thead><tbody>';
     CUBS.forEach(function(c){
-      var mios=PROG.filter(function(x){return x.cub.quien===c.quien;}), wn=0, wt=0;
+      var mios=PROG.filter(function(x){return x.cub.quien===c.quien&&!x.hecho;}), wn=0, wt=0;
       h+='<tr><td class="q'+(CAL_CUB===c.quien?' on':'')+'" data-c="'+esc(c.quien)+'" title="Ver sus tareas de la semana">'+esc(c.quien)+'<small>'+esc(c.ini)+'</small></td>';
       s.forEach(function(d){
         var dd=mios.filter(function(x){return mismoDia(x.dia,d);}), u={}; dd.forEach(function(x){u[x.o.usc.ini]=1;});
         var t=dd.reduce(function(a,x){return a+(x.ton||0);},0), choque=(dd.length>=3&&Object.keys(u).length>=2);
         wn+=dd.length; wt+=t;
-        h+='<td class="'+(choque?'choque':'')+(mismoDia(d,HOY)?' hoy':'')+(dd.length?'':' vac')+'" title="'+esc(dd.map(function(x){return nomObra(x.o)+' '+nomFrente(x.f)+' ('+x.o.usc.ini+')';}).join(', ')||'—')+'">'+
+        h+='<td class="'+(choque?'choque':'')+(mismoDia(d,HOY)?' hoy':'')+(dd.length?'':' vac')+'" title="'+esc(dd.map(function(x){return nomObra(x.o)+' '+nomTarea(x.f)+' ('+x.o.usc.ini+')';}).join(', ')||'—')+'">'+
           (dd.length?dd.length+' · '+t.toFixed(0)+' t':'—')+(choque?'<small style="color:#c62828">'+Object.keys(u).join(' ')+'</small>':'')+'</td>';
       });
       h+='<td class="tot">'+wn+' · '+wt.toFixed(0)+' t</td></tr>';
     });
     $('calUsc').innerHTML=h+'</tbody>';
     $('calUsc').querySelectorAll('td.q').forEach(function(td){ td.addEventListener('click',function(){
-      var c=td.getAttribute('data-c'); CAL_CUB=(CAL_CUB===c)?null:c; ED_CUB=null; pintarC3(); pintarCalUsc(); }); });
+      var c=td.getAttribute('data-c'); CAL_CUB=(CAL_CUB===c)?null:c; pintarC3(); pintarC4(); pintarCalUsc(); }); });
   }
 
   // ══ CUBICADOR: mi semana, día por día ══
