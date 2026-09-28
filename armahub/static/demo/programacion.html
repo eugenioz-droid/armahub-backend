@@ -124,7 +124,27 @@
   .dia>.h.hoy{color:var(--vos)}
   .t{margin:6px;border:1px solid #e6e9ed;border-radius:6px;padding:6px 8px;font-size:11.5px;border-left-width:4px}
   .t .o{font-weight:700} .t .fr{color:#37474f} .t .m{display:flex;justify-content:space-between;align-items:center;margin-top:4px;color:var(--mut);font-size:10.5px}
-  .t.hecho{opacity:.55} .t.tarde .fr::after{content:" · fuera de plazo";color:#e65100;font-size:10px}
+  .t.hecho{opacity:.55} .t.tarde .fr::after{content:" · < 7 días";color:#e65100;font-size:10px}
+
+  /* USC: tres cajas + calendario de números */
+  .usc3{display:grid;grid-template-columns:220px 250px 1fr;gap:12px;align-items:start}
+  @media(max-width:1100px){.usc3{grid-template-columns:1fr 1fr;} .usc3 .c3{grid-column:1/-1}}
+  .usc3 .card{padding:9px 11px} .usc3 .h{font-size:12px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .c2 .t{display:flex;align-items:center;gap:7px;padding:3px 4px;border-top:1px solid #f0f2f5;font-size:11.5px;cursor:pointer}
+  .c2 .t:first-of-type{border-top:0} .c2 .t small{color:var(--mut);font-size:10px;margin-left:auto}
+  .c2 .lista2{max-height:300px;overflow:auto}
+  .c3 .lista td{white-space:nowrap} .c3 input[type=date]{font-size:11px;padding:2px 5px} .c3 input.ton{width:46px;text-align:right;font-size:11px;padding:2px 4px}
+  .c3 .cb{cursor:pointer;border-bottom:1px dashed #b0bec5} .c3 .q{border:0;background:none;color:#cfd8dc;cursor:pointer} .c3 .q:hover{color:var(--rojo)}
+  .f7{background:#fff8e1;color:#8d6e00;font-size:10px;font-weight:700;border-radius:99px;padding:1px 6px;white-space:nowrap}
+  .cal2{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px}
+  .cal2 th{background:#fafbfc;border-bottom:1px solid var(--ln);padding:6px 4px;text-align:center;font-weight:600;color:#546e7a}
+  .cal2 th.q{text-align:left;width:150px} .cal2 th.hoy{color:var(--vos)}
+  .cal2 td{border-bottom:1px solid #edf0f3;border-right:1px solid #f0f2f5;text-align:center;padding:7px 4px;font-weight:600;color:#37474f}
+  .cal2 td.q{text-align:left;cursor:pointer} .cal2 td.q:hover{color:var(--vos)} .cal2 td.q.on{color:var(--vos);box-shadow:inset 3px 0 0 var(--verde)}
+  .cal2 td small{display:block;font-weight:400;color:var(--mut);font-size:10px}
+  .cal2 td.hoy{background:#fbfdf8} .cal2 td.vac{color:#cfd8dc;font-weight:400}
+  .cal2 td.choque{background:#fff5f5;box-shadow:inset 0 0 0 2px var(--rojo);color:var(--rojo)}
+  .cal2 td.tot{background:#fafbfc;color:var(--vos)}
   .t button{font:inherit;font-size:10.5px;padding:2px 8px;border:1px solid #cfd8dc;background:#fff;border-radius:4px;cursor:pointer;color:#546e7a}
 
   /* estructura de la obra (panel lateral) */
@@ -186,9 +206,24 @@
 
   <section id="s-usc">
     <div class="row" style="margin-bottom:10px"><span class="mut">Sesión</span><span id="uscPills"></span></div>
-    <div class="usc-lay">
-      <div class="cola" id="cola"></div>
-      <div class="card"><table class="board" id="boardUsc"></table><div class="leg" id="legUsc"></div></div>
+    <div class="usc3">
+      <div class="card c1"><div class="h">Obras</div><div class="obras" id="c1"></div></div>
+      <div class="card c2">
+        <div class="h">Por programar <span class="mut" id="c2n"></span></div>
+        <div class="row" style="gap:6px;margin-bottom:6px">
+          <span class="mut">Despacho</span><input type="date" id="c2Fecha" title="Fecha de despacho">
+          <input type="text" id="c2Ton" placeholder="t" title="Toneladas estimadas por el USC" style="width:44px">
+          <button class="b" id="c2Go" title="Programar las seleccionadas con esa fecha">→</button>
+        </div>
+        <div class="lista2" id="c2"></div>
+      </div>
+      <div class="card c3">
+        <div class="h" id="c3h"></div>
+        <table class="lista" id="c3"></table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;padding:9px 11px">
+      <table class="cal2" id="calUsc"></table>
     </div>
   </section>
 
@@ -217,7 +252,7 @@
   var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
   var USCS=[{ini:'DI',color:'#1565c0'},{ini:'AT',color:'#6a1b9a'},{ini:'OO',color:'#00838f'},{ini:'GM',color:'#ad1457'}];
   var SECT=['ELEV','LCIELO','VCIELO','FUND'];
-  var HOY=new Date(2026,8,28), LEAD=10, DIAS=['lun','mar','mié','jue','vie'];
+  var HOY=new Date(2026,8,28), LEAD=10, CORTO=7, DIAS=['lun','mar','mié','jue','vie'];
   var MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
   // Las fechas vienen de un <input type=date>, que entrega '' si el usuario lo borra. Una fecha
@@ -265,15 +300,19 @@
     // muestra ese horizonte); lo hecho y lo atrasado sólo tiene sentido en la semana actual.
     // La muestra se toma POR USC (18 cada uno): tomada de corrido, un USC quedaba sin tareas y
     // su filtro vaciaba la pantalla.
-    var sem=semana(), muestra=[];
+    // El USC escribe la fecha de DESPACHO (la que maneja y no puede disfrazar); la cubicación
+    // es 10 hábiles antes, calculada. «Corto» = quedan menos de 7 hábiles desde hoy hasta la
+    // cubicación: no bloquea, marca. Un USC que programa el mes solo lo ve en la primera.
+    var muestra=[];
     USCS.forEach(function(u){ muestra=muestra.concat(cand.filter(function(c){return c.o.usc===u;}).slice(0,18)); });
     muestra.forEach(function(c){
-      var k=c.f.obra+c.f.sector+c.f.piso+c.f.ciclo, w=hash('s'+k)%5, dia=new Date(sem[hash('d'+k)%5].getTime());
-      dia.setDate(dia.getDate()+7*w);
-      var tarde=(hash('t'+k)%6===0);
-      PROG.push({o:c.o,f:c.f,cub:(hash('m'+k)%4===0)?elige(CUBS,'x'+k):c.o.cub,dia:dia,
-        fObra:sumaHabiles(dia,tarde?(2+hash('y'+k)%4):LEAD),tarde:tarde,ton:Math.round((3+hash('w'+k)%22)*10)/10,
-        hecho:(w===0&&hash('h'+k)%3!==0),atraso:(w===0&&hash('a'+k)%7===0)});
+      var k=c.f.obra+c.f.sector+c.f.piso+c.f.ciclo;
+      var despacho=sumaHabiles(HOY, 7+hash('s'+k)%30), dia=sumaHabiles(despacho,-LEAD);
+      var corto=habilesEntre(HOY,dia)<CORTO, semana0=(dia>=HOY&&habilesEntre(HOY,dia)<5);
+      var hecho=(semana0&&hash('h'+k)%3===0), atraso=(dia<HOY&&!mismoDia(dia,HOY)&&!hecho);
+      PROG.push({o:c.o,f:c.f,cub:(hash('m'+k)%4===0)?elige(CUBS,'x'+k):c.o.cub,dia:dia,fObra:despacho,
+        corto:corto,tarde:corto,ton:Math.round((3+hash('w'+k)%22)*10)/10,hecho:hecho,atraso:atraso,
+        estado:hecho?'cubicada':(atraso?'en curso':(hash('e'+k)%3===0?'aceptada':'propuesta'))});
     });
     CUB_SEL=CUBS[0];
     $('intro').textContent=D.frentes.length+' frentes · '+OBRAS.length+' obras · '+CUBS.length+' cubicadores';
@@ -285,11 +324,15 @@
     $('drawerX').addEventListener('click',function(){ $('drawer').classList.remove('on'); });
     $('drAplicar').addEventListener('click',aplicarEstructura);
     todo();
-  }).catch(function(e){ $('intro').textContent='No se pudo leer programacion_datos.json: '+e.message; });
+  }).catch(function(e){
+    // Un error dentro de las funciones de pintado también cae aquí: se dice en la consola con
+    // su pila, no sólo "no se pudo leer" — si no, se esconde como si fuera un problema de red.
+    $('intro').textContent='Error: '+e.message; if(window.console&&console.error) console.error(e.stack||e);
+  });
 
   function todo(){
     var s=semana(); $('semTxt').textContent=corta(s[0])+' – '+corta(s[4])+(semOff===0?' · esta semana':'');
-    pintarEquipo(); pintarUsc(); pintarBoard('boardUsc','legUsc',true); pintarCub();
+    pintarEquipo(); pintarUsc(); pintarCub();
   }
 
   // ══ EQUIPO: obras con tareas · filtros · calendario de 5 semanas · lista por prioridad ══
@@ -305,7 +348,7 @@
     $('kpis').innerHTML='<span class="kpi"><b>'+tot+'</b><span>frentes en 5 semanas</span></span>'+
       '<span class="kpi ok"><b>'+(tot?Math.round(100*aT/tot):0)+'%</b><span>a tiempo</span></span>'+
       '<span class="kpi"><b>'+tR.toFixed(0)+'<span style="font-size:13px;color:#b0bec5"> / '+tE.toFixed(0)+'</span></b><span>t real / est.</span></span>'+
-      '<span class="kpi ojo"><b>'+tarde+'</b><span>fuera de plazo</span></span>';
+      '<span class="kpi ojo"><b>'+tarde+'</b><span>a menos de 7 días</span></span>';
     // OBRAS con tareas programadas (respetando cubicador/USC, no la obra elegida)
     var base=PROG.filter(function(x){ return (!F_CUB||x.cub.quien===F_CUB)&&(!F_USC||x.o.usc.ini===F_USC); });
     var porObra={}; base.forEach(function(x){ var k=x.o.obra; (porObra[k]=porObra[k]||{o:x.o,n:0,p:0}); porObra[k].n++; if(!x.hecho) porObra[k].p++; });
@@ -340,14 +383,14 @@
     });
     $('calEq').innerHTML=h+'</tbody>';
     var tardePor={}; PROG.forEach(function(x){ if(x.tarde) tardePor[x.o.usc.ini]=(tardePor[x.o.usc.ini]||0)+1; });
-    $('legEq').innerHTML=USCS.map(function(u){ return '<span><span class="dot" style="background:'+u.color+'"></span> '+u.ini+(tardePor[u.ini]?' <b title="pedidos fuera de plazo">'+tardePor[u.ini]+'</b>':'')+'</span>'; }).join('')+
-      '<span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #f9a825"></span> fuera de plazo</span><span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #c62828"></span> choque (3+ de 2+ USC)</span>';
+    $('legEq').innerHTML=USCS.map(function(u){ return '<span><span class="dot" style="background:'+u.color+'"></span> '+u.ini+'</span>'; }).join('')+
+      '<span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #f9a825"></span> programado a menos de 7 días</span><span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #c62828"></span> choque (3+ de 2+ USC)</span>';
     // LISTA por prioridad: pendientes por fecha, la más próxima primero; los cubicados al final.
     var l=filtrados().slice().sort(function(a,b){ return (a.hecho?1:0)-(b.hecho?1:0) || a.dia-b.dia; });
     $('listaEqN').textContent='· '+l.length;
     $('listaEq').innerHTML='<thead><tr><th>Cubicar</th><th>En obra</th><th>Obra</th><th>Frente</th><th>Cubicador</th><th>USC</th><th style="text-align:right">t est.</th><th>Estado</th></tr></thead><tbody>'+
       l.map(function(x){ var atr=!x.hecho&&x.dia<HOY&&!mismoDia(x.dia,HOY);
-        var st=x.hecho?'<span class="st h">cubicado</span>':(atr?'<span class="st a">atrasado</span>':(x.tarde?'<span class="st t">fuera de plazo</span>':'<span class="st p">programado</span>'));
+        var st=x.hecho?'<span class="st h">cubicado</span>':(atr?'<span class="st a">atrasado</span>':(x.tarde?'<span class="st t">&lt; 7 días</span>':'<span class="st p">'+esc(x.estado||'programado')+'</span>'));
         return '<tr class="'+(x.hecho?'hecho':'')+(atr?' atr':'')+'"><td>'+DIAS[(x.dia.getDay()+6)%7]+' '+corta(x.dia)+'</td><td>'+corta(x.fObra)+'</td>'+
           '<td>'+esc(x.o.obra)+'</td><td>'+esc(x.f.sector+' · '+nomFrente(x.f))+'</td><td>'+esc(x.cub.quien)+'</td>'+
           '<td><span class="usc" style="background:'+x.o.usc.color+'">'+x.o.usc.ini+'</span></td><td style="text-align:right">'+(x.ton?x.ton.toFixed(1):'—')+'</td><td>'+st+'</td></tr>'; }).join('')+'</tbody>';
@@ -416,103 +459,103 @@
     $('drawer').classList.remove('on'); todo();
   }
 
-  // ══ TABLERO semanal por cubicador (lo usa la pestaña USC para colocar frentes) ══
-  function pintarBoard(id,legId,interactivo){
-    var s=semana(), h='<thead><tr><th class="q"></th>'+s.map(function(d,i){
-      return '<th'+(mismoDia(d,HOY)?' class="hoy"':'')+'>'+DIAS[i]+' '+corta(d)+'</th>'; }).join('')+'</tr></thead><tbody>';
-    CUBS.forEach(function(c){
-      var mios=PROG.filter(function(x){return x.cub.quien===c.quien;});
-      var enSem=mios.filter(function(x){return x.dia>=s[0]&&x.dia<=s[4];});
-      h+='<tr><td class="q">'+esc(c.quien)+'<small>'+enSem.length+' frentes · '+enSem.reduce(function(a,x){return a+x.ton;},0).toFixed(0)+' t</small></td>';
-      s.forEach(function(d){
-        var dd=mios.filter(function(x){return mismoDia(x.dia,d);}), u={}; dd.forEach(function(x){u[x.o.usc.ini]=1;});
-        var choque=dd.length>=3&&Object.keys(u).length>=2, dest=interactivo&&FR_SEL;
-        h+='<td class="'+(choque?'choque':'')+(mismoDia(d,HOY)?' hoy':'')+(dest?' dest':'')+'" data-c="'+esc(c.quien)+'" data-d="'+iso(d)+'">'+
-          dd.map(function(x){ return '<span class="chip'+(x.tarde?' tarde':'')+(x.hecho?' ok':'')+'" style="background:'+x.o.usc.color+'" title="'+
-            esc(x.o.obra+' · '+nomFrente(x.f)+' · '+x.o.usc.ini+(x.tarde?' · fuera de plazo':'')+' · '+x.ton+' t')+'">'+esc(nomObra(x.o)+' '+nomFrente(x.f))+'</span>'; }).join('')+'</td>';
-      });
-      h+='</tr>';
-    });
-    $(id).innerHTML=h+'</tbody>';
-    if(interactivo){ $(id).querySelectorAll('td.dest').forEach(function(td){ td.addEventListener('click',function(){
-      programar(td.getAttribute('data-c'), deIso(td.getAttribute('data-d'))); }); }); }
-    var tardePor={}; PROG.forEach(function(x){ if(x.tarde) tardePor[x.o.usc.ini]=(tardePor[x.o.usc.ini]||0)+1; });
-    $(legId).innerHTML=USCS.map(function(u){ return '<span><span class="dot" style="background:'+u.color+'"></span> '+u.ini+
-      (tardePor[u.ini]?' <b title="pedidos fuera de plazo">'+tardePor[u.ini]+'</b>':'')+'</span>'; }).join('')+
-      '<span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #f9a825"></span> fuera de plazo</span>'+
-      '<span><span class="dot" style="background:#fff;box-shadow:inset 0 0 0 2px #c62828"></span> 3+ frentes de 2+ USC</span>'+
-      (interactivo&&FR_SEL?'<span style="color:#33691e;font-weight:600">→ elige el día y el cubicador en el tablero</span>':'');
+  // ══ USC: tres cajas (obras · por programar · programadas) y el calendario de números ══
+  // Caja 2 son TAREAS sin fecha (tarea = sector constructivo). Programar = ponerles fecha de
+  // DESPACHO; la cubicación se calcula 10 hábiles antes. Toneladas las escribe el USC (sin
+  // predicción del sistema, por ahora). Cubicador = el responsable de la obra, cambiable.
+  var OB_SEL=null, CAL_CUB=null, ED_CUB=null;
+  function estaProg(f){ return PROG.some(function(x){return x.f===f;}); }
+  function programarTarea(o,f,despacho,ton){
+    var dia=sumaHabiles(despacho,-LEAD), corto=habilesEntre(HOY,dia)<CORTO;
+    PROG.push({o:o,f:f,cub:o.cub,dia:dia,fObra:despacho,corto:corto,tarde:corto,ton:ton||0,hecho:false,atraso:false,estado:'propuesta'});
   }
-
-  // ══ USC: la cola de lo que falta programar, y el tablero al lado ══
   function pintarUsc(){
     $('uscPills').innerHTML=USCS.map(function(u){ return '<button class="pill'+(u.ini===USC_SEL.ini?' on':'')+'" data-u="'+u.ini+'"><span class="dot" style="background:'+u.color+'"></span>'+u.ini+'</button>'; }).join(' ');
     $('uscPills').querySelectorAll('button').forEach(function(b){ b.addEventListener('click',function(){
-      USC_SEL=USCS.filter(function(u){return u.ini===b.getAttribute('data-u');})[0]; FR_SEL=null; OB_ABIERTA=null; todo(); }); });
+      USC_SEL=USCS.filter(function(u){return u.ini===b.getAttribute('data-u');})[0]; OB_SEL=null; CAL_CUB=null; ED_CUB=null; todo(); }); });
     var mias=OBRAS.filter(function(o){return o.usc.ini===USC_SEL.ini;});
-    if(!OB_ABIERTA||mias.indexOf(OB_ABIERTA)<0) OB_ABIERTA=mias[0]||null;
-    var yaProg=function(f){ return PROG.some(function(x){return x.f===f;}); };
-    $('cola').innerHTML=mias.map(function(o){
-      var pend=o.frentes.filter(function(f){return f.estado!=='exportado'&&!yaProg(f);});
-      return '<div class="ob'+(o===OB_ABIERTA?' on':'')+'" data-o="'+esc(o.obra)+'"><div class="h">'+
-        '<span class="n">'+esc(o.obra)+'<br><span class="mut">'+esc(o.tipo)+' · '+esc(o.origen)+' · '+esc(o.cub.quien.split(' ')[0])+'</span></span>'+
-        '<span class="c">'+pend.length+'</span><span class="cfg" data-cfg="'+esc(o.obra)+'" title="Estructura de la obra">⚙</span></div>'+
-        '<div class="fr">'+pend.slice(0,30).map(function(f){ var i=o.frentes.indexOf(f);
-          return '<span class="f'+(f===FR_SEL?' on':'')+'" data-f="'+i+'">'+esc(nomFrente(f))+'<small>'+esc(f.libre?'propio':f.sector)+'</small></span>'; }).join('')+
-        (pend.length>30?'<span class="mut" style="align-self:center">+'+(pend.length-30)+'</span>':'')+
-        (o===OB_ABIERTA&&FR_SEL&&o.frentes.indexOf(FR_SEL)>=0?popover(o):'')+'</div></div>';
-    }).join('')||'<div class="mut">Sin obras.</div>';
-    $('cola').querySelectorAll('.ob>.h').forEach(function(h){ h.addEventListener('click',function(ev){
-      if(ev.target.closest('.cfg')) return;
-      var o=OBRAS.filter(function(x){return x.obra===h.parentNode.getAttribute('data-o');})[0];
-      OB_ABIERTA=(OB_ABIERTA===o)?null:o; FR_SEL=null; pintarUsc(); pintarBoard('boardUsc','legUsc',true); }); });
-    $('cola').querySelectorAll('.cfg').forEach(function(x){ x.addEventListener('click',function(){
-      abrirDrawer(OBRAS.filter(function(o){return o.obra===x.getAttribute('data-cfg');})[0]); }); });
-    $('cola').querySelectorAll('.f').forEach(function(x){ x.addEventListener('click',function(){
-      var ob=OBRAS.filter(function(o){return o.obra===x.closest('.ob').getAttribute('data-o');})[0];
-      var f=ob.frentes[Number(x.getAttribute('data-f'))]; FR_SEL=(FR_SEL===f)?null:f; OB_ABIERTA=ob;
-      pintarUsc(); pintarBoard('boardUsc','legUsc',true); }); });
-    bindPop();
+    if(!OB_SEL||mias.indexOf(OB_SEL)<0) OB_SEL=mias[0]||null;
+    // CAJA 1 · obras del USC, con cuántas tareas siguen sin fecha
+    $('c1').innerHTML=mias.map(function(o){ var n=o.frentes.filter(function(f){return f.estado!=='exportado'&&!estaProg(f);}).length;
+      return '<div class="o'+(o===OB_SEL?' on':'')+'" data-o="'+esc(o.obra)+'" title="'+esc(o.obra)+'"><span class="n">'+esc(o.obra)+'</span><span class="k"><b>'+n+'</b></span></div>'; }).join('')||'<span class="mut">Sin obras.</span>';
+    $('c1').querySelectorAll('.o').forEach(function(el){ el.addEventListener('click',function(){
+      OB_SEL=OBRAS.filter(function(x){return x.obra===el.getAttribute('data-o');})[0]; CAL_CUB=null; ED_CUB=null; pintarUsc(); }); });
+    // CAJA 2 · tareas sin fecha de la obra abierta; se marcan y se pasan con → y una fecha de despacho
+    var disp=OB_SEL?OB_SEL.frentes.filter(function(f){return f.estado!=='exportado'&&!estaProg(f);}):[];
+    $('c2n').textContent='· '+disp.length;
+    $('c2').innerHTML=disp.slice(0,40).map(function(f){ return '<label class="t"><input type="checkbox" data-f="'+OB_SEL.frentes.indexOf(f)+'">'+
+      esc(f.sector+' · '+nomFrente(f))+'<small>'+(f.estado==='modificado'?'cambió':'')+'</small></label>'; }).join('')+
+      (disp.length>40?'<div class="mut" style="padding:4px">+'+(disp.length-40)+'</div>':'')||'<div class="mut" style="padding:6px 4px">Todo programado.</div>';
+    if(!$('c2Fecha').value) $('c2Fecha').value=iso(sumaHabiles(HOY,LEAD+CORTO+3));
+    $('c2Go').onclick=function(){
+      var d=deIso($('c2Fecha').value); if(!valida(d)||!OB_SEL) return;
+      var t=parseFloat(String($('c2Ton').value).replace(',','.'))||0;
+      var marc=$('c2').querySelectorAll('input').filter(function(i){return i.checked;});
+      if(!marc.length) return;
+      marc.forEach(function(i){ programarTarea(OB_SEL, OB_SEL.frentes[Number(i.getAttribute('data-f'))], d, t); });
+      $('c2Ton').value=''; todo();
+    };
+    pintarC3(); pintarCalUsc();
   }
-  function popover(o){
-    var def=sumaHabiles(HOY,LEAD+2);
-    return '<div class="pop" style="width:100%"><div class="row"><span class="mut">Necesario en obra</span>'+
-      '<input type="date" id="pFecha" value="'+iso(def)+'"><span class="mut">→ cubicar el <b id="pCub"></b></span></div>'+
-      '<div class="row" style="margin-top:7px"><span class="mut">Cubicador</span><span id="pCubs"></span></div>'+
-      '<div class="warn" id="pWarn"></div>'+
-      '<div class="row" style="margin-top:8px"><button class="b" id="pOk">Programar</button><span class="mut">o toca un día del tablero</span></div></div>';
+  // CAJA 3 · programadas de la obra — o la carga de un cubicador en la semana, si se tocó su
+  // nombre en el calendario (así "con cuánto quedó Emilio" se contesta acá y no ensucia el calendario)
+  function pintarC3(){
+    var s=semana(), filas, tit;
+    if(CAL_CUB){ filas=PROG.filter(function(x){return x.cub.quien===CAL_CUB&&x.dia>=s[0]&&x.dia<=s[4];});
+      tit='Carga de '+esc(CAL_CUB)+' · semana <button class="pill" id="c3Volver">← volver a la obra</button>'; }
+    else { filas=OB_SEL?PROG.filter(function(x){return x.o===OB_SEL;}):[]; tit='Programadas <span class="mut">· '+esc(OB_SEL?OB_SEL.obra:'')+'</span>'; }
+    filas=filas.slice().sort(function(a,b){return a.dia-b.dia;});
+    var tot=filas.reduce(function(a,x){return a+(x.ton||0);},0);
+    $('c3h').innerHTML=tit+'<span class="mut" style="margin-left:auto">'+filas.length+' tareas · '+tot.toFixed(1)+' t</span>';
+    var vol=$('c3Volver'); if(vol) vol.addEventListener('click',function(){ CAL_CUB=null; pintarUsc(); });
+    $('c3').innerHTML='<thead><tr><th>Despacho</th><th>Cubicación</th>'+(CAL_CUB?'<th>Obra</th>':'')+'<th>Tarea</th><th>Cubicador</th><th style="text-align:right">t</th><th>Estado</th><th></th></tr></thead><tbody>'+
+      (filas.length?filas.map(function(x,i){
+        var m=habilesEntre(HOY,x.dia), atr=(!x.hecho&&x.dia<HOY&&!mismoDia(x.dia,HOY));
+        var st=x.hecho?'<span class="st h">cubicada</span>':(atr?'<span class="st a">atrasada</span>':'<span class="st p">'+esc(x.estado||'propuesta')+'</span>');
+        var ro=(x.o===OB_SEL||CAL_CUB)?1:0;
+        return '<tr'+(x.hecho?' class="hecho"':'')+'>'+
+          '<td><input type="date" data-i="'+PROG.indexOf(x)+'" value="'+iso(x.fObra)+'"'+(CAL_CUB?' disabled':'')+'></td>'+
+          '<td>'+DIAS[(x.dia.getDay()+6)%7]+' '+corta(x.dia)+(x.corto&&!x.hecho?' <span class="f7" title="Quedan '+m+' días hábiles; el estándar son '+CORTO+'">&lt; 7 días</span>':'')+'</td>'+
+          (CAL_CUB?'<td>'+esc(nomObra(x.o))+'</td>':'')+
+          '<td>'+esc(x.f.sector+' · '+nomFrente(x.f))+'</td>'+
+          '<td><span class="cb" data-c="'+PROG.indexOf(x)+'" title="Cambiar cubicador">'+esc(x.cub.quien.split(' ')[0])+'</span>'+
+            (ED_CUB===PROG.indexOf(x)?'<div class="row" style="gap:4px;margin-top:4px">'+CUBS.map(function(c){return '<button class="pill'+(c===x.cub?' on':'')+'" data-set="'+PROG.indexOf(x)+'|'+esc(c.quien)+'">'+esc(c.quien.split(' ')[0])+(c===x.o.cub?' ★':'')+'</button>';}).join('')+'</div>':'')+'</td>'+
+          '<td style="text-align:right"><input class="ton" data-t="'+PROG.indexOf(x)+'" value="'+(x.ton?x.ton:'')+'" placeholder="—"'+(CAL_CUB?' disabled':'')+'></td>'+
+          '<td>'+st+'</td><td>'+(CAL_CUB||x.hecho?'':'<button class="q" data-q="'+PROG.indexOf(x)+'" title="Quitar del programa">✕</button>')+'</td></tr>';
+      }).join(''):'<tr><td colspan="8" class="mut">Nada programado todavía.</td></tr>')+'</tbody>';
+    $('c3').querySelectorAll('input[data-i]').forEach(function(inp){ inp.addEventListener('change',function(){
+      var x=PROG[Number(inp.getAttribute('data-i'))], d=deIso(inp.value); if(!valida(d)) return;
+      x.fObra=d; x.dia=sumaHabiles(d,-LEAD); x.corto=x.tarde=habilesEntre(HOY,x.dia)<CORTO; todo(); }); });
+    $('c3').querySelectorAll('input[data-t]').forEach(function(inp){ inp.addEventListener('change',function(){
+      PROG[Number(inp.getAttribute('data-t'))].ton=parseFloat(String(inp.value).replace(',','.'))||0; todo(); }); });
+    $('c3').querySelectorAll('.cb').forEach(function(el){ el.addEventListener('click',function(){
+      var i=Number(el.getAttribute('data-c')); ED_CUB=(ED_CUB===i)?null:i; pintarC3(); }); });
+    $('c3').querySelectorAll('[data-set]').forEach(function(b){ b.addEventListener('click',function(){
+      var p=b.getAttribute('data-set').split('|'); PROG[Number(p[0])].cub=CUBS.filter(function(c){return c.quien===p[1];})[0]; ED_CUB=null; todo(); }); });
+    $('c3').querySelectorAll('[data-q]').forEach(function(b){ b.addEventListener('click',function(){
+      PROG.splice(Number(b.getAttribute('data-q')),1); ED_CUB=null; todo(); }); });
   }
-  var P_CUB=null;
-  function bindPop(){
-    if(!$('pFecha')) return;
-    var o=OB_ABIERTA; P_CUB=P_CUB||o.cub;
-    var pintaC=function(){ $('pCubs').innerHTML=CUBS.map(function(c){ return '<button class="pill'+(c.quien===P_CUB.quien?' on':'')+'" data-c="'+esc(c.quien)+'">'+esc(c.quien.split(' ')[0])+(c===o.cub?' ★':'')+'</button>'; }).join(' ');
-      $('pCubs').querySelectorAll('button').forEach(function(b){ b.addEventListener('click',function(){ P_CUB=CUBS.filter(function(c){return c.quien===b.getAttribute('data-c');})[0]; pintaC(); }); }); };
-    var recalc=function(){ var dO=deIso($('pFecha').value), w=$('pWarn');
-      if(!valida(dO)){ $('pCub').textContent='—'; w.className='warn'; w.textContent=''; return; }
-      var dC=sumaHabiles(dO,-LEAD), m=habilesEntre(HOY,dC);
-      $('pCub').textContent=corta(dC);
-      if(m<0){ w.className='warn on'; w.textContent='Fuera de plazo: para estar en obra el '+corta(dO)+' debió cubicarse el '+corta(dC)+'. Se atiende igual; queda registrado a '+USC_SEL.ini+'.'; }
-      else if(m<3){ w.className='warn on'; w.textContent='Al límite: '+m+' día(s) hábil(es) de margen (estándar '+LEAD+').'; }
-      else { w.className='warn'; w.textContent=''; } };
-    pintaC(); recalc();
-    $('pFecha').addEventListener('change',recalc);
-    $('pOk').addEventListener('click',function(){ var dO=deIso($('pFecha').value); if(!valida(dO)) return; programar(P_CUB.quien, sumaHabiles(dO,-LEAD), dO); });
-  }
-  // Programar: desde el botón (fecha en obra → día de cubicación) o tocando una celda del tablero
-  // (día de cubicación → fecha en obra = +10 hábiles). Fuera de plazo = el día ya pasó.
-  function programar(cubNombre, dia, fObra){
-    if(!FR_SEL||!OB_ABIERTA) return;
-    var cub=CUBS.filter(function(c){return c.quien===cubNombre;})[0];
-    var tarde=habilesEntre(HOY,dia)<0;
-    // Un pedido fuera de plazo no se manda a una semana que ya pasó: cae en HOY (el primer día
-    // en que alguien puede tomarlo) y la marca ámbar dice que llegó tarde. El tablero se queda
-    // donde está en vez de saltar al pasado.
-    if(tarde) dia=new Date(HOY.getTime());
-    PROG.push({o:OB_ABIERTA,f:FR_SEL,cub:cub,dia:dia,fObra:fObra||sumaHabiles(dia,LEAD),tarde:tarde,ton:0,hecho:false,atraso:false});
-    FR_SEL=null; P_CUB=null;
-    var l=lunesDe(dia), l0=lunesDe(HOY); semOff=Math.round((l-l0)/(7*86400000));
-    todo();
+  // CALENDARIO DE NÚMEROS · una semana, una fila por cubicador, «n · t» por día y el total.
+  // Sirve para lo único que tiene que servir: ver el choque y la carga. Los chips con nombre
+  // de obra viven en la pestaña Equipo, que es la de la reunión.
+  function pintarCalUsc(){
+    var s=semana();
+    var h='<thead><tr><th class="q">Cubicador</th>'+s.map(function(d,i){ return '<th'+(mismoDia(d,HOY)?' class="hoy"':'')+'>'+DIAS[i]+'<small style="font-weight:400;color:#90a4ae">'+corta(d)+'</small></th>'; }).join('')+'<th>Semana</th></tr></thead><tbody>';
+    CUBS.forEach(function(c){
+      var mios=PROG.filter(function(x){return x.cub.quien===c.quien;}), wn=0, wt=0;
+      h+='<tr><td class="q'+(CAL_CUB===c.quien?' on':'')+'" data-c="'+esc(c.quien)+'" title="Ver sus tareas de la semana">'+esc(c.quien)+'<small>'+esc(c.ini)+'</small></td>';
+      s.forEach(function(d){
+        var dd=mios.filter(function(x){return mismoDia(x.dia,d);}), u={}; dd.forEach(function(x){u[x.o.usc.ini]=1;});
+        var t=dd.reduce(function(a,x){return a+(x.ton||0);},0), choque=(dd.length>=3&&Object.keys(u).length>=2);
+        wn+=dd.length; wt+=t;
+        h+='<td class="'+(choque?'choque':'')+(mismoDia(d,HOY)?' hoy':'')+(dd.length?'':' vac')+'" title="'+esc(dd.map(function(x){return nomObra(x.o)+' '+nomFrente(x.f)+' ('+x.o.usc.ini+')';}).join(', ')||'—')+'">'+
+          (dd.length?dd.length+' · '+t.toFixed(0)+' t':'—')+(choque?'<small style="color:#c62828">'+Object.keys(u).join(' ')+'</small>':'')+'</td>';
+      });
+      h+='<td class="tot">'+wn+' · '+wt.toFixed(0)+' t</td></tr>';
+    });
+    $('calUsc').innerHTML=h+'</tbody>';
+    $('calUsc').querySelectorAll('td.q').forEach(function(td){ td.addEventListener('click',function(){
+      var c=td.getAttribute('data-c'); CAL_CUB=(CAL_CUB===c)?null:c; ED_CUB=null; pintarC3(); pintarCalUsc(); }); });
   }
 
   // ══ CUBICADOR: mi semana, día por día ══
