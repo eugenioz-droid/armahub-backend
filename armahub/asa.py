@@ -133,10 +133,17 @@ def _aplicar_auth(url: str, headers: Dict[str, str]) -> str:
     # dependiera de que alguien escriba "Bearer " con el espacio al final, se perdería:
     # todo lector de variables de entorno recorta los extremos (el .env local y Render
     # también). Sería un 401 imposible de diagnosticar mirando la configuración.
-    prefijo = _cfg("ASA_AUTH_PREFIX", "Bearer", vacio_vale=True)
+    nombre = _cfg("ASA_AUTH_HEADER", "Authorization") or "Authorization"
+    # El prefijo por defecto depende de la cabecera: "Bearer" sólo tiene sentido con
+    # `Authorization`. En una cabecera propia como `AsaStudioApiKey` la clave va sola.
+    # Sin esta regla, desplegar exigiria crear en Render una variable VACIA
+    # (ASA_AUTH_PREFIX=) — algo facilisimo de omitir, y el resultado seria un "Bearer "
+    # pegado adelante y un 401 que no se explica mirando la configuracion.
+    por_defecto = "Bearer" if nombre.lower() == "authorization" else ""
+    prefijo = _cfg("ASA_AUTH_PREFIX", por_defecto, vacio_vale=True)
     if prefijo and not prefijo.endswith(" "):
         prefijo += " "
-    headers[_cfg("ASA_AUTH_HEADER", "Authorization") or "Authorization"] = prefijo + key
+    headers[nombre] = prefijo + key
     return url
 
 
