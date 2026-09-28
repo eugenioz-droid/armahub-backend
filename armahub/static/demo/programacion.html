@@ -95,6 +95,61 @@
   ul.razon li{display:flex;gap:9px;font-size:12px;color:#37474f;line-height:1.4}
   ul.razon b.n{flex:none;width:19px;height:19px;border-radius:50%;background:var(--verde);color:#fff;
                font-size:10.5px;display:inline-flex;align-items:center;justify-content:center}
+
+  /* ══ PROGRAMAR: dos cajas, sin desplegables ══ */
+  .dos{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+  @media(max-width:1000px){ .dos{grid-template-columns:1fr} }
+  .verc{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .verc button{border:1px solid #cfd8dc;background:#fff;color:#546e7a;font:inherit;font-size:11px;
+               font-weight:700;padding:3px 10px;border-radius:99px;cursor:pointer}
+  .verc button.on{color:#fff;border-color:transparent}
+  /* lista de obras: filas clicables, no un <select> */
+  .lista{display:flex;flex-direction:column;gap:2px;max-height:430px;overflow:auto;
+         border:1px solid var(--ln);border-radius:8px;padding:4px}
+  .obra{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:6px;cursor:pointer;
+        border:1px solid transparent}
+  .obra:hover{background:#f5f7fa}
+  .obra.on{background:#f1f8e9;border-color:#c5e1a5}
+  .obra .nom{flex:1;font-weight:600;font-size:12px;line-height:1.25}
+  .obra .cnt{font-size:11px;color:var(--mut);white-space:nowrap}
+  .obra .cnt b{color:#e65100}
+  /* ciclos constructivos: una caja por ciclo, con su plano */
+  .ciclos{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .ciclo{width:132px;border:1px solid var(--ln);border-radius:8px;overflow:hidden;background:#fff}
+  .ciclo .cab{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;
+              background:#fafbfc;border-bottom:1px solid var(--ln);font-size:11px;font-weight:700}
+  .ciclo .cab span.x{color:var(--rojo);cursor:pointer;font-weight:700}
+  .ciclo .img{height:92px;display:flex;align-items:center;justify-content:center;background:#fff}
+  .ciclo.vacio .img{border:2px dashed #dfe4ea;margin:6px;height:80px;border-radius:6px;
+                    color:#b0bec5;font-size:10.5px;text-align:center;padding:4px;cursor:pointer}
+  .ciclo .pie{padding:4px 8px;font-size:10px;color:var(--mut);border-top:1px solid #f0f2f5}
+  .addc{width:132px;height:132px;border:2px dashed #dfe4ea;border-radius:8px;background:#fff;
+        color:#78909c;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .addc:hover{border-color:var(--verde);color:var(--verde-os)}
+  /* frentes agrupados por sector */
+  .sect{margin-bottom:12px}
+  .sect h4{margin:0 0 5px;font-size:12px;color:#37474f;display:flex;align-items:center;gap:8px}
+  .sect h4 .tag{background:#eceff1;color:#546e7a;border-radius:4px;padding:1px 7px;font-size:10px}
+  .fgrid{display:flex;gap:6px;flex-wrap:wrap}
+  .fr{border:1px solid #dfe4ea;border-radius:6px;padding:5px 9px;cursor:pointer;background:#fff;
+      font-size:11.5px;line-height:1.2;min-width:78px}
+  .fr:hover{border-color:var(--verde);background:#f7faf3}
+  .fr.on{border-color:var(--verde);background:#f1f8e9;box-shadow:0 0 0 2px rgba(139,195,74,.25)}
+  .fr.ya{opacity:.5;cursor:default;background:#fafbfc}
+  .fr .pc{font-weight:700;color:#263238}
+  .fr .st{font-size:10px;color:var(--mut)}
+  .fr .st.m{color:#e65100;font-weight:700}
+  /* panel de programación que se abre al elegir un frente */
+  .prog{margin-top:12px;border:1px solid #c5e1a5;background:#f7faf3;border-radius:8px;padding:12px 14px}
+  .prog h4{margin:0 0 9px;font-size:13px;color:var(--verde-os)}
+  .sug{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+  .sug button{border:1px solid #cfd8dc;background:#fff;color:#546e7a;font:inherit;font-size:11px;
+              padding:2px 9px;border-radius:99px;cursor:pointer}
+  .sug button:hover{border-color:var(--verde);color:var(--verde-os)}
+  .gen{margin-top:10px;border:1px solid var(--ln);border-radius:8px;padding:12px 14px;background:#fafbfc;display:none}
+  .gen.on{display:block}
+  h3.sec{margin:16px 0 7px;font-size:13px;color:#37474f;display:flex;align-items:center;gap:9px}
+  h3.sec .mini{font-weight:400}
 </style>
 </head>
 <body>
@@ -112,35 +167,73 @@
 
   <!-- ═══════════ 1 · PROGRAMAR ═══════════ -->
   <section id="s-programar" class="on">
-    <div class="card">
-      <h2>Pedir un frente</h2>
-      <p class="sub">El USC elige la obra, el frente y <b>cuándo lo necesita en obra</b>. La fecha en que
-        debe estar cubicado se calcula sola (10 días hábiles antes) y se puede corregir. Mientras elige,
-        ve la carga del cubicador y si está pidiendo fuera de plazo.</p>
-      <div class="fila">
-        <div class="campo" style="min-width:280px"><label>Obra</label><select id="selObra"></select></div>
-        <div class="campo" style="min-width:230px"><label>Frente</label><select id="selFrente"></select></div>
-        <div class="campo"><label>Cubicador</label><select id="selCub"></select></div>
-        <div class="campo"><label>Necesario en obra</label><input type="date" id="fObra"></div>
-        <div class="campo"><label>Debe estar cubicado</label><input type="date" id="fCub" disabled></div>
-        <div class="campo"><label>Ton estimadas <span style="font-weight:400">(opc.)</span></label>
-          <input type="text" id="ton" style="width:80px" placeholder="—"></div>
-        <button class="acc" id="btnProg">Programar</button>
-      </div>
-      <div class="aviso" id="avisoPlazo"></div>
-      <div id="cargaCub" style="margin-top:12px"></div>
+    <div class="verc">
+      <span class="mini">Viendo como:</span><span id="vercUsc"></span>
+      <span class="mini">— en producción esto lo dice tu sesión; aquí se cambia para ver las dos caras.</span>
     </div>
+    <div class="dos">
 
-    <div class="card">
-      <h2>Frentes de la obra <span class="mini" id="cntFrentes"></span></h2>
-      <p class="sub">Los frentes <b>ya existen</b>: ArmaHub los conoce desde que se cubica. Nadie los teclea.
-        Para obras de infraestructura, que no tienen estos sectores, se agrega un frente con nombre libre
-        («Pedido N°1», «Estribo muro sur»).</p>
-      <div class="fila" style="margin-bottom:8px">
-        <div class="campo"><label>Agregar frente libre</label><input type="text" id="libre" placeholder="Ej: Pedido N°1" style="width:220px"></div>
-        <button class="acc sec" id="btnLibre">＋ agregar</button>
+      <!-- CAJA 1 · las obras del USC -->
+      <div class="card" style="margin:0">
+        <h2>Mis obras</h2>
+        <p class="sub">Las que atiende este USC. Un clic la abre — sin desplegables.</p>
+        <div class="lista" id="listaObras"></div>
+        <button class="acc sec" id="btnNuevaObra" style="margin-top:9px;width:100%">＋ obra que no se cubica en ArmaHub</button>
       </div>
-      <table id="tFrentes"></table>
+
+      <!-- CAJA 2 · la obra abierta: ciclos + sectores para programar -->
+      <div class="card" style="margin:0">
+        <div id="cabObra"></div>
+
+        <h3 class="sec">Ciclos constructivos
+          <span class="mini">el plano de cada ciclo, para que no viva en la cabeza de nadie</span></h3>
+        <div class="ciclos" id="ciclos"></div>
+        <p class="sub" style="margin:8px 0 0">Una caja por ciclo, con su plano (imagen o DWG). En obras
+          complicadas pueden ser seis. Se agregan de a uno y se pueden actualizar cuando el ciclo cambia.</p>
+
+        <h3 class="sec">Sectores para programar <span class="mini" id="cntFrentes"></span></h3>
+        <div id="listaFrentes"></div>
+        <div class="fila" style="margin:10px 0 0">
+          <button class="acc sec" id="btnGen">⚙ Generar sectores de edificio</button>
+          <button class="acc sec" id="btnAbrirLibre">＋ Frente con nombre propio</button>
+        </div>
+
+        <!-- generador para edificio tradicional -->
+        <div class="gen" id="genBox">
+          <h4 style="margin:0 0 8px;font-size:13px">Generar los sectores de un edificio</h4>
+          <p class="sub" style="margin:0 0 9px">Un edificio tradicional es la misma matriz siempre:
+            sectores × pisos × ciclos. Se genera y se corrige, en vez de teclear cien frentes.</p>
+          <div class="fila">
+            <div class="campo"><label>Sectores</label><div class="sug" id="genSect"></div></div>
+            <div class="campo"><label>Pisos</label>
+              <div style="display:flex;gap:5px;align-items:center">
+                <input type="text" id="genP1" value="1" style="width:52px"> <span class="mini">a</span>
+                <input type="text" id="genP2" value="12" style="width:52px">
+              </div></div>
+            <div class="campo"><label>Ciclos por piso</label><input type="text" id="genC" value="3" style="width:52px"></div>
+            <button class="acc" id="btnGenOk">Generar</button>
+            <button class="acc sec" id="btnGenNo">Cancelar</button>
+          </div>
+          <div class="mini" id="genPrev" style="margin-top:8px"></div>
+        </div>
+
+        <!-- frente con nombre propio (infraestructura) -->
+        <div class="gen" id="libreBox">
+          <h4 style="margin:0 0 8px;font-size:13px">Frente con nombre propio</h4>
+          <p class="sub" style="margin:0 0 9px">Las obras de infraestructura no tienen estos sectores.
+            Se escribe el nombre — o se parte de una sugerencia.</p>
+          <div class="fila">
+            <div class="campo"><label>Nombre del frente</label>
+              <input type="text" id="libre" placeholder="Ej: Pedido N°1" style="width:260px"></div>
+            <button class="acc" id="btnLibre">Agregar</button>
+            <button class="acc sec" id="btnLibreNo">Cancelar</button>
+          </div>
+          <div class="sug" id="sugLibre"></div>
+        </div>
+
+        <!-- panel que se abre al elegir un frente -->
+        <div id="panelProg"></div>
+      </div>
     </div>
   </section>
 
@@ -246,6 +339,16 @@
 
   var D=null, OBRAS=[], PROG=[], CUBS=[];
 
+  // Nombre de un frente. Un frente de nombre propio se llama como lo escribieron; uno de
+  // edificio es sector · piso · ciclo. Las partes vacías se muestran como «—» y no como un
+  // hueco: en la base hay frentes sin piso (data vieja) y un «ELEV ·  · C1» parece un error.
+  function nomFrente(f, conSector){
+    if (f.libre) return f.ciclo;
+    var p=[]; if(conSector) p.push(f.sector||'—');
+    p.push((f.piso||'').trim()||'—'); p.push((f.ciclo||'').trim()||'—');
+    return p.join(' · ');
+  }
+
   fetch('programacion_datos.json').then(function(r){ return r.json(); }).then(function(datos){
     D=datos;
     CUBS=D.cubicadores.filter(function(c){ return c.ini!=='GM'; });   // GM quedó del lado USC
@@ -284,55 +387,165 @@
       'Los cubicadores también son los de verdad ('+CUBS.map(function(c){return c.ini;}).join(' · ')+'). '+
       '<b>Las fechas, los USC y quién hace qué son de ejemplo</b>: nada de eso existe hoy, y es justo lo que este módulo guardaría. Semana del '+corta(SEMANA[0])+' al '+corta(SEMANA[4])+'.';
 
+    $('selMio').innerHTML = CUBS.map(function(c){ return '<option>'+esc(c.quien)+'</option>'; }).join('');
+    $('selMio').addEventListener('change', pintarMio);
+    bindGenerador();
     pintarObras(); pintarBoard(); pintarMio(); pintarCumpl();
   }).catch(function(e){
     $('intro').textContent='No se pudo leer programacion_datos.json ('+e.message+'). Abre la página desde la app (/static/demo/…).';
   });
 
   // ══════════════ 1 · PROGRAMAR ══════════════
+  // Dos cajas y clic: a la izquierda las obras del USC, a la derecha la obra abierta con sus
+  // ciclos y sus sectores. Ni un desplegable — el USC ve de una lo que tiene y elige tocándolo.
+  var USC_SEL=USCS[0], OBRA_SEL=null, FRENTE_SEL=null, CUB_SEL=null;
+  var SECTORES=['ELEV','LCIELO','VCIELO','FUND'];
+  var SEC_NOM={ELEV:'Elevación',LCIELO:'Losa de cielo',VCIELO:'Viga de cielo',FUND:'Fundación'};
+  var GEN_SEL={ELEV:1,LCIELO:1};
+
+  // Plano esquemático de un ciclo: la planta partida en N zonas, con la del ciclo resaltada.
+  // En producción esto es la imagen o el DWG que sube el USC; acá se dibuja para que se entienda
+  // de qué se está hablando.
+  function planoMock(idx, total, color){
+    var w=120,h=84,p=6,cw=(w-2*p)/total, s='<svg width="'+w+'" height="'+h+'">';
+    s+='<rect x="'+p+'" y="'+p+'" width="'+(w-2*p)+'" height="'+(h-2*p)+'" fill="#fff" stroke="#b0bec5"/>';
+    for(var i=0;i<total;i++){
+      var x=p+i*cw, act=(i===idx);
+      s+='<rect x="'+x+'" y="'+p+'" width="'+cw+'" height="'+(h-2*p)+'" fill="'+(act?color:'#f5f7fa')+
+         '" fill-opacity="'+(act?0.75:1)+'" stroke="#cfd8dc" stroke-dasharray="'+(act?'':'3 2')+'"/>';
+      s+='<text x="'+(x+cw/2)+'" y="'+(h/2+4)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+
+         (act?'#fff':'#b0bec5')+'">C'+(i+1)+'</text>';
+    }
+    return s+'</svg>';
+  }
+
   function pintarObras(){
-    $('selObra').innerHTML = OBRAS.map(function(o,i){
-      return '<option value="'+i+'">'+esc(o.obra)+' ('+o.frentes.length+')</option>'; }).join('');
-    $('selCub').innerHTML = CUBS.map(function(c){ return '<option>'+esc(c.quien)+'</option>'; }).join('');
-    $('selMio').innerHTML = CUBS.map(function(c){ return '<option>'+esc(c.quien)+'</option>'; }).join('');
-    $('fObra').value = iso(sumaHabiles(HOY, LEAD+2));
-    $('selObra').addEventListener('change', pintarFrentes);
+    // "Viendo como": pastillas, no un <select>. En producción lo dice la sesión.
+    $('vercUsc').innerHTML=USCS.map(function(u){
+      return '<button data-u="'+u.ini+'"'+(u.ini===USC_SEL.ini?' class="on" style="background:'+u.color+'"':'')+'>'+esc(u.nombre)+'</button>';
+    }).join(' ');
+    $('vercUsc').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click',function(){ USC_SEL=USCS.filter(function(u){return u.ini===b.getAttribute('data-u');})[0];
+        OBRA_SEL=null; FRENTE_SEL=null; pintarObras(); });
+    });
+    var mias=OBRAS.filter(function(o){ return o.usc.ini===USC_SEL.ini; });
+    if (!OBRA_SEL || mias.indexOf(OBRA_SEL)<0) OBRA_SEL=mias[0]||null;
+    $('listaObras').innerHTML=mias.map(function(o,i){
+      var pend=o.frentes.filter(function(f){ return f.estado!=='exportado'; }).length;
+      return '<div class="obra'+(o===OBRA_SEL?' on':'')+'" data-i="'+i+'">'+
+        '<span class="usc" style="background:'+o.usc.color+'">'+esc(o.usc.ini)+'</span>'+
+        '<span class="nom">'+esc(o.obra)+'<div class="mini" style="font-weight:400">'+esc(o.tipo)+' · '+esc(o.origen)+'</div></span>'+
+        '<span class="cnt">'+o.frentes.length+'<br><b>'+pend+'</b> x prog.</span></div>';
+    }).join('') || '<div class="mini" style="padding:10px">Este USC no tiene obras asignadas.</div>';
+    $('listaObras').querySelectorAll('.obra').forEach(function(el){
+      el.addEventListener('click',function(){ OBRA_SEL=mias[Number(el.getAttribute('data-i'))];
+        FRENTE_SEL=null; pintarObras(); });
+    });
+    abrirObra();
+  }
+
+  function abrirObra(){
+    var o=OBRA_SEL;
+    if(!o){ $('cabObra').innerHTML='<p class="mini">Elige una obra a la izquierda.</p>';
+      $('ciclos').innerHTML=''; $('listaFrentes').innerHTML=''; $('panelProg').innerHTML=''; return; }
+    $('cabObra').innerHTML='<h2>'+esc(o.obra)+'</h2><p class="sub">'+esc(o.tipo)+
+      ' · el acero sale de <b>'+esc(o.origen)+'</b> · cubicador responsable <b>'+esc(o.cub.quien)+'</b>'+
+      (o.origen==='ArmaHub'?' · <span style="color:#2e7d32">el avance se marca solo</span>'
+                           :' · <span style="color:#e65100">el avance se marca a mano</span>')+'</p>';
+    pintarCiclos(); pintarFrentes(); $('panelProg').innerHTML='';
+    $('genBox').classList.remove('on'); $('libreBox').classList.remove('on');
+  }
+
+  function pintarCiclos(){
+    var o=OBRA_SEL;
+    if(!o.ciclosImg){
+      // Arranca con los ciclos que la obra YA usa en sus frentes (C1, C2…): el dato existe.
+      var cs={}; o.frentes.forEach(function(f){ if(f.ciclo && /^C\d+$/i.test(f.ciclo)) cs[f.ciclo]=1; });
+      o.ciclosImg=Object.keys(cs).sort().slice(0,6).map(function(c,i){ return { nom:c, tiene:(i<2) }; });
+      if(!o.ciclosImg.length) o.ciclosImg=[{nom:'C1',tiene:false}];
+    }
+    var tot=o.ciclosImg.length;
+    $('ciclos').innerHTML=o.ciclosImg.map(function(c,i){
+      return '<div class="ciclo'+(c.tiene?'':' vacio')+'"><div class="cab"><span>'+esc(c.nom)+'</span>'+
+        '<span class="x" data-x="'+i+'" title="Quitar este ciclo">✕</span></div>'+
+        (c.tiene ? '<div class="img">'+planoMock(i,tot,o.usc.color)+'</div><div class="pie">plano cargado · clic para cambiar</div>'
+                 : '<div class="img" data-add="'+i+'">arrastra una imagen o DWG<br>o haz clic</div><div class="pie">sin plano</div>')+
+        '</div>';
+    }).join('')+(tot<6?'<button class="addc" id="addCiclo">＋ agregar ciclo<div class="mini" style="font-weight:400">hasta 6</div></button>':'');
+    var add=$('addCiclo');
+    if(add) add.addEventListener('click',function(){ o.ciclosImg.push({nom:'C'+(o.ciclosImg.length+1),tiene:false}); pintarCiclos(); });
+    $('ciclos').querySelectorAll('[data-add]').forEach(function(el){
+      el.addEventListener('click',function(){ o.ciclosImg[Number(el.getAttribute('data-add'))].tiene=true; pintarCiclos(); });
+    });
+    $('ciclos').querySelectorAll('[data-x]').forEach(function(el){
+      el.addEventListener('click',function(){ o.ciclosImg.splice(Number(el.getAttribute('data-x')),1); pintarCiclos(); });
+    });
+  }
+
+  function pintarFrentes(){
+    var o=OBRA_SEL;
+    var libres=o.frentes.filter(function(f){ return f.libre; });
+    var pend=o.frentes.filter(function(f){ return f.estado!=='exportado'; }).length;
+    $('cntFrentes').textContent='· '+o.frentes.length+' frentes, '+pend+' por programar';
+    var h='';
+    // Agrupados por sector; dentro, cada piso·ciclo es un botón. Los que ya están al día
+    // se muestran apagados: están, pero no hay nada que pedir.
+    var grupos={}; o.frentes.forEach(function(f){ var k=f.libre?'Frentes propios':f.sector; (grupos[k]=grupos[k]||[]).push(f); });
+    Object.keys(grupos).sort().forEach(function(k){
+      var fs=grupos[k], porProg=fs.filter(function(f){ return f.estado!=='exportado'; }).length;
+      h+='<div class="sect"><h4>'+esc(SEC_NOM[k]||k)+' <span class="tag">'+fs.length+' · '+porProg+' por programar</span></h4><div class="fgrid">';
+      h+=fs.slice(0,40).map(function(f){
+        var i=o.frentes.indexOf(f), ya=(f.estado==='exportado');
+        var st=ya?'al día':(f.estado==='modificado'?'cambió':'sin exportar');
+        return '<div class="fr'+(ya?' ya':'')+(f===FRENTE_SEL?' on':'')+'" data-f="'+i+'">'+
+          '<div class="pc">'+esc(nomFrente(f,false))+'</div>'+
+          '<div class="st'+(f.estado==='modificado'?' m':'')+'">'+st+(f.kg>0?' · '+(f.kg/1000).toFixed(1)+' t':'')+'</div></div>';
+      }).join('');
+      if(fs.length>40) h+='<span class="mini" style="align-self:center">… y '+(fs.length-40)+' más</span>';
+      h+='</div></div>';
+    });
+    $('listaFrentes').innerHTML=h||'<p class="mini">Esta obra todavía no tiene frentes. Genéralos abajo.</p>';
+    $('listaFrentes').querySelectorAll('.fr:not(.ya)').forEach(function(el){
+      el.addEventListener('click',function(){ FRENTE_SEL=o.frentes[Number(el.getAttribute('data-f'))];
+        pintarFrentes(); abrirProg(); });
+    });
+  }
+
+  // Panel de programación: aparece al tocar un frente, con lo mínimo — fecha en obra, cubicador
+  // y, si quiere, la tonelada estimada. Todo lo demás se calcula y se avisa aquí mismo.
+  function abrirProg(){
+    var f=FRENTE_SEL, o=OBRA_SEL;
+    if(!f){ $('panelProg').innerHTML=''; return; }
+    CUB_SEL=CUB_SEL||o.cub;
+    $('panelProg').innerHTML='<div class="prog"><h4>Programar '+esc(o.obra)+' — '+
+      esc(nomFrente(f,true))+'</h4>'+
+      '<div class="fila" style="margin:0">'+
+        '<div class="campo"><label>Necesario en obra</label><input type="date" id="fObra" value="'+iso(sumaHabiles(HOY,LEAD+2))+'"></div>'+
+        '<div class="campo"><label>Debe estar cubicado</label><input type="date" id="fCub" disabled></div>'+
+        '<div class="campo"><label>Ton estimadas <span style="font-weight:400">(opcional)</span></label>'+
+          '<input type="text" id="ton" style="width:80px" placeholder="—"></div>'+
+        '<button class="acc" id="btnProg">Programar</button>'+
+        '<button class="acc sec" id="btnProgNo">Cancelar</button>'+
+      '</div>'+
+      '<div class="campo" style="margin-top:9px"><label>Cubicador</label><div class="sug" id="sugCub"></div></div>'+
+      '<div class="aviso" id="avisoPlazo"></div><div id="cargaCub" style="margin-top:10px"></div></div>';
+    $('sugCub').innerHTML=CUBS.map(function(c){
+      return '<button data-c="'+esc(c.quien)+'"'+(c.quien===CUB_SEL.quien?' style="border-color:#8BC34A;background:#f1f8e9;color:#33691e;font-weight:700"':'')+'>'+
+        esc(c.quien)+(c.quien===o.cub.quien?' ★':'')+'</button>'; }).join('');
+    $('sugCub').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click',function(){ CUB_SEL=CUBS.filter(function(c){return c.quien===b.getAttribute('data-c');})[0]; abrirProg(); });
+    });
     $('fObra').addEventListener('change', recalc);
-    $('selCub').addEventListener('change', recalc);
-    $('selMio').addEventListener('change', pintarMio);
+    $('btnProgNo').addEventListener('click', function(){ FRENTE_SEL=null; pintarFrentes(); $('panelProg').innerHTML=''; });
     $('btnProg').addEventListener('click', function(){
       var a=$('avisoPlazo'); a.className='aviso ok';
-      a.innerHTML='✓ Quedaría programado. <span class="mini">(Maqueta: no guarda nada.)</span>';
+      a.innerHTML='✓ Quedaría programado para <b>'+esc(CUB_SEL.quien)+'</b>. <span class="mini">(Maqueta: no guarda nada.)</span>';
     });
-    $('btnLibre').addEventListener('click', function(){
-      var v=$('libre').value.trim(); if(!v) return;
-      var o=OBRAS[Number($('selObra').value)];
-      o.frentes.unshift({ obra:o.obra, id_proyecto:o.id, sector:'—', piso:'—', ciclo:v,
-                          estado:'pendiente', kg:0, despieces:0, libre:true });
-      $('libre').value=''; pintarFrentes();
-    });
-    pintarFrentes();
-  }
-  function pintarFrentes(){
-    var o=OBRAS[Number($('selObra').value)];
-    $('selFrente').innerHTML = o.frentes.slice(0,60).map(function(f,i){
-      return '<option value="'+i+'">'+esc(f.libre ? f.ciclo : (f.sector+' · '+f.piso+' · '+f.ciclo))+'</option>'; }).join('');
-    $('cntFrentes').textContent = '· '+o.frentes.length+' · '+esc(o.tipo)+' · acero de '+esc(o.origen)+
-      ' · USC '+esc(o.usc.ini)+' · responsable '+esc(o.cub.quien);
-    var filas=o.frentes.slice(0,14).map(function(f){
-      var cls=f.estado==='exportado'?'expo':(f.estado==='modificado'?'modi':'pend');
-      var txt=f.estado==='exportado'?'al día':(f.estado==='modificado'?'cambió tras exportar':'sin exportar');
-      return '<tr><td>'+esc(f.libre?f.ciclo:f.sector)+'</td><td>'+esc(f.libre?'—':f.piso)+'</td><td>'+esc(f.libre?'—':f.ciclo)+'</td>'+
-        '<td><span class="pill '+cls+'">'+txt+'</span></td>'+
-        '<td class="num">'+(f.kg>0?(f.kg/1000).toFixed(1):'—')+'</td>'+
-        '<td class="num mini">'+(f.despieces||'—')+'</td></tr>';
-    }).join('');
-    $('tFrentes').innerHTML='<thead><tr><th>Sector</th><th>Piso</th><th>Ciclo</th><th>Estado en ArmaHub</th>'+
-      '<th class="num">Ton cubicadas</th><th class="num">Despieces</th></tr></thead><tbody>'+filas+'</tbody>'+
-      (o.frentes.length>14?'<tfoot><tr><td colspan="6" class="mini">… y '+(o.frentes.length-14)+' frentes más</td></tr></tfoot>':'');
     recalc();
   }
+
   function recalc(){
+    if(!$('fObra')) return;
     var fo=$('fObra').value; if(!fo) return;
     var p=fo.split('-'), dObra=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));
     var dCub=sumaHabiles(dObra,-LEAD);
@@ -342,25 +555,87 @@
     if (margen<0){
       a.className='aviso plazo';
       a.innerHTML='⚠ <b>Fuera de plazo.</b> Para estar en obra el '+corta(dObra)+' habría que haberlo cubicado el '+
-        corta(dCub)+', que ya pasó. <b>Se atiende igual</b>, pero queda registrado como pedido fuera de plazo de este USC.';
+        corta(dCub)+', que ya pasó. <b>Se atiende igual</b>, pero queda registrado como pedido fuera de plazo de '+esc(USC_SEL.nombre)+'.';
     } else if (margen<3){
       a.className='aviso plazo';
       a.innerHTML='⚠ <b>Al límite:</b> quedan '+margen+' día(s) hábil(es) para cubicarlo. El estándar son '+LEAD+' antes de la fecha en obra.';
     } else { a.className='aviso'; a.innerHTML=''; }
-    // Carga del cubicador elegido en la semana de la fecha comprometida
-    var cub=$('selCub').value;
-    var mismos=PROG.filter(function(x){ return x.cub.quien===cub; });
-    var porDia=SEMANA.map(function(d){ return mismos.filter(function(x){ return x.dia.getTime()===d.getTime(); }); });
-    $('cargaCub').innerHTML='<div class="mini" style="margin-bottom:5px"><b>'+esc(cub)+'</b> esta semana:</div>'+
+    var mismos=PROG.filter(function(x){ return x.cub.quien===CUB_SEL.quien; });
+    $('cargaCub').innerHTML='<div class="mini" style="margin-bottom:5px">Carga de <b>'+esc(CUB_SEL.quien)+'</b> esta semana — lo que hoy no se ve hasta el viernes:</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+SEMANA.map(function(d,i){
-        var n=porDia[i].length, uscs={}; porDia[i].forEach(function(x){ uscs[x.obra.usc.ini]=1; });
-        var choque=(n>=3 && Object.keys(uscs).length>=2);
+        var dd=mismos.filter(function(x){ return x.dia.getTime()===d.getTime(); });
+        var uscs={}; dd.forEach(function(x){ uscs[x.obra.usc.ini]=1; });
+        var choque=(dd.length>=3 && Object.keys(uscs).length>=2);
         return '<div style="border:1px solid '+(choque?'#ef9a9a':'#e0e0e0')+';background:'+(choque?'#fff5f5':'#fff')+
           ';border-radius:6px;padding:5px 10px;min-width:74px;text-align:center">'+
           '<div class="mini">'+DIAS[i]+' '+corta(d)+'</div>'+
-          '<div style="font-size:16px;font-weight:700;color:'+(choque?'#c62828':'#37474f')+'">'+n+'</div>'+
-          '<div class="mini">'+Object.keys(uscs).join(' ')+'</div></div>';
+          '<div style="font-size:16px;font-weight:700;color:'+(choque?'#c62828':'#37474f')+'">'+dd.length+'</div>'+
+          '<div class="mini">'+(Object.keys(uscs).join(' ')||'—')+'</div></div>';
       }).join('')+'</div>';
+  }
+
+  // ── generar la matriz de un edificio: sectores × pisos × ciclos ──
+  function bindGenerador(){
+    $('btnGen').addEventListener('click', function(){
+      $('libreBox').classList.remove('on'); $('genBox').classList.toggle('on'); pintarGenSect(); prevGen(); });
+    $('btnGenNo').addEventListener('click', function(){ $('genBox').classList.remove('on'); });
+    ['genP1','genP2','genC'].forEach(function(id){ $(id).addEventListener('input', prevGen); });
+    $('btnGenOk').addEventListener('click', function(){
+      var o=OBRA_SEL, hechos=0;
+      nuevos().forEach(function(n){
+        var rep=o.frentes.some(function(f){ return f.sector===n.sector&&f.piso===n.piso&&f.ciclo===n.ciclo; });
+        if(!rep){ o.frentes.push(n); hechos++; }
+      });
+      $('genBox').classList.remove('on'); pintarObras();
+      $('cntFrentes').textContent+=' · se agregaron '+hechos;
+    });
+    $('btnAbrirLibre').addEventListener('click', function(){
+      $('genBox').classList.remove('on'); $('libreBox').classList.toggle('on');
+      $('sugLibre').innerHTML='<span class="mini" style="align-self:center">Sugerencias:</span>'+
+        ['Pedido N°1','Pedido N°2','Estribo muro sur','Radier acceso','Muro de contención','Pilotes eje A']
+        .map(function(s){ return '<button data-s="'+esc(s)+'">'+esc(s)+'</button>'; }).join('');
+      $('sugLibre').querySelectorAll('button').forEach(function(b){
+        b.addEventListener('click',function(){ $('libre').value=b.getAttribute('data-s'); });
+      });
+    });
+    $('btnLibreNo').addEventListener('click', function(){ $('libreBox').classList.remove('on'); });
+    $('btnLibre').addEventListener('click', function(){
+      var v=$('libre').value.trim(); if(!v||!OBRA_SEL) return;
+      OBRA_SEL.frentes.unshift({ obra:OBRA_SEL.obra, id_proyecto:OBRA_SEL.id, sector:'LIBRE', piso:'—',
+                                 ciclo:v, estado:'pendiente', kg:0, despieces:0, libre:true });
+      $('libre').value=''; $('libreBox').classList.remove('on'); pintarObras();
+    });
+    $('btnNuevaObra').addEventListener('click', function(){
+      var o={ obra:'Obra nueva (fuera de ArmaHub)', id:'NUEVA', frentes:[], usc:USC_SEL,
+              cub:CUBS[0], tipo:'Cubicación', origen:'Directo en aSa' };
+      OBRAS.unshift(o); OBRA_SEL=o; FRENTE_SEL=null; pintarObras();
+    });
+  }
+  function pintarGenSect(){
+    $('genSect').innerHTML=SECTORES.map(function(s){
+      return '<button data-s="'+s+'"'+(GEN_SEL[s]?' style="border-color:#8BC34A;background:#f1f8e9;color:#33691e;font-weight:700"':'')+'>'+
+        s+'</button>'; }).join('');
+    $('genSect').querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click',function(){ var s=b.getAttribute('data-s');
+        if(GEN_SEL[s]) delete GEN_SEL[s]; else GEN_SEL[s]=1; pintarGenSect(); prevGen(); });
+    });
+  }
+  function nuevos(){
+    var p1=parseInt($('genP1').value,10)||1, p2=parseInt($('genP2').value,10)||p1, nc=parseInt($('genC').value,10)||1;
+    var out=[], o=OBRA_SEL; if(!o) return out;
+    Object.keys(GEN_SEL).forEach(function(s){
+      for(var p=p1;p<=p2;p++) for(var c=1;c<=nc;c++)
+        out.push({ obra:o.obra, id_proyecto:o.id, sector:s, piso:'P'+p, ciclo:'C'+c,
+                   estado:'pendiente', kg:0, despieces:0, generado:true });
+    });
+    return out;
+  }
+  function prevGen(){
+    var n=nuevos(), o=OBRA_SEL;
+    var rep=o?n.filter(function(x){ return o.frentes.some(function(f){
+      return f.sector===x.sector&&f.piso===x.piso&&f.ciclo===x.ciclo; }); }).length : 0;
+    $('genPrev').innerHTML='Generaría <b>'+n.length+'</b> frentes'+
+      (rep?' — <b>'+rep+'</b> ya existen y no se duplican, entrarían '+(n.length-rep):'')+'.';
   }
 
   // ══════════════ 2 · CARGA SEMANAL ══════════════
@@ -380,9 +655,9 @@
            (choque?'<span class="aviso-ch">⚠ '+deldia.length+' de '+Object.keys(uscs).length+' USC</span>':'')+
            '<div class="cel">'+deldia.map(function(x){
              return '<span class="chip'+(x.tarde?' tarde':'')+'" style="background:'+x.obra.usc.color+'" title="'+
-               esc(x.obra.obra+' · '+x.f.sector+' '+x.f.piso+' '+x.f.ciclo+' — pidió '+x.obra.usc.nombre+
+               esc(x.obra.obra+' · '+nomFrente(x.f,true)+' — pidió '+x.obra.usc.nombre+
                (x.tarde?' (FUERA DE PLAZO)':'')+' · '+x.ton+' t est.')+'">'+
-               esc(x.f.sector+' '+x.f.piso+'·'+x.f.ciclo)+'</span>';
+               esc(nomFrente(x.f,true))+'</span>';
            }).join('')+'</div></td>';
       });
       h+='</tr>';
@@ -407,7 +682,7 @@
                 : '<span class="pill pend">por hacer</span>';
         return '<tr><td><b>'+DIAS[SEMANA.map(Number).indexOf(Number(x.dia))]+' '+corta(x.dia)+'</b>'+
           (x.tarde?' <span class="mini" style="color:#e65100">· pedido fuera de plazo</span>':'')+'</td>'+
-          '<td>'+esc(x.obra.obra)+'</td><td>'+esc(x.f.sector+' · '+x.f.piso+' · '+x.f.ciclo)+'</td>'+
+          '<td>'+esc(x.obra.obra)+'</td><td>'+esc(nomFrente(x.f,true))+'</td>'+
           '<td><span class="usc" style="background:'+x.obra.usc.color+'">'+esc(x.obra.usc.ini)+'</span></td>'+
           '<td class="num">'+x.ton.toFixed(1)+'</td><td>'+est+'</td>'+
           '<td class="mini">'+(x.obra.origen==='ArmaHub'?'se marca solo':'<button class="acc sec">marcar cubicado</button>')+'</td></tr>';
