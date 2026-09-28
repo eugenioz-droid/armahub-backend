@@ -56,12 +56,18 @@ sirve igual el listado de pasos.
 
 | Dato | Valor |
 |---|---|
-| Host conocido | `qa254.asahq.com` — **ambiente QA**, en internet público (no red interna) |
+| Host de producción | **`matco.asa.studio`** |
+| Host de QA | `qa254.asahq.com` — útil para desarrollar sin tocar producción |
 | Ruta base | `/api/public/` |
 | Documentación viva | `/api/public/doc` — lista todos los endpoints con sus campos |
-| Protocolo | **OData** — confirmado por el ejemplo `?$filter=OrderID eq 'O-0000350'` |
-| URL de producción | _(pendiente)_ |
-| Autenticación | _(pendiente — ¿header, query string, campo "API Key" de Power BI?)_ |
+| Protocolo | **OData** — `$select` y `$filter` confirmados en uso real |
+| Autenticación | **no viaja en la URL** → cabecera o almacén de credenciales de Power BI. _(falta confirmar cuál)_ |
+
+Los dos hosts son de internet público, no de la red interna de Armacero: **Render puede
+alcanzarlos** salvo que haya lista blanca de IPs.
+
+**El catálogo completo de campos, endpoint por endpoint, está en
+[asa_campos.md](asa_campos.md).** Acá sólo va el diseño.
 
 ### Que sea OData cambia el diseño, para bien
 
@@ -88,18 +94,39 @@ aprovechamos lo mismo:
 | Load | carga / camión |
 | Business Partner | cliente / constructora |
 
-### Endpoints
+### Endpoints (detalle de campos en [asa_campos.md](asa_campos.md))
 
 | Endpoint | Para qué | Prioridad |
 |---|---|---|
-| `getJobData` | las obras. Alimenta el espejo `asa_obras` | **1 — esencial** |
-| `getOrderSummary` | "Control Code Summary": el CC agregado. Ya lo usa el usuario en BI | **1 — esencial** |
-| `getWBSData` | desglose del job. A confirmar si trae los sectores constructivos | 2 — evaluar |
-| `getShippingTickets` | fecha REAL de despacho vs. la programada | 3 — cierra el círculo |
-| `getScheduling` | la programación de producción de aSa. Puede chocar conceptualmente con la nuestra | 3 — mirar antes |
+| `getOrderSummary` | el **CC**, la obra, el sector (`Descr`), los kilos y quién cubicó | **1 — esencial** |
+| `getScheduling` | fechas **reales** de fabricación y despacho, estado y guía | **1 — esencial** |
+| `getJobData` | obras que aún no tienen ningún pedido en aSa | 2 |
 | `getLoad` | cargas/camión, para cuadrar kilaje | 4 — más adelante |
-| `getOrderItemView` | línea por línea (`BarMark`, `BarSizeDescr`). **Grano demasiado fino: NO se espeja** | — |
-| `getBusPartnerData`, `*Contact*` | **NO se consumen**: ahí viven nombres, correos y teléfonos de personas | — |
+| `getWBSData` | **descartado**: en aSa no existen sectores, van en `Descr` | — |
+| `getOrderItemView` | línea por línea. Grano demasiado fino: **no se espeja** | — |
+| `getBusPartnerData`, `*Contact*` | **no se consumen**: datos personales | — |
+
+`getOrderSummary` + `getScheduling` son los dos que el usuario ya cruza en Power BI, y
+alcanzan para todo lo que necesita el módulo de Programación.
+
+### El sector vive en `Descr` (texto libre)
+
+En aSa **no existe el concepto de sector constructivo**. El sector se escribe a mano en la
+descripción del pedido. Eso tiene dos consecuencias:
+
+1. `Descr` es la **llave de cruce** entre un CC de aSa y una tarea de ArmaHub.
+2. Es texto libre, así que el cruce nunca será 100% automático → **por eso el buscador
+   manual de CC no es un parche, es parte del diseño.**
+
+Atenúa el problema que el export de ArmaHub ya escribe `SECTOR - Piso - Ciclo - Eje` en la
+fila 2 y nombra el archivo `{SECTOR} {PISO} {CICLO}.xlsx`
+([export.py:84](../armahub/export.py#L84)). Si el cubicador pega eso en la descripción al
+importar, el cruce de lo que salió de ArmaHub es casi exacto. **Hay que verificarlo con
+data real antes de confiar en ello.**
+
+Alternativa más robusta, para después: el pedido tiene un campo libre `Reference`. Si el
+export estampara ahí el `lote_id`, el cruce dejaría de ser por nombre. Requiere tocar
+`export.py`, que no se toca sin instrucción explícita.
 
 ### Regla dura: ArmaHub sólo lee
 
