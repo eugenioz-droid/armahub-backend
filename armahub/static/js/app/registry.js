@@ -123,6 +123,25 @@
     hubIcon: '🔧'
   });
 
+  // PROGRAMACIÓN (28-sep). Reemplaza la planilla semanal del área: cinco USC armaban cinco
+  // Excel y un cubicador los consolidaba a mano. Hoy sólo la vista USC está implementada;
+  // Equipo y Cubicador quedan anunciadas y vacías a propósito (decisión del usuario).
+  // El rol 'usc' entra desde ya aunque esos usuarios todavía no existan: cuando se creen,
+  // la caluga ya los espera.
+  registerModule({
+    id: 'programacion',
+    title: 'Programacion',
+    css: 'mod-programacion',
+    defaultTab: 'programacion',
+    allowedRoles: ['admin', 'admin_calidad', 'usc', 'miembro'],
+    loaderFunction: 'loadProgramacionModule',
+    hubCardId: 'hubCardProgramacion',
+    hubOrder: 12,
+    hubDescription: 'Programa semanal del area: que sector cubica cada quien y para cuando.',
+    hubAccent: '#00897b',
+    hubIcon: '🗓️'
+  });
+
   registerModule({
     id: 'admin',
     title: 'Administracion',

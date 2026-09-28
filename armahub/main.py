@@ -36,6 +36,7 @@ from .modelador_config import router as modelador_config_router
 from .reclamos import router as reclamos_router
 from .notifications import router as notifications_router
 from .obra_config import router as obra_config_router
+from .programacion import router as programacion_router
 from .asistente import router as asistente_router
 
 
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
     # barras_router (sin prefijo Y bajo /api/v1) porque comparte el espacio de rutas
     # /proyectos; así el front lo consume por cualquiera de las dos bases, sin sorpresas.
     app.include_router(obra_config_router)
+    app.include_router(programacion_router)
     # Asistente IA de enfierrado (SPECS seccion 12): chat del Template Editor que
     # arma recetas de muro via API de Anthropic. Solo POST /asistente/chat.
     app.include_router(asistente_router)
