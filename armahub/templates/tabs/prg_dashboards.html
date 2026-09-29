@@ -34,7 +34,12 @@
           <div id="dshObras" class="dshlista"></div>
         </div>
         <div class="dshf">
-          <div class="dshfh">Cubicador <span class="muted" style="font-weight:400">· en aSa</span></div>
+          <div class="dshfh">Cubicador <span class="muted" style="font-weight:400">· en aSa</span>
+            <div style="flex:1"></div>
+            <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
+          </div>
+          <!-- aSa devuelve 18 DetailPerson; el usuario elige cuáles ve como chips. -->
+          <div id="dshDetLista" class="dshlista" style="display:none; min-height:0; max-height:190px; margin-bottom:5px;"></div>
           <div id="dshPersonas" class="dshchips"></div>
         </div>
       </div>
@@ -63,7 +68,11 @@
   .dshfiltros{width:236px; flex:none; display:flex; flex-direction:column; gap:11px;
               background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
   .dshf{display:flex; flex-direction:column;}
-  .dshfh{font-size:10.5px; font-weight:700; color:#546e7a; margin-bottom:5px; letter-spacing:.2px;}
+  .dshfh{font-size:10.5px; font-weight:700; color:#546e7a; margin-bottom:5px; letter-spacing:.2px;
+         display:flex; align-items:center; gap:5px;}
+  .dshmini{font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:99px; cursor:pointer;
+           border:1px solid #dfe5ea; background:#fff; color:#607d8b;}
+  .dshmini.on{background:#8BC34A; border-color:#7cb342; color:#fff}
   .dshchips{display:flex; flex-wrap:wrap; gap:4px;}
   .dshchips button{font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:4px; cursor:pointer;
                    border:1px solid #dfe5ea; background:#f7f9fa; color:#607d8b;}
@@ -75,12 +84,16 @@
   .dshlista label:hover{background:#f5f7fa}
   .dshlista input{margin:0; flex:none}
 
-  .dshtablas{flex:1 1 640px; min-width:0; display:flex; flex-direction:column; gap:12px;}
-  .dshcard{padding:9px 11px; margin:0;}
+  /* Las cajas miden lo que mide su tabla (anchos fijos por columna, en dashboards.js) y
+     se ponen una al lado de la otra si caben, una bajo la otra si no. Antes se estiraban
+     a toda la pantalla con cuatro columnas y la mayor parte era aire. */
+  .dshtablas{flex:1 1 660px; min-width:0; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start;}
+  .dshcard{padding:9px 11px; margin:0; flex:0 0 auto;}
   .dshth{font-size:11.5px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:6px;}
   .dshth .muted{font-weight:400; letter-spacing:0;}
-  .dshbd{max-height:330px; overflow:auto;}
-  .dsht{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
+  .dshbd{max-height:560px; overflow:auto;}
+  .dsht{border-collapse:collapse; table-layout:fixed; font-size:11px; font-variant-numeric:tabular-nums;}
+  .dsht.pp{width:660px} .dsht.pg{width:720px}
   /* El encabezado queda pegado: la tabla se desplaza y sin esto no se sabe qué columna es cuál. */
   .dsht thead th{position:sticky; top:0; background:#fafbfc; z-index:1;
                  text-align:left; color:#546e7a; font-weight:600; padding:4px 6px;

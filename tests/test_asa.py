@@ -358,6 +358,31 @@ check("el total se recalcula sobre las filas FILTRADAS",
 check("el front nunca manda un parámetro vacío (usa qs(), que los omite)",
       "function qs(" in DSH and "'anio=' + (ANIO" not in DSH and "?anio=" not in DSH)
 check("un 422 se muestra legible, no como [object Object]", "Array.isArray(det)" in DSH)
+# Lo despachado (Shipped: 83% de 2026) y lo cancelado no es trabajo pendiente y entierra
+# lo que sí lo es. Se filtra en el backend, así el total de pantalla y el de un export
+# dicen lo mismo; y se informa cuántos quedaron fuera, para cuadrar contra BI.
+check("los despachados y cancelados salen del reporte, en el backend",
+      "_ESTADOS_CERRADOS" in PROG and '"Shipped"' in PROG and '"Cancelled"' in PROG
+      and "<> ALL(%s)" in PROG)
+check("...y se informa cuántos quedaron fuera", '"excluidos"' in PROG and "despachados" in DSH)
+check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
+      "ORDER BY promised_date DESC NULLS LAST" in PROG)
+check("el front no reordena lo que el backend ya ordenó", ".sort(" not in DSH)
+# 18 DetailPerson en aSa; el usuario elige cuáles ve. Comodidad de vista → localStorage,
+# leído y escrito con try/catch (puede no existir o estar bloqueado).
+check("hay un botón para elegir qué cubicadores se muestran", "dshDetElegir" in HTM and "dshDetLista" in HTM)
+check("...la elección se recuerda en el navegador, blindada con try/catch",
+      "localStorage.setItem(DET_CLAVE" in DSH and DSH.count("try {") >= 2)
+check("...y sin elección se muestran todos (primer uso)", "DET.length ? todas.filter" in DSH)
+# «Se supone que te trajiste toda la data»: el botón recorre todos los años, uno por
+# llamada (el endpoint sigue siendo por año porque $apply no pagina).
+check("el botón trae todos los años desde 2021, del más nuevo al más viejo",
+      "PRIMER_ANIO = 2021" in DSH and "anio >= PRIMER_ANIO; anio--" in DSH)
+check("...y si un año falla, sigue con el resto y lo dice", "fallidos.push(anio" in DSH)
+# Anchos fijos: la caja mide lo que mide la tabla, no la pantalla.
+check("las tablas tienen anchos fijos por columna (px, no %)",
+      'style="width:250px"' in DSH and 'width:30%' not in DSH)
+check("...y la caja se ajusta a la tabla en vez de estirarse", "flex:0 0 auto" in HTM and ".dsht.pp{width:" in HTM)
 check("el tab está cableado en app.html", "prg_dashboards" in APP and "dashboards.js" in APP)
 check("y registrado en el shell con su loader",
       "prg_dashboards: 'loadPrgDashboards'" in SHELL)

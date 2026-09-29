@@ -14,6 +14,18 @@
 
   var DATA = null, ANIO = null, MESES = [], OBRAS = [], PERSONAS = [], BUSCA = '';
   var MESN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  // aSa devuelve 18 «DetailPerson», entre ellos aSaAdmin, EugenioZ y gente que ya no
+  // cubica. El usuario quiere ver SÓLO su equipo: elige cuáles se muestran como chips y
+  // la elección se recuerda en este navegador (es una comodidad de vista, no un dato).
+  var DET = leerDet(), ELIGIENDO = false;
+  var DET_CLAVE = 'prgDshDetailers';
+  var PRIMER_ANIO = 2021;   // desde cuándo se trae la historia de aSa
+
+  function leerDet() {
+    try { var v = JSON.parse(localStorage.getItem('prgDshDetailers') || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function guardarDet() { try { localStorage.setItem(DET_CLAVE, JSON.stringify(DET)); } catch (e) {} }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -65,6 +77,7 @@
     if (!_bound) {
       _bound = true;
       $('dshSync').addEventListener('click', sincronizar);
+      $('dshDetElegir').addEventListener('click', function () { ELIGIENDO = !ELIGIENDO; pintarChips(); });
       $('dshBuscaObra').addEventListener('input', function () {
         BUSCA = this.value.trim().toLowerCase(); pintarObras();
       });
@@ -90,8 +103,12 @@
 
   function pintarTodo() {
     var esp = DATA.espejo || {};
+    var ex = DATA.excluidos || {};
     $('dshEspejo').textContent = esp.filas_anio
-      ? esp.filas_anio + ' códigos de control en ' + DATA.anio
+      ? esp.filas_anio + ' códigos de control en ' + DATA.anio +
+        ((ex.despachados || ex.cancelados)
+          ? ' · fuera del reporte: ' + (ex.despachados || 0) + ' despachados, ' + (ex.cancelados || 0) + ' cancelados'
+          : '')
       : '';
     // Un espejo vacío no es un error, pero tampoco es «no hay trabajo»: hay que decir
     // que falta traer la data, o el usuario lee cero donde hay cientos de toneladas.
@@ -129,10 +146,33 @@
       if (i === -1) MESES.push(m); else MESES.splice(i, 1);
       cargar();
     }, function (m) { return MESN[m - 1]; });
-    chips($('dshPersonas'), DATA.personas || [], PERSONAS, function (p) {
+    // Chips de cubicador: sólo los elegidos. Sin elección, todos (primer uso).
+    var todas = DATA.personas || [];
+    var visibles = DET.length ? todas.filter(function (p) { return DET.indexOf(p) !== -1; }) : todas;
+    chips($('dshPersonas'), visibles, PERSONAS, function (p) {
       var i = PERSONAS.indexOf(p);
       if (i === -1) PERSONAS.push(p); else PERSONAS.splice(i, 1);
       pintarTablas();
+    });
+    $('dshDetElegir').textContent = ELIGIENDO ? 'listo' : 'elegir';
+    $('dshDetElegir').className = ELIGIENDO ? 'dshmini on' : 'dshmini';
+    var lista = $('dshDetLista');
+    lista.style.display = ELIGIENDO ? '' : 'none';
+    if (!ELIGIENDO) return;
+    lista.innerHTML = todas.map(function (p) {
+      return '<label><input type="checkbox" data-det="' + esc(p) + '"' +
+             (DET.indexOf(p) !== -1 ? ' checked' : '') + '>' + esc(p) + '</label>';
+    }).join('');
+    lista.querySelectorAll('input[data-det]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        var p = c.dataset.det, i = DET.indexOf(p);
+        if (c.checked && i === -1) DET.push(p);
+        else if (!c.checked && i !== -1) DET.splice(i, 1);
+        guardarDet();
+        // Un cubicador que deja de mostrarse tampoco puede seguir filtrando.
+        PERSONAS = PERSONAS.filter(function (x) { return !DET.length || DET.indexOf(x) !== -1; });
+        pintarChips(); pintarTablas();
+      });
     });
   }
 
@@ -171,10 +211,14 @@
       return 0;
     }
     var total = filas.reduce(function (a, f) { return a + f.kg; }, 0);
-    var html = '<thead><tr><th style="width:30%">JobName</th><th style="width:30%">Descr</th>' +
-               '<th style="width:9%">Control Code</th>' +
-               (conFecha ? '<th style="width:11%">Promised</th>' : '') +
-               '<th class="num">Sum of TotalKgs</th></tr></thead><tbody>';
+    // Anchos FIJOS en px: la tabla mide lo que miden sus columnas y la caja se ajusta a la
+    // tabla. Con anchos en % las cajas se estiraban a toda la pantalla con cuatro columnas
+    // y la mayor parte era aire.
+    el.className = 'dsht ' + (conFecha ? 'pg' : 'pp');
+    var html = '<thead><tr><th style="width:250px">JobName</th><th style="width:230px">Descr</th>' +
+               '<th style="width:62px">Control Code</th>' +
+               (conFecha ? '<th style="width:58px">Promised</th>' : '') +
+               '<th class="num" style="width:104px">Sum of TotalKgs</th></tr></thead><tbody>';
     filas.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
@@ -198,16 +242,26 @@
     $('dshPgN').textContent = '· ' + pg.length;
   }
 
+  // Trae TODOS los años, del más reciente al más antiguo, uno por llamada: el endpoint
+  // sincroniza un año a la vez porque $apply de aSa no pagina y pedir la historia entera
+  // de una es justo la consulta que lo atora. Si un año falla, se sigue con el resto y
+  // se dice cuál falló.
   async function sincronizar() {
-    var b = $('dshSync'), antes = b.textContent;
-    b.disabled = true; b.textContent = '↻ consultando aSa…';
-    try {
-      var r = await req('POST', '/programacion/asa/sincronizar-pedidos' + qs({ anio: ANIO }));
-      if (global.showToast) global.showToast(
-        r.filas + ' códigos de control de ' + r.anio + ' · ' + r.nuevas + ' nuevos', 'success');
-      await cargar();
-    } catch (e) { aviso(e.message); }
-    finally { b.disabled = false; b.textContent = antes; }
+    var b = $('dshSync'), antes = b.textContent, hoy = new Date().getFullYear();
+    b.disabled = true;
+    var total = 0, nuevos = 0, fallidos = [];
+    for (var anio = hoy; anio >= PRIMER_ANIO; anio--) {
+      b.textContent = '↻ aSa ' + anio + '…';
+      try {
+        var r = await req('POST', '/programacion/asa/sincronizar-pedidos' + qs({ anio: anio }));
+        total += r.filas || 0; nuevos += r.nuevas || 0;
+      } catch (e) { fallidos.push(anio + ' (' + e.message + ')'); }
+    }
+    b.disabled = false; b.textContent = antes;
+    if (global.showToast) global.showToast(
+      total + ' códigos de control · ' + nuevos + ' nuevos', fallidos.length ? 'error' : 'success');
+    if (fallidos.length) aviso('No se pudo traer: ' + fallidos.join(', '));
+    await cargar();
   }
 
 })(window);
