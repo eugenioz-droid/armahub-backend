@@ -770,7 +770,7 @@ check("...y se explica que no son todos del área", "No son todos cubicadores" i
 # Lo pidieron los usuarios: es el número con el que buscan la obra en aSa Studio. Va
 # inmediatamente a la derecha de «Obra», en las tres tablas, y viaja en cada fila.
 print("\n23. El job number de aSa acompaña a la obra")
-check("el reporte manda asa_job_id en cada CC", "AS mes, asa_job_id" in PROG
+check("el reporte manda asa_job_id en cada CC", "AS mes, p.asa_job_id" in PROG
       and '"job": r[11]' in PROG)
 check("el cubicador también lo manda por obra", "MAX(p.asa_job_id)" in PROG
       and '"job": r[1]' in PROG)
@@ -803,11 +803,11 @@ check("los dos sub-tabs están registrados con su botón y su panel",
       and 'id="asaSubMes"' in HTM and 'id="asaSubAtr"' in HTM
       and 'id="asaPanelMes"' in HTM and 'id="asaPanelAtr"' in HTM)
 check("el reporte manda el año por fila (columnas = años con «todos» elegido)",
-      '"anio": r[12]' in PROG and "AS mes, asa_job_id,\"" in PROG)
+      '"anio": r[12]' in PROG and "AS mes, p.asa_job_id,\"" in PROG)
 check("la pivot es una función pura y expuesta al test", "function pivotMes(filas, porAnio)" in DSH
       and "pivotMes: pivotMes" in DSH)
 check("el gráfico es de barras AGRUPADAS (una por persona y mes), con Chart.js ya cargado",
-      "x: { stacked: false" in DSH and "y: { stacked: false" in DSH and "global.replaceChart(CHART_MES" in DSH)
+      "x: { stacked: false" in DSH and "y: { stacked: false" in DSH and "graficoBarras(CHART_MES" in DSH)
 check("...con el número real encima de cada barra (el plugin de etiquetas se enciende acá)",
       "[ChartDataLabels]" in DSH and "datalabels: { display: true" in DSH
       and "formatter: function (v) { return v ? kg0(v) : ''; }" in DSH)
@@ -861,6 +861,34 @@ check("db.py repite el cierre en cada arranque, después de las migraciones",
       "            _cerrar_rls(cur)" in DB)
 check("...y sólo toca las que están abiertas (normalmente ninguna)",
       "WHERE schemaname = 'public' AND NOT rowsecurity" in DB)
+
+# ── 26. «Resumen» por segmento y tipo, y los dos filtros nuevos ────────────
+# Lo que los cubicadores cargan en «Atributos de obra» viaja en cada fila del reporte y
+# del cubicador, es filtro de TODOS los sub-tabs y alimenta el sexto: el Resumen.
+print("\n26. Resumen por segmento y tipo")
+check("el reporte cruza los atributos y los manda por fila",
+      "LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" in PROG
+      and '"tipo": r[13], "segmento": r[14],' in PROG
+      and '"tipos": list(TIPOS_OBRA), "segmentos": list(SEGMENTOS_OBRA),' in PROG)
+check("...y el cubicador también", "MAX(t.tipo), MAX(t.segmento)" in PROG
+      and PROG.count("LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id") == 2)
+check("segmento y tipo son chips de la barra compartida, con «(sin)» como valor",
+      'id="dshSegs"' in HTM and 'id="dshTipos"' in HTM
+      and "chips($('dshSegs'), (DATA.segmentos || []).concat([SIN])" in DSH
+      and "return v === SIN ? 'Sin segmento' : v;" in DSH)
+check("...y filtran en todos los sub-tabs (filtrar + cubicador)",
+      DSH.count("if (SEGS.length && SEGS.indexOf(segDe(f)) === -1) return false;") == 2
+      and DSH.count("if (TIPOS.length && TIPOS.indexOf(tipoDe(f)) === -1) return false;") == 2)
+check("el sub-tab Resumen existe con sus cuatro cuadros",
+      "['res',    'asaSubRes',    'asaPanelRes']" in DSH and 'id="asaSubRes"' in HTM
+      and all(('id="%s"' % x) in HTM for x in ("dshResSeg", "dshResTipo", "dshResPersona", "dshResMes", "dshResChart")))
+check("el cálculo es una función pura expuesta al test",
+      "function resumenSegmentos(filas, segmentos, tipos, porAnio)" in DSH and "resumenSegmentos: resumenSegmentos" in DSH)
+check("despachado se reconoce con el mismo nombre que usa el backend",
+      "var ESTADO_DESPACHADO = 'Shipped';" in DSH and "vivo = \"COALESCE(estado,'') <> 'Shipped'\"" in PROG)
+check("un solo gráfico de barras para los dos cuadros (una barra por serie, con número)",
+      "function graficoBarras(ref, canvas, labels, datasets)" in DSH
+      and DSH.count("graficoBarras(CHART_") == 2)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

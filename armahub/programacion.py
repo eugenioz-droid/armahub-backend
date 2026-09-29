@@ -773,11 +773,15 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 # `mes` y `asa_job_id` los pide el dashboard de Obras: el resumen mensual
                 # necesita el mes de cada fila, y el listado de códigos muestra el id de
                 # la obra. Salen de la misma consulta para no hacer otra.
-                "       EXTRACT(MONTH FROM order_date)::int AS mes, asa_job_id,"
+                "       EXTRACT(MONTH FROM order_date)::int AS mes, p.asa_job_id,"
                 # `anio` va en cada fila para el cuadro «Cubicado por mes»: con todos los
                 # años elegidos, sus columnas son los años y no los meses.
-                "       anio"
-                "  FROM asa_pedidos" + cond_periodo +
+                "       anio,"
+                # Tipo y segmento de la obra (lo que cargan los cubicadores): van en cada
+                # fila para que sean filtros de todos los tabs y la base del «Resumen».
+                "       t.tipo, t.segmento"
+                "  FROM asa_pedidos p"
+                "  LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" + cond_periodo +
                 (" AND " if cond_periodo else " WHERE ") + "COALESCE(estado,'') <> %s"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
                 "          job_name, descr, control_code",
@@ -796,6 +800,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                  "guia": r[7], "planta": r[8],
                  "fab": r[9].isoformat() if r[9] else None,
                  "mes": r[10], "job": r[11], "anio": r[12],
+                 "tipo": r[13], "segmento": r[14],
                  "programado": bool(r[8] in ESTADOS_PLANTA_PROGRAMADO or r[7])}
                 for r in cur.fetchall()
             ]
@@ -822,6 +827,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "estado_apagado_por_defecto": ESTADO_APAGADO_POR_DEFECTO,
         "estados_con_boton": list(ESTADOS_CON_BOTON),
         "estados_planta_programado": list(ESTADOS_PLANTA_PROGRAMADO),
+        "tipos": list(TIPOS_OBRA), "segmentos": list(SEGMENTOS_OBRA),
         "nombres_estado": NOMBRES_ESTADO,
         "explica_estado": EXPLICA_ESTADO,
         "anulados": anulados,
@@ -926,11 +932,13 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
                COUNT(*) FILTER (WHERE NOT {vivo})                             AS de_cc,
                COALESCE(SUM(p.kg) FILTER (WHERE NOT {vivo}), 0)               AS de_kg,
                MAX(GREATEST(p.order_date, p.proj_ship_date))                  AS ultimo,
-               STRING_AGG(DISTINCT p.detail_person, ', ')                     AS detallaron
+               STRING_AGG(DISTINCT p.detail_person, ', ')                     AS detallaron,
+               MAX(t.tipo), MAX(t.segmento)
           FROM vivos p
           JOIN activas a ON a.job_name = p.job_name
           LEFT JOIN dominante d ON d.job_name = p.job_name
           LEFT JOIN ultimo u ON u.job_name = p.job_name
+          LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id
          GROUP BY p.job_name, COALESCE(d.detail_person, u.detail_person)
          ORDER BY 5 DESC
     """
@@ -948,6 +956,7 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
                     "de": r[9], "dekg": float(r[10]),
                     "ultimo": r[11].isoformat() if r[11] else None,
                     "detallaron": r[12],
+                    "tipo": r[13], "segmento": r[14],
                     # Ninguno se filtra por tamaño: ordenando por kilos las que importan
                     # quedan arriba solas, y un umbral fijo escondería casos en silencio.
                     "sin_nada": (st_cc == 0 and pr_cc == 0),
