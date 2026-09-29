@@ -1,18 +1,28 @@
-<!-- DASHBOARDS DE PROGRAMACIÓN (28-sep) — réplica del reporte de Power BI.
-     Dos tablas: «CUBICACIÓN EN ASA POR PROGRAMAR» y «PROGRAMADOS». La división no es un
-     campo de aSa: programado = tiene fecha comprometida (PromisedDeliveryDate).
-     Los filtros (año · mes · obra · cubicador) son los mismos segmentadores del informe.
-     La data sale del espejo `asa_pedidos`, no de aSa en vivo. -->
-<div id="tab-prg_dashboards" class="tab-content">
+<!-- aSa DATA (29-sep) — los reportes que se arman sobre el espejo de aSa.
+     Sub-tab «Programa Planta»: réplica del informe de Power BI. Dos tablas, «CUBICACIÓN
+     EN ASA POR PROGRAMAR» y «PROGRAMADOS»; la división no es un campo de aSa, programado
+     = tiene fecha comprometida (PromisedDeliveryDate). Los filtros (año · mes · obra ·
+     cubicador) son los mismos segmentadores del informe original.
+     Toda la data sale del espejo `asa_pedidos`, nunca de aSa en vivo. -->
+<div id="tab-asa_data" class="tab-content">
   <div style="padding:4px 2px 12px;">
 
-    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
-      <h3 style="margin:0; color:#558B2F;">📊 Cubicación en aSa</h3>
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:8px;">
+      <h3 style="margin:0; color:#558B2F;">📊 aSa Data</h3>
       <span id="dshEspejo" class="muted" style="font-size:11px;"></span>
       <div style="flex:1;"></div>
       <button id="dshSync" class="secondary" style="font-size:11px; padding:3px 10px;"
               title="Le pide a aSa los pedidos del año elegido, agregados por código de control.">↻ Traer de aSa</button>
     </div>
+
+    <!-- Sub-tabs. Hoy sólo «Programa Planta»; los próximos reportes sobre la misma data
+         espejo entran acá al lado, sin tocar nada de lo que ya funciona. -->
+    <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:10px;">
+      <button id="asaSubPlanta" onclick="asaSubTab('planta')"
+              style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #8BC34A; background:none; color:#33691e; cursor:pointer;">Programa Planta</button>
+    </div>
+
+    <div id="asaPanelPlanta">
 
     <div id="dshAviso" class="prgaviso" style="margin-bottom:10px;"></div>
 
@@ -61,6 +71,8 @@
       </div>
 
     </div>
+
+    </div><!-- /asaPanelPlanta -->
 
   </div>
 </div>

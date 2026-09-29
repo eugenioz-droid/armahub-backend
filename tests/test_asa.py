@@ -48,6 +48,12 @@ PROG = open(os.path.join(ROOT, "armahub", "programacion.py"), encoding="utf-8").
 MIG = open(os.path.join(ROOT, "armahub", "migrations", "112_asa.sql"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion", "index.js"),
           encoding="utf-8").read()
+# La sincronizacion vive en asa_sync.py, no en programacion.py: la llaman dos clientes
+# (los endpoints y el reloj) y no puede haber dos copias. BACK es "el backend" para los
+# checks que no deben importarles en cual de los dos archivos quedo cada cosa.
+SYNC = open(os.path.join(ROOT, "armahub", "asa_sync.py"), encoding="utf-8").read()
+RELOJ = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
+BACK = PROG + SYNC
 
 print("TEST: cliente de aSa + tab de Obras")
 
@@ -146,11 +152,11 @@ check("un 429 corta de inmediato: aSa pidió que bajemos el ritmo", "429" in SRC
 print("\n5. ArmaHub sólo lee de aSa")
 check("el cliente sólo hace GET", 'method="GET"' in SRC and 'method="POST"' not in SRC)
 for escritura in ("createOrder", "updateOrder", "approveOrder", "createJob", "updateJob"):
-    check("nunca se nombra el endpoint de escritura %s" % escritura, escritura not in SRC + PROG)
+    check("nunca se nombra el endpoint de escritura %s" % escritura, escritura not in SRC + BACK)
 check("la sincronización usa getJobData, NO getOrderSummary (que es el grano que atora)",
-      'endpoint: str = "getJobData"' in PROG)
+      'endpoint: str = "getJobData"' in BACK)
 check("...y está escrito por qué, para que nadie lo cambie sin saber",
-      "getOrderSummary" in PROG and "atora" in PROG)
+      "getOrderSummary" in BACK and "atora" in BACK)
 
 # ── 6. Sin dependencias nuevas ──────────────────────────────────────────────
 print("\n6. Sin dependencias nuevas en el build de Render")
@@ -203,8 +209,8 @@ check("asignar USC borra la anterior: una obra tiene UN USC",
 check("quitar el USC es mandar user_id=null, no un endpoint aparte",
       "if body.user_id is None" in PROG)
 check("la sincronización queda registrada en la bitácora, falle o no",
-      "UPDATE asa_sync SET fin=now(), ok=FALSE" in PROG and
-      "UPDATE asa_sync SET fin=now(), ok=TRUE" in PROG)
+      "_abrir_bitacora" in SYNC and "_cerrar_bitacora(sync_id, False" in SYNC
+      and "_cerrar_bitacora(sync_id, True" in SYNC)
 
 # ── 10. El front busca en el espejo, no en aSa ──────────────────────────────
 print("\n10. El front")
@@ -255,21 +261,64 @@ check("las cabeceras extra se aplican en cada petición", "headers.update(_extra
 
 # El $select no es una optimización: getJobData devuelve 131 columnas, entre ellas
 # PrimaryContactFirstName, PrimaryPhoneDetail, PrimaryEmailDetail y nueve de dirección.
-check("la sincronización de obras pide un $select acotado", "_SELECT_OBRAS" in PROG)
-campos = PROG.split("_SELECT_OBRAS = [")[1].split("]")[0]
+check("la sincronización de obras pide un $select acotado", "SELECT_OBRAS" in SYNC)
+campos = SYNC.split("SELECT_OBRAS = [")[1].split("]")[0]
 check("...de 8 campos o menos", campos.count('"') // 2 <= 8)
 for malo in ("Contact", "Phone", "Email", "Addr", "ShipTo"):
     check("...y ninguno es %s*" % malo, malo not in campos)
-check("el $select se aplica de verdad en la consulta", "select=_SELECT_OBRAS if es_obras" in PROG)
+check("el $select se aplica de verdad en la consulta", "select=SELECT_OBRAS if es_obras" in SYNC)
 
 # Se traen las 677 obras, no sólo las 376 abiertas: el usuario tiene que poder programar
 # sobre una obra que aSa ya dio por terminada, y 677 filas no son nada para Supabase.
 check("por defecto se traen TODAS las obras, no sólo las abiertas",
-      "solo_abiertas: bool = False" in PROG
-      and "filtro=(_FILTRO_SOLO_ABIERTAS if (solo_abiertas and es_obras) else None)" in PROG)
-check("...y el tope de la paginación alcanza para las 677", "maximo=3000 if es_obras" in PROG)
+      "solo_abiertas: bool = False" in BACK
+      and "filtro=(FILTRO_SOLO_ABIERTAS if (solo_abiertas and es_obras) else None)" in SYNC)
+check("...y el tope de la paginación alcanza para las 677", "maximo=3000 if es_obras" in SYNC)
 check("el estado se guarda y se muestra, para no adoptar una finalizada por accidente",
       "o.estado" in JS)
+
+# ── 15. El reloj de sincronización ──────────────────────────────────────────
+# Refresca el espejo a las 06:00, 11:00 y 14:00 de Chile. Tres cuidados, cada uno tapa
+# una forma distinta de romperlo, y el test los congela porque ninguno se nota fallando:
+# un reloj que dispara de más molesta a aSa, uno que muere deja la data vieja sin avisar.
+print("\n15. El reloj de sincronización con aSa")
+check("apagado salvo que se encienda a propósito (en el plan gratis el proceso se duerme)",
+      'os.getenv("ASA_SYNC_ACTIVO", "")' in RELOJ)
+check("los horarios son configurables y por defecto 06:00, 11:00 y 14:00",
+      'HORAS_POR_DEFECTO = "06:00,11:00,14:00"' in RELOJ and "ASA_SYNC_HORAS" in RELOJ)
+check("en hora de Chile, no en la del servidor", "America/Santiago" in RELOJ)
+check("un horario mal escrito se ignora en vez de tumbar el reloj",
+      "Horario inválido" in RELOJ)
+check("el reloj NUNCA tumba la app: el arranque va en try/except",
+      "No se pudo iniciar el reloj de aSa" in open(
+          os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read())
+check("...ni muere por una excepción: el bucle la traga y sigue",
+      "sigue corriendo" in RELOJ)
+check("no dispara al arrancar (Render reinicia en cada despliegue)",
+      "NO se dispara al arrancar" in RELOJ)
+check("no se pisa con otra corrida reciente", "_corrio_hace_poco" in RELOJ
+      and "MINUTOS_ANTI_REPETIDO" in RELOJ)
+check("si no puede comprobarlo, prefiere NO sincronizar", "return True" in RELOJ)
+check("iniciar() es idempotente: no crea dos hilos", "_hilo.is_alive()" in RELOJ)
+check("el reloj usa el refresco INCREMENTAL, no la carga completa",
+      "sincronizar_incremental" in RELOJ and "sincronizar_pedidos(" not in RELOJ)
+check("el incremental corta por LastModified y se solapa con la corrida anterior",
+      "LastModified ge" in SYNC and "SOLAPE_MINUTOS" in SYNC)
+check("...y si nunca hubo una corrida buena, mira unos días atrás",
+      "DIAS_SIN_HISTORIA" in SYNC)
+check("el estado del reloj se ve en la interfaz", '"reloj"' in PROG and "def estado()" in RELOJ)
+check("hay un botón para disparar el mismo refresco a mano y comprobarlo",
+      "/programacion/asa/sincronizar-ahora" in PROG)
+
+# ── 16. Una sola copia de la sincronización ─────────────────────────────────
+# Los endpoints y el reloj llaman a las MISMAS funciones. Si cada uno tuviera la suya,
+# el día que cambie una regla quedarían dos verdades y una se quedaría atrás.
+print("\n16. Los endpoints y el reloj comparten la sincronización")
+check("programacion.py ya no arma la consulta a aSa: delega en asa_sync",
+      "asa_sync.sincronizar_obras" in PROG and "asa_sync.sincronizar_pedidos" in PROG)
+check("...y no le quedó lógica duplicada", "consultar_agregado" not in PROG
+      and "INSERT INTO asa_pedidos" not in PROG and "INSERT INTO asa_obras" not in PROG)
+check("el reloj llama a la misma función, no a una copia", "asa_sync.sincronizar" in RELOJ)
 
 # ── 13. Desplegar no debe exigir una variable VACÍA ─────────────────────────
 # La configuración real de aSa necesita el prefijo vacío. Si eso dependiera de crear
@@ -307,7 +356,7 @@ check("...y el mensaje dice que hay que acotar la consulta", "acotarla con un fi
 print("\n14. Dashboard de cubicación en aSa")
 DSH = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion",
                         "dashboards.js"), encoding="utf-8").read()
-HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "prg_dashboards.html"),
+HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "asa_data.html"),
            encoding="utf-8").read()
 MIG113 = open(os.path.join(ROOT, "armahub", "migrations", "113_asa_pedidos.sql"),
               encoding="utf-8").read()
@@ -325,11 +374,11 @@ check("...y las separa el backend, no el front",
 
 # El grano: una fila por código de control, agregada por aSa con $apply. Traer el detalle
 # serían 12.000+ filas sólo de 2026 — la consulta que atora a aSa.
-check("la sincronización le pide a aSa que AGREGUE ($apply)", "consultar_agregado" in PROG)
+check("la sincronización le pide a aSa que AGREGUE ($apply)", "consultar_agregado" in SYNC)
 check("...y el cliente arma groupby+aggregate de OData",
       "groupby((" in SRC and "aggregate(" in SRC)
 check("se sincroniza UN año por llamada (porque $apply no pagina)",
-      "OrderDate ge %d-01-01" in PROG)
+      "OrderDate ge %d-01-01" in SYNC)
 check("el año viene acotado, no se acepta cualquiera", "2015 <= anio" in PROG)
 check("la tabla guarda una fila por código de control",
       "control_code  TEXT PRIMARY KEY" in MIG113)
@@ -337,9 +386,9 @@ check("la tabla guarda una fila por código de control",
 # 5.000 INSERT en un viaje, no en 5.000: con execute en bucle el endpoint tardaría minutos
 # y el usuario creería que se colgó.
 check("los insert van con executemany, no en un bucle de execute",
-      PROG.count("cur.executemany(") >= 2)
+      SYNC.count("cur.executemany(") >= 2)
 check("...y ya no queda el RETURNING (xmax = 0) fila por fila",
-      "RETURNING (xmax = 0)" not in PROG)
+      "RETURNING (xmax = 0)" not in BACK)
 
 # Lo que pidió el usuario, literal.
 check("la fecha comprometida se muestra dd/mm", "p[2] + '/' + p[1]" in DSH)
@@ -424,9 +473,9 @@ check("...y es height, para que las dos midan exactamente lo mismo",
       ".dshbd{max-height" not in HTM)
 check("las columnas laterales llegan hasta abajo de las dos cajas (stretch)",
       "align-items:stretch" in HTM and ".dshlargo{flex:1" in HTM)
-check("el tab está cableado en app.html", "prg_dashboards" in APP and "dashboards.js" in APP)
+check("el tab está cableado en app.html", "asa_data" in APP and "dashboards.js" in APP)
 check("y registrado en el shell con su loader",
-      "prg_dashboards: 'loadPrgDashboards'" in SHELL)
+      "asa_data: 'loadAsaData'" in SHELL)
 check("un espejo vacío se explica en vez de mostrar cero",
       "Todav" in DSH and "Traer de aSa" in DSH)
 

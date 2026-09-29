@@ -458,40 +458,6 @@ def semana(desde: Optional[str] = None, user=Depends(get_current_user)):
 # Nombres posibles de cada dato en aSa. Todavía no conocemos el esquema de getJobData, así
 # que en vez de adivinar UNO y fallar, se acepta cualquiera de los que aparecen en los
 # endpoints ya documentados. Cuando se confirme, esto sigue funcionando igual.
-_CAMPOS_ASA = {
-    "asa_job_id": ("JobID", "JobId", "Job", "ID", "Id"),
-    "job_key":    ("JobKey", "JobKeyID"),
-    "nombre":     ("JobName", "Name", "Descr", "Description"),
-    "cliente":    ("CustomerName", "Customer", "BusPartnerName"),
-    "descripcion": ("DetailingLocName", "Descr", "Description", "JobDescr"),
-    "estado":     ("JobStatusDescr", "JobStatusID", "Status", "JobStatus", "StatusID"),
-}
-
-# Los ÚNICOS campos que se le piden a aSa para las obras. Esto no es una optimización:
-# getJobData devuelve 131 columnas, y entre ellas van PrimaryContactFirstName,
-# PrimaryPhoneDetail, PrimaryEmailDetail y nueve líneas de dirección. Con el $select
-# esos datos NUNCA SALEN DE aSa — no es que los protejamos después, es que no los
-# pedimos. De paso, la respuesta pesa una fracción. Ver docs/asa_campos.md.
-_SELECT_OBRAS = ["JobID", "JobKey", "JobName", "CustomerName",
-                 "JobStatusID", "JobStatusDescr", "DetailingLocName", "LastModified"]
-
-# Se traen TODAS las obras, no sólo las abiertas (28-sep). Al principio se filtró por
-# `JobStatusID eq 'O'` suponiendo que aSa tenía muchísimas; contadas, son 677 en total
-# —376 abiertas, 278 finalizadas, 23 inactivas— y se traen enteras en 17 s. Para Supabase
-# 677 filas no son nada, y el usuario necesita poder programar sobre una obra que aSa ya
-# dio por terminada. El estado se guarda igual, así el buscador lo puede mostrar.
-_FILTRO_SOLO_ABIERTAS = "JobStatusID eq 'O'"
-
-
-def _primer(fila: dict, nombres) -> Optional[str]:
-    """El primer campo presente y no vacío. aSa no siempre nombra igual el mismo dato."""
-    for n in nombres:
-        v = fila.get(n)
-        if v not in (None, ""):
-            return v
-    return None
-
-
 def _exigir_admin(user):
     if user.get("role") not in ("admin", "admin_calidad"):
         raise HTTPException(status_code=403, detail="Solo administración puede hacer esto.")
@@ -500,10 +466,12 @@ def _exigir_admin(user):
 @router.get("/programacion/asa/estado")
 def asa_estado(user=Depends(get_current_user)):
     """Si aSa está configurado y contesta. Existe para que el tab diga QUÉ falta en vez de
-    mostrar una lista vacía sin explicación."""
-    from . import asa
+    mostrar una lista vacía sin explicación. Incluye el estado del reloj: si está apagado
+    hay que saberlo, o alguien va a creer que la data se refresca sola cuando no."""
+    from . import asa, asa_scheduler
     _exigir_admin(user)
     info = asa.estado()
+    info["reloj"] = asa_scheduler.estado()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_obras")
@@ -526,94 +494,21 @@ def asa_estado(user=Depends(get_current_user)):
 @router.post("/programacion/asa/sincronizar")
 def asa_sincronizar(endpoint: str = "getJobData", solo_abiertas: bool = False,
                     user=Depends(get_current_user)):
-    """Trae las obras de aSa al espejo. Es el «Refrescar ahora» — la misma función que
-    después va a correr sola una vez al día.
-
-    Se usa `getJobData` (una fila por obra) y NUNCA `getOrderSummary`, que viene al grano de
-    CC × diámetro × producto: serían decenas de miles de filas para sacar un listado de
-    obras, y es justo el tipo de consulta con la que aSa se atora."""
-    from . import asa
+    """Trae las obras de aSa al espejo. Es el «Traer de aSa» a mano; el reloj hace lo
+    mismo tres veces al día llamando a la MISMA función (asa_sync), para que no existan
+    dos versiones de la sincronización que se puedan desincronizar entre sí."""
+    from . import asa, asa_sync
     _exigir_admin(user)
     if not asa.configurado():
         raise HTTPException(status_code=503,
                             detail="aSa no está configurado. Faltan las variables ASA_API_URL / ASA_API_KEY.")
-    email = user.get("email", "?")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO asa_sync (endpoint, lanzado_por) VALUES (%s, %s) RETURNING id",
-                (endpoint, email),
-            )
-            sync_id = cur.fetchone()[0]
-        conn.commit()
-
     try:
-        # El $select sólo aplica al endpoint de obras, que es el que conocemos; para
-        # cualquier otro se pide completo, porque no sabemos qué columnas tiene. Por
-        # defecto se traen TODAS las obras (677); `solo_abiertas=true` queda por si alguna
-        # vez conviene una sincronización corta.
-        es_obras = (endpoint == "getJobData")
-        filas = asa.consultar_todo(
-            endpoint,
-            select=_SELECT_OBRAS if es_obras else None,
-            filtro=(_FILTRO_SOLO_ABIERTAS if (solo_abiertas and es_obras) else None),
-            maximo=3000 if es_obras else asa.MAX_TOP,
-        )
+        r = asa_sync.sincronizar_obras(lanzado_por=user.get("email", "?"),
+                                       solo_abiertas=solo_abiertas, endpoint=endpoint)
     except asa.AsaError as e:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("UPDATE asa_sync SET fin=now(), ok=FALSE, detalle=%s WHERE id=%s",
-                            (str(e)[:400], sync_id))
-            conn.commit()
         raise HTTPException(status_code=502, detail=str(e))
-
-    # Un solo viaje a la base en vez de uno por obra (ver la nota en asa_sincronizar_pedidos).
-    valores = []
-    for fila in filas:
-        if not isinstance(fila, dict):
-            continue
-        job_id = _primer(fila, _CAMPOS_ASA["asa_job_id"])
-        if not job_id:
-            continue
-        key = _primer(fila, _CAMPOS_ASA["job_key"])
-        try:
-            key = int(key) if key is not None else None
-        except (TypeError, ValueError):
-            key = None
-        valores.append((
-            str(job_id)[:120], key,
-            str(_primer(fila, _CAMPOS_ASA["nombre"]) or "")[:250],
-            (str(_primer(fila, _CAMPOS_ASA["cliente"]) or "") or None),
-            (str(_primer(fila, _CAMPOS_ASA["descripcion"]) or "") or None),
-            (str(_primer(fila, _CAMPOS_ASA["estado"]) or "") or None),
-            sync_id))
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM asa_obras")
-            antes = cur.fetchone()[0]
-            cur.executemany(
-                """
-                INSERT INTO asa_obras (asa_job_id, job_key, nombre, cliente, descripcion,
-                                       estado, visto_el, sync_id)
-                VALUES (%s, %s, %s, %s, %s, %s, now(), %s)
-                ON CONFLICT (asa_job_id) DO UPDATE
-                   SET job_key = EXCLUDED.job_key, nombre = EXCLUDED.nombre,
-                       cliente = EXCLUDED.cliente, descripcion = EXCLUDED.descripcion,
-                       estado = EXCLUDED.estado, visto_el = now(),
-                       sync_id = EXCLUDED.sync_id
-                """,
-                valores,
-            )
-            cur.execute("SELECT COUNT(*) FROM asa_obras")
-            nuevas = cur.fetchone()[0] - antes
-            cur.execute(
-                "UPDATE asa_sync SET fin=now(), ok=TRUE, filas=%s, nuevas=%s WHERE id=%s",
-                (len(valores), nuevas, sync_id),
-            )
-        conn.commit()
-    audit(email, "asa_sync", f"{endpoint}: {len(filas)} filas, {nuevas} nuevas")
-    return {"ok": True, "filas": len(filas), "nuevas": nuevas, "endpoint": endpoint}
+    audit(user.get("email", "?"), "asa_sync", f"{endpoint}: {r['filas']} filas, {r['nuevas']} nuevas")
+    return dict(r, ok=True)
 
 
 @router.get("/programacion/asa/buscar")
@@ -710,11 +605,10 @@ def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # DASHBOARD: el reporte de aSa que hoy vive en Power BI
 # ---------------------------------------------------------------------------
-# Las dimensiones por las que aSa agrupa. Todo lo que el reporte muestra o filtra tiene
-# que estar acá, porque `$apply` sólo devuelve lo que se le pide agrupar.
-_DIMS_PEDIDOS = ["ControlCode", "JobID", "JobName", "Descr", "DetailPerson",
-                 "OrderDate", "PromisedDeliveryDate", "Status"]
-
+# EL REPORTE. La sincronización con aSa NO vive aquí: está en asa_sync.py, porque la
+# llaman dos clientes distintos (estos endpoints y el reloj de asa_scheduler.py) y no
+# puede haber dos copias que se desincronicen.
+# ---------------------------------------------------------------------------
 # Lo que ya no es trabajo pendiente y sale del reporte. `Shipped` es un pedido DESPACHADO:
 # en 2026 son 4.297 de 5.191 —el 83%— y mostrarlos entre los programados entierra los
 # 270 que de verdad están por salir. `Cancelled` tampoco es pendiente. Los estados que
@@ -723,97 +617,41 @@ _DIMS_PEDIDOS = ["ControlCode", "JobID", "JobName", "Descr", "DetailPerson",
 _ESTADOS_CERRADOS = ("Shipped", "Cancelled")
 
 
-def _fecha(valor):
-    """aSa manda fechas ISO con hora y zona. Aquí sólo importa el día."""
-    if not valor:
-        return None
-    try:
-        return date.fromisoformat(str(valor)[:10])
-    except ValueError:
-        return None
-
-
 @router.post("/programacion/asa/sincronizar-pedidos")
 def asa_sincronizar_pedidos(anio: Optional[int] = None, user=Depends(get_current_user)):
-    """Trae los pedidos de aSa de UN año, agregados por código de control.
-
-    Un año por llamada, a propósito: `$apply` no pagina —devuelve todo el resultado en una
-    respuesta— así que el año es lo que acota el tamaño. Pedir cinco años de una sería
-    justo la consulta que atora a aSa."""
-    from . import asa
+    """Trae un AÑO completo de pedidos. Es la carga inicial, que se hace una vez por año;
+    el refresco de todos los días lo hace el reloj con `sincronizar_incremental`, que trae
+    sólo lo que cambió y tarda segundos."""
+    from . import asa, asa_sync
     _exigir_admin(user)
     if not asa.configurado():
         raise HTTPException(status_code=503, detail="aSa no está configurado.")
     anio = int(anio or date.today().year)
     if not (2015 <= anio <= date.today().year + 1):
         raise HTTPException(status_code=400, detail="Año fuera de rango.")
-    email = user.get("email", "?")
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO asa_sync (endpoint, lanzado_por) VALUES (%s,%s) RETURNING id",
-                        ("getOrderSummary/%d" % anio, email))
-            sync_id = cur.fetchone()[0]
-        conn.commit()
-
-    filtro = "OrderDate ge %d-01-01 and OrderDate le %d-12-31" % (anio, anio)
     try:
-        filas = asa.consultar_agregado("getOrderSummary", _DIMS_PEDIDOS,
-                                       "TotalKgs", alias="Kgs", filtro=filtro)
+        r = asa_sync.sincronizar_pedidos(anio, lanzado_por=user.get("email", "?"))
     except asa.AsaError as e:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("UPDATE asa_sync SET fin=now(), ok=FALSE, detalle=%s WHERE id=%s",
-                            (str(e)[:400], sync_id))
-            conn.commit()
         raise HTTPException(status_code=502, detail=str(e))
+    audit(user.get("email", "?"), "asa_sync_pedidos", f"{anio}: {r['filas']} CC, {r['nuevas']} nuevos")
+    return dict(r, ok=True)
 
-    # Los 5.000 INSERT van en UNA llamada, no en 5.000. Con `execute` en bucle serían
-    # 5.000 viajes de ida y vuelta a Supabase: el endpoint tardaría minutos y el usuario
-    # creería que se colgó. `executemany` de psycopg >=3.1 los manda en modo pipeline —es
-    # la misma razón por la que la carga de barras lo usa (ver requirements.txt).
-    valores = []
-    for f in filas:
-        cc = (f.get("ControlCode") or "").strip()
-        if not cc:
-            continue     # hay pedidos sin código de control; no son del reporte
-        orden = _fecha(f.get("OrderDate"))
-        valores.append((
-            cc[:60], (f.get("JobID") or None), str(f.get("JobName") or "")[:250],
-            (f.get("Descr") or None), (f.get("DetailPerson") or None),
-            orden, _fecha(f.get("PromisedDeliveryDate")),
-            (f.get("Status") or None), round(float(f.get("Kgs") or 0), 2),
-            orden.year if orden else anio, sync_id))
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            # «Nuevas» se mide por diferencia de conteo en vez de con RETURNING (xmax=0):
-            # con executemany habría que recolectar 5.000 resultados para un número que
-            # es informativo. El conteo cuesta una consulta.
-            cur.execute("SELECT COUNT(*) FROM asa_pedidos")
-            antes = cur.fetchone()[0]
-            cur.executemany(
-                """
-                INSERT INTO asa_pedidos (control_code, asa_job_id, job_name, descr,
-                                         detail_person, order_date, promised_date,
-                                         estado, kg, anio, visto_el, sync_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), %s)
-                ON CONFLICT (control_code) DO UPDATE
-                   SET asa_job_id=EXCLUDED.asa_job_id, job_name=EXCLUDED.job_name,
-                       descr=EXCLUDED.descr, detail_person=EXCLUDED.detail_person,
-                       order_date=EXCLUDED.order_date, promised_date=EXCLUDED.promised_date,
-                       estado=EXCLUDED.estado, kg=EXCLUDED.kg, anio=EXCLUDED.anio,
-                       visto_el=now(), sync_id=EXCLUDED.sync_id
-                """,
-                valores,
-            )
-            cur.execute("SELECT COUNT(*) FROM asa_pedidos")
-            nuevas = cur.fetchone()[0] - antes
-            cur.execute("UPDATE asa_sync SET fin=now(), ok=TRUE, filas=%s, nuevas=%s WHERE id=%s",
-                        (len(valores), nuevas, sync_id))
-        conn.commit()
-    audit(email, "asa_sync_pedidos", f"{anio}: {len(filas)} CC, {nuevas} nuevos")
-    return {"ok": True, "anio": anio, "filas": len(filas), "nuevas": nuevas}
+@router.post("/programacion/asa/sincronizar-ahora")
+def asa_sincronizar_ahora(user=Depends(get_current_user)):
+    """Dispara a mano el MISMO refresco incremental que corre el reloj. Sirve para dos
+    cosas: traer lo de hoy sin esperar al próximo turno, y comprobar que el automático
+    funciona sin tener que esperar a las 06:00."""
+    from . import asa, asa_sync
+    _exigir_admin(user)
+    if not asa.configurado():
+        raise HTTPException(status_code=503, detail="aSa no está configurado.")
+    try:
+        r = asa_sync.sincronizar_incremental(lanzado_por=user.get("email", "?"))
+    except asa.AsaError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    audit(user.get("email", "?"), "asa_sync_incremental", f"{r['filas']} CC, {r['nuevas']} nuevos")
+    return dict(r, ok=True)
 
 
 @router.get("/programacion/asa/reporte")

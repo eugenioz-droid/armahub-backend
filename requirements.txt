@@ -18,3 +18,8 @@ boto3
 resend
 # Asistente IA de enfierrado (SPECS seccion 12): backend -> API Anthropic
 anthropic
+# Base de zonas horarias para el reloj de sincronizacion con aSa: los turnos se definen
+# en hora de Chile (06:00, 11:00, 14:00), no en la del servidor. Sin esto, si la imagen
+# no trae la base del sistema, zoneinfo falla y el reloj cae a UTC -tres o cuatro horas
+# corrido- sin que nadie lo note hasta que la data llega tarde.
+tzdata

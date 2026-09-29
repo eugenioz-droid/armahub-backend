@@ -115,6 +115,16 @@ def create_app() -> FastAPI:
     if os.path.exists(static_path):
         app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+    # Reloj de sincronización con aSa (29-sep): refresca el espejo a las 06:00, 11:00 y
+    # 14:00 de Chile, sin que nadie apriete nada. Apagado salvo que ASA_SYNC_ACTIVO=1,
+    # porque en el plan gratuito de Render el proceso se suspende por inactividad y el
+    # hilo moriría con él. Nunca puede impedir que el server arranque.
+    try:
+        from . import asa_scheduler
+        asa_scheduler.iniciar()
+    except Exception as _exc:
+        logging.getLogger("armahub").error("No se pudo iniciar el reloj de aSa: %s", _exc)
+
     @app.api_route("/", methods=["GET", "HEAD"])
     def root():
         return {"ok": True, "service": "armahub-backend"}

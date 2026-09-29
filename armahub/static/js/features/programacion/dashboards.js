@@ -1,7 +1,8 @@
-// DASHBOARDS DE PROGRAMACIÓN (28-sep) — réplica del reporte de Power BI.
+// aSa DATA (29-sep) — los reportes que se arman sobre el espejo de aSa.
 //
-// Dos tablas: «CUBICACIÓN EN ASA POR PROGRAMAR» y «PROGRAMADOS». La división no es un
-// campo de aSa: programado = el pedido tiene fecha comprometida (PromisedDeliveryDate).
+// Sub-tab «Programa Planta»: réplica del informe de Power BI. Dos tablas, «CUBICACIÓN EN
+// ASA POR PROGRAMAR» y «PROGRAMADOS». La división no es un campo de aSa: programado = el
+// pedido tiene fecha comprometida (PromisedDeliveryDate).
 //
 // QUÉ HACE CADA LADO. El backend trae del espejo `asa_pedidos` las filas del año (y de los
 // meses) elegidos, ya separadas en dos listas y con sus totales sumados. Este archivo
@@ -71,9 +72,20 @@
   }
   function aviso(m) { if (global.showToast) global.showToast(m, 'error'); else alert(m); }
 
+  // Sub-tabs de aSa Data. Hoy hay uno solo; la función existe desde ya para que agregar
+  // el siguiente reporte sea añadir una línea a la lista y su panel al HTML.
+  var SUBTABS = [['planta', 'asaSubPlanta', 'asaPanelPlanta']];
+  global.asaSubTab = function (v) {
+    SUBTABS.forEach(function (t) {
+      var on = (t[0] === v), b = $(t[1]), p = $(t[2]);
+      if (b) { b.style.borderBottomColor = on ? '#8BC34A' : 'transparent'; b.style.color = on ? '#33691e' : '#aaa'; }
+      if (p) p.style.display = on ? '' : 'none';
+    });
+  };
+
   var _bound = false;
-  global.loadPrgDashboards = async function () {
-    if (!$('tab-prg_dashboards')) return;
+  global.loadAsaData = async function () {
+    if (!$('tab-asa_data')) return;
     if (!_bound) {
       _bound = true;
       $('dshSync').addEventListener('click', sincronizar);
