@@ -367,10 +367,13 @@ SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"),
 # aSa NO tiene un campo "programado". La división es: con fecha comprometida = programado.
 # Si alguien la cambia, las dos tablas dejan de significar lo que el usuario espera y los
 # totales no cuadran con su informe de BI.
-check("PROGRAMADOS = tiene promised_date; POR PROGRAMAR = no lo tiene",
-      'f["promesa"]' in PROG and "por_programar" in PROG)
-check("...y las separa el backend, no el front",
-      '"por_programar": por_programar' in PROG and '"programados": programados' in PROG)
+# La división de las dos cajas es la única regla, y es simple: con fecha de despacho o
+# sin ella. La aplica el front porque es el que ya filtra por obra, cubicador y estado.
+check("PROGRAMADOS = tiene fecha de despacho; POR PROGRAMAR = no la tiene",
+      "function conFecha(" in DSH and "function sinFecha(" in DSH
+      and "return f.promesa;" in DSH)
+check("el backend manda una sola lista y no pre-separa nada",
+      '"filas": filas' in PROG and '"por_programar"' not in PROG)
 
 # El grano: una fila por código de control, agregada por aSa con $apply. Traer el detalle
 # serían 12.000+ filas sólo de 2026 — la consulta que atora a aSa.
@@ -435,22 +438,39 @@ check("un 422 se muestra legible, no como [object Object]", "Array.isArray(det)"
 # El 83% de 2026 está despachado: si se muestra todo, entierra lo que está por salir; si
 # se esconde sin decirlo, los totales no cuadran contra el Power BI y nadie sabe por qué.
 # La salida es que se pueda encender y apagar, y que cada botón diga cuánto hay detrás.
-check("los estados conocidos están declarados con su significado",
-      "ESTADOS_CONOCIDOS" in PROG and '"Processed"' in PROG and '"Shipped"' in PROG)
-check("...incluido que Processed = le sacaron tarjeta = está en producción",
-      "TARJETA AL ÍTEM" in PROG and "En producción" in DSH)
-check("por defecto se ve el trabajo vivo y lo despachado queda fuera",
-      'ESTADOS_POR_DEFECTO = ("Open", "Processed", "Incomplete")' in PROG)
-check("el anulado no es una opción: no hay botón que lo encienda",
-      'ESTADO_NUNCA = "Cancelled"' in PROG and 'e != ESTADO_NUNCA' in PROG)
-check("un estado inventado en la URL no llega a la consulta",
-      "e in ESTADOS_CONOCIDOS" in PROG)
-check("cada botón muestra su conteo aunque esté apagado",
-      '"conteo_estados"' in PROG and "conteo_estados" in DSH)
-check("...y ese conteo sale del PERÍODO, no de los estados elegidos (si no, un botón\n"
-      "      apagado mostraría cero y parecería que no hay nada)",
-      "cond_periodo + \" GROUP BY 1\"" in PROG)
-check("apagar el último estado no vacía la pantalla", "if (!lista.length) return;" in DSH)
+check("el significado de Processed está escrito: le sacaron tarjeta = en producción",
+      "TARJETA AL ÍTEM" in PROG and "En producción" in PROG)
+check("el único estado que arranca apagado es el despachado",
+      'ESTADO_APAGADO_POR_DEFECTO = "Shipped"' in PROG)
+check("el anulado ni siquiera se manda al front",
+      'ESTADO_NUNCA = "Cancelled"' in PROG and "<> %s" in PROG)
+# Se guarda lo APAGADO, no lo encendido: así un estado nuevo que aparezca en aSa se ve
+# por defecto, en vez de quedar invisible sin que nadie se entere.
+check("el front guarda los estados OCULTOS, no los visibles", "var OCULTOS" in DSH
+      and "OCULTOS.indexOf(f.estado) === -1" in DSH)
+
+# EL BUG QUE REPORTÓ EL USUARIO: los conteos de los botones eran del año entero. Con una
+# obra seleccionada decían «En producción 148» cuando esa obra tenía cero. Ahora se
+# cuentan sobre las filas YA filtradas por obra y cubicador.
+check("los conteos de los botones se calculan sobre las filas ya filtradas",
+      "function pintarEstados(filasCaja)" in DSH and "filasCaja.forEach" in DSH)
+check("...y pintarTablas es quien los dibuja, porque es quien sabe qué hay en la caja",
+      "pintarEstados(todosPg)" in DSH)
+check("sólo se ofrecen los estados presentes en ESA caja (por eso «Sin terminar» ya no sale)",
+      "Object.keys(conteo).sort()" in DSH)
+check("los botones se arman ANTES de aplicar el estado, si no no podrían contar lo oculto",
+      DSH.index("pintarEstados(todosPg)") < DSH.index("todosPg.filter(visiblePorEstado)"))
+# Todos del mismo color: uno por estado se leía como etiqueta de categoría, no como
+# interruptor. Encendido = verde; apagado = gris y tachado.
+check("todos los botones van del mismo color", ".dshest button{" in HTM
+      and ".dshest button.on{" not in HTM and ".dshest button.off{" in HTM)
+check("...y lo apagado se ve tachado, no ausente", "line-through" in HTM)
+# Una caja vacía por el filtro de estado NO puede leerse como «no hay data»: fue
+# exactamente el susto del usuario comparando contra su Power BI.
+check("si la caja queda vacía por el estado, se dice cuántos hay ocultos",
+      "ocultos por el filtro de estado" in DSH)
+check("la lista de obras también respeta el estado apagado",
+      "!f.promesa || visiblePorEstado(f)" in DSH)
 check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
       "ORDER BY promised_date DESC NULLS LAST" in PROG)
 # Las FILAS no se reordenan en el front (el backend ya las mandó por fecha DESC); lo

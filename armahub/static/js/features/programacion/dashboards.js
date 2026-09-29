@@ -14,13 +14,11 @@
   'use strict';
 
   var DATA = null, ANIO = null, MESES = [], OBRAS = [], PERSONAS = [], BUSCA = '';
-  // Los estados del pedido en aSa, con el nombre que entiende el usuario. `Processed` no
-  // significa «procesado administrativamente»: es que LE SACARON TARJETA AL ÍTEM, o sea
-  // está en producción. Nadie lo deduciría del nombre en inglés (dato del usuario).
-  var ESTADOS = null;   // los elegidos; null = todavía no se sabe, manda el backend
-  var ESTADO_NOMBRE = { Open: 'Por producir', Processed: 'En producción',
-                        Shipped: 'Despachados', Incomplete: 'Incompletos' };
-  var ESTADO_CLASE = { Processed: 'env', Shipped: 'desp' };
+  // Los estados del pedido en aSa. Cuáles se ven lo decide el usuario con los botones de
+  // la caja de PROGRAMADOS. `OCULTOS` son los que están apagados —se guarda lo apagado y
+  // no lo encendido, para que un estado nuevo que aparezca en aSa se vea por defecto en
+  // vez de quedar invisible sin que nadie se entere.
+  var OCULTOS = null;   // null = todavía no se sabe; lo fija la primera carga
   var MESN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   // aSa devuelve 18 «DetailPerson», entre ellos aSaAdmin, EugenioZ y gente que ya no
   // cubica. El usuario quiere ver SÓLO su equipo: elige cuáles se muestran como chips y
@@ -106,11 +104,12 @@
 
   async function cargar() {
     try {
-      DATA = await req('GET', '/programacion/asa/reporte' +
-                              qs({ anio: ANIO, meses: MESES, estados: ESTADOS }));
+      DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
       if (!DATA) return;
       ANIO = DATA.anio;
-      ESTADOS = DATA.estados;    // en la primera carga los pone el backend
+      // El único que arranca apagado es el despachado, y sólo la primera vez: después
+      // manda lo que el usuario haya tocado.
+      if (OCULTOS === null) OCULTOS = [DATA.estado_apagado_por_defecto];
     } catch (e) { aviso(e.message); mostrarVacio(e.message); return; }
     pintarTodo();
   }
@@ -124,10 +123,9 @@
 
   function pintarTodo() {
     var esp = DATA.espejo || {};
-    var anulados = (DATA.conteo_estados || {}).Cancelled;
     $('dshEspejo').textContent = esp.filas_anio
       ? esp.filas_anio + ' códigos de control en ' + DATA.anio +
-        (anulados && anulados.cc ? ' · ' + anulados.cc + ' anulados, fuera del reporte' : '')
+        (DATA.anulados ? ' · ' + DATA.anulados + ' anulados, fuera del reporte' : '')
       : '';
     // Un espejo vacío no es un error, pero tampoco es «no hay trabajo»: hay que decir
     // que falta traer la data, o el usuario lee cero donde hay cientos de toneladas.
@@ -140,34 +138,38 @@
       $('dshAviso').innerHTML = '';
     }
     pintarChips();
-    pintarEstados();
     pintarObras();
     pintarTablas();
   }
 
-  // Un botón por estado, con su conteo aunque esté apagado: así se ve cuánto se está
-  // dejando fuera. Apagar «Despachados» sin decirlo escondería 4.297 filas y el total
-  // no cuadraría contra el Power BI sin ninguna pista de por qué.
-  function pintarEstados() {
-    var cont = $('dshEstados'), conteo = DATA.conteo_estados || {};
+  // Un botón por estado, con SU CONTEO YA FILTRADO por obra y cubicador. Ese detalle es
+  // el que importa: antes los conteos eran del año entero y mentían —con una obra
+  // seleccionada decían «En producción 148» cuando esa obra tenía cero—. Y sólo se
+  // ofrecen los estados que de verdad aparecen en ESTA caja: «Sin terminar» nunca tiene
+  // fecha de despacho, así que el botón no pertenecía acá y ya no sale.
+  //
+  // Todos los botones van del MISMO color. Uno por estado confundía: parecía una etiqueta
+  // de categoría y no un interruptor. Encendido = se ve; apagado = gris y tachado.
+  function pintarEstados(filasCaja) {
+    var cont = $('dshEstados');
+    var conteo = {};
+    filasCaja.forEach(function (f) {
+      var e = f.estado || '?';
+      if (!conteo[e]) conteo[e] = { cc: 0, kg: 0 };
+      conteo[e].cc++; conteo[e].kg += f.kg;
+    });
     cont.innerHTML = '';
-    (DATA.estados_opcionales || []).forEach(function (e) {
-      var c = conteo[e];
-      if (!c || !c.cc) return;                 // no se ofrece un estado que no tiene nada
-      var on = (ESTADOS || []).indexOf(e) !== -1;
+    Object.keys(conteo).sort().forEach(function (e) {
+      var c = conteo[e], oculto = OCULTOS.indexOf(e) !== -1;
       var b = document.createElement('button');
-      b.className = (on ? 'on ' : '') + (ESTADO_CLASE[e] || '');
-      b.innerHTML = esc(ESTADO_NOMBRE[e] || e) + ' <b>' + c.cc + '</b>';
-      b.title = (on ? 'Se está mostrando' : 'Oculto') + ': ' + c.cc + ' códigos · ' +
-                kg(c.kg) + ' kg';
+      b.className = oculto ? 'off' : '';
+      b.innerHTML = esc((DATA.nombres_estado || {})[e] || e) + ' <b>' + c.cc + '</b>';
+      b.title = (oculto ? 'Oculto. Clic para mostrar: ' : 'Se muestra. Clic para quitar: ')
+                + c.cc + ' códigos · ' + kg(c.kg) + ' kg';
       b.addEventListener('click', function () {
-        var lista = (ESTADOS || []).slice(), i = lista.indexOf(e);
-        if (i === -1) lista.push(e); else lista.splice(i, 1);
-        // Si se apagan todos, el backend volvería a los de por defecto y el usuario
-        // vería reaparecer filas que acaba de apagar. Mejor dejar el último encendido.
-        if (!lista.length) return;
-        ESTADOS = lista;
-        cargar();
+        var i = OCULTOS.indexOf(e);
+        if (i === -1) OCULTOS.push(e); else OCULTOS.splice(i, 1);
+        pintarObras(); pintarTablas();
       });
       cont.appendChild(b);
     });
@@ -235,8 +237,13 @@
   // marcar una segunda. Y un valor ya elegido se muestra siempre, aunque el otro filtro
   // lo dejaría fuera — si no, no habría cómo desmarcarlo.
   function todasLasFilas() {
-    return (DATA.por_programar || []).concat(DATA.programados || []);
+    return DATA.filas || [];
   }
+  // Las dos cajas: con fecha de despacho y sin ella. Es toda la regla.
+  function conFecha(filas) { return filas.filter(function (f) { return f.promesa; }); }
+  function sinFecha(filas) { return filas.filter(function (f) { return !f.promesa; }); }
+  // El filtro de estado sólo aplica a PROGRAMADOS, que es donde están los botones.
+  function visiblePorEstado(f) { return OCULTOS.indexOf(f.estado) === -1; }
 
   function filtrar(filas, salvo) {
     return filas.filter(function (f) {
@@ -247,8 +254,14 @@
   }
 
   function valoresDe(campo, salvo, elegidos) {
+    // Se cuenta lo que el usuario puede llegar a ver: lo de POR PROGRAMAR entero, y de
+    // PROGRAMADOS sólo los estados encendidos. Si no, la lista ofrecería obras que al
+    // marcarlas dejan las dos cajas vacías.
     var vistos = {};
-    filtrar(todasLasFilas(), salvo).forEach(function (f) { if (f[campo]) vistos[f[campo]] = 1; });
+    var base = filtrar(todasLasFilas(), salvo).filter(function (f) {
+      return !f.promesa || visiblePorEstado(f);
+    });
+    base.forEach(function (f) { if (f[campo]) vistos[f[campo]] = 1; });
     elegidos.forEach(function (v) { vistos[v] = 1; });
     return Object.keys(vistos).sort();
   }
@@ -275,9 +288,14 @@
 
   // Las dos tablas tienen las mismas columnas salvo la fecha, así que se pintan con la
   // misma función: una sola definición de cómo se ve una fila.
-  function tabla(el, filas, conFecha) {
+  function tabla(el, filas, llevaFecha, ocultosPorEstado) {
     if (!filas.length) {
-      el.innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
+      // Distinguir «no hay nada» de «lo hay pero lo apagaste» evita el susto de creer que
+      // falta data: le pasó al usuario comparando contra su Power BI.
+      var msg = ocultosPorEstado
+        ? ocultosPorEstado + ' código(s) ocultos por el filtro de estado — enciéndelo arriba'
+        : 'Sin datos con estos filtros';
+      el.innerHTML = '<tbody><tr><td class="dshvacio">' + esc(msg) + '</td></tr></tbody>';
       return 0;
     }
     var total = filas.reduce(function (a, f) { return a + f.kg; }, 0);
@@ -285,7 +303,7 @@
     // mismo aunque PROGRAMADOS tenga una columna más. Los porcentajes de cada variante
     // suman 100 y salen de las dos columnas angostas (código y fecha), que son de largo
     // conocido; lo que sobra se reparte entre obra y descripción.
-    var html = conFecha
+    var html = llevaFecha
       ? '<thead><tr><th style="width:29%">JobName</th><th style="width:33%">Descr</th>' +
         '<th style="width:11%">Control Code</th><th style="width:10%">Promised</th>' +
         '<th class="num" style="width:17%">Sum of TotalKgs</th></tr></thead><tbody>'
@@ -296,7 +314,7 @@
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
-              (conFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
+              (llevaFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
               '<td class="num">' + kg(f.kg) + '</td></tr>';
     });
     // Sin fila de Total al pie: el total vive en el encabezado de la caja, que no se va
@@ -307,10 +325,15 @@
 
   function pintarTablas() {
     // Sin `salvo`: las tablas SÍ aplican todos los filtros a la vez.
-    var pp = filtrar(DATA.por_programar || []);
-    var pg = filtrar(DATA.programados || []);
+    var base = filtrar(todasLasFilas());
+    var pp = sinFecha(base);
+    // Los botones se arman ANTES de aplicar el estado: tienen que contar también lo que
+    // está apagado, que es justamente lo que dicen.
+    var todosPg = conFecha(base);
+    pintarEstados(todosPg);
+    var pg = todosPg.filter(visiblePorEstado);
     var tp = tabla($('dshPorProgramar'), pp, false);
-    var tg = tabla($('dshProgramados'), pg, true);
+    var tg = tabla($('dshProgramados'), pg, true, todosPg.length - pg.length);
     $('dshPpN').innerHTML = resumen(pp.length, tp);
     $('dshPgN').innerHTML = resumen(pg.length, tg);
   }

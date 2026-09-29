@@ -622,10 +622,21 @@ def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
 # este archivo: `Processed` y `Shipped` se encienden y apagan. Por defecto se ve el
 # trabajo vivo —Open, Processed e Incomplete— y lo despachado queda fuera, porque si no
 # entierra a los que de verdad están por salir.
-ESTADOS_CONOCIDOS = ("Open", "Processed", "Shipped", "Cancelled", "Incomplete")
-ESTADOS_POR_DEFECTO = ("Open", "Processed", "Incomplete")
-# Anulado no es una opción: no hay botón que lo encienda.
+# Anulado: no es trabajo, no se manda al front y no hay botón que lo encienda.
 ESTADO_NUNCA = "Cancelled"
+# El único que arranca apagado. En 2026 son 4.288 de 4.557 con fecha de despacho —el 94%—
+# y si se muestran entierran a los 269 que de verdad están por salir. Los demás estados
+# arrancan encendidos, y los botones los arma el front con lo que de verdad hay en la caja.
+ESTADO_APAGADO_POR_DEFECTO = "Shipped"
+# Cómo se llaman en castellano. `Processed` es el que más confunde: no es «procesado
+# administrativamente», es que LE SACARON TARJETA AL ÍTEM, o sea está en producción o ya
+# producido (dato del usuario, 29-sep). Del nombre en inglés nadie lo deduce.
+NOMBRES_ESTADO = {
+    "Open": "Por producir",
+    "Processed": "En producción",
+    "Shipped": "Despachados",
+    "Incomplete": "Sin terminar",
+}
 
 
 @router.post("/programacion/asa/sincronizar-pedidos")
@@ -666,37 +677,28 @@ def asa_sincronizar_ahora(user=Depends(get_current_user)):
 
 
 @router.get("/programacion/asa/reporte")
-def asa_reporte(anio: Optional[int] = None, meses: str = "", estados: str = "",
+def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 user=Depends(get_current_user)):
-    """Las dos tablas del reporte, sus totales y las listas de los filtros.
+    """Los pedidos del período, para que el front arme las dos tablas.
 
     LAS DOS TABLAS. POR PROGRAMAR son los pedidos SIN fecha de despacho; PROGRAMADOS, los
     que ya la tienen. Eso es todo: no hay un campo «programado» en aSa.
 
-    QUÉ ESTADOS SE VEN LO DECIDE EL USUARIO, no este archivo. `estados` llega desde los
-    botones de la caja de programados. Por defecto se ve el trabajo vivo (Open, Processed,
-    Incomplete) y lo despachado queda fuera: en 2026 son 4.297 de 5.191 y entierran a los
-    que de verdad están por salir. Encender «Despachados» reconstruye el total completo,
-    que es como se cuadra contra el Power BI del usuario.
+    POR QUÉ SE MANDAN TODAS LAS FILAS Y NO LAS YA FILTRADAS. Los botones de estado tienen
+    que mostrar CUÁNTO HAY DETRÁS de cada uno, y ese número depende de la obra y del
+    cubicador que el usuario tenga marcados —que se filtran en el navegador—. Si el
+    backend filtrara por estado, los conteos serían del año entero y mentirían: con una
+    obra seleccionada decían «En producción 148» cuando esa obra tenía cero. Pasó.
+    Un año completo son ~5.100 filas y 870 KB; con un mes elegido, la doceava parte.
 
-    Los anulados no son una opción: no hay botón que los encienda.
+    Los ANULADOS no se mandan: no son trabajo y no hay forma de encenderlos. Se informa
+    cuántos son, nada más.
 
     El año y el mes filtran por `order_date`, la única fecha que tienen las dos tablas.
-    PROGRAMADOS va con la fecha más reciente arriba.
-
-    Los totales los suma el backend. Si los sumara el front, el número de la pantalla
-    podría no cuadrar con el de un export, y esa diferencia destruye la confianza en un
-    reporte."""
+    PROGRAMADOS va con la fecha más reciente arriba."""
     _exigir_admin(user)
     anio = int(anio or date.today().year)
     lista_meses = [int(m) for m in meses.split(",") if m.strip().isdigit() and 1 <= int(m) <= 12]
-
-    # Se validan contra la lista conocida: un estado inventado en la URL no puede colarse
-    # a la consulta, y pedir sólo «Cancelled» no debe vaciar la pantalla sin explicación.
-    pedidos = [e.strip() for e in estados.split(",") if e.strip()]
-    sel = [e for e in pedidos if e in ESTADOS_CONOCIDOS and e != ESTADO_NUNCA]
-    if not sel:
-        sel = list(ESTADOS_POR_DEFECTO)
 
     where = ["anio = %s"]
     params: list = [anio]
@@ -709,26 +711,18 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "", estados: str = "",
         with conn.cursor() as cur:
             # promised_date DESC deja arriba la fecha más reciente de PROGRAMADOS; los NULL
             # (POR PROGRAMAR) caen al final ordenados por obra. Un solo ORDER BY sirve a las
-            # dos tablas.
+            # dos tablas, y el front no reordena nada.
             cur.execute(
-                "SELECT control_code, asa_job_id, job_name, descr, detail_person, "
-                "       order_date, promised_date, estado, kg "
-                "  FROM asa_pedidos" + cond_periodo + " AND COALESCE(estado,'') = ANY(%s)"
+                "SELECT control_code, job_name, descr, detail_person, promised_date, estado, kg"
+                "  FROM asa_pedidos" + cond_periodo + " AND COALESCE(estado,'') <> %s"
                 " ORDER BY promised_date DESC NULLS LAST, job_name, descr, control_code",
-                params + [sel])
+                params + [ESTADO_NUNCA])
             filas = [
-                {"cc": r[0], "asa_job_id": r[1], "obra": r[2], "descr": r[3] or "",
-                 "persona": r[4], "orden": r[5].isoformat() if r[5] else None,
-                 "promesa": r[6].isoformat() if r[6] else None,
-                 "estado": r[7], "kg": float(r[8] or 0)}
+                {"cc": r[0], "obra": r[1], "descr": r[2] or "", "persona": r[3],
+                 "promesa": r[4].isoformat() if r[4] else None,
+                 "estado": r[5], "kg": float(r[6] or 0)}
                 for r in cur.fetchall()
             ]
-            # El conteo por estado sale del PERÍODO completo, no de los estados elegidos:
-            # es lo que permite que cada botón muestre cuánto hay detrás aunque esté
-            # apagado. Sin eso, apagar «Despachados» escondería 4.297 filas en silencio.
-            cur.execute("SELECT COALESCE(estado,'?'), COUNT(*), COALESCE(SUM(kg),0) "
-                        "  FROM asa_pedidos" + cond_periodo + " GROUP BY 1", params)
-            conteo = {r[0]: {"cc": r[1], "kg": round(float(r[2]), 2)} for r in cur.fetchall()}
             # Los años y las personas salen de TODO el espejo, no del filtro: si salieran
             # del filtro, al elegir un mes desaparecerían los botones de los otros.
             cur.execute("SELECT DISTINCT anio FROM asa_pedidos WHERE anio IS NOT NULL ORDER BY anio")
@@ -736,21 +730,19 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "", estados: str = "",
             cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
                         " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
             personas = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) FROM asa_pedidos" + cond_periodo + " AND estado = %s",
+                        params + [ESTADO_NUNCA])
+            anulados = cur.fetchone()[0]
             cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos WHERE anio = %s", (anio,))
             n_anio, ultimo = cur.fetchone()
 
-    por_programar = [f for f in filas if not f["promesa"]]
-    programados = [f for f in filas if f["promesa"]]
     return {
-        "anio": anio, "meses": lista_meses, "estados": sel,
+        "anio": anio, "meses": lista_meses,
         "anios": anios, "personas": personas,
-        "estados_opcionales": [e for e in ESTADOS_CONOCIDOS if e != ESTADO_NUNCA],
-        "conteo_estados": conteo,
-        "obras": sorted({f["obra"] for f in filas}),
-        "por_programar": por_programar,
-        "programados": programados,
-        "kg_por_programar": round(sum(f["kg"] for f in por_programar), 2),
-        "kg_programados": round(sum(f["kg"] for f in programados), 2),
+        "estado_apagado_por_defecto": ESTADO_APAGADO_POR_DEFECTO,
+        "nombres_estado": NOMBRES_ESTADO,
+        "anulados": anulados,
+        "filas": filas,
         "espejo": {"filas_anio": n_anio or 0,
                    "ultima_sync": ultimo.isoformat() if ultimo else None},
     }

@@ -129,17 +129,18 @@
   .dshth{font-size:11px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:5px;
          display:flex; align-items:center; gap:6px;}
   .dshth .muted{font-weight:400; letter-spacing:0;}
-  /* Botones de estado del pedido. Apagado = gris y tachado suave, para que se lea «esto
-     no lo estás viendo» y no «esto no existe». */
-  .dshest{display:inline-flex; gap:4px; font-weight:400; letter-spacing:0;}
+  /* Botones de estado del pedido. TODOS DEL MISMO COLOR: un color por estado se leía
+     como etiqueta de categoría y no como interruptor, y confundía. Encendido = verde
+     (se está viendo); apagado = gris y tachado (existe, pero lo sacaste). */
+  .dshest{display:inline-flex; gap:4px; font-weight:400; letter-spacing:0; flex-wrap:wrap;}
   .dshest button{font-size:9.5px; font-weight:600; padding:1px 8px; border-radius:99px;
-                 cursor:pointer; border:1px solid #dfe5ea; background:#fff; color:#90a4ae;
-                 white-space:nowrap;}
-  .dshest button:hover{border-color:#b0bec5}
+                 cursor:pointer; white-space:nowrap;
+                 background:#e8f5e9; border:1px solid #a5d6a7; color:#2e7d32;}
   .dshest button b{font-weight:700}
-  .dshest button.on{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32}
-  .dshest button.on.env{background:#fff8e1; border-color:#ffe082; color:#8d6e00}
-  .dshest button.on.desp{background:#e3f2fd; border-color:#90caf9; color:#1565c0}
+  .dshest button:hover{border-color:#7cb342}
+  .dshest button.off{background:#f5f7f8; border-color:#e0e4e8; color:#b0bec5;
+                     text-decoration:line-through;}
+  .dshest button.off:hover{border-color:#cfd8dc; color:#90a4ae}
   /* `height`, no `max-height`: las dos cajas tienen que medir EXACTAMENTE lo mismo
      aunque una tenga 566 filas y la otra 269. Con max-height, la más corta encogía. */
   .dshbd{height:31vh; min-height:130px; overflow:auto;}
