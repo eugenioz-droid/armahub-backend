@@ -108,6 +108,9 @@
     // «Obras aSa»; en el otro sub-tab se esconde y las cajas se llevan ese ancho.
     var lat = $('dshLateral');
     if (lat) lat.style.display = (v === 'obras') ? '' : 'none';
+    // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
+    // pide la primera vez que se abre y no en cada cambio de pestaña.
+    if (v === 'cub' && !CUB) { cargarCub().then(pintarTablas); return; }
     // Se repinta sólo el panel que se abre. Los filtros son compartidos y NO se tocan:
     // cambiar de sub-tab conserva la obra, el cubicador y el período ya elegidos.
     if (DATA) pintarTablas();
@@ -462,44 +465,44 @@
   }
 
   // ── Sub-tab PROGRAMADO CUBICADOR ───────────────────────────────────────────
-  // El escenario de cada persona en una sola tabla. TRES ESTADOS EXCLUYENTES que suman
-  // el total — ésa es la propiedad que hace que se pueda confiar en ella:
+  // La foto de HOY de cada persona: sus obras ACTIVAS y cómo está parada cada una.
   //
-  //   DESPACHADO  el pedido ya salió (estado Shipped en aSa).
-  //   PROGRAMADO  agendado en planta y todavía sin despachar: lo que viene.
-  //   STOCK       cubicado y sin agendar. Lo que espera.
+  // OBRA ACTIVA = tuvo movimiento en los últimos N meses. NO «la que tiene pendiente»:
+  // ésa fue mi primera idea y escondía justo la alarma — una obra que se comió su stock
+  // y se quedó sin nada que cubicar desaparecía, cuando es la que hay que mirar.
   //
-  // Lleva los MISMOS botones de estado que los otros sub-tabs, por consistencia. Acá
-  // filtran los códigos ANTES de sumar, así que no esconden obras: les bajan el conteo y
-  // los kilos, y si una queda sin nada desaparece. Y arrancan TODOS ENCENDIDOS —al revés
-  // que en Stock Cubicaciones— porque la columna Despachado es justo lo que se viene a
-  // ver: apagarla de entrada dejaría la tabla contando una historia a medias.
-  var ORDEN_CUB = { col: 'kg', desc: true };
+  // Por lo mismo este tab NO usa el filtro de año y mes, y trae su propia data de un
+  // endpoint que agrega en la base: son cientos de filas en vez de 25.000.
+  var CUB = null, CUB_MESES = 3, ORDEN_CUB = { col: 'kg', desc: true };
 
-  function claseDe(f) {
-    if (f.estado === 'Shipped') return 'de';       // despachado
-    return programado(f) ? 'pr' : 'st';            // en camino / esperando
+  async function cargarCub() {
+    try {
+      CUB = await req('GET', '/programacion/asa/cubicador' + qs({ meses: CUB_MESES }));
+    } catch (e) { aviso(e.message); CUB = null; }
   }
 
   function pintarCubicador() {
-    var todas = filtrar(todasLasFilas());
-    pintarEstados('cub', $('dshEstadosCub'), todas);
-    var base = todas.filter(visibleEn.bind(null, 'cub'));
-    var por = {};
-    base.forEach(function (f) {
-      var o = por[f.obra];
-      if (!o) {
-        o = por[f.obra] = { obra: f.obra, kg: 0,
-                            st: 0, stkg: 0, pr: 0, prkg: 0, de: 0, dekg: 0 };
-      }
-      var c = claseDe(f);
-      o[c]++; o[c + 'kg'] += f.kg; o.kg += f.kg;
+    if (!CUB) { $('dshCub').innerHTML = '<tbody><tr><td class="dshvacio">Cargando…</td></tr></tbody>'; return; }
+
+    chips($('dshCubMeses'), [3, 6, 12, 0], [CUB_MESES], function (m) {
+      CUB_MESES = m;
+      cargarCub().then(pintarCubicador);
+    }, function (m) { return m ? m + ' meses' : 'Todo'; });
+
+    // El filtro de persona compara contra QUIÉN LA LLEVA HOY —el último que detalló—,
+    // no contra quien participó alguna vez. Por eso a alguien que cambió de rol le sale
+    // vacío, que es lo correcto: ya no tiene obras.
+    var lista = (CUB.filas || []).filter(function (f) {
+      if (PERSONAS.length && PERSONAS.indexOf(f.lleva) === -1) return false;
+      if (OBRAS.length && OBRAS.indexOf(f.obra) === -1) return false;
+      return true;
     });
-    var lista = Object.keys(por).map(function (k) { return por[k]; });
+    lista.forEach(function (f) { f.kg = f.stkg + f.prkg + f.dekg; });
+
     var dir = ORDEN_CUB.desc ? -1 : 1;
     lista.sort(function (a, b) {
       var x = a[ORDEN_CUB.col], y = b[ORDEN_CUB.col];
-      if (typeof x === 'string') return dir * x.localeCompare(y, 'es');
+      if (typeof x === 'string') return dir * String(x).localeCompare(String(y), 'es');
       return dir * (x - y);
     });
 
@@ -508,42 +511,52 @@
       ['st', 'pr', 'de'].forEach(function (c) { T[c] += o[c]; T[c + 'kg'] += o[c + 'kg']; });
       T.kg += o.kg;
     });
+    var nada = lista.filter(function (o) { return o.sin_nada; }).length;
+    var poco = lista.filter(function (o) { return o.sin_stock; }).length;
     $('dshCubN').innerHTML = '· ' + lista.length + ' obras · <b style="color:#33691e">' +
-                             kg0(T.kg) + ' kg</b>';
+      kg0(T.kg) + ' kg</b>' +
+      (nada ? ' · <b style="color:#c62828">' + nada + ' sin trabajo</b>' : '') +
+      (poco ? ' · <b style="color:#e65100">' + poco + ' sin stock</b>' : '');
     if (!lista.length) {
-      $('dshCub').innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
+      $('dshCub').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con movimiento en el período elegido</td></tr></tbody>';
       return;
     }
     var tope = lista.reduce(function (a, o) { return Math.max(a, o.kg); }, 0) || 1;
     var fl = function (c) {
       return ORDEN_CUB.col === c ? ' <b>' + (ORDEN_CUB.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
     };
-    var par = function (c, etiq, clase) {
+    var par = function (c, clase) {
       return '<th class="ord num g ' + clase + '" data-ord="' + c + '">CC' + fl(c) + '</th>' +
              '<th class="ord num ' + clase + '" data-ord="' + c + 'kg">Kilos' + fl(c + 'kg') + '</th>';
     };
     var html = '<thead>' +
-      '<tr><th></th>' +
+      '<tr><th></th><th></th>' +
       '<th colspan="2" class="g st">STOCK</th>' +
       '<th colspan="2" class="g pr">PROGRAMADO</th>' +
       '<th colspan="2" class="g de">DESPACHADO</th>' +
       '<th class="g">Total</th></tr>' +
-      '<tr><th class="ord" data-ord="obra" style="width:30%">Obra' + fl('obra') + '</th>' +
-      par('st', 'Stock', 'st') + par('pr', 'Programado', 'pr') + par('de', 'Despachado', 'de') +
+      '<tr><th class="ord" data-ord="lleva" style="width:12%">La lleva' + fl('lleva') + '</th>' +
+      '<th class="ord" data-ord="obra" style="width:26%">Obra' + fl('obra') + '</th>' +
+      par('st', 'st') + par('pr', 'pr') + par('de', 'de') +
       '<th class="ord num g" data-ord="kg">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
     var celda = function (n, k, clase) {
-      // Un cero se escribe en gris claro y no en negro: seis columnas llenas de ceros
-      // negros compiten con los números que sí importan.
+      // Un cero se escribe en gris claro: seis columnas de ceros negros compiten con los
+      // números que sí importan.
       return '<td class="num g ' + clase + '"' + (n ? '' : ' style="color:#cfd8dc"') + '>' + n + '</td>' +
              '<td class="num ' + clase + '"' + (k ? '' : ' style="color:#cfd8dc"') + '>' + kg0(k) + '</td>';
     };
     lista.forEach(function (o) {
-      html += '<tr><td title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
+      var clase = o.sin_nada ? ' class="alerta grave"' : (o.sin_stock ? ' class="alerta"' : '');
+      var porque = o.sin_nada ? ' — se movió pero NO le queda nada, ni cubicado ni agendado'
+                 : (o.sin_stock ? ' — tiene cola agendada pero nada esperando detrás' : '');
+      html += '<tr' + clase + '>' +
+              '<td class="cc" title="Detallaron: ' + esc(o.detallaron || '') + '">' + esc(o.lleva || '') + '</td>' +
+              '<td title="' + esc(o.obra) + porque + '">' + esc(o.obra) + '</td>' +
               celda(o.st, o.stkg, 'st') + celda(o.pr, o.prkg, 'pr') + celda(o.de, o.dekg, 'de') +
               '<td class="num g dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
               '%"></i><span>' + kg0(o.kg) + '</span></td></tr>';
     });
-    html += '</tbody><tfoot><tr><td>Total</td>' +
+    html += '</tbody><tfoot><tr><td></td><td>Total</td>' +
             '<td class="num g st">' + T.st + '</td><td class="num st">' + kg0(T.stkg) + '</td>' +
             '<td class="num g pr">' + T.pr + '</td><td class="num pr">' + kg0(T.prkg) + '</td>' +
             '<td class="num g de">' + T.de + '</td><td class="num de">' + kg0(T.dekg) + '</td>' +
@@ -684,7 +697,7 @@
     programado: programado, cajaDe: cajaDe, visible: visible, visibleEn: visibleEn,
     conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
     orden: function (v) { if (v) { ORDEN = v; } return ORDEN; },
-    claseDe: claseDe, alternar: alternar,
+    alternar: alternar,
     ocultos: function (v) { if (v) { OCULTOS = v; } return OCULTOS; }
   };
 

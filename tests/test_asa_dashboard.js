@@ -211,26 +211,11 @@ check('con varios elegidos, el clic simple deja sólo el tocado',
 check('Cmd+clic (Mac) hace lo mismo que Ctrl',
       JSON.stringify(T.alternar(['a'], 'b', { metaKey: true })) === '["a","b"]');
 
-// ── 9. Los tres estados de «Programado Cubicador» ──────────────────────────
-// Que sean EXCLUYENTES y sumen el total es lo que hace que la tabla sea creíble: si un
-// código pudiera contarse en dos columnas, los totales no cuadrarían con ningún otro
-// reporte y no habría forma de saber cuál miente.
-console.log('\n9. Programado Cubicador: tres estados excluyentes');
-const casos = [
-  { n: 'despachado', f: { estado: 'Shipped', programado: true }, esp: 'de' },
-  { n: 'despachado aunque aSa no lo tenga agendado',
-    f: { estado: 'Shipped', programado: false }, esp: 'de' },
-  { n: 'agendado y sin despachar = en camino',
-    f: { estado: 'Open', programado: true }, esp: 'pr' },
-  { n: 'en producción y agendado = en camino',
-    f: { estado: 'Processed', programado: true }, esp: 'pr' },
-  { n: 'sin agendar = stock', f: { estado: 'Open', programado: false }, esp: 'st' },
-  { n: 'en producción sin agendar = stock (la rareza de aSa)',
-    f: { estado: 'Processed', programado: false }, esp: 'st' },
-];
-casos.forEach(c => check(c.n + ' -> ' + c.esp, T.claseDe(c.f) === c.esp));
-check('todo código cae en exactamente uno de los tres',
-      casos.every(c => ['st', 'pr', 'de'].includes(T.claseDe(c.f))));
+// La clasificación en tres estados (stock / programado / despachado) ya NO vive acá:
+// se mudó al SQL del endpoint `/programacion/asa/cubicador`, porque agregar por obra en
+// Postgres son cientos de filas contra las 25.000 que habría que mandar al navegador.
+// Que los tres sean excluyentes y sumen el total lo verifica scripts/smoke_programacion.py
+// contra la base real, que es donde esa regla ahora existe.
 
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

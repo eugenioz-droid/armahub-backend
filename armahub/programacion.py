@@ -809,6 +809,90 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
     }
 
 
+@router.get("/programacion/asa/cubicador")
+def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
+    """La foto de HOY: qué obras están activas y cuál se está quedando sin trabajo.
+
+    UNA FILA POR OBRA, no por persona+obra. Agrupar por persona generaba alarmas falsas:
+    una obra puede pasar de manos, y el que la llevaba antes aparecía «sin cola» cuando
+    en realidad ya no la lleva. Caso real: BELFI - PUENTE LO GALLARDO figuraba en rojo
+    para Dvenegas, que dejó de cubicar, mientras ERAMIREZ la tiene con 4 códigos
+    programados. La obra estaba bien; la agrupación estaba mal.
+
+    QUIÉN LA LLEVA es el último que detalló algo en ella. El filtro de persona compara
+    contra ÉSE, no contra quien participó alguna vez: el tab responde «cómo está parado
+    hoy», así que a alguien que cambió de rol le tiene que salir vacío.
+
+    OBRA ACTIVA = tuvo movimiento en los últimos `meses`. NO «la que tiene pendiente»:
+    ésa fue la primera idea y escondía justo la alarma — una obra que se comió su stock
+    y se quedó sin nada que cubicar desaparecía, cuando es la que hay que mirar.
+
+    DOS NIVELES DE AVISO, porque no son lo mismo:
+      sin_nada  · ni stock ni agendado. Se quedó sin trabajo.
+      sin_stock · tiene cola agendada pero nada esperando detrás. Se le va a acabar.
+
+    NO usa el filtro de año y mes: lo pendiente es pendiente sin importar cuándo se pidió.
+    Y agrega en la base — por obra son cientos de filas; mandar el detalle para que el
+    navegador sumara serían 25.000.
+    """
+    _exigir_admin(user)
+    meses = max(1, min(int(meses or 3), 120))
+    prog = "(sched_estado IN %s OR ship_id IS NOT NULL)" % (ESTADOS_PLANTA_PROGRAMADO,)
+    vivo = "COALESCE(estado,'') <> 'Shipped'"
+    sql = f"""
+        WITH activas AS (
+            SELECT DISTINCT job_name FROM asa_pedidos
+             WHERE GREATEST(order_date, proj_ship_date) >= CURRENT_DATE - make_interval(months => %s)
+        ),
+        -- Quién la lleva HOY: el último que detalló algo en esa obra.
+        ultimo AS (
+            SELECT DISTINCT ON (job_name) job_name, detail_person
+              FROM asa_pedidos
+             WHERE detail_person IS NOT NULL AND detail_person <> ''
+             ORDER BY job_name, GREATEST(order_date, proj_ship_date) DESC NULLS LAST
+        )
+        SELECT p.job_name,
+               MAX(p.asa_job_id)                                              AS job,
+               u.detail_person                                                AS lleva,
+               COUNT(*) FILTER (WHERE NOT {prog} AND {vivo})                  AS st_cc,
+               COALESCE(SUM(p.kg) FILTER (WHERE NOT {prog} AND {vivo}), 0)    AS st_kg,
+               COUNT(*) FILTER (WHERE {prog} AND {vivo})                      AS pr_cc,
+               COALESCE(SUM(p.kg) FILTER (WHERE {prog} AND {vivo}), 0)        AS pr_kg,
+               COUNT(*) FILTER (WHERE NOT {vivo})                             AS de_cc,
+               COALESCE(SUM(p.kg) FILTER (WHERE NOT {vivo}), 0)               AS de_kg,
+               MAX(GREATEST(p.order_date, p.proj_ship_date))                  AS ultimo,
+               STRING_AGG(DISTINCT p.detail_person, ', ')                     AS detallaron
+          FROM asa_pedidos p
+          JOIN activas a ON a.job_name = p.job_name
+          LEFT JOIN ultimo u ON u.job_name = p.job_name
+         WHERE COALESCE(p.estado,'') <> %s
+         GROUP BY p.job_name, u.detail_person
+         ORDER BY 5 DESC
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (meses, ESTADO_NUNCA))
+            filas = []
+            for r in cur.fetchall():
+                st_cc, pr_cc = r[3], r[5]
+                filas.append({
+                    "obra": r[0], "job": r[1], "lleva": r[2],
+                    "st": st_cc, "stkg": float(r[4]),
+                    "pr": pr_cc, "prkg": float(r[6]),
+                    "de": r[7], "dekg": float(r[8]),
+                    "ultimo": r[9].isoformat() if r[9] else None,
+                    "detallaron": r[10],
+                    # Ninguno se filtra por tamaño: ordenando por kilos las que importan
+                    # quedan arriba solas, y un umbral fijo escondería casos en silencio.
+                    "sin_nada": (st_cc == 0 and pr_cc == 0),
+                    "sin_stock": (st_cc == 0 and pr_cc > 0),
+                })
+            cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
+                        " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
+            personas = [r[0] for r in cur.fetchall()]
+    return {"meses": meses, "filas": filas, "personas": personas}
+
+
 @router.get("/programacion/usc")
 def listar_usc(user=Depends(get_current_user)):
     """Los usuarios que pueden ser USC, y las obras asignadas a cada uno.

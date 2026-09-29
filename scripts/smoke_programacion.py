@@ -124,8 +124,34 @@ if isinstance(d, dict) and d.get("filas"):
     check("...sin anulados entre ellas",
           not any(x.get("estado") == "Cancelled" for x in d["filas"]))
 
+print("\n5. Tab del cubicador: la foto de hoy")
+s, d = get("/programacion/asa/cubicador", meses=3)
+check("GET /programacion/asa/cubicador -> 200", s == 200, str(d)[:160])
+if s == 200 and d.get("filas"):
+    filas = d["filas"]
+    print("      %d obras activas · %d sin trabajo · %d sin stock"
+          % (len(filas), sum(1 for f in filas if f["sin_nada"]),
+             sum(1 for f in filas if f["sin_stock"])))
+    # LO QUE HACE CREIBLE LA TABLA: los tres estados son excluyentes y suman el total.
+    # Si un codigo pudiera contarse dos veces, ningun total cuadraria con los otros
+    # reportes y no habria forma de saber cual miente.
+    check("...una fila por OBRA, sin repetir",
+          len({f["obra"] for f in filas}) == len(filas))
+    check("...cada obra dice quien la lleva hoy",
+          all(f.get("lleva") for f in filas if f["de"] or f["st"] or f["pr"]))
+    check("...las dos alarmas son excluyentes entre si",
+          not any(f["sin_nada"] and f["sin_stock"] for f in filas))
+    check("...«sin trabajo» es de verdad cero y cero",
+          all(f["st"] == 0 and f["pr"] == 0 for f in filas if f["sin_nada"]))
+    check("...«sin stock» tiene cola pero nada detras",
+          all(f["st"] == 0 and f["pr"] > 0 for f in filas if f["sin_stock"]))
+    # La ventana es lo que define que obra esta activa; ampliarla no puede achicar la lista.
+    s6, d6 = get("/programacion/asa/cubicador", meses=12)
+    check("ampliar la ventana no deja FUERA obras que ya estaban",
+          s6 == 200 and len(d6["filas"]) >= len(filas))
+
 if SYNC:
-    print("\n5. Sincronizacion desde aSa (escribe en el espejo)")
+    print("\n6. Sincronizacion desde aSa (escribe en el espejo)")
     t0 = time.time()
     s, d = post("/programacion/asa/sincronizar")
     check("POST /programacion/asa/sincronizar (obras) -> 200 en %.1fs" % (time.time() - t0), s == 200, str(d)[:160])
@@ -137,7 +163,7 @@ if SYNC:
     if s == 200:
         print("      %d codigos de control, %d nuevos" % (d.get("filas", 0), d.get("nuevas", 0)))
 
-    print("\n6. El reporte con data real (2026, Ago+Sep)")
+    print("\n7. El reporte con data real (2026, Ago+Sep)")
     s, d = get("/programacion/asa/reporte", anio=2026, meses="8,9")
     check("reporte -> 200", s == 200)
     if s == 200:

@@ -683,12 +683,41 @@ check("existe el tercer sub-tab", "asaSubCub" in HTM and "asaPanelCub" in HTM
       and "Programado Cubicador" in HTM)
 check("es UNA tabla con los tres estados, no dos cajas",
       "dshCub" in HTM and "STOCK" in DSH and "PROGRAMADO" in DSH and "DESPACHADO" in DSH)
-check("la clasificación vive en una sola función", "function claseDe(f)" in DSH)
 check("se puede ordenar por cualquier columna", "ORDEN_CUB" in DSH)
-check("lleva los mismos botones de estado que el resto", "dshEstadosCub" in HTM
-      and "pintarEstados('cub'" in DSH)
-check("...pero acá arrancan TODOS encendidos, porque el despachado es lo que se viene a ver",
-      "cub: []" in DSH)
+
+# UNA FILA POR OBRA, no por persona+obra. Agrupar por persona generaba alarmas falsas:
+# una obra puede pasar de manos y el anterior aparecía «sin cola» cuando ya no la lleva.
+# Caso real del usuario: BELFI figuraba en rojo para Dvenegas, que dejó de cubicar,
+# mientras ERAMIREZ la tiene con 4 códigos programados.
+check("agrupa por OBRA, no por persona+obra", "GROUP BY p.job_name, u.detail_person" in PROG)
+check("...y «la lleva» es el último que detalló algo en ella",
+      "DISTINCT ON (job_name)" in PROG and "GREATEST(order_date, proj_ship_date) DESC" in PROG)
+check("el filtro de persona compara contra quien la lleva HOY",
+      "PERSONAS.indexOf(f.lleva)" in DSH)
+
+# OBRA ACTIVA = con movimiento reciente, NO «con pendiente». Esa fue mi primera idea y
+# escondía justo la alarma: una obra que se comió su stock desaparecía de la vista.
+check("obra activa se define por MOVIMIENTO reciente, no por tener pendiente",
+      "make_interval(months => %s)" in PROG and "WITH activas AS" in PROG)
+check("la ventana se puede cambiar desde el tab", "dshCubMeses" in HTM and "CUB_MESES" in DSH)
+check("...y está acotada por el backend", "min(int(meses or 3), 120)" in PROG)
+
+# DOS NIVELES, porque no son lo mismo: ámbar «se le va a acabar», rojo «ya se acabó».
+# Una sola marca haría que el grave se perdiera entre los leves, que son muchos más.
+check("hay dos niveles de aviso, no uno",
+      '"sin_nada"' in PROG and '"sin_stock"' in PROG)
+check("...rojo es sin stock NI agendado", "(st_cc == 0 and pr_cc == 0)" in PROG)
+check("...ámbar es con cola pero sin nada detrás", "(st_cc == 0 and pr_cc > 0)" in PROG)
+check("...y se distinguen en pantalla", "alerta grave" in DSH and ".dsht3 tr.alerta.grave" in HTM)
+check("ninguna alarma se filtra por tamaño (un umbral escondería casos en silencio)",
+      "un umbral fijo escondería casos" in PROG)
+
+# La suma la hace Postgres: por obra son cientos de filas; mandar el detalle para que el
+# navegador sumara serían 25.000 y varios MB.
+check("el tab trae su propia data, agregada en la base",
+      "/programacion/asa/cubicador" in PROG and "/programacion/asa/cubicador" in DSH)
+check("...y no usa el filtro de año y mes, porque es una foto de hoy",
+      "NO usa el filtro de año y mes" in PROG and "no usa el filtro de año ni de mes" in HTM)
 
 # ── 21. Los nombres de los estados son los de aSa ──────────────────────────
 # Traducirlos fue un error: «Por producir» y «Sin terminar» los inventé yo, y el usuario

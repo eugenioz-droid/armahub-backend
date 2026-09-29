@@ -122,11 +122,24 @@
                DESPACHADO ya salió.
              El desbalance entre las dos primeras es el dato que se busca: mucho stock sin
              programar, o una obra que se quedó sin cola. -->
+        <!-- ══════ PROGRAMADO CUBICADOR ══════
+             La foto de HOY de cada persona. Obra ACTIVA es la que tuvo movimiento en los
+             últimos N meses, no la que tiene pendiente: una obra que se comió su stock y
+             se quedó sin nada que cubicar es justo la que hay que ver, y filtrando por
+             «pendiente» desaparecía. Por lo mismo NO usa el filtro de año y mes: lo
+             pendiente es pendiente sin importar cuándo se pidió. -->
         <div id="asaPanelCub" class="dshpanel" style="display:none;">
           <div class="card dshcard dshcod">
-            <div class="dshth">OBRAS POR ESTADO <span class="muted" id="dshCubN"></span>
+            <div class="dshth">OBRAS ACTIVAS <span class="muted" id="dshCubN"></span>
               <div style="flex:1"></div>
-              <span class="dshest" id="dshEstadosCub"></span>
+              <span class="dshbl" style="font-weight:600;">Movimiento en</span>
+              <span class="dshchips" id="dshCubMeses"></span>
+            </div>
+            <div class="prgaviso" style="margin:0 0 6px;">
+              Foto de hoy: no usa el filtro de año ni de mes. Una fila por obra, y
+              «la lleva» es el último que detalló algo en ella.
+              <b style="color:#c62828">Rojo</b> = no le queda nada, ni cubicado ni agendado ·
+              <b style="color:#e65100">ámbar</b> = tiene cola pero nada esperando detrás.
             </div>
             <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dsht3" id="dshCub"></table></div>
           </div>
@@ -235,6 +248,13 @@
   .dsht3 .st{color:#8d6e00}   /* stock: lo que espera */
   .dsht3 .pr{color:#2e7d32}   /* programado: lo que viene */
   .dsht3 .de{color:#78909c}   /* despachado: lo que ya pasó */
+  /* Dos niveles, porque no son lo mismo: ámbar es «se le va a acabar» y rojo es «ya se
+     acabó». Una sola marca para los dos casos haría que el grave se perdiera entre los
+     leves, que son muchos más. */
+  .dsht3 tr.alerta td{background:#fffdf3}
+  .dsht3 tr.alerta td:first-child{box-shadow:inset 3px 0 0 #ffb300}
+  .dsht3 tr.alerta.grave td{background:#fff6f6}
+  .dsht3 tr.alerta.grave td:first-child{box-shadow:inset 3px 0 0 #c62828; font-weight:600}
 
   /* Las dos cajas centrales, del MISMO ancho: ambas ocupan la columna entera, una sobre
      la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear
