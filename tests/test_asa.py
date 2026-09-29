@@ -391,6 +391,18 @@ check("...y el cliente arma groupby+aggregate de OData",
 check("se sincroniza UN año por llamada (porque $apply no pagina)",
       "OrderDate ge %d-01-01" in SYNC)
 check("el año viene acotado, no se acepta cualquiera", "2015 <= anio" in PROG)
+# El año es un interruptor: tocar el encendido lo suelta y se ve la historia completa.
+# Hace falta un valor EXPLÍCITO (0) porque la ausencia del parámetro ya significaba «el
+# año actual», y con eso no se puede expresar «todos» sin romper la primera carga.
+check("anio=0 significa todos los años", "todos = (anio is not None and int(anio) == 0)" in PROG)
+check("...y con todos no se filtra por año", 'where = [] if todos else ["anio = %s"]' in PROG)
+check("...el WHERE se arma bien aunque no haya condición de período",
+      '(" AND " if cond_periodo else " WHERE ")' in PROG)
+check("el front suelta el año al volver a tocarlo", "ANIO = (ANIO === v) ? 0 : v;" in DSH)
+check("...y lo dice en pantalla en vez de mostrar un año en blanco",
+      "toda la historia" in DSH)
+check("...y el resumen mensual avisa que suma todos los años",
+      "Mes · todos los años" in DSH)
 check("la tabla guarda una fila por código de control",
       "control_code  TEXT PRIMARY KEY" in MIG113)
 
@@ -530,9 +542,12 @@ check("el año y el mes van en una barra horizontal arriba",
 check("...y ya no están en la columna lateral",
       HTM.index('id="dshAnios"') < HTM.index('class="dshwrap"')
       and HTM.index('id="dshMeses"') < HTM.index('class="dshwrap"'))
-check("la obra y el cubicador sí son del reporte y quedan a los costados",
-      HTM.index('id="dshObras"') > HTM.index('class="dshwrap"')
-      and HTM.index('id="dshPersonas"') > HTM.index('class="dshwrap"'))
+# El cubicador subió a una fila de chips bajo el período: ocupaba una columna entera
+# para una lista corta. La obra se queda en su columna porque además de filtrar resume.
+check("la obra se queda en su columna, que además resume",
+      HTM.index('id="dshObras"') > HTM.index('class="dshwrap"'))
+check("el cubicador subió a una fila propia arriba",
+      HTM.index('id="dshPersonas"') < HTM.index('class="dshwrap"'))
 
 # Tres columnas: obra a la izquierda (nombres largos), las dos tablas al centro con el
 # MISMO ancho, y el cubicador a la derecha.
@@ -597,11 +612,21 @@ check("hay dos sub-tabs y el nuevo se llama Obras aSa",
 check("el período, la obra y el cubicador están FUERA de los paneles",
       HTM.index('class="dshbarra"') < HTM.index('id="asaPanelPlanta"')
       and HTM.index('id="dshObras"') < HTM.index('id="asaPanelPlanta"')
-      and HTM.index('id="dshPersonas"') > HTM.index('id="asaPanelObras"'))
+      and HTM.index('id="dshPersonas"') < HTM.index('id="asaPanelPlanta"'))
 check("...y cambiar de sub-tab no los resetea, sólo repinta",
       "if (DATA) pintarTablas();" in DSH and "SUB = v;" in DSH)
 check("los dos cuadros del tab nuevo existen",
       all(x in HTM for x in ("dshPorMes", "dshCc", "dshBuscaCc")))
+# El cubicador pasó de ocupar una columna entera a una fila de chips bajo el período, y
+# la columna que liberó ahora informa: los kilos mes a mes.
+check("el cubicador va en su propia fila, arriba, no en una columna",
+      HTM.index('id="dshPersonas"') < HTM.index('class="dshwrap"'))
+check("...y la columna que liberó la ocupa el resumen mensual",
+      'id="dshLateral"' in HTM and HTM.index('id="dshPorMes"') > HTM.index('class="dshwrap"'))
+check("...que sólo aparece en «Obras aSa», donde tiene sentido",
+      "lat.style.display = (v === 'obras')" in DSH)
+check("el detalle de códigos ya no muestra el código interno de la obra",
+      "esc(f.job || '')" not in DSH)
 # La información de obras se fue del panel a la COLUMNA de obra, que ya estaba ahí para
 # filtrar: tenerla en los dos lados era la misma cosa dos veces y dos sitios donde podía
 # dejar de cuadrar. Y el detalle queda a la izquierda, el mensual angosto a la derecha.
@@ -610,9 +635,9 @@ check("el cuadro OBRAS ya no existe: su info vive en la columna de obra",
 check("la columna de obra muestra códigos y kilos por obra",
       "class=\"dshot\"" in DSH and "data-ord=\"cc\"" in DSH and "data-ord=\"kg\"" in DSH)
 check("...y se ordena por encabezado", "ORDEN_OBRA.desc = !ORDEN_OBRA.desc" in DSH)
-check("el detalle va a la izquierda y el mensual angosto a la derecha",
+check("el detalle ocupa el panel entero y el mensual se fue a la columna lateral",
       HTM.index('id="dshCc"') < HTM.index('id="dshPorMes"')
-      and ".dshmes{width:230px" in HTM)
+      and HTM.index('id="dshPorMes"') > HTM.index('id="dshLateral"'))
 
 # EL BUG QUE VIO EL USUARIO: al tocar un cubicador el filtro se aplicaba pero el chip no
 # cambiaba de color, porque no se repintaban los chips. Parecía que el clic no hacía nada.
@@ -631,6 +656,16 @@ check("la barra de kilos se dibuja con CSS, sin librería", ".dshbar i{" in HTM)
 check("el mes de cada fila lo manda el backend, no se deduce del texto",
       "EXTRACT(MONTH FROM order_date)::int AS mes" in PROG and '"mes": r[10]' in PROG)
 check("...y el id de obra también, para el listado de códigos", '"job": r[11]' in PROG)
+
+
+# ── 19. Compresión de las respuestas ───────────────────────────────────────
+# El reporte con todos los años son 25.314 filas y 6,3 MB de JSON. Comprimido viaja como
+# 0,7 MB: un 89% menos, porque el JSON repite los mismos nombres de campo en cada fila.
+# Beneficia a todo el sistema, no sólo a este reporte.
+print("\n19. Las respuestas grandes viajan comprimidas")
+MAIN = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
+check("la app comprime las respuestas", "GZipMiddleware" in MAIN)
+check("...y no gasta CPU en las chicas, que son la mayoría", "minimum_size=1024" in MAIN)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -103,6 +103,10 @@
       if (b) b.className = on ? 'asasub on' : 'asasub';
       if (p) p.style.display = on ? '' : 'none';
     });
+    // La columna de la derecha lleva el resumen mensual, que sólo tiene sentido en
+    // «Obras aSa»; en el otro sub-tab se esconde y las cajas se llevan ese ancho.
+    var lat = $('dshLateral');
+    if (lat) lat.style.display = (v === 'obras') ? '' : 'none';
     // Se repinta sólo el panel que se abre. Los filtros son compartidos y NO se tocan:
     // cambiar de sub-tab conserva la obra, el cubicador y el período ya elegidos.
     if (DATA) pintarTablas();
@@ -150,7 +154,7 @@
   function pintarTodo() {
     var esp = DATA.espejo || {};
     $('dshEspejo').textContent = esp.filas_anio
-      ? esp.filas_anio + ' códigos de control en ' + DATA.anio +
+      ? esp.filas_anio + ' códigos de control en ' + (DATA.anio ? DATA.anio : 'toda la historia') +
         (DATA.anulados ? ' · ' + DATA.anulados + ' anulados, fuera del reporte' : '')
       : '';
     // Un espejo vacío no es un error, pero tampoco es «no hay trabajo»: hay que decir
@@ -214,8 +218,14 @@
   function pintarChips() {
     // Si el espejo está vacío no hay años que ofrecer; se muestra el actual igual, porque
     // es el que se va a sincronizar.
+    // El año es un interruptor: tocar el que está encendido lo suelta y se ve la
+    // historia completa. `0` es «todos» — hace falta un valor explícito porque la
+    // ausencia del parámetro ya significaba «el año actual».
     var anios = (DATA.anios && DATA.anios.length) ? DATA.anios : [DATA.anio];
-    chips($('dshAnios'), anios, [ANIO], function (v) { ANIO = v; cargar(); });
+    chips($('dshAnios'), anios, [ANIO], function (v) {
+      ANIO = (ANIO === v) ? 0 : v;
+      cargar();
+    });
     chips($('dshMeses'), [1,2,3,4,5,6,7,8,9,10,11,12], MESES, function (m) {
       var i = MESES.indexOf(m);
       if (i === -1) MESES.push(m); else MESES.splice(i, 1);
@@ -436,16 +446,19 @@
       total += f.kg;
     });
     var meses = Object.keys(por).map(Number).sort(function (a, b) { return a - b; });
-    $('dshMesN').innerHTML = '· <b style="color:#33691e">' + kg(total) + ' kg</b>';
+    $('dshMesN').innerHTML = '· <b style="color:#33691e">' + kg0(total) + ' kg</b>';
     if (!meses.length) {
       $('dshPorMes').innerHTML = '<tbody><tr><td class="dshvacio">Sin datos</td></tr></tbody>';
       return;
     }
-    var html = '<thead><tr><th>Mes</th><th class="num">Kilos</th></tr></thead><tbody>';
+    // Con todos los años elegidos, cada mes suma los de todos: se avisa, porque doce
+    // filas sin decir de qué año se leerían como si fueran del año en curso.
+    var titulo = (DATA && !DATA.anio) ? 'Mes · todos los años' : 'Mes';
+    var html = '<thead><tr><th>' + titulo + '</th><th class="num">Kilos</th></tr></thead><tbody>';
     meses.forEach(function (m) {
-      html += '<tr><td>' + MESN[m - 1] + '</td><td class="num">' + kg(por[m]) + '</td></tr>';
+      html += '<tr><td>' + MESN[m - 1] + '</td><td class="num">' + kg0(por[m]) + '</td></tr>';
     });
-    html += '</tbody><tfoot><tr><td>Total</td><td class="num">' + kg(total) + '</td></tr></tfoot>';
+    html += '</tbody><tfoot><tr><td>Total</td><td class="num">' + kg0(total) + '</td></tr></tfoot>';
     $('dshPorMes').innerHTML = html;
   }
 
@@ -470,12 +483,11 @@
     // primeras y se dice cuántas quedaron fuera; para ver menos, está el buscador.
     var recorte = lista.length > TOPE_FILAS;
     var visibles = recorte ? lista.slice(0, TOPE_FILAS) : lista;
-    var html = '<thead><tr><th style="width:10%">Obra</th><th style="width:28%">JobName</th>' +
-               '<th style="width:32%">Descr</th><th style="width:10%">Code</th>' +
-               '<th style="width:20%" class="num">Kilos</th></tr></thead><tbody>';
+    var html = '<thead><tr><th style="width:32%">Obra</th>' +
+               '<th style="width:38%">Descripción</th><th style="width:12%">Código</th>' +
+               '<th style="width:18%" class="num">Kilos</th></tr></thead><tbody>';
     visibles.forEach(function (f) {
-      html += '<tr><td class="cc">' + esc(f.job || '') + '</td>' +
-              '<td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
+      html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
               '<td class="num">' + kg(f.kg) + '</td></tr>';

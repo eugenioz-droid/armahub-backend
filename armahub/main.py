@@ -43,6 +43,15 @@ from .asistente import router as asistente_router
 def create_app() -> FastAPI:
     app = FastAPI(title="ArmaHub Backend")
 
+    # --- Compresión ---
+    # El reporte de aSa con todos los años son 25.314 filas y 6,4 MB de JSON. Comprimido
+    # baja a una fracción, y el JSON comprime muy bien porque repite los mismos nombres
+    # de campo en cada fila. Beneficia a todo lo demás por igual: listados de barras,
+    # despieces, cualquier respuesta grande. `minimum_size` evita gastar CPU en las
+    # respuestas chicas, que son la mayoría.
+    from starlette.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+
     # --- CORS ---
     allowed_origins = os.getenv("CORS_ORIGINS", "").split(",")
     allowed_origins = [o.strip() for o in allowed_origins if o.strip()]

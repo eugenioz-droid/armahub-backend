@@ -36,7 +36,19 @@
       <span class="dshbl">Mes</span>
       <div id="dshMeses" class="dshchips"></div>
       <span class="muted" style="font-size:10px;">por fecha de pedido</span>
+      <span class="muted" style="font-size:10px; margin-left:auto;">clic en el año encendido = todos</span>
     </div>
+
+    <!-- Cubicador, en su propia fila. Puesto en la columna lateral ocupaba una columna
+         entera para una lista de chips; acá cabe en una línea. -->
+    <div class="dshbarra">
+      <span class="dshbl">Cubicador</span>
+      <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
+      <div id="dshPersonas" class="dshchips"></div>
+    </div>
+    <!-- aSa devuelve 45 DetailPerson en la historia completa, muchos son correos de gente
+         que ya no cubica. El usuario elige cuáles ve como chips. -->
+    <div id="dshDetLista" class="dshlista" style="display:none; max-height:26vh; margin-bottom:10px;"></div>
 
     <div id="dshAviso" class="prgaviso" style="margin-bottom:10px;"></div>
 
@@ -85,35 +97,25 @@
              lado a lado —el mensual es angosto y el de obras necesita el ancho— y abajo el
              detalle, que es el que más filas tiene. -->
         <div id="asaPanelObras" class="dshpanel" style="display:none;">
-          <div class="dshfila">
-            <div class="card dshcard dshcod">
-              <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
-                <div style="flex:1"></div>
-                <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
-                       class="dshbuscar" style="width:220px; font-weight:400;">
-              </div>
-              <div class="dshbd"><table class="dsht" id="dshCc"></table></div>
+          <div class="card dshcard dshcod">
+            <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
+              <div style="flex:1"></div>
+              <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
+                     class="dshbuscar" style="width:240px; font-weight:400;">
             </div>
-            <div class="card dshcard dshmes">
-              <div class="dshth">KILOS POR MES <span class="muted" id="dshMesN"></span></div>
-              <div class="dshbd"><table class="dsht" id="dshPorMes"></table></div>
-            </div>
+            <div class="dshbd" style="height:auto; flex:1;"><table class="dsht" id="dshCc"></table></div>
           </div>
         </div>
 
       </div>
 
-      <div class="dshcol dshfiltros">
-        <div class="dshf">
-          <div class="dshfh">Cubicador <span class="muted" style="font-weight:400">· en aSa</span>
-            <div style="flex:1"></div>
-            <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
-          </div>
-          <!-- aSa devuelve 45 DetailPerson en la historia completa, muchos son correos de
-               gente que ya no cubica. El usuario elige cuáles ve como chips. -->
-          <div id="dshDetLista" class="dshlista" style="display:none; max-height:34vh; margin-bottom:5px;"></div>
-          <div id="dshPersonas" class="dshchips"></div>
-        </div>
+      <!-- La columna de la derecha, que antes gastaba su ancho en los chips del
+           cubicador, ahora informa: los kilos del período mes a mes. Sólo aparece en
+           «Obras aSa», que es donde ese resumen tiene sentido. -->
+      <div class="dshcol dshfiltros" id="dshLateral" style="display:none;">
+        <div class="dshfh">KILOS POR MES <span class="muted" id="dshMesN" style="font-weight:400"></span></div>
+        <div class="dshbd" style="height:auto; max-height:none; flex:1; overflow:auto;">
+          <table class="dsht" id="dshPorMes"></table></div>
       </div>
 
     </div>
@@ -148,7 +150,7 @@
   .dshcol{flex:none; display:flex; flex-direction:column; gap:11px;
           background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
   .dshobras{width:330px;}
-  .dshfiltros{width:212px; overflow:auto;}
+  .dshfiltros{width:196px; overflow:hidden;}
   .dshbuscar{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px;
              border:1px solid #cfd8dc; border-radius:4px;}
   .dshf{display:flex; flex-direction:column;}
@@ -193,13 +195,9 @@
      la página — con altos fijos la segunda caía fuera del monitor. */
   .dshtablas{flex:1 1 620px; min-width:0;}
   .dshpanel{display:flex; flex-direction:column; gap:12px; height:100%;}
-  /* Los dos cuadros de «Obras aSa», lado a lado y de la misma altura: el detalle a la
-     izquierda con todo el ancho que sobre, y el mensual a la derecha, que son doce filas
-     y no necesita más que un cuarto. */
-  .dshfila{display:flex; gap:12px; align-items:stretch; height:100%; flex-wrap:wrap;}
-  .dshcod{flex:1 1 420px; min-width:0; display:flex; flex-direction:column;}
-  .dshmes{width:230px; flex:none; display:flex; flex-direction:column;}
-  .dshfila .dshbd{flex:1; height:auto; max-height:none;}
+  /* El detalle de códigos ocupa el panel entero: el resumen mensual se fue a la columna
+     de la derecha, que antes gastaba su ancho en los chips del cubicador. */
+  .dshcod{flex:1; min-width:0; display:flex; flex-direction:column;}
   /* Sub-tabs: el estilo sale del CSS y no de atributos repetidos en cada botón. */
   .asasub{padding:6px 16px; font-size:12px; font-weight:600; border:none; cursor:pointer;
           background:none; color:#aaa; border-bottom:2px solid transparent;}

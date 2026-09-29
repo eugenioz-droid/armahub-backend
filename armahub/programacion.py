@@ -714,15 +714,20 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
     El año y el mes filtran por `order_date`, la única fecha que tienen las dos tablas.
     PROGRAMADOS va con la fecha más reciente arriba."""
     _exigir_admin(user)
-    anio = int(anio or date.today().year)
+    # `anio = 0` significa TODOS LOS AÑOS. Hace falta un valor explícito porque «sin año»
+    # ya quería decir «el actual»: el usuario pide que volver a tocar el año encendido lo
+    # suelte y muestre la historia completa, y eso no se puede expresar con la ausencia
+    # del parámetro sin romper la primera carga.
+    todos = (anio is not None and int(anio) == 0)
+    anio = 0 if todos else int(anio or date.today().year)
     lista_meses = [int(m) for m in meses.split(",") if m.strip().isdigit() and 1 <= int(m) <= 12]
 
-    where = ["anio = %s"]
-    params: list = [anio]
+    where = [] if todos else ["anio = %s"]
+    params: list = [] if todos else [anio]
     if lista_meses:
         where.append("EXTRACT(MONTH FROM order_date) = ANY(%s)")
         params.append(lista_meses)
-    cond_periodo = " WHERE " + " AND ".join(where)
+    cond_periodo = (" WHERE " + " AND ".join(where)) if where else ""
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -742,7 +747,8 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 # necesita el mes de cada fila, y el listado de códigos muestra el id de
                 # la obra. Salen de la misma consulta para no hacer otra.
                 "       EXTRACT(MONTH FROM order_date)::int AS mes, asa_job_id"
-                "  FROM asa_pedidos" + cond_periodo + " AND COALESCE(estado,'') <> %s"
+                "  FROM asa_pedidos" + cond_periodo +
+                (" AND " if cond_periodo else " WHERE ") + "COALESCE(estado,'') <> %s"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
                 "          job_name, descr, control_code",
                 params + [ESTADO_NUNCA])
@@ -770,10 +776,14 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
             cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
                         " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
             personas = [r[0] for r in cur.fetchall()]
-            cur.execute("SELECT COUNT(*) FROM asa_pedidos" + cond_periodo + " AND estado = %s",
+            cur.execute("SELECT COUNT(*) FROM asa_pedidos" + cond_periodo +
+                        (" AND " if cond_periodo else " WHERE ") + "estado = %s",
                         params + [ESTADO_NUNCA])
             anulados = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos WHERE anio = %s", (anio,))
+            if todos:
+                cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos")
+            else:
+                cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos WHERE anio = %s", (anio,))
             n_anio, ultimo = cur.fetchone()
 
     return {
