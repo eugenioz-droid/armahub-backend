@@ -67,6 +67,11 @@ try:
     import jwt  # noqa: F401 — lo que necesita armahub.auth
 except ImportError:
     _stub("armahub.auth", get_current_user=lambda: None)
+else:
+    # Tercera vuelta (28-sep): con jwt instalado se importa el auth.py REAL, que se niega
+    # a arrancar sin JWT_SECRET (M0). El test no emite ni valida tokens: le basta uno
+    # local, puesto ANTES del import. Sin esto, instalar PyJWT rompia el test.
+    os.environ.setdefault("JWT_SECRET", "test-local-no-es-secreto-" + "x" * 24)
 if "armahub.db" in sys.modules and not hasattr(sys.modules["armahub.db"], "__file__"):
     import armahub
     sys.modules["armahub.db"].__package__ = "armahub"
