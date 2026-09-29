@@ -102,6 +102,10 @@ def create_app() -> FastAPI:
         calculistas_router, catalogo_router, modelador_router, modelador_config_router,
         reclamos_router,
         notifications_router, obra_config_router, asistente_router,
+        # El front habla SIEMPRE por /api/v1 (apiUrl). Un router que sólo se monta sin
+        # prefijo responde 404 a toda la pantalla, sin que ningún test lo note: el módulo
+        # de Programación estuvo así desde que nació.
+        programacion_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

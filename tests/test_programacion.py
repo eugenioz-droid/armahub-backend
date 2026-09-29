@@ -159,5 +159,21 @@ check("desprogramar NO borra la tarea: la devuelve a 'disponible'",
 check("el PATCH sólo toca lo que vino en el cuerpo (__fields_set__)",
       "__fields_set__" in src)
 
+# ── 8. El router responde por /api/v1, que es por donde habla el front ──────
+# El front construye TODAS sus URLs con apiUrl(), que antepone /api/v1. Un router montado
+# sólo sin prefijo responde 404 a toda la pantalla, y ningún test de lógica lo nota: el
+# módulo de Programación estuvo así desde que nació (28-sep) y se veía vacío. El check es
+# genérico: todo router que la app monta, salvo el de HTML (ui), tiene que estar en la
+# lista que se vuelve a montar bajo /api/v1.
+print("\n8. Todos los routers se montan también bajo /api/v1")
+main_src = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
+montados = set(re.findall(r"app\.include_router\((\w+_router)\)", main_src))
+lista = main_src.split("_api_routers = [")[1].split("]")[0]
+bajo_api = set(re.findall(r"(\w+_router)", lista))
+faltan = sorted(montados - bajo_api - {"ui_router"})
+check("ningún router de API falta bajo /api/v1 (faltan: %s)" % (", ".join(faltan) or "ninguno"),
+      not faltan)
+check("el de programación está, en particular", "programacion_router" in bajo_api)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
