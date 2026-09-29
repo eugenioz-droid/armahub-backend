@@ -23,7 +23,7 @@
 
     <!-- Sub-tabs. Los próximos reportes sobre la misma data espejo entran acá al lado. -->
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:10px;">
-      <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Programa Planta</button>
+      <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Stock Cubicaciones</button>
       <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
     </div>
 
@@ -45,6 +45,9 @@
          el sub-tab; lo de los lados no se vuelve a dibujar. -->
     <div class="dshwrap">
 
+      <!-- La columna de obra FILTRA y RESUME a la vez: lleva la cantidad de códigos y
+           los kilos de cada una, ordenables por encabezado. Antes eso vivía además en un
+           cuadro aparte del panel de Obras, que era la misma información dos veces. -->
       <div class="dshcol dshobras">
         <div class="dshfh">Obra <span class="muted" id="dshObrasN" style="font-weight:400"></span></div>
         <input type="text" id="dshBuscaObra" placeholder="Buscar…" class="dshbuscar">
@@ -83,28 +86,18 @@
              detalle, que es el que más filas tiene. -->
         <div id="asaPanelObras" class="dshpanel" style="display:none;">
           <div class="dshfila">
+            <div class="card dshcard dshcod">
+              <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
+                <div style="flex:1"></div>
+                <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
+                       class="dshbuscar" style="width:220px; font-weight:400;">
+              </div>
+              <div class="dshbd"><table class="dsht" id="dshCc"></table></div>
+            </div>
             <div class="card dshcard dshmes">
               <div class="dshth">KILOS POR MES <span class="muted" id="dshMesN"></span></div>
-              <div class="dshbd" style="height:auto; max-height:var(--alto2);">
-                <table class="dsht" id="dshPorMes"></table></div>
+              <div class="dshbd"><table class="dsht" id="dshPorMes"></table></div>
             </div>
-            <div class="card dshcard dshobr">
-              <div class="dshth">OBRAS <span class="muted" id="dshObrN"></span>
-                <div style="flex:1"></div>
-                <span class="muted" style="font-weight:400; font-size:9.5px;">clic en el encabezado para ordenar</span>
-              </div>
-              <div class="dshbd" style="height:auto; max-height:var(--alto2);">
-                <table class="dsht" id="dshPorObra"></table></div>
-            </div>
-          </div>
-          <div class="card dshcard">
-            <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
-              <div style="flex:1"></div>
-              <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
-                     class="dshbuscar" style="width:230px; font-weight:400;">
-            </div>
-            <div class="dshbd" style="height:auto; max-height:var(--alto3);">
-              <table class="dsht" id="dshCc"></table></div>
           </div>
         </div>
 
@@ -154,7 +147,7 @@
      de línea al cambiar de año y la pantalla bailaría. El centro se lleva el resto. */
   .dshcol{flex:none; display:flex; flex-direction:column; gap:11px;
           background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
-  .dshobras{width:268px;}
+  .dshobras{width:330px;}
   .dshfiltros{width:212px; overflow:auto;}
   .dshbuscar{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px;
              border:1px solid #cfd8dc; border-radius:4px;}
@@ -177,17 +170,36 @@
                   cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .dshlista label:hover{background:#f5f7fa}
   .dshlista input{margin:0; flex:none}
+  /* La tabla de obras dentro de la columna: mismo aire que las tablas grandes, pero más
+     apretada porque comparte 330px con el filtro. */
+  .dshot{width:100%; border-collapse:collapse; font-size:10px; table-layout:fixed;
+         font-variant-numeric:tabular-nums;}
+  .dshot thead th{position:sticky; top:0; background:#fafbfc; z-index:1; text-align:left;
+                  color:#546e7a; font-weight:600; font-size:9px; padding:3px 4px;
+                  border-bottom:1px solid #e3e8ef; white-space:nowrap; cursor:pointer;
+                  user-select:none;}
+  .dshot thead th:hover{color:#33691e}
+  .dshot thead th b{color:#33691e}
+  .dshot td{padding:2px 4px; border-top:1px solid #f4f6f8; white-space:nowrap;
+            overflow:hidden; text-overflow:ellipsis;}
+  .dshot tbody tr{cursor:pointer}
+  .dshot tbody tr:hover td{background:#f4f8ee}
+  .dshot tr.sel td{background:#f1f8e9; font-weight:600}
+  .dshot input{margin:0}
+  .dshot .num{text-align:right}
 
   /* Las dos cajas centrales, del MISMO ancho: ambas ocupan la columna entera, una sobre
      la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear
      la página — con altos fijos la segunda caía fuera del monitor. */
   .dshtablas{flex:1 1 620px; min-width:0;}
   .dshpanel{display:flex; flex-direction:column; gap:12px; height:100%;}
-  /* Dos cuadros lado a lado: el mensual es angosto y de alto conocido (12 filas), el de
-     obras necesita todo el ancho que sobre. */
-  .dshfila{display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;}
-  .dshmes{width:216px; flex:none;}
-  .dshobr{flex:1 1 380px; min-width:0;}
+  /* Los dos cuadros de «Obras aSa», lado a lado y de la misma altura: el detalle a la
+     izquierda con todo el ancho que sobre, y el mensual a la derecha, que son doce filas
+     y no necesita más que un cuarto. */
+  .dshfila{display:flex; gap:12px; align-items:stretch; height:100%; flex-wrap:wrap;}
+  .dshcod{flex:1 1 420px; min-width:0; display:flex; flex-direction:column;}
+  .dshmes{width:230px; flex:none; display:flex; flex-direction:column;}
+  .dshfila .dshbd{flex:1; height:auto; max-height:none;}
   /* Sub-tabs: el estilo sale del CSS y no de atributos repetidos en cada botón. */
   .asasub{padding:6px 16px; font-size:12px; font-weight:600; border:none; cursor:pointer;
           background:none; color:#aaa; border-bottom:2px solid transparent;}

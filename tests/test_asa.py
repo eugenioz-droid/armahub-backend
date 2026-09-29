@@ -432,7 +432,7 @@ check("el total se recalcula sobre las filas FILTRADAS",
 # desmarcarlo.
 check("los filtros se cruzan entre sí", "function valoresDe(" in DSH and "salvo !== 'obra'" in DSH)
 check("...pero ninguno se filtra a sí mismo",
-      "valoresDe('obra', 'obra'" in DSH and "valoresDe('persona', 'persona'" in DSH)
+      "filtrar(todasLasFilas(), 'obra')" in DSH and "valoresDe('persona', 'persona'" in DSH)
 check("...y lo ya elegido sigue visible para poder desmarcarlo",
       "elegidos.forEach(function (v) { vistos[v] = 1; })" in DSH)
 check("elegir obra repinta los cubicadores y viceversa",
@@ -600,10 +600,32 @@ check("el período, la obra y el cubicador están FUERA de los paneles",
       and HTM.index('id="dshPersonas"') > HTM.index('id="asaPanelObras"'))
 check("...y cambiar de sub-tab no los resetea, sólo repinta",
       "if (DATA) pintarTablas();" in DSH and "SUB = v;" in DSH)
-check("los tres cuadros del tab nuevo existen",
-      all(x in HTM for x in ("dshPorMes", "dshPorObra", "dshCc", "dshBuscaCc")))
-check("el cuadro de obras se puede ordenar por encabezado",
-      "th[data-ord]" in DSH and "ORDEN.desc = !ORDEN.desc" in DSH)
+check("los dos cuadros del tab nuevo existen",
+      all(x in HTM for x in ("dshPorMes", "dshCc", "dshBuscaCc")))
+# La información de obras se fue del panel a la COLUMNA de obra, que ya estaba ahí para
+# filtrar: tenerla en los dos lados era la misma cosa dos veces y dos sitios donde podía
+# dejar de cuadrar. Y el detalle queda a la izquierda, el mensual angosto a la derecha.
+check("el cuadro OBRAS ya no existe: su info vive en la columna de obra",
+      "dshPorObra" not in HTM and "dshPorObra" not in DSH)
+check("la columna de obra muestra códigos y kilos por obra",
+      "class=\"dshot\"" in DSH and "data-ord=\"cc\"" in DSH and "data-ord=\"kg\"" in DSH)
+check("...y se ordena por encabezado", "ORDEN_OBRA.desc = !ORDEN_OBRA.desc" in DSH)
+check("el detalle va a la izquierda y el mensual angosto a la derecha",
+      HTM.index('id="dshCc"') < HTM.index('id="dshPorMes"')
+      and ".dshmes{width:230px" in HTM)
+
+# EL BUG QUE VIO EL USUARIO: al tocar un cubicador el filtro se aplicaba pero el chip no
+# cambiaba de color, porque no se repintaban los chips. Parecía que el clic no hacía nada.
+check("tocar un cubicador repinta también los chips",
+      "pintarChips(); pintarObras(); pintarTablas();" in DSH)
+check("...y tocar una obra, igual",
+      DSH.count("pintarChips(); pintarObras(); pintarTablas();") >= 2)
+
+# EL DELAY al cambiar de sub-tab: 5.132 filas de cinco celdas son ~30.000 nodos del DOM.
+check("el detalle tiene tope de filas, para no construir 30.000 nodos",
+      "TOPE_FILAS" in DSH and "lista.slice(0, TOPE_FILAS)" in DSH)
+check("...y se dice cuántas quedaron fuera, con el total sin recortar",
+      "Se muestran las primeras" in DSH and "el total de arriba sí es de todas" in DSH)
 check("...y la flecha dice por dónde está ordenado", "\\u25bc" in DSH or "▼" in DSH)
 check("la barra de kilos se dibuja con CSS, sin librería", ".dshbar i{" in HTM)
 check("el mes de cada fila lo manda el backend, no se deduce del texto",

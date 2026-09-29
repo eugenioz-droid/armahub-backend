@@ -52,6 +52,9 @@
   function kg(n) {
     return (Number(n) || 0).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  // Sin decimales, para las columnas angostas: en la lista de obras los centésimos de
+  // kilo no deciden nada y se comen el ancho que necesita el nombre.
+  function kg0(n) { return Math.round(Number(n) || 0).toLocaleString('es-CL'); }
   // El usuario lo pidió explícito: la fecha comprometida se muestra dd/mm.
   function ddmm(iso) {
     if (!iso) return '';
@@ -227,7 +230,9 @@
     chips($('dshPersonas'), visibles, PERSONAS, function (p) {
       var i = PERSONAS.indexOf(p);
       if (i === -1) PERSONAS.push(p); else PERSONAS.splice(i, 1);
-      pintarObras(); pintarTablas();      // la obra se recalcula con el cubicador
+      // pintarChips() TAMBIÉN: sin esto el chip no cambia de color y parece que el
+      // clic no hizo nada, aunque el filtro sí se aplicó. Pasó.
+      pintarChips(); pintarObras(); pintarTablas();
     });
     $('dshDetElegir').textContent = ELIGIENDO ? 'listo' : 'elegir';
     $('dshDetElegir').className = ELIGIENDO ? 'dshmini on' : 'dshmini';
@@ -295,22 +300,74 @@
     return Object.keys(vistos).sort();
   }
 
+  // La columna de obra FILTRA y RESUME a la vez: además de marcar, muestra cuántos
+  // códigos y cuántos kilos tiene cada una, ordenables por encabezado. Antes eso estaba
+  // también en un cuadro aparte de «Obras aSa» — la misma información dos veces, y dos
+  // lugares donde podía dejar de cuadrar.
+  var ORDEN_OBRA = { col: 'kg', desc: true };
+
   function pintarObras() {
-    var lista = valoresDe('obra', 'obra', OBRAS).filter(function (o) {
-      return !BUSCA || o.toLowerCase().indexOf(BUSCA) !== -1;
+    // Las cifras salen de las filas que pasan TODOS los otros filtros menos el de obra:
+    // si la obra se filtrara a sí misma, al marcar una desaparecerían las demás.
+    var base = filtrar(todasLasFilas(), 'obra').filter(visible);
+    var por = {};
+    base.forEach(function (f) {
+      if (!por[f.obra]) por[f.obra] = { obra: f.obra, kg: 0, cc: 0 };
+      por[f.obra].kg += f.kg; por[f.obra].cc++;
     });
-    $('dshObrasN').textContent = '· ' + lista.length;
+    // Una obra ya marcada se muestra siempre, aunque los otros filtros la dejarían
+    // fuera: si no, no habría cómo desmarcarla.
+    OBRAS.forEach(function (o) { if (!por[o]) por[o] = { obra: o, kg: 0, cc: 0 }; });
+
+    var lista = Object.keys(por).map(function (k) { return por[k]; })
+      .filter(function (o) { return !BUSCA || o.obra.toLowerCase().indexOf(BUSCA) !== -1; });
+    var dir = ORDEN_OBRA.desc ? -1 : 1;
+    lista.sort(function (a, b) {
+      var x = a[ORDEN_OBRA.col], y = b[ORDEN_OBRA.col];
+      if (typeof x === 'string') return dir * x.localeCompare(y, 'es');
+      return dir * (x - y);
+    });
+
+    var tkg = lista.reduce(function (a, o) { return a + o.kg; }, 0);
+    $('dshObrasN').innerHTML = '· ' + lista.length + ' · <b style="color:#33691e">' +
+                               kg0(tkg) + ' kg</b>';
     if (!lista.length) { $('dshObras').innerHTML = '<div class="dshvacio">Sin obras</div>'; return; }
-    $('dshObras').innerHTML = lista.map(function (o) {
-      return '<label title="' + esc(o) + '"><input type="checkbox" data-obra="' + esc(o) + '"' +
-             (OBRAS.indexOf(o) !== -1 ? ' checked' : '') + '>' + esc(o) + '</label>';
-    }).join('');
-    $('dshObras').querySelectorAll('input[data-obra]').forEach(function (c) {
-      c.addEventListener('change', function () {
-        var o = c.dataset.obra, i = OBRAS.indexOf(o);
-        if (c.checked && i === -1) OBRAS.push(o);
-        else if (!c.checked && i !== -1) OBRAS.splice(i, 1);
-        pintarChips(); pintarTablas();     // el cubicador se recalcula con la obra
+
+    // La barra se mide contra la obra MÁS GRANDE: contra el total, con cien obras,
+    // quedarían todas en un hilo y no compararían nada.
+    var tope = lista.reduce(function (a, o) { return Math.max(a, o.kg); }, 0) || 1;
+    var flecha = function (c) {
+      return ORDEN_OBRA.col === c ? ' <b>' + (ORDEN_OBRA.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
+    };
+    var html = '<table class="dshot"><thead><tr>' +
+      '<th data-ord="obra" style="width:57%">Obra' + flecha('obra') + '</th>' +
+      '<th data-ord="cc" class="num" style="width:16%">CC' + flecha('cc') + '</th>' +
+      '<th data-ord="kg" class="num" style="width:27%">Kilos' + flecha('kg') + '</th>' +
+      '</tr></thead><tbody>';
+    lista.forEach(function (o) {
+      var on = OBRAS.indexOf(o.obra) !== -1;
+      html += '<tr class="' + (on ? 'sel' : '') + '" data-obra="' + esc(o.obra) + '" title="' + esc(o.obra) + '">' +
+              '<td><input type="checkbox"' + (on ? ' checked' : '') + '> ' + esc(o.obra) + '</td>' +
+              '<td class="num">' + o.cc + '</td>' +
+              '<td class="num dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
+              '%"></i><span>' + kg0(o.kg) + '</span></td></tr>';
+    });
+    $('dshObras').innerHTML = html + '</tbody></table>';
+
+    $('dshObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        var o = tr.dataset.obra, i = OBRAS.indexOf(o);
+        if (i === -1) OBRAS.push(o); else OBRAS.splice(i, 1);
+        pintarChips(); pintarObras(); pintarTablas();
+      });
+    });
+    $('dshObras').querySelectorAll('th[data-ord]').forEach(function (th) {
+      th.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var c = th.dataset.ord;
+        if (ORDEN_OBRA.col === c) ORDEN_OBRA.desc = !ORDEN_OBRA.desc;
+        else { ORDEN_OBRA.col = c; ORDEN_OBRA.desc = (c !== 'obra'); }
+        pintarObras();
       });
     });
   }
@@ -363,11 +420,11 @@
   // filtra por estado: se mira el total de lo cubicado, esté despachado o no.
   var ORDEN = { col: 'kg', desc: true };   // cómo está ordenado el cuadro de obras
   var BUSCA_CC = '';
+  var TOPE_FILAS = 400;   // ver la nota en pintarCodigos
 
   function pintarObrasAsa() {
     var base = filtrar(todasLasFilas());
     pintarPorMes(base);
-    pintarPorObra(base);
     pintarCodigos(base);
   }
 
@@ -392,58 +449,6 @@
     $('dshPorMes').innerHTML = html;
   }
 
-  function pintarPorObra(filas) {
-    var por = {};
-    filas.forEach(function (f) {
-      if (!por[f.obra]) por[f.obra] = { obra: f.obra, kg: 0, cc: 0 };
-      por[f.obra].kg += f.kg; por[f.obra].cc++;
-    });
-    var lista = Object.keys(por).map(function (k) { return por[k]; });
-    var dir = ORDEN.desc ? -1 : 1;
-    lista.sort(function (a, b) {
-      var x = a[ORDEN.col], y = b[ORDEN.col];
-      if (typeof x === 'string') return dir * x.localeCompare(y, 'es');
-      return dir * (x - y);
-    });
-    var total = lista.reduce(function (a, o) { return a + o.kg; }, 0);
-    // La barra se mide contra el MÁXIMO, no contra el total: con cuarenta obras, medirla
-    // contra el total dejaría todas en un hilo y no compararía nada.
-    var tope = lista.reduce(function (a, o) { return Math.max(a, o.kg); }, 0) || 1;
-    $('dshObrN').innerHTML = '· ' + lista.length + ' obras · <b style="color:#33691e">' +
-                             kg(total) + ' kg</b>';
-    if (!lista.length) {
-      $('dshPorObra').innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
-      return;
-    }
-    var flecha = function (c) {
-      return ORDEN.col === c ? ' <b>' + (ORDEN.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
-    };
-    var html = '<thead><tr>' +
-      '<th class="ord" data-ord="obra" style="width:58%">Obra' + flecha('obra') + '</th>' +
-      '<th class="ord num" data-ord="cc" style="width:14%">CC' + flecha('cc') + '</th>' +
-      '<th class="ord num" data-ord="kg" style="width:28%">Kilos' + flecha('kg') + '</th>' +
-      '</tr></thead><tbody>';
-    lista.forEach(function (o) {
-      html += '<tr><td title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
-              '<td class="num">' + o.cc + '</td>' +
-              '<td class="num dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
-              '%"></i><span>' + kg(o.kg) + '</span></td></tr>';
-    });
-    html += '</tbody><tfoot><tr><td>Total</td><td class="num"></td><td class="num">' +
-            kg(total) + '</td></tr></tfoot>';
-    $('dshPorObra').innerHTML = html;
-    $('dshPorObra').querySelectorAll('th[data-ord]').forEach(function (th) {
-      th.addEventListener('click', function () {
-        var c = th.dataset.ord;
-        // Segundo clic en la misma columna: se da vuelta. Columna nueva: los números
-        // arrancan de mayor a menor y el texto de la A a la Z, que es lo que se espera.
-        if (ORDEN.col === c) ORDEN.desc = !ORDEN.desc;
-        else { ORDEN.col = c; ORDEN.desc = (c !== 'obra'); }
-        pintarPorObra(filtrar(todasLasFilas()));
-      });
-    });
-  }
-
   function pintarCodigos(filas) {
     var lista = BUSCA_CC
       ? filas.filter(function (f) {
@@ -460,16 +465,26 @@
                   : 'Sin datos con estos filtros') + '</td></tr></tbody>';
       return;
     }
+    // TOPE DE FILAS. Sin él se dibujaban 5.132 filas de cinco celdas: ~30.000 nodos del
+    // DOM cada vez que se cambiaba de sub-tab, y el salto se sentía. Se muestran las
+    // primeras y se dice cuántas quedaron fuera; para ver menos, está el buscador.
+    var recorte = lista.length > TOPE_FILAS;
+    var visibles = recorte ? lista.slice(0, TOPE_FILAS) : lista;
     var html = '<thead><tr><th style="width:10%">Obra</th><th style="width:28%">JobName</th>' +
                '<th style="width:32%">Descr</th><th style="width:10%">Code</th>' +
                '<th style="width:20%" class="num">Kilos</th></tr></thead><tbody>';
-    lista.forEach(function (f) {
+    visibles.forEach(function (f) {
       html += '<tr><td class="cc">' + esc(f.job || '') + '</td>' +
               '<td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
               '<td class="num">' + kg(f.kg) + '</td></tr>';
     });
+    if (recorte) {
+      html += '<tr><td colspan="5" class="dshvacio">Se muestran las primeras ' +
+              TOPE_FILAS + ' de ' + lista.length + ' · afina con el buscador o filtra ' +
+              'por obra (el total de arriba sí es de todas)</td></tr>';
+    }
     $('dshCc').innerHTML = html + '</tbody>';
   }
 
