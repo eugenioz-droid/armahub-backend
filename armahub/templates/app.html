@@ -136,6 +136,7 @@
       <button id="recShellBtnSettings" class="tab-btn mod-reclamos" onclick="switchTab('rec_settings')" style="display:none;">⚙️ Mailing</button>
       <!-- Clientes tab -->
       <button class="tab-btn mod-programacion" onclick="switchTab('programacion')" style="display:none;">🗓️ Programación</button>
+      <button class="tab-btn mod-programacion" onclick="switchTab('prg_dashboards')" style="display:none;">📊 Dashboards</button>
 
       <button class="tab-btn mod-clientes" onclick="switchTab('clientes')" style="display:none;">🏢 Clientes</button>
       <!-- Catálogo Armacero tab -->
@@ -156,6 +157,7 @@
     {% include 'tabs/rec_procedimientos.html' %}
     {% include 'tabs/rec_settings.html' %}
     {% include 'tabs/programacion.html' %}
+    {% include 'tabs/prg_dashboards.html' %}
     {% include 'tabs/clientes.html' %}
     {% include 'tabs/catalogo.html' %}
     {% include 'tabs/admin.html' %}
@@ -336,6 +338,7 @@
 <script src="/static/js/shared/toast.js?v={{ cache_bust }}"></script>
 <script src="/static/js/shared/uploads.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/index.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/programacion/dashboards.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/registry.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/shell.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/bootstrap.js?v={{ cache_bust }}"></script>

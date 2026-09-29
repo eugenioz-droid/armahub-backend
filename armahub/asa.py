@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -192,14 +193,18 @@ def _pedir(url: str, intento: int = 0) -> Any:
         if 500 <= e.code < 600 and intento < REINTENTOS:
             return _reintentar(url, intento, "HTTP %s" % e.code)
         raise AsaError("aSa respondió HTTP %s." % e.code)
-    except urllib.error.URLError as e:
-        # Aquí cae el timeout — el "se quedó pegado" que el usuario ve en BI. Éste SÍ se
-        # reintenta una vez, porque en su experiencia repetir funciona.
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+        # Aquí cae el "se quedó pegado" que el usuario ve en Power BI. OJO: cuando aSa
+        # acepta la conexión y después se demora en responder, Python lanza un
+        # `TimeoutError` pelado, NO un URLError — si sólo se captura URLError, el caso más
+        # frecuente de todos se va al `except Exception` de abajo, no se reintenta y el
+        # mensaje no dice nada útil. Pasó en la primera consulta real a getOrderSummary.
+        razon = getattr(e, "reason", None) or "se agotó la espera de %ss" % _timeout()
         if intento < REINTENTOS:
-            return _reintentar(url, intento, str(e.reason))
-        log.error("aSa inalcanzable en %s — %s", _sin_clave(url), e.reason)
-        raise AsaError("No se pudo alcanzar aSa (%s). Puede ser que se haya atorado con "
-                       "la consulta, o que no acepte conexiones desde este servidor." % e.reason)
+            return _reintentar(url, intento, str(razon))
+        log.error("aSa no respondió en %s — %s", _sin_clave(url), razon)
+        raise AsaError("aSa se atoró con la consulta (%s). Suele pasar cuando se le pide "
+                       "demasiado de una vez: hay que acotarla con un filtro." % razon)
     except Exception as e:
         log.error("aSa error inesperado: %s", e)
         raise AsaError("Error inesperado hablando con aSa.")
@@ -271,6 +276,26 @@ def consultar_todo(endpoint: str, select: Optional[List[str]] = None,
         log.warning("aSa: %s llegó al tope de %d filas; se corta ahí a propósito.",
                     endpoint, maximo)
     return acumulado
+
+
+def consultar_agregado(endpoint: str, dimensiones: List[str], medida: str,
+                       alias: str = "Total", filtro: Optional[str] = None) -> List[dict]:
+    """Pide a aSa que AGREGUE, en vez de traerse el detalle y sumar acá (OData `$apply`).
+
+    Es la diferencia entre una consulta viable y una que se atora. `getOrderSummary` viene
+    al grano CC × diámetro × producto × unidad: sólo el año 2026 son más de 12.000 filas.
+    Agrupado por código de control quedan 5.191, y aSa las entrega en 5 segundos. El
+    trabajo lo hace el motor de aSa, que para eso está, y por el cable viaja la mitad.
+
+    OJO: `$apply` devuelve TODO el resultado en una respuesta, sin paginar. Por eso quien
+    llama tiene que acotar el filtro (por año, típicamente) y no pedir la historia entera.
+    """
+    partes = []
+    if filtro:
+        partes.append("filter(%s)" % filtro)
+    partes.append("groupby((%s),aggregate(%s with sum as %s))"
+                  % (",".join(dimensiones), medida, alias))
+    return _filas(_pedir(_armar_url(endpoint, {"$apply": "/".join(partes)})))
 
 
 # ---------------------------------------------------------------------------

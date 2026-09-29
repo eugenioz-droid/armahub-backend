@@ -18,6 +18,7 @@
     rec_dashboards: 'Dashboards',
     rec_procedimientos: 'Procedimientos',
     rec_settings: 'Mailing',
+    prg_dashboards: 'Dashboards',
     clientes: 'Clientes',
     catalogo: 'Catálogo',
     admin: 'Admin'
@@ -96,6 +97,7 @@
   // sin datos propios simplemente no aparecen aquí.
   var tabLoaders = {
     rec_dashboards: 'loadRecAdminDashboards',
+    prg_dashboards: 'loadPrgDashboards',   // reporte de cubicacion en aSa
     rec_settings: 'loadRecSettings',
     clientes: 'loadClientesModule',
     catalogo: 'loadCatalogoModule',

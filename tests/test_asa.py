@@ -222,5 +222,141 @@ check("si aSa no está configurado, el tab dice QUÉ falta y cómo se arregla",
 check("si aSa no responde, se avisa pero el buscador sigue sirviendo",
       "El buscador sigue funcionando con lo último que se trajo" in JS)
 
+
+# ── 11. Los dos nombres de la misma idea ────────────────────────────────────
+# En `users` la columna del rol es `role` (inglés); en `proyecto_usuarios` es `rol`
+# (español). Escribir `u.rol` no devuelve vacío: revienta la consulta, y el tab se ve en
+# blanco sin decir por qué. Pasó de verdad el 28-sep. Este check existe para que no vuelva.
+print("\n11. users.role vs proyecto_usuarios.rol")
+# El patrón tiene que ser preciso por dos razones: `pu.rol =` contiene «u.rol =» como
+# subcadena (y ES correcto, porque proyecto_usuarios sí usa `rol`), y el comentario que
+# explica el bug menciona `u.rol` a propósito. Se busca un uso en SQL con la letra anterior
+# excluida.
+check("la consulta de USC lee users.role, no users.rol",
+      "u.role = 'usc'" in PROG and not re.search(r"(?<![A-Za-z])u\.rol\s*[=,]", PROG))
+check("y la de cubicadores sigue leyendo proyecto_usuarios.rol",
+      "pu.rol = 'cubicador'" in PROG)
+check("si la carga falla, la caja muestra el error en vez de quedar en blanco",
+      "No se pudo cargar la lista de obras" in JS)
+
+# ── 12. La autenticación real de aSa, y el $select que protege ──────────────
+# aSa NO usa una cabecera de credencial sino DOS:
+#     Authorize: api-key            ← declara el método
+#     AsaStudioApiKey: <la clave>   ← lleva la clave
+# Ninguna forma estándar servía; sólo apareció al leer el M de Power Query. Si alguien
+# "simplifica" esto a una sola cabecera, la integración deja de autenticar.
+print("\n12. La autenticación real de aSa y el $select")
+os.environ["ASA_EXTRA_HEADERS"] = "Authorize: api-key; Otra: 2"
+check("ASA_EXTRA_HEADERS admite varias cabeceras separadas por ;",
+      asa._extra_headers() == {"Authorize": "api-key", "Otra": "2"})
+os.environ["ASA_EXTRA_HEADERS"] = ""
+check("sin la variable, no se agrega ninguna cabecera", asa._extra_headers() == {})
+check("las cabeceras extra se aplican en cada petición", "headers.update(_extra_headers())" in SRC)
+
+# El $select no es una optimización: getJobData devuelve 131 columnas, entre ellas
+# PrimaryContactFirstName, PrimaryPhoneDetail, PrimaryEmailDetail y nueve de dirección.
+check("la sincronización de obras pide un $select acotado", "_SELECT_OBRAS" in PROG)
+campos = PROG.split("_SELECT_OBRAS = [")[1].split("]")[0]
+check("...de 8 campos o menos", campos.count('"') // 2 <= 8)
+for malo in ("Contact", "Phone", "Email", "Addr", "ShipTo"):
+    check("...y ninguno es %s*" % malo, malo not in campos)
+check("el $select se aplica de verdad en la consulta", "select=_SELECT_OBRAS if es_obras" in PROG)
+
+# 376 obras abiertas de entre 600 y 1.400 totales: el filtro lo hace aSa, no nosotros.
+check("sólo se traen las obras ABIERTAS", "_FILTRO_OBRAS" in PROG and "JobStatusID eq 'O'" in PROG)
+check("...filtrando en el servidor (OData), no en Python", "filtro=(None if (todas" in PROG)
+check("...pero se puede pedir todas si alguna vez hace falta", "todas: bool = False" in PROG)
+
+# ── 13. Desplegar no debe exigir una variable VACÍA ─────────────────────────
+# La configuración real de aSa necesita el prefijo vacío. Si eso dependiera de crear
+# ASA_AUTH_PREFIX= (vacía) en Render, cualquiera la omitiría y volvería el "Bearer ".
+print("\n13. El despliegue no depende de una variable vacía")
+for v in ("ASA_AUTH_MODE", "ASA_AUTH_HEADER", "ASA_AUTH_PREFIX"):
+    os.environ.pop(v, None)
+os.environ["ASA_AUTH_HEADER"] = "AsaStudioApiKey"      # sin definir ASA_AUTH_PREFIX
+h = {}
+asa._aplicar_auth("https://x/y", h)
+check("con una cabecera propia, la clave va sola aunque no se declare el prefijo",
+      h.get("AsaStudioApiKey") == KEY)
+os.environ.pop("ASA_AUTH_HEADER", None)
+h = {}
+asa._aplicar_auth("https://x/y", h)
+check("y con Authorization sigue poniendo Bearer por defecto",
+      h.get("Authorization") == "Bearer " + KEY)
+os.environ["ASA_AUTH_HEADER"] = "AsaStudioApiKey"
+os.environ["ASA_AUTH_PREFIX"] = "Algo"
+h = {}
+asa._aplicar_auth("https://x/y", h)
+check("pero si alguien declara un prefijo, manda lo declarado",
+      h.get("AsaStudioApiKey") == "Algo " + KEY)
+for v in ("ASA_AUTH_HEADER", "ASA_AUTH_PREFIX"):
+    os.environ.pop(v, None)
+
+# Un timeout de socket NO es un URLError. Si sólo se captura URLError, el caso más
+# frecuente -aSa acepta la conexión y después se demora- no se reintenta y el mensaje no
+# dice nada útil. Pasó en la primera consulta real a getOrderSummary.
+check("un timeout de socket se trata como atoro de red, no como error inesperado",
+      "TimeoutError, socket.timeout" in SRC)
+check("...y el mensaje dice que hay que acotar la consulta", "acotarla con un filtro" in SRC)
+
+# ── 14. El dashboard: réplica del reporte de Power BI ───────────────────────
+print("\n14. Dashboard de cubicación en aSa")
+DSH = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion",
+                        "dashboards.js"), encoding="utf-8").read()
+HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "prg_dashboards.html"),
+           encoding="utf-8").read()
+MIG113 = open(os.path.join(ROOT, "armahub", "migrations", "113_asa_pedidos.sql"),
+              encoding="utf-8").read()
+APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf-8").read()
+SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"),
+             encoding="utf-8").read()
+
+# aSa NO tiene un campo "programado". La división es: con fecha comprometida = programado.
+# Si alguien la cambia, las dos tablas dejan de significar lo que el usuario espera y los
+# totales no cuadran con su informe de BI.
+check("PROGRAMADOS = tiene promised_date; POR PROGRAMAR = no lo tiene",
+      'f["promesa"]' in PROG and "por_programar" in PROG)
+check("...y las separa el backend, no el front",
+      '"por_programar": por_programar' in PROG and '"programados": programados' in PROG)
+
+# El grano: una fila por código de control, agregada por aSa con $apply. Traer el detalle
+# serían 12.000+ filas sólo de 2026 — la consulta que atora a aSa.
+check("la sincronización le pide a aSa que AGREGUE ($apply)", "consultar_agregado" in PROG)
+check("...y el cliente arma groupby+aggregate de OData",
+      "groupby((" in SRC and "aggregate(" in SRC)
+check("se sincroniza UN año por llamada (porque $apply no pagina)",
+      "OrderDate ge %d-01-01" in PROG)
+check("el año viene acotado, no se acepta cualquiera", "2015 <= anio" in PROG)
+check("la tabla guarda una fila por código de control",
+      "control_code  TEXT PRIMARY KEY" in MIG113)
+
+# 5.000 INSERT en un viaje, no en 5.000: con execute en bucle el endpoint tardaría minutos
+# y el usuario creería que se colgó.
+check("los insert van con executemany, no en un bucle de execute",
+      PROG.count("cur.executemany(") >= 2)
+check("...y ya no queda el RETURNING (xmax = 0) fila por fila",
+      "RETURNING (xmax = 0)" not in PROG)
+
+# Lo que pidió el usuario, literal.
+check("la fecha comprometida se muestra dd/mm", "p[2] + '/' + p[1]" in DSH)
+check("los kilos van con formato es-CL y 2 decimales",
+      "'es-CL'" in DSH and "minimumFractionDigits: 2" in DSH)
+check("las dos tablas llevan fila de Total", "tfoot" in DSH)
+check("los títulos son los del informe",
+      "POR PROGRAMAR" in HTM and "PROGRAMADOS" in HTM)
+check("están los cuatro segmentadores: año, mes, obra y cubicador",
+      all(x in HTM for x in ("dshAnios", "dshMeses", "dshObras", "dshPersonas")))
+
+# El total tiene que corresponder a lo que se ve. Si mostrara el del servidor mientras el
+# front filtra por obra o persona, el número de abajo no cuadraría con las filas de arriba.
+check("el total se recalcula sobre las filas FILTRADAS",
+      "filas.reduce(function (a, f) { return a + f.kg; }, 0)" in DSH)
+
+check("el tab está cableado en app.html", "prg_dashboards" in APP and "dashboards.js" in APP)
+check("y registrado en el shell con su loader",
+      "prg_dashboards: 'loadPrgDashboards'" in SHELL)
+check("un espejo vacío se explica en vez de mostrar cero",
+      "Todav" in DSH and "Traer de aSa" in DSH)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -565,45 +565,49 @@ def asa_sincronizar(endpoint: str = "getJobData", todas: bool = False,
             conn.commit()
         raise HTTPException(status_code=502, detail=str(e))
 
-    nuevas = 0
+    # Un solo viaje a la base en vez de uno por obra (ver la nota en asa_sincronizar_pedidos).
+    valores = []
+    for fila in filas:
+        if not isinstance(fila, dict):
+            continue
+        job_id = _primer(fila, _CAMPOS_ASA["asa_job_id"])
+        if not job_id:
+            continue
+        key = _primer(fila, _CAMPOS_ASA["job_key"])
+        try:
+            key = int(key) if key is not None else None
+        except (TypeError, ValueError):
+            key = None
+        valores.append((
+            str(job_id)[:120], key,
+            str(_primer(fila, _CAMPOS_ASA["nombre"]) or "")[:250],
+            (str(_primer(fila, _CAMPOS_ASA["cliente"]) or "") or None),
+            (str(_primer(fila, _CAMPOS_ASA["descripcion"]) or "") or None),
+            (str(_primer(fila, _CAMPOS_ASA["estado"]) or "") or None),
+            sync_id))
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            for fila in filas:
-                if not isinstance(fila, dict):
-                    continue
-                job_id = _primer(fila, _CAMPOS_ASA["asa_job_id"])
-                if not job_id:
-                    continue
-                key = _primer(fila, _CAMPOS_ASA["job_key"])
-                try:
-                    key = int(key) if key is not None else None
-                except (TypeError, ValueError):
-                    key = None
-                cur.execute(
-                    """
-                    INSERT INTO asa_obras (asa_job_id, job_key, nombre, cliente, descripcion,
-                                           estado, visto_el, sync_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, now(), %s)
-                    ON CONFLICT (asa_job_id) DO UPDATE
-                       SET job_key = EXCLUDED.job_key, nombre = EXCLUDED.nombre,
-                           cliente = EXCLUDED.cliente, descripcion = EXCLUDED.descripcion,
-                           estado = EXCLUDED.estado, visto_el = now(),
-                           sync_id = EXCLUDED.sync_id
-                     RETURNING (xmax = 0) AS insertada
-                    """,
-                    (str(job_id)[:120], key,
-                     str(_primer(fila, _CAMPOS_ASA["nombre"]) or "")[:250],
-                     (str(_primer(fila, _CAMPOS_ASA["cliente"]) or "") or None),
-                     (str(_primer(fila, _CAMPOS_ASA["descripcion"]) or "") or None),
-                     (str(_primer(fila, _CAMPOS_ASA["estado"]) or "") or None),
-                     sync_id),
-                )
-                r = cur.fetchone()
-                if r and r[0]:
-                    nuevas += 1
+            cur.execute("SELECT COUNT(*) FROM asa_obras")
+            antes = cur.fetchone()[0]
+            cur.executemany(
+                """
+                INSERT INTO asa_obras (asa_job_id, job_key, nombre, cliente, descripcion,
+                                       estado, visto_el, sync_id)
+                VALUES (%s, %s, %s, %s, %s, %s, now(), %s)
+                ON CONFLICT (asa_job_id) DO UPDATE
+                   SET job_key = EXCLUDED.job_key, nombre = EXCLUDED.nombre,
+                       cliente = EXCLUDED.cliente, descripcion = EXCLUDED.descripcion,
+                       estado = EXCLUDED.estado, visto_el = now(),
+                       sync_id = EXCLUDED.sync_id
+                """,
+                valores,
+            )
+            cur.execute("SELECT COUNT(*) FROM asa_obras")
+            nuevas = cur.fetchone()[0] - antes
             cur.execute(
                 "UPDATE asa_sync SET fin=now(), ok=TRUE, filas=%s, nuevas=%s WHERE id=%s",
-                (len(filas), nuevas, sync_id),
+                (len(valores), nuevas, sync_id),
             )
         conn.commit()
     audit(email, "asa_sync", f"{endpoint}: {len(filas)} filas, {nuevas} nuevas")
@@ -699,6 +703,170 @@ def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
             )
             audit(email, "asa_adoptar", f"{job} -> creada {id_proyecto} «{nombre}»")
     return {"ok": True, "id_proyecto": id_proyecto, "creada": True}
+
+
+# ---------------------------------------------------------------------------
+# DASHBOARD: el reporte de aSa que hoy vive en Power BI
+# ---------------------------------------------------------------------------
+# Las dimensiones por las que aSa agrupa. Todo lo que el reporte muestra o filtra tiene
+# que estar acá, porque `$apply` sólo devuelve lo que se le pide agrupar.
+_DIMS_PEDIDOS = ["ControlCode", "JobID", "JobName", "Descr", "DetailPerson",
+                 "OrderDate", "PromisedDeliveryDate", "Status"]
+
+
+def _fecha(valor):
+    """aSa manda fechas ISO con hora y zona. Aquí sólo importa el día."""
+    if not valor:
+        return None
+    try:
+        return date.fromisoformat(str(valor)[:10])
+    except ValueError:
+        return None
+
+
+@router.post("/programacion/asa/sincronizar-pedidos")
+def asa_sincronizar_pedidos(anio: Optional[int] = None, user=Depends(get_current_user)):
+    """Trae los pedidos de aSa de UN año, agregados por código de control.
+
+    Un año por llamada, a propósito: `$apply` no pagina —devuelve todo el resultado en una
+    respuesta— así que el año es lo que acota el tamaño. Pedir cinco años de una sería
+    justo la consulta que atora a aSa."""
+    from . import asa
+    _exigir_admin(user)
+    if not asa.configurado():
+        raise HTTPException(status_code=503, detail="aSa no está configurado.")
+    anio = int(anio or date.today().year)
+    if not (2015 <= anio <= date.today().year + 1):
+        raise HTTPException(status_code=400, detail="Año fuera de rango.")
+    email = user.get("email", "?")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO asa_sync (endpoint, lanzado_por) VALUES (%s,%s) RETURNING id",
+                        ("getOrderSummary/%d" % anio, email))
+            sync_id = cur.fetchone()[0]
+        conn.commit()
+
+    filtro = "OrderDate ge %d-01-01 and OrderDate le %d-12-31" % (anio, anio)
+    try:
+        filas = asa.consultar_agregado("getOrderSummary", _DIMS_PEDIDOS,
+                                       "TotalKgs", alias="Kgs", filtro=filtro)
+    except asa.AsaError as e:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE asa_sync SET fin=now(), ok=FALSE, detalle=%s WHERE id=%s",
+                            (str(e)[:400], sync_id))
+            conn.commit()
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # Los 5.000 INSERT van en UNA llamada, no en 5.000. Con `execute` en bucle serían
+    # 5.000 viajes de ida y vuelta a Supabase: el endpoint tardaría minutos y el usuario
+    # creería que se colgó. `executemany` de psycopg >=3.1 los manda en modo pipeline —es
+    # la misma razón por la que la carga de barras lo usa (ver requirements.txt).
+    valores = []
+    for f in filas:
+        cc = (f.get("ControlCode") or "").strip()
+        if not cc:
+            continue     # hay pedidos sin código de control; no son del reporte
+        orden = _fecha(f.get("OrderDate"))
+        valores.append((
+            cc[:60], (f.get("JobID") or None), str(f.get("JobName") or "")[:250],
+            (f.get("Descr") or None), (f.get("DetailPerson") or None),
+            orden, _fecha(f.get("PromisedDeliveryDate")),
+            (f.get("Status") or None), round(float(f.get("Kgs") or 0), 2),
+            orden.year if orden else anio, sync_id))
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # «Nuevas» se mide por diferencia de conteo en vez de con RETURNING (xmax=0):
+            # con executemany habría que recolectar 5.000 resultados para un número que
+            # es informativo. El conteo cuesta una consulta.
+            cur.execute("SELECT COUNT(*) FROM asa_pedidos")
+            antes = cur.fetchone()[0]
+            cur.executemany(
+                """
+                INSERT INTO asa_pedidos (control_code, asa_job_id, job_name, descr,
+                                         detail_person, order_date, promised_date,
+                                         estado, kg, anio, visto_el, sync_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), %s)
+                ON CONFLICT (control_code) DO UPDATE
+                   SET asa_job_id=EXCLUDED.asa_job_id, job_name=EXCLUDED.job_name,
+                       descr=EXCLUDED.descr, detail_person=EXCLUDED.detail_person,
+                       order_date=EXCLUDED.order_date, promised_date=EXCLUDED.promised_date,
+                       estado=EXCLUDED.estado, kg=EXCLUDED.kg, anio=EXCLUDED.anio,
+                       visto_el=now(), sync_id=EXCLUDED.sync_id
+                """,
+                valores,
+            )
+            cur.execute("SELECT COUNT(*) FROM asa_pedidos")
+            nuevas = cur.fetchone()[0] - antes
+            cur.execute("UPDATE asa_sync SET fin=now(), ok=TRUE, filas=%s, nuevas=%s WHERE id=%s",
+                        (len(valores), nuevas, sync_id))
+        conn.commit()
+    audit(email, "asa_sync_pedidos", f"{anio}: {len(filas)} CC, {nuevas} nuevos")
+    return {"ok": True, "anio": anio, "filas": len(filas), "nuevas": nuevas}
+
+
+@router.get("/programacion/asa/reporte")
+def asa_reporte(anio: Optional[int] = None, meses: str = "",
+                user=Depends(get_current_user)):
+    """Las dos tablas del reporte y las listas para los filtros.
+
+    La división NO es un campo de aSa: PROGRAMADOS son los que tienen fecha comprometida
+    (`promised_date`) y POR PROGRAMAR los que no. El año y el mes filtran por `order_date`,
+    que es la única fecha que tienen las dos tablas.
+
+    El front recibe las filas ya separadas y los totales ya sumados: si sumara él, el total
+    de la pantalla podría no cuadrar con el de un export, y ese tipo de diferencia destruye
+    la confianza en un reporte."""
+    _exigir_admin(user)
+    anio = int(anio or date.today().year)
+    lista_meses = [int(m) for m in meses.split(",") if m.strip().isdigit() and 1 <= int(m) <= 12]
+
+    where = ["anio = %s"]
+    params: list = [anio]
+    if lista_meses:
+        where.append("EXTRACT(MONTH FROM order_date) = ANY(%s)")
+        params.append(lista_meses)
+    cond = " WHERE " + " AND ".join(where)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT control_code, asa_job_id, job_name, descr, detail_person, "
+                "       order_date, promised_date, estado, kg "
+                "  FROM asa_pedidos" + cond +
+                " ORDER BY job_name, descr, control_code", params)
+            filas = [
+                {"cc": r[0], "asa_job_id": r[1], "obra": r[2], "descr": r[3] or "",
+                 "persona": r[4], "orden": r[5].isoformat() if r[5] else None,
+                 "promesa": r[6].isoformat() if r[6] else None,
+                 "estado": r[7], "kg": float(r[8] or 0)}
+                for r in cur.fetchall()
+            ]
+            # Los años y las personas salen de TODO el espejo, no del filtro: si salieran
+            # del filtro, al elegir un mes desaparecerían los botones de los otros.
+            cur.execute("SELECT DISTINCT anio FROM asa_pedidos WHERE anio IS NOT NULL ORDER BY anio")
+            anios = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
+                        " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
+            personas = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos WHERE anio = %s", (anio,))
+            n_anio, ultimo = cur.fetchone()
+
+    por_programar = [f for f in filas if not f["promesa"]]
+    programados = [f for f in filas if f["promesa"]]
+    return {
+        "anio": anio, "meses": lista_meses,
+        "anios": anios, "personas": personas,
+        "obras": sorted({f["obra"] for f in filas}),
+        "por_programar": por_programar,
+        "programados": programados,
+        "kg_por_programar": round(sum(f["kg"] for f in por_programar), 2),
+        "kg_programados": round(sum(f["kg"] for f in programados), 2),
+        "espejo": {"filas_anio": n_anio or 0,
+                   "ultima_sync": ultimo.isoformat() if ultimo else None},
+    }
 
 
 @router.get("/programacion/usc")

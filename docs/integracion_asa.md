@@ -98,6 +98,21 @@ alcanzarlos** salvo que haya lista blanca de IPs.
 **El catálogo completo de campos, endpoint por endpoint, está en
 [asa_campos.md](asa_campos.md).** Acá sólo va el diseño.
 
+### `$apply`: aSa sabe agregar (descubierto 28-sep, y es lo que hace viable el reporte)
+
+`getOrderSummary` viene al grano CC × diámetro × producto: sólo 2026 son **más de 12.000
+filas**, y pedirlas es exactamente lo que atora a aSa. Pero aSa soporta `$apply` de OData:
+
+```
+$apply=filter(OrderDate ge 2026-01-01 and OrderDate le 2026-12-31)
+       /groupby((ControlCode,JobID,JobName,Descr,DetailPerson,OrderDate,
+                 PromisedDeliveryDate,Status),aggregate(TotalKgs with sum as Kgs))
+```
+
+Con eso el motor de aSa agrupa por código de control y devuelve **5.191 filas en 3–5 s**.
+El trabajo lo hace aSa, que para eso está. Ojo: `$apply` no pagina, devuelve todo de una,
+así que se pide **un año por llamada** — nunca la historia entera.
+
 ### Que sea OData cambia el diseño, para bien
 
 Power Query lo habla de forma nativa; por eso funciona en BI sin configurar nada. Nosotros
