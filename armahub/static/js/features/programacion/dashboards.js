@@ -390,9 +390,9 @@
       return ORDEN_OBRA.col === c ? ' <b>' + (ORDEN_OBRA.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
     };
     var html = '<table class="dshot"><thead><tr>' +
-      '<th data-ord="obra" style="width:57%">Obra' + flecha('obra') + '</th>' +
-      '<th data-ord="cc" class="num" style="width:16%">CC' + flecha('cc') + '</th>' +
-      '<th data-ord="kg" class="num" style="width:27%">Kilos' + flecha('kg') + '</th>' +
+      '<th data-ord="obra" style="width:66%">Obra' + flecha('obra') + '</th>' +
+      '<th data-ord="cc" class="num" style="width:11%">CC' + flecha('cc') + '</th>' +
+      '<th data-ord="kg" class="num" style="width:23%">Kilos' + flecha('kg') + '</th>' +
       '</tr></thead><tbody>';
     lista.forEach(function (o) {
       var on = OBRAS.indexOf(o.obra) !== -1;
@@ -439,12 +439,12 @@
     // suman 100 y salen de las dos columnas angostas (código y fecha), que son de largo
     // conocido; lo que sobra se reparte entre obra y descripción.
     var html = llevaFecha
-      ? '<thead><tr><th style="width:29%">JobName</th><th style="width:33%">Descr</th>' +
-        '<th style="width:11%">Control Code</th><th style="width:10%">Promised</th>' +
-        '<th class="num" style="width:17%">Sum of TotalKgs</th></tr></thead><tbody>'
-      : '<thead><tr><th style="width:33%">JobName</th><th style="width:36%">Descr</th>' +
-        '<th style="width:12%">Control Code</th>' +
-        '<th class="num" style="width:19%">Sum of TotalKgs</th></tr></thead><tbody>';
+      ? '<thead><tr><th style="width:33%">JobName</th><th style="width:40%">Descr</th>' +
+        '<th style="width:7%">Código</th><th style="width:7%">Despacho</th>' +
+        '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>'
+      : '<thead><tr><th style="width:37%">JobName</th><th style="width:43%">Descr</th>' +
+        '<th style="width:7%">Código</th>' +
+        '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>';
     filas.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
@@ -525,9 +525,13 @@
     var fl = function (c) {
       return ORDEN_CUB.col === c ? ' <b>' + (ORDEN_CUB.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
     };
+    // ANCHOS REPARTIDOS POR LO QUE MIDE EL CONTENIDO, no en partes iguales: «CC» son dos
+    // o tres dígitos y «Kilos» siete con separadores. Dándoles lo mismo, el nombre de la
+    // obra —lo único que de verdad se lee— quedaba cortado mientras seis columnas de
+    // números nadaban en espacio.
     var par = function (c, clase) {
-      return '<th class="ord num g ' + clase + '" data-ord="' + c + '">CC' + fl(c) + '</th>' +
-             '<th class="ord num ' + clase + '" data-ord="' + c + 'kg">Kilos' + fl(c + 'kg') + '</th>';
+      return '<th class="ord num g ' + clase + '" data-ord="' + c + '" style="width:5%">CC' + fl(c) + '</th>' +
+             '<th class="ord num ' + clase + '" data-ord="' + c + 'kg" style="width:11%">Kilos' + fl(c + 'kg') + '</th>';
     };
     var html = '<thead>' +
       '<tr><th></th>' +
@@ -535,9 +539,9 @@
       '<th colspan="2" class="g pr">PROGRAMADO</th>' +
       '<th colspan="2" class="g de">DESPACHADO</th>' +
       '<th class="g">Total</th></tr>' +
-      '<tr><th class="ord" data-ord="obra" style="width:34%">Obra' + fl('obra') + '</th>' +
+      '<tr><th class="ord" data-ord="obra" style="width:42%">Obra' + fl('obra') + '</th>' +
       par('st', 'st') + par('pr', 'pr') + par('de', 'de') +
-      '<th class="ord num g" data-ord="kg">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
+      '<th class="ord num g" data-ord="kg" style="width:10%">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
     var celda = function (n, k, clase) {
       // Un cero se escribe en gris claro: seis columnas de ceros negros compiten con los
       // números que sí importan.
@@ -632,9 +636,9 @@
     // primeras y se dice cuántas quedaron fuera; para ver menos, está el buscador.
     var recorte = lista.length > TOPE_FILAS;
     var visibles = recorte ? lista.slice(0, TOPE_FILAS) : lista;
-    var html = '<thead><tr><th style="width:32%">Obra</th>' +
-               '<th style="width:38%">Descripción</th><th style="width:12%">Código</th>' +
-               '<th style="width:18%" class="num">Kilos</th></tr></thead><tbody>';
+    var html = '<thead><tr><th style="width:33%">Obra</th>' +
+               '<th style="width:50%">Descripción</th><th style="width:7%">Código</th>' +
+               '<th style="width:10%" class="num">Kilos</th></tr></thead><tbody>';
     visibles.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
