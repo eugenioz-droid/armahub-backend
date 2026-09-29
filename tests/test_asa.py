@@ -367,11 +367,19 @@ SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"),
 # aSa NO tiene un campo "programado". La división es: con fecha comprometida = programado.
 # Si alguien la cambia, las dos tablas dejan de significar lo que el usuario espera y los
 # totales no cuadran con su informe de BI.
-# La división de las dos cajas es la única regla, y es simple: con fecha de despacho o
-# sin ella. La aplica el front porque es el que ya filtra por obra, cubicador y estado.
-check("PROGRAMADOS = tiene fecha de despacho; POR PROGRAMAR = no la tiene",
-      "function conFecha(" in DSH and "function sinFecha(" in DSH
-      and "return f.promesa;" in DSH)
+# QUÉ SEPARA LAS DOS CAJAS. No es una fecha: es el estado de planta de aSa
+# (Unscheduled / Scheduled / Confirmed). Se llegó acá corrigiendo dos veces —primero se
+# usó PromisedDeliveryDate, un campo DEL PEDIDO que no siempre se llena, y 13 códigos de
+# 2026 salían como stock estando en producción o despachados—. Lo cazó el usuario: «nada
+# que pase a producción puede no tener fecha de scheduling».
+check("la división sale del estado de planta, no de una fecha",
+      'ESTADOS_PLANTA_PROGRAMADO = ("Scheduled", "Confirmed")' in PROG)
+check("...y la decide el BACKEND, que manda `programado` ya resuelto",
+      '"programado": bool(r[8] in ESTADOS_PLANTA_PROGRAMADO' in PROG
+      and "function programado(f) { return !!f.programado; }" in DSH)
+check("un pedido CON GUÍA no es stock aunque aSa lo tenga sin agendar",
+      "or r[7])" in PROG)
+check("la regla NO está duplicada en el front", "f.promesa || f.guia" not in DSH)
 check("el backend manda una sola lista y no pre-separa nada",
       '"filas": filas' in PROG and '"por_programar"' not in PROG)
 
@@ -447,7 +455,7 @@ check("el anulado ni siquiera se manda al front",
 # Se guarda lo APAGADO, no lo encendido: así un estado nuevo que aparezca en aSa se ve
 # por defecto, en vez de quedar invisible sin que nadie se entere.
 check("el front guarda los estados OCULTOS, no los visibles", "var OCULTOS" in DSH
-      and "OCULTOS[caja || (f.promesa ? 'pg' : 'pp')].indexOf(f.estado) === -1" in DSH)
+      and "OCULTOS[caja || (programado(f) ? 'pg' : 'pp')].indexOf(f.estado) === -1" in DSH)
 
 # EL BUG QUE REPORTÓ EL USUARIO: los conteos de los botones eran del año entero. Con una
 # obra seleccionada decían «En producción 148» cuando esa obra tenía cero. Ahora se
@@ -481,7 +489,10 @@ check("la lista de obras también respeta el estado apagado",
 check("las dos cajas avisan cuántos códigos esconde el filtro de estado",
       DSH.count("todosPp.length - pp.length") == 1 and DSH.count("todosPg.length - pg.length") == 1)
 check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
-      "ORDER BY promised_date DESC NULLS LAST" in PROG)
+      "ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST" in PROG)
+# La fecha que se muestra es la de PLANTA; la del pedido es sólo respaldo.
+check("manda la fecha de planta y la del pedido es el respaldo",
+      "COALESCE(proj_ship_date, promised_date) AS fecha" in PROG)
 # Las FILAS no se reordenan en el front (el backend ya las mandó por fecha DESC); lo
 # único que se ordena acá son las listas de los filtros, que van alfabéticas.
 check("el front no reordena las filas de las tablas",
@@ -520,6 +531,32 @@ check("y registrado en el shell con su loader",
       "asa_data: 'loadAsaData'" in SHELL)
 check("un espejo vacío se explica en vez de mostrar cero",
       "Todav" in DSH and "Traer de aSa" in DSH)
+
+
+# ── 17. El espejo de la programación de planta ─────────────────────────────
+# `getScheduling` es lo que de verdad dice si un pedido está agendado. Sin él, «tiene
+# fecha de despacho» se leía de un campo del pedido que no siempre se llena.
+print("\n17. La programación de planta")
+MIG114 = open(os.path.join(ROOT, "armahub", "migrations", "114_asa_planta.sql"),
+              encoding="utf-8").read()
+check("las columnas de planta van sobre asa_pedidos, sin tabla ni join nuevos",
+      "ADD COLUMN proj_ship_date" in MIG114 and "ADD COLUMN sched_estado" in MIG114
+      and "ADD COLUMN ship_id" in MIG114)
+check("se guarda aparte cuándo se leyó la planta de cada fila",
+      "ADD COLUMN planta_vista_el" in MIG114)
+# Filtrar getScheduling por ProjShipDate dejaba fuera justo a los `Unscheduled`, que son
+# los que hay que reconocer como stock. Por eso se trae entero: 26.800 filas, 5,5 s.
+check("la planta se trae ENTERA, sin filtro de fecha",
+      "def sincronizar_planta(lanzado_por" in SYNC and "SIN FILTRO DE AÑO" in SYNC)
+check("...y está escrito por qué, para que nadie le ponga un filtro de vuelta",
+      "Unscheduled" in SYNC)
+check("sólo ACTUALIZA: no inventa pedidos que no vinieron de getOrderSummary",
+      "UPDATE asa_pedidos" in SYNC and "INSERT INTO asa_pedidos" in SYNC
+      and SYNC.index("def sincronizar_planta") < SYNC.index("UPDATE asa_pedidos"))
+check("el reloj también la sincroniza", "sincronizar_planta" in RELOJ)
+check("...y siempre DESPUÉS de los pedidos, porque sólo actualiza lo que ya existe",
+      RELOJ.index("sincronizar_incremental") < RELOJ.index("sincronizar_planta"))
+check("el botón de traer también la trae", "asa_sync.sincronizar_planta" in PROG)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

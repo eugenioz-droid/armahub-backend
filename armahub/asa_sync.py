@@ -238,6 +238,64 @@ def sincronizar_pedidos(anio: int, lanzado_por: str = "sistema") -> dict:
     return r
 
 
+# ---------------------------------------------------------------------------
+# PROGRAMACIÓN DE PLANTA (getScheduling)
+# ---------------------------------------------------------------------------
+# Lo que de verdad dice cuándo sale un pedido. `PromisedDeliveryDate` es del pedido y no
+# siempre se llena; esto es lo que la planta tiene agendado. Viene al mismo grano de
+# código de control, así que se guarda en las mismas filas de `asa_pedidos`.
+DIMS_PLANTA = ["CtrlCode", "SchedStatusDescr", "ProjFabDate", "ProjShipDate", "ShipID"]
+
+
+def sincronizar_planta(lanzado_por: str = "sistema") -> dict:
+    """Trae la programación de planta ENTERA y la pega sobre los pedidos ya espejados.
+
+    SIN FILTRO DE AÑO, y la razón importa: al filtrar por `ProjShipDate` no venían
+    justamente los que no tienen esa fecha —los 3.027 `Unscheduled`—, que son los que hay
+    que reconocer como stock. Completo son 26.800 filas en 5,5 s y 4,3 MB: barato.
+
+    Sólo ACTUALIZA: si un código de control no está en `asa_pedidos`, no se inventa una
+    fila. La programación describe pedidos, y uno que no vino en getOrderSummary no tiene
+    obra, descripción ni kilos — una fila con sólo una fecha no le sirve a nadie."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            sync_id = _abrir_bitacora(cur, "getScheduling", lanzado_por)
+        conn.commit()
+    try:
+        # Agregado por CC igual que los pedidos: un CC puede venir repetido por carga.
+        filas = asa.consultar_agregado("getScheduling", DIMS_PLANTA, "TotalWeight",
+                                       alias="Kgs")
+    except asa.AsaError as e:
+        _cerrar_bitacora(sync_id, False, detalle=str(e))
+        raise
+
+    valores = []
+    for f in filas:
+        cc = (f.get("CtrlCode") or "").strip()
+        if not cc:
+            continue
+        valores.append((_fecha(f.get("ProjShipDate")), _fecha(f.get("ProjFabDate")),
+                        (f.get("ShipID") or None), (f.get("SchedStatusDescr") or None),
+                        cc[:60]))
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if valores:
+                cur.executemany(
+                    """UPDATE asa_pedidos
+                          SET proj_ship_date = %s, proj_fab_date = %s, ship_id = %s,
+                              sched_estado = %s, planta_vista_el = now()
+                        WHERE control_code = %s""",
+                    valores,
+                )
+            cur.execute("SELECT COUNT(*) FROM asa_pedidos WHERE sched_estado IS NOT NULL")
+            con_planta = cur.fetchone()[0]
+        conn.commit()
+    _cerrar_bitacora(sync_id, True, len(valores), 0)
+    log.info("aSa planta: %d filas leídas, %d pedidos con programación", len(valores), con_planta)
+    return {"filas": len(valores), "con_planta": con_planta}
+
+
 def _desde_cuando() -> datetime:
     """El corte del incremental: cuándo terminó la última sincronización buena, menos un
     solape. El solape no es paranoia — si un pedido se modificó justo mientras corría la

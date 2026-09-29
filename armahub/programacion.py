@@ -624,6 +624,18 @@ def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
 # entierra a los que de verdad están por salir.
 # Anulado: no es trabajo, no se manda al front y no hay botón que lo encienda.
 ESTADO_NUNCA = "Cancelled"
+
+# QUÉ SEPARA LAS DOS CAJAS, y es un estado de aSa, no una fecha inventada por nosotros.
+# `getScheduling` clasifica cada código de control en Unscheduled / Scheduled / Confirmed.
+# Los dos últimos están agendados en planta: ésos son los PROGRAMADOS. `Unscheduled` es el
+# STOCK DISPONIBLE: cubicado, pero sin compromiso de salida.
+#
+# Se llegó acá corrigiendo dos veces. Primero se usó `PromisedDeliveryDate`, un campo DEL
+# PEDIDO que no siempre se llena, y 13 códigos de 2026 aparecían como stock estando en
+# producción o despachados. El usuario lo cazó con una frase que es la regla: «nada que
+# pase a producción puede no tener fecha de scheduling». La tenía: lo que faltaba era
+# mirar la programación de planta en vez del pedido.
+ESTADOS_PLANTA_PROGRAMADO = ("Scheduled", "Confirmed")
 # El único que arranca apagado. En 2026 son 4.288 de 4.557 con fecha de despacho —el 94%—
 # y si se muestran entierran a los 269 que de verdad están por salir. Los demás estados
 # arrancan encendidos, y los botones los arma el front con lo que de verdad hay en la caja.
@@ -653,9 +665,14 @@ def asa_sincronizar_pedidos(anio: Optional[int] = None, user=Depends(get_current
         raise HTTPException(status_code=400, detail="Año fuera de rango.")
     try:
         r = asa_sync.sincronizar_pedidos(anio, lanzado_por=user.get("email", "?"))
+        # La programación de planta va SIEMPRE detrás de los pedidos, nunca sola: sólo
+        # actualiza filas que ya existen, así que si corriera antes no encontraría nada.
+        p = asa_sync.sincronizar_planta(lanzado_por=user.get("email", "?"))
+        r["planta"] = p["filas"]
     except asa.AsaError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    audit(user.get("email", "?"), "asa_sync_pedidos", f"{anio}: {r['filas']} CC, {r['nuevas']} nuevos")
+    audit(user.get("email", "?"), "asa_sync_pedidos",
+          f"{anio}: {r['filas']} CC, {r['nuevas']} nuevos, {r['planta']} con planta")
     return dict(r, ok=True)
 
 
@@ -713,14 +730,32 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
             # (POR PROGRAMAR) caen al final ordenados por obra. Un solo ORDER BY sirve a las
             # dos tablas, y el front no reordena nada.
             cur.execute(
-                "SELECT control_code, job_name, descr, detail_person, promised_date, estado, kg"
+                # LA FECHA QUE MANDA es la de PLANTA, y la del pedido es sólo el
+                # respaldo. `PromisedDeliveryDate` es un campo del pedido que no siempre
+                # se llena: sin esto, 13 códigos de 2026 salían como «stock por programar»
+                # estando en producción o ya despachados. Lo cazó el usuario: «nada que
+                # pase a producción puede no tener fecha de scheduling».
+                "SELECT control_code, job_name, descr, detail_person,"
+                "       COALESCE(proj_ship_date, promised_date) AS fecha, estado, kg,"
+                "       ship_id, sched_estado, proj_fab_date, promised_date, proj_ship_date"
                 "  FROM asa_pedidos" + cond_periodo + " AND COALESCE(estado,'') <> %s"
-                " ORDER BY promised_date DESC NULLS LAST, job_name, descr, control_code",
+                " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
+                "          job_name, descr, control_code",
                 params + [ESTADO_NUNCA])
             filas = [
+                # `promesa` es la fecha que decide en qué caja cae la fila; `guia` la
+                # acompaña porque un pedido CON GUÍA salió de verdad aunque no tenga
+                # fecha en ninguna de las dos fuentes (pasa: 1 caso en 2026).
+                # `programado` lo decide el BACKEND y viaja resuelto: es la regla de
+                # negocio y no puede quedar repartida entre el servidor y el navegador.
+                # Un pedido CON GUÍA salió de verdad aunque aSa lo tenga sin agendar
+                # (pasa: 4 casos en 2026), así que tampoco es stock.
                 {"cc": r[0], "obra": r[1], "descr": r[2] or "", "persona": r[3],
                  "promesa": r[4].isoformat() if r[4] else None,
-                 "estado": r[5], "kg": float(r[6] or 0)}
+                 "estado": r[5], "kg": float(r[6] or 0),
+                 "guia": r[7], "planta": r[8],
+                 "fab": r[9].isoformat() if r[9] else None,
+                 "programado": bool(r[8] in ESTADOS_PLANTA_PROGRAMADO or r[7])}
                 for r in cur.fetchall()
             ]
             # Los años y las personas salen de TODO el espejo, no del filtro: si salieran
@@ -740,6 +775,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "anio": anio, "meses": lista_meses,
         "anios": anios, "personas": personas,
         "estado_apagado_por_defecto": ESTADO_APAGADO_POR_DEFECTO,
+        "estados_planta_programado": list(ESTADOS_PLANTA_PROGRAMADO),
         "nombres_estado": NOMBRES_ESTADO,
         "anulados": anulados,
         "filas": filas,

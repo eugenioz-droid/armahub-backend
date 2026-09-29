@@ -113,6 +113,14 @@ def _una_corrida():
     except Exception as e:
         log.error("aSa reloj: falló la sincronización de pedidos: %s", e)
     try:
+        # SIEMPRE después de los pedidos: sólo actualiza filas que ya existen, así que si
+        # corriera antes no encontraría las que acaban de entrar. Y es la que decide en
+        # qué caja cae cada código de control, así que no puede quedarse atrás.
+        r = asa_sync.sincronizar_planta(lanzado_por="reloj")
+        log.info("aSa reloj: planta %d filas, %d pedidos agendados", r["filas"], r["con_planta"])
+    except Exception as e:
+        log.error("aSa reloj: falló la sincronización de planta: %s", e)
+    try:
         r = asa_sync.sincronizar_obras(lanzado_por="reloj")
         log.info("aSa reloj: %d obras (%d nuevas)", r["filas"], r["nuevas"])
     except Exception as e:

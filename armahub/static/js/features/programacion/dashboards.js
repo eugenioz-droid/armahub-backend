@@ -252,12 +252,15 @@
   function todasLasFilas() {
     return DATA.filas || [];
   }
-  // Las dos cajas: con fecha de despacho y sin ella. Es toda la regla.
-  function conFecha(filas) { return filas.filter(function (f) { return f.promesa; }); }
-  function sinFecha(filas) { return filas.filter(function (f) { return !f.promesa; }); }
+  // En qué caja va cada fila lo decide el BACKEND y viaja resuelto en `programado`: es la
+  // regla de negocio y no puede quedar repartida entre el servidor y el navegador. Sale
+  // del estado de planta de aSa (Scheduled/Confirmed = agendado) y no de una fecha.
+  function programado(f) { return !!f.programado; }
+  function conFecha(filas) { return filas.filter(programado); }
+  function sinFecha(filas) { return filas.filter(function (f) { return !programado(f); }); }
   // El filtro de estado sólo aplica a PROGRAMADOS, que es donde están los botones.
   function visiblePorEstado(f, caja) {
-    return OCULTOS[caja || (f.promesa ? 'pg' : 'pp')].indexOf(f.estado) === -1;
+    return OCULTOS[caja || (programado(f) ? 'pg' : 'pp')].indexOf(f.estado) === -1;
   }
 
   function filtrar(filas, salvo) {
