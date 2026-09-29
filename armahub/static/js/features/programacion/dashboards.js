@@ -530,13 +530,12 @@
              '<th class="ord num ' + clase + '" data-ord="' + c + 'kg">Kilos' + fl(c + 'kg') + '</th>';
     };
     var html = '<thead>' +
-      '<tr><th></th><th></th>' +
+      '<tr><th></th>' +
       '<th colspan="2" class="g st">STOCK</th>' +
       '<th colspan="2" class="g pr">PROGRAMADO</th>' +
       '<th colspan="2" class="g de">DESPACHADO</th>' +
       '<th class="g">Total</th></tr>' +
-      '<tr><th class="ord" data-ord="lleva" style="width:12%">La lleva' + fl('lleva') + '</th>' +
-      '<th class="ord" data-ord="obra" style="width:26%">Obra' + fl('obra') + '</th>' +
+      '<tr><th class="ord" data-ord="obra" style="width:34%">Obra' + fl('obra') + '</th>' +
       par('st', 'st') + par('pr', 'pr') + par('de', 'de') +
       '<th class="ord num g" data-ord="kg">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
     var celda = function (n, k, clase) {
@@ -550,13 +549,15 @@
       var porque = o.sin_nada ? ' — se movió pero NO le queda nada, ni cubicado ni agendado'
                  : (o.sin_stock ? ' — tiene cola agendada pero nada esperando detrás' : '');
       html += '<tr' + clase + '>' +
-              '<td class="cc" title="Detallaron: ' + esc(o.detallaron || '') + '">' + esc(o.lleva || '') + '</td>' +
-              '<td title="' + esc(o.obra) + porque + '">' + esc(o.obra) + '</td>' +
+              // Quién la detalló va en el globo, no en una columna: arriba ya está el
+              // filtro, y sin nadie elegido la tabla es la planta entera.
+              '<td title="' + esc(o.obra) + porque +
+              (o.detallaron ? '\nDetalló: ' + esc(o.detallaron) : '') + '">' + esc(o.obra) + '</td>' +
               celda(o.st, o.stkg, 'st') + celda(o.pr, o.prkg, 'pr') + celda(o.de, o.dekg, 'de') +
               '<td class="num g dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
               '%"></i><span>' + kg0(o.kg) + '</span></td></tr>';
     });
-    html += '</tbody><tfoot><tr><td></td><td>Total</td>' +
+    html += '</tbody><tfoot><tr><td>Total</td>' +
             '<td class="num g st">' + T.st + '</td><td class="num st">' + kg0(T.stkg) + '</td>' +
             '<td class="num g pr">' + T.pr + '</td><td class="num pr">' + kg0(T.prkg) + '</td>' +
             '<td class="num g de">' + T.de + '</td><td class="num de">' + kg0(T.dekg) + '</td>' +

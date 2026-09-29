@@ -692,8 +692,14 @@ check("se puede ordenar por cualquier columna", "ORDEN_CUB" in DSH)
 check("agrupa por OBRA, no por persona+obra", "GROUP BY p.job_name, u.detail_person" in PROG)
 check("...y «la lleva» es el último que detalló algo en ella",
       "DISTINCT ON (job_name)" in PROG and "GREATEST(order_date, proj_ship_date) DESC" in PROG)
-check("el filtro de persona compara contra quien la lleva HOY",
+check("el filtro de persona compara contra quien la detalló último",
       "PERSONAS.indexOf(f.lleva)" in DSH)
+# La columna con el nombre se sacó: repetía el filtro que ya está arriba, y sin nadie
+# elegido la tabla es la planta completa, donde esa columna no significa nada. Quién
+# detalló queda en el globo de la obra.
+check("la tabla NO lleva una columna con el cubicador",
+      'data-ord="lleva"' not in DSH)
+check("...pero quién detalló sigue a la vista, en el globo", "Detalló: " in DSH)
 
 # OBRA ACTIVA = con movimiento reciente, NO «con pendiente». Esa fue mi primera idea y
 # escondía justo la alarma: una obra que se comió su stock desaparecía de la vista.
