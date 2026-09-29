@@ -5,9 +5,9 @@
        · POR PROGRAMAR = Unscheduled. El STOCK DISPONIBLE de cubicaciones de la obra.
        · PROGRAMADOS   = Scheduled o Confirmed, o cualquiera con guía de despacho.
 
-     El PERÍODO (año y mes) va en una barra arriba, fuera de los paneles: vale para todo
-     aSa Data, así que los próximos dashboards lo heredan. Obra y cubicador son de este
-     reporte y van a los costados.
+     LOS FILTROS SON COMPARTIDOS entre sub-tabs y viven fuera de los paneles: período y
+     cubicador en barras arriba, obra en la columna izquierda —que además resume códigos
+     y kilos—. Cambiar de sub-tab conserva lo que esté marcado.
 
      Toda la data sale del espejo `asa_pedidos`, nunca de aSa en vivo. -->
 <div id="tab-asa_data" class="tab-content">
@@ -43,18 +43,25 @@
          entera para una lista de chips; acá cabe en una línea. -->
     <div class="dshbarra">
       <span class="dshbl">Cubicador</span>
-      <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
+      <!-- NO es un filtro más: configura CUÁLES de los 45 cubicadores de aSa aparecen
+           como chips. Por eso se distingue de los chips que tiene al lado — engranaje,
+           borde marcado y fondo propio— en vez de parecer uno más de la fila. -->
+      <button id="dshDetElegir" class="dshcfg"
+              title="Elegir cuáles de los 45 cubicadores de aSa aparecen como filtro">⚙ Mi equipo</button>
       <div id="dshPersonas" class="dshchips"></div>
     </div>
     <!-- aSa devuelve 45 DetailPerson en la historia completa, muchos son correos de gente
          que ya no cubica. El usuario elige cuáles ve como chips. -->
-    <div id="dshDetLista" class="dshlista" style="display:none; max-height:26vh; margin-bottom:10px;"></div>
+    <div id="dshDetPanel" class="dshcfgp" style="display:none;">
+      <div class="t">Marca los cubicadores que quieres ver como filtro. Se recuerda en este navegador.</div>
+      <div id="dshDetLista" class="dshlista" style="max-height:24vh; background:#fff;"></div>
+    </div>
 
     <div id="dshAviso" class="prgaviso" style="margin-bottom:10px;"></div>
 
-    <!-- LOS FILTROS TAMBIÉN SON COMPARTIDOS: obra a la izquierda (nombres largos, por eso
-         la columna más ancha) y cubicador a la derecha. Al centro cambia el panel según
-         el sub-tab; lo de los lados no se vuelve a dibujar. -->
+    <!-- La obra queda en su columna porque además de filtrar RESUME: lleva los códigos y
+         los kilos de cada una. Al centro cambia el panel según el sub-tab; los filtros no
+         se vuelven a dibujar, así que cambiar de pestaña conserva lo que tengas marcado. -->
     <div class="dshwrap">
 
       <!-- La columna de obra FILTRA y RESUME a la vez: lleva la cantidad de códigos y
@@ -92,10 +99,9 @@
         </div>
 
         <!-- ══════ OBRAS aSa ══════
-             Tres cuadros de consulta sobre la misma data y los mismos filtros: cuánto por
-             mes, cuánto por obra, y el detalle código por código. Arriba los dos resúmenes
-             lado a lado —el mensual es angosto y el de obras necesita el ancho— y abajo el
-             detalle, que es el que más filas tiene. -->
+             El detalle código por código, con buscador. Los otros dos resúmenes que pedía
+             este reporte ya viven fuera: los kilos por obra en la columna de la izquierda
+             —que además filtra— y los kilos por mes en la de la derecha. -->
         <div id="asaPanelObras" class="dshpanel" style="display:none;">
           <div class="card dshcard dshcod">
             <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
@@ -159,6 +165,17 @@
   .dshmini{font-size:9.5px; font-weight:600; padding:1px 7px; border-radius:99px; cursor:pointer;
            border:1px solid #dfe5ea; background:#fff; color:#607d8b;}
   .dshmini.on{background:#8BC34A; border-color:#7cb342; color:#fff}
+  /* Botón de CONFIGURACIÓN, no un filtro. Va deliberadamente distinto de los chips que
+     tiene al lado —esquinas rectas, borde marcado, fondo gris— para que no se lea como
+     un cubicador más de la fila. Abierto se pone verde y cambia a «Listo». */
+  .dshcfg{font-size:10px; font-weight:600; padding:2px 9px; border-radius:5px; cursor:pointer;
+          border:1px solid #cfd8dc; background:#eceff1; color:#455a64; white-space:nowrap;}
+  .dshcfg:hover{background:#e0e5e8; border-color:#b0bec5;}
+  .dshcfg.on{background:#8BC34A; border-color:#689f38; color:#fff;}
+  /* El panel abierto se ve como un panel: fondo propio y un título que dice qué hace. */
+  .dshcfgp{border:1px solid #c5e1a5; background:#f6fbf1; border-radius:6px;
+           padding:7px 9px; margin-bottom:10px;}
+  .dshcfgp .t{font-size:10px; color:#558b2f; font-weight:600; margin-bottom:5px;}
   .dshchips{display:flex; flex-wrap:wrap; gap:4px;}
   .dshchips button{font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:4px; cursor:pointer;
                    border:1px solid #dfe5ea; background:#f7f9fa; color:#607d8b;}

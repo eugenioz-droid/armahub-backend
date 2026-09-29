@@ -619,6 +619,13 @@ check("los dos cuadros del tab nuevo existen",
       all(x in HTM for x in ("dshPorMes", "dshCc", "dshBuscaCc")))
 # El cubicador pasó de ocupar una columna entera a una fila de chips bajo el período, y
 # la columna que liberó ahora informa: los kilos mes a mes.
+# «Mi equipo» NO es un filtro: configura cuáles de los 45 cubicadores aparecen como
+# chips. Por eso se ve distinto de los chips que tiene al lado — si pareciera uno más,
+# el usuario no entendería que abre un menú.
+check("el botón de configuración se distingue de los chips de filtro",
+      "dshcfg" in HTM and "Mi equipo" in HTM and ".dshcfg{" in HTM)
+check("...y al abrirlo se ve como un panel, con su título",
+      "dshcfgp" in HTM and "dshDetPanel" in HTM)
 check("el cubicador va en su propia fila, arriba, no en una columna",
       HTM.index('id="dshPersonas"') < HTM.index('class="dshwrap"'))
 check("...y la columna que liberó la ocupa el resumen mensual",

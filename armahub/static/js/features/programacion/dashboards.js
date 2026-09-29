@@ -244,10 +244,11 @@
       // clic no hizo nada, aunque el filtro sí se aplicó. Pasó.
       pintarChips(); pintarObras(); pintarTablas();
     });
-    $('dshDetElegir').textContent = ELIGIENDO ? 'listo' : 'elegir';
-    $('dshDetElegir').className = ELIGIENDO ? 'dshmini on' : 'dshmini';
+    // El botón dice en qué estado está: cerrado invita a configurar, abierto a cerrar.
+    $('dshDetElegir').textContent = ELIGIENDO ? '✓ Listo' : '⚙ Mi equipo';
+    $('dshDetElegir').className = ELIGIENDO ? 'dshcfg on' : 'dshcfg';
+    $('dshDetPanel').style.display = ELIGIENDO ? '' : 'none';
     var lista = $('dshDetLista');
-    lista.style.display = ELIGIENDO ? '' : 'none';
     if (!ELIGIENDO) return;
     lista.innerHTML = todas.map(function (p) {
       return '<label><input type="checkbox" data-det="' + esc(p) + '"' +
