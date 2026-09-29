@@ -175,5 +175,25 @@ check("ningún router de API falta bajo /api/v1 (faltan: %s)" % (", ".join(falta
       not faltan)
 check("el de programación está, en particular", "programacion_router" in bajo_api)
 
+# ── 9. Cada URL que llama el front existe en el router ──────────────────────
+# Un test de lógica no ve una ruta mal escrita ni un router sin montar: eso sólo se nota
+# cuando el navegador recibe 404. Aquí se extrae cada `req('GET', '/programacion/...')`
+# de los JS del módulo y se exige que exista una ruta del router que la cubra. Las URLs
+# armadas por concatenación ('/programacion/obras/' + id + '/tareas') se comparan por su
+# prefijo literal, que es lo que se puede saber sin ejecutar.
+print("\n9. Cada URL del front existe en el backend")
+rutas = set(re.findall(r'@router\.(?:get|post|patch|delete)\("([^"]+)"', src))
+check("el router declara rutas (%d)" % len(rutas), len(rutas) >= 15)
+js_dash = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion",
+                            "dashboards.js"), encoding="utf-8").read()
+llamadas = set()
+for fuente in (js, js_dash):
+    for metodo, literal in re.findall(r"req\('(GET|POST|PATCH|DELETE)',\s*'([^']+)'", fuente):
+        llamadas.add((metodo, literal.split("?")[0]))
+check("el front hace llamadas (%d distintas)" % len(llamadas), len(llamadas) >= 12)
+for metodo, literal in sorted(llamadas):
+    cubre = any(r == literal or (literal.endswith("/") and r.startswith(literal)) for r in rutas)
+    check("%s %s" % (metodo, literal), cubre)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
