@@ -864,7 +864,8 @@ check("...y sólo toca las que están abiertas (normalmente ninguna)",
 
 # ── 26. «Resumen» por segmento y tipo, y los dos filtros nuevos ────────────
 # Lo que los cubicadores cargan en «Atributos de obra» viaja en cada fila del reporte y
-# del cubicador, es filtro de TODOS los sub-tabs y alimenta el sexto: el Resumen.
+# del cubicador, es filtro de TODOS los sub-tabs y alimenta el sexto: el Resumen, que es
+# una lista plana de obras con su barra por estado y dos gráficos de kilos por mes.
 print("\n26. Resumen por segmento y tipo")
 check("el reporte cruza los atributos y los manda por fila",
       "LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" in PROG
@@ -876,19 +877,26 @@ check("segmento y tipo son chips de la barra compartida, con «(sin)» como valo
       'id="dshSegs"' in HTM and 'id="dshTipos"' in HTM
       and "chips($('dshSegs'), (DATA.segmentos || []).concat([SIN])" in DSH
       and "return v === SIN ? 'Sin segmento' : v;" in DSH)
-check("...y filtran en todos los sub-tabs (filtrar + cubicador)",
-      DSH.count("if (SEGS.length && SEGS.indexOf(segDe(f)) === -1) return false;") == 2
-      and DSH.count("if (TIPOS.length && TIPOS.indexOf(tipoDe(f)) === -1) return false;") == 2)
-check("el sub-tab Resumen existe con sus cuatro cuadros",
+check("...y filtran en todos los sub-tabs (filtrar + cubicador + atributos)",
+      DSH.count("if (SEGS.length && SEGS.indexOf(segDe(f)) === -1) return false;") == 3
+      and DSH.count("if (TIPOS.length && TIPOS.indexOf(tipoDe(f)) === -1) return false;") == 3)
+check("el sub-tab Resumen: lista de obras + dos gráficos; la columna fija de obras se esconde ahí y en Atributos",
       "['res',    'asaSubRes',    'asaPanelRes']" in DSH and 'id="asaSubRes"' in HTM
-      and all(('id="%s"' % x) in HTM for x in ("dshResSeg", "dshResTipo", "dshResPersona", "dshResMes", "dshResChart")))
-check("el cálculo es una función pura expuesta al test",
-      "function resumenSegmentos(filas, segmentos, tipos, porAnio)" in DSH and "resumenSegmentos: resumenSegmentos" in DSH)
-check("despachado se reconoce con el mismo nombre que usa el backend",
-      "var ESTADO_DESPACHADO = 'Shipped';" in DSH and "vivo = \"COALESCE(estado,'') <> 'Shipped'\"" in PROG)
-check("un solo gráfico de barras para los dos cuadros (una barra por serie, con número)",
-      "function graficoBarras(ref, canvas, labels, datasets)" in DSH
-      and DSH.count("graficoBarras(CHART_") == 2)
+      and all(('id="%s"' % x) in HTM for x in ("dshResObras", "dshResChartSeg", "dshResChartTipo", "dshResLey"))
+      and 'id="dshColObras"' in HTM and "col.style.display = (v === 'res' || v === 'atr') ? 'none' : ''" in DSH)
+check("la lista va de mayor a menor y la barra se mide contra la obra más grande",
+      "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH
+      and "(o.kg / R.max * 100).toFixed(1)" in DSH)
+check("...partida por estado, con el nombre real de aSa y un orden fijo",
+      "ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete']" in DSH
+      and "(DATA.nombres_estado || {})[e] || e" in DSH)
+check("...y se clickea para filtrar, igual que la columna que reemplaza",
+      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);") == 2)
+check("los cálculos son funciones puras expuestas al test",
+      "function pivotPor(filas, clave, porAnio)" in DSH and "function resumenObras(filas)" in DSH
+      and "resumenObras: resumenObras, pivotPor: pivotPor" in DSH)
+check("un solo gráfico de barras para los tres cuadros (una barra por serie, con número)",
+      "function graficoBarras(ref, canvas, labels, datasets)" in DSH and DSH.count("graficoBarras(") == 3)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

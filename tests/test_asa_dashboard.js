@@ -270,12 +270,11 @@ check('...y las celdas se agrupan por año',
 check('sin filas, una pivot vacía y no un error',
       T.pivotMes([], false).columnas.length === 0 && T.pivotMes([], false).total === 0);
 
-// ── 10. El Resumen por segmento y tipo ─────────────────────────────────────
-// Cuatro cuadros de una misma función pura. Lo que se congela: los tres estados de la
-// cola son excluyentes y suman los kilos; «(sin)» es un segmento más y va al final; los
-// totales cuadran entre cuadros.
-console.log('\n10. Resumen por segmento y tipo');
-const SEGS = ['1 y 2', '4 y 5', 'YPS', 'Otros'], TIPOS = ['Cubicación', 'Digitación'];
+// ── 10. El Resumen: lista de obras por estado y kilos por mes por segmento/tipo ──
+// Dos funciones puras. Lo que se congela: la obra más grande va primero (la barra se
+// mide contra ella), los kilos de cada obra se parten por estado y suman, y los pivots
+// por segmento y por tipo cuadran con el total.
+console.log('\n10. Resumen: obras por estado y kilos por mes por segmento/tipo');
 const RF = [
   { obra: 'A', persona: 'ER', kg: 100, mes: 1, anio: 2026, segmento: '4 y 5', tipo: 'Cubicación', estado: 'Open',      programado: false },
   { obra: 'A', persona: 'ER', kg: 50,  mes: 2, anio: 2026, segmento: '4 y 5', tipo: 'Cubicación', estado: 'Processed', programado: true },
@@ -283,26 +282,25 @@ const RF = [
   { obra: 'B', persona: 'MD', kg: 200, mes: 1, anio: 2025, segmento: '1 y 2', tipo: 'Digitación', estado: 'Shipped',   programado: true },
   { obra: 'C', persona: 'ER', kg: 10,  mes: 3, anio: 2026, segmento: null,    tipo: null,         estado: 'Open',      programado: false },
 ];
-const R = T.resumenSegmentos(RF, SEGS, TIPOS, false);
-check('los segmentos salen en el orden del backend y «(sin)» al final, sólo los presentes',
-      JSON.stringify(R.segmentos) === '["1 y 2","4 y 5","(sin)"]');
-const s45 = R.filasSeg.filter(r => r.seg === '4 y 5')[0];
-check('por segmento: obras distintas, CC y kilos', s45.obras === 1 && s45.cc === 3 && s45.kg === 175);
-check('stock / programado / despachado son excluyentes y suman los kilos',
-      s45.stock === 100 && s45.prog === 50 && s45.desp === 25 && s45.stock + s45.prog + s45.desp === s45.kg);
-check('despachado manda sobre programado (un Shipped agendado es despachado, no cola)',
-      R.filasSeg.filter(r => r.seg === '1 y 2')[0].desp === 200);
-check('el % es sobre el total filtrado', Math.round(s45.pct * 1000) === Math.round(175 / 385 * 1000));
-check('tipo × segmento cuadra con el total',
-      R.tipoSeg['Cubicación']['4 y 5'] === 175 && R.tipoSeg['Digitación']['1 y 2'] === 200 &&
-      R.tipoSeg['(sin)'].total === 10 && R.tipos.join(',') === 'Cubicación,Digitación,(sin)');
-check('persona × segmento, de mayor a menor',
-      R.personas.map(p => p.persona).join(',') === 'MD,ER' && R.personas[1]['4 y 5'] === 150);
-check('segmento por mes: columnas presentes y celdas',
-      JSON.stringify(R.columnas) === '[1,2,3]' && R.segMes['4 y 5'][2] === 75 && R.segMes['(sin)'][3] === 10);
-check('totales generales', R.total === 385 && R.obras === 3 && R.cc === 5);
-check('por año, las columnas son los años', JSON.stringify(T.resumenSegmentos(RF, SEGS, TIPOS, true).columnas) === '[2025,2026]');
-check('sin filas: vacío y sin error', T.resumenSegmentos([], SEGS, TIPOS, false).total === 0);
+const R = T.resumenObras(RF);
+check('una fila por obra, de mayor a menor', R.obras.map(o => o.obra).join(',') === 'B,A,C');
+check('la primera es la más grande: la barra se mide contra ella', R.max === 200);
+check('CC y kilos por obra', R.obras[1].cc === 3 && R.obras[1].kg === 175);
+check('los kilos de cada obra se parten por estado y suman el total',
+      R.obras[1].porEstado.Open === 100 && R.obras[1].porEstado.Processed === 50 &&
+      R.obras[1].porEstado.Shipped === 25);
+check('los estados salen en orden fijo (Open, Processed, Shipped) y sólo los presentes',
+      R.estados.join(',') === 'Open,Processed,Shipped');
+check('el total general y por estado', R.total === 385 && R.porEstado.Shipped === 225);
+check('cada obra lleva su segmento y tipo («(sin)» si falta)',
+      R.obras[2].segmento === '(sin)' && R.obras[0].tipo === 'Digitación');
+const PS = T.pivotPor(RF, T.segDe, false);
+check('kilos por mes por segmento: columnas presentes', JSON.stringify(PS.columnas) === '[1,2,3]');
+check('...celdas y totales',
+      PS.series['4 y 5'][2] === 75 && PS.series['1 y 2'][1] === 200 && PS.totales['(sin)'] === 10 && PS.total === 385);
+const PT = T.pivotPor(RF, T.tipoDe, true);
+check('por tipo y por año', JSON.stringify(PT.columnas) === '[2025,2026]' && PT.series['Cubicación'][2026] === 175);
+check('sin filas: vacío y sin error', T.resumenObras([]).obras.length === 0 && T.pivotPor([], T.segDe, false).total === 0);
 check('segDe/tipoDe devuelven «(sin)» cuando falta el dato',
       T.segDe({}) === '(sin)' && T.tipoDe({ tipo: 'Digitación' }) === 'Digitación');
 

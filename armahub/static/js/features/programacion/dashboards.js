@@ -111,6 +111,11 @@
     // «Obras aSa»; en el otro sub-tab se esconde y las cajas se llevan ese ancho.
     var lat = $('dshLateral');
     if (lat) lat.style.display = (v === 'obras') ? '' : 'none';
+    // En «Resumen» la lista de obras va DENTRO del panel (con su barra por estado) y en
+    // «Atributos» la tabla ya trae los kilos: en los dos la columna fija se esconde y el
+    // panel se lleva ese ancho.
+    var col = $('dshColObras');
+    if (col) col.style.display = (v === 'res' || v === 'atr') ? 'none' : '';
     // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
     // pide la primera vez que se abre y no en cada cambio de pestaña.
     if (v === 'cub' && !CUB) { cargarCub().then(pintarTablas); return; }
@@ -875,153 +880,119 @@
   }
 
   // ── Sub-tab RESUMEN ────────────────────────────────────────────────────────
-  // La data por SEGMENTO y por TIPO. Cuatro cuadros sobre las mismas filas filtradas:
-  //   1. por segmento: obras, CC, kilos, % del total y cómo está su cola
-  //      (stock / programado / despachado);
-  //   2. tipo × segmento;  3. detallado por × segmento;  4. segmento por mes (+ gráfico).
-  // El cálculo es una función PURA para poder probarla sin navegador.
+  // La data por SEGMENTO y por TIPO, como la definió el usuario (29-sep): a la izquierda
+  // una LISTA PLANA de obras —la más grande arriba— con sus códigos y una barra de kilos
+  // partida por estado (Open / Processed / Shipped); a la derecha dos gráficos de kilos
+  // por mes, uno con una barra por segmento y otro con una por tipo. La lista REEMPLAZA
+  // acá a la columna fija de obras: se clickea igual y filtra igual. No lleva stock ni
+  // programado: eso ya vive en los otros tabs y acá estorbaba.
   var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#8bc34a', 'YPS': '#ffa726', 'Otros': '#90a4ae' };
-  // Mismo nombre y misma regla que el backend (`vivo = estado <> 'Shipped'`).
-  var ESTADO_DESPACHADO = 'Shipped';
+  var COLOR_TIPO = { 'Cubicación': '#8bc34a', 'Digitación': '#42a5f5' };
+  // Los estados con el nombre real de aSa, en el orden del ciclo: pedido → producido → despachado.
+  var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#8bc34a', 'Shipped': '#90a4ae', 'Incomplete': '#ef9a9a' };
+  var ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete'];
+  var SIN_COLOR = '#e0e0e0';
 
-  function resumenSegmentos(filas, segmentos, tipos, porAnio) {
-    var seg = {}, tipoSeg = {}, segMes = {}, perSeg = {}, cols = {}, obrasTot = {}, total = 0;
+  // Kilos por columna del período (mes o año) para cada valor de `clave(f)`. Función pura:
+  // sirve para segmento, tipo o lo que venga.
+  function pivotPor(filas, clave, porAnio) {
+    var cols = {}, series = {}, totales = {}, total = 0;
     filas.forEach(function (f) {
-      var s = segDe(f), t = tipoDe(f), c = porAnio ? f.anio : f.mes;
-      if (!seg[s]) seg[s] = { seg: s, obras: {}, cc: 0, kg: 0, stock: 0, prog: 0, desp: 0 };
-      var e = seg[s];
-      e.obras[f.obra] = 1; e.cc++; e.kg += f.kg;
-      if (f.estado === ESTADO_DESPACHADO) e.desp += f.kg;
-      else if (programado(f)) e.prog += f.kg;
-      else e.stock += f.kg;
-      total += f.kg; obrasTot[f.obra] = 1;
-      if (!tipoSeg[t]) tipoSeg[t] = { total: 0 };
-      tipoSeg[t][s] = (tipoSeg[t][s] || 0) + f.kg; tipoSeg[t].total += f.kg;
-      if (c) {
-        cols[c] = 1;
-        if (!segMes[s]) segMes[s] = {};
-        segMes[s][c] = (segMes[s][c] || 0) + f.kg;
-      }
-      var p = f.persona || '(sin detallar)';
-      if (!perSeg[p]) perSeg[p] = { persona: p, total: 0 };
-      perSeg[p][s] = (perSeg[p][s] || 0) + f.kg; perSeg[p].total += f.kg;
+      var c = porAnio ? f.anio : f.mes;
+      if (!c) return;
+      var k = clave(f);
+      cols[c] = 1;
+      if (!series[k]) series[k] = {};
+      series[k][c] = (series[k][c] || 0) + f.kg;
+      totales[k] = (totales[k] || 0) + f.kg;
+      total += f.kg;
     });
-    // Los segmentos en el orden del backend, «(sin)» al final, y sólo los que aparecen.
-    var ordenSeg = (segmentos || []).concat([SIN]).filter(function (s) { return seg[s]; });
-    var ordenTipo = (tipos || []).concat([SIN]).filter(function (t) { return tipoSeg[t]; });
-    return {
-      segmentos: ordenSeg,
-      filasSeg: ordenSeg.map(function (s) {
-        var e = seg[s];
-        return { seg: s, obras: Object.keys(e.obras).length, cc: e.cc, kg: e.kg,
-                 stock: e.stock, prog: e.prog, desp: e.desp, pct: total ? e.kg / total : 0 };
-      }),
-      tipos: ordenTipo, tipoSeg: tipoSeg,
-      personas: Object.keys(perSeg).map(function (k) { return perSeg[k]; })
-        .sort(function (a, b) { return b.total - a.total; }),
-      segMes: segMes,
-      columnas: Object.keys(cols).map(Number).sort(function (a, b) { return a - b; }),
-      total: total, obras: Object.keys(obrasTot).length, cc: filas.length
-    };
+    return { columnas: Object.keys(cols).map(Number).sort(function (a, b) { return a - b; }),
+             series: series, totales: totales, total: total };
   }
 
-  var CHART_RES = null;
+  // Una fila por obra, de mayor a menor, con sus kilos partidos por estado.
+  function resumenObras(filas) {
+    var por = {}, total = 0, estados = {};
+    filas.forEach(function (f) {
+      if (!por[f.obra]) por[f.obra] = { obra: f.obra, job: f.job, cc: 0, kg: 0, porEstado: {},
+                                       segmento: segDe(f), tipo: tipoDe(f) };
+      var o = por[f.obra], e = f.estado || '?';
+      o.cc++; o.kg += f.kg; o.porEstado[e] = (o.porEstado[e] || 0) + f.kg;
+      estados[e] = (estados[e] || 0) + f.kg; total += f.kg;
+    });
+    var lista = Object.keys(por).map(function (k) { return por[k]; })
+      .sort(function (a, b) { return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es'); });
+    var orden = ORDEN_ESTADO.filter(function (e) { return estados[e]; })
+      .concat(Object.keys(estados).filter(function (e) { return ORDEN_ESTADO.indexOf(e) === -1; }).sort());
+    return { obras: lista, max: lista.length ? lista[0].kg : 0, total: total,
+             estados: orden, porEstado: estados };
+  }
+
+  var CHART_RES_SEG = null, CHART_RES_TIPO = null;
 
   function pintarResumen() {
-    var base = filtrar(todasLasFilas());
     var porAnio = !(DATA && DATA.anio);
-    var R = resumenSegmentos(base, DATA.segmentos, DATA.tipos, porAnio);
-    var etq = function (s) { return s === SIN ? 'Sin segmento' : s; };
-    var etqT = function (t) { return t === SIN ? 'Sin tipo' : t; };
     var nombre = function (c) { return porAnio ? String(c) : MESN[c - 1]; };
-    var vacio = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
+    var etq = function (s) { return s === SIN ? 'Sin dato' : s; };
+    var nomEst = function (e) { return (DATA.nombres_estado || {})[e] || e; };
 
-    // Encabezado: el total y el reparto por tipo, que es el dato de una línea.
-    var cub = (R.tipoSeg['Cubicación'] || {}).total || 0, dig = (R.tipoSeg['Digitación'] || {}).total || 0;
-    var pct = function (v) { return R.total ? Math.round(v / R.total * 100) + '%' : '0%'; };
-    $('dshResN').innerHTML = '· ' + R.obras + ' obras · ' + R.cc + ' CC · <b style="color:#33691e">' +
-      kg0(R.total) + ' kg</b> · Cubicación ' + pct(cub) + ' · Digitación ' + pct(dig) +
-      (R.tipoSeg[SIN] ? ' · <b style="color:#e65100">sin tipo ' + pct(R.tipoSeg[SIN].total) + '</b>' : '');
-    if (!R.total) {
-      ['dshResSeg', 'dshResTipo', 'dshResPersona', 'dshResMes'].forEach(function (id) { $(id).innerHTML = vacio; });
-      CHART_RES = global.destroyChart ? global.destroyChart(CHART_RES) : null;
-      return;
+    // La lista de obras pasa TODOS los filtros menos el de obra (no se filtra a sí misma),
+    // igual que la columna a la que reemplaza.
+    var R = resumenObras(filtrar(todasLasFilas(), 'obra'));
+    $('dshResN').innerHTML = '· ' + R.obras.length + ' · <b style="color:#33691e">' + kg0(R.total) + ' kg</b>';
+    $('dshResLey').innerHTML = R.estados.map(function (e) {
+      return '<span><i style="background:' + (COLOR_ESTADO[e] || SIN_COLOR) + '"></i>' + esc(nomEst(e)) +
+             ' <span class="muted">' + kg0(R.porEstado[e]) + '</span></span>';
+    }).join('');
+    if (!R.obras.length) {
+      $('dshResObras').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con estos filtros</td></tr></tbody>';
+    } else {
+      var html = '<colgroup><col style="width:34%"><col style="width:6%"><col style="width:11%">' +
+        '<col style="width:49%"></colgroup>' +
+        '<thead><tr><th>Obra</th><th class="num">CC</th><th class="num">Kilos</th>' +
+        '<th>Kilos por estado</th></tr></thead><tbody>';
+      R.obras.forEach(function (o) {
+        var on = OBRAS.indexOf(o.obra) !== -1;
+        // La barra mide contra la obra MÁS GRANDE (la primera), y dentro cada estado
+        // ocupa su parte.
+        var barra = R.estados.map(function (e) {
+          var v = o.porEstado[e] || 0;
+          return v ? '<i style="width:' + (v / o.kg * 100).toFixed(1) + '%; background:' +
+                     (COLOR_ESTADO[e] || SIN_COLOR) + '" title="' + esc(nomEst(e)) + ': ' + kg0(v) + ' kg"></i>' : '';
+        }).join('');
+        html += '<tr class="' + (on ? 'sel' : '') + '" data-obra="' + esc(o.obra) + '">' +
+          '<td title="' + esc(o.obra) + (o.job ? ' · ' + esc(o.job) : '') + ' · ' + esc(etq(o.segmento)) +
+          ' · ' + esc(etq(o.tipo)) + '">' + esc(o.obra) + '</td>' +
+          '<td class="num">' + o.cc + '</td><td class="num">' + kg0(o.kg) + '</td>' +
+          '<td><div class="stk" style="width:' + (o.kg / R.max * 100).toFixed(1) + '%">' + barra + '</div></td></tr>';
+      });
+      $('dshResObras').innerHTML = html + '</tbody>';
+      $('dshResObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
+        tr.addEventListener('click', function (ev) {
+          alternar(OBRAS, tr.dataset.obra, ev);
+          pintarChips(); pintarObras(); pintarTablas();
+        });
+      });
     }
 
-    // 1. Por segmento, con su cola.
-    var celdaSeg = function (s) {
-      return '<td class="seg" style="--c:' + (COLOR_SEG[s] || '#e0e0e0') + '">' + esc(etq(s)) + '</td>';
+    // Los dos gráficos sí llevan todos los filtros, incluido el de obra.
+    var base = filtrar(todasLasFilas());
+    var grafico = function (ref, idCanvas, idN, pv, colores, ordenClaves) {
+      var claves = ordenClaves.filter(function (k) { return pv.series[k]; });
+      $(idN).innerHTML = '· <b style="color:#33691e">' + kg0(pv.total) + ' kg</b>' + (porAnio ? ' · por año' : '');
+      var canvas = $(idCanvas);
+      if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return ref;
+      if (!pv.columnas.length) return global.destroyChart ? global.destroyChart(ref) : null;
+      return graficoBarras(ref, canvas, pv.columnas.map(nombre), claves.map(function (k) {
+        return { label: etq(k), backgroundColor: colores[k] || SIN_COLOR, maxBarThickness: 30,
+                 data: pv.columnas.map(function (c) { return Math.round(pv.series[k][c] || 0); }) };
+      }));
     };
-    var html = '<colgroup><col style="width:16%"><col style="width:8%"><col style="width:8%">' +
-      '<col style="width:14%"><col style="width:9%"><col style="width:15%"><col style="width:15%">' +
-      '<col style="width:15%"></colgroup>' +
-      '<thead><tr><th>Segmento</th><th>Obras</th><th>CC</th><th>Kilos</th><th>%</th>' +
-      '<th title="Cubicado y sin agendar en planta">Stock</th>' +
-      '<th title="Agendado en planta, sin despachar">Programado</th>' +
-      '<th title="Ya salió a la obra">Despachado</th></tr></thead><tbody>';
-    var T = { obras: 0, cc: 0, kg: 0, stock: 0, prog: 0, desp: 0 };
-    R.filasSeg.forEach(function (r) {
-      html += '<tr>' + celdaSeg(r.seg) + '<td>' + r.obras + '</td><td>' + r.cc + '</td>' +
-        '<td><b>' + kg0(r.kg) + '</b></td><td class="pct">' + Math.round(r.pct * 100) + '%</td>' +
-        '<td style="color:#8d6e00">' + kg0(r.stock) + '</td>' +
-        '<td style="color:#2e7d32">' + kg0(r.prog) + '</td>' +
-        '<td style="color:#78909c">' + kg0(r.desp) + '</td></tr>';
-      T.obras += r.obras; T.cc += r.cc; T.kg += r.kg; T.stock += r.stock; T.prog += r.prog; T.desp += r.desp;
-    });
-    html += '</tbody><tfoot><tr><td>Total</td><td>' + R.obras + '</td><td>' + T.cc + '</td>' +
-      '<td>' + kg0(T.kg) + '</td><td class="pct">100%</td><td>' + kg0(T.stock) + '</td>' +
-      '<td>' + kg0(T.prog) + '</td><td>' + kg0(T.desp) + '</td></tr></tfoot>';
-    $('dshResSeg').innerHTML = html;
-
-    // 2. Tipo × segmento y 3. Persona × segmento: la misma pivot con distinta fila.
-    var pivot = function (filas, clave, etiqueta) {
-      var h = '<thead><tr><th>' + etiqueta + '</th>';
-      R.segmentos.forEach(function (s) { h += '<th>' + esc(etq(s)) + '</th>'; });
-      h += '<th class="tot">Total</th></tr></thead><tbody>';
-      var tc = {};
-      filas.forEach(function (r) {
-        h += '<tr><td title="' + esc(r[clave]) + '">' + esc(r[clave]) + '</td>';
-        R.segmentos.forEach(function (s) {
-          var v = r[s] || 0; tc[s] = (tc[s] || 0) + v;
-          h += '<td>' + (v ? kg0(v) : '') + '</td>';
-        });
-        h += '<td class="tot">' + kg0(r.total) + '</td></tr>';
-      });
-      h += '</tbody><tfoot><tr><td>Total</td>';
-      R.segmentos.forEach(function (s) { h += '<td>' + kg0(tc[s] || 0) + '</td>'; });
-      return h + '<td class="tot">' + kg0(R.total) + '</td></tr></tfoot>';
-    };
-    $('dshResTipo').innerHTML = pivot(R.tipos.map(function (t) {
-      var r = Object.assign({}, R.tipoSeg[t]); r.nombre = etqT(t); return r;
-    }), 'nombre', 'Tipo');
-    $('dshResPersona').innerHTML = pivot(R.personas, 'persona', 'Detallado por');
-
-    // 4. Segmento por mes: tabla y una barra por segmento en cada mes.
-    $('dshResMesN').innerHTML = porAnio ? '· por año (elige uno arriba para ver meses)' : '';
-    html = '<thead><tr><th>Segmento</th>';
-    R.columnas.forEach(function (c) { html += '<th>' + esc(nombre(c)) + '</th>'; });
-    html += '<th class="tot">Total</th></tr></thead><tbody>';
-    var tcol = {};
-    R.segmentos.forEach(function (s) {
-      var fila = R.segMes[s] || {}, tot = 0;
-      html += '<tr><td>' + esc(etq(s)) + '</td>';
-      R.columnas.forEach(function (c) {
-        var v = fila[c] || 0; tot += v; tcol[c] = (tcol[c] || 0) + v;
-        html += '<td>' + (v ? kg0(v) : '') + '</td>';
-      });
-      html += '<td class="tot">' + kg0(tot) + '</td></tr>';
-    });
-    html += '</tbody><tfoot><tr><td>Total</td>';
-    R.columnas.forEach(function (c) { html += '<td>' + kg0(tcol[c] || 0) + '</td>'; });
-    html += '<td class="tot">' + kg0(R.total) + '</td></tr></tfoot>';
-    $('dshResMes').innerHTML = html;
-
-    var canvas = $('dshResChart');
-    if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return;
-    CHART_RES = graficoBarras(CHART_RES, canvas, R.columnas.map(nombre), R.segmentos.map(function (s) {
-      return { label: etq(s), backgroundColor: COLOR_SEG[s] || '#e0e0e0', maxBarThickness: 34,
-               data: R.columnas.map(function (c) { return Math.round((R.segMes[s] || {})[c] || 0); }) };
-    }));
+    CHART_RES_SEG = grafico(CHART_RES_SEG, 'dshResChartSeg', 'dshResSegN', pivotPor(base, segDe, porAnio),
+                            COLOR_SEG, (DATA.segmentos || []).concat([SIN]));
+    CHART_RES_TIPO = grafico(CHART_RES_TIPO, 'dshResChartTipo', 'dshResTipoN', pivotPor(base, tipoDe, porAnio),
+                             COLOR_TIPO, (DATA.tipos || []).concat([SIN]));
   }
 
   // ── Sub-tab ATRIBUTOS DE OBRA ──────────────────────────────────────────────
@@ -1045,6 +1016,8 @@
 
     var lista = (ATR.filas || []).filter(function (f) {
       if (OBRAS.length && OBRAS.indexOf(f.obra) === -1) return false;
+      if (SEGS.length && SEGS.indexOf(segDe(f)) === -1) return false;
+      if (TIPOS.length && TIPOS.indexOf(tipoDe(f)) === -1) return false;
       if (BUSCA_ATR && (f.obra || '').toLowerCase().indexOf(BUSCA_ATR) === -1 &&
           String(f.job || '').indexOf(BUSCA_ATR) === -1) return false;
       return true;
@@ -1135,7 +1108,7 @@
   global.__asaDataTest = {
     programado: programado, cajaDe: cajaDe, visible: visible, visibleEn: visibleEn,
     conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
-    pivotMes: pivotMes, resumenSegmentos: resumenSegmentos, segDe: segDe, tipoDe: tipoDe,
+    pivotMes: pivotMes, resumenObras: resumenObras, pivotPor: pivotPor, segDe: segDe, tipoDe: tipoDe,
     orden: function (v) { if (v) { ORDEN = v; } return ORDEN; },
     alternar: alternar,
     conBoton: function (v) { if (v) { CON_BOTON = v; } return CON_BOTON; },

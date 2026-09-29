@@ -84,7 +84,7 @@
       <!-- La columna de obra FILTRA y RESUME a la vez: lleva la cantidad de códigos y
            los kilos de cada una, ordenables por encabezado. Antes eso vivía además en un
            cuadro aparte del panel de Obras, que era la misma información dos veces. -->
-      <div class="dshcol dshobras">
+      <div class="dshcol dshobras" id="dshColObras">
         <div class="dshfh">Obra <span class="muted" id="dshObrasN" style="font-weight:400"></span></div>
         <input type="text" id="dshBuscaObra" placeholder="Buscar…" class="dshbuscar">
         <div id="dshObras" class="dshlista dshlargo"></div>
@@ -179,29 +179,29 @@
         </div>
 
         <!-- ══════ RESUMEN ══════
-             La data vista por SEGMENTO y por TIPO, que es lo que los cubicadores cargan
-             en «Atributos de obra». Cuatro cuadros sobre las mismas filas y los mismos
-             filtros que el resto: cuánto hay en cada segmento y cómo está su cola; tipo
-             × segmento; quién cubica qué segmento; y el segmento mes a mes. -->
-        <div id="asaPanelRes" class="dshpanel dshscroll" style="display:none;">
-          <div class="card dshcard" style="flex:none;">
-            <div class="dshth">POR SEGMENTO <span class="muted" id="dshResN"></span></div>
-            <div class="dshbd" style="height:auto;"><table class="dsht dshres" id="dshResSeg"></table></div>
-          </div>
-          <div class="dshres2">
-            <div class="card dshcard">
-              <div class="dshth">TIPO × SEGMENTO <span class="muted">kilos</span></div>
-              <div class="dshbd" style="height:auto;"><table class="dsht dshpiv" id="dshResTipo"></table></div>
+             Por SEGMENTO y por TIPO, como lo definió el usuario: a la izquierda la lista
+             plana de obras —la más grande arriba— con sus CC y una barra de kilos partida
+             por estado; a la derecha kilos por mes con una barra por segmento, y abajo lo
+             mismo por tipo. La lista reemplaza acá a la columna fija de obras. -->
+        <div id="asaPanelRes" class="dshpanel" style="display:none;">
+          <div class="dshres2" style="flex:1; min-height:0;">
+            <div class="card dshcard dshcod" style="flex:1.2;">
+              <div class="dshth">OBRAS <span class="muted" id="dshResN"></span>
+                <div style="flex:1"></div>
+                <span class="dshley" id="dshResLey"></span>
+              </div>
+              <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dshres" id="dshResObras"></table></div>
             </div>
-            <div class="card dshcard">
-              <div class="dshth">DETALLADO POR × SEGMENTO <span class="muted">kilos</span></div>
-              <div class="dshbd" style="height:auto; max-height:28vh;"><table class="dsht dshpiv" id="dshResPersona"></table></div>
+            <div class="dshres3">
+              <div class="card dshcard dshcod">
+                <div class="dshth">KILOS POR MES · SEGMENTO <span class="muted" id="dshResSegN"></span></div>
+                <div style="position:relative; flex:1; min-height:150px;"><canvas id="dshResChartSeg"></canvas></div>
+              </div>
+              <div class="card dshcard dshcod">
+                <div class="dshth">KILOS POR MES · TIPO <span class="muted" id="dshResTipoN"></span></div>
+                <div style="position:relative; flex:1; min-height:150px;"><canvas id="dshResChartTipo"></canvas></div>
+              </div>
             </div>
-          </div>
-          <div class="card dshcard" style="flex:none;">
-            <div class="dshth">SEGMENTO POR MES <span class="muted" id="dshResMesN"></span></div>
-            <div style="position:relative; height:230px;"><canvas id="dshResChart"></canvas></div>
-            <div class="dshbd" style="height:auto; margin-top:8px;"><table class="dsht dshpiv" id="dshResMes"></table></div>
           </div>
         </div>
 
@@ -220,7 +220,7 @@
             </div>
             <div class="prgaviso" style="margin:0 0 6px;">
               Clic en un valor lo guarda al instante; clic en el encendido lo borra. No usa el
-              filtro de año ni de mes; la columna de obras de la izquierda sí filtra.
+              filtro de año ni de mes; sí los de segmento y tipo, y el buscador.
             </div>
             <div class="dshbd" style="height:auto; flex:1;"><table class="dsht" id="dshAtr"></table></div>
           </div>
@@ -431,15 +431,18 @@
   .atrg button.mal{border-color:#c62828; color:#c62828;}
   .dshatr tr.falta td:first-child{box-shadow:inset 3px 0 0 #ffb300;}
 
-  /* RESUMEN: cuatro cuadros apilados que se desplazan dentro del panel, en vez de
-     estirarlo. Los dos del medio van lado a lado. */
-  .dshscroll{overflow:auto; padding-right:2px;}
-  .dshres2{display:flex; gap:12px; flex:none;}
-  .dshres2 .card{flex:1; min-width:0; display:flex; flex-direction:column;}
-  .dshres td, .dshres th{text-align:right;}
-  .dshres td:first-child, .dshres th:first-child{text-align:left; font-weight:600;}
-  /* Cada segmento con su color, el mismo del gráfico, como marca a la izquierda. */
-  .dshres td.seg{box-shadow:inset 3px 0 0 var(--c, #e0e0e0);}
-  .dshres .pct{color:#78909c; font-size:9px;}
-  .dshres tfoot td{border-top:2px solid #cfd8dc; font-weight:700; color:#263238;}
+  /* RESUMEN: la lista de obras a la izquierda y los dos gráficos apilados a la derecha,
+     todo dentro del alto del panel. */
+  .dshres2{display:flex; gap:12px; min-width:0;}
+  .dshres2 > .card{min-width:0;}
+  .dshres3{flex:1; display:flex; flex-direction:column; gap:12px; min-width:0;}
+  .dshres3 .card{flex:1; min-height:0;}
+  .dshres tbody tr{cursor:pointer;}
+  .dshres tr.sel td{background:#f1f8e9; font-weight:600;}
+  /* La barra de kilos por estado: el ancho total es relativo a la obra más grande, y
+     dentro cada estado ocupa su parte. */
+  .stk{display:flex; height:11px; border-radius:2px; overflow:hidden; min-width:2px;}
+  .stk i{display:block; height:100%;}
+  .dshley{display:inline-flex; gap:10px; font-weight:400; font-size:9.5px; letter-spacing:0; align-items:center;}
+  .dshley i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:-1px;}
 </style>
