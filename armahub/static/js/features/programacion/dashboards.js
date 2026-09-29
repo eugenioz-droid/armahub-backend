@@ -146,13 +146,16 @@
       if (i === -1) MESES.push(m); else MESES.splice(i, 1);
       cargar();
     }, function (m) { return MESN[m - 1]; });
-    // Chips de cubicador: sólo los elegidos. Sin elección, todos (primer uso).
+    // Chips de cubicador: los que aparecen con las obras elegidas, y de ésos sólo los
+    // que el usuario decidió ver (DET). Sin elección de DET, todos. La lista completa
+    // para el botón «elegir» sale del año entero, no del filtro.
     var todas = DATA.personas || [];
-    var visibles = DET.length ? todas.filter(function (p) { return DET.indexOf(p) !== -1; }) : todas;
+    var presentes = valoresDe('persona', 'persona', PERSONAS);
+    var visibles = presentes.filter(function (p) { return !DET.length || DET.indexOf(p) !== -1; });
     chips($('dshPersonas'), visibles, PERSONAS, function (p) {
       var i = PERSONAS.indexOf(p);
       if (i === -1) PERSONAS.push(p); else PERSONAS.splice(i, 1);
-      pintarTablas();
+      pintarObras(); pintarTablas();      // la obra se recalcula con el cubicador
     });
     $('dshDetElegir').textContent = ELIGIENDO ? 'listo' : 'elegir';
     $('dshDetElegir').className = ELIGIENDO ? 'dshmini on' : 'dshmini';
@@ -176,10 +179,37 @@
     });
   }
 
+  // ── Cruce de filtros ───────────────────────────────────────────────────────
+  // Los filtros se cruzan entre sí: al elegir un cubicador, la lista de obras muestra
+  // sólo las suyas, y al elegir obras, los chips de cubicador muestran sólo a quienes
+  // trabajan en ellas. La regla que evita el callejón sin salida es que UN FILTRO NUNCA
+  // SE FILTRA A SÍ MISMO: si al marcar una obra desaparecieran las demás, no habría cómo
+  // marcar una segunda. Y un valor ya elegido se muestra siempre, aunque el otro filtro
+  // lo dejaría fuera — si no, no habría cómo desmarcarlo.
+  function todasLasFilas() {
+    return (DATA.por_programar || []).concat(DATA.programados || []);
+  }
+
+  function filtrar(filas, salvo) {
+    return filas.filter(function (f) {
+      if (salvo !== 'obra' && OBRAS.length && OBRAS.indexOf(f.obra) === -1) return false;
+      if (salvo !== 'persona' && PERSONAS.length && PERSONAS.indexOf(f.persona) === -1) return false;
+      return true;
+    });
+  }
+
+  function valoresDe(campo, salvo, elegidos) {
+    var vistos = {};
+    filtrar(todasLasFilas(), salvo).forEach(function (f) { if (f[campo]) vistos[f[campo]] = 1; });
+    elegidos.forEach(function (v) { vistos[v] = 1; });
+    return Object.keys(vistos).sort();
+  }
+
   function pintarObras() {
-    var lista = (DATA.obras || []).filter(function (o) {
+    var lista = valoresDe('obra', 'obra', OBRAS).filter(function (o) {
       return !BUSCA || o.toLowerCase().indexOf(BUSCA) !== -1;
     });
+    $('dshObrasN').textContent = '· ' + lista.length;
     if (!lista.length) { $('dshObras').innerHTML = '<div class="dshvacio">Sin obras</div>'; return; }
     $('dshObras').innerHTML = lista.map(function (o) {
       return '<label title="' + esc(o) + '"><input type="checkbox" data-obra="' + esc(o) + '"' +
@@ -190,16 +220,8 @@
         var o = c.dataset.obra, i = OBRAS.indexOf(o);
         if (c.checked && i === -1) OBRAS.push(o);
         else if (!c.checked && i !== -1) OBRAS.splice(i, 1);
-        pintarTablas();
+        pintarChips(); pintarTablas();     // el cubicador se recalcula con la obra
       });
-    });
-  }
-
-  function filtrar(filas) {
-    return filas.filter(function (f) {
-      if (OBRAS.length && OBRAS.indexOf(f.obra) === -1) return false;
-      if (PERSONAS.length && PERSONAS.indexOf(f.persona) === -1) return false;
-      return true;
     });
   }
 
@@ -236,6 +258,7 @@
   }
 
   function pintarTablas() {
+    // Sin `salvo`: las tablas SÍ aplican todos los filtros a la vez.
     var pp = filtrar(DATA.por_programar || []);
     var pg = filtrar(DATA.programados || []);
     var tp = tabla($('dshPorProgramar'), pp, false);

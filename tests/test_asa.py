@@ -359,6 +359,22 @@ check("están los cuatro segmentadores: año, mes, obra y cubicador",
 # front filtra por obra o persona, el número de abajo no cuadraría con las filas de arriba.
 check("el total se recalcula sobre las filas FILTRADAS",
       "filas.reduce(function (a, f) { return a + f.kg; }, 0)" in DSH)
+# Cruce de filtros: elegir un cubicador deja en la lista sólo SUS obras, y elegir obras
+# deja sólo los cubicadores que trabajan en ellas. La regla que evita el callejón sin
+# salida es que un filtro nunca se filtra a sí mismo (`salvo`), y que un valor ya elegido
+# se sigue mostrando aunque el otro filtro lo dejaría fuera: si no, no habría cómo
+# desmarcarlo.
+check("los filtros se cruzan entre sí", "function valoresDe(" in DSH and "salvo !== 'obra'" in DSH)
+check("...pero ninguno se filtra a sí mismo",
+      "valoresDe('obra', 'obra'" in DSH and "valoresDe('persona', 'persona'" in DSH)
+check("...y lo ya elegido sigue visible para poder desmarcarlo",
+      "elegidos.forEach(function (v) { vistos[v] = 1; })" in DSH)
+check("elegir obra repinta los cubicadores y viceversa",
+      "pintarChips(); pintarTablas();" in DSH and "pintarObras(); pintarTablas();" in DSH)
+# app.css trae `td{font-size:13px}`: un valor heredado desde `.dsht` pierde contra esa
+# declaración directa, así que el tamaño tiene que ir en la celda.
+check("el tamaño de letra va en la celda, no sólo en la tabla",
+      "text-overflow:ellipsis; font-size:10px" in HTM)
 
 # `anio=` vacío en la primera carga (el año aún no se conoce) es un 422 seguro: FastAPI no
 # convierte "" a entero. Pasó en producción. Los parámetros se arman con qs(), que omite
@@ -375,13 +391,16 @@ check("los despachados y cancelados salen del reporte, en el backend",
 check("...y se informa cuántos quedaron fuera", '"excluidos"' in PROG and "despachados" in DSH)
 check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
       "ORDER BY promised_date DESC NULLS LAST" in PROG)
-check("el front no reordena lo que el backend ya ordenó", ".sort(" not in DSH)
+# Las FILAS no se reordenan en el front (el backend ya las mandó por fecha DESC); lo
+# único que se ordena acá son las listas de los filtros, que van alfabéticas.
+check("el front no reordena las filas de las tablas",
+      not re.search(r"\b(filas|pp|pg|por_programar|programados)\.sort\(", DSH))
 # 18 DetailPerson en aSa; el usuario elige cuáles ve. Comodidad de vista → localStorage,
 # leído y escrito con try/catch (puede no existir o estar bloqueado).
 check("hay un botón para elegir qué cubicadores se muestran", "dshDetElegir" in HTM and "dshDetLista" in HTM)
 check("...la elección se recuerda en el navegador, blindada con try/catch",
       "localStorage.setItem(DET_CLAVE" in DSH and DSH.count("try {") >= 2)
-check("...y sin elección se muestran todos (primer uso)", "DET.length ? todas.filter" in DSH)
+check("...y sin elección se muestran todos (primer uso)", "!DET.length || DET.indexOf(p) !== -1" in DSH)
 # «Se supone que te trajiste toda la data»: el botón recorre todos los años, uno por
 # llamada (el endpoint sigue siendo por año porque $apply no pagina).
 check("el botón trae todos los años desde 2021, del más nuevo al más viejo",

@@ -22,7 +22,7 @@
     <div class="dshwrap">
 
       <div class="dshcol dshobras">
-        <div class="dshfh">Obra</div>
+        <div class="dshfh">Obra <span class="muted" id="dshObrasN" style="font-weight:400"></span></div>
         <input type="text" id="dshBuscaObra" placeholder="Buscar…" class="dshbuscar">
         <div id="dshObras" class="dshlista dshlargo"></div>
       </div>
@@ -66,9 +66,15 @@
 </div>
 
 <style>
-  /* `stretch` es lo que hace que las dos columnas laterales lleguen hasta abajo de las
-     dos cajas centrales en vez de terminar donde termina su contenido. */
-  .dshwrap{display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;}
+  /* EL ALTO DEL PANEL, en un solo lugar. `stretch` iguala los tres a la altura del MÁS
+     ALTO, así que si la lista de obras crece con su contenido es ella la que manda y se
+     pasa de largo bajo las cajas — que es lo que estaba pasando. La solución es que el
+     alto sea un número conocido: el del centro (dos cajas de 31vh + sus encabezados y el
+     espacio entre ellas), y que las columnas laterales no puedan superarlo. */
+  .dshwrap{display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;
+           --alto:calc(62vh + 88px);}
+  .dshwrap > *{max-height:var(--alto);}
+  .dshtablas{height:var(--alto);}
   /* Las dos columnas laterales son de ancho FIJO: si se encogieran, los chips saltarían
      de línea al cambiar de año y la pantalla bailaría. El centro se lleva el resto. */
   .dshcol{flex:none; display:flex; flex-direction:column; gap:11px;
@@ -113,8 +119,12 @@
   .dsht thead th{position:sticky; top:0; background:#fafbfc; z-index:1;
                  text-align:left; color:#546e7a; font-weight:600; padding:3px 5px;
                  border-bottom:1px solid #e3e8ef; white-space:nowrap; font-size:9.5px;}
+  /* El font-size va EN LA CELDA, no sólo en la tabla: app.css trae un `td{font-size:13px}`
+     (selector de elemento, valor explícito) y un valor heredado siempre pierde contra una
+     declaración directa. Ponerlo sólo en `.dsht` no achicaba nada. */
   .dsht td{padding:2px 5px; border-top:1px solid #f0f2f5; white-space:nowrap;
-           overflow:hidden; text-overflow:ellipsis;}
+           overflow:hidden; text-overflow:ellipsis; font-size:10px; border-bottom:0;}
+  .dsht tbody tr:hover td{background:#f4f8ee}
   .dsht tbody tr:nth-child(even) td{background:#fafbfc}
   .dsht .num{text-align:right}
   .dsht .cc{font-family:ui-monospace,Consolas,monospace; font-size:9.5px; color:#455a64}
