@@ -447,19 +447,26 @@ check("el anulado ni siquiera se manda al front",
 # Se guarda lo APAGADO, no lo encendido: así un estado nuevo que aparezca en aSa se ve
 # por defecto, en vez de quedar invisible sin que nadie se entere.
 check("el front guarda los estados OCULTOS, no los visibles", "var OCULTOS" in DSH
-      and "OCULTOS.indexOf(f.estado) === -1" in DSH)
+      and "OCULTOS[caja || (f.promesa ? 'pg' : 'pp')].indexOf(f.estado) === -1" in DSH)
 
 # EL BUG QUE REPORTÓ EL USUARIO: los conteos de los botones eran del año entero. Con una
 # obra seleccionada decían «En producción 148» cuando esa obra tenía cero. Ahora se
 # cuentan sobre las filas YA filtradas por obra y cubicador.
 check("los conteos de los botones se calculan sobre las filas ya filtradas",
-      "function pintarEstados(filasCaja)" in DSH and "filasCaja.forEach" in DSH)
-check("...y pintarTablas es quien los dibuja, porque es quien sabe qué hay en la caja",
-      "pintarEstados(todosPg)" in DSH)
+      "function pintarEstados(caja, cont, filasCaja)" in DSH and "filasCaja.forEach" in DSH)
+# Definición del usuario (29-sep): caja 1 = SIN fecha de despacho, el stock disponible de
+# cubicaciones de la obra; caja 2 = los que YA tienen fecha. Y cada una con SUS botones:
+# tienen estados distintos y tocar una no debe cambiar la otra.
+check("...y cada caja lleva sus propios botones",
+      "pintarEstados('pp'" in DSH and "pintarEstados('pg'" in DSH)
+check("...con su propia lista de ocultos, para que no se pisen",
+      "OCULTOS = { pp: [d], pg: [d] }" in DSH and "OCULTOS[caja]" in DSH)
+check("el stock es el que NO tiene fecha de despacho",
+      "STOCK DISPONIBLE" in DSH and "sinFecha(base)" in DSH)
 check("sólo se ofrecen los estados presentes en ESA caja (por eso «Sin terminar» ya no sale)",
       "Object.keys(conteo).sort()" in DSH)
 check("los botones se arman ANTES de aplicar el estado, si no no podrían contar lo oculto",
-      DSH.index("pintarEstados(todosPg)") < DSH.index("todosPg.filter(visiblePorEstado)"))
+      DSH.index("pintarEstados('pg'") < DSH.index("todosPg.filter("))
 # Todos del mismo color: uno por estado se leía como etiqueta de categoría, no como
 # interruptor. Encendido = verde; apagado = gris y tachado.
 check("todos los botones van del mismo color", ".dshest button{" in HTM
@@ -470,7 +477,9 @@ check("...y lo apagado se ve tachado, no ausente", "line-through" in HTM)
 check("si la caja queda vacía por el estado, se dice cuántos hay ocultos",
       "ocultos por el filtro de estado" in DSH)
 check("la lista de obras también respeta el estado apagado",
-      "!f.promesa || visiblePorEstado(f)" in DSH)
+      "filtrar(todasLasFilas(), salvo).filter(visiblePorEstado)" in DSH)
+check("las dos cajas avisan cuántos códigos esconde el filtro de estado",
+      DSH.count("todosPp.length - pp.length") == 1 and DSH.count("todosPg.length - pg.length") == 1)
 check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
       "ORDER BY promised_date DESC NULLS LAST" in PROG)
 # Las FILAS no se reordenan en el front (el backend ya las mandó por fecha DESC); lo

@@ -39,16 +39,22 @@
 
       <div class="dshtablas">
         <div class="card dshcard">
-          <div class="dshth">CUBICACIÓN EN ASA POR PROGRAMAR
-            <span class="muted" id="dshPpN"></span></div>
+          <!-- El STOCK DISPONIBLE de cubicaciones de la obra: hechas, pero sin fecha de
+               despacho porque no están listas o el cliente no las ha pedido. -->
+          <div class="dshth" title="Códigos de control sin fecha de despacho: el stock disponible de cubicaciones">CUBICACIÓN EN ASA POR PROGRAMAR
+            <span class="muted" id="dshPpN"></span>
+            <div style="flex:1"></div>
+            <span class="dshest" id="dshEstadosPp"></span>
+          </div>
           <div class="dshbd"><table class="dsht" id="dshPorProgramar"></table></div>
         </div>
         <div class="card dshcard">
-          <div class="dshth">PROGRAMADOS <span class="muted" id="dshPgN"></span>
+          <!-- Los que YA tienen fecha de despacho. Apagar «Despachados» deja a la vista lo
+               PRÓXIMO QUE SE ENVÍA, que es lo que se quiere mirar: todo lo que ya está en
+               obra tuvo fecha alguna vez. Cada botón lleva su conteo aunque esté apagado,
+               para que nunca se esconda nada en silencio. -->
+          <div class="dshth" title="Códigos de control con fecha de despacho comprometida">PROGRAMADOS <span class="muted" id="dshPgN"></span>
             <div style="flex:1"></div>
-            <!-- Qué estados se ven lo decide el usuario. Cada botón lleva su conteo aunque
-                 esté apagado: si no, apagar «Despachados» escondería 4.297 filas en
-                 silencio y los totales no cuadrarían con el Power BI sin explicación. -->
             <span class="dshest" id="dshEstados"></span>
           </div>
           <div class="dshbd"><table class="dsht" id="dshProgramados"></table></div>

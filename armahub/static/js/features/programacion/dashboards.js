@@ -14,11 +14,22 @@
   'use strict';
 
   var DATA = null, ANIO = null, MESES = [], OBRAS = [], PERSONAS = [], BUSCA = '';
-  // Los estados del pedido en aSa. Cuáles se ven lo decide el usuario con los botones de
-  // la caja de PROGRAMADOS. `OCULTOS` son los que están apagados —se guarda lo apagado y
-  // no lo encendido, para que un estado nuevo que aparezca en aSa se vea por defecto en
-  // vez de quedar invisible sin que nadie se entere.
-  var OCULTOS = null;   // null = todavía no se sabe; lo fija la primera carga
+  // QUÉ ES CADA CAJA (definición del usuario, 29-sep):
+  //
+  //   pp · POR PROGRAMAR = los códigos SIN fecha de despacho. Es el STOCK DISPONIBLE de
+  //        cubicaciones de la obra: están hechos, pero o no están listos o el cliente
+  //        todavía no los pidió.
+  //   pg · PROGRAMADOS   = los que YA tienen fecha de despacho.
+  //
+  // Los botones de estado son el «bonus track»: en programados, apagar los despachados
+  // deja a la vista LO PRÓXIMO QUE SE ENVÍA —que es lo que se quiere mirar, porque todo
+  // lo que ya está en obra tuvo fecha— y «en producción» avisa qué se está fabricando.
+  //
+  // Cada caja lleva SUS botones y su propia lista de ocultos: las dos tienen estados
+  // distintos y tocar una no debe cambiar la otra. Se guarda lo APAGADO y no lo
+  // encendido, para que un estado nuevo que aparezca en aSa se vea por defecto en vez de
+  // quedar invisible sin que nadie se entere.
+  var OCULTOS = null;   // {pp: [...], pg: [...]}; null = lo fija la primera carga
   var MESN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   // aSa devuelve 18 «DetailPerson», entre ellos aSaAdmin, EugenioZ y gente que ya no
   // cubica. El usuario quiere ver SÓLO su equipo: elige cuáles se muestran como chips y
@@ -109,7 +120,10 @@
       ANIO = DATA.anio;
       // El único que arranca apagado es el despachado, y sólo la primera vez: después
       // manda lo que el usuario haya tocado.
-      if (OCULTOS === null) OCULTOS = [DATA.estado_apagado_por_defecto];
+      if (OCULTOS === null) {
+        var d = DATA.estado_apagado_por_defecto;
+        OCULTOS = { pp: [d], pg: [d] };
+      }
     } catch (e) { aviso(e.message); mostrarVacio(e.message); return; }
     pintarTodo();
   }
@@ -145,13 +159,12 @@
   // Un botón por estado, con SU CONTEO YA FILTRADO por obra y cubicador. Ese detalle es
   // el que importa: antes los conteos eran del año entero y mentían —con una obra
   // seleccionada decían «En producción 148» cuando esa obra tenía cero—. Y sólo se
-  // ofrecen los estados que de verdad aparecen en ESTA caja: «Sin terminar» nunca tiene
-  // fecha de despacho, así que el botón no pertenecía acá y ya no sale.
+  // ofrecen los estados que de verdad aparecen en ESA caja: por eso «Sin terminar» sale
+  // en el stock, donde sí hay, y no en programados, donde nunca hubo.
   //
   // Todos los botones van del MISMO color. Uno por estado confundía: parecía una etiqueta
   // de categoría y no un interruptor. Encendido = se ve; apagado = gris y tachado.
-  function pintarEstados(filasCaja) {
-    var cont = $('dshEstados');
+  function pintarEstados(caja, cont, filasCaja) {
     var conteo = {};
     filasCaja.forEach(function (f) {
       var e = f.estado || '?';
@@ -160,15 +173,15 @@
     });
     cont.innerHTML = '';
     Object.keys(conteo).sort().forEach(function (e) {
-      var c = conteo[e], oculto = OCULTOS.indexOf(e) !== -1;
+      var c = conteo[e], oculto = OCULTOS[caja].indexOf(e) !== -1;
       var b = document.createElement('button');
       b.className = oculto ? 'off' : '';
       b.innerHTML = esc((DATA.nombres_estado || {})[e] || e) + ' <b>' + c.cc + '</b>';
       b.title = (oculto ? 'Oculto. Clic para mostrar: ' : 'Se muestra. Clic para quitar: ')
                 + c.cc + ' códigos · ' + kg(c.kg) + ' kg';
       b.addEventListener('click', function () {
-        var i = OCULTOS.indexOf(e);
-        if (i === -1) OCULTOS.push(e); else OCULTOS.splice(i, 1);
+        var i = OCULTOS[caja].indexOf(e);
+        if (i === -1) OCULTOS[caja].push(e); else OCULTOS[caja].splice(i, 1);
         pintarObras(); pintarTablas();
       });
       cont.appendChild(b);
@@ -243,7 +256,9 @@
   function conFecha(filas) { return filas.filter(function (f) { return f.promesa; }); }
   function sinFecha(filas) { return filas.filter(function (f) { return !f.promesa; }); }
   // El filtro de estado sólo aplica a PROGRAMADOS, que es donde están los botones.
-  function visiblePorEstado(f) { return OCULTOS.indexOf(f.estado) === -1; }
+  function visiblePorEstado(f, caja) {
+    return OCULTOS[caja || (f.promesa ? 'pg' : 'pp')].indexOf(f.estado) === -1;
+  }
 
   function filtrar(filas, salvo) {
     return filas.filter(function (f) {
@@ -258,9 +273,7 @@
     // PROGRAMADOS sólo los estados encendidos. Si no, la lista ofrecería obras que al
     // marcarlas dejan las dos cajas vacías.
     var vistos = {};
-    var base = filtrar(todasLasFilas(), salvo).filter(function (f) {
-      return !f.promesa || visiblePorEstado(f);
-    });
+    var base = filtrar(todasLasFilas(), salvo).filter(visiblePorEstado);
     base.forEach(function (f) { if (f[campo]) vistos[f[campo]] = 1; });
     elegidos.forEach(function (v) { vistos[v] = 1; });
     return Object.keys(vistos).sort();
@@ -326,13 +339,14 @@
   function pintarTablas() {
     // Sin `salvo`: las tablas SÍ aplican todos los filtros a la vez.
     var base = filtrar(todasLasFilas());
-    var pp = sinFecha(base);
+    var todosPp = sinFecha(base), todosPg = conFecha(base);
     // Los botones se arman ANTES de aplicar el estado: tienen que contar también lo que
     // está apagado, que es justamente lo que dicen.
-    var todosPg = conFecha(base);
-    pintarEstados(todosPg);
-    var pg = todosPg.filter(visiblePorEstado);
-    var tp = tabla($('dshPorProgramar'), pp, false);
+    pintarEstados('pp', $('dshEstadosPp'), todosPp);
+    pintarEstados('pg', $('dshEstados'), todosPg);
+    var pp = todosPp.filter(function (f) { return visiblePorEstado(f, 'pp'); });
+    var pg = todosPg.filter(function (f) { return visiblePorEstado(f, 'pg'); });
+    var tp = tabla($('dshPorProgramar'), pp, false, todosPp.length - pp.length);
     var tg = tabla($('dshProgramados'), pg, true, todosPg.length - pg.length);
     $('dshPpN').innerHTML = resumen(pp.length, tp);
     $('dshPgN').innerHTML = resumen(pg.length, tg);
