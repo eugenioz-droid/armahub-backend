@@ -54,6 +54,12 @@ console.log('TEST: dashboard de aSa (ejecutado, no leído)');
 check('el archivo carga y expone sus reglas para probarlas', !!T);
 if (!T) { console.log('\nFALLOS: 1'); process.exit(1); }
 
+// Qué estados se pueden encender y apagar lo manda el backend. Acá se fija a mano lo
+// mismo que manda en producción: sólo `Processed` y `Shipped`, que son los dos botones
+// que pidió el usuario. Un estado sin botón se ve siempre — si se pudiera ocultar,
+// quedaría escondido sin nada en pantalla para volver a encenderlo.
+T.conBoton(['Processed', 'Shipped']);
+
 // ── 1. En qué caja cae cada fila ────────────────────────────────────────────
 // La regla la decide el BACKEND y viaja en `programado`. El front no la recalcula: si lo
 // hiciera, habría dos verdades. Sale del estado de planta de aSa (Scheduled/Confirmed),
@@ -98,6 +104,14 @@ check('apagar un estado en PROGRAMADOS no lo apaga en el stock',
       T.visible(unoPp) === true && T.visible(unoPg) === false);
 T.ocultos({ pp: ['Shipped'], pg: [] });
 check('y al revés', T.visible(unoPp) === false && T.visible(unoPg) === true);
+
+check('un estado SIN botón se ve siempre, aunque esté en la lista de ocultos',
+      (function () {
+        T.conBoton(['Processed', 'Shipped']);
+        T.ocultos({ pp: ['Open'], pg: ['Open'], cub: [] });
+        return T.visible({ estado: 'Open', programado: false }) === true;
+      })());
+T.conBoton(['Processed', 'Shipped']);
 
 // ── 4. Separar las dos cajas ────────────────────────────────────────────────
 console.log('\n4. conFecha / sinFecha');

@@ -138,6 +138,7 @@
       DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
       if (!DATA) return;
       ANIO = DATA.anio;
+      CON_BOTON = DATA.estados_con_boton || [];
       // El único que arranca apagado es el despachado, y sólo la primera vez: después
       // manda lo que el usuario haya tocado.
       if (OCULTOS === null) {
@@ -194,7 +195,10 @@
       conteo[e].cc++; conteo[e].kg += f.kg;
     });
     cont.innerHTML = '';
-    Object.keys(conteo).sort().forEach(function (e) {
+    // SÓLO los estados con botón. `Open` no lo tiene a propósito: es la base de la caja,
+    // no algo que uno quiera sacar. Antes se generaba un botón por cada estado presente
+    // y aparecían filtros que nadie pidió ni necesita.
+    Object.keys(conteo).sort().filter(conBoton).forEach(function (e) {
       var c = conteo[e], oculto = OCULTOS[caja].indexOf(e) !== -1;
       var b = document.createElement('button');
       b.className = oculto ? 'off' : '';
@@ -206,7 +210,7 @@
       b.addEventListener('click', function (ev) {
         // Misma regla que el resto, pero lo que se guarda es lo OCULTO: «ver sólo éste»
         // se escribe como «ocultar todos los demás».
-        var todos = Object.keys(conteo);
+        var todos = Object.keys(conteo).filter(function (x) { return conBoton(x); });
         if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
           var i = OCULTOS[caja].indexOf(e);
           if (i === -1) OCULTOS[caja].push(e); else OCULTOS[caja].splice(i, 1);
@@ -328,8 +332,15 @@
   // En «Programado Cubicador» la tabla es una sola, así que todas las filas caen en
   // la misma caja; en los otros sub-tabs depende de si está agendada o no.
   function cajaDe(f) { return SUB === 'cub' ? 'cub' : (programado(f) ? 'pg' : 'pp'); }
-  function visible(f) { return OCULTOS[cajaDe(f)].indexOf(f.estado) === -1; }
-  function visibleEn(caja, f) { return OCULTOS[caja].indexOf(f.estado) === -1; }
+  // Qué estados se pueden encender y apagar. Lo dice el backend, pero vive en su propia
+  // variable y no se lee de DATA: así la regla de visibilidad no depende de si la
+  // respuesta ya llegó, y se puede probar sin servidor.
+  var CON_BOTON = [];
+  function conBoton(estado) { return CON_BOTON.indexOf(estado) !== -1; }
+  // Un estado SIN botón no se puede ocultar: quedaría escondido sin nada en pantalla
+  // para volver a encenderlo.
+  function visible(f) { return !conBoton(f.estado) || OCULTOS[cajaDe(f)].indexOf(f.estado) === -1; }
+  function visibleEn(caja, f) { return !conBoton(f.estado) || OCULTOS[caja].indexOf(f.estado) === -1; }
 
   function filtrar(filas, salvo) {
     return filas.filter(function (f) {
@@ -530,18 +541,27 @@
     // obra —lo único que de verdad se lee— quedaba cortado mientras seis columnas de
     // números nadaban en espacio.
     var par = function (c, clase) {
-      return '<th class="ord num g ' + clase + '" data-ord="' + c + '" style="width:5%">CC' + fl(c) + '</th>' +
-             '<th class="ord num ' + clase + '" data-ord="' + c + 'kg" style="width:11%">Kilos' + fl(c + 'kg') + '</th>';
+      return '<th class="ord num g ' + clase + '" data-ord="' + c + '">CC' + fl(c) + '</th>' +
+             '<th class="ord num ' + clase + '" data-ord="' + c + 'kg">Kilos' + fl(c + 'kg') + '</th>';
     };
-    var html = '<thead>' +
+    // Los anchos van en <colgroup>, no en los <th>: con `table-layout:fixed` el navegador
+    // reparte las columnas con la PRIMERA fila del encabezado, y acá la primera son los
+    // títulos agrupados (STOCK / PROGRAMADO / DESPACHADO), que no llevan ancho. Por eso
+    // los anchos del segundo piso no se aplicaban y la obra seguía cortada.
+    var html = '<colgroup>' +
+      '<col style="width:40%">' +
+      '<col style="width:5%"><col style="width:11%">' +
+      '<col style="width:5%"><col style="width:11%">' +
+      '<col style="width:5%"><col style="width:11%">' +
+      '<col style="width:12%"></colgroup><thead>' +
       '<tr><th></th>' +
       '<th colspan="2" class="g st">STOCK</th>' +
       '<th colspan="2" class="g pr">PROGRAMADO</th>' +
       '<th colspan="2" class="g de">DESPACHADO</th>' +
       '<th class="g">Total</th></tr>' +
-      '<tr><th class="ord" data-ord="obra" style="width:42%">Obra' + fl('obra') + '</th>' +
+      '<tr><th class="ord" data-ord="obra">Obra' + fl('obra') + '</th>' +
       par('st', 'st') + par('pr', 'pr') + par('de', 'de') +
-      '<th class="ord num g" data-ord="kg" style="width:10%">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
+      '<th class="ord num g" data-ord="kg">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
     var celda = function (n, k, clase) {
       // Un cero se escribe en gris claro: seis columnas de ceros negros compiten con los
       // números que sí importan.
@@ -703,6 +723,7 @@
     conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
     orden: function (v) { if (v) { ORDEN = v; } return ORDEN; },
     alternar: alternar,
+    conBoton: function (v) { if (v) { CON_BOTON = v; } return CON_BOTON; },
     ocultos: function (v) { if (v) { OCULTOS = v; } return OCULTOS; }
   };
 

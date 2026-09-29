@@ -636,6 +636,12 @@ ESTADO_NUNCA = "Cancelled"
 # pase a producción puede no tener fecha de scheduling». La tenía: lo que faltaba era
 # mirar la programación de planta en vez del pedido.
 ESTADOS_PLANTA_PROGRAMADO = ("Scheduled", "Confirmed")
+# LOS ÚNICOS DOS ESTADOS CON BOTÓN, y son los que el usuario pidió: poder sacar de la
+# vista lo que ya está en producción y lo que ya se despachó. Generar un botón por cada
+# estado presente fue una generalización mía que nadie pidió, y metía botones que no
+# significan nada como filtro —`Open` es la base de la caja, no algo que uno quiera
+# quitar—. Lo que no tiene botón se ve siempre.
+ESTADOS_CON_BOTON = ("Processed", "Shipped")
 # El único que arranca apagado. En 2026 son 4.288 de 4.557 con fecha de despacho —el 94%—
 # y si se muestran entierran a los 269 que de verdad están por salir. Los demás estados
 # arrancan encendidos, y los botones los arma el front con lo que de verdad hay en la caja.
@@ -799,6 +805,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "anio": anio, "meses": lista_meses,
         "anios": anios, "personas": personas,
         "estado_apagado_por_defecto": ESTADO_APAGADO_POR_DEFECTO,
+        "estados_con_boton": list(ESTADOS_CON_BOTON),
         "estados_planta_programado": list(ESTADOS_PLANTA_PROGRAMADO),
         "nombres_estado": NOMBRES_ESTADO,
         "explica_estado": EXPLICA_ESTADO,
