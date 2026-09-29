@@ -345,7 +345,11 @@ check("...y ya no queda el RETURNING (xmax = 0) fila por fila",
 check("la fecha comprometida se muestra dd/mm", "p[2] + '/' + p[1]" in DSH)
 check("los kilos van con formato es-CL y 2 decimales",
       "'es-CL'" in DSH and "minimumFractionDigits: 2" in DSH)
-check("las dos tablas llevan fila de Total", "tfoot" in DSH)
+# El total va en el ENCABEZADO de la caja, no al pie: con 566 filas, un total al fondo
+# obliga a scrollear hasta abajo para ver el número que más se mira.
+check("el total de kilos va en la primera línea de la caja, siempre visible",
+      "function resumen(" in DSH and "' kg</b>'" in DSH)
+check("...y ya no hay fila de Total al pie que obligue a bajar", "tfoot" not in DSH)
 check("los títulos son los del informe",
       "POR PROGRAMAR" in HTM and "PROGRAMADOS" in HTM)
 check("están los cuatro segmentadores: año, mes, obra y cubicador",
@@ -393,8 +397,14 @@ check("las dos cajas tienen el mismo ancho (ambas ocupan la columna entera)",
       ".dshcard{" in HTM and "width:100%" in HTM.split(".dshcard{")[1].split("}")[0])
 # El alto en vh: con altos fijos la segunda caja quedaba fuera del monitor.
 check("el alto de las tablas se mide contra la pantalla (vh), no en px fijos",
-      ".dshbd{max-height:31vh" in HTM)
+      ".dshbd{height:31vh" in HTM)
 check("...y las dos juntas caben (2 x 31vh < 100vh)", 31 * 2 < 100)
+# `height`, no `max-height`: con max-height la caja de 269 filas quedaba más baja que la
+# de 566 y las dos no se veían del mismo tamaño.
+check("...y es height, para que las dos midan exactamente lo mismo",
+      ".dshbd{max-height" not in HTM)
+check("las columnas laterales llegan hasta abajo de las dos cajas (stretch)",
+      "align-items:stretch" in HTM and ".dshlargo{flex:1" in HTM)
 check("el tab está cableado en app.html", "prg_dashboards" in APP and "dashboards.js" in APP)
 check("y registrado en el shell con su loader",
       "prg_dashboards: 'loadPrgDashboards'" in SHELL)

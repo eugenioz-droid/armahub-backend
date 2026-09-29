@@ -66,13 +66,15 @@
 </div>
 
 <style>
-  .dshwrap{display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;}
+  /* `stretch` es lo que hace que las dos columnas laterales lleguen hasta abajo de las
+     dos cajas centrales en vez de terminar donde termina su contenido. */
+  .dshwrap{display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;}
   /* Las dos columnas laterales son de ancho FIJO: si se encogieran, los chips saltarían
      de línea al cambiar de año y la pantalla bailaría. El centro se lleva el resto. */
   .dshcol{flex:none; display:flex; flex-direction:column; gap:11px;
           background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
   .dshobras{width:268px;}
-  .dshfiltros{width:228px;}
+  .dshfiltros{width:228px; overflow:auto;}
   .dshbuscar{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px;
              border:1px solid #cfd8dc; border-radius:4px;}
   .dshf{display:flex; flex-direction:column;}
@@ -87,8 +89,9 @@
   .dshchips button:hover{border-color:#c5d3dc}
   .dshchips button.on{background:#8BC34A; border-color:#7cb342; color:#fff}
   .dshlista{min-height:120px; max-height:250px; overflow:auto; border:1px solid #eef1f4; border-radius:5px;}
-  /* La lista de obras es la única que puede crecer: tiene su propia columna. */
-  .dshlargo{max-height:72vh;}
+  /* La lista de obras crece hasta el fondo de la columna, que a su vez llega hasta abajo
+     de las dos cajas: así la barra de obras «cubre» ambas, sin alto fijo que adivinar. */
+  .dshlargo{flex:1; max-height:none; min-height:0;}
   .dshlista label{display:flex; align-items:center; gap:5px; padding:2px 6px; font-size:10.5px;
                   cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .dshlista label:hover{background:#f5f7fa}
@@ -98,22 +101,24 @@
      la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear
      la página — con altos fijos la segunda caía fuera del monitor. */
   .dshtablas{flex:1 1 620px; min-width:0; display:flex; flex-direction:column; gap:12px;}
-  .dshcard{padding:9px 11px; margin:0; width:100%; box-sizing:border-box;}
-  .dshth{font-size:11.5px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:6px;}
+  .dshcard{padding:8px 10px; margin:0; width:100%; box-sizing:border-box;}
+  .dshth{font-size:11px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:5px;}
   .dshth .muted{font-weight:400; letter-spacing:0;}
-  .dshbd{max-height:31vh; min-height:130px; overflow:auto;}
-  .dsht{width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px;
+  /* `height`, no `max-height`: las dos cajas tienen que medir EXACTAMENTE lo mismo
+     aunque una tenga 566 filas y la otra 269. Con max-height, la más corta encogía. */
+  .dshbd{height:31vh; min-height:130px; overflow:auto;}
+  .dsht{width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px;
         font-variant-numeric:tabular-nums;}
   /* El encabezado queda pegado: la tabla se desplaza y sin esto no se sabe qué columna es cuál. */
   .dsht thead th{position:sticky; top:0; background:#fafbfc; z-index:1;
-                 text-align:left; color:#546e7a; font-weight:600; padding:4px 6px;
-                 border-bottom:1px solid #e3e8ef; white-space:nowrap; font-size:10.5px;}
-  .dsht td{padding:3px 6px; border-top:1px solid #f0f2f5; white-space:nowrap;
+                 text-align:left; color:#546e7a; font-weight:600; padding:3px 5px;
+                 border-bottom:1px solid #e3e8ef; white-space:nowrap; font-size:9.5px;}
+  .dsht td{padding:2px 5px; border-top:1px solid #f0f2f5; white-space:nowrap;
            overflow:hidden; text-overflow:ellipsis;}
   .dsht tbody tr:nth-child(even) td{background:#fafbfc}
   .dsht .num{text-align:right}
-  .dsht .cc{font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:#455a64}
+  .dsht .cc{font-family:ui-monospace,Consolas,monospace; font-size:9.5px; color:#455a64}
   .dsht tfoot td{border-top:2px solid #cfd8dc; font-weight:700; color:#263238;
-                 padding:5px 6px; background:#fff; position:sticky; bottom:0;}
-  .dshvacio{color:#90a4ae; font-size:11px; text-align:center; padding:22px 8px;}
+                 padding:4px 5px; background:#fff; position:sticky; bottom:0;}
+  .dshvacio{color:#90a4ae; font-size:10.5px; text-align:center; padding:22px 8px;}
 </style>

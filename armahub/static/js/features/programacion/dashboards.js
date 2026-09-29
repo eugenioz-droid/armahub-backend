@@ -229,20 +229,23 @@
               (conFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
               '<td class="num">' + kg(f.kg) + '</td></tr>';
     });
-    html += '</tbody><tfoot><tr><td>Total</td><td></td><td></td>' +
-            (conFecha ? '<td></td>' : '') +
-            '<td class="num">' + kg(total) + '</td></tr></tfoot>';
-    el.innerHTML = html;
+    // Sin fila de Total al pie: el total vive en el encabezado de la caja, que no se va
+    // con el scroll. Dejarlo abajo obligaba a bajar 566 filas para ver el número.
+    el.innerHTML = html + '</tbody>';
     return total;
   }
 
   function pintarTablas() {
     var pp = filtrar(DATA.por_programar || []);
     var pg = filtrar(DATA.programados || []);
-    tabla($('dshPorProgramar'), pp, false);
-    tabla($('dshProgramados'), pg, true);
-    $('dshPpN').textContent = '· ' + pp.length;
-    $('dshPgN').textContent = '· ' + pg.length;
+    var tp = tabla($('dshPorProgramar'), pp, false);
+    var tg = tabla($('dshProgramados'), pg, true);
+    $('dshPpN').innerHTML = resumen(pp.length, tp);
+    $('dshPgN').innerHTML = resumen(pg.length, tg);
+  }
+
+  function resumen(n, total) {
+    return '· ' + n + ' CC · <b style="color:#33691e">' + kg(total) + ' kg</b>';
   }
 
   // Trae TODOS los años, del más reciente al más antiguo, uno por llamada: el endpoint
