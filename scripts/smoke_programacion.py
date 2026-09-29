@@ -109,8 +109,20 @@ s, d = get("/programacion/asa/reporte")
 check("GET /programacion/asa/reporte SIN parametros -> 200 (era el 422)", s == 200, str(d)[:160])
 s, d = get("/programacion/asa/reporte", anio=2026, meses="8,9")
 check("GET /programacion/asa/reporte?anio=2026&meses=8,9 -> 200", s == 200, str(d)[:160])
-check("...con las dos listas y sus totales",
-      isinstance(d, dict) and all(k in d for k in ("por_programar", "programados", "kg_por_programar", "kg_programados")))
+# El reporte manda UNA lista con todas las filas del periodo; separarlas en las dos cajas
+# y filtrar por estado lo hace el front, que es el que sabe que obra y que cubicador tiene
+# marcados el usuario. Antes el estado se filtraba aca y los conteos de los botones salian
+# del ano entero, o sea mentian.
+check("...con las filas del periodo y lo que necesitan los botones",
+      isinstance(d, dict) and all(k in d for k in
+                                  ("filas", "anulados", "nombres_estado",
+                                   "estado_apagado_por_defecto", "anios", "personas")))
+if isinstance(d, dict) and d.get("filas"):
+    f0 = d["filas"][0]
+    check("...y cada fila trae lo que las tablas dibujan",
+          all(k in f0 for k in ("cc", "obra", "descr", "persona", "promesa", "estado", "kg")))
+    check("...sin anulados entre ellas",
+          not any(x.get("estado") == "Cancelled" for x in d["filas"]))
 
 if SYNC:
     print("\n5. Sincronizacion desde aSa (escribe en el espejo)")
