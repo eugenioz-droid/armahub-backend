@@ -842,5 +842,25 @@ check("la ventana de movimiento «Todo» es de verdad todo, en los dos tabs",
 check("asignar USC lee `role`, no `rol` (era un 500 seguro)",
       "SELECT role FROM users WHERE id = %s" in PROG and "SELECT rol FROM users" not in PROG)
 
+# ── 25. Row-Level Security: la API REST de Supabase no ve ninguna tabla ────
+# Supabase avisó (rls_disabled_in_public) y era cierto: 43 tablas abiertas y 602 permisos
+# a `anon`/`authenticated`. La migración 116 cierra todas de una y db.py repite el cierre
+# en cada arranque para las que aparezcan después. ArmaHub entra como `postgres`, que
+# salta RLS (rolbypassrls = true, medido), así que no cambia nada para la app.
+print("\n25. Row-Level Security en public")
+MIG116 = open(os.path.join(ROOT, "armahub", "migrations", "116_rls.sql"), encoding="utf-8").read()
+DB = open(os.path.join(ROOT, "armahub", "db.py"), encoding="utf-8").read()
+check("la migración 116 activa RLS en TODAS las tablas de public, no en una lista",
+      "FROM pg_tables WHERE schemaname = 'public' AND NOT rowsecurity" in MIG116
+      and "ENABLE ROW LEVEL SECURITY" in MIG116)
+check("...y no crea políticas: sin políticas, anon/authenticated no ven nada",
+      "CREATE POLICY" not in MIG116.upper())
+check("db.py repite el cierre en cada arranque, después de las migraciones",
+      "def _cerrar_rls(cur)" in DB and "_run_migrations(cur)\n            _create_indexes(cur)\n"
+      "            # Después de crear todo: ninguna tabla de `public` queda sin RLS.\n"
+      "            _cerrar_rls(cur)" in DB)
+check("...y sólo toca las que están abiertas (normalmente ninguna)",
+      "WHERE schemaname = 'public' AND NOT rowsecurity" in DB)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

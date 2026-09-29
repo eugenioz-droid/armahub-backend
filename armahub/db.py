@@ -1428,6 +1428,23 @@ def _run_migrations(cur) -> int:
     return count
 
 
+def _cerrar_rls(cur) -> int:
+    """Activa Row-Level Security en cualquier tabla de `public` que no la tenga.
+
+    La migración 116 lo hizo una vez; esto lo repite en cada arranque para que una tabla
+    creada por una migración posterior no quede abierta por olvido. Sin políticas, los
+    roles `anon`/`authenticated` de la API REST de Supabase no ven ninguna fila; ArmaHub
+    entra como `postgres`, que tiene BYPASSRLS, y no se entera. Normalmente no hace nada:
+    sólo toca las tablas que aparecen sin RLS. Retorna cuántas cerró."""
+    cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND NOT rowsecurity")
+    tablas = [r[0] for r in cur.fetchall()]
+    for t in tablas:
+        cur.execute('ALTER TABLE public."%s" ENABLE ROW LEVEL SECURITY' % t.replace('"', '""'))
+    if tablas:
+        logger.info("RLS activado en %d tabla(s) que estaban abiertas: %s", len(tablas), ", ".join(tablas))
+    return len(tablas)
+
+
 def _create_indexes(cur) -> None:
     """Crea índices para consultas rápidas (idempotente)."""
     cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_proyecto ON barras (id_proyecto)")
@@ -1453,6 +1470,8 @@ def _init_db_once() -> None:
             _create_base_tables(cur)
             _run_migrations(cur)
             _create_indexes(cur)
+            # Después de crear todo: ninguna tabla de `public` queda sin RLS.
+            _cerrar_rls(cur)
             # Seed del catálogo Armacero (5M.1) — idempotente, tras las migraciones
             # (la 082 crea las tablas). Import local para evitar ciclo con catalogo.py.
             try:

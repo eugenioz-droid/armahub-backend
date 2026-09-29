@@ -78,6 +78,17 @@ print("\n1. Las tablas existen en la base")
 check("asa_obras", tablas[0] is not None)
 check("asa_pedidos (migracion 113)", tablas[1] is not None)
 check("tareas_programacion (migracion 111)", tablas[2] is not None)
+# RLS (migracion 116 + db._cerrar_rls al arrancar): ninguna tabla de public abierta a la
+# API REST de Supabase, y el rol de la app la salta. Se mide DESPUES de arrancar la app,
+# que es cuando corre el cierre.
+with get_conn() as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM pg_tables WHERE schemaname='public' AND NOT rowsecurity")
+        abiertas = cur.fetchone()[0]
+        cur.execute("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        salta = cur.fetchone()[0]
+check("ninguna tabla de public sin RLS (hay %d)" % abiertas, abiertas == 0)
+check("el rol de la app salta RLS (si no, la app dejaria de ver sus tablas)", salta is True)
 
 print("\n2. Tab USC")
 s, d = get("/programacion/obras")
