@@ -821,7 +821,7 @@ check("la tabla es propia, aparte del espejo que se reescribe",
       and "editado_por" in MIG115)
 check("los valores permitidos son los que pidió el usuario",
       'TIPOS_OBRA = ("Cubicación", "Digitación")' in PROG
-      and 'SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS")' in PROG)
+      and 'SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS", "Otros")' in PROG)
 check("...y el backend rechaza cualquier otro",
       "body.tipo not in TIPOS_OBRA" in PROG and "body.segmento not in SEGMENTOS_OBRA" in PROG)
 atr = PROG[PROG.index('@router.get("/programacion/asa/atributos")'):PROG.index('@router.get("/programacion/usc")')]

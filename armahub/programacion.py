@@ -844,7 +844,8 @@ VENTANA_TODO = 1200
 # la tabla se miró si aSa ya lo traía: sus custom fields por obra son USC, Correo_USC,
 # Calculista, Ton_Proyecto y Tipo_Obra (EDIFICACION/INFRAESTRUCTURA/YPS). Ninguno es esto.
 TIPOS_OBRA = ("Cubicación", "Digitación")
-SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS")
+# «Otros» volvió a pedido del usuario: el retail (Sodimac) no es 1&2 ni 4&5 ni YPS.
+SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS", "Otros")
 
 
 @router.get("/programacion/asa/cubicador")
