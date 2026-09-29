@@ -382,7 +382,9 @@
       return;
     }
     $('prgAsaRes').innerHTML = filas.map(function (o) {
-      var sub = [o.asa_job_id, o.cliente].filter(Boolean).join(' · ');
+      // El estado va en la línea de abajo porque el espejo trae las 677 obras, no sólo
+      // las abiertas: sin verlo, adoptar una obra ya finalizada sería un accidente.
+      var sub = [o.asa_job_id, o.cliente, o.estado].filter(Boolean).join(' · ');
       return '<div class="prgar">' +
         '<div class="n"><b>' + esc(o.nombre || o.asa_job_id) + '</b><small>' + esc(sub) + '</small></div>' +
         (o.adoptada

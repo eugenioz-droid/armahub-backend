@@ -211,14 +211,17 @@
       return 0;
     }
     var total = filas.reduce(function (a, f) { return a + f.kg; }, 0);
-    // Anchos FIJOS en px: la tabla mide lo que miden sus columnas y la caja se ajusta a la
-    // tabla. Con anchos en % las cajas se estiraban a toda la pantalla con cuatro columnas
-    // y la mayor parte era aire.
-    el.className = 'dsht ' + (conFecha ? 'pg' : 'pp');
-    var html = '<thead><tr><th style="width:250px">JobName</th><th style="width:230px">Descr</th>' +
-               '<th style="width:62px">Control Code</th>' +
-               (conFecha ? '<th style="width:58px">Promised</th>' : '') +
-               '<th class="num" style="width:104px">Sum of TotalKgs</th></tr></thead><tbody>';
+    // Anchos en %: las dos cajas ocupan la misma columna, así que las dos tablas miden lo
+    // mismo aunque PROGRAMADOS tenga una columna más. Los porcentajes de cada variante
+    // suman 100 y salen de las dos columnas angostas (código y fecha), que son de largo
+    // conocido; lo que sobra se reparte entre obra y descripción.
+    var html = conFecha
+      ? '<thead><tr><th style="width:29%">JobName</th><th style="width:33%">Descr</th>' +
+        '<th style="width:11%">Control Code</th><th style="width:10%">Promised</th>' +
+        '<th class="num" style="width:17%">Sum of TotalKgs</th></tr></thead><tbody>'
+      : '<thead><tr><th style="width:33%">JobName</th><th style="width:36%">Descr</th>' +
+        '<th style="width:12%">Control Code</th>' +
+        '<th class="num" style="width:19%">Sum of TotalKgs</th></tr></thead><tbody>';
     filas.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +

@@ -262,10 +262,14 @@ for malo in ("Contact", "Phone", "Email", "Addr", "ShipTo"):
     check("...y ninguno es %s*" % malo, malo not in campos)
 check("el $select se aplica de verdad en la consulta", "select=_SELECT_OBRAS if es_obras" in PROG)
 
-# 376 obras abiertas de entre 600 y 1.400 totales: el filtro lo hace aSa, no nosotros.
-check("sólo se traen las obras ABIERTAS", "_FILTRO_OBRAS" in PROG and "JobStatusID eq 'O'" in PROG)
-check("...filtrando en el servidor (OData), no en Python", "filtro=(None if (todas" in PROG)
-check("...pero se puede pedir todas si alguna vez hace falta", "todas: bool = False" in PROG)
+# Se traen las 677 obras, no sólo las 376 abiertas: el usuario tiene que poder programar
+# sobre una obra que aSa ya dio por terminada, y 677 filas no son nada para Supabase.
+check("por defecto se traen TODAS las obras, no sólo las abiertas",
+      "solo_abiertas: bool = False" in PROG
+      and "filtro=(_FILTRO_SOLO_ABIERTAS if (solo_abiertas and es_obras) else None)" in PROG)
+check("...y el tope de la paginación alcanza para las 677", "maximo=3000 if es_obras" in PROG)
+check("el estado se guarda y se muestra, para no adoptar una finalizada por accidente",
+      "o.estado" in JS)
 
 # ── 13. Desplegar no debe exigir una variable VACÍA ─────────────────────────
 # La configuración real de aSa necesita el prefijo vacío. Si eso dependiera de crear
@@ -379,10 +383,18 @@ check("...y sin elección se muestran todos (primer uso)", "DET.length ? todas.f
 check("el botón trae todos los años desde 2021, del más nuevo al más viejo",
       "PRIMER_ANIO = 2021" in DSH and "anio >= PRIMER_ANIO; anio--" in DSH)
 check("...y si un año falla, sigue con el resto y lo dice", "fallidos.push(anio" in DSH)
-# Anchos fijos: la caja mide lo que mide la tabla, no la pantalla.
-check("las tablas tienen anchos fijos por columna (px, no %)",
-      'style="width:250px"' in DSH and 'width:30%' not in DSH)
-check("...y la caja se ajusta a la tabla en vez de estirarse", "flex:0 0 auto" in HTM and ".dsht.pp{width:" in HTM)
+# Tres columnas: obra a la izquierda (nombres largos), las dos tablas al centro con el
+# MISMO ancho, y los segmentadores cortos a la derecha.
+check("la obra va en su propia columna, a la izquierda", ".dshobras" in HTM
+      and HTM.index('class="dshcol dshobras"') < HTM.index('class="dshtablas"'))
+check("los segmentadores van a la derecha, después de las tablas",
+      HTM.index('class="dshtablas"') < HTM.index('class="dshcol dshfiltros"'))
+check("las dos cajas tienen el mismo ancho (ambas ocupan la columna entera)",
+      ".dshcard{" in HTM and "width:100%" in HTM.split(".dshcard{")[1].split("}")[0])
+# El alto en vh: con altos fijos la segunda caja quedaba fuera del monitor.
+check("el alto de las tablas se mide contra la pantalla (vh), no en px fijos",
+      ".dshbd{max-height:31vh" in HTM)
+check("...y las dos juntas caben (2 x 31vh < 100vh)", 31 * 2 < 100)
 check("el tab está cableado en app.html", "prg_dashboards" in APP and "dashboards.js" in APP)
 check("y registrado en el shell con su loader",
       "prg_dashboards: 'loadPrgDashboards'" in SHELL)

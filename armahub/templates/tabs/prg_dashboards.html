@@ -16,35 +16,17 @@
 
     <div id="dshAviso" class="prgaviso" style="margin-bottom:10px;"></div>
 
+    <!-- Tres columnas: la obra a la izquierda (es la que más se usa y la que más ancho
+         necesita, los nombres son largos), las dos tablas al centro y los segmentadores
+         cortos a la derecha. -->
     <div class="dshwrap">
-      <!-- Segmentadores, a la izquierda como en el informe -->
-      <div class="dshfiltros">
-        <div class="dshf">
-          <div class="dshfh">Año</div>
-          <div id="dshAnios" class="dshchips"></div>
-        </div>
-        <div class="dshf">
-          <div class="dshfh">Mes <span class="muted" style="font-weight:400">· por fecha de pedido</span></div>
-          <div id="dshMeses" class="dshchips"></div>
-        </div>
-        <div class="dshf" style="flex:1; min-height:0; display:flex; flex-direction:column;">
-          <div class="dshfh">Obra</div>
-          <input type="text" id="dshBuscaObra" placeholder="Buscar…"
-                 style="width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px; border:1px solid #cfd8dc; border-radius:4px; margin-bottom:5px;">
-          <div id="dshObras" class="dshlista"></div>
-        </div>
-        <div class="dshf">
-          <div class="dshfh">Cubicador <span class="muted" style="font-weight:400">· en aSa</span>
-            <div style="flex:1"></div>
-            <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
-          </div>
-          <!-- aSa devuelve 18 DetailPerson; el usuario elige cuáles ve como chips. -->
-          <div id="dshDetLista" class="dshlista" style="display:none; min-height:0; max-height:190px; margin-bottom:5px;"></div>
-          <div id="dshPersonas" class="dshchips"></div>
-        </div>
+
+      <div class="dshcol dshobras">
+        <div class="dshfh">Obra</div>
+        <input type="text" id="dshBuscaObra" placeholder="Buscar…" class="dshbuscar">
+        <div id="dshObras" class="dshlista dshlargo"></div>
       </div>
 
-      <!-- Las dos tablas -->
       <div class="dshtablas">
         <div class="card dshcard">
           <div class="dshth">CUBICACIÓN EN ASA POR PROGRAMAR
@@ -56,17 +38,43 @@
           <div class="dshbd"><table class="dsht" id="dshProgramados"></table></div>
         </div>
       </div>
+
+      <div class="dshcol dshfiltros">
+        <div class="dshf">
+          <div class="dshfh">Año</div>
+          <div id="dshAnios" class="dshchips"></div>
+        </div>
+        <div class="dshf">
+          <div class="dshfh">Mes <span class="muted" style="font-weight:400">· por fecha de pedido</span></div>
+          <div id="dshMeses" class="dshchips"></div>
+        </div>
+        <div class="dshf">
+          <div class="dshfh">Cubicador <span class="muted" style="font-weight:400">· en aSa</span>
+            <div style="flex:1"></div>
+            <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
+          </div>
+          <!-- aSa devuelve 45 DetailPerson en la historia completa, muchos son correos de
+               gente que ya no cubica. El usuario elige cuáles ve como chips. -->
+          <div id="dshDetLista" class="dshlista" style="display:none; max-height:34vh; margin-bottom:5px;"></div>
+          <div id="dshPersonas" class="dshchips"></div>
+        </div>
+      </div>
+
     </div>
 
   </div>
 </div>
 
 <style>
-  .dshwrap{display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;}
-  /* La columna de filtros es fija: si se encogiera, los chips saltarían de línea al
-     cambiar de año y la pantalla bailaría. */
-  .dshfiltros{width:236px; flex:none; display:flex; flex-direction:column; gap:11px;
-              background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
+  .dshwrap{display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;}
+  /* Las dos columnas laterales son de ancho FIJO: si se encogieran, los chips saltarían
+     de línea al cambiar de año y la pantalla bailaría. El centro se lleva el resto. */
+  .dshcol{flex:none; display:flex; flex-direction:column; gap:11px;
+          background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
+  .dshobras{width:268px;}
+  .dshfiltros{width:228px;}
+  .dshbuscar{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px;
+             border:1px solid #cfd8dc; border-radius:4px;}
   .dshf{display:flex; flex-direction:column;}
   .dshfh{font-size:10.5px; font-weight:700; color:#546e7a; margin-bottom:5px; letter-spacing:.2px;
          display:flex; align-items:center; gap:5px;}
@@ -78,22 +86,24 @@
                    border:1px solid #dfe5ea; background:#f7f9fa; color:#607d8b;}
   .dshchips button:hover{border-color:#c5d3dc}
   .dshchips button.on{background:#8BC34A; border-color:#7cb342; color:#fff}
-  .dshlista{flex:1; min-height:120px; max-height:250px; overflow:auto; border:1px solid #eef1f4; border-radius:5px;}
+  .dshlista{min-height:120px; max-height:250px; overflow:auto; border:1px solid #eef1f4; border-radius:5px;}
+  /* La lista de obras es la única que puede crecer: tiene su propia columna. */
+  .dshlargo{max-height:72vh;}
   .dshlista label{display:flex; align-items:center; gap:5px; padding:2px 6px; font-size:10.5px;
                   cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .dshlista label:hover{background:#f5f7fa}
   .dshlista input{margin:0; flex:none}
 
-  /* Las cajas miden lo que mide su tabla (anchos fijos por columna, en dashboards.js) y
-     se ponen una al lado de la otra si caben, una bajo la otra si no. Antes se estiraban
-     a toda la pantalla con cuatro columnas y la mayor parte era aire. */
-  .dshtablas{flex:1 1 660px; min-width:0; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start;}
-  .dshcard{padding:9px 11px; margin:0; flex:0 0 auto;}
+  /* Las dos cajas centrales, del MISMO ancho: ambas ocupan la columna entera, una sobre
+     la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear
+     la página — con altos fijos la segunda caía fuera del monitor. */
+  .dshtablas{flex:1 1 620px; min-width:0; display:flex; flex-direction:column; gap:12px;}
+  .dshcard{padding:9px 11px; margin:0; width:100%; box-sizing:border-box;}
   .dshth{font-size:11.5px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:6px;}
   .dshth .muted{font-weight:400; letter-spacing:0;}
-  .dshbd{max-height:560px; overflow:auto;}
-  .dsht{border-collapse:collapse; table-layout:fixed; font-size:11px; font-variant-numeric:tabular-nums;}
-  .dsht.pp{width:660px} .dsht.pg{width:720px}
+  .dshbd{max-height:31vh; min-height:130px; overflow:auto;}
+  .dsht{width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px;
+        font-variant-numeric:tabular-nums;}
   /* El encabezado queda pegado: la tabla se desplaza y sin esto no se sabe qué columna es cuál. */
   .dsht thead th{position:sticky; top:0; background:#fafbfc; z-index:1;
                  text-align:left; color:#546e7a; font-weight:600; padding:4px 6px;
