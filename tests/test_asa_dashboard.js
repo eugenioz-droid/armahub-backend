@@ -188,5 +188,49 @@ check('el buscador filtra por descripción', buscar('elev').length === 2);
 check('...y también por código', buscar('b1').length === 1);
 check('...y sin texto no filtra nada', buscar('').length === filas.length);
 
+// ── 8. Cómo se comportan TODOS los filtros ─────────────────────────────────
+// Antes el clic era aditivo y había que acordarse de desmarcar lo anterior. El caso
+// normal es mirar una cosa a la vez, así que: clic deja sólo ése, Ctrl+clic suma, y
+// clic sobre el único elegido lo suelta. Vale igual para meses, personas y obras — un
+// filtro que se comporta distinto según dónde esté es peor que cualquiera de las dos.
+console.log('\n8. Los filtros: clic = sólo ése, Ctrl+clic = sumar');
+const CLIC = {};
+const CTRL = { ctrlKey: true };
+check('clic sobre nada elegido deja sólo ése',
+      JSON.stringify(T.alternar([], 'a', CLIC)) === '["a"]');
+check('clic sobre otro REEMPLAZA, no suma',
+      JSON.stringify(T.alternar(['a'], 'b', CLIC)) === '["b"]');
+check('clic sobre el único elegido lo suelta (vuelven todos)',
+      JSON.stringify(T.alternar(['a'], 'a', CLIC)) === '[]');
+check('Ctrl+clic suma sin tocar el resto',
+      JSON.stringify(T.alternar(['a'], 'b', CTRL)) === '["a","b"]');
+check('Ctrl+clic sobre uno elegido lo quita',
+      JSON.stringify(T.alternar(['a', 'b'], 'a', CTRL)) === '["b"]');
+check('con varios elegidos, el clic simple deja sólo el tocado',
+      JSON.stringify(T.alternar(['a', 'b', 'c'], 'b', CLIC)) === '["b"]');
+check('Cmd+clic (Mac) hace lo mismo que Ctrl',
+      JSON.stringify(T.alternar(['a'], 'b', { metaKey: true })) === '["a","b"]');
+
+// ── 9. Los tres estados de «Programado Cubicador» ──────────────────────────
+// Que sean EXCLUYENTES y sumen el total es lo que hace que la tabla sea creíble: si un
+// código pudiera contarse en dos columnas, los totales no cuadrarían con ningún otro
+// reporte y no habría forma de saber cuál miente.
+console.log('\n9. Programado Cubicador: tres estados excluyentes');
+const casos = [
+  { n: 'despachado', f: { estado: 'Shipped', programado: true }, esp: 'de' },
+  { n: 'despachado aunque aSa no lo tenga agendado',
+    f: { estado: 'Shipped', programado: false }, esp: 'de' },
+  { n: 'agendado y sin despachar = en camino',
+    f: { estado: 'Open', programado: true }, esp: 'pr' },
+  { n: 'en producción y agendado = en camino',
+    f: { estado: 'Processed', programado: true }, esp: 'pr' },
+  { n: 'sin agendar = stock', f: { estado: 'Open', programado: false }, esp: 'st' },
+  { n: 'en producción sin agendar = stock (la rareza de aSa)',
+    f: { estado: 'Processed', programado: false }, esp: 'st' },
+];
+casos.forEach(c => check(c.n + ' -> ' + c.esp, T.claseDe(c.f) === c.esp));
+check('todo código cae en exactamente uno de los tres',
+      casos.every(c => ['st', 'pr', 'de'].includes(T.claseDe(c.f))));
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

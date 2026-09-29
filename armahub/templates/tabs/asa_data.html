@@ -25,6 +25,7 @@
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:10px;">
       <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Stock Cubicaciones</button>
       <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
+      <button id="asaSubCub" onclick="asaSubTab('cub')" class="asasub">Programado Cubicador</button>
     </div>
 
     <!-- PERÍODO: año y mes. Fuera de los paneles a propósito — vale para TODO aSa Data,
@@ -36,13 +37,13 @@
       <span class="dshbl">Mes</span>
       <div id="dshMeses" class="dshchips"></div>
       <span class="muted" style="font-size:10px;">por fecha de pedido</span>
-      <span class="muted" style="font-size:10px; margin-left:auto;">clic en el año encendido = todos</span>
+      <span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>
     </div>
 
     <!-- Cubicador, en su propia fila. Puesto en la columna lateral ocupaba una columna
          entera para una lista de chips; acá cabe en una línea. -->
     <div class="dshbarra">
-      <span class="dshbl">Cubicador</span>
+      <span class="dshbl" title="DetailPerson de aSa: quien detalló el pedido. No son todos cubicadores del área — por eso el botón de al lado deja elegir a los que sí.">Detallado por</span>
       <!-- NO es un filtro más: configura CUÁLES de los 45 cubicadores de aSa aparecen
            como chips. Por eso se distingue de los chips que tiene al lado — engranaje,
            borde marcado y fondo propio— en vez de parecer uno más de la fila. -->
@@ -110,6 +111,24 @@
                      class="dshbuscar" style="width:240px; font-weight:400;">
             </div>
             <div class="dshbd" style="height:auto; flex:1;"><table class="dsht" id="dshCc"></table></div>
+          </div>
+        </div>
+
+        <!-- ══════ PROGRAMADO CUBICADOR ══════
+             El escenario de cada persona en una sola tabla. Tres estados EXCLUYENTES que
+             suman el total, y por eso se puede confiar en ella:
+               STOCK      lo cubicado que aSa todavía no agenda.
+               PROGRAMADO agendado y sin despachar: lo que viene.
+               DESPACHADO ya salió.
+             El desbalance entre las dos primeras es el dato que se busca: mucho stock sin
+             programar, o una obra que se quedó sin cola. -->
+        <div id="asaPanelCub" class="dshpanel" style="display:none;">
+          <div class="card dshcard dshcod">
+            <div class="dshth">OBRAS POR ESTADO <span class="muted" id="dshCubN"></span>
+              <div style="flex:1"></div>
+              <span class="dshest" id="dshEstadosCub"></span>
+            </div>
+            <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dsht3" id="dshCub"></table></div>
           </div>
         </div>
 
@@ -206,6 +225,16 @@
   .dshot tr.sel td{background:#f1f8e9; font-weight:600}
   .dshot input{margin:0}
   .dshot .num{text-align:right}
+  /* La tabla de tres estados: los encabezados van en dos pisos, con el estado arriba
+     agrupando sus dos columnas. Las líneas verticales separan los grupos — sin ellas,
+     seis columnas de números se leen como una sola mancha. */
+  .dsht3 thead tr:first-child th{text-align:center; border-bottom:1px solid #eef1f4;}
+  .dsht3 .g{border-left:1px solid #e3e8ef;}
+  .dsht3 tfoot td{border-top:2px solid #cfd8dc; font-weight:700; color:#263238;
+                  padding:4px 5px; background:#fff; position:sticky; bottom:0;}
+  .dsht3 .st{color:#8d6e00}   /* stock: lo que espera */
+  .dsht3 .pr{color:#2e7d32}   /* programado: lo que viene */
+  .dsht3 .de{color:#78909c}   /* despachado: lo que ya pasó */
 
   /* Las dos cajas centrales, del MISMO ancho: ambas ocupan la columna entera, una sobre
      la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear

@@ -94,7 +94,8 @@
   // Sub-tabs de aSa Data. Hoy hay uno solo; la función existe desde ya para que agregar
   // el siguiente reporte sea añadir una línea a la lista y su panel al HTML.
   var SUBTABS = [['planta', 'asaSubPlanta', 'asaPanelPlanta'],
-                 ['obras',  'asaSubObras',  'asaPanelObras']];
+                 ['obras',  'asaSubObras',  'asaPanelObras'],
+                 ['cub',    'asaSubCub',    'asaPanelCub']];
   var SUB = 'planta';
   global.asaSubTab = function (v) {
     SUB = v;
@@ -138,7 +139,9 @@
       // manda lo que el usuario haya tocado.
       if (OCULTOS === null) {
         var d = DATA.estado_apagado_por_defecto;
-        OCULTOS = { pp: [d], pg: [d] };
+        // `cub` arranca sin nada oculto: ese tab existe para comparar los tres
+        // estados, y esconder el despachado de entrada lo dejaría a medias.
+        OCULTOS = { pp: [d], pg: [d], cub: [] };
       }
     } catch (e) { aviso(e.message); mostrarVacio(e.message); return; }
     pintarTodo();
@@ -193,24 +196,57 @@
       var b = document.createElement('button');
       b.className = oculto ? 'off' : '';
       b.innerHTML = esc((DATA.nombres_estado || {})[e] || e) + ' <b>' + c.cc + '</b>';
-      b.title = (oculto ? 'Oculto. Clic para mostrar: ' : 'Se muestra. Clic para quitar: ')
-                + c.cc + ' códigos · ' + kg(c.kg) + ' kg';
-      b.addEventListener('click', function () {
-        var i = OCULTOS[caja].indexOf(e);
-        if (i === -1) OCULTOS[caja].push(e); else OCULTOS[caja].splice(i, 1);
+      b.title = ((DATA.explica_estado || {})[e] || e) + '\n' +
+                c.cc + ' códigos · ' + kg(c.kg) + ' kg' +
+                (oculto ? ' (oculto)' : '') +
+                '\nClic: ver sólo éste · Ctrl+clic: encender o apagar';
+      b.addEventListener('click', function (ev) {
+        // Misma regla que el resto, pero lo que se guarda es lo OCULTO: «ver sólo éste»
+        // se escribe como «ocultar todos los demás».
+        var todos = Object.keys(conteo);
+        if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
+          var i = OCULTOS[caja].indexOf(e);
+          if (i === -1) OCULTOS[caja].push(e); else OCULTOS[caja].splice(i, 1);
+        } else {
+          var visiblesAhora = todos.filter(function (x) { return OCULTOS[caja].indexOf(x) === -1; });
+          var soloEste = (visiblesAhora.length === 1 && visiblesAhora[0] === e);
+          OCULTOS[caja] = soloEste ? [] : todos.filter(function (x) { return x !== e; });
+        }
         pintarObras(); pintarTablas();
       });
       cont.appendChild(b);
     });
   }
 
-  function chips(cont, valores, activos, onClick, etiqueta) {
+  // CÓMO SE COMPORTAN TODOS LOS FILTROS, en un solo lugar:
+  //   clic          → deja SÓLO ése
+  //   clic sobre el único elegido → lo suelta, y vuelven todos
+  //   Ctrl/Cmd+clic → suma o quita, sin tocar el resto
+  //
+  // Antes el clic era aditivo y había que acordarse de desmarcar lo anterior; el caso
+  // normal es querer mirar una cosa a la vez. Vale igual para meses, personas y obras,
+  // porque un filtro que se comporta distinto según dónde esté es peor que cualquiera
+  // de las dos formas.
+  function alternar(lista, valor, ev) {
+    var i = lista.indexOf(valor);
+    if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
+      if (i === -1) lista.push(valor); else lista.splice(i, 1);
+    } else if (lista.length === 1 && i === 0) {
+      lista.length = 0;                        // era el único: se suelta
+    } else {
+      lista.length = 0; lista.push(valor);     // sólo ése
+    }
+    return lista;
+  }
+
+  function chips(cont, valores, activos, onClick, etiqueta, titulo) {
     cont.innerHTML = '';
     valores.forEach(function (v) {
       var b = document.createElement('button');
       b.textContent = etiqueta ? etiqueta(v) : v;
+      if (titulo) b.title = titulo(v);
       if (activos.indexOf(v) !== -1) b.className = 'on';
-      b.addEventListener('click', function () { onClick(v); });
+      b.addEventListener('click', function (ev) { onClick(v, ev); });
       cont.appendChild(b);
     });
   }
@@ -226,9 +262,8 @@
       ANIO = (ANIO === v) ? 0 : v;
       cargar();
     });
-    chips($('dshMeses'), [1,2,3,4,5,6,7,8,9,10,11,12], MESES, function (m) {
-      var i = MESES.indexOf(m);
-      if (i === -1) MESES.push(m); else MESES.splice(i, 1);
+    chips($('dshMeses'), [1,2,3,4,5,6,7,8,9,10,11,12], MESES, function (m, ev) {
+      alternar(MESES, m, ev);
       cargar();
     }, function (m) { return MESN[m - 1]; });
     // Chips de cubicador: los que aparecen con las obras elegidas, y de ésos sólo los
@@ -237,9 +272,8 @@
     var todas = DATA.personas || [];
     var presentes = valoresDe('persona', 'persona', PERSONAS);
     var visibles = presentes.filter(function (p) { return !DET.length || DET.indexOf(p) !== -1; });
-    chips($('dshPersonas'), visibles, PERSONAS, function (p) {
-      var i = PERSONAS.indexOf(p);
-      if (i === -1) PERSONAS.push(p); else PERSONAS.splice(i, 1);
+    chips($('dshPersonas'), visibles, PERSONAS, function (p, ev) {
+      alternar(PERSONAS, p, ev);
       // pintarChips() TAMBIÉN: sin esto el chip no cambia de color y parece que el
       // clic no hizo nada, aunque el filtro sí se aplicó. Pasó.
       pintarChips(); pintarObras(); pintarTablas();
@@ -288,7 +322,9 @@
   // se le pasa a `.filter()`, y por eso es segura: filter entrega TRES argumentos
   // (elemento, índice, arreglo) y un segundo parámetro opcional recibiría el índice.
   // Con `OCULTOS[1]` undefined, reventaba en el segundo elemento. Ya pasó una vez.
-  function cajaDe(f) { return programado(f) ? 'pg' : 'pp'; }
+  // En «Programado Cubicador» la tabla es una sola, así que todas las filas caen en
+  // la misma caja; en los otros sub-tabs depende de si está agendada o no.
+  function cajaDe(f) { return SUB === 'cub' ? 'cub' : (programado(f) ? 'pg' : 'pp'); }
   function visible(f) { return OCULTOS[cajaDe(f)].indexOf(f.estado) === -1; }
   function visibleEn(caja, f) { return OCULTOS[caja].indexOf(f.estado) === -1; }
 
@@ -366,9 +402,8 @@
     $('dshObras').innerHTML = html + '</tbody></table>';
 
     $('dshObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
-      tr.addEventListener('click', function () {
-        var o = tr.dataset.obra, i = OBRAS.indexOf(o);
-        if (i === -1) OBRAS.push(o); else OBRAS.splice(i, 1);
+      tr.addEventListener('click', function (ev) {
+        alternar(OBRAS, tr.dataset.obra, ev);
         pintarChips(); pintarObras(); pintarTablas();
       });
     });
@@ -422,7 +457,106 @@
 
   function pintarTablas() {
     if (SUB === 'obras') return pintarObrasAsa();
+    if (SUB === 'cub') return pintarCubicador();
     return pintarPlanta();
+  }
+
+  // ── Sub-tab PROGRAMADO CUBICADOR ───────────────────────────────────────────
+  // El escenario de cada persona en una sola tabla. TRES ESTADOS EXCLUYENTES que suman
+  // el total — ésa es la propiedad que hace que se pueda confiar en ella:
+  //
+  //   DESPACHADO  el pedido ya salió (estado Shipped en aSa).
+  //   PROGRAMADO  agendado en planta y todavía sin despachar: lo que viene.
+  //   STOCK       cubicado y sin agendar. Lo que espera.
+  //
+  // Lleva los MISMOS botones de estado que los otros sub-tabs, por consistencia. Acá
+  // filtran los códigos ANTES de sumar, así que no esconden obras: les bajan el conteo y
+  // los kilos, y si una queda sin nada desaparece. Y arrancan TODOS ENCENDIDOS —al revés
+  // que en Stock Cubicaciones— porque la columna Despachado es justo lo que se viene a
+  // ver: apagarla de entrada dejaría la tabla contando una historia a medias.
+  var ORDEN_CUB = { col: 'kg', desc: true };
+
+  function claseDe(f) {
+    if (f.estado === 'Shipped') return 'de';       // despachado
+    return programado(f) ? 'pr' : 'st';            // en camino / esperando
+  }
+
+  function pintarCubicador() {
+    var todas = filtrar(todasLasFilas());
+    pintarEstados('cub', $('dshEstadosCub'), todas);
+    var base = todas.filter(visibleEn.bind(null, 'cub'));
+    var por = {};
+    base.forEach(function (f) {
+      var o = por[f.obra];
+      if (!o) {
+        o = por[f.obra] = { obra: f.obra, kg: 0,
+                            st: 0, stkg: 0, pr: 0, prkg: 0, de: 0, dekg: 0 };
+      }
+      var c = claseDe(f);
+      o[c]++; o[c + 'kg'] += f.kg; o.kg += f.kg;
+    });
+    var lista = Object.keys(por).map(function (k) { return por[k]; });
+    var dir = ORDEN_CUB.desc ? -1 : 1;
+    lista.sort(function (a, b) {
+      var x = a[ORDEN_CUB.col], y = b[ORDEN_CUB.col];
+      if (typeof x === 'string') return dir * x.localeCompare(y, 'es');
+      return dir * (x - y);
+    });
+
+    var T = { st: 0, stkg: 0, pr: 0, prkg: 0, de: 0, dekg: 0, kg: 0 };
+    lista.forEach(function (o) {
+      ['st', 'pr', 'de'].forEach(function (c) { T[c] += o[c]; T[c + 'kg'] += o[c + 'kg']; });
+      T.kg += o.kg;
+    });
+    $('dshCubN').innerHTML = '· ' + lista.length + ' obras · <b style="color:#33691e">' +
+                             kg0(T.kg) + ' kg</b>';
+    if (!lista.length) {
+      $('dshCub').innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
+      return;
+    }
+    var tope = lista.reduce(function (a, o) { return Math.max(a, o.kg); }, 0) || 1;
+    var fl = function (c) {
+      return ORDEN_CUB.col === c ? ' <b>' + (ORDEN_CUB.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
+    };
+    var par = function (c, etiq, clase) {
+      return '<th class="ord num g ' + clase + '" data-ord="' + c + '">CC' + fl(c) + '</th>' +
+             '<th class="ord num ' + clase + '" data-ord="' + c + 'kg">Kilos' + fl(c + 'kg') + '</th>';
+    };
+    var html = '<thead>' +
+      '<tr><th></th>' +
+      '<th colspan="2" class="g st">STOCK</th>' +
+      '<th colspan="2" class="g pr">PROGRAMADO</th>' +
+      '<th colspan="2" class="g de">DESPACHADO</th>' +
+      '<th class="g">Total</th></tr>' +
+      '<tr><th class="ord" data-ord="obra" style="width:30%">Obra' + fl('obra') + '</th>' +
+      par('st', 'Stock', 'st') + par('pr', 'Programado', 'pr') + par('de', 'Despachado', 'de') +
+      '<th class="ord num g" data-ord="kg">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
+    var celda = function (n, k, clase) {
+      // Un cero se escribe en gris claro y no en negro: seis columnas llenas de ceros
+      // negros compiten con los números que sí importan.
+      return '<td class="num g ' + clase + '"' + (n ? '' : ' style="color:#cfd8dc"') + '>' + n + '</td>' +
+             '<td class="num ' + clase + '"' + (k ? '' : ' style="color:#cfd8dc"') + '>' + kg0(k) + '</td>';
+    };
+    lista.forEach(function (o) {
+      html += '<tr><td title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
+              celda(o.st, o.stkg, 'st') + celda(o.pr, o.prkg, 'pr') + celda(o.de, o.dekg, 'de') +
+              '<td class="num g dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
+              '%"></i><span>' + kg0(o.kg) + '</span></td></tr>';
+    });
+    html += '</tbody><tfoot><tr><td>Total</td>' +
+            '<td class="num g st">' + T.st + '</td><td class="num st">' + kg0(T.stkg) + '</td>' +
+            '<td class="num g pr">' + T.pr + '</td><td class="num pr">' + kg0(T.prkg) + '</td>' +
+            '<td class="num g de">' + T.de + '</td><td class="num de">' + kg0(T.dekg) + '</td>' +
+            '<td class="num g">' + kg0(T.kg) + '</td></tr></tfoot>';
+    $('dshCub').innerHTML = html;
+    $('dshCub').querySelectorAll('th[data-ord]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var c = th.dataset.ord;
+        if (ORDEN_CUB.col === c) ORDEN_CUB.desc = !ORDEN_CUB.desc;
+        else { ORDEN_CUB.col = c; ORDEN_CUB.desc = (c !== 'obra'); }
+        pintarCubicador();
+      });
+    });
   }
 
   // ── Sub-tab OBRAS aSa ──────────────────────────────────────────────────────
@@ -550,6 +684,7 @@
     programado: programado, cajaDe: cajaDe, visible: visible, visibleEn: visibleEn,
     conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
     orden: function (v) { if (v) { ORDEN = v; } return ORDEN; },
+    claseDe: claseDe, alternar: alternar,
     ocultos: function (v) { if (v) { OCULTOS = v; } return OCULTOS; }
   };
 

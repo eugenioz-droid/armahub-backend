@@ -492,7 +492,7 @@ check("los conteos de los botones se calculan sobre las filas ya filtradas",
 check("...y cada caja lleva sus propios botones",
       "pintarEstados('pp'" in DSH and "pintarEstados('pg'" in DSH)
 check("...con su propia lista de ocultos, para que no se pisen",
-      "OCULTOS = { pp: [d], pg: [d] }" in DSH and "OCULTOS[caja]" in DSH)
+      "OCULTOS = { pp: [d], pg: [d], cub: [] }" in DSH and "OCULTOS[caja]" in DSH)
 check("el stock es el que NO tiene fecha de despacho",
       "STOCK DISPONIBLE" in DSH and "sinFecha(base)" in DSH)
 check("sólo se ofrecen los estados presentes en ESA caja (por eso «Sin terminar» ya no sale)",
@@ -673,6 +673,43 @@ print("\n19. Las respuestas grandes viajan comprimidas")
 MAIN = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
 check("la app comprime las respuestas", "GZipMiddleware" in MAIN)
 check("...y no gasta CPU en las chicas, que son la mayoría", "minimum_size=1024" in MAIN)
+
+
+# ── 20. Sub-tab «Programado Cubicador» ─────────────────────────────────────
+# Una tabla por obra con tres estados EXCLUYENTES que suman el total. El dato que se
+# busca es el desbalance: mucho stock sin agendar frente a poca cola programada.
+print("\n20. Programado Cubicador")
+check("existe el tercer sub-tab", "asaSubCub" in HTM and "asaPanelCub" in HTM
+      and "Programado Cubicador" in HTM)
+check("es UNA tabla con los tres estados, no dos cajas",
+      "dshCub" in HTM and "STOCK" in DSH and "PROGRAMADO" in DSH and "DESPACHADO" in DSH)
+check("la clasificación vive en una sola función", "function claseDe(f)" in DSH)
+check("se puede ordenar por cualquier columna", "ORDEN_CUB" in DSH)
+check("lleva los mismos botones de estado que el resto", "dshEstadosCub" in HTM
+      and "pintarEstados('cub'" in DSH)
+check("...pero acá arrancan TODOS encendidos, porque el despachado es lo que se viene a ver",
+      "cub: []" in DSH)
+
+# ── 21. Los nombres de los estados son los de aSa ──────────────────────────
+# Traducirlos fue un error: «Por producir» y «Sin terminar» los inventé yo, y el usuario
+# no podía saber qué campo dejaba fuera al apagar un botón. El nombre real va en el
+# botón; el significado, en el globo.
+print("\n21. Los botones llevan el nombre real del estado")
+check("el botón dice el nombre de aSa, no una traducción",
+      '"Open":       "Open"' in PROG and '"Processed":  "Processed"' in PROG)
+check("el significado va como explicación", "EXPLICA_ESTADO" in PROG
+      and "le sacaron tarjeta al ítem" in PROG)
+check("...y llega al front para el globo del botón",
+      '"explica_estado": EXPLICA_ESTADO' in PROG and "explica_estado" in DSH)
+check("el globo también enseña cómo funciona el clic",
+      "Ctrl+clic: encender o apagar" in DSH)
+
+# ── 22. La etiqueta no dice «cubicador» de quien no lo es ──────────────────
+# `DetailPerson` es quien detalló el pedido en aSa, y ahí aparece gente que no es del
+# área. Llamarlos a todos «cubicadores» llevaba a conclusiones falsas sobre personas.
+print("\n22. La etiqueta de DetailPerson es honesta")
+check("la fila se llama «Detallado por», no «Cubicador»", "Detallado por" in HTM)
+check("...y se explica que no son todos del área", "No son todos cubicadores" in HTM)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

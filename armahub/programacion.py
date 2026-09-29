@@ -640,14 +640,23 @@ ESTADOS_PLANTA_PROGRAMADO = ("Scheduled", "Confirmed")
 # y si se muestran entierran a los 269 que de verdad están por salir. Los demás estados
 # arrancan encendidos, y los botones los arma el front con lo que de verdad hay en la caja.
 ESTADO_APAGADO_POR_DEFECTO = "Shipped"
-# Cómo se llaman en castellano. `Processed` es el que más confunde: no es «procesado
-# administrativamente», es que LE SACARON TARJETA AL ÍTEM, o sea está en producción o ya
-# producido (dato del usuario, 29-sep). Del nombre en inglés nadie lo deduce.
+# EL BOTÓN LLEVA EL NOMBRE REAL DE aSa, no una traducción. Traducirlos fue un error:
+# «Por producir» y «Sin terminar» los inventé yo, y el usuario no podía saber qué campo
+# estaba dejando fuera al apagar un botón. El significado va como explicación, que es
+# donde corresponde — sobre todo porque de `Processed` nadie lo deduce.
 NOMBRES_ESTADO = {
-    "Open": "Por producir",
-    "Processed": "En producción",
-    "Shipped": "Despachados",
-    "Incomplete": "Sin terminar",
+    "Open":       "Open",
+    "Processed":  "Processed",
+    "Shipped":    "Shipped",
+    "Incomplete": "Incomplete",
+}
+# Qué significa cada uno, en el globo del botón.
+EXPLICA_ESTADO = {
+    "Open":       "Open — el pedido está creado y todavía no entra a producción",
+    # Dato del usuario (29-sep): no es «procesado administrativamente».
+    "Processed":  "Processed — le sacaron tarjeta al ítem: está en producción o ya producido",
+    "Shipped":    "Shipped — despachado, ya salió a la obra",
+    "Incomplete": "Incomplete — pedido que quedó a medio cargar en aSa (varios son pruebas)",
 }
 
 
@@ -792,6 +801,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "estado_apagado_por_defecto": ESTADO_APAGADO_POR_DEFECTO,
         "estados_planta_programado": list(ESTADOS_PLANTA_PROGRAMADO),
         "nombres_estado": NOMBRES_ESTADO,
+        "explica_estado": EXPLICA_ESTADO,
         "anulados": anulados,
         "filas": filas,
         "espejo": {"filas_anio": n_anio or 0,
