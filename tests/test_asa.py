@@ -632,8 +632,10 @@ check("...y la columna que liberó la ocupa el resumen mensual",
       'id="dshLateral"' in HTM and HTM.index('id="dshPorMes"') > HTM.index('class="dshwrap"'))
 check("...que sólo aparece en «Obras aSa», donde tiene sentido",
       "lat.style.display = (v === 'obras')" in DSH)
-check("el detalle de códigos ya no muestra el código interno de la obra",
-      "esc(f.job || '')" not in DSH)
+# El job number de aSa volvió a pedido de los usuarios (sección 23); lo que no vuelve es
+# el id interno de ArmaHub, que en la pantalla no le dice nada a nadie.
+check("el detalle de códigos no muestra el id interno de la obra",
+      "id_proyecto" not in DSH)
 # La información de obras se fue del panel a la COLUMNA de obra, que ya estaba ahí para
 # filtrar: tenerla en los dos lados era la misma cosa dos veces y dos sitios donde podía
 # dejar de cuadrar. Y el detalle queda a la izquierda, el mensual angosto a la derecha.
@@ -689,8 +691,9 @@ check("se puede ordenar por cualquier columna", "ORDEN_CUB" in DSH)
 # una obra puede pasar de manos y el anterior aparecía «sin cola» cuando ya no la lleva.
 # Caso real del usuario: BELFI figuraba en rojo para Dvenegas, que dejó de cubicar,
 # mientras ERAMIREZ la tiene con 4 códigos programados.
-check("agrupa por OBRA, no por persona+obra", "GROUP BY p.job_name, u.detail_person" in PROG)
-check("...y «la lleva» es el último que detalló algo en ella",
+check("agrupa por OBRA, no por persona+obra",
+      "GROUP BY p.job_name, COALESCE(d.detail_person, u.detail_person)" in PROG)
+check("...y el respaldo de «la lleva» es el último que detalló algo en ella",
       "DISTINCT ON (job_name)" in PROG and "GREATEST(order_date, proj_ship_date) DESC" in PROG)
 check("el filtro de persona compara contra quien la detalló último",
       "PERSONAS.indexOf(f.lleva)" in DSH)
@@ -704,7 +707,7 @@ check("...pero quién detalló sigue a la vista, en el globo", "Detalló: " in D
 # OBRA ACTIVA = con movimiento reciente, NO «con pendiente». Esa fue mi primera idea y
 # escondía justo la alarma: una obra que se comió su stock desaparecía de la vista.
 check("obra activa se define por MOVIMIENTO reciente, no por tener pendiente",
-      "make_interval(months => %s)" in PROG and "WITH activas AS" in PROG)
+      "make_interval(months => %s)" in PROG and "activas AS (" in PROG)
 check("la ventana se puede cambiar desde el tab", "dshCubMeses" in HTM and "CUB_MESES" in DSH)
 check("...y está acotada por el backend", "min(int(meses or 3), 120)" in PROG)
 
@@ -717,6 +720,23 @@ check("...ámbar es con cola pero sin nada detrás", "(st_cc == 0 and pr_cc > 0)
 check("...y se distinguen en pantalla", "alerta grave" in DSH and ".dsht3 tr.alerta.grave" in HTM)
 check("ninguna alarma se filtra por tamaño (un umbral escondería casos en silencio)",
       "un umbral fijo escondería casos" in PROG)
+
+# QUIÉN LA LLEVA = quien más kilos aportó DENTRO DE LA VENTANA. «El último que detalló»
+# le entregaba la obra a quien hizo un solo código: Dvenegas quedaba a cargo de SACYR
+# (10.393 t) con el 6%. Con el peso en la ventana el asignado aporta 96% en promedio.
+check("quién la lleva es el que MÁS aportó en la ventana, no el último",
+      "dominante AS" in PROG and "ORDER BY job_name, kg DESC" in PROG)
+check("...con respaldo al último de la historia, para que ninguna fila quede sin dueño",
+      "COALESCE(d.detail_person, u.detail_person)" in PROG)
+
+# EL STOCK LLEVA SU EDAD. De 10.678 t sin agendar, el 67% se pidió hace más de un año:
+# un número grande de stock se lee como salud cuando es bodega (Coquimbo: 1.150 t, de
+# las cuales 968 son de 2024 y 2025).
+check("el stock con más de un año se informa aparte", "MESES_STOCK_ANEJO = 12" in PROG
+      and '"stvkg"' in PROG)
+check("...se MARCA en la celda, no se descuenta (descontarlo rompería el cuadre con aSa)",
+      "anejoCelda" in DSH and ".dsht td.anejo" in HTM and "descontarlo en silencio" in HTM)
+check("...y el total añejo va en el encabezado", "de stock con más de" in DSH)
 
 # La suma la hace Postgres: por obra son cientos de filas; mandar el detalle para que el
 # navegador sumara serían 25.000 y varios MB.
@@ -745,6 +765,31 @@ check("el globo también enseña cómo funciona el clic",
 print("\n22. La etiqueta de DetailPerson es honesta")
 check("la fila se llama «Detallado por», no «Cubicador»", "Detallado por" in HTM)
 check("...y se explica que no son todos del área", "No son todos cubicadores" in HTM)
+
+# ── 23. El job number de aSa al lado de la obra, en las tres tablas ────────
+# Lo pidieron los usuarios: es el número con el que buscan la obra en aSa Studio. Va
+# inmediatamente a la derecha de «Obra», en las tres tablas, y viaja en cada fila.
+print("\n23. El job number de aSa acompaña a la obra")
+check("el reporte manda asa_job_id en cada CC", "AS mes, asa_job_id" in PROG
+      and '"job": r[11]' in PROG)
+check("el cubicador también lo manda por obra", "MAX(p.asa_job_id)" in PROG
+      and '"job": r[1]' in PROG)
+check("Obra y luego Job en las tres cabeceras (Stock con y sin fecha, Obras aSa)",
+      DSH.count('>Obra</th><th style="width:7%">Job</th>') == 3)
+check("...y la celda va después de la obra",
+      DSH.count("esc(f.obra) + '</td>' +\n              '<td class=\"cc\">' + esc(f.job || '') + '</td>'") == 2)
+check("Obras aSa: Obra, Job, Descripción",
+      '>Obra</th><th style="width:7%">Job</th>' in DSH
+      and 'Job</th>\' +\n               \'<th style="width:48%">Descripción</th>' in DSH)
+check("Programado Cubicador: la columna existe en el colgroup y en los dos pisos",
+      "'<col style=\"width:33%\"><col style=\"width:7%\">'" in DSH
+      and "'<tr><th></th><th></th>'" in DSH
+      and "data-ord=\"job\">Job" in DSH)
+check("...la fila y el pie la llevan",
+      "esc(o.obra) + '</td>' +\n              '<td class=\"cc\">' + esc(o.job || '') + '</td>'" in DSH
+      and "<tfoot><tr><td>Total</td><td></td>" in DSH)
+check("...y se puede ordenar por Job, ascendente al primer clic",
+      "c !== 'obra' && c !== 'job'" in DSH)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

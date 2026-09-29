@@ -450,14 +450,17 @@
     // suman 100 y salen de las dos columnas angostas (código y fecha), que son de largo
     // conocido; lo que sobra se reparte entre obra y descripción.
     var html = llevaFecha
-      ? '<thead><tr><th style="width:33%">JobName</th><th style="width:40%">Descr</th>' +
+      ? '<thead><tr><th style="width:27%">Obra</th><th style="width:7%">Job</th>' +
+        '<th style="width:39%">Descr</th>' +
         '<th style="width:7%">Código</th><th style="width:7%">Despacho</th>' +
         '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>'
-      : '<thead><tr><th style="width:37%">JobName</th><th style="width:43%">Descr</th>' +
+      : '<thead><tr><th style="width:31%">Obra</th><th style="width:7%">Job</th>' +
+        '<th style="width:42%">Descr</th>' +
         '<th style="width:7%">Código</th>' +
         '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>';
     filas.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
+              '<td class="cc">' + esc(f.job || '') + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
               (llevaFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
@@ -513,7 +516,10 @@
     var dir = ORDEN_CUB.desc ? -1 : 1;
     lista.sort(function (a, b) {
       var x = a[ORDEN_CUB.col], y = b[ORDEN_CUB.col];
-      if (typeof x === 'string') return dir * String(x).localeCompare(String(y), 'es');
+      // `job` puede venir vacío en una obra sin número de aSa: se ordena como texto vacío.
+      if (typeof x === 'string' || x == null && typeof y === 'string') {
+        return dir * String(x || '').localeCompare(String(y || ''), 'es');
+      }
       return dir * (x - y);
     });
 
@@ -524,10 +530,15 @@
     });
     var nada = lista.filter(function (o) { return o.sin_nada; }).length;
     var poco = lista.filter(function (o) { return o.sin_stock; }).length;
+    // Stock AÑEJO: pedido hace más de un año, o sea que en la práctica ya no va a salir.
+    // Sin decirlo, un stock grande se lee como salud cuando es bodega.
+    var anejo = lista.reduce(function (a, o) { return a + (o.stvkg || 0); }, 0);
     $('dshCubN').innerHTML = '· ' + lista.length + ' obras · <b style="color:#33691e">' +
       kg0(T.kg) + ' kg</b>' +
       (nada ? ' · <b style="color:#c62828">' + nada + ' sin trabajo</b>' : '') +
-      (poco ? ' · <b style="color:#e65100">' + poco + ' sin stock</b>' : '');
+      (poco ? ' · <b style="color:#e65100">' + poco + ' sin stock</b>' : '') +
+      (anejo ? ' · <b style="color:#8d6e00">' + kg0(anejo) + ' kg de stock con más de ' +
+               (CUB.meses_anejo || 12) + ' meses</b>' : '');
     if (!lista.length) {
       $('dshCub').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con movimiento en el período elegido</td></tr></tbody>';
       return;
@@ -549,24 +560,34 @@
     // títulos agrupados (STOCK / PROGRAMADO / DESPACHADO), que no llevan ancho. Por eso
     // los anchos del segundo piso no se aplicaban y la obra seguía cortada.
     var html = '<colgroup>' +
-      '<col style="width:40%">' +
+      '<col style="width:33%"><col style="width:7%">' +
       '<col style="width:5%"><col style="width:11%">' +
       '<col style="width:5%"><col style="width:11%">' +
       '<col style="width:5%"><col style="width:11%">' +
       '<col style="width:12%"></colgroup><thead>' +
-      '<tr><th></th>' +
+      '<tr><th></th><th></th>' +
       '<th colspan="2" class="g st">STOCK</th>' +
       '<th colspan="2" class="g pr">PROGRAMADO</th>' +
       '<th colspan="2" class="g de">DESPACHADO</th>' +
       '<th class="g">Total</th></tr>' +
       '<tr><th class="ord" data-ord="obra">Obra' + fl('obra') + '</th>' +
+      '<th class="ord" data-ord="job">Job' + fl('job') + '</th>' +
       par('st', 'st') + par('pr', 'pr') + par('de', 'de') +
       '<th class="ord num g" data-ord="kg">Kilos' + fl('kg') + '</th></tr></thead><tbody>';
-    var celda = function (n, k, clase) {
+    var celda = function (n, k, clase, viejoKg, viejoCc) {
       // Un cero se escribe en gris claro: seis columnas de ceros negros compiten con los
       // números que sí importan.
+      // Y si la mayor parte del stock se pidió hace más de un año, la celda se marca: el
+      // número por sí solo no distingue trabajo de bodega. Caso real: CRCC - HOSPITAL
+      // COQUIMBO muestra 1.150 t de stock, de las cuales 968 son de 2024 y 2025.
+      var anejoCelda = (viejoKg && k && viejoKg / k > 0.5);
+      var tit = anejoCelda
+        ? ' title="' + kg0(viejoKg) + ' kg (' + viejoCc + ' códigos) se pidieron hace más de ' +
+          (CUB.meses_anejo || 12) + ' meses: en la práctica ya no van a salir"' : '';
       return '<td class="num g ' + clase + '"' + (n ? '' : ' style="color:#cfd8dc"') + '>' + n + '</td>' +
-             '<td class="num ' + clase + '"' + (k ? '' : ' style="color:#cfd8dc"') + '>' + kg0(k) + '</td>';
+             '<td class="num ' + clase + (anejoCelda ? ' anejo' : '') + '"' +
+             (k ? '' : ' style="color:#cfd8dc"') + tit + '>' + kg0(k) +
+             (anejoCelda ? ' <i class="vj">▲</i>' : '') + '</td>';
     };
     lista.forEach(function (o) {
       var clase = o.sin_nada ? ' class="alerta grave"' : (o.sin_stock ? ' class="alerta"' : '');
@@ -577,11 +598,13 @@
               // filtro, y sin nadie elegido la tabla es la planta entera.
               '<td title="' + esc(o.obra) + porque +
               (o.detallaron ? '\nDetalló: ' + esc(o.detallaron) : '') + '">' + esc(o.obra) + '</td>' +
-              celda(o.st, o.stkg, 'st') + celda(o.pr, o.prkg, 'pr') + celda(o.de, o.dekg, 'de') +
+              '<td class="cc">' + esc(o.job || '') + '</td>' +
+              celda(o.st, o.stkg, 'st', o.stvkg, o.stv) +
+              celda(o.pr, o.prkg, 'pr') + celda(o.de, o.dekg, 'de') +
               '<td class="num g dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
               '%"></i><span>' + kg0(o.kg) + '</span></td></tr>';
     });
-    html += '</tbody><tfoot><tr><td>Total</td>' +
+    html += '</tbody><tfoot><tr><td>Total</td><td></td>' +
             '<td class="num g st">' + T.st + '</td><td class="num st">' + kg0(T.stkg) + '</td>' +
             '<td class="num g pr">' + T.pr + '</td><td class="num pr">' + kg0(T.prkg) + '</td>' +
             '<td class="num g de">' + T.de + '</td><td class="num de">' + kg0(T.dekg) + '</td>' +
@@ -591,7 +614,7 @@
       th.addEventListener('click', function () {
         var c = th.dataset.ord;
         if (ORDEN_CUB.col === c) ORDEN_CUB.desc = !ORDEN_CUB.desc;
-        else { ORDEN_CUB.col = c; ORDEN_CUB.desc = (c !== 'obra'); }
+        else { ORDEN_CUB.col = c; ORDEN_CUB.desc = (c !== 'obra' && c !== 'job'); }
         pintarCubicador();
       });
     });
@@ -656,11 +679,12 @@
     // primeras y se dice cuántas quedaron fuera; para ver menos, está el buscador.
     var recorte = lista.length > TOPE_FILAS;
     var visibles = recorte ? lista.slice(0, TOPE_FILAS) : lista;
-    var html = '<thead><tr><th style="width:33%">Obra</th>' +
-               '<th style="width:50%">Descripción</th><th style="width:7%">Código</th>' +
+    var html = '<thead><tr><th style="width:28%">Obra</th><th style="width:7%">Job</th>' +
+               '<th style="width:48%">Descripción</th><th style="width:7%">Código</th>' +
                '<th style="width:10%" class="num">Kilos</th></tr></thead><tbody>';
     visibles.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
+              '<td class="cc">' + esc(f.job || '') + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
               '<td class="num">' + kg(f.kg) + '</td></tr>';

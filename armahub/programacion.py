@@ -816,19 +816,29 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
     }
 
 
+# A partir de cuántos meses un stock deja de ser stock. Medido sobre el espejo: de las
+# 10.678 toneladas sin agendar, el 67% se pidió hace más de un año y sólo el 16% en los
+# últimos tres meses. Un número grande de stock se lee como salud cuando en realidad es
+# bodega, así que la parte añeja se informa aparte en vez de sumarse en silencio.
+MESES_STOCK_ANEJO = 12
+
+
 @router.get("/programacion/asa/cubicador")
 def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
-    """La foto de HOY: qué obras están activas y cuál se está quedando sin trabajo.
+    """La foto de HOY: qué obras están activas, quién las lleva y cuál se está quedando
+    sin trabajo.
 
     UNA FILA POR OBRA, no por persona+obra. Agrupar por persona generaba alarmas falsas:
     una obra puede pasar de manos, y el que la llevaba antes aparecía «sin cola» cuando
-    en realidad ya no la lleva. Caso real: BELFI - PUENTE LO GALLARDO figuraba en rojo
-    para Dvenegas, que dejó de cubicar, mientras ERAMIREZ la tiene con 4 códigos
-    programados. La obra estaba bien; la agrupación estaba mal.
+    ya no la lleva.
 
-    QUIÉN LA LLEVA es el último que detalló algo en ella. El filtro de persona compara
-    contra ÉSE, no contra quien participó alguna vez: el tab responde «cómo está parado
-    hoy», así que a alguien que cambió de rol le tiene que salir vacío.
+    QUIÉN LA LLEVA = quien más kilos aportó DENTRO DE LA VENTANA. Antes era «el último
+    que detalló algo», y eso le entregaba la obra a quien hizo un solo código: Dvenegas
+    quedaba a cargo de SACYR - HOSPITAL SOTERO DEL RÍO, de 10.393 toneladas, habiendo
+    aportado el 6%. Con el peso dentro de la ventana el asignado aporta un 96% en
+    promedio, y sólo 2 obras de 148 quedan con alguien por debajo de la mitad. Si en la
+    ventana nadie detalló nada —puede pasar si la obra entró por una fecha de despacho—
+    se cae al último que detalló alguna vez, para que la fila nunca quede sin dueño.
 
     OBRA ACTIVA = tuvo movimiento en los últimos `meses`. NO «la que tiene pendiente»:
     ésa fue la primera idea y escondía justo la alarma — una obra que se comió su stock
@@ -838,6 +848,10 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
       sin_nada  · ni stock ni agendado. Se quedó sin trabajo.
       sin_stock · tiene cola agendada pero nada esperando detrás. Se le va a acabar.
 
+    Y EL STOCK LLEVA SU EDAD: `st_viejo_*` es la parte pedida hace más de un año, que
+    en la práctica ya no va a salir. Sin eso, 1.150 toneladas de stock parecen trabajo
+    cuando 968 son de 2024 y 2025 (caso real: CRCC - HOSPITAL COQUIMBO).
+
     NO usa el filtro de año y mes: lo pendiente es pendiente sin importar cuándo se pidió.
     Y agrega en la base — por obra son cientos de filas; mandar el detalle para que el
     navegador sumara serían 25.000.
@@ -846,49 +860,66 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     meses = max(1, min(int(meses or 3), 120))
     prog = "(sched_estado IN %s OR ship_id IS NOT NULL)" % (ESTADOS_PLANTA_PROGRAMADO,)
     vivo = "COALESCE(estado,'') <> 'Shipped'"
+    stock = f"NOT {prog} AND {vivo}"
+    anejo = f"{stock} AND order_date < CURRENT_DATE - make_interval(months => {MESES_STOCK_ANEJO})"
     sql = f"""
-        WITH activas AS (
+        WITH vivos AS (
+            SELECT * FROM asa_pedidos WHERE COALESCE(estado,'') <> %s
+        ),
+        activas AS (
             SELECT DISTINCT job_name FROM asa_pedidos
              WHERE GREATEST(order_date, proj_ship_date) >= CURRENT_DATE - make_interval(months => %s)
         ),
-        -- Quién la lleva HOY: el último que detalló algo en esa obra.
+        -- Quién la lleva: el que MÁS kilos aportó dentro de la ventana.
+        dominante AS (
+            SELECT DISTINCT ON (job_name) job_name, detail_person, kg
+              FROM (SELECT job_name, detail_person, SUM(kg) AS kg
+                      FROM vivos
+                     WHERE COALESCE(detail_person,'') <> ''
+                       AND GREATEST(order_date, proj_ship_date) >= CURRENT_DATE - make_interval(months => %s)
+                     GROUP BY 1, 2) x
+             ORDER BY job_name, kg DESC
+        ),
+        -- Respaldo: si en la ventana nadie detalló, el último de toda la historia.
         ultimo AS (
             SELECT DISTINCT ON (job_name) job_name, detail_person
-              FROM asa_pedidos
-             WHERE detail_person IS NOT NULL AND detail_person <> ''
+              FROM vivos WHERE COALESCE(detail_person,'') <> ''
              ORDER BY job_name, GREATEST(order_date, proj_ship_date) DESC NULLS LAST
         )
         SELECT p.job_name,
-               MAX(p.asa_job_id)                                              AS job,
-               u.detail_person                                                AS lleva,
-               COUNT(*) FILTER (WHERE NOT {prog} AND {vivo})                  AS st_cc,
-               COALESCE(SUM(p.kg) FILTER (WHERE NOT {prog} AND {vivo}), 0)    AS st_kg,
+               MAX(p.asa_job_id),
+               COALESCE(d.detail_person, u.detail_person)                     AS lleva,
+               COUNT(*) FILTER (WHERE {stock})                                AS st_cc,
+               COALESCE(SUM(p.kg) FILTER (WHERE {stock}), 0)                  AS st_kg,
+               COUNT(*) FILTER (WHERE {anejo})                                AS stv_cc,
+               COALESCE(SUM(p.kg) FILTER (WHERE {anejo}), 0)                  AS stv_kg,
                COUNT(*) FILTER (WHERE {prog} AND {vivo})                      AS pr_cc,
                COALESCE(SUM(p.kg) FILTER (WHERE {prog} AND {vivo}), 0)        AS pr_kg,
                COUNT(*) FILTER (WHERE NOT {vivo})                             AS de_cc,
                COALESCE(SUM(p.kg) FILTER (WHERE NOT {vivo}), 0)               AS de_kg,
                MAX(GREATEST(p.order_date, p.proj_ship_date))                  AS ultimo,
                STRING_AGG(DISTINCT p.detail_person, ', ')                     AS detallaron
-          FROM asa_pedidos p
+          FROM vivos p
           JOIN activas a ON a.job_name = p.job_name
+          LEFT JOIN dominante d ON d.job_name = p.job_name
           LEFT JOIN ultimo u ON u.job_name = p.job_name
-         WHERE COALESCE(p.estado,'') <> %s
-         GROUP BY p.job_name, u.detail_person
+         GROUP BY p.job_name, COALESCE(d.detail_person, u.detail_person)
          ORDER BY 5 DESC
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (meses, ESTADO_NUNCA))
+            cur.execute(sql, (ESTADO_NUNCA, meses, meses))
             filas = []
             for r in cur.fetchall():
-                st_cc, pr_cc = r[3], r[5]
+                st_cc, pr_cc = r[3], r[7]
                 filas.append({
                     "obra": r[0], "job": r[1], "lleva": r[2],
                     "st": st_cc, "stkg": float(r[4]),
-                    "pr": pr_cc, "prkg": float(r[6]),
-                    "de": r[7], "dekg": float(r[8]),
-                    "ultimo": r[9].isoformat() if r[9] else None,
-                    "detallaron": r[10],
+                    "stv": r[5], "stvkg": float(r[6]),
+                    "pr": pr_cc, "prkg": float(r[8]),
+                    "de": r[9], "dekg": float(r[10]),
+                    "ultimo": r[11].isoformat() if r[11] else None,
+                    "detallaron": r[12],
                     # Ninguno se filtra por tamaño: ordenando por kilos las que importan
                     # quedan arriba solas, y un umbral fijo escondería casos en silencio.
                     "sin_nada": (st_cc == 0 and pr_cc == 0),
@@ -897,7 +928,8 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
             cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
                         " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
             personas = [r[0] for r in cur.fetchall()]
-    return {"meses": meses, "filas": filas, "personas": personas}
+    return {"meses": meses, "meses_anejo": MESES_STOCK_ANEJO,
+            "filas": filas, "personas": personas}
 
 
 @router.get("/programacion/usc")

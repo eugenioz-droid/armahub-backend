@@ -139,7 +139,9 @@
               Foto de hoy: no usa el filtro de año ni de mes. Una fila por obra; sin
               elegir a nadie arriba, es la planta completa.
               <b style="color:#c62828">Rojo</b> = no le queda nada, ni cubicado ni agendado ·
-              <b style="color:#e65100">ámbar</b> = tiene cola pero nada esperando detrás.
+              <b style="color:#e65100">ámbar</b> = tiene cola pero nada esperando detrás ·
+              <b style="color:#8d6e00">▲</b> = la mayor parte de ese stock se pidió hace
+              más de un año y ya no va a salir.
             </div>
             <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dsht3" id="dshCub"></table></div>
           </div>
@@ -255,6 +257,10 @@
   .dsht3 tr.alerta td:first-child{box-shadow:inset 3px 0 0 #ffb300}
   .dsht3 tr.alerta.grave td{background:#fff6f6}
   .dsht3 tr.alerta.grave td:first-child{box-shadow:inset 3px 0 0 #c62828; font-weight:600}
+  /* Stock añejo: el número existe pero no es trabajo. Se marca en vez de descontarlo,
+     porque descontarlo en silencio haría que los totales no cuadraran con aSa. */
+  .dsht td.anejo{color:#8d6e00}
+  .dsht .vj{font-style:normal; font-size:8px; opacity:.75}
 
   /* Las dos cajas centrales, del MISMO ancho: ambas ocupan la columna entera, una sobre
      la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear
