@@ -2,7 +2,7 @@
 --
 -- POR QUÉ. Los cubicadores necesitan catalogar cada obra en dos ejes que no existen en
 -- aSa: si es de CUBICACIÓN o de DIGITACIÓN, y a qué SEGMENTO pertenece (1&2, 4&5 u
--- Otros). Se miró antes si aSa ya lo traía: `getJobData` expone cinco custom fields por
+-- YPS). Se miró antes si aSa ya lo traía: `getJobData` expone cinco custom fields por
 -- obra (USC, Correo_USC, Calculista, Ton_Proyecto, Tipo_Obra) y ninguno es esto.
 --
 -- TABLA APARTE, no columnas en `asa_obras`: el espejo se reescribe con cada sincronización
@@ -16,7 +16,7 @@
 CREATE TABLE IF NOT EXISTS asa_obra_atributos (
     asa_job_id   TEXT PRIMARY KEY,                 -- JobID de aSa (2012279, a veces con letra)
     tipo         TEXT,                             -- Cubicación | Digitación
-    segmento     TEXT,                             -- 1 y 2 | 4 y 5 | Otros
+    segmento     TEXT,                             -- 1 y 2 | 4 y 5 | YPS
     editado_por  TEXT,                             -- quién lo tocó por última vez
     editado_el   TIMESTAMPTZ NOT NULL DEFAULT now()
 );

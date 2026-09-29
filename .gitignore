@@ -10,3 +10,7 @@ venv/
 
 # Worktrees/estado de workflows multi-agente (local, no versionar)
 .claude/
+
+# Planillas y archivos que el usuario deja para que se lean (programa semanal, etc.).
+# Llevan nombres de personas y datos de clientes: se leen acá, no se versionan.
+entrada/

@@ -806,8 +806,13 @@ check("el reporte manda el año por fila (columnas = años con «todos» elegido
       '"anio": r[12]' in PROG and "AS mes, asa_job_id,\"" in PROG)
 check("la pivot es una función pura y expuesta al test", "function pivotMes(filas, porAnio)" in DSH
       and "pivotMes: pivotMes" in DSH)
-check("el gráfico es de barras APILADAS por mes, con Chart.js ya cargado",
-      "x: { stacked: true" in DSH and "y: { stacked: true" in DSH and "global.replaceChart(CHART_MES" in DSH)
+check("el gráfico es de barras AGRUPADAS (una por persona y mes), con Chart.js ya cargado",
+      "x: { stacked: false" in DSH and "y: { stacked: false" in DSH and "global.replaceChart(CHART_MES" in DSH)
+check("...con el número real encima de cada barra (el plugin de etiquetas se enciende acá)",
+      "[ChartDataLabels]" in DSH and "datalabels: { display: true" in DSH
+      and "formatter: function (v) { return v ? kg0(v) : ''; }" in DSH)
+check("la columna de obras se achicó para darle ancho a las cajas",
+      ".dshobras{width:290px;}" in HTM)
 check("...y no se dibujan más de MAX_SERIES personas: el resto va en «Otros»",
       "MAX_SERIES = 8" in DSH and "'Otros (' + resto.length + ')'" in DSH)
 # Atributos
@@ -816,7 +821,7 @@ check("la tabla es propia, aparte del espejo que se reescribe",
       and "editado_por" in MIG115)
 check("los valores permitidos son los que pidió el usuario",
       'TIPOS_OBRA = ("Cubicación", "Digitación")' in PROG
-      and 'SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "Otros")' in PROG)
+      and 'SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS")' in PROG)
 check("...y el backend rechaza cualquier otro",
       "body.tipo not in TIPOS_OBRA" in PROG and "body.segmento not in SEGMENTOS_OBRA" in PROG)
 atr = PROG[PROG.index('@router.get("/programacion/asa/atributos")'):PROG.index('@router.get("/programacion/usc")')]

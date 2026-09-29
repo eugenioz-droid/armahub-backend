@@ -802,31 +802,45 @@
     html += '<td class="tot">' + kg0(pv.total) + '</td></tr></tfoot>';
     $('dshMesPiv').innerHTML = html;
 
-    // El gráfico: una barra por columna, apilada por persona. Las primeras MAX_SERIES
-    // personas (ya vienen de mayor a menor) van con su color; el resto se junta en «Otros».
+    // El gráfico: por cada mes, UNA BARRA POR PERSONA, con su número encima. Se probó
+    // apilado y el usuario lo descartó: quiere comparar cubicadores dentro del mes, como
+    // en su Power BI, y hay ancho de sobra. Las primeras MAX_SERIES personas (ya vienen
+    // de mayor a menor) van con su color; el resto se junta en «Otros».
     var canvas = $('dshMesChart');
     if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return;
     var series = pv.personas.slice(0, MAX_SERIES), resto = pv.personas.slice(MAX_SERIES);
     var datasets = series.map(function (p, i) {
-      return { label: p.persona, backgroundColor: PALETA[i % PALETA.length],
+      return { label: p.persona, backgroundColor: PALETA[i % PALETA.length], maxBarThickness: 34,
                data: pv.columnas.map(function (c) { return Math.round(p.celdas[c] || 0); }) };
     });
     if (resto.length) {
-      datasets.push({ label: 'Otros (' + resto.length + ')', backgroundColor: '#cfd8dc',
+      datasets.push({ label: 'Otros (' + resto.length + ')', backgroundColor: '#cfd8dc', maxBarThickness: 34,
         data: pv.columnas.map(function (c) {
           return Math.round(resto.reduce(function (a, p) { return a + (p.celdas[c] || 0); }, 0));
         }) });
     }
     CHART_MES = global.replaceChart(CHART_MES, canvas, {
       type: 'bar',
+      // El plugin de etiquetas viene apagado por defecto en toda la app (app.html); acá
+      // se enciende explícitamente porque el usuario quiere el número real en cada barra.
+      plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
       data: { labels: pv.columnas.map(nombre), datasets: datasets },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-                   tooltip: { callbacks: { label: function (t) {
-                     return ' ' + t.dataset.label + ': ' + kg0(t.raw) + ' kg'; } } } },
-        scales: { x: { stacked: true, ticks: { font: { size: 10 } }, grid: { display: false } },
-                  y: { stacked: true, ticks: { font: { size: 10 }, callback: global.chartTickNumber },
+        // Aire arriba para las etiquetas giradas sobre las barras más altas.
+        layout: { padding: { top: 40 } },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+          tooltip: { callbacks: { label: function (t) {
+            return ' ' + t.dataset.label + ': ' + kg0(t.raw) + ' kg'; } } },
+          // Giradas 90°: derechas, seis números de cinco cifras por mes se pisan entre sí.
+          datalabels: { display: true, anchor: 'end', align: 'end', rotation: -90, offset: 2,
+                        color: '#37474f', font: { size: 9 }, clamp: true,
+                        formatter: function (v) { return v ? kg0(v) : ''; } }
+        },
+        scales: { x: { stacked: false, ticks: { font: { size: 10 } }, grid: { display: false } },
+                  y: { stacked: false, beginAtZero: true,
+                       ticks: { font: { size: 10 }, callback: global.chartTickNumber },
                        grid: { color: '#f0f2f5' } } }
       }
     });

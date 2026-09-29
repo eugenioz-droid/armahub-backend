@@ -463,13 +463,25 @@ def _exigir_admin(user):
         raise HTTPException(status_code=403, detail="Solo administración puede hacer esto.")
 
 
+# LEER aSa Data (reportes) hoy es para todos los del módulo: el usuario quiere que los
+# cubicadores entren y carguen atributos, y «después lo bloqueamos». Cuando llegue ese
+# día, esto pasa a True y los reportes vuelven a ser sólo de administración. Traer data
+# de aSa, adoptar obras y asignar USC siguen siendo de admin: mueven datos a escala.
+ASA_DATA_SOLO_ADMIN = False
+
+
+def _exigir_lectura(user):
+    if ASA_DATA_SOLO_ADMIN:
+        _exigir_admin(user)
+
+
 @router.get("/programacion/asa/estado")
 def asa_estado(user=Depends(get_current_user)):
     """Si aSa está configurado y contesta. Existe para que el tab diga QUÉ falta en vez de
     mostrar una lista vacía sin explicación. Incluye el estado del reloj: si está apagado
     hay que saberlo, o alguien va a creer que la data se refresca sola cuando no."""
     from . import asa, asa_scheduler
-    _exigir_admin(user)
+    _exigir_lectura(user)
     info = asa.estado()
     info["reloj"] = asa_scheduler.estado()
     with get_conn() as conn:
@@ -728,7 +740,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
 
     El año y el mes filtran por `order_date`, la única fecha que tienen las dos tablas.
     PROGRAMADOS va con la fecha más reciente arriba."""
-    _exigir_admin(user)
+    _exigir_lectura(user)
     # `anio = 0` significa TODOS LOS AÑOS. Hace falta un valor explícito porque «sin año»
     # ya quería decir «el actual»: el usuario pide que volver a tocar el año encendido lo
     # suelte y muestre la historia completa, y eso no se puede expresar con la ausencia
@@ -832,7 +844,7 @@ VENTANA_TODO = 1200
 # la tabla se miró si aSa ya lo traía: sus custom fields por obra son USC, Correo_USC,
 # Calculista, Ton_Proyecto y Tipo_Obra (EDIFICACION/INFRAESTRUCTURA/YPS). Ninguno es esto.
 TIPOS_OBRA = ("Cubicación", "Digitación")
-SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "Otros")
+SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS")
 
 
 @router.get("/programacion/asa/cubicador")
@@ -868,7 +880,7 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     Y agrega en la base — por obra son cientos de filas; mandar el detalle para que el
     navegador sumara serían 25.000.
     """
-    _exigir_admin(user)
+    _exigir_lectura(user)
     # `meses = 0` es «Todo». OJO: un `meses or 3` convertía ese 0 en 3, y el chip «Todo»
     # del tab mostraba en silencio la misma ventana de tres meses.
     meses = max(0, min(int(3 if meses is None else meses), 120))
