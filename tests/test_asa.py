@@ -409,7 +409,13 @@ check("los kilos van con formato es-CL y 2 decimales",
 # obliga a scrollear hasta abajo para ver el número que más se mira.
 check("el total de kilos va en la primera línea de la caja, siempre visible",
       "function resumen(" in DSH and "' kg</b>'" in DSH)
-check("...y ya no hay fila de Total al pie que obligue a bajar", "tfoot" not in DSH)
+# Sólo en las tablas LARGAS de Programa Planta (566 y 269 filas): ahí un total al pie
+# obliga a bajar hasta el fondo para ver el número que más se mira. En los cuadros
+# resumen de «Obras aSa», que son cortos, el pie es lo natural y el informe original
+# también lo muestra.
+_tabla = DSH.split("function tabla(el, filas, llevaFecha")[1].split("\n  }")[0]
+check("...y las tablas largas ya no llevan Total al pie, que obligaba a bajar",
+      "tfoot" not in _tabla)
 check("los títulos son los del informe",
       "POR PROGRAMAR" in HTM and "PROGRAMADOS" in HTM)
 check("están los cuatro segmentadores: año, mes, obra y cubicador",
@@ -579,6 +585,30 @@ check("el reloj también la sincroniza", "sincronizar_planta" in RELOJ)
 check("...y siempre DESPUÉS de los pedidos, porque sólo actualiza lo que ya existe",
       RELOJ.index("sincronizar_incremental") < RELOJ.index("sincronizar_planta"))
 check("el botón de traer también la trae", "asa_sync.sincronizar_planta" in PROG)
+
+
+# ── 18. El sub-tab «Obras aSa» y el estándar entre tabs ────────────────────
+# Lo que hace que los dos reportes se sientan el mismo tablero: los filtros son
+# COMPARTIDOS y viven fuera de los paneles. Si cada sub-tab dibujara los suyos, cambiar
+# de pestaña perdería la obra y el cubicador elegidos, y habría dos copias que mantener.
+print("\n18. Obras aSa y el estándar entre sub-tabs")
+check("hay dos sub-tabs y el nuevo se llama Obras aSa",
+      "asaSubObras" in HTM and "Obras aSa" in HTM and "asaPanelObras" in HTM)
+check("el período, la obra y el cubicador están FUERA de los paneles",
+      HTM.index('class="dshbarra"') < HTM.index('id="asaPanelPlanta"')
+      and HTM.index('id="dshObras"') < HTM.index('id="asaPanelPlanta"')
+      and HTM.index('id="dshPersonas"') > HTM.index('id="asaPanelObras"'))
+check("...y cambiar de sub-tab no los resetea, sólo repinta",
+      "if (DATA) pintarTablas();" in DSH and "SUB = v;" in DSH)
+check("los tres cuadros del tab nuevo existen",
+      all(x in HTM for x in ("dshPorMes", "dshPorObra", "dshCc", "dshBuscaCc")))
+check("el cuadro de obras se puede ordenar por encabezado",
+      "th[data-ord]" in DSH and "ORDEN.desc = !ORDEN.desc" in DSH)
+check("...y la flecha dice por dónde está ordenado", "\\u25bc" in DSH or "▼" in DSH)
+check("la barra de kilos se dibuja con CSS, sin librería", ".dshbar i{" in HTM)
+check("el mes de cada fila lo manda el backend, no se deduce del texto",
+      "EXTRACT(MONTH FROM order_date)::int AS mes" in PROG and '"mes": r[10]' in PROG)
+check("...y el id de obra también, para el listado de códigos", '"job": r[11]' in PROG)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

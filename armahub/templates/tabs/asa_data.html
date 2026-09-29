@@ -21,16 +21,14 @@
               title="Le pide a aSa los pedidos del año elegido, agregados por código de control.">↻ Traer de aSa</button>
     </div>
 
-    <!-- Sub-tabs. Hoy sólo «Programa Planta»; los próximos reportes sobre la misma data
-         espejo entran acá al lado, sin tocar nada de lo que ya funciona. -->
+    <!-- Sub-tabs. Los próximos reportes sobre la misma data espejo entran acá al lado. -->
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:10px;">
-      <button id="asaSubPlanta" onclick="asaSubTab('planta')"
-              style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #8BC34A; background:none; color:#33691e; cursor:pointer;">Programa Planta</button>
+      <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Programa Planta</button>
+      <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
     </div>
 
-    <!-- PERÍODO: año y mes, en una barra horizontal y FUERA de los paneles. Va acá a
-         propósito: el período es de todo «aSa Data», no del reporte de turno, así que
-         los dashboards que vengan lo heredan sin volver a dibujarlo. -->
+    <!-- PERÍODO: año y mes. Fuera de los paneles a propósito — vale para TODO aSa Data,
+         no para el reporte de turno, así que los dashboards que vengan lo heredan. -->
     <div class="dshbarra">
       <span class="dshbl">Año</span>
       <div id="dshAnios" class="dshchips"></div>
@@ -40,13 +38,11 @@
       <span class="muted" style="font-size:10px;">por fecha de pedido</span>
     </div>
 
-    <div id="asaPanelPlanta">
-
     <div id="dshAviso" class="prgaviso" style="margin-bottom:10px;"></div>
 
-    <!-- Tres columnas: la obra a la izquierda (es la que más se usa y la que más ancho
-         necesita, los nombres son largos), las dos tablas al centro y los segmentadores
-         cortos a la derecha. -->
+    <!-- LOS FILTROS TAMBIÉN SON COMPARTIDOS: obra a la izquierda (nombres largos, por eso
+         la columna más ancha) y cubicador a la derecha. Al centro cambia el panel según
+         el sub-tab; lo de los lados no se vuelve a dibujar. -->
     <div class="dshwrap">
 
       <div class="dshcol dshobras">
@@ -56,27 +52,62 @@
       </div>
 
       <div class="dshtablas">
-        <div class="card dshcard">
-          <!-- El STOCK DISPONIBLE de cubicaciones de la obra: hechas, pero sin fecha de
-               despacho porque no están listas o el cliente no las ha pedido. -->
-          <div class="dshth" title="Códigos de control sin fecha de despacho: el stock disponible de cubicaciones">CUBICACIÓN EN ASA POR PROGRAMAR
-            <span class="muted" id="dshPpN"></span>
-            <div style="flex:1"></div>
-            <span class="dshest" id="dshEstadosPp"></span>
+
+        <!-- ══════ PROGRAMA PLANTA ══════ -->
+        <div id="asaPanelPlanta" class="dshpanel">
+          <div class="card dshcard">
+            <!-- El STOCK DISPONIBLE de cubicaciones de la obra: hechas, pero que aSa
+                 todavía no agenda porque no están listas o el cliente no las pidió. -->
+            <div class="dshth" title="Códigos de control que aSa tiene sin agendar: el stock disponible">CUBICACIÓN EN ASA POR PROGRAMAR
+              <span class="muted" id="dshPpN"></span>
+              <div style="flex:1"></div>
+              <span class="dshest" id="dshEstadosPp"></span>
+            </div>
+            <div class="dshbd"><table class="dsht" id="dshPorProgramar"></table></div>
           </div>
-          <div class="dshbd"><table class="dsht" id="dshPorProgramar"></table></div>
-        </div>
-        <div class="card dshcard">
-          <!-- Los que YA tienen fecha de despacho. Apagar «Despachados» deja a la vista lo
-               PRÓXIMO QUE SE ENVÍA, que es lo que se quiere mirar: todo lo que ya está en
-               obra tuvo fecha alguna vez. Cada botón lleva su conteo aunque esté apagado,
-               para que nunca se esconda nada en silencio. -->
-          <div class="dshth" title="Códigos de control con fecha de despacho comprometida">PROGRAMADOS <span class="muted" id="dshPgN"></span>
-            <div style="flex:1"></div>
-            <span class="dshest" id="dshEstados"></span>
+          <div class="card dshcard">
+            <!-- Apagar «Despachados» deja a la vista lo PRÓXIMO QUE SE ENVÍA, que es lo
+                 que se quiere mirar: todo lo que ya está en obra tuvo fecha alguna vez. -->
+            <div class="dshth" title="Códigos de control agendados en la planta de aSa">PROGRAMADOS <span class="muted" id="dshPgN"></span>
+              <div style="flex:1"></div>
+              <span class="dshest" id="dshEstados"></span>
+            </div>
+            <div class="dshbd"><table class="dsht" id="dshProgramados"></table></div>
           </div>
-          <div class="dshbd"><table class="dsht" id="dshProgramados"></table></div>
         </div>
+
+        <!-- ══════ OBRAS aSa ══════
+             Tres cuadros de consulta sobre la misma data y los mismos filtros: cuánto por
+             mes, cuánto por obra, y el detalle código por código. Arriba los dos resúmenes
+             lado a lado —el mensual es angosto y el de obras necesita el ancho— y abajo el
+             detalle, que es el que más filas tiene. -->
+        <div id="asaPanelObras" class="dshpanel" style="display:none;">
+          <div class="dshfila">
+            <div class="card dshcard dshmes">
+              <div class="dshth">KILOS POR MES <span class="muted" id="dshMesN"></span></div>
+              <div class="dshbd" style="height:auto; max-height:var(--alto2);">
+                <table class="dsht" id="dshPorMes"></table></div>
+            </div>
+            <div class="card dshcard dshobr">
+              <div class="dshth">OBRAS <span class="muted" id="dshObrN"></span>
+                <div style="flex:1"></div>
+                <span class="muted" style="font-weight:400; font-size:9.5px;">clic en el encabezado para ordenar</span>
+              </div>
+              <div class="dshbd" style="height:auto; max-height:var(--alto2);">
+                <table class="dsht" id="dshPorObra"></table></div>
+            </div>
+          </div>
+          <div class="card dshcard">
+            <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
+              <div style="flex:1"></div>
+              <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
+                     class="dshbuscar" style="width:230px; font-weight:400;">
+            </div>
+            <div class="dshbd" style="height:auto; max-height:var(--alto3);">
+              <table class="dsht" id="dshCc"></table></div>
+          </div>
+        </div>
+
       </div>
 
       <div class="dshcol dshfiltros">
@@ -93,8 +124,6 @@
       </div>
 
     </div>
-
-    </div><!-- /asaPanelPlanta -->
 
   </div>
 </div>
@@ -114,7 +143,11 @@
      número conocido: el del centro (dos cajas de 29vh más sus encabezados y el espacio
      entre ellas), y que las columnas laterales no puedan superarlo. */
   .dshwrap{display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;
-           --alto:calc(58vh + 88px);}
+           --alto:calc(58vh + 88px);
+           /* Los dos cuadros de arriba de «Obras aSa» y el detalle de abajo: juntos
+              tienen que sumar lo mismo que las dos cajas de «Programa Planta», para que
+              el panel no cambie de alto al saltar de sub-tab. */
+           --alto2:24vh; --alto3:30vh;}
   .dshwrap > *{max-height:var(--alto);}
   .dshtablas{height:var(--alto);}
   /* Las dos columnas laterales son de ancho FIJO: si se encogieran, los chips saltarían
@@ -148,7 +181,28 @@
   /* Las dos cajas centrales, del MISMO ancho: ambas ocupan la columna entera, una sobre
      la otra. El alto va en vh para que las dos quepan juntas en pantalla sin scrollear
      la página — con altos fijos la segunda caía fuera del monitor. */
-  .dshtablas{flex:1 1 620px; min-width:0; display:flex; flex-direction:column; gap:12px;}
+  .dshtablas{flex:1 1 620px; min-width:0;}
+  .dshpanel{display:flex; flex-direction:column; gap:12px; height:100%;}
+  /* Dos cuadros lado a lado: el mensual es angosto y de alto conocido (12 filas), el de
+     obras necesita todo el ancho que sobre. */
+  .dshfila{display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;}
+  .dshmes{width:216px; flex:none;}
+  .dshobr{flex:1 1 380px; min-width:0;}
+  /* Sub-tabs: el estilo sale del CSS y no de atributos repetidos en cada botón. */
+  .asasub{padding:6px 16px; font-size:12px; font-weight:600; border:none; cursor:pointer;
+          background:none; color:#aaa; border-bottom:2px solid transparent;}
+  .asasub.on{color:#33691e; border-bottom-color:#8BC34A;}
+  /* La barrita que compara kilos entre obras: se dibuja como fondo de la celda, sin
+     ningún elemento extra ni librería. */
+  .dshbar{position:relative;}
+  .dshbar i{position:absolute; left:0; top:2px; bottom:2px; background:#dcedc8;
+            border-radius:2px; z-index:0;}
+  .dshbar span{position:relative; z-index:1;}
+  /* Encabezado ordenable. La flecha dice por dónde está ordenado, que si no hay que
+     adivinarlo mirando los números. */
+  .dsht th.ord{cursor:pointer; user-select:none;}
+  .dsht th.ord:hover{color:#33691e;}
+  .dsht th.ord b{font-weight:700; color:#33691e;}
   .dshcard{padding:8px 10px; margin:0; width:100%; box-sizing:border-box;}
   .dshth{font-size:11px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:5px;
          display:flex; align-items:center; gap:6px;}

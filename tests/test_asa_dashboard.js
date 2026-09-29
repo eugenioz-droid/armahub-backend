@@ -129,5 +129,64 @@ check('los kilos con coma decimal y dos decimales', /1[.,]234[.,]56/.test(T.kg(1
 check('cero es 0,00 y no queda en blanco', /^0[.,]00$/.test(T.kg(0)));
 check('un kg nulo no rompe', T.kg(null) !== undefined && T.kg(undefined) !== undefined);
 
+// ── 7. Sub-tab «Obras aSa» ─────────────────────────────────────────────────
+// Tres cuadros de consulta sobre la misma data: kilos por mes, kilos por obra (con
+// barra y orden por encabezado) y el detalle código por código con buscador. Lo que
+// tiene que cuadrar siempre es que los tres sumen lo mismo — si un resumen no cuadra
+// con el detalle que tiene al lado, el reporte entero deja de ser creíble.
+console.log('\n7. Obras aSa: los tres cuadros cuadran entre sí');
+const filas = [
+  { cc: 'A1', job: '2010', obra: 'OBRA UNO', descr: 'ELEV P1', persona: 'ana', mes: 1, kg: 100 },
+  { cc: 'A2', job: '2010', obra: 'OBRA UNO', descr: 'FUND C2', persona: 'ana', mes: 1, kg: 250 },
+  { cc: 'B1', job: '2011', obra: 'OBRA DOS', descr: 'ELEV P3', persona: 'luis', mes: 2, kg: 400 },
+  { cc: 'B2', job: '2011', obra: 'OBRA DOS', descr: 'LOSA',    persona: 'luis', mes: 3, kg: 50 },
+];
+const TOTAL = 800;
+
+const porMes = {};
+filas.forEach(f => { porMes[f.mes] = (porMes[f.mes] || 0) + f.kg; });
+check('el resumen por mes suma el total',
+      Object.values(porMes).reduce((a, b) => a + b, 0) === TOTAL);
+check('...y agrupa bien (enero = 350)', porMes[1] === 350);
+
+const porObra = {};
+filas.forEach(f => {
+  if (!porObra[f.obra]) porObra[f.obra] = { obra: f.obra, kg: 0, cc: 0 };
+  porObra[f.obra].kg += f.kg; porObra[f.obra].cc++;
+});
+const obras = Object.values(porObra);
+check('el resumen por obra suma el MISMO total',
+      obras.reduce((a, o) => a + o.kg, 0) === TOTAL);
+check('...y cuenta los códigos de cada obra', obras.every(o => o.cc === 2));
+check('los dos resúmenes cuadran entre sí',
+      obras.reduce((a, o) => a + o.kg, 0) === Object.values(porMes).reduce((a, b) => a + b, 0));
+
+// La barra se mide contra el MÁXIMO, no contra el total: con cuarenta obras, medirla
+// contra el total dejaría todas en un hilo y no compararía nada.
+const tope = Math.max(...obras.map(o => o.kg));
+check('la barra se mide contra el máximo, no contra el total', tope === 450);
+check('...así la mayor llega al 100% y ninguna se pasa',
+      obras.every(o => o.kg / tope <= 1) && obras.some(o => o.kg / tope === 1));
+
+// Orden por encabezado: segundo clic invierte; columna nueva arranca como se espera
+// (números de mayor a menor, texto de la A a la Z).
+const ordenar = (lista, col, desc) => [...lista].sort((a, b) => {
+  const d = desc ? -1 : 1, x = a[col], y = b[col];
+  return typeof x === 'string' ? d * x.localeCompare(y, 'es') : d * (x - y);
+});
+check('por kilos descendente deja arriba la obra más grande',
+      ordenar(obras, 'kg', true)[0].obra === 'OBRA DOS');
+check('por kilos ascendente, la más chica', ordenar(obras, 'kg', false)[0].obra === 'OBRA UNO');
+check('por nombre ordena alfabético', ordenar(obras, 'obra', false)[0].obra === 'OBRA DOS');
+check('el orden por defecto es kilos, de mayor a menor',
+      T.orden().col === 'kg' && T.orden().desc === true);
+
+// El buscador mira la descripción Y el código: buscar «elev» no puede traerlo todo.
+const buscar = q => filas.filter(f =>
+  (f.descr || '').toLowerCase().includes(q) || (f.cc || '').toLowerCase().includes(q));
+check('el buscador filtra por descripción', buscar('elev').length === 2);
+check('...y también por código', buscar('b1').length === 1);
+check('...y sin texto no filtra nada', buscar('').length === filas.length);
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

@@ -737,7 +737,11 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 # pase a producción puede no tener fecha de scheduling».
                 "SELECT control_code, job_name, descr, detail_person,"
                 "       COALESCE(proj_ship_date, promised_date) AS fecha, estado, kg,"
-                "       ship_id, sched_estado, proj_fab_date, promised_date, proj_ship_date"
+                "       ship_id, sched_estado, proj_fab_date,"
+                # `mes` y `asa_job_id` los pide el dashboard de Obras: el resumen mensual
+                # necesita el mes de cada fila, y el listado de códigos muestra el id de
+                # la obra. Salen de la misma consulta para no hacer otra.
+                "       EXTRACT(MONTH FROM order_date)::int AS mes, asa_job_id"
                 "  FROM asa_pedidos" + cond_periodo + " AND COALESCE(estado,'') <> %s"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
                 "          job_name, descr, control_code",
@@ -755,6 +759,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                  "estado": r[5], "kg": float(r[6] or 0),
                  "guia": r[7], "planta": r[8],
                  "fab": r[9].isoformat() if r[9] else None,
+                 "mes": r[10], "job": r[11],
                  "programado": bool(r[8] in ESTADOS_PLANTA_PROGRAMADO or r[7])}
                 for r in cur.fetchall()
             ]
