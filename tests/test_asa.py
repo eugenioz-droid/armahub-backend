@@ -352,6 +352,12 @@ check("están los cuatro segmentadores: año, mes, obra y cubicador",
 check("el total se recalcula sobre las filas FILTRADAS",
       "filas.reduce(function (a, f) { return a + f.kg; }, 0)" in DSH)
 
+# `anio=` vacío en la primera carga (el año aún no se conoce) es un 422 seguro: FastAPI no
+# convierte "" a entero. Pasó en producción. Los parámetros se arman con qs(), que omite
+# los vacíos.
+check("el front nunca manda un parámetro vacío (usa qs(), que los omite)",
+      "function qs(" in DSH and "'anio=' + (ANIO" not in DSH and "?anio=" not in DSH)
+check("un 422 se muestra legible, no como [object Object]", "Array.isArray(det)" in DSH)
 check("el tab está cableado en app.html", "prg_dashboards" in APP and "dashboards.js" in APP)
 check("y registrado en el shell con su loader",
       "prg_dashboards: 'loadPrgDashboards'" in SHELL)

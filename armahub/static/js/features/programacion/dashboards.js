@@ -38,9 +38,24 @@
     var data = null; try { data = await res.json(); } catch (e) {}
     if (!res.ok) {
       var det = data && data.detail;
+      // Un 422 de FastAPI trae una LISTA de errores de validación; mostrarla tal cual da
+      // «[object Object]», que no le dice nada a nadie.
+      if (Array.isArray(det)) det = det.map(function (d) { return (d.loc || []).slice(-1) + ': ' + d.msg; }).join(' · ');
       throw new Error((det && (det.msg || det)) || ('Error ' + res.status));
     }
     return data;
+  }
+
+  // Sólo los parámetros con valor. Mandar `anio=` vacío es un 422 seguro: FastAPI no
+  // convierte "" a entero. Pasó en la primera carga, cuando el año aún no se conoce.
+  function qs(obj) {
+    var p = [];
+    Object.keys(obj).forEach(function (k) {
+      var v = obj[k];
+      if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) return;
+      p.push(encodeURIComponent(k) + '=' + encodeURIComponent(Array.isArray(v) ? v.join(',') : v));
+    });
+    return p.length ? '?' + p.join('&') : '';
   }
   function aviso(m) { if (global.showToast) global.showToast(m, 'error'); else alert(m); }
 
@@ -59,8 +74,7 @@
 
   async function cargar() {
     try {
-      var url = '/programacion/asa/reporte?anio=' + (ANIO || '') + '&meses=' + MESES.join(',');
-      DATA = await req('GET', url);
+      DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
       if (!DATA) return;
       ANIO = DATA.anio;
     } catch (e) { aviso(e.message); mostrarVacio(e.message); return; }
@@ -188,7 +202,7 @@
     var b = $('dshSync'), antes = b.textContent;
     b.disabled = true; b.textContent = '↻ consultando aSa…';
     try {
-      var r = await req('POST', '/programacion/asa/sincronizar-pedidos?anio=' + (ANIO || ''));
+      var r = await req('POST', '/programacion/asa/sincronizar-pedidos' + qs({ anio: ANIO }));
       if (global.showToast) global.showToast(
         r.filas + ' códigos de control de ' + r.anio + ' · ' + r.nuevas + ' nuevos', 'success');
       await cargar();
