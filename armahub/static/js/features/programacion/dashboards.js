@@ -259,9 +259,13 @@
   function conFecha(filas) { return filas.filter(programado); }
   function sinFecha(filas) { return filas.filter(function (f) { return !programado(f); }); }
   // El filtro de estado sólo aplica a PROGRAMADOS, que es donde están los botones.
-  function visiblePorEstado(f, caja) {
-    return OCULTOS[caja || (programado(f) ? 'pg' : 'pp')].indexOf(f.estado) === -1;
-  }
+  // DOS funciones, no una con un argumento opcional. La de un solo argumento es la que
+  // se le pasa a `.filter()`, y por eso es segura: filter entrega TRES argumentos
+  // (elemento, índice, arreglo) y un segundo parámetro opcional recibiría el índice.
+  // Con `OCULTOS[1]` undefined, reventaba en el segundo elemento. Ya pasó una vez.
+  function cajaDe(f) { return programado(f) ? 'pg' : 'pp'; }
+  function visible(f) { return OCULTOS[cajaDe(f)].indexOf(f.estado) === -1; }
+  function visibleEn(caja, f) { return OCULTOS[caja].indexOf(f.estado) === -1; }
 
   function filtrar(filas, salvo) {
     return filas.filter(function (f) {
@@ -276,7 +280,7 @@
     // PROGRAMADOS sólo los estados encendidos. Si no, la lista ofrecería obras que al
     // marcarlas dejan las dos cajas vacías.
     var vistos = {};
-    var base = filtrar(todasLasFilas(), salvo).filter(visiblePorEstado);
+    var base = filtrar(todasLasFilas(), salvo).filter(visible);
     base.forEach(function (f) { if (f[campo]) vistos[f[campo]] = 1; });
     elegidos.forEach(function (v) { vistos[v] = 1; });
     return Object.keys(vistos).sort();
@@ -347,8 +351,8 @@
     // está apagado, que es justamente lo que dicen.
     pintarEstados('pp', $('dshEstadosPp'), todosPp);
     pintarEstados('pg', $('dshEstados'), todosPg);
-    var pp = todosPp.filter(function (f) { return visiblePorEstado(f, 'pp'); });
-    var pg = todosPg.filter(function (f) { return visiblePorEstado(f, 'pg'); });
+    var pp = todosPp.filter(visibleEn.bind(null, 'pp'));
+    var pg = todosPg.filter(visibleEn.bind(null, 'pg'));
     var tp = tabla($('dshPorProgramar'), pp, false, todosPp.length - pp.length);
     var tg = tabla($('dshProgramados'), pg, true, todosPg.length - pg.length);
     $('dshPpN').innerHTML = resumen(pp.length, tp);
@@ -380,5 +384,14 @@
     if (fallidos.length) aviso('No se pudo traer: ' + fallidos.join(', '));
     await cargar();
   }
+
+  // Expuesto SÓLO para los tests: las reglas puras, sin DOM. Poder ejecutarlas es lo que
+  // distingue un test que mira el código de uno que lo corre — y los bugs que llegaron a
+  // producción en este archivo fueron todos de ejecución, no de texto.
+  global.__asaDataTest = {
+    programado: programado, cajaDe: cajaDe, visible: visible, visibleEn: visibleEn,
+    conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
+    ocultos: function (v) { if (v) { OCULTOS = v; } return OCULTOS; }
+  };
 
 })(window);

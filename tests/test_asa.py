@@ -455,7 +455,13 @@ check("el anulado ni siquiera se manda al front",
 # Se guarda lo APAGADO, no lo encendido: así un estado nuevo que aparezca en aSa se ve
 # por defecto, en vez de quedar invisible sin que nadie se entere.
 check("el front guarda los estados OCULTOS, no los visibles", "var OCULTOS" in DSH
-      and "OCULTOS[caja || (programado(f) ? 'pg' : 'pp')].indexOf(f.estado) === -1" in DSH)
+      and "OCULTOS[cajaDe(f)].indexOf(f.estado) === -1" in DSH)
+# Array.filter entrega TRES argumentos. Una función con segundo parámetro opcional recibe
+# el índice como nombre de caja: OCULTOS[1] es undefined y revienta en el 2º elemento.
+# Pasó y dejó la pantalla en blanco. Por eso hay DOS funciones y la de filter es de un
+# solo argumento. El que lo prueba de verdad es tests/test_asa_dashboard.js, que ejecuta.
+check("la función que se pasa a .filter() es de UN solo argumento",
+      "function visible(f) {" in DSH and "function visibleEn(caja, f) {" in DSH)
 
 # EL BUG QUE REPORTÓ EL USUARIO: los conteos de los botones eran del año entero. Con una
 # obra seleccionada decían «En producción 148» cuando esa obra tenía cero. Ahora se
@@ -485,7 +491,10 @@ check("...y lo apagado se ve tachado, no ausente", "line-through" in HTM)
 check("si la caja queda vacía por el estado, se dice cuántos hay ocultos",
       "ocultos por el filtro de estado" in DSH)
 check("la lista de obras también respeta el estado apagado",
-      "filtrar(todasLasFilas(), salvo).filter(visiblePorEstado)" in DSH)
+      "filtrar(todasLasFilas(), salvo).filter(visible)" in DSH)
+check("y las reglas puras quedan expuestas para poder EJECUTARLAS en un test",
+      "global.__asaDataTest" in DSH
+      and os.path.exists(os.path.join(ROOT, "tests", "test_asa_dashboard.js")))
 check("las dos cajas avisan cuántos códigos esconde el filtro de estado",
       DSH.count("todosPp.length - pp.length") == 1 and DSH.count("todosPg.length - pg.length") == 1)
 check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
