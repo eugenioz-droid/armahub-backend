@@ -1,15 +1,15 @@
 // aSa DATA (29-sep) — los reportes que se arman sobre el espejo de aSa.
 //
-// Sub-tab «Programa Planta»: réplica del informe de Power BI. Dos tablas, «CUBICACIÓN EN
-// ASA POR PROGRAMAR» y «PROGRAMADOS». La división no es un campo de aSa: programado = el
-// pedido tiene fecha comprometida (PromisedDeliveryDate).
+// Sub-tab «Programa Planta»: dos cajas, y la división la da aSa con el estado de su
+// programación de planta — Unscheduled es el stock, Scheduled/Confirmed lo programado.
+// Eso viaja resuelto en `programado`: la regla vive en el backend y acá no se repite.
 //
-// QUÉ HACE CADA LADO. El backend trae del espejo `asa_pedidos` las filas del año (y de los
-// meses) elegidos, ya separadas en dos listas y con sus totales sumados. Este archivo
-// aplica los filtros de obra y cubicador —que son instantáneos porque la data ya está— y
-// pinta. Los totales SÍ se recalculan acá cuando hay filtro de obra o persona, porque el
-// total tiene que corresponder a lo que se ve en pantalla; si mostrara el del servidor,
-// el número de abajo no cuadraría con las filas de arriba.
+// QUÉ HACE CADA LADO. El backend manda TODAS las filas del período; este archivo filtra
+// por obra, cubicador y estado, y suma. Los totales se recalculan acá porque tienen que
+// corresponder a lo que se ve: si mostraran el del servidor, el número del encabezado no
+// cuadraría con las filas de abajo. Y los conteos de los botones salen de esas mismas
+// filas filtradas — cuando no era así, decían «En producción 148» con una obra que tenía
+// cero.
 (function (global) {
   'use strict';
 

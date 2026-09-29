@@ -1,8 +1,14 @@
 <!-- aSa DATA (29-sep) — los reportes que se arman sobre el espejo de aSa.
-     Sub-tab «Programa Planta»: réplica del informe de Power BI. Dos tablas, «CUBICACIÓN
-     EN ASA POR PROGRAMAR» y «PROGRAMADOS»; la división no es un campo de aSa, programado
-     = tiene fecha comprometida (PromisedDeliveryDate). Los filtros (año · mes · obra ·
-     cubicador) son los mismos segmentadores del informe original.
+
+     Sub-tab «Programa Planta». Dos cajas, y la división la da aSa, no nosotros: el
+     estado de su programación de planta (getScheduling).
+       · POR PROGRAMAR = Unscheduled. El STOCK DISPONIBLE de cubicaciones de la obra.
+       · PROGRAMADOS   = Scheduled o Confirmed, o cualquiera con guía de despacho.
+
+     El PERÍODO (año y mes) va en una barra arriba, fuera de los paneles: vale para todo
+     aSa Data, así que los próximos dashboards lo heredan. Obra y cubicador son de este
+     reporte y van a los costados.
+
      Toda la data sale del espejo `asa_pedidos`, nunca de aSa en vivo. -->
 <div id="tab-asa_data" class="tab-content">
   <div style="padding:4px 2px 12px;">
@@ -20,6 +26,18 @@
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:10px;">
       <button id="asaSubPlanta" onclick="asaSubTab('planta')"
               style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #8BC34A; background:none; color:#33691e; cursor:pointer;">Programa Planta</button>
+    </div>
+
+    <!-- PERÍODO: año y mes, en una barra horizontal y FUERA de los paneles. Va acá a
+         propósito: el período es de todo «aSa Data», no del reporte de turno, así que
+         los dashboards que vengan lo heredan sin volver a dibujarlo. -->
+    <div class="dshbarra">
+      <span class="dshbl">Año</span>
+      <div id="dshAnios" class="dshchips"></div>
+      <span class="dshsep"></span>
+      <span class="dshbl">Mes</span>
+      <div id="dshMeses" class="dshchips"></div>
+      <span class="muted" style="font-size:10px;">por fecha de pedido</span>
     </div>
 
     <div id="asaPanelPlanta">
@@ -63,14 +81,6 @@
 
       <div class="dshcol dshfiltros">
         <div class="dshf">
-          <div class="dshfh">Año</div>
-          <div id="dshAnios" class="dshchips"></div>
-        </div>
-        <div class="dshf">
-          <div class="dshfh">Mes <span class="muted" style="font-weight:400">· por fecha de pedido</span></div>
-          <div id="dshMeses" class="dshchips"></div>
-        </div>
-        <div class="dshf">
           <div class="dshfh">Cubicador <span class="muted" style="font-weight:400">· en aSa</span>
             <div style="flex:1"></div>
             <button id="dshDetElegir" class="dshmini" title="Elegir qué cubicadores se muestran">elegir</button>
@@ -90,13 +100,21 @@
 </div>
 
 <style>
-  /* EL ALTO DEL PANEL, en un solo lugar. `stretch` iguala los tres a la altura del MÁS
-     ALTO, así que si la lista de obras crece con su contenido es ella la que manda y se
-     pasa de largo bajo las cajas — que es lo que estaba pasando. La solución es que el
-     alto sea un número conocido: el del centro (dos cajas de 31vh + sus encabezados y el
-     espacio entre ellas), y que las columnas laterales no puedan superarlo. */
+  /* La barra de PERÍODO. Horizontal y arriba porque el año y el mes valen para TODO aSa
+     Data, no para el reporte de turno: metidos en la columna lateral se leían como un
+     filtro más del cuadro de al lado. Así, además, el próximo dashboard los hereda. */
+  .dshbarra{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;
+            background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:7px 11px;}
+  .dshbl{font-size:10.5px; font-weight:700; color:#546e7a; letter-spacing:.2px;}
+  .dshsep{width:1px; align-self:stretch; background:#e3e8ef; margin:0 4px;}
+
+  /* EL ALTO DEL PANEL, en un solo lugar. `stretch` iguala las tres columnas a la altura
+     de la MÁS ALTA, así que si la lista de obras crece con su contenido es ella la que
+     manda y se pasa de largo bajo las cajas — pasó. La solución es que el alto sea un
+     número conocido: el del centro (dos cajas de 29vh más sus encabezados y el espacio
+     entre ellas), y que las columnas laterales no puedan superarlo. */
   .dshwrap{display:flex; gap:12px; align-items:stretch; flex-wrap:wrap;
-           --alto:calc(62vh + 88px);}
+           --alto:calc(58vh + 88px);}
   .dshwrap > *{max-height:var(--alto);}
   .dshtablas{height:var(--alto);}
   /* Las dos columnas laterales son de ancho FIJO: si se encogieran, los chips saltarían
@@ -104,7 +122,7 @@
   .dshcol{flex:none; display:flex; flex-direction:column; gap:11px;
           background:#fff; border:1px solid #e3e8ef; border-radius:8px; padding:11px 12px;}
   .dshobras{width:268px;}
-  .dshfiltros{width:228px; overflow:auto;}
+  .dshfiltros{width:212px; overflow:auto;}
   .dshbuscar{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px;
              border:1px solid #cfd8dc; border-radius:4px;}
   .dshf{display:flex; flex-direction:column;}
@@ -149,7 +167,7 @@
   .dshest button.off:hover{border-color:#cfd8dc; color:#90a4ae}
   /* `height`, no `max-height`: las dos cajas tienen que medir EXACTAMENTE lo mismo
      aunque una tenga 566 filas y la otra 269. Con max-height, la más corta encogía. */
-  .dshbd{height:31vh; min-height:130px; overflow:auto;}
+  .dshbd{height:29vh; min-height:130px; overflow:auto;}
   .dsht{width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px;
         font-variant-numeric:tabular-nums;}
   /* El encabezado queda pegado: la tabla se desplaza y sin esto no se sabe qué columna es cuál. */

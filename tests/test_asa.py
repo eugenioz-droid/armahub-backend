@@ -517,8 +517,19 @@ check("...y sin elección se muestran todos (primer uso)", "!DET.length || DET.i
 check("el botón trae todos los años desde 2021, del más nuevo al más viejo",
       "PRIMER_ANIO = 2021" in DSH and "anio >= PRIMER_ANIO; anio--" in DSH)
 check("...y si un año falla, sigue con el resto y lo dice", "fallidos.push(anio" in DSH)
+# El PERÍODO (año y mes) va en una barra arriba y FUERA de los paneles: vale para todo
+# aSa Data, así que los próximos dashboards lo heredan sin volver a dibujarlo.
+check("el año y el mes van en una barra horizontal arriba",
+      'class="dshbarra"' in HTM and HTM.index('class="dshbarra"') < HTM.index('id="asaPanelPlanta"'))
+check("...y ya no están en la columna lateral",
+      HTM.index('id="dshAnios"') < HTM.index('class="dshwrap"')
+      and HTM.index('id="dshMeses"') < HTM.index('class="dshwrap"'))
+check("la obra y el cubicador sí son del reporte y quedan a los costados",
+      HTM.index('id="dshObras"') > HTM.index('class="dshwrap"')
+      and HTM.index('id="dshPersonas"') > HTM.index('class="dshwrap"'))
+
 # Tres columnas: obra a la izquierda (nombres largos), las dos tablas al centro con el
-# MISMO ancho, y los segmentadores cortos a la derecha.
+# MISMO ancho, y el cubicador a la derecha.
 check("la obra va en su propia columna, a la izquierda", ".dshobras" in HTM
       and HTM.index('class="dshcol dshobras"') < HTM.index('class="dshtablas"'))
 check("los segmentadores van a la derecha, después de las tablas",
@@ -526,9 +537,11 @@ check("los segmentadores van a la derecha, después de las tablas",
 check("las dos cajas tienen el mismo ancho (ambas ocupan la columna entera)",
       ".dshcard{" in HTM and "width:100%" in HTM.split(".dshcard{")[1].split("}")[0])
 # El alto en vh: con altos fijos la segunda caja quedaba fuera del monitor.
-check("el alto de las tablas se mide contra la pantalla (vh), no en px fijos",
-      ".dshbd{height:31vh" in HTM)
-check("...y las dos juntas caben (2 x 31vh < 100vh)", 31 * 2 < 100)
+import re as _re
+_alto = _re.search(r"\.dshbd\{height:(\d+)vh", HTM)
+check("el alto de las tablas se mide contra la pantalla (vh), no en px fijos", bool(_alto))
+check("...y las dos juntas caben en una pantalla, con la barra de período arriba",
+      bool(_alto) and int(_alto.group(1)) * 2 < 70)
 # `height`, no `max-height`: con max-height la caja de 269 filas quedaba más baja que la
 # de 566 y las dos no se veían del mismo tamaño.
 check("...y es height, para que las dos midan exactamente lo mismo",
