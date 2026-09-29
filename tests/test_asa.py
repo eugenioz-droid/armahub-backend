@@ -709,7 +709,7 @@ check("...pero quién detalló sigue a la vista, en el globo", "Detalló: " in D
 check("obra activa se define por MOVIMIENTO reciente, no por tener pendiente",
       "make_interval(months => %s)" in PROG and "activas AS (" in PROG)
 check("la ventana se puede cambiar desde el tab", "dshCubMeses" in HTM and "CUB_MESES" in DSH)
-check("...y está acotada por el backend", "min(int(meses or 3), 120)" in PROG)
+check("...y está acotada por el backend", "min(int(3 if meses is None else meses), 120)" in PROG)
 
 # DOS NIVELES, porque no son lo mismo: ámbar «se le va a acabar», rojo «ya se acabó».
 # Una sola marca haría que el grave se perdiera entre los leves, que son muchos más.
@@ -790,6 +790,52 @@ check("...la fila y el pie la llevan",
       and "<tfoot><tr><td>Total</td><td></td>" in DSH)
 check("...y se puede ordenar por Job, ascendente al primer clic",
       "c !== 'obra' && c !== 'job'" in DSH)
+
+# ── 24. «Cubicado por mes» y «Atributos de obra» ───────────────────────────
+# Dos sub-tabs nuevos. El primero es de lectura sobre la misma data (persona × mes, con
+# gráfico apilado); el segundo es el ÚNICO donde se escribe: los cubicadores catalogan
+# cada obra (tipo y segmento) en una tabla propia, porque aSa no lo tiene.
+print("\n24. Cubicado por mes y Atributos de obra")
+MIG115 = open(os.path.join(ROOT, "armahub", "migrations", "115_asa_obra_atributos.sql"),
+              encoding="utf-8").read()
+check("los dos sub-tabs están registrados con su botón y su panel",
+      "['mes',    'asaSubMes',    'asaPanelMes']" in DSH and "['atr',    'asaSubAtr',    'asaPanelAtr']" in DSH
+      and 'id="asaSubMes"' in HTM and 'id="asaSubAtr"' in HTM
+      and 'id="asaPanelMes"' in HTM and 'id="asaPanelAtr"' in HTM)
+check("el reporte manda el año por fila (columnas = años con «todos» elegido)",
+      '"anio": r[12]' in PROG and "AS mes, asa_job_id,\"" in PROG)
+check("la pivot es una función pura y expuesta al test", "function pivotMes(filas, porAnio)" in DSH
+      and "pivotMes: pivotMes" in DSH)
+check("el gráfico es de barras APILADAS por mes, con Chart.js ya cargado",
+      "x: { stacked: true" in DSH and "y: { stacked: true" in DSH and "global.replaceChart(CHART_MES" in DSH)
+check("...y no se dibujan más de MAX_SERIES personas: el resto va en «Otros»",
+      "MAX_SERIES = 8" in DSH and "'Otros (' + resto.length + ')'" in DSH)
+# Atributos
+check("la tabla es propia, aparte del espejo que se reescribe",
+      "CREATE TABLE IF NOT EXISTS asa_obra_atributos" in MIG115 and "asa_job_id   TEXT PRIMARY KEY" in MIG115
+      and "editado_por" in MIG115)
+check("los valores permitidos son los que pidió el usuario",
+      'TIPOS_OBRA = ("Cubicación", "Digitación")' in PROG
+      and 'SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "Otros")' in PROG)
+check("...y el backend rechaza cualquier otro",
+      "body.tipo not in TIPOS_OBRA" in PROG and "body.segmento not in SEGMENTOS_OBRA" in PROG)
+atr = PROG[PROG.index('@router.get("/programacion/asa/atributos")'):PROG.index('@router.get("/programacion/usc")')]
+check("los dos endpoints existen y NO exigen admin: los llenan los cubicadores",
+      '@router.put("/programacion/asa/atributos/{job}")' in atr and "_exigir_admin" not in atr)
+check("el PUT sólo toca los campos que vienen (tocar el tipo no pisa el segmento)",
+      "body.model_fields_set" in atr and "CASE WHEN %s THEN EXCLUDED.tipo ELSE asa_obra_atributos.tipo END" in atr)
+check("...queda registrado quién y cuándo", "editado_por = EXCLUDED.editado_por" in atr
+      and 'audit(email, "asa_atributos"' in atr)
+check("el front guarda al clic, un campo por vez, y clic en el encendido borra",
+      "var nuevo = (fila[campo] === valor) ? null : valor;" in DSH
+      and "cuerpo[campo] = nuevo" in DSH and "req('PUT', '/programacion/asa/atributos/'" in DSH)
+check("el tab de escritura se ve distinto: pestaña y panel azules",
+      ".asasub.atr" in HTM and ".dshatr{background:#f3f5fb" in HTM)
+check("la ventana de movimiento «Todo» es de verdad todo, en los dos tabs",
+      "VENTANA_TODO = 1200" in PROG and PROG.count("ventana = meses or VENTANA_TODO") == 2
+      and "int(meses or 3)" not in PROG)
+check("asignar USC lee `role`, no `rol` (era un 500 seguro)",
+      "SELECT role FROM users WHERE id = %s" in PROG and "SELECT rol FROM users" not in PROG)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

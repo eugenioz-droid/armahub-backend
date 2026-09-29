@@ -95,7 +95,9 @@
   // el siguiente reporte sea añadir una línea a la lista y su panel al HTML.
   var SUBTABS = [['planta', 'asaSubPlanta', 'asaPanelPlanta'],
                  ['obras',  'asaSubObras',  'asaPanelObras'],
-                 ['cub',    'asaSubCub',    'asaPanelCub']];
+                 ['cub',    'asaSubCub',    'asaPanelCub'],
+                 ['mes',    'asaSubMes',    'asaPanelMes'],
+                 ['atr',    'asaSubAtr',    'asaPanelAtr']];
   var SUB = 'planta';
   global.asaSubTab = function (v) {
     SUB = v;
@@ -111,6 +113,7 @@
     // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
     // pide la primera vez que se abre y no en cada cambio de pestaña.
     if (v === 'cub' && !CUB) { cargarCub().then(pintarTablas); return; }
+    if (v === 'atr' && !ATR) { cargarAtr().then(pintarTablas); return; }
     // Se repinta sólo el panel que se abre. Los filtros son compartidos y NO se tocan:
     // cambiar de sub-tab conserva la obra, el cubicador y el período ya elegidos.
     if (DATA) pintarTablas();
@@ -128,6 +131,9 @@
       });
       $('dshBuscaCc').addEventListener('input', function () {
         BUSCA_CC = this.value.trim().toLowerCase(); pintarTablas();
+      });
+      $('dshBuscaAtr').addEventListener('input', function () {
+        BUSCA_ATR = this.value.trim().toLowerCase(); pintarTablas();
       });
     }
     await cargar();
@@ -475,6 +481,8 @@
   function pintarTablas() {
     if (SUB === 'obras') return pintarObrasAsa();
     if (SUB === 'cub') return pintarCubicador();
+    if (SUB === 'mes') return pintarMes();
+    if (SUB === 'atr') return pintarAtributos();
     return pintarPlanta();
   }
 
@@ -717,6 +725,196 @@
     return '· ' + n + ' CC · <b style="color:#33691e">' + kg(total) + ' kg</b>';
   }
 
+  // ── Sub-tab CUBICADO POR MES ───────────────────────────────────────────────
+  // Quién cubicó cuánto en cada mes: la pivot del Power BI (persona × mes) más un gráfico
+  // de barras APILADAS por mes. Apiladas y no agrupadas: con seis personas por doce meses
+  // las barras agrupadas se vuelven palitos ilegibles; apiladas se lee el total del mes y
+  // quién lo hizo. Mismos filtros que el resto y sin estado: se mira todo lo cubicado.
+  //
+  // La pivot es una función PURA sobre las filas —sin DOM— para poder probarla:
+  //   porAnio=false → columnas = meses (1..12) presentes;  true → columnas = años.
+  function pivotMes(filas, porAnio) {
+    var cols = {}, por = {}, totCol = {}, total = 0;
+    filas.forEach(function (f) {
+      var c = porAnio ? f.anio : f.mes;
+      if (!c) return;
+      var p = f.persona || '(sin detallar)';
+      cols[c] = 1;
+      if (!por[p]) por[p] = { persona: p, celdas: {}, total: 0 };
+      por[p].celdas[c] = (por[p].celdas[c] || 0) + f.kg;
+      por[p].total += f.kg;
+      totCol[c] = (totCol[c] || 0) + f.kg;
+      total += f.kg;
+    });
+    var columnas = Object.keys(cols).map(Number).sort(function (a, b) { return a - b; });
+    var personas = Object.keys(por).map(function (k) { return por[k]; })
+      .sort(function (a, b) { return b.total - a.total; });
+    var max = 0;
+    personas.forEach(function (p) {
+      columnas.forEach(function (c) { max = Math.max(max, p.celdas[c] || 0); });
+    });
+    return { columnas: columnas, personas: personas, totCol: totCol, total: total, max: max };
+  }
+
+  var CHART_MES = null;
+  // Ocho colores apagados y distintos entre sí; a partir del noveno se repiten.
+  var PALETA = ['#8bc34a', '#42a5f5', '#ffa726', '#ab47bc', '#26a69a', '#ef5350', '#78909c', '#d4e157'];
+  var MAX_SERIES = 8;   // más series que esto y el gráfico deja de leerse: el resto se junta
+
+  function pintarMes() {
+    var base = filtrar(todasLasFilas());
+    var porAnio = !(DATA && DATA.anio);
+    var pv = pivotMes(base, porAnio);
+    var nombre = function (c) { return porAnio ? String(c) : MESN[c - 1]; };
+    $('dshMesPivN').innerHTML = '· ' + pv.personas.length + ' personas · <b style="color:#33691e">' +
+      kg0(pv.total) + ' kg</b>' + (porAnio ? ' · por año (elige uno arriba para ver meses)' : '');
+    if (!pv.columnas.length) {
+      $('dshMesPiv').innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
+      CHART_MES = global.destroyChart ? global.destroyChart(CHART_MES) : null;
+      return;
+    }
+
+    // La tabla. Anchos: la persona se lleva lo que necesita el nombre; el resto se
+    // reparte parejo entre las columnas del período y el total.
+    var n = pv.columnas.length;
+    var wp = 16, wt = 9, wc = ((100 - wp - wt) / n).toFixed(2);
+    var html = '<colgroup><col style="width:' + wp + '%">';
+    pv.columnas.forEach(function () { html += '<col style="width:' + wc + '%">'; });
+    html += '<col style="width:' + wt + '%"></colgroup><thead><tr><th>Detallado por</th>';
+    pv.columnas.forEach(function (c) { html += '<th>' + esc(nombre(c)) + '</th>'; });
+    html += '<th class="tot">Total</th></tr></thead><tbody>';
+    var tinte = function (v) {
+      if (!v || !pv.max) return '';
+      // Del 8% al 60% de opacidad del verde: la celda más grande de la tabla es la más
+      // oscura; una vacía no se pinta.
+      return ' style="background:rgba(139,195,74,' + (0.08 + 0.52 * v / pv.max).toFixed(2) + ')"';
+    };
+    pv.personas.forEach(function (p) {
+      html += '<tr><td title="' + esc(p.persona) + '">' + esc(p.persona) + '</td>';
+      pv.columnas.forEach(function (c) {
+        var v = p.celdas[c] || 0;
+        html += '<td' + tinte(v) + '>' + (v ? kg0(v) : '') + '</td>';
+      });
+      html += '<td class="tot">' + kg0(p.total) + '</td></tr>';
+    });
+    html += '</tbody><tfoot><tr><td>Total</td>';
+    pv.columnas.forEach(function (c) { html += '<td>' + kg0(pv.totCol[c] || 0) + '</td>'; });
+    html += '<td class="tot">' + kg0(pv.total) + '</td></tr></tfoot>';
+    $('dshMesPiv').innerHTML = html;
+
+    // El gráfico: una barra por columna, apilada por persona. Las primeras MAX_SERIES
+    // personas (ya vienen de mayor a menor) van con su color; el resto se junta en «Otros».
+    var canvas = $('dshMesChart');
+    if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return;
+    var series = pv.personas.slice(0, MAX_SERIES), resto = pv.personas.slice(MAX_SERIES);
+    var datasets = series.map(function (p, i) {
+      return { label: p.persona, backgroundColor: PALETA[i % PALETA.length],
+               data: pv.columnas.map(function (c) { return Math.round(p.celdas[c] || 0); }) };
+    });
+    if (resto.length) {
+      datasets.push({ label: 'Otros (' + resto.length + ')', backgroundColor: '#cfd8dc',
+        data: pv.columnas.map(function (c) {
+          return Math.round(resto.reduce(function (a, p) { return a + (p.celdas[c] || 0); }, 0));
+        }) });
+    }
+    CHART_MES = global.replaceChart(CHART_MES, canvas, {
+      type: 'bar',
+      data: { labels: pv.columnas.map(nombre), datasets: datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                   tooltip: { callbacks: { label: function (t) {
+                     return ' ' + t.dataset.label + ': ' + kg0(t.raw) + ' kg'; } } } },
+        scales: { x: { stacked: true, ticks: { font: { size: 10 } }, grid: { display: false } },
+                  y: { stacked: true, ticks: { font: { size: 10 }, callback: global.chartTickNumber },
+                       grid: { color: '#f0f2f5' } } }
+      }
+    });
+  }
+
+  // ── Sub-tab ATRIBUTOS DE OBRA ──────────────────────────────────────────────
+  // Lo que aSa no sabe de una obra y los cubicadores sí: tipo (Cubicación/Digitación) y
+  // segmento. Se guarda AL CLIC —sin botón de guardar— y cada campo viaja solo, para que
+  // tocar el tipo nunca pise el segmento que puso otro.
+  var ATR = null, ATR_MESES = 12, BUSCA_ATR = '';
+
+  async function cargarAtr() {
+    try {
+      ATR = await req('GET', '/programacion/asa/atributos' + qs({ meses: ATR_MESES }));
+    } catch (e) { aviso(e.message); ATR = null; }
+  }
+
+  function pintarAtributos() {
+    if (!ATR) { $('dshAtr').innerHTML = '<tbody><tr><td class="dshvacio">Cargando…</td></tr></tbody>'; return; }
+    chips($('dshAtrMeses'), [3, 6, 12, 0], [ATR_MESES], function (m) {
+      ATR_MESES = m;
+      cargarAtr().then(pintarAtributos);
+    }, function (m) { return m ? m + ' meses' : 'Todo'; });
+
+    var lista = (ATR.filas || []).filter(function (f) {
+      if (OBRAS.length && OBRAS.indexOf(f.obra) === -1) return false;
+      if (BUSCA_ATR && (f.obra || '').toLowerCase().indexOf(BUSCA_ATR) === -1 &&
+          String(f.job || '').indexOf(BUSCA_ATR) === -1) return false;
+      return true;
+    });
+    var sinTipo = lista.filter(function (f) { return !f.tipo; }).length;
+    var sinSeg = lista.filter(function (f) { return !f.segmento; }).length;
+    $('dshAtrN').innerHTML = '· ' + lista.length + ' obras' +
+      (sinTipo ? ' · <b style="color:#e65100">' + sinTipo + ' sin tipo</b>' : '') +
+      (sinSeg ? ' · <b style="color:#e65100">' + sinSeg + ' sin segmento</b>' : '');
+    if (!lista.length) {
+      $('dshAtr').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con movimiento en el período elegido</td></tr></tbody>';
+      return;
+    }
+    var grupo = function (f, campo, valores) {
+      if (!f.job) return '<span class="muted" style="font-size:9px">sin job en aSa</span>';
+      return '<span class="atrg">' + valores.map(function (v) {
+        return '<button data-job="' + esc(f.job) + '" data-campo="' + campo + '" data-valor="' + esc(v) + '"' +
+               (f[campo] === v ? ' class="on"' : '') + '>' + esc(v) + '</button>';
+      }).join('') + '</span>';
+    };
+    var html = '<colgroup><col style="width:34%"><col style="width:8%"><col style="width:10%">' +
+      '<col style="width:18%"><col style="width:20%"><col style="width:10%"></colgroup>' +
+      '<thead><tr><th>Obra</th><th>Job</th><th class="num">Kilos</th>' +
+      '<th>Tipo</th><th>Segmento</th><th>Editado</th></tr></thead><tbody>';
+    lista.forEach(function (f) {
+      var falta = f.job && (!f.tipo || !f.segmento);
+      html += '<tr' + (falta ? ' class="falta"' : '') + '>' +
+        '<td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
+        '<td class="cc">' + esc(f.job || '') + '</td>' +
+        '<td class="num">' + kg0(f.kg) + '</td>' +
+        '<td>' + grupo(f, 'tipo', ATR.tipos || []) + '</td>' +
+        '<td>' + grupo(f, 'segmento', ATR.segmentos || []) + '</td>' +
+        '<td class="muted" style="font-size:9px" title="' + esc(f.editado_por || '') + '">' +
+          (f.editado_el ? ddmm(f.editado_el) + ' · ' + esc((f.editado_por || '').split('@')[0]) : '') + '</td></tr>';
+    });
+    $('dshAtr').innerHTML = html + '</tbody>';
+
+    $('dshAtr').querySelectorAll('button[data-job]').forEach(function (b) {
+      b.addEventListener('click', function () { guardarAtributo(b); });
+    });
+  }
+
+  async function guardarAtributo(b) {
+    var job = b.dataset.job, campo = b.dataset.campo, valor = b.dataset.valor;
+    var fila = (ATR.filas || []).filter(function (f) { return f.job === job; })[0];
+    if (!fila) return;
+    // Clic en el encendido = borrar. Se manda SÓLO el campo tocado.
+    var nuevo = (fila[campo] === valor) ? null : valor;
+    var cuerpo = {}; cuerpo[campo] = nuevo;
+    b.classList.add('guardando');
+    try {
+      var r = await req('PUT', '/programacion/asa/atributos/' + encodeURIComponent(job), cuerpo);
+      if (!r) return;
+      fila.tipo = r.tipo; fila.segmento = r.segmento;
+      fila.editado_por = r.editado_por; fila.editado_el = r.editado_el;
+      pintarAtributos();
+    } catch (e) {
+      b.classList.remove('guardando'); b.classList.add('mal');
+      aviso('No se guardó: ' + e.message);
+    }
+  }
+
   // Trae TODOS los años, del más reciente al más antiguo, uno por llamada: el endpoint
   // sincroniza un año a la vez porque $apply de aSa no pagina y pedir la historia entera
   // de una es justo la consulta que lo atora. Si un año falla, se sigue con el resto y
@@ -745,6 +943,7 @@
   global.__asaDataTest = {
     programado: programado, cajaDe: cajaDe, visible: visible, visibleEn: visibleEn,
     conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
+    pivotMes: pivotMes,
     orden: function (v) { if (v) { ORDEN = v; } return ORDEN; },
     alternar: alternar,
     conBoton: function (v) { if (v) { CON_BOTON = v; } return CON_BOTON; },

@@ -26,6 +26,10 @@
       <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Stock Cubicaciones</button>
       <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
       <button id="asaSubCub" onclick="asaSubTab('cub')" class="asasub">Programado Cubicador</button>
+      <button id="asaSubMes" onclick="asaSubTab('mes')" class="asasub">Cubicado por mes</button>
+      <!-- El único sub-tab donde se ESCRIBE. Va de otro color para que se note que acá
+           no se mira: se cataloga. -->
+      <button id="asaSubAtr" onclick="asaSubTab('atr')" class="asasub atr">✎ Atributos de obra</button>
     </div>
 
     <!-- PERÍODO: año y mes. Fuera de los paneles a propósito — vale para TODO aSa Data,
@@ -144,6 +148,42 @@
               más de un año y ya no va a salir.
             </div>
             <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dsht3" id="dshCub"></table></div>
+          </div>
+        </div>
+
+        <!-- ══════ CUBICADO POR MES ══════
+             Quién cubicó cuánto cada mes. Reemplaza el gráfico de barras agrupadas del
+             Power BI: con seis cubicadores por doce meses las barras agrupadas no se leen;
+             apiladas se ve el total del mes y quién lo hizo. Abajo, la misma tabla que la
+             pivot del BI, con cada celda teñida según sus kilos. Mismos filtros de arriba;
+             con todos los años elegidos las columnas pasan a ser los años. -->
+        <div id="asaPanelMes" class="dshpanel" style="display:none;">
+          <div class="card dshcard dshcod">
+            <div class="dshth">CUBICADO POR MES <span class="muted" id="dshMesPivN"></span></div>
+            <div style="position:relative; height:190px; flex:none;"><canvas id="dshMesChart"></canvas></div>
+            <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
+              <table class="dsht dshpiv" id="dshMesPiv"></table></div>
+          </div>
+        </div>
+
+        <!-- ══════ ATRIBUTOS DE OBRA ══════
+             Lo que aSa no sabe de una obra y los cubicadores sí: si es de Cubicación o de
+             Digitación, y a qué segmento pertenece. Se guarda AL CLIC, sin botón de
+             guardar, y queda registrado quién. Fondo distinto porque acá se escribe. -->
+        <div id="asaPanelAtr" class="dshpanel" style="display:none;">
+          <div class="card dshcard dshcod dshatr">
+            <div class="dshth">ATRIBUTOS DE OBRA <span class="muted" id="dshAtrN"></span>
+              <div style="flex:1"></div>
+              <input type="text" id="dshBuscaAtr" placeholder="Buscar obra o job…"
+                     class="dshbuscar" style="width:200px; font-weight:400;">
+              <span class="dshbl" style="font-weight:600; margin-left:8px;">Movimiento en</span>
+              <span class="dshchips" id="dshAtrMeses"></span>
+            </div>
+            <div class="prgaviso" style="margin:0 0 6px;">
+              Clic en un valor lo guarda al instante; clic en el encendido lo borra. No usa el
+              filtro de año ni de mes; la columna de obras de la izquierda sí filtra.
+            </div>
+            <div class="dshbd" style="height:auto; flex:1;"><table class="dsht" id="dshAtr"></table></div>
           </div>
         </div>
 
@@ -322,4 +362,31 @@
   .dsht tfoot td{border-top:2px solid #cfd8dc; font-weight:700; color:#263238;
                  padding:4px 5px; background:#fff; position:sticky; bottom:0;}
   .dshvacio{color:#90a4ae; font-size:10.5px; text-align:center; padding:22px 8px;}
+
+  /* CUBICADO POR MES: la pivot. Cada celda se tiñe según sus kilos —contra el máximo de
+     la tabla— para que el mes fuerte de cada uno salte a la vista sin leer los números.
+     El tinte va como fondo de la celda: sin elementos extra. */
+  .dshpiv th, .dshpiv td{text-align:right;}
+  .dshpiv th:first-child, .dshpiv td:first-child{text-align:left; font-weight:600;}
+  .dshpiv tbody tr:nth-child(even) td{background:transparent}
+  .dshpiv td.tot, .dshpiv th.tot{font-weight:700; color:#263238; border-left:1px solid #e3e8ef;}
+
+  /* ATRIBUTOS DE OBRA: el único sub-tab donde se escribe, y se nota. Pestaña y panel en
+     azul, distinto del verde de los reportes. */
+  .asasub.atr{color:#7986cb;}
+  .asasub.atr.on{color:#283593; border-bottom-color:#5c6bc0;}
+  .dshatr{background:#f3f5fb; border-color:#c5cae9;}
+  .dshatr .dsht thead th{background:#e8eaf6;}
+  .dshatr .dsht tbody tr:nth-child(even) td{background:#f8f9fd}
+  .dshatr .dsht tbody tr:hover td{background:#eceff8}
+  /* Los valores son interruptores excluyentes dentro de su grupo: uno encendido por
+     grupo, azul; el resto gris. Guardando se atenúa; si falló, se pinta rojo. */
+  .atrg{display:inline-flex; gap:3px;}
+  .atrg button{font-size:9.5px; font-weight:600; padding:1px 8px; border-radius:99px;
+               cursor:pointer; white-space:nowrap; background:#fff; border:1px solid #c5cae9; color:#7986cb;}
+  .atrg button:hover{border-color:#5c6bc0; color:#3949ab;}
+  .atrg button.on{background:#5c6bc0; border-color:#3949ab; color:#fff;}
+  .atrg button.guardando{opacity:.5; cursor:wait;}
+  .atrg button.mal{border-color:#c62828; color:#c62828;}
+  .dshatr tr.falta td:first-child{box-shadow:inset 3px 0 0 #ffb300;}
 </style>

@@ -761,7 +761,10 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 # `mes` y `asa_job_id` los pide el dashboard de Obras: el resumen mensual
                 # necesita el mes de cada fila, y el listado de códigos muestra el id de
                 # la obra. Salen de la misma consulta para no hacer otra.
-                "       EXTRACT(MONTH FROM order_date)::int AS mes, asa_job_id"
+                "       EXTRACT(MONTH FROM order_date)::int AS mes, asa_job_id,"
+                # `anio` va en cada fila para el cuadro «Cubicado por mes»: con todos los
+                # años elegidos, sus columnas son los años y no los meses.
+                "       anio"
                 "  FROM asa_pedidos" + cond_periodo +
                 (" AND " if cond_periodo else " WHERE ") + "COALESCE(estado,'') <> %s"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
@@ -780,7 +783,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                  "estado": r[5], "kg": float(r[6] or 0),
                  "guia": r[7], "planta": r[8],
                  "fab": r[9].isoformat() if r[9] else None,
-                 "mes": r[10], "job": r[11],
+                 "mes": r[10], "job": r[11], "anio": r[12],
                  "programado": bool(r[8] in ESTADOS_PLANTA_PROGRAMADO or r[7])}
                 for r in cur.fetchall()
             ]
@@ -821,6 +824,15 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
 # últimos tres meses. Un número grande de stock se lee como salud cuando en realidad es
 # bodega, así que la parte añeja se informa aparte en vez de sumarse en silencio.
 MESES_STOCK_ANEJO = 12
+# «Todo» en la ventana de movimiento: cien años, o sea la historia completa del espejo.
+VENTANA_TODO = 1200
+
+# ATRIBUTOS DE OBRA que aSa no tiene y los cubicadores cargan a mano (tab «Atributos»).
+# Se guarda el texto tal como se muestra; esto es lo único que se acepta. Antes de crear
+# la tabla se miró si aSa ya lo traía: sus custom fields por obra son USC, Correo_USC,
+# Calculista, Ton_Proyecto y Tipo_Obra (EDIFICACION/INFRAESTRUCTURA/YPS). Ninguno es esto.
+TIPOS_OBRA = ("Cubicación", "Digitación")
+SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "Otros")
 
 
 @router.get("/programacion/asa/cubicador")
@@ -857,7 +869,10 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     navegador sumara serían 25.000.
     """
     _exigir_admin(user)
-    meses = max(1, min(int(meses or 3), 120))
+    # `meses = 0` es «Todo». OJO: un `meses or 3` convertía ese 0 en 3, y el chip «Todo»
+    # del tab mostraba en silencio la misma ventana de tres meses.
+    meses = max(0, min(int(3 if meses is None else meses), 120))
+    ventana = meses or VENTANA_TODO
     prog = "(sched_estado IN %s OR ship_id IS NOT NULL)" % (ESTADOS_PLANTA_PROGRAMADO,)
     vivo = "COALESCE(estado,'') <> 'Shipped'"
     stock = f"NOT {prog} AND {vivo}"
@@ -908,7 +923,7 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (ESTADO_NUNCA, meses, meses))
+            cur.execute(sql, (ESTADO_NUNCA, ventana, ventana))
             filas = []
             for r in cur.fetchall():
                 st_cc, pr_cc = r[3], r[7]
@@ -930,6 +945,90 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
             personas = [r[0] for r in cur.fetchall()]
     return {"meses": meses, "meses_anejo": MESES_STOCK_ANEJO,
             "filas": filas, "personas": personas}
+
+
+@router.get("/programacion/asa/atributos")
+def asa_atributos(meses: int = 12, user=Depends(get_current_user)):
+    """Las obras con movimiento en la ventana y lo que los cubicadores dijeron de cada
+    una: tipo (Cubicación/Digitación) y segmento. Una fila por obra, con su job de aSa.
+
+    NO exige admin: este tab existe para que lo llenen los cubicadores. La obra sale de
+    los pedidos (agrupando por nombre, como el Cubicador) y no de `asa_obras`, porque una
+    obra sin pedidos no tiene nada que catalogar."""
+    meses = max(0, min(int(12 if meses is None else meses), 120))
+    ventana = meses or VENTANA_TODO
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH activas AS (
+                    SELECT job_name, MAX(asa_job_id) AS job, SUM(kg) AS kg,
+                           MAX(GREATEST(order_date, proj_ship_date)) AS ultimo
+                      FROM asa_pedidos
+                     WHERE COALESCE(estado,'') <> %s
+                     GROUP BY job_name
+                    HAVING MAX(GREATEST(order_date, proj_ship_date))
+                           >= CURRENT_DATE - make_interval(months => %s)
+                )
+                SELECT a.job_name, a.job, a.kg, a.ultimo,
+                       t.tipo, t.segmento, t.editado_por, t.editado_el
+                  FROM activas a
+                  LEFT JOIN asa_obra_atributos t ON t.asa_job_id = a.job
+                 ORDER BY a.job_name
+                """, (ESTADO_NUNCA, ventana))
+            filas = [{"obra": r[0], "job": r[1], "kg": float(r[2] or 0),
+                      "ultimo": r[3].isoformat() if r[3] else None,
+                      "tipo": r[4], "segmento": r[5], "editado_por": r[6],
+                      "editado_el": r[7].isoformat() if r[7] else None}
+                     for r in cur.fetchall()]
+    return {"meses": meses, "filas": filas,
+            "tipos": list(TIPOS_OBRA), "segmentos": list(SEGMENTOS_OBRA)}
+
+
+class AtributosBody(BaseModel):
+    tipo: Optional[str] = None
+    segmento: Optional[str] = None
+
+
+@router.put("/programacion/asa/atributos/{job}")
+def asa_atributos_guardar(job: str, body: AtributosBody, user=Depends(get_current_user)):
+    """Guarda el tipo y/o el segmento de una obra. SÓLO toca los campos que vienen en el
+    cuerpo: mandar `{"tipo": null}` borra el tipo y deja el segmento como estaba. Sin esa
+    regla, un clic en un botón pisaría lo que otro cubicador puso en el otro.
+
+    Cualquier usuario del módulo puede escribir; queda registrado quién y cuándo."""
+    job = (job or "").strip()
+    if not job:
+        raise HTTPException(status_code=400, detail="Falta el job de aSa.")
+    enviados = body.model_fields_set
+    if not enviados:
+        raise HTTPException(status_code=400, detail="No viene nada que guardar.")
+    if "tipo" in enviados and body.tipo is not None and body.tipo not in TIPOS_OBRA:
+        raise HTTPException(status_code=422, detail="Tipo no válido: " + " / ".join(TIPOS_OBRA))
+    if "segmento" in enviados and body.segmento is not None and body.segmento not in SEGMENTOS_OBRA:
+        raise HTTPException(status_code=422, detail="Segmento no válido: " + " / ".join(SEGMENTOS_OBRA))
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM asa_pedidos WHERE asa_job_id = %s LIMIT 1", (job,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Ese job no está en el espejo de aSa.")
+            # Upsert campo a campo: en el UPDATE cada columna conserva su valor si no vino.
+            cur.execute(
+                """INSERT INTO asa_obra_atributos (asa_job_id, tipo, segmento, editado_por, editado_el)
+                   VALUES (%s, %s, %s, %s, now())
+                   ON CONFLICT (asa_job_id) DO UPDATE SET
+                       tipo        = CASE WHEN %s THEN EXCLUDED.tipo ELSE asa_obra_atributos.tipo END,
+                       segmento    = CASE WHEN %s THEN EXCLUDED.segmento ELSE asa_obra_atributos.segmento END,
+                       editado_por = EXCLUDED.editado_por,
+                       editado_el  = now()
+                   RETURNING tipo, segmento, editado_por, editado_el""",
+                (job, body.tipo, body.segmento, email, "tipo" in enviados, "segmento" in enviados))
+            r = cur.fetchone()
+            audit(email, "asa_atributos", f"{job}: " + ", ".join(
+                f"{k}={getattr(body, k)!r}" for k in sorted(enviados)))
+    return {"ok": True, "job": job, "tipo": r[0], "segmento": r[1],
+            "editado_por": r[2], "editado_el": r[3].isoformat() if r[3] else None}
 
 
 @router.get("/programacion/usc")
@@ -1008,7 +1107,9 @@ def asignar_usc(id_proyecto: str, body: AsignarBody, user=Depends(get_current_us
             if body.user_id is None:
                 audit(email, "usc_quitar", id_proyecto)
                 return {"ok": True, "usc_id": None}
-            cur.execute("SELECT rol FROM users WHERE id = %s", (body.user_id,))
+            # `role`, no `rol`: ver la nota en listar_usc. Con `rol` esto era un 500 seguro
+            # al asignar cualquier USC.
+            cur.execute("SELECT role FROM users WHERE id = %s", (body.user_id,))
             fila = cur.fetchone()
             if not fila:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado.")

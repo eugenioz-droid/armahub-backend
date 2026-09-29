@@ -149,9 +149,39 @@ if s == 200 and d.get("filas"):
     s6, d6 = get("/programacion/asa/cubicador", meses=12)
     check("ampliar la ventana no deja FUERA obras que ya estaban",
           s6 == 200 and len(d6["filas"]) >= len(filas))
+    # «Todo» (meses=0) es la historia completa. El backend lo convertia en 3 meses
+    # (`int(0 or 3)`) y el chip mentia en silencio: tiene que traer AL MENOS lo de 12.
+    s0, d0 = get("/programacion/asa/cubicador", meses=0)
+    check("«Todo» trae al menos tantas obras como 12 meses (%d vs %d)"
+          % (len(d0.get("filas", [])), len(d6["filas"])),
+          s0 == 200 and d0.get("meses") == 0 and len(d0["filas"]) >= len(d6["filas"]))
+
+print("\n6. Tab de atributos de obra (tipo y segmento)")
+s, d = get("/programacion/asa/atributos", meses=12)
+check("GET /programacion/asa/atributos -> 200", s == 200, str(d)[:160])
+if s == 200:
+    filas = d.get("filas", [])
+    print("      %d obras · %d con tipo · %d con segmento · tipos %s · segmentos %s"
+          % (len(filas), sum(1 for f in filas if f.get("tipo")),
+             sum(1 for f in filas if f.get("segmento")), d.get("tipos"), d.get("segmentos")))
+    check("...una fila por obra, cada una con su job", len(filas) > 0
+          and len({f["obra"] for f in filas}) == len(filas)
+          and all(f.get("job") for f in filas))
+    check("...lo guardado es siempre un valor permitido",
+          all((f["tipo"] in d["tipos"] or f["tipo"] is None) and
+              (f["segmento"] in d["segmentos"] or f["segmento"] is None) for f in filas))
+    # Las escrituras se prueban SIN escribir: un valor invalido y un job inexistente
+    # tienen que rebotar antes de tocar la base. Esto corre contra la base real.
+    job = filas[0]["job"]
+    r = cli.put("/api/v1/programacion/asa/atributos/" + job, headers=H, json={"tipo": "Cualquier cosa"})
+    check("PUT con un tipo que no existe -> 422", r.status_code == 422, r.text[:120])
+    r = cli.put("/api/v1/programacion/asa/atributos/" + job, headers=H, json={})
+    check("PUT sin campos -> 400", r.status_code == 400, r.text[:120])
+    r = cli.put("/api/v1/programacion/asa/atributos/NO-EXISTE-999", headers=H, json={"tipo": d["tipos"][0]})
+    check("PUT a un job que no esta en el espejo -> 404", r.status_code == 404, r.text[:120])
 
 if SYNC:
-    print("\n6. Sincronizacion desde aSa (escribe en el espejo)")
+    print("\n7. Sincronizacion desde aSa (escribe en el espejo)")
     t0 = time.time()
     s, d = post("/programacion/asa/sincronizar")
     check("POST /programacion/asa/sincronizar (obras) -> 200 en %.1fs" % (time.time() - t0), s == 200, str(d)[:160])
@@ -163,7 +193,7 @@ if SYNC:
     if s == 200:
         print("      %d codigos de control, %d nuevos" % (d.get("filas", 0), d.get("nuevas", 0)))
 
-    print("\n7. El reporte con data real (2026, Ago+Sep)")
+    print("\n8. El reporte con data real (2026, Ago+Sep)")
     s, d = get("/programacion/asa/reporte", anio=2026, meses="8,9")
     check("reporte -> 200", s == 200)
     if s == 200:

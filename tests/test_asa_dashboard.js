@@ -231,5 +231,44 @@ check('Cmd+clic (Mac) hace lo mismo que Ctrl',
 // Que los tres sean excluyentes y sumen el total lo verifica scripts/smoke_programacion.py
 // contra la base real, que es donde esa regla ahora existe.
 
+// ── 9. La pivot de «Cubicado por mes» ──────────────────────────────────────
+// Persona × período, con totales por fila y por columna. Es una función pura sobre las
+// filas del reporte: si el número de la tabla no cuadra con el del gráfico, el bug está
+// acá y se ve sin navegador.
+console.log('\n9. Cubicado por mes: la pivot persona × período');
+const FILAS = [
+  { persona: 'ERAMIREZ', mes: 1, anio: 2026, kg: 100 },
+  { persona: 'ERAMIREZ', mes: 1, anio: 2026, kg: 50 },
+  { persona: 'ERAMIREZ', mes: 3, anio: 2026, kg: 10 },
+  { persona: 'MDIAZ',    mes: 3, anio: 2025, kg: 200 },
+  { persona: null,       mes: 2, anio: 2025, kg: 5 },
+  { persona: 'MDIAZ',    mes: null, anio: null, kg: 999 },   // sin período: no entra
+];
+const P = T.pivotMes(FILAS, false);
+check('las columnas son los meses presentes, ordenados',
+      JSON.stringify(P.columnas) === '[1,2,3]');
+check('dos filas de un mismo mes se suman en una celda',
+      P.personas.filter(p => p.persona === 'ERAMIREZ')[0].celdas[1] === 150);
+check('las personas van de mayor a menor total',
+      P.personas.map(p => p.persona).join(',') === 'MDIAZ,ERAMIREZ,(sin detallar)');
+check('sin persona no se pierde: va como «(sin detallar)»',
+      P.personas.some(p => p.persona === '(sin detallar)' && p.total === 5));
+check('el total de la columna es la suma de sus celdas',
+      P.totCol[3] === 210 && P.totCol[1] === 150 && P.totCol[2] === 5);
+check('el gran total es la suma de las filas y de las columnas',
+      P.total === 365 &&
+      P.personas.reduce((a, p) => a + p.total, 0) === 365 &&
+      Object.values(P.totCol).reduce((a, v) => a + v, 0) === 365);
+check('una fila sin período no entra en nada', P.total !== 365 + 999);
+check('el máximo de celda es el que tiñe la tabla', P.max === 200);
+const PA = T.pivotMes(FILAS, true);
+check('por año, las columnas son los años',
+      JSON.stringify(PA.columnas) === '[2025,2026]');
+check('...y las celdas se agrupan por año',
+      PA.personas.filter(p => p.persona === 'ERAMIREZ')[0].celdas[2026] === 160 &&
+      PA.totCol[2025] === 205);
+check('sin filas, una pivot vacía y no un error',
+      T.pivotMes([], false).columnas.length === 0 && T.pivotMes([], false).total === 0);
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);
