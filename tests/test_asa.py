@@ -431,13 +431,26 @@ check("el tamaño de letra va en la celda, no sólo en la tabla",
 check("el front nunca manda un parámetro vacío (usa qs(), que los omite)",
       "function qs(" in DSH and "'anio=' + (ANIO" not in DSH and "?anio=" not in DSH)
 check("un 422 se muestra legible, no como [object Object]", "Array.isArray(det)" in DSH)
-# Lo despachado (Shipped: 83% de 2026) y lo cancelado no es trabajo pendiente y entierra
-# lo que sí lo es. Se filtra en el backend, así el total de pantalla y el de un export
-# dicen lo mismo; y se informa cuántos quedaron fuera, para cuadrar contra BI.
-check("los despachados y cancelados salen del reporte, en el backend",
-      "_ESTADOS_CERRADOS" in PROG and '"Shipped"' in PROG and '"Cancelled"' in PROG
-      and "<> ALL(%s)" in PROG)
-check("...y se informa cuántos quedaron fuera", '"excluidos"' in PROG and "despachados" in DSH)
+# QUÉ ESTADOS SE VEN LO DECIDE EL USUARIO, con botones sobre la caja de programados.
+# El 83% de 2026 está despachado: si se muestra todo, entierra lo que está por salir; si
+# se esconde sin decirlo, los totales no cuadran contra el Power BI y nadie sabe por qué.
+# La salida es que se pueda encender y apagar, y que cada botón diga cuánto hay detrás.
+check("los estados conocidos están declarados con su significado",
+      "ESTADOS_CONOCIDOS" in PROG and '"Processed"' in PROG and '"Shipped"' in PROG)
+check("...incluido que Processed = le sacaron tarjeta = está en producción",
+      "TARJETA AL ÍTEM" in PROG and "En producción" in DSH)
+check("por defecto se ve el trabajo vivo y lo despachado queda fuera",
+      'ESTADOS_POR_DEFECTO = ("Open", "Processed", "Incomplete")' in PROG)
+check("el anulado no es una opción: no hay botón que lo encienda",
+      'ESTADO_NUNCA = "Cancelled"' in PROG and 'e != ESTADO_NUNCA' in PROG)
+check("un estado inventado en la URL no llega a la consulta",
+      "e in ESTADOS_CONOCIDOS" in PROG)
+check("cada botón muestra su conteo aunque esté apagado",
+      '"conteo_estados"' in PROG and "conteo_estados" in DSH)
+check("...y ese conteo sale del PERÍODO, no de los estados elegidos (si no, un botón\n"
+      "      apagado mostraría cero y parecería que no hay nada)",
+      "cond_periodo + \" GROUP BY 1\"" in PROG)
+check("apagar el último estado no vacía la pantalla", "if (!lista.length) return;" in DSH)
 check("PROGRAMADOS va con la fecha más reciente arriba (DESC), NULLs al final",
       "ORDER BY promised_date DESC NULLS LAST" in PROG)
 # Las FILAS no se reordenan en el front (el backend ya las mandó por fecha DESC); lo

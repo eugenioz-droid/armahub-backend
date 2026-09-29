@@ -44,7 +44,13 @@
           <div class="dshbd"><table class="dsht" id="dshPorProgramar"></table></div>
         </div>
         <div class="card dshcard">
-          <div class="dshth">PROGRAMADOS <span class="muted" id="dshPgN"></span></div>
+          <div class="dshth">PROGRAMADOS <span class="muted" id="dshPgN"></span>
+            <div style="flex:1"></div>
+            <!-- Qué estados se ven lo decide el usuario. Cada botón lleva su conteo aunque
+                 esté apagado: si no, apagar «Despachados» escondería 4.297 filas en
+                 silencio y los totales no cuadrarían con el Power BI sin explicación. -->
+            <span class="dshest" id="dshEstados"></span>
+          </div>
           <div class="dshbd"><table class="dsht" id="dshProgramados"></table></div>
         </div>
       </div>
@@ -120,8 +126,20 @@
      la página — con altos fijos la segunda caía fuera del monitor. */
   .dshtablas{flex:1 1 620px; min-width:0; display:flex; flex-direction:column; gap:12px;}
   .dshcard{padding:8px 10px; margin:0; width:100%; box-sizing:border-box;}
-  .dshth{font-size:11px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:5px;}
+  .dshth{font-size:11px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:5px;
+         display:flex; align-items:center; gap:6px;}
   .dshth .muted{font-weight:400; letter-spacing:0;}
+  /* Botones de estado del pedido. Apagado = gris y tachado suave, para que se lea «esto
+     no lo estás viendo» y no «esto no existe». */
+  .dshest{display:inline-flex; gap:4px; font-weight:400; letter-spacing:0;}
+  .dshest button{font-size:9.5px; font-weight:600; padding:1px 8px; border-radius:99px;
+                 cursor:pointer; border:1px solid #dfe5ea; background:#fff; color:#90a4ae;
+                 white-space:nowrap;}
+  .dshest button:hover{border-color:#b0bec5}
+  .dshest button b{font-weight:700}
+  .dshest button.on{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32}
+  .dshest button.on.env{background:#fff8e1; border-color:#ffe082; color:#8d6e00}
+  .dshest button.on.desp{background:#e3f2fd; border-color:#90caf9; color:#1565c0}
   /* `height`, no `max-height`: las dos cajas tienen que medir EXACTAMENTE lo mismo
      aunque una tenga 566 filas y la otra 269. Con max-height, la más corta encogía. */
   .dshbd{height:31vh; min-height:130px; overflow:auto;}

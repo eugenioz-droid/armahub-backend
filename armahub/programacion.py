@@ -609,12 +609,23 @@ def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
 # llaman dos clientes distintos (estos endpoints y el reloj de asa_scheduler.py) y no
 # puede haber dos copias que se desincronicen.
 # ---------------------------------------------------------------------------
-# Lo que ya no es trabajo pendiente y sale del reporte. `Shipped` es un pedido DESPACHADO:
-# en 2026 son 4.297 de 5.191 —el 83%— y mostrarlos entre los programados entierra los
-# 270 que de verdad están por salir. `Cancelled` tampoco es pendiente. Los estados que
-# quedan (Open, Processed, Incomplete) son el trabajo vivo. Se filtra en el backend para
-# que el total de pantalla y el de cualquier export digan lo mismo.
-_ESTADOS_CERRADOS = ("Shipped", "Cancelled")
+# LOS ESTADOS DEL PEDIDO EN aSa, y qué significan de verdad (dato del usuario, 29-sep —
+# no se deduce de los nombres):
+#
+#   Open        el pedido está creado y todavía no entra a producción.
+#   Processed   LE SACARON TARJETA AL ÍTEM: está en producción o ya producido.
+#   Shipped     despachado. En 2026 son 4.297 de 5.191, el 83%.
+#   Cancelled   anulado. No es trabajo, no aparece nunca.
+#   Incomplete  incompleto (3 casos en 2026).
+#
+# Cuáles se muestran lo decide el USUARIO con los botones de la caja de programados, no
+# este archivo: `Processed` y `Shipped` se encienden y apagan. Por defecto se ve el
+# trabajo vivo —Open, Processed e Incomplete— y lo despachado queda fuera, porque si no
+# entierra a los que de verdad están por salir.
+ESTADOS_CONOCIDOS = ("Open", "Processed", "Shipped", "Cancelled", "Incomplete")
+ESTADOS_POR_DEFECTO = ("Open", "Processed", "Incomplete")
+# Anulado no es una opción: no hay botón que lo encienda.
+ESTADO_NUNCA = "Cancelled"
 
 
 @router.post("/programacion/asa/sincronizar-pedidos")
@@ -655,24 +666,37 @@ def asa_sincronizar_ahora(user=Depends(get_current_user)):
 
 
 @router.get("/programacion/asa/reporte")
-def asa_reporte(anio: Optional[int] = None, meses: str = "",
+def asa_reporte(anio: Optional[int] = None, meses: str = "", estados: str = "",
                 user=Depends(get_current_user)):
-    """Las dos tablas del reporte y las listas para los filtros.
+    """Las dos tablas del reporte, sus totales y las listas de los filtros.
 
-    La división NO es un campo de aSa: PROGRAMADOS son los que tienen fecha comprometida
-    (`promised_date`) y POR PROGRAMAR los que no. El año y el mes filtran por `order_date`,
-    que es la única fecha que tienen las dos tablas. Lo ya despachado o cancelado
-    (`_ESTADOS_CERRADOS`) no aparece en ninguna: no es trabajo pendiente.
+    LAS DOS TABLAS. POR PROGRAMAR son los pedidos SIN fecha de despacho; PROGRAMADOS, los
+    que ya la tienen. Eso es todo: no hay un campo «programado» en aSa.
 
-    PROGRAMADOS va con la fecha comprometida más reciente ARRIBA (pedido del usuario);
-    POR PROGRAMAR, por obra y descripción.
+    QUÉ ESTADOS SE VEN LO DECIDE EL USUARIO, no este archivo. `estados` llega desde los
+    botones de la caja de programados. Por defecto se ve el trabajo vivo (Open, Processed,
+    Incomplete) y lo despachado queda fuera: en 2026 son 4.297 de 5.191 y entierran a los
+    que de verdad están por salir. Encender «Despachados» reconstruye el total completo,
+    que es como se cuadra contra el Power BI del usuario.
 
-    El front recibe las filas ya separadas y los totales ya sumados: si sumara él, el total
-    de la pantalla podría no cuadrar con el de un export, y ese tipo de diferencia destruye
-    la confianza en un reporte."""
+    Los anulados no son una opción: no hay botón que los encienda.
+
+    El año y el mes filtran por `order_date`, la única fecha que tienen las dos tablas.
+    PROGRAMADOS va con la fecha más reciente arriba.
+
+    Los totales los suma el backend. Si los sumara el front, el número de la pantalla
+    podría no cuadrar con el de un export, y esa diferencia destruye la confianza en un
+    reporte."""
     _exigir_admin(user)
     anio = int(anio or date.today().year)
     lista_meses = [int(m) for m in meses.split(",") if m.strip().isdigit() and 1 <= int(m) <= 12]
+
+    # Se validan contra la lista conocida: un estado inventado en la URL no puede colarse
+    # a la consulta, y pedir sólo «Cancelled» no debe vaciar la pantalla sin explicación.
+    pedidos = [e.strip() for e in estados.split(",") if e.strip()]
+    sel = [e for e in pedidos if e in ESTADOS_CONOCIDOS and e != ESTADO_NUNCA]
+    if not sel:
+        sel = list(ESTADOS_POR_DEFECTO)
 
     where = ["anio = %s"]
     params: list = [anio]
@@ -680,20 +704,18 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         where.append("EXTRACT(MONTH FROM order_date) = ANY(%s)")
         params.append(lista_meses)
     cond_periodo = " WHERE " + " AND ".join(where)
-    cond = cond_periodo + " AND COALESCE(estado,'') <> ALL(%s)"
-    params_abiertos = params + [list(_ESTADOS_CERRADOS)]
 
     with get_conn() as conn:
         with conn.cursor() as cur:
             # promised_date DESC deja arriba la fecha más reciente de PROGRAMADOS; los NULL
-            # (POR PROGRAMAR) van al final ordenados por obra y descripción, que es lo que
-            # esa lista necesita. Un solo ORDER BY sirve a las dos tablas.
+            # (POR PROGRAMAR) caen al final ordenados por obra. Un solo ORDER BY sirve a las
+            # dos tablas.
             cur.execute(
                 "SELECT control_code, asa_job_id, job_name, descr, detail_person, "
                 "       order_date, promised_date, estado, kg "
-                "  FROM asa_pedidos" + cond +
+                "  FROM asa_pedidos" + cond_periodo + " AND COALESCE(estado,'') = ANY(%s)"
                 " ORDER BY promised_date DESC NULLS LAST, job_name, descr, control_code",
-                params_abiertos)
+                params + [sel])
             filas = [
                 {"cc": r[0], "asa_job_id": r[1], "obra": r[2], "descr": r[3] or "",
                  "persona": r[4], "orden": r[5].isoformat() if r[5] else None,
@@ -701,6 +723,12 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                  "estado": r[7], "kg": float(r[8] or 0)}
                 for r in cur.fetchall()
             ]
+            # El conteo por estado sale del PERÍODO completo, no de los estados elegidos:
+            # es lo que permite que cada botón muestre cuánto hay detrás aunque esté
+            # apagado. Sin eso, apagar «Despachados» escondería 4.297 filas en silencio.
+            cur.execute("SELECT COALESCE(estado,'?'), COUNT(*), COALESCE(SUM(kg),0) "
+                        "  FROM asa_pedidos" + cond_periodo + " GROUP BY 1", params)
+            conteo = {r[0]: {"cc": r[1], "kg": round(float(r[2]), 2)} for r in cur.fetchall()}
             # Los años y las personas salen de TODO el espejo, no del filtro: si salieran
             # del filtro, al elegir un mes desaparecerían los botones de los otros.
             cur.execute("SELECT DISTINCT anio FROM asa_pedidos WHERE anio IS NOT NULL ORDER BY anio")
@@ -710,24 +738,19 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
             personas = [r[0] for r in cur.fetchall()]
             cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos WHERE anio = %s", (anio,))
             n_anio, ultimo = cur.fetchone()
-            # Cuántos quedaron fuera por estar despachados o cancelados, para decirlo en
-            # pantalla: si el usuario compara contra su BI y no cuadra, ésta es la razón.
-            cur.execute("SELECT estado, COUNT(*) FROM asa_pedidos" + cond_periodo +
-                        " AND estado = ANY(%s) GROUP BY 1", params + [list(_ESTADOS_CERRADOS)])
-            excluidos = {r[0]: r[1] for r in cur.fetchall()}
 
     por_programar = [f for f in filas if not f["promesa"]]
     programados = [f for f in filas if f["promesa"]]
     return {
-        "anio": anio, "meses": lista_meses,
+        "anio": anio, "meses": lista_meses, "estados": sel,
         "anios": anios, "personas": personas,
+        "estados_opcionales": [e for e in ESTADOS_CONOCIDOS if e != ESTADO_NUNCA],
+        "conteo_estados": conteo,
         "obras": sorted({f["obra"] for f in filas}),
         "por_programar": por_programar,
         "programados": programados,
         "kg_por_programar": round(sum(f["kg"] for f in por_programar), 2),
         "kg_programados": round(sum(f["kg"] for f in programados), 2),
-        "excluidos": {"despachados": excluidos.get("Shipped", 0),
-                      "cancelados": excluidos.get("Cancelled", 0)},
         "espejo": {"filas_anio": n_anio or 0,
                    "ultima_sync": ultimo.isoformat() if ultimo else None},
     }

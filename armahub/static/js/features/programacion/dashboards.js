@@ -14,6 +14,13 @@
   'use strict';
 
   var DATA = null, ANIO = null, MESES = [], OBRAS = [], PERSONAS = [], BUSCA = '';
+  // Los estados del pedido en aSa, con el nombre que entiende el usuario. `Processed` no
+  // significa «procesado administrativamente»: es que LE SACARON TARJETA AL ÍTEM, o sea
+  // está en producción. Nadie lo deduciría del nombre en inglés (dato del usuario).
+  var ESTADOS = null;   // los elegidos; null = todavía no se sabe, manda el backend
+  var ESTADO_NOMBRE = { Open: 'Por producir', Processed: 'En producción',
+                        Shipped: 'Despachados', Incomplete: 'Incompletos' };
+  var ESTADO_CLASE = { Processed: 'env', Shipped: 'desp' };
   var MESN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   // aSa devuelve 18 «DetailPerson», entre ellos aSaAdmin, EugenioZ y gente que ya no
   // cubica. El usuario quiere ver SÓLO su equipo: elige cuáles se muestran como chips y
@@ -99,9 +106,11 @@
 
   async function cargar() {
     try {
-      DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
+      DATA = await req('GET', '/programacion/asa/reporte' +
+                              qs({ anio: ANIO, meses: MESES, estados: ESTADOS }));
       if (!DATA) return;
       ANIO = DATA.anio;
+      ESTADOS = DATA.estados;    // en la primera carga los pone el backend
     } catch (e) { aviso(e.message); mostrarVacio(e.message); return; }
     pintarTodo();
   }
@@ -115,12 +124,10 @@
 
   function pintarTodo() {
     var esp = DATA.espejo || {};
-    var ex = DATA.excluidos || {};
+    var anulados = (DATA.conteo_estados || {}).Cancelled;
     $('dshEspejo').textContent = esp.filas_anio
       ? esp.filas_anio + ' códigos de control en ' + DATA.anio +
-        ((ex.despachados || ex.cancelados)
-          ? ' · fuera del reporte: ' + (ex.despachados || 0) + ' despachados, ' + (ex.cancelados || 0) + ' cancelados'
-          : '')
+        (anulados && anulados.cc ? ' · ' + anulados.cc + ' anulados, fuera del reporte' : '')
       : '';
     // Un espejo vacío no es un error, pero tampoco es «no hay trabajo»: hay que decir
     // que falta traer la data, o el usuario lee cero donde hay cientos de toneladas.
@@ -133,8 +140,37 @@
       $('dshAviso').innerHTML = '';
     }
     pintarChips();
+    pintarEstados();
     pintarObras();
     pintarTablas();
+  }
+
+  // Un botón por estado, con su conteo aunque esté apagado: así se ve cuánto se está
+  // dejando fuera. Apagar «Despachados» sin decirlo escondería 4.297 filas y el total
+  // no cuadraría contra el Power BI sin ninguna pista de por qué.
+  function pintarEstados() {
+    var cont = $('dshEstados'), conteo = DATA.conteo_estados || {};
+    cont.innerHTML = '';
+    (DATA.estados_opcionales || []).forEach(function (e) {
+      var c = conteo[e];
+      if (!c || !c.cc) return;                 // no se ofrece un estado que no tiene nada
+      var on = (ESTADOS || []).indexOf(e) !== -1;
+      var b = document.createElement('button');
+      b.className = (on ? 'on ' : '') + (ESTADO_CLASE[e] || '');
+      b.innerHTML = esc(ESTADO_NOMBRE[e] || e) + ' <b>' + c.cc + '</b>';
+      b.title = (on ? 'Se está mostrando' : 'Oculto') + ': ' + c.cc + ' códigos · ' +
+                kg(c.kg) + ' kg';
+      b.addEventListener('click', function () {
+        var lista = (ESTADOS || []).slice(), i = lista.indexOf(e);
+        if (i === -1) lista.push(e); else lista.splice(i, 1);
+        // Si se apagan todos, el backend volvería a los de por defecto y el usuario
+        // vería reaparecer filas que acaba de apagar. Mejor dejar el último encendido.
+        if (!lista.length) return;
+        ESTADOS = lista;
+        cargar();
+      });
+      cont.appendChild(b);
+    });
   }
 
   function chips(cont, valores, activos, onClick, etiqueta) {
