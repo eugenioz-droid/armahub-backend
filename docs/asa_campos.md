@@ -199,6 +199,23 @@ JobID,JobKey,JobName,CustomerName,JobStatusID,JobStatusDescr,DetailingLocName,La
 
 Ocho columnas de 131, **ninguna personal** — verificado por el test.
 
+### Los custom fields del job (`JobCustomFieldsUsed`, medido 29-sep)
+
+Es una **lista anidada** de `{CustomFieldDescr, Value, DfltValue, Req}` por obra, y
+**sólo viene cuando NO se usa `$select`** (con `$select=…,JobCustomFieldsUsed` llega
+`null`). Sobre las 376 obras abiertas:
+
+| Campo | Con valor | Valores vistos | Comentario |
+|---|:-:|---|---|
+| `USC` | 207 | `AT` 50 · `OO` 50 · `DI` 47 · `GM` 44 · `CM` 7 · `00` 7 · `OA`, `HM` 1 | **El USC de la obra ya está en aSa** (iniciales). Default `00`. Candidato a reemplazar la asignación manual del tab de Obras. |
+| `Correo_USC` | 87 | constanza.retamal 24 · oscar.ortega 18 · german.maldonado 17 · angela.toledo 16 · dadiolet.inostroza 12 | Correo del USC. Dato personal: no espejar. |
+| `Tipo_Obra` | 13 | `EDIFICACION` 5 · `INFRAESTRUCTURA` 4 · `YPS` 4 | Casi sin uso. |
+| `Ton_Proyecto` | 43 | `10`, `200`, `1000`, `704`… | Toneladas estimadas del proyecto (texto). |
+| `Calculista` | 1 | `NO SE SABE` | Sin uso. |
+
+**No existe** ningún campo de Cubicación/Digitación ni de segmento: ésos viven en
+ArmaHub (`asa_obra_atributos`, migración 115).
+
 ---
 
 ## Pendientes de documentar
