@@ -814,6 +814,9 @@ check("...con el número real encima de cada barra (el plugin de etiquetas se en
       and "formatter: function (v) { return v ? kg0(v) : ''; }" in DSH)
 check("la columna de obras se achicó para darle ancho a las cajas",
       ".dshobras{width:290px;}" in HTM)
+check("...y su letra es la de los cuadros de al lado (app.css mete td{font-size:13px})",
+      "overflow:hidden; text-overflow:ellipsis; font-size:10px;}" in HTM
+      and HTM.index(".dshot td{") < HTM.index("overflow:hidden; text-overflow:ellipsis; font-size:10px;}"))
 check("...y no se dibujan más de MAX_SERIES personas: el resto va en «Otros»",
       "MAX_SERIES = 8" in DSH and "'Otros (' + resto.length + ')'" in DSH)
 # Atributos

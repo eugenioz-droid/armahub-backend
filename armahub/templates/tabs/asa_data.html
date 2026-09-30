@@ -314,8 +314,10 @@
                   user-select:none;}
   .dshot thead th:hover{color:#33691e}
   .dshot thead th b{color:#33691e}
+  /* font-size EN LA CELDA, como en .dsht: app.css trae `td{font-size:13px}` y por eso la
+     columna de obras se veía más grande que los cuadros de al lado. */
   .dshot td{padding:2px 4px; border-top:1px solid #f4f6f8; white-space:nowrap;
-            overflow:hidden; text-overflow:ellipsis;}
+            overflow:hidden; text-overflow:ellipsis; font-size:10px;}
   .dshot tbody tr{cursor:pointer}
   .dshot tbody tr:hover td{background:#f4f8ee}
   .dshot tr.sel td{background:#f1f8e9; font-weight:600}
