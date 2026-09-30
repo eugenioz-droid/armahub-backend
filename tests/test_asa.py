@@ -925,7 +925,7 @@ check("cada mes lleva su total como segunda línea de la etiqueta del eje",
       "return [l, kg0(datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0))];" in DSH)
 check("las obras de prueba y «NO USAR» quedan fuera de TODOS los endpoints (reporte, cubicador, atributos, semana ×2)",
       'PATRON_OBRAS_FUERA = r"\\m(prueba|no usar)\\M"' in PROG
-      and PROG.count("job_name !~* %s") == 5 and PROG.count("PATRON_OBRAS_FUERA") == 6)
+      and PROG.count("job_name !~* %s") == 7 and PROG.count("PATRON_OBRAS_FUERA") == 8)
 # Los filtros se sentían lentos: repintar miles de filas en el mismo clic, y el chip no se
 # pintaba hasta terminar. Ahora el chip va primero y lo pesado después; y las cajas de
 # Stock Cubicaciones tienen el mismo tope de filas que el detalle de códigos.
@@ -946,7 +946,7 @@ check("las cajas de Stock Cubicaciones tienen tope de filas",
 # separa una vez al cargar (`estado_nunca`) y sólo la lista mira `DATA.filas` completo.
 print("\n28. Los anulados viajan, pero sólo la barra por estado los ve")
 check("el reporte ya no filtra los anulados; el cubicador, los atributos y la semana sí",
-      PROG.count("COALESCE(estado,'') <> %s") == 4
+      PROG.count("COALESCE(estado,'') <> %s") == 6
       and "params + [PATRON_OBRAS_FUERA])" in PROG and '"estado_nunca": ESTADO_NUNCA,' in PROG)
 check("el front los separa una vez al cargar y todo lo demás usa las filas vivas",
       "FILAS_VIVAS = (DATA.filas || []).filter(function (f) { return f.estado !== DATA.estado_nunca; });" in DSH

@@ -72,5 +72,38 @@ check('cada obra lleva su programado y cubicado por día', coq.prog[0] === 10000
 check('la tolerancia es una constante visible', T.TOLERANCIA === 0.9);
 check('sin plan ni real, tablero vacío y sin error', T.tablero({}, [], DS, []).length === 0);
 
+// ── 5. Armar la semana: agregar obras y arrastrar toneladas ────────────────
+// Así se trabaja hoy: se elige al cubicador, se le agregan SUS obras y recién ahí se
+// reparten las toneladas, que se pueden arrastrar de un día a otro.
+console.log('\n5. Armar la semana de un cubicador');
+let P = {};
+T.agregarObra(P, 'ER', 'OBRA A', '2000001');
+check('agregar crea la obra con la semana en blanco',
+      P.ER.length === 1 && P.ER[0].obra === 'OBRA A' && P.ER[0].job === '2000001' &&
+      JSON.stringify(P.ER[0].dias) === '[0,0,0,0,0]');
+T.agregarObra(P, 'ER', 'OBRA A', '2000001');
+check('agregar dos veces la misma obra no la repite', P.ER.length === 1);
+T.agregarObra(P, 'ER', 'OBRA B', null);
+T.agregarObra(P, 'JR', 'OBRA C', null);
+check('cada cubicador tiene su propia lista', P.ER.length === 2 && P.JR.length === 1);
+
+P.ER[0].dias = [10, 0, 5, 0, 0];
+T.moverDia(P, 'ER', 0, 0, 3);
+check('arrastrar mueve las toneladas de un día a otro', JSON.stringify(P.ER[0].dias) === '[0,0,5,10,0]');
+T.moverDia(P, 'ER', 0, 3, 2);
+check('...y si el día de destino ya tenía, se suman (mover encima es juntar)',
+      JSON.stringify(P.ER[0].dias) === '[0,0,15,0,0]');
+T.moverDia(P, 'ER', 0, 1, 4);
+check('arrastrar un día vacío no hace nada', JSON.stringify(P.ER[0].dias) === '[0,0,15,0,0]');
+T.moverDia(P, 'ER', 0, 2, 2);
+check('soltar en el mismo día no duplica', JSON.stringify(P.ER[0].dias) === '[0,0,15,0,0]');
+T.moverDia(P, 'NADIE', 0, 0, 1);
+check('mover en alguien sin programa no revienta', !P.NADIE);
+
+T.quitarObra(P, 'ER', 1);
+check('quitar saca la obra y deja el resto', P.ER.length === 1 && P.ER[0].obra === 'OBRA A');
+T.quitarObra(P, 'JR', 0);
+check('...y al quedar sin obras, el cubicador sale del programa', !P.JR);
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

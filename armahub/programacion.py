@@ -448,6 +448,13 @@ def semana(desde: Optional[str] = None, user=Depends(get_current_user)):
             "celdas": celdas, "cubicadores": cubicadores}
 
 
+# Cubicador ACTIVO = cubicó algo en estos meses. Y «sus obras» son en las que cubicó en
+# esta otra ventana, más ancha: una obra suya puede llevar un par de meses sin pedidos y
+# seguir siendo suya.
+VENTANA_ACTIVO_MESES = 3
+VENTANA_OBRAS_MESES = 6
+
+
 @router.get("/programacion/semana-real")
 def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
     """EL LADO REAL DE LA SEMANA, desde el espejo de aSa: kilos cubicados por cubicador,
@@ -487,11 +494,40 @@ def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
                     GROUP BY 1 ORDER BY 1""",
                 (ESTADO_NUNCA, PATRON_OBRAS_FUERA))
             obras = [{"obra": r[0], "job": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
-            cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
-                        " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
-            personas = [r[0] for r in cur.fetchall()]
+            # QUIÉN ESTÁ ACTIVO lo dice aSa, no una lista que alguien mantenga: cubicó
+            # algo en los últimos VENTANA_ACTIVO_MESES. aSa guarda 45 DetailPerson de toda
+            # la historia y la mayoría ya no cubica; sin esto el selector es inservible.
+            cur.execute(
+                """SELECT detail_person,
+                          COALESCE(SUM(kg) FILTER (
+                              WHERE order_date >= CURRENT_DATE - make_interval(months => %s)), 0),
+                          MAX(order_date)
+                     FROM asa_pedidos
+                    WHERE COALESCE(detail_person,'') <> ''
+                      AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                    GROUP BY 1 ORDER BY 1""",
+                (VENTANA_ACTIVO_MESES, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+            personas = [{"persona": r[0], "kg": float(r[1] or 0), "activo": float(r[1] or 0) > 0,
+                         "ultimo": r[2].isoformat() if r[2] else None} for r in cur.fetchall()]
+            # LAS OBRAS DE CADA UNO: en las que cubicó en los últimos VENTANA_OBRAS_MESES.
+            # Es lo que se ofrece al armar su semana —«sus obras actuales»—; para cualquier
+            # otra está el buscador con las 319 de aSa.
+            cur.execute(
+                """SELECT detail_person, job_name, MAX(asa_job_id), SUM(kg), MAX(order_date)
+                     FROM asa_pedidos
+                    WHERE COALESCE(detail_person,'') <> ''
+                      AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                      AND order_date >= CURRENT_DATE - make_interval(months => %s)
+                    GROUP BY 1, 2 ORDER BY 1, 4 DESC""",
+                (ESTADO_NUNCA, PATRON_OBRAS_FUERA, VENTANA_OBRAS_MESES))
+            suyas: dict = {}
+            for r in cur.fetchall():
+                suyas.setdefault(r[0], []).append(
+                    {"obra": r[1], "job": r[2], "kg": float(r[3] or 0),
+                     "ultimo": r[4].isoformat() if r[4] else None})
     return {"lunes": lunes.isoformat(), "viernes": viernes.isoformat(),
-            "real": real, "obras": obras, "personas": personas}
+            "real": real, "obras": obras, "personas": personas, "obras_persona": suyas,
+            "meses_activo": VENTANA_ACTIVO_MESES, "meses_obras": VENTANA_OBRAS_MESES}
 
 
 # ---------------------------------------------------------------------------

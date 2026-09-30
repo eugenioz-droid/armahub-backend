@@ -43,9 +43,31 @@
         <b id="prgSemTitulo" style="font-size:12.5px;"></b>
         <button onclick="prgSemanaMover(1)" style="border:1px solid #cfd8dc; background:#fff; border-radius:5px; padding:3px 9px; cursor:pointer; color:#546e7a;">›</button>
       </div>
+      <!-- Se arma UN CUBICADOR A LA VEZ, como se trabaja hoy: se elige a la persona,
+           aparecen sus obras y se agregan; recién ahí se llenan las toneladas. -->
       <div class="card prgc" style="padding:8px 10px; margin:0 0 12px;">
-        <div class="prgh">1 · ARMAR LA SEMANA <span class="muted">toneladas por día, por cubicador y obra</span></div>
-        <div id="prgSemArmar" class="prgsemwrap"></div>
+        <div class="prgh">1 · ARMAR LA SEMANA <span class="muted">elige al cubicador, agrega sus obras y reparte las toneladas</span></div>
+        <div class="prgquien">
+          <span class="prgql">Cubicador</span>
+          <div id="prgSemQuien" class="prgchips"></div>
+          <label class="prgact" title="Activo = cubicó algo en los últimos meses, según aSa">
+            <input type="checkbox" id="prgSemActivos" checked> sólo activos
+          </label>
+        </div>
+        <div class="prgdos">
+          <div class="prgcaja">
+            <div class="prgh" style="margin-bottom:4px;">Sus obras <span class="muted" id="prgSemObrasN"></span></div>
+            <input type="text" id="prgSemBuscaObra" placeholder="Buscar otra obra de aSa (inactiva o nueva)…" class="prgbusca">
+            <div id="prgSemObras" class="prgobras"></div>
+          </div>
+          <div class="prgcaja" style="flex:1;">
+            <div class="prgh" style="margin-bottom:4px;">Su semana <span class="muted" id="prgSemArmarN"></span>
+              <div style="flex:1"></div>
+              <span class="muted" style="font-weight:400; font-size:10px;">arrastra las toneladas de un día a otro</span>
+            </div>
+            <div id="prgSemArmar" class="prgsemwrap"></div>
+          </div>
+        </div>
       </div>
       <div class="card prgc" style="padding:8px 10px; margin:0;">
         <div class="prgh">2 · TABLERO DE LA SEMANA <span class="muted" id="prgSemTabN"></span></div>
@@ -213,6 +235,31 @@
   .prgt tr.sinusc td{background:#fffdf5}
 
   /* ── Tab Semana (maqueta) ────────────────────────────────────────────────── */
+  /* A quién le armo la semana: chips de cubicador, sólo los activos por defecto. */
+  .prgquien{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:5px 0 8px; border-bottom:1px solid #eef1f4; margin-bottom:8px;}
+  .prgql{font-size:10.5px; font-weight:700; color:#546e7a; letter-spacing:.2px;}
+  .prgchips{display:flex; flex-wrap:wrap; gap:4px; flex:1;}
+  .prgchips .chip{font-size:10.5px; font-weight:600; padding:2px 9px; border-radius:4px; cursor:pointer;
+                  border:1px solid #dfe5ea; background:#f7f9fa; color:#607d8b;}
+  .prgchips .chip:hover{border-color:#c5d3dc;}
+  .prgchips .chip.on{background:#8BC34A; border-color:#7cb342; color:#fff;}
+  .prgchips .chip b{font-weight:700; opacity:.85;}
+  .prgact{font-size:10.5px; color:#546e7a; display:inline-flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;}
+  .prgact input{margin:0;}
+  /* Sus obras a la izquierda, su semana a la derecha. */
+  .prgdos{display:flex; gap:12px; align-items:flex-start;}
+  .prgcaja{min-width:0;}
+  .prgdos > .prgcaja:first-child{width:320px; flex:none;}
+  .prgbusca{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px; border:1px solid #cfd8dc; border-radius:4px; margin-bottom:5px;}
+  .prgobras{max-height:40vh; overflow:auto; border:1px solid #eef1f4; border-radius:5px;}
+  .prgobras .ob{display:flex; align-items:center; gap:6px; padding:3px 6px; font-size:10.5px; cursor:pointer;
+                border-top:1px solid #f4f6f8; white-space:nowrap;}
+  .prgobras .ob:first-child{border-top:0;}
+  .prgobras .ob:hover{background:#f1f8e9;}
+  .prgobras .ob .n{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;}
+  .prgobras .ob .k{color:#78909c; font-variant-numeric:tabular-nums; flex:none;}
+  .prgobras .ob .v{flex:none; width:12px; text-align:center; color:#8BC34A; font-weight:700;}
+  .prgobras .ob.ya{color:#90a4ae;} .prgobras .ob.ya .v{color:#2e7d32;}
   .prgsemwrap{overflow:auto; max-height:46vh;}
   .prgsem{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
   .prgsem th{position:sticky; top:0; background:#fafbfc; z-index:1; text-align:center; color:#546e7a; font-weight:600;
@@ -249,4 +296,11 @@
   .prgsem .ok{color:#2e7d32; font-weight:700;} .prgsem .no{color:#c62828; font-weight:700;}
   .prgsem .ex{color:#8d6e00; font-weight:700;} .prgsem .nd{color:#cfd8dc;}
   .prgsem td.pct.ok{color:#2e7d32; font-weight:700;} .prgsem td.pct.no{color:#c62828; font-weight:700;}
+  .prgsem.tab tr.per.sel td{box-shadow:inset 3px 0 0 #8BC34A;}
+  /* Arrastrar toneladas de un día a otro: la celda con valor se agarra, la de destino
+     se marca. Sin librerías: drag-and-drop del navegador. */
+  .prgsem td.celda.lleno{cursor:grab; background:#f6fbf1;}
+  .prgsem td.celda.lleno:active{cursor:grabbing;}
+  .prgsem td.celda.arrastrando{opacity:.4;}
+  .prgsem td.celda.sobre{box-shadow:inset 0 0 0 2px #8BC34A;}
 </style>

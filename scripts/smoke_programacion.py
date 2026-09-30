@@ -206,6 +206,20 @@ if s == 200:
           all(k in r for r in d["real"] for k in ("persona", "obra", "job", "dia", "kg", "cc")))
     check("...las obras programables son SOLO de aSa, con su job",
           len(d["obras"]) > 0 and all(o.get("job") for o in d["obras"]))
+    # El selector de cubicador: quien esta ACTIVO lo dice aSa, no una lista a mano.
+    act = [p for p in d["personas"] if p["activo"]]
+    print("      %d personas, %d activas (ultimos %d meses) · obras propias de %d personas"
+          % (len(d["personas"]), len(act), d["meses_activo"], len(d["obras_persona"])))
+    check("...cada persona dice si esta activa y cuanto lleva",
+          all(set(("persona", "activo", "kg", "ultimo")) <= set(p) for p in d["personas"]))
+    check("...activo = cubico algo en la ventana", all(p["kg"] > 0 for p in act)
+          and all(p["kg"] == 0 for p in d["personas"] if not p["activo"]))
+    check("...hay menos activos que personas historicas (si no, el filtro no sirve)",
+          0 < len(act) < len(d["personas"]))
+    check("...«sus obras» son de gente que existe y traen job y kilos",
+          all(p in {x["persona"] for x in d["personas"]} for p in d["obras_persona"])
+          and all(o.get("job") and o.get("kg") is not None
+                  for lista in d["obras_persona"].values() for o in lista))
     s2, d2 = get("/programacion/semana-real", desde="2026-09-16")
     check("...y se puede pedir otra semana (16-sep cae en la del 14 al 18)",
           s2 == 200 and d2["lunes"] == "2026-09-14" and d2["viernes"] == "2026-09-18")
