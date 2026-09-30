@@ -164,6 +164,7 @@
       DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
       if (!DATA) return;
       ANIO = DATA.anio;
+      FILAS_VIVAS = (DATA.filas || []).filter(function (f) { return f.estado !== DATA.estado_nunca; });
       CON_BOTON = DATA.estados_con_boton || [];
       // El único que arranca apagado es el despachado, y sólo la primera vez: después
       // manda lo que el usuario haya tocado.
@@ -188,7 +189,7 @@
     var esp = DATA.espejo || {};
     $('dshEspejo').textContent = esp.filas_anio
       ? esp.filas_anio + ' códigos de control en ' + (DATA.anio ? DATA.anio : 'toda la historia') +
-        (DATA.anulados ? ' · ' + DATA.anulados + ' anulados, fuera del reporte' : '')
+        (DATA.anulados ? ' · ' + DATA.anulados + ' anulados (sólo en la barra por estado de Obras aSa)' : '')
       : '';
     // Un espejo vacío no es un error, pero tampoco es «no hay trabajo»: hay que decir
     // que falta traer la data, o el usuario lee cero donde hay cientos de toneladas.
@@ -354,8 +355,12 @@
   // SE FILTRA A SÍ MISMO: si al marcar una obra desaparecieran las demás, no habría cómo
   // marcar una segunda. Y un valor ya elegido se muestra siempre, aunque el otro filtro
   // lo dejaría fuera — si no, no habría cómo desmarcarlo.
+  // Las filas SIN anulados. El reporte trae también los Cancelled, pero sólo para la
+  // barra por estado de la lista de obras; todo lo demás cuenta trabajo, y un anulado
+  // no lo es. Se filtra UNA vez al cargar, no en cada repintado.
+  var FILAS_VIVAS = [];
   function todasLasFilas() {
-    return DATA.filas || [];
+    return FILAS_VIVAS;
   }
   // En qué caja va cada fila lo decide el BACKEND y viaja resuelto en `programado`: es la
   // regla de negocio y no puede quedar repartida entre el servidor y el navegador. Sale
@@ -945,8 +950,9 @@
   // partida por estado (Open / Processed / Shipped). Reemplaza en ese tab a la columna
   // fija de obras: se clickea igual y filtra igual. Al usuario le gustó tal cual.
   // Los estados con el nombre real de aSa, en el orden del ciclo: pedido → producido → despachado.
-  var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#8bc34a', 'Shipped': '#90a4ae', 'Incomplete': '#ef9a9a' };
-  var ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete'];
+  var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#8bc34a', 'Shipped': '#90a4ae',
+                       'Incomplete': '#ce93d8', 'Cancelled': '#e57373' };
+  var ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete', 'Cancelled'];
 
   // Una fila por obra, de mayor a menor, con sus kilos partidos por estado. Función pura.
   function resumenObras(filas) {
@@ -970,8 +976,10 @@
     var etq = function (s) { return s === SIN ? 'Sin dato' : s; };
     var nomEst = function (e) { return (DATA.nombres_estado || {})[e] || e; };
     // La lista pasa TODOS los filtros menos el de obra (no se filtra a sí misma), igual
-    // que la columna a la que reemplaza.
-    var R = resumenObras(filtrar(todasLasFilas(), 'obra'));
+    // que la columna a la que reemplaza. Y es el ÚNICO cuadro que mira los anulados
+    // (DATA.filas, no todasLasFilas): el usuario quiere ver en la barra lo que se cubicó
+    // y después se canceló.
+    var R = resumenObras(filtrar(DATA.filas || [], 'obra'));
     $('dshResN').innerHTML = '· ' + R.obras.length + ' · <b style="color:#33691e">' + kg0(R.total) + ' kg</b>';
     $('dshResLey').innerHTML = R.estados.map(function (e) {
       return '<span><i style="background:' + (COLOR_ESTADO[e] || SIN_COLOR) + '"></i>' + esc(nomEst(e)) +

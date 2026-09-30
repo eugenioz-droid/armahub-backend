@@ -667,6 +667,7 @@ NOMBRES_ESTADO = {
     "Processed":  "Processed",
     "Shipped":    "Shipped",
     "Incomplete": "Incomplete",
+    "Cancelled":  "Cancelled",
 }
 # Qué significa cada uno, en el globo del botón.
 EXPLICA_ESTADO = {
@@ -675,6 +676,7 @@ EXPLICA_ESTADO = {
     "Processed":  "Processed — le sacaron tarjeta al ítem: está en producción o ya producido",
     "Shipped":    "Shipped — despachado, ya salió a la obra",
     "Incomplete": "Incomplete — pedido que quedó a medio cargar en aSa (varios son pruebas)",
+    "Cancelled":  "Cancelled — anulado en aSa: se cubicó, pero no es trabajo",
 }
 
 
@@ -735,8 +737,9 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
     obra seleccionada decían «En producción 148» cuando esa obra tenía cero. Pasó.
     Un año completo son ~5.100 filas y 870 KB; con un mes elegido, la doceava parte.
 
-    Los ANULADOS no se mandan: no son trabajo y no hay forma de encenderlos. Se informa
-    cuántos son, nada más.
+    Los ANULADOS (Cancelled) sí se mandan, pero sólo para UNA cosa: la barra por estado de
+    la lista de obras en «Obras aSa» —el usuario quiere ver cuánto se cubicó y se anuló—.
+    El front los separa con `estado_nunca` y ningún otro cuadro los cuenta: no son trabajo.
 
     El año y el mes filtran por `order_date`, la única fecha que tienen las dos tablas.
     PROGRAMADOS va con la fecha más reciente arriba."""
@@ -782,11 +785,13 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 "       t.tipo, t.segmento"
                 "  FROM asa_pedidos p"
                 "  LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" + cond_periodo +
-                (" AND " if cond_periodo else " WHERE ") + "COALESCE(estado,'') <> %s"
-                "   AND job_name !~* %s"
+                # Los ANULADOS sí viajan (antes no): la lista de obras de «Obras aSa» los
+                # muestra en su barra por estado. El front los separa (`estado_nunca`) y
+                # ningún otro cuadro los cuenta.
+                (" AND " if cond_periodo else " WHERE ") + "job_name !~* %s"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
                 "          job_name, descr, control_code",
-                params + [ESTADO_NUNCA, PATRON_OBRAS_FUERA])
+                params + [PATRON_OBRAS_FUERA])
             filas = [
                 # `promesa` es la fecha que decide en qué caja cae la fila; `guia` la
                 # acompaña porque un pedido CON GUÍA salió de verdad aunque no tenga
@@ -832,6 +837,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "nombres_estado": NOMBRES_ESTADO,
         "explica_estado": EXPLICA_ESTADO,
         "anulados": anulados,
+        "estado_nunca": ESTADO_NUNCA,
         "filas": filas,
         "espejo": {"filas_anio": n_anio or 0,
                    "ultima_sync": ultimo.isoformat() if ultimo else None},

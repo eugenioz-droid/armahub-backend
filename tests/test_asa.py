@@ -902,7 +902,7 @@ check("la lista de obras por estado vive en «Obras aSa» y ahí se esconde la c
 check("...de mayor a menor, barra relativa a la más grande, partida por estado con el nombre real",
       "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH
       and "(o.kg / R.max * 100).toFixed(1)" in DSH
-      and "ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete']" in DSH
+      and "ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete', 'Cancelled']" in DSH
       and "(DATA.nombres_estado || {})[e] || e" in DSH)
 check("...y se clickea para filtrar, igual que la columna que reemplaza",
       DSH.count("alternar(OBRAS, tr.dataset.obra, ev);") == 2 and "function resumenObras(filas)" in DSH)
@@ -932,6 +932,23 @@ check("los botones de estado responden al instante",
       and "diferir(function () { pintarObras(); pintarTablas(); });" in DSH)
 check("las cajas de Stock Cubicaciones tienen tope de filas",
       "var recorte = filas.length > TOPE_FILAS;" in DSH and "(llevaFecha ? 6 : 5)" in DSH)
+
+# ── 28. Los anulados, sólo en la barra por estado ──────────────────────────
+# El usuario quiere ver en la lista de obras cuánto se cubicó y se canceló. Para eso el
+# reporte manda también los Cancelled, pero ningún otro cuadro los cuenta: el front los
+# separa una vez al cargar (`estado_nunca`) y sólo la lista mira `DATA.filas` completo.
+print("\n28. Los anulados viajan, pero sólo la barra por estado los ve")
+check("el reporte ya no filtra los anulados; el cubicador y los atributos sí",
+      PROG.count("COALESCE(estado,'') <> %s") == 2
+      and "params + [PATRON_OBRAS_FUERA])" in PROG and '"estado_nunca": ESTADO_NUNCA,' in PROG)
+check("el front los separa una vez al cargar y todo lo demás usa las filas vivas",
+      "FILAS_VIVAS = (DATA.filas || []).filter(function (f) { return f.estado !== DATA.estado_nunca; });" in DSH
+      and "function todasLasFilas() {\n    return FILAS_VIVAS;\n  }" in DSH)
+check("...y sólo la lista de obras mira las filas completas",
+      DSH.count("filtrar(DATA.filas || [], 'obra')") == 1)
+check("Cancelled tiene color, orden y nombre con su explicación",
+      "'Cancelled': '#e57373'" in DSH and '"Cancelled":  "Cancelled — anulado en aSa' in PROG
+      and '"Cancelled":  "Cancelled",' in PROG)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

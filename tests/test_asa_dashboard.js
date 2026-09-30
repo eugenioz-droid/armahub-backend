@@ -294,6 +294,9 @@ check('los estados salen en orden fijo (Open, Processed, Shipped) y sólo los pr
 check('el total general y por estado', R.total === 385 && R.porEstado.Shipped === 225);
 check('cada obra lleva su segmento y tipo («(sin)» si falta)',
       R.obras[2].segmento === '(sin)' && R.obras[0].tipo === 'Digitación');
+check('los anulados entran a la barra, al final del orden',
+      T.resumenObras([{ obra: 'X', kg: 1, estado: 'Cancelled' }, { obra: 'X', kg: 2, estado: 'Open' }])
+        .estados.join(',') === 'Open,Cancelled');
 // La matriz genérica: filas = lo que diga `clave`, en el orden dado (segmento, tipo) o
 // de mayor a menor (cubicadores); columnas = meses o años; sólo kilos.
 const MS = T.matriz(RF, T.segDe, ['1 y 2', '4 y 5', 'YPS', 'Otros', '(sin)'], false);

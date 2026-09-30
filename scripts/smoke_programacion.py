@@ -132,8 +132,11 @@ if isinstance(d, dict) and d.get("filas"):
     f0 = d["filas"][0]
     check("...y cada fila trae lo que las tablas dibujan",
           all(k in f0 for k in ("cc", "obra", "descr", "persona", "promesa", "estado", "kg")))
-    check("...sin anulados entre ellas",
-          not any(x.get("estado") == "Cancelled" for x in d["filas"]))
+    # Los anulados SI viajan (para la barra por estado de Obras aSa), marcados con
+    # `estado_nunca` para que el front los separe; su cantidad cuadra con `anulados`.
+    n_canc = sum(1 for x in d["filas"] if x.get("estado") == d.get("estado_nunca"))
+    check("...los anulados viajan marcados y cuadran con el conteo (%d)" % n_canc,
+          d.get("estado_nunca") == "Cancelled" and n_canc == d.get("anulados"))
 
 print("\n5. Tab del cubicador: la foto de hoy")
 s, d = get("/programacion/asa/cubicador", meses=3)
