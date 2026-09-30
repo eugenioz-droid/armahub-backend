@@ -294,13 +294,21 @@ check('los estados salen en orden fijo (Open, Processed, Shipped) y sólo los pr
 check('el total general y por estado', R.total === 385 && R.porEstado.Shipped === 225);
 check('cada obra lleva su segmento y tipo («(sin)» si falta)',
       R.obras[2].segmento === '(sin)' && R.obras[0].tipo === 'Digitación');
-const PS = T.pivotPor(RF, T.segDe, false);
-check('kilos por mes por segmento: columnas presentes', JSON.stringify(PS.columnas) === '[1,2,3]');
-check('...celdas y totales',
-      PS.series['4 y 5'][2] === 75 && PS.series['1 y 2'][1] === 200 && PS.totales['(sin)'] === 10 && PS.total === 385);
-const PT = T.pivotPor(RF, T.tipoDe, true);
-check('por tipo y por año', JSON.stringify(PT.columnas) === '[2025,2026]' && PT.series['Cubicación'][2026] === 175);
-check('sin filas: vacío y sin error', T.resumenObras([]).obras.length === 0 && T.pivotPor([], T.segDe, false).total === 0);
+// La matriz genérica: filas = lo que diga `clave`, en el orden dado (segmento, tipo) o
+// de mayor a menor (cubicadores); columnas = meses o años; sólo kilos.
+const MS = T.matriz(RF, T.segDe, ['1 y 2', '4 y 5', 'YPS', 'Otros', '(sin)'], false);
+check('matriz por segmento: columnas presentes y filas en el orden del backend, sólo las presentes',
+      JSON.stringify(MS.columnas) === '[1,2,3]' && MS.filas.map(r => r.clave).join(',') === '1 y 2,4 y 5,(sin)');
+check('...celdas, totales por fila y por columna, total general y máximo',
+      MS.filas[1].celdas[2] === 75 && MS.filas[0].celdas[1] === 200 && MS.filas[2].total === 10 &&
+      MS.totCol[1] === 300 && MS.total === 385 && MS.max === 200);
+const MT = T.matriz(RF, T.tipoDe, null, true);
+check('sin orden, de mayor a menor; por año, columnas = años',
+      JSON.stringify(MT.columnas) === '[2025,2026]' &&
+      MT.filas.map(r => r.clave).join(',') === 'Digitación,Cubicación,(sin)' && MT.filas[1].celdas[2026] === 175);
+check('pivotMes es la misma matriz con nombre de cubicador',
+      T.pivotMes(RF, false).personas.map(p => p.persona).join(',') === 'MD,ER' && T.personaDe({}) === '(sin detallar)');
+check('sin filas: vacío y sin error', T.resumenObras([]).obras.length === 0 && T.matriz([], T.segDe, null, false).total === 0);
 check('segDe/tipoDe devuelven «(sin)» cuando falta el dato',
       T.segDe({}) === '(sin)' && T.tipoDe({ tipo: 'Digitación' }) === 'Digitación');
 

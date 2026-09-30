@@ -653,9 +653,8 @@ check("el detalle ocupa el panel entero y el mensual se fue a la columna lateral
 # Hoy todos pasan por `repintarTodo()`: chips primero, lo pesado después (sección 27).
 check("tocar un cubicador repinta también los chips",
       "alternar(PERSONAS, p, ev);" in DSH and DSH.count("repintarTodo();") >= 3)
-check("...y tocar una obra, igual",
-      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n        repintarTodo();") == 1
-      and DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n          repintarTodo();") == 1)
+check("...y tocar una obra, igual (en la columna fija y en la lista de «Obras aSa»)",
+      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n        repintarTodo();") == 2)
 
 # EL DELAY al cambiar de sub-tab: 5.132 filas de cinco celdas son ~30.000 nodos del DOM.
 check("el detalle tiene tope de filas, para no construir 30.000 nodos",
@@ -809,7 +808,7 @@ check("el reporte manda el año por fila (columnas = años con «todos» elegido
 check("la pivot es una función pura y expuesta al test", "function pivotMes(filas, porAnio)" in DSH
       and "pivotMes: pivotMes" in DSH)
 check("el gráfico es de barras AGRUPADAS (una por persona y mes), con Chart.js ya cargado",
-      "x: { stacked: false" in DSH and "y: { stacked: false" in DSH and "graficoBarras(CHART_MES" in DSH)
+      "x: { stacked: false" in DSH and "y: { stacked: false" in DSH and "graficoBarras(CHARTS[cfg.chart]" in DSH)
 check("...con el número real encima de cada barra (el plugin de etiquetas se enciende acá)",
       "[ChartDataLabels]" in DSH and "datalabels: { display: true" in DSH
       and "formatter: function (v) { return v ? kg0(v) : ''; }" in DSH)
@@ -864,11 +863,12 @@ check("db.py repite el cierre en cada arranque, después de las migraciones",
 check("...y sólo toca las que están abiertas (normalmente ninguna)",
       "WHERE schemaname = 'public' AND NOT rowsecurity" in DB)
 
-# ── 26. «Resumen» por segmento y tipo, y los dos filtros nuevos ────────────
+# ── 26. Los tres tabs «Por…» y la lista de obras por estado en «Obras aSa» ─
 # Lo que los cubicadores cargan en «Atributos de obra» viaja en cada fila del reporte y
-# del cubicador, es filtro de TODOS los sub-tabs y alimenta el sexto: el Resumen, que es
-# una lista plana de obras con su barra por estado y dos gráficos de kilos por mes.
-print("\n26. Resumen por segmento y tipo")
+# del cubicador, es filtro de TODOS los sub-tabs y alimenta dos tabs nuevos: «Por
+# segmento» y «Por tipo», hermanos de «Por cubicador» (gráfico + matriz filas × meses,
+# sólo kilos). La lista plana de obras con su barra por estado vive en «Obras aSa».
+print("\n26. Por cubicador / Por segmento / Por tipo, y la lista de obras por estado")
 check("el reporte cruza los atributos y los manda por fila",
       "LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" in PROG
       and '"tipo": r[13], "segmento": r[14],' in PROG
@@ -882,28 +882,37 @@ check("segmento y tipo son chips de la barra compartida, con «(sin)» como valo
 check("...y filtran en todos los sub-tabs (filtrar + cubicador + atributos)",
       DSH.count("if (SEGS.length && SEGS.indexOf(segDe(f)) === -1) return false;") == 3
       and DSH.count("if (TIPOS.length && TIPOS.indexOf(tipoDe(f)) === -1) return false;") == 3)
-check("el sub-tab Resumen: lista de obras + dos gráficos; la columna fija de obras se esconde ahí y en Atributos",
-      "['res',    'asaSubRes',    'asaPanelRes']" in DSH and 'id="asaSubRes"' in HTM
-      and all(('id="%s"' % x) in HTM for x in ("dshResObras", "dshResChartSeg", "dshResChartTipo", "dshResLey"))
-      and 'id="dshColObras"' in HTM and "col.style.display = (v === 'res' || v === 'atr') ? 'none' : ''" in DSH)
-check("la lista va de mayor a menor y la barra se mide contra la obra más grande",
+check("tres tabs hermanos: Por cubicador, Por segmento, Por tipo",
+      ">Por cubicador</button>" in HTM and ">Por segmento</button>" in HTM and ">Por tipo</button>" in HTM
+      and "['seg',    'asaSubSeg',    'asaPanelSeg']" in DSH and "['tipo',   'asaSubTipo',   'asaPanelTipo']" in DSH
+      and all(('id="%s"' % x) in HTM for x in ("dshMesChart", "dshMesPiv", "dshSegChart", "dshSegPiv", "dshTipoChart", "dshTipoPiv")))
+check("...son UNA pantalla con tres configuraciones, no tres copias",
+      "function pintarPorClave(cfg)" in DSH and DSH.count("pintarPorClave(CFG_") == 3
+      and "var CFG_SEG = { clave: segDe" in DSH and "var CFG_TIPO = { clave: tipoDe" in DSH)
+check("la matriz es filas × meses, sólo kilos, con totales, y es una función pura",
+      "function matriz(filas, clave, orden, porAnio)" in DSH and "matriz: matriz" in DSH
+      and "<th class=\"tot\">Total</th>" in DSH and "'</tbody><tfoot><tr><td>Total</td>'" in DSH)
+check("segmento y tipo van en el orden del backend con «(sin)» al final; cubicadores de mayor a menor",
+      "orden: function () { return (DATA.segmentos || []).concat([SIN]); }" in DSH
+      and "return b.total - a.total;" in DSH)
+check("la lista de obras por estado vive en «Obras aSa» y ahí se esconde la columna fija",
+      HTM.index('id="asaPanelObras"') < HTM.index('id="dshResObras"') < HTM.index('id="dshCc"')
+      and 'id="dshColObras"' in HTM and "col.style.display = (v === 'obras' || v === 'atr') ? 'none' : ''" in DSH
+      and "pintarListaObras();" in DSH)
+check("...de mayor a menor, barra relativa a la más grande, partida por estado con el nombre real",
       "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH
-      and "(o.kg / R.max * 100).toFixed(1)" in DSH)
-check("...partida por estado, con el nombre real de aSa y un orden fijo",
-      "ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete']" in DSH
+      and "(o.kg / R.max * 100).toFixed(1)" in DSH
+      and "ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete']" in DSH
       and "(DATA.nombres_estado || {})[e] || e" in DSH)
 check("...y se clickea para filtrar, igual que la columna que reemplaza",
-      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);") == 2)
-check("los cálculos son funciones puras expuestas al test",
-      "function pivotPor(filas, clave, porAnio)" in DSH and "function resumenObras(filas)" in DSH
-      and "resumenObras: resumenObras, pivotPor: pivotPor" in DSH)
-check("un solo gráfico de barras para los tres cuadros (una barra por serie, con número)",
-      "function graficoBarras(ref, canvas, labels, datasets)" in DSH and DSH.count("graficoBarras(") == 3)
+      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);") == 2 and "function resumenObras(filas)" in DSH)
+check("un solo gráfico de barras para todos los cuadros (una barra por serie, con número)",
+      "function graficoBarras(ref, canvas, labels, datasets)" in DSH and DSH.count("graficoBarras(") == 2)
 
 # ── 27. Lo que el usuario corrigió al ver el tab (29-sep, tarde) ───────────
-print("\n27. Cubicado por tipo: nombre, total por mes, obras de prueba fuera, filtros ágiles")
-check("el tab se llama «Cubicado por tipo» y dice que es lo CUBICADO (por fecha de pedido)",
-      ">Cubicado por tipo</button>" in HTM and "CUBICADO POR MES · SEGMENTO" in HTM
+print("\n27. Total por mes, obras de prueba fuera, filtros ágiles")
+check("los títulos dicen que es lo CUBICADO (por fecha de pedido)",
+      "CUBICADO POR MES · CUBICADOR" in HTM and "CUBICADO POR MES · SEGMENTO" in HTM
       and "CUBICADO POR MES · TIPO" in HTM and "OBRAS · CUBICADO" in HTM)
 check("cada mes lleva su total como segunda línea de la etiqueta del eje",
       "return [l, kg0(datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0))];" in DSH)

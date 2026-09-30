@@ -26,8 +26,10 @@
       <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Stock Cubicaciones</button>
       <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
       <button id="asaSubCub" onclick="asaSubTab('cub')" class="asasub">Programado Cubicador</button>
-      <button id="asaSubMes" onclick="asaSubTab('mes')" class="asasub">Cubicado por mes</button>
-      <button id="asaSubRes" onclick="asaSubTab('res')" class="asasub">Cubicado por tipo</button>
+      <!-- Tres tabs hermanos, la misma pantalla con distinta fila: gráfico + matriz. -->
+      <button id="asaSubMes" onclick="asaSubTab('mes')" class="asasub">Por cubicador</button>
+      <button id="asaSubSeg" onclick="asaSubTab('seg')" class="asasub">Por segmento</button>
+      <button id="asaSubTipo" onclick="asaSubTab('tipo')" class="asasub">Por tipo</button>
       <!-- El único sub-tab donde se ESCRIBE. Va de otro color para que se note que acá
            no se mira: se cataloga. -->
       <button id="asaSubAtr" onclick="asaSubTab('atr')" class="asasub atr">✎ Atributos de obra</button>
@@ -116,17 +118,27 @@
         </div>
 
         <!-- ══════ OBRAS aSa ══════
-             El detalle código por código, con buscador. Los otros dos resúmenes que pedía
-             este reporte ya viven fuera: los kilos por obra en la columna de la izquierda
-             —que además filtra— y los kilos por mes en la de la derecha. -->
+             A la izquierda la lista plana de obras —la más grande arriba— con sus CC y una
+             barra de kilos partida por estado: reemplaza acá a la columna fija de obras y
+             filtra igual. A la derecha el detalle código por código con buscador, y en la
+             columna lateral los kilos por mes. -->
         <div id="asaPanelObras" class="dshpanel" style="display:none;">
-          <div class="card dshcard dshcod">
-            <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
-              <div style="flex:1"></div>
-              <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
-                     class="dshbuscar" style="width:240px; font-weight:400;">
+          <div class="dshres2" style="flex:1; min-height:0;">
+            <div class="card dshcard dshcod" style="flex:1;">
+              <div class="dshth" title="Kilos CUBICADOS en el período (por fecha de pedido), en cualquier estado; la barra dice en qué estado están hoy">OBRAS · CUBICADO <span class="muted" id="dshResN"></span>
+                <div style="flex:1"></div>
+                <span class="dshley" id="dshResLey"></span>
+              </div>
+              <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dshres" id="dshResObras"></table></div>
             </div>
-            <div class="dshbd" style="height:auto; flex:1;"><table class="dsht" id="dshCc"></table></div>
+            <div class="card dshcard dshcod" style="flex:1.25;">
+              <div class="dshth">CÓDIGOS DE CONTROL <span class="muted" id="dshCcN"></span>
+                <div style="flex:1"></div>
+                <input type="text" id="dshBuscaCc" placeholder="Buscar en la descripción…"
+                       class="dshbuscar" style="width:200px; font-weight:400;">
+              </div>
+              <div class="dshbd" style="height:auto; flex:1;"><table class="dsht" id="dshCc"></table></div>
+            </div>
           </div>
         </div>
 
@@ -163,47 +175,33 @@
           </div>
         </div>
 
-        <!-- ══════ CUBICADO POR MES ══════
-             Quién cubicó cuánto cada mes. Reemplaza el gráfico de barras agrupadas del
-             Power BI: con seis cubicadores por doce meses las barras agrupadas no se leen;
-             apiladas se ve el total del mes y quién lo hizo. Abajo, la misma tabla que la
-             pivot del BI, con cada celda teñida según sus kilos. Mismos filtros de arriba;
-             con todos los años elegidos las columnas pasan a ser los años. -->
+        <!-- ══════ POR CUBICADOR · POR SEGMENTO · POR TIPO ══════
+             La misma pantalla tres veces, cambiando lo que va en las filas: arriba kilos
+             cubicados por mes con una barra por fila y el total del mes en el eje; abajo
+             la matriz filas × meses, sólo kilos, con totales. Cubicado = por fecha de
+             pedido, en cualquier estado. -->
         <div id="asaPanelMes" class="dshpanel" style="display:none;">
           <div class="card dshcard dshcod">
-            <div class="dshth">CUBICADO POR MES <span class="muted" id="dshMesPivN"></span></div>
+            <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · CUBICADOR <span class="muted" id="dshMesPivN"></span></div>
             <div style="position:relative; height:270px; flex:none;"><canvas id="dshMesChart"></canvas></div>
             <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
               <table class="dsht dshpiv" id="dshMesPiv"></table></div>
           </div>
         </div>
-
-        <!-- ══════ RESUMEN ══════
-             Por SEGMENTO y por TIPO, como lo definió el usuario: a la izquierda la lista
-             plana de obras —la más grande arriba— con sus CC y una barra de kilos partida
-             por estado; a la derecha kilos por mes con una barra por segmento, y abajo lo
-             mismo por tipo. La lista reemplaza acá a la columna fija de obras. -->
-        <div id="asaPanelRes" class="dshpanel" style="display:none;">
-          <div class="dshres2" style="flex:1; min-height:0;">
-            <!-- La lista va más angosta que los gráficos a propósito: es lo que se
-                 compara, y el usuario pidió más ancho para las cajas de la derecha. -->
-            <div class="card dshcard dshcod" style="flex:0.85;">
-              <div class="dshth" title="Kilos CUBICADOS en el período (por fecha de pedido), en cualquier estado; la barra dice en qué estado están hoy">OBRAS · CUBICADO <span class="muted" id="dshResN"></span>
-                <div style="flex:1"></div>
-                <span class="dshley" id="dshResLey"></span>
-              </div>
-              <div class="dshbd" style="height:auto; flex:1;"><table class="dsht dshres" id="dshResObras"></table></div>
-            </div>
-            <div class="dshres3">
-              <div class="card dshcard dshcod">
-                <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · SEGMENTO <span class="muted" id="dshResSegN"></span></div>
-                <div style="position:relative; flex:1; min-height:150px;"><canvas id="dshResChartSeg"></canvas></div>
-              </div>
-              <div class="card dshcard dshcod">
-                <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · TIPO <span class="muted" id="dshResTipoN"></span></div>
-                <div style="position:relative; flex:1; min-height:150px;"><canvas id="dshResChartTipo"></canvas></div>
-              </div>
-            </div>
+        <div id="asaPanelSeg" class="dshpanel" style="display:none;">
+          <div class="card dshcard dshcod">
+            <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · SEGMENTO <span class="muted" id="dshSegN"></span></div>
+            <div style="position:relative; height:270px; flex:none;"><canvas id="dshSegChart"></canvas></div>
+            <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
+              <table class="dsht dshpiv" id="dshSegPiv"></table></div>
+          </div>
+        </div>
+        <div id="asaPanelTipo" class="dshpanel" style="display:none;">
+          <div class="card dshcard dshcod">
+            <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · TIPO <span class="muted" id="dshTipoN"></span></div>
+            <div style="position:relative; height:270px; flex:none;"><canvas id="dshTipoChart"></canvas></div>
+            <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
+              <table class="dsht dshpiv" id="dshTipoPiv"></table></div>
           </div>
         </div>
 

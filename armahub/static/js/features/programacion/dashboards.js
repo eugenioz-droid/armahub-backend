@@ -107,7 +107,8 @@
                  ['obras',  'asaSubObras',  'asaPanelObras'],
                  ['cub',    'asaSubCub',    'asaPanelCub'],
                  ['mes',    'asaSubMes',    'asaPanelMes'],
-                 ['res',    'asaSubRes',    'asaPanelRes'],
+                 ['seg',    'asaSubSeg',    'asaPanelSeg'],
+                 ['tipo',   'asaSubTipo',   'asaPanelTipo'],
                  ['atr',    'asaSubAtr',    'asaPanelAtr']];
   var SUB = 'planta';
   global.asaSubTab = function (v) {
@@ -121,11 +122,11 @@
     // «Obras aSa»; en el otro sub-tab se esconde y las cajas se llevan ese ancho.
     var lat = $('dshLateral');
     if (lat) lat.style.display = (v === 'obras') ? '' : 'none';
-    // En «Resumen» la lista de obras va DENTRO del panel (con su barra por estado) y en
-    // «Atributos» la tabla ya trae los kilos: en los dos la columna fija se esconde y el
-    // panel se lleva ese ancho.
+    // En «Obras aSa» la lista de obras va DENTRO del panel (con su barra por estado) y
+    // en «Atributos» la tabla ya trae los kilos: en los dos la columna fija se esconde y
+    // el panel se lleva ese ancho.
     var col = $('dshColObras');
-    if (col) col.style.display = (v === 'res' || v === 'atr') ? 'none' : '';
+    if (col) col.style.display = (v === 'obras' || v === 'atr') ? 'none' : '';
     // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
     // pide la primera vez que se abre y no en cada cambio de pestaña.
     if (v === 'cub' && !CUB) { cargarCub().then(pintarTablas); return; }
@@ -531,8 +532,9 @@
   function pintarTablas() {
     if (SUB === 'obras') return pintarObrasAsa();
     if (SUB === 'cub') return pintarCubicador();
-    if (SUB === 'mes') return pintarMes();
-    if (SUB === 'res') return pintarResumen();
+    if (SUB === 'mes') return pintarPorClave(CFG_CUB);
+    if (SUB === 'seg') return pintarPorClave(CFG_SEG);
+    if (SUB === 'tipo') return pintarPorClave(CFG_TIPO);
     if (SUB === 'atr') return pintarAtributos();
     return pintarPlanta();
   }
@@ -693,6 +695,7 @@
     var base = filtrar(todasLasFilas());
     pintarPorMes(base);
     pintarCodigos(base);
+    pintarListaObras();
   }
 
   function pintarPorMes(filas) {
@@ -778,101 +781,53 @@
     return '· ' + n + ' CC · <b style="color:#33691e">' + kg(total) + ' kg</b>';
   }
 
-  // ── Sub-tab CUBICADO POR MES ───────────────────────────────────────────────
-  // Quién cubicó cuánto en cada mes: la pivot del Power BI (persona × mes) más un gráfico
-  // de barras APILADAS por mes. Apiladas y no agrupadas: con seis personas por doce meses
-  // las barras agrupadas se vuelven palitos ilegibles; apiladas se lee el total del mes y
-  // quién lo hizo. Mismos filtros que el resto y sin estado: se mira todo lo cubicado.
-  //
-  // La pivot es una función PURA sobre las filas —sin DOM— para poder probarla:
-  //   porAnio=false → columnas = meses (1..12) presentes;  true → columnas = años.
-  function pivotMes(filas, porAnio) {
+  // ── Los tres tabs «Por…»: cubicador, segmento, tipo ────────────────────────
+  // La misma pantalla tres veces, cambiando sólo QUÉ va en las filas: arriba kilos
+  // cubicados por mes con una barra por fila y el total del mes en el eje; abajo la
+  // matriz filas × meses, SÓLO kilos, con totales. Cubicado = por fecha de pedido, en
+  // cualquier estado. Con «todos» los años elegidos, las columnas son los años. Lo
+  // definió así el usuario: una matriz única con segmentos en filas no dejaba clasificar
+  // por tipo, y al revés; un tab por eje sí.
+  var SIN_COLOR = '#e0e0e0';
+  var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#8bc34a', 'YPS': '#ffa726', 'Otros': '#90a4ae' };
+  var COLOR_TIPO = { 'Cubicación': '#8bc34a', 'Digitación': '#42a5f5' };
+  // Ocho colores apagados y distintos entre sí para los cubicadores; después se repiten.
+  var PALETA = ['#8bc34a', '#42a5f5', '#ffa726', '#ab47bc', '#26a69a', '#ef5350', '#78909c', '#d4e157'];
+  var MAX_SERIES = 8;   // más series que esto y el gráfico deja de leerse: el resto se junta
+
+  function personaDe(f) { return f.persona || '(sin detallar)'; }
+
+  // LA MATRIZ, función pura: kilos por `clave(f)` (filas) y por mes o año (columnas).
+  // `orden` fija el orden de las filas y deja fuera las que no aparecen; sin orden, de
+  // mayor a menor total.
+  function matriz(filas, clave, orden, porAnio) {
     var cols = {}, por = {}, totCol = {}, total = 0;
     filas.forEach(function (f) {
       var c = porAnio ? f.anio : f.mes;
       if (!c) return;
-      var p = f.persona || '(sin detallar)';
+      var k = clave(f);
       cols[c] = 1;
-      if (!por[p]) por[p] = { persona: p, celdas: {}, total: 0 };
-      por[p].celdas[c] = (por[p].celdas[c] || 0) + f.kg;
-      por[p].total += f.kg;
+      if (!por[k]) por[k] = { clave: k, celdas: {}, total: 0 };
+      por[k].celdas[c] = (por[k].celdas[c] || 0) + f.kg;
+      por[k].total += f.kg;
       totCol[c] = (totCol[c] || 0) + f.kg;
       total += f.kg;
     });
     var columnas = Object.keys(cols).map(Number).sort(function (a, b) { return a - b; });
-    var personas = Object.keys(por).map(function (k) { return por[k]; })
-      .sort(function (a, b) { return b.total - a.total; });
+    var lista = orden
+      ? orden.filter(function (k) { return por[k]; }).map(function (k) { return por[k]; })
+      : Object.keys(por).map(function (k) { return por[k]; }).sort(function (a, b) { return b.total - a.total; });
     var max = 0;
-    personas.forEach(function (p) {
-      columnas.forEach(function (c) { max = Math.max(max, p.celdas[c] || 0); });
+    lista.forEach(function (r) {
+      columnas.forEach(function (c) { max = Math.max(max, r.celdas[c] || 0); });
     });
-    return { columnas: columnas, personas: personas, totCol: totCol, total: total, max: max };
+    return { columnas: columnas, filas: lista, totCol: totCol, total: total, max: max };
   }
-
-  var CHART_MES = null;
-  // Ocho colores apagados y distintos entre sí; a partir del noveno se repiten.
-  var PALETA = ['#8bc34a', '#42a5f5', '#ffa726', '#ab47bc', '#26a69a', '#ef5350', '#78909c', '#d4e157'];
-  var MAX_SERIES = 8;   // más series que esto y el gráfico deja de leerse: el resto se junta
-
-  function pintarMes() {
-    var base = filtrar(todasLasFilas());
-    var porAnio = !(DATA && DATA.anio);
-    var pv = pivotMes(base, porAnio);
-    var nombre = function (c) { return porAnio ? String(c) : MESN[c - 1]; };
-    $('dshMesPivN').innerHTML = '· ' + pv.personas.length + ' personas · <b style="color:#33691e">' +
-      kg0(pv.total) + ' kg</b>' + (porAnio ? ' · por año (elige uno arriba para ver meses)' : '');
-    if (!pv.columnas.length) {
-      $('dshMesPiv').innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
-      CHART_MES = global.destroyChart ? global.destroyChart(CHART_MES) : null;
-      return;
-    }
-
-    // La tabla. Anchos: la persona se lleva lo que necesita el nombre; el resto se
-    // reparte parejo entre las columnas del período y el total.
-    var n = pv.columnas.length;
-    var wp = 16, wt = 9, wc = ((100 - wp - wt) / n).toFixed(2);
-    var html = '<colgroup><col style="width:' + wp + '%">';
-    pv.columnas.forEach(function () { html += '<col style="width:' + wc + '%">'; });
-    html += '<col style="width:' + wt + '%"></colgroup><thead><tr><th>Detallado por</th>';
-    pv.columnas.forEach(function (c) { html += '<th>' + esc(nombre(c)) + '</th>'; });
-    html += '<th class="tot">Total</th></tr></thead><tbody>';
-    var tinte = function (v) {
-      if (!v || !pv.max) return '';
-      // Del 8% al 60% de opacidad del verde: la celda más grande de la tabla es la más
-      // oscura; una vacía no se pinta.
-      return ' style="background:rgba(139,195,74,' + (0.08 + 0.52 * v / pv.max).toFixed(2) + ')"';
-    };
-    pv.personas.forEach(function (p) {
-      html += '<tr><td title="' + esc(p.persona) + '">' + esc(p.persona) + '</td>';
-      pv.columnas.forEach(function (c) {
-        var v = p.celdas[c] || 0;
-        html += '<td' + tinte(v) + '>' + (v ? kg0(v) : '') + '</td>';
-      });
-      html += '<td class="tot">' + kg0(p.total) + '</td></tr>';
-    });
-    html += '</tbody><tfoot><tr><td>Total</td>';
-    pv.columnas.forEach(function (c) { html += '<td>' + kg0(pv.totCol[c] || 0) + '</td>'; });
-    html += '<td class="tot">' + kg0(pv.total) + '</td></tr></tfoot>';
-    $('dshMesPiv').innerHTML = html;
-
-    // El gráfico: por cada mes, UNA BARRA POR PERSONA, con su número encima. Se probó
-    // apilado y el usuario lo descartó: quiere comparar cubicadores dentro del mes, como
-    // en su Power BI, y hay ancho de sobra. Las primeras MAX_SERIES personas (ya vienen
-    // de mayor a menor) van con su color; el resto se junta en «Otros».
-    var canvas = $('dshMesChart');
-    if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return;
-    var series = pv.personas.slice(0, MAX_SERIES), resto = pv.personas.slice(MAX_SERIES);
-    var datasets = series.map(function (p, i) {
-      return { label: p.persona, backgroundColor: PALETA[i % PALETA.length], maxBarThickness: 34,
-               data: pv.columnas.map(function (c) { return Math.round(p.celdas[c] || 0); }) };
-    });
-    if (resto.length) {
-      datasets.push({ label: 'Otros (' + resto.length + ')', backgroundColor: '#cfd8dc', maxBarThickness: 34,
-        data: pv.columnas.map(function (c) {
-          return Math.round(resto.reduce(function (a, p) { return a + (p.celdas[c] || 0); }, 0));
-        }) });
-    }
-    CHART_MES = graficoBarras(CHART_MES, canvas, pv.columnas.map(nombre), datasets);
+  // La misma matriz con nombre de cubicador en cada fila (así la conocen los tests).
+  function pivotMes(filas, porAnio) {
+    var m = matriz(filas, personaDe, null, porAnio);
+    return { columnas: m.columnas, totCol: m.totCol, total: m.total, max: m.max,
+             personas: m.filas.map(function (r) { return { persona: r.clave, celdas: r.celdas, total: r.total }; }) };
   }
 
   // EL GRÁFICO DE BARRAS DE aSa Data, uno solo para todos los cuadros: por cada columna
@@ -910,39 +865,90 @@
     });
   }
 
-  // ── Sub-tab RESUMEN ────────────────────────────────────────────────────────
-  // La data por SEGMENTO y por TIPO, como la definió el usuario (29-sep): a la izquierda
-  // una LISTA PLANA de obras —la más grande arriba— con sus códigos y una barra de kilos
-  // partida por estado (Open / Processed / Shipped); a la derecha dos gráficos de kilos
-  // por mes, uno con una barra por segmento y otro con una por tipo. La lista REEMPLAZA
-  // acá a la columna fija de obras: se clickea igual y filtra igual. No lleva stock ni
-  // programado: eso ya vive en los otros tabs y acá estorbaba.
-  var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#8bc34a', 'YPS': '#ffa726', 'Otros': '#90a4ae' };
-  var COLOR_TIPO = { 'Cubicación': '#8bc34a', 'Digitación': '#42a5f5' };
+  // Qué va en las filas de cada tab. `orden` es una función porque los valores llegan
+  // con la data; `colores` fijos para segmento y tipo, paleta para cubicadores.
+  var CFG_CUB = { clave: personaDe, orden: null, colores: null, chart: 'dshMesChart',
+                  tabla: 'dshMesPiv', n: 'dshMesPivN', titulo: 'Detallado por',
+                  etiqueta: function (k) { return k; } };
+  var CFG_SEG = { clave: segDe, orden: function () { return (DATA.segmentos || []).concat([SIN]); },
+                  colores: COLOR_SEG, chart: 'dshSegChart', tabla: 'dshSegPiv', n: 'dshSegN',
+                  titulo: 'Segmento', etiqueta: function (k) { return k === SIN ? 'Sin segmento' : k; } };
+  var CFG_TIPO = { clave: tipoDe, orden: function () { return (DATA.tipos || []).concat([SIN]); },
+                   colores: COLOR_TIPO, chart: 'dshTipoChart', tabla: 'dshTipoPiv', n: 'dshTipoN',
+                   titulo: 'Tipo', etiqueta: function (k) { return k === SIN ? 'Sin tipo' : k; } };
+  var CHARTS = {};   // un Chart.js vivo por canvas, para reemplazarlo en vez de apilar
+
+  function pintarPorClave(cfg) {
+    var base = filtrar(todasLasFilas());
+    var porAnio = !(DATA && DATA.anio);
+    var m = matriz(base, cfg.clave, cfg.orden ? cfg.orden() : null, porAnio);
+    var nombre = function (c) { return porAnio ? String(c) : MESN[c - 1]; };
+    $(cfg.n).innerHTML = '· ' + m.filas.length + ' · <b style="color:#33691e">' + kg0(m.total) + ' kg</b>' +
+      (porAnio ? ' · por año (elige uno arriba para ver meses)' : '');
+    if (!m.columnas.length) {
+      $(cfg.tabla).innerHTML = '<tbody><tr><td class="dshvacio">Sin datos con estos filtros</td></tr></tbody>';
+      CHARTS[cfg.chart] = global.destroyChart ? global.destroyChart(CHARTS[cfg.chart]) : null;
+      return;
+    }
+
+    // La matriz. La primera columna se lleva lo que necesita el nombre; el resto se
+    // reparte parejo entre los meses y el total. Cada celda teñida según sus kilos
+    // (contra la mayor de la tabla), para que el mes fuerte salte sin leer los números.
+    var n = m.columnas.length, wp = 16, wt = 9, wc = ((100 - wp - wt) / n).toFixed(2);
+    var html = '<colgroup><col style="width:' + wp + '%">';
+    m.columnas.forEach(function () { html += '<col style="width:' + wc + '%">'; });
+    html += '<col style="width:' + wt + '%"></colgroup><thead><tr><th>' + esc(cfg.titulo) + '</th>';
+    m.columnas.forEach(function (c) { html += '<th>' + esc(nombre(c)) + '</th>'; });
+    html += '<th class="tot">Total</th></tr></thead><tbody>';
+    var tinte = function (v) {
+      if (!v || !m.max) return '';
+      return ' style="background:rgba(139,195,74,' + (0.08 + 0.52 * v / m.max).toFixed(2) + ')"';
+    };
+    m.filas.forEach(function (r) {
+      var e = cfg.etiqueta(r.clave);
+      html += '<tr><td title="' + esc(e) + '">' + esc(e) + '</td>';
+      m.columnas.forEach(function (c) {
+        var v = r.celdas[c] || 0;
+        html += '<td' + tinte(v) + '>' + (v ? kg0(v) : '') + '</td>';
+      });
+      html += '<td class="tot">' + kg0(r.total) + '</td></tr>';
+    });
+    html += '</tbody><tfoot><tr><td>Total</td>';
+    m.columnas.forEach(function (c) { html += '<td>' + kg0(m.totCol[c] || 0) + '</td>'; });
+    html += '<td class="tot">' + kg0(m.total) + '</td></tr></tfoot>';
+    $(cfg.tabla).innerHTML = html;
+
+    // El gráfico: por cada mes una barra por fila. Con paleta (cubicadores) van las
+    // primeras MAX_SERIES filas —ya de mayor a menor— y el resto junto en «Otros».
+    var canvas = $(cfg.chart);
+    if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return;
+    var series = m.filas, resto = [];
+    if (!cfg.colores && m.filas.length > MAX_SERIES) {
+      series = m.filas.slice(0, MAX_SERIES); resto = m.filas.slice(MAX_SERIES);
+    }
+    var datasets = series.map(function (r, i) {
+      return { label: cfg.etiqueta(r.clave), maxBarThickness: 34,
+               backgroundColor: cfg.colores ? (cfg.colores[r.clave] || SIN_COLOR) : PALETA[i % PALETA.length],
+               data: m.columnas.map(function (c) { return Math.round(r.celdas[c] || 0); }) };
+    });
+    if (resto.length) {
+      datasets.push({ label: 'Otros (' + resto.length + ')', backgroundColor: '#cfd8dc', maxBarThickness: 34,
+        data: m.columnas.map(function (c) {
+          return Math.round(resto.reduce(function (a, r) { return a + (r.celdas[c] || 0); }, 0));
+        }) });
+    }
+    CHARTS[cfg.chart] = graficoBarras(CHARTS[cfg.chart], canvas, m.columnas.map(nombre), datasets);
+  }
+
+  // ── La lista de obras con su barra por estado (vive en «Obras aSa») ────────
+  // Una LISTA PLANA de obras —la más grande arriba— con sus códigos y una barra de kilos
+  // partida por estado (Open / Processed / Shipped). Reemplaza en ese tab a la columna
+  // fija de obras: se clickea igual y filtra igual. Al usuario le gustó tal cual.
   // Los estados con el nombre real de aSa, en el orden del ciclo: pedido → producido → despachado.
   var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#8bc34a', 'Shipped': '#90a4ae', 'Incomplete': '#ef9a9a' };
   var ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete'];
-  var SIN_COLOR = '#e0e0e0';
 
-  // Kilos por columna del período (mes o año) para cada valor de `clave(f)`. Función pura:
-  // sirve para segmento, tipo o lo que venga.
-  function pivotPor(filas, clave, porAnio) {
-    var cols = {}, series = {}, totales = {}, total = 0;
-    filas.forEach(function (f) {
-      var c = porAnio ? f.anio : f.mes;
-      if (!c) return;
-      var k = clave(f);
-      cols[c] = 1;
-      if (!series[k]) series[k] = {};
-      series[k][c] = (series[k][c] || 0) + f.kg;
-      totales[k] = (totales[k] || 0) + f.kg;
-      total += f.kg;
-    });
-    return { columnas: Object.keys(cols).map(Number).sort(function (a, b) { return a - b; }),
-             series: series, totales: totales, total: total };
-  }
-
-  // Una fila por obra, de mayor a menor, con sus kilos partidos por estado.
+  // Una fila por obra, de mayor a menor, con sus kilos partidos por estado. Función pura.
   function resumenObras(filas) {
     var por = {}, total = 0, estados = {};
     filas.forEach(function (f) {
@@ -960,16 +966,11 @@
              estados: orden, porEstado: estados };
   }
 
-  var CHART_RES_SEG = null, CHART_RES_TIPO = null;
-
-  function pintarResumen() {
-    var porAnio = !(DATA && DATA.anio);
-    var nombre = function (c) { return porAnio ? String(c) : MESN[c - 1]; };
+  function pintarListaObras() {
     var etq = function (s) { return s === SIN ? 'Sin dato' : s; };
     var nomEst = function (e) { return (DATA.nombres_estado || {})[e] || e; };
-
-    // La lista de obras pasa TODOS los filtros menos el de obra (no se filtra a sí misma),
-    // igual que la columna a la que reemplaza.
+    // La lista pasa TODOS los filtros menos el de obra (no se filtra a sí misma), igual
+    // que la columna a la que reemplaza.
     var R = resumenObras(filtrar(todasLasFilas(), 'obra'));
     $('dshResN').innerHTML = '· ' + R.obras.length + ' · <b style="color:#33691e">' + kg0(R.total) + ' kg</b>';
     $('dshResLey').innerHTML = R.estados.map(function (e) {
@@ -978,53 +979,34 @@
     }).join('');
     if (!R.obras.length) {
       $('dshResObras').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con estos filtros</td></tr></tbody>';
-    } else {
-      // Lista compacta: la barra se lleva menos ancho para que los gráficos tengan más.
-      var html = '<colgroup><col style="width:42%"><col style="width:7%"><col style="width:13%">' +
-        '<col style="width:38%"></colgroup>' +
-        '<thead><tr><th>Obra</th><th class="num">CC</th><th class="num">Kilos</th>' +
-        '<th>Kilos por estado</th></tr></thead><tbody>';
-      R.obras.forEach(function (o) {
-        var on = OBRAS.indexOf(o.obra) !== -1;
-        // La barra mide contra la obra MÁS GRANDE (la primera), y dentro cada estado
-        // ocupa su parte.
-        var barra = R.estados.map(function (e) {
-          var v = o.porEstado[e] || 0;
-          return v ? '<i style="width:' + (v / o.kg * 100).toFixed(1) + '%; background:' +
-                     (COLOR_ESTADO[e] || SIN_COLOR) + '" title="' + esc(nomEst(e)) + ': ' + kg0(v) + ' kg"></i>' : '';
-        }).join('');
-        html += '<tr class="' + (on ? 'sel' : '') + '" data-obra="' + esc(o.obra) + '">' +
-          '<td title="' + esc(o.obra) + (o.job ? ' · ' + esc(o.job) : '') + ' · ' + esc(etq(o.segmento)) +
-          ' · ' + esc(etq(o.tipo)) + '">' + esc(o.obra) + '</td>' +
-          '<td class="num">' + o.cc + '</td><td class="num">' + kg0(o.kg) + '</td>' +
-          '<td><div class="stk" style="width:' + (o.kg / R.max * 100).toFixed(1) + '%">' + barra + '</div></td></tr>';
-      });
-      $('dshResObras').innerHTML = html + '</tbody>';
-      $('dshResObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
-        tr.addEventListener('click', function (ev) {
-          alternar(OBRAS, tr.dataset.obra, ev);
-          repintarTodo();
-        });
-      });
+      return;
     }
-
-    // Los dos gráficos sí llevan todos los filtros, incluido el de obra.
-    var base = filtrar(todasLasFilas());
-    var grafico = function (ref, idCanvas, idN, pv, colores, ordenClaves) {
-      var claves = ordenClaves.filter(function (k) { return pv.series[k]; });
-      $(idN).innerHTML = '· <b style="color:#33691e">' + kg0(pv.total) + ' kg</b>' + (porAnio ? ' · por año' : '');
-      var canvas = $(idCanvas);
-      if (!canvas || typeof Chart === 'undefined' || !global.replaceChart) return ref;
-      if (!pv.columnas.length) return global.destroyChart ? global.destroyChart(ref) : null;
-      return graficoBarras(ref, canvas, pv.columnas.map(nombre), claves.map(function (k) {
-        return { label: etq(k), backgroundColor: colores[k] || SIN_COLOR, maxBarThickness: 30,
-                 data: pv.columnas.map(function (c) { return Math.round(pv.series[k][c] || 0); }) };
-      }));
-    };
-    CHART_RES_SEG = grafico(CHART_RES_SEG, 'dshResChartSeg', 'dshResSegN', pivotPor(base, segDe, porAnio),
-                            COLOR_SEG, (DATA.segmentos || []).concat([SIN]));
-    CHART_RES_TIPO = grafico(CHART_RES_TIPO, 'dshResChartTipo', 'dshResTipoN', pivotPor(base, tipoDe, porAnio),
-                             COLOR_TIPO, (DATA.tipos || []).concat([SIN]));
+    var html = '<colgroup><col style="width:42%"><col style="width:7%"><col style="width:13%">' +
+      '<col style="width:38%"></colgroup>' +
+      '<thead><tr><th>Obra</th><th class="num">CC</th><th class="num">Kilos</th>' +
+      '<th>Kilos por estado</th></tr></thead><tbody>';
+    R.obras.forEach(function (o) {
+      var on = OBRAS.indexOf(o.obra) !== -1;
+      // La barra mide contra la obra MÁS GRANDE (la primera), y dentro cada estado ocupa
+      // su parte.
+      var barra = R.estados.map(function (e) {
+        var v = o.porEstado[e] || 0;
+        return v ? '<i style="width:' + (v / o.kg * 100).toFixed(1) + '%; background:' +
+                   (COLOR_ESTADO[e] || SIN_COLOR) + '" title="' + esc(nomEst(e)) + ': ' + kg0(v) + ' kg"></i>' : '';
+      }).join('');
+      html += '<tr class="' + (on ? 'sel' : '') + '" data-obra="' + esc(o.obra) + '">' +
+        '<td title="' + esc(o.obra) + (o.job ? ' · ' + esc(o.job) : '') + ' · ' + esc(etq(o.segmento)) +
+        ' · ' + esc(etq(o.tipo)) + '">' + esc(o.obra) + '</td>' +
+        '<td class="num">' + o.cc + '</td><td class="num">' + kg0(o.kg) + '</td>' +
+        '<td><div class="stk" style="width:' + (o.kg / R.max * 100).toFixed(1) + '%">' + barra + '</div></td></tr>';
+    });
+    $('dshResObras').innerHTML = html + '</tbody>';
+    $('dshResObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
+      tr.addEventListener('click', function (ev) {
+        alternar(OBRAS, tr.dataset.obra, ev);
+        repintarTodo();
+      });
+    });
   }
 
   // ── Sub-tab ATRIBUTOS DE OBRA ──────────────────────────────────────────────
@@ -1140,7 +1122,7 @@
   global.__asaDataTest = {
     programado: programado, cajaDe: cajaDe, visible: visible, visibleEn: visibleEn,
     conFecha: conFecha, sinFecha: sinFecha, ddmm: ddmm, kg: kg, qs: qs,
-    pivotMes: pivotMes, resumenObras: resumenObras, pivotPor: pivotPor, segDe: segDe, tipoDe: tipoDe,
+    pivotMes: pivotMes, matriz: matriz, resumenObras: resumenObras, segDe: segDe, tipoDe: tipoDe, personaDe: personaDe,
     orden: function (v) { if (v) { ORDEN = v; } return ORDEN; },
     alternar: alternar,
     conBoton: function (v) { if (v) { CON_BOTON = v; } return CON_BOTON; },
