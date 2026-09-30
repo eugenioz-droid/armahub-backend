@@ -91,6 +91,16 @@
   }
   function aviso(m) { if (global.showToast) global.showToast(m, 'error'); else alert(m); }
 
+  // LOS CLICS EN LOS FILTROS SE SENTÍAN LENTOS, y a veces «no prendían»: repintar miles
+  // de filas tarda, y el navegador no pinta el chip encendido hasta que el handler
+  // termina. Así que el chip se pinta primero y lo pesado se deja para el cuadro
+  // siguiente: la respuesta visual es inmediata aunque la tabla tarde.
+  function diferir(fn) {
+    var raf = global.requestAnimationFrame || function (f) { return setTimeout(f, 16); };
+    raf(function () { setTimeout(fn, 0); });
+  }
+  function repintarTodo() { pintarChips(); diferir(function () { pintarObras(); pintarTablas(); }); }
+
   // Sub-tabs de aSa Data. Hoy hay uno solo; la función existe desde ya para que agregar
   // el siguiente reporte sea añadir una línea a la lista y su panel al HTML.
   var SUBTABS = [['planta', 'asaSubPlanta', 'asaPanelPlanta'],
@@ -146,6 +156,9 @@
   };
 
   async function cargar() {
+    // Mientras baja el período (un año son ~900 KB) se dice que se está cargando: sin
+    // esto, el clic en el año parecía no hacer nada durante uno o dos segundos.
+    $('dshEspejo').textContent = 'Cargando…';
     try {
       DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
       if (!DATA) return;
@@ -231,7 +244,9 @@
           var soloEste = (visiblesAhora.length === 1 && visiblesAhora[0] === e);
           OCULTOS[caja] = soloEste ? [] : todos.filter(function (x) { return x !== e; });
         }
-        pintarObras(); pintarTablas();
+        // Respuesta inmediata en el botón tocado; el repintado completo va después.
+        b.className = OCULTOS[caja].indexOf(e) !== -1 ? 'off' : '';
+        diferir(function () { pintarObras(); pintarTablas(); });
       });
       cont.appendChild(b);
     });
@@ -277,13 +292,15 @@
     // historia completa. `0` es «todos» — hace falta un valor explícito porque la
     // ausencia del parámetro ya significaba «el año actual».
     var anios = (DATA.anios && DATA.anios.length) ? DATA.anios : [DATA.anio];
+    // Año y mes descargan el período de nuevo: el chip se enciende ANTES de pedir, y
+    // `cargar()` avisa «Cargando…» mientras baja. Si no, el clic parecía muerto.
     chips($('dshAnios'), anios, [ANIO], function (v) {
       ANIO = (ANIO === v) ? 0 : v;
-      cargar();
+      pintarChips(); cargar();
     });
     chips($('dshMeses'), [1,2,3,4,5,6,7,8,9,10,11,12], MESES, function (m, ev) {
       alternar(MESES, m, ev);
-      cargar();
+      pintarChips(); cargar();
     }, function (m) { return MESN[m - 1]; });
     // Chips de cubicador: los que aparecen con las obras elegidas, y de ésos sólo los
     // que el usuario decidió ver (DET). Sin elección de DET, todos. La lista completa
@@ -295,11 +312,11 @@
       alternar(PERSONAS, p, ev);
       // pintarChips() TAMBIÉN: sin esto el chip no cambia de color y parece que el
       // clic no hizo nada, aunque el filtro sí se aplicó. Pasó.
-      pintarChips(); pintarObras(); pintarTablas();
+      repintarTodo();
     });
     // Segmento y tipo: los valores del backend más «(sin)», siempre todos —son pocos y
     // ver el chip vacío también informa.
-    var repintar = function () { pintarChips(); pintarObras(); pintarTablas(); };
+    var repintar = repintarTodo;
     chips($('dshSegs'), (DATA.segmentos || []).concat([SIN]), SEGS, function (v, ev) {
       alternar(SEGS, v, ev); repintar();
     }, function (v) { return v === SIN ? 'Sin segmento' : v; });
@@ -447,7 +464,7 @@
     $('dshObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
       tr.addEventListener('click', function (ev) {
         alternar(OBRAS, tr.dataset.obra, ev);
-        pintarChips(); pintarObras(); pintarTablas();
+        repintarTodo();
       });
     });
     $('dshObras').querySelectorAll('th[data-ord]').forEach(function (th) {
@@ -487,7 +504,12 @@
         '<th style="width:42%">Descr</th>' +
         '<th style="width:7%">Código</th>' +
         '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>';
-    filas.forEach(function (f) {
+    // TOPE DE FILAS, igual que en el detalle de códigos: con los despachados encendidos
+    // son 4.300 filas por caja, y dibujarlas en cada clic es lo que hacía lentos los
+    // filtros. El total del encabezado sí es de todas.
+    var recorte = filas.length > TOPE_FILAS;
+    var visibles = recorte ? filas.slice(0, TOPE_FILAS) : filas;
+    visibles.forEach(function (f) {
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td class="cc">' + esc(f.job || '') + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
@@ -495,6 +517,11 @@
               (llevaFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
               '<td class="num">' + kg(f.kg) + '</td></tr>';
     });
+    if (recorte) {
+      html += '<tr><td colspan="' + (llevaFecha ? 6 : 5) + '" class="dshvacio">Se muestran las primeras ' +
+              TOPE_FILAS + ' de ' + filas.length + ' · filtra por obra o cubicador ' +
+              '(el total del encabezado sí es de todas)</td></tr>';
+    }
     // Sin fila de Total al pie: el total vive en el encabezado de la caja, que no se va
     // con el scroll. Dejarlo abajo obligaba a bajar 566 filas para ver el número.
     el.innerHTML = html + '</tbody>';
@@ -857,7 +884,11 @@
       // El plugin de etiquetas viene apagado por defecto en toda la app (app.html); acá
       // se enciende explícitamente porque el usuario quiere el número real en cada barra.
       plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
-      data: { labels: labels, datasets: datasets },
+      // Cada columna lleva su TOTAL como segunda línea de la etiqueta del eje: el usuario
+      // lo pidió —el total del mes aporta tanto como las barras— y así no tapa nada.
+      data: { labels: labels.map(function (l, i) {
+                return [l, kg0(datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0))];
+              }), datasets: datasets },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         // Aire arriba para las etiquetas giradas sobre las barras más altas.
@@ -948,8 +979,9 @@
     if (!R.obras.length) {
       $('dshResObras').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con estos filtros</td></tr></tbody>';
     } else {
-      var html = '<colgroup><col style="width:34%"><col style="width:6%"><col style="width:11%">' +
-        '<col style="width:49%"></colgroup>' +
+      // Lista compacta: la barra se lleva menos ancho para que los gráficos tengan más.
+      var html = '<colgroup><col style="width:42%"><col style="width:7%"><col style="width:13%">' +
+        '<col style="width:38%"></colgroup>' +
         '<thead><tr><th>Obra</th><th class="num">CC</th><th class="num">Kilos</th>' +
         '<th>Kilos por estado</th></tr></thead><tbody>';
       R.obras.forEach(function (o) {
@@ -971,7 +1003,7 @@
       $('dshResObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
         tr.addEventListener('click', function (ev) {
           alternar(OBRAS, tr.dataset.obra, ev);
-          pintarChips(); pintarObras(); pintarTablas();
+          repintarTodo();
         });
       });
     }

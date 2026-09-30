@@ -27,7 +27,7 @@
       <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
       <button id="asaSubCub" onclick="asaSubTab('cub')" class="asasub">Programado Cubicador</button>
       <button id="asaSubMes" onclick="asaSubTab('mes')" class="asasub">Cubicado por mes</button>
-      <button id="asaSubRes" onclick="asaSubTab('res')" class="asasub">Resumen</button>
+      <button id="asaSubRes" onclick="asaSubTab('res')" class="asasub">Cubicado por tipo</button>
       <!-- El único sub-tab donde se ESCRIBE. Va de otro color para que se note que acá
            no se mira: se cataloga. -->
       <button id="asaSubAtr" onclick="asaSubTab('atr')" class="asasub atr">✎ Atributos de obra</button>
@@ -185,8 +185,10 @@
              mismo por tipo. La lista reemplaza acá a la columna fija de obras. -->
         <div id="asaPanelRes" class="dshpanel" style="display:none;">
           <div class="dshres2" style="flex:1; min-height:0;">
-            <div class="card dshcard dshcod" style="flex:1.2;">
-              <div class="dshth">OBRAS <span class="muted" id="dshResN"></span>
+            <!-- La lista va más angosta que los gráficos a propósito: es lo que se
+                 compara, y el usuario pidió más ancho para las cajas de la derecha. -->
+            <div class="card dshcard dshcod" style="flex:0.85;">
+              <div class="dshth" title="Kilos CUBICADOS en el período (por fecha de pedido), en cualquier estado; la barra dice en qué estado están hoy">OBRAS · CUBICADO <span class="muted" id="dshResN"></span>
                 <div style="flex:1"></div>
                 <span class="dshley" id="dshResLey"></span>
               </div>
@@ -194,11 +196,11 @@
             </div>
             <div class="dshres3">
               <div class="card dshcard dshcod">
-                <div class="dshth">KILOS POR MES · SEGMENTO <span class="muted" id="dshResSegN"></span></div>
+                <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · SEGMENTO <span class="muted" id="dshResSegN"></span></div>
                 <div style="position:relative; flex:1; min-height:150px;"><canvas id="dshResChartSeg"></canvas></div>
               </div>
               <div class="card dshcard dshcod">
-                <div class="dshth">KILOS POR MES · TIPO <span class="muted" id="dshResTipoN"></span></div>
+                <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · TIPO <span class="muted" id="dshResTipoN"></span></div>
                 <div style="position:relative; flex:1; min-height:150px;"><canvas id="dshResChartTipo"></canvas></div>
               </div>
             </div>
@@ -435,7 +437,7 @@
      todo dentro del alto del panel. */
   .dshres2{display:flex; gap:12px; min-width:0;}
   .dshres2 > .card{min-width:0;}
-  .dshres3{flex:1; display:flex; flex-direction:column; gap:12px; min-width:0;}
+  .dshres3{flex:1.4; display:flex; flex-direction:column; gap:12px; min-width:0;}
   .dshres3 .card{flex:1; min-height:0;}
   .dshres tbody tr{cursor:pointer;}
   .dshres tr.sel td{background:#f1f8e9; font-weight:600;}

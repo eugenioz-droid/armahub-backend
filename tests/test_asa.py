@@ -650,10 +650,12 @@ check("el detalle ocupa el panel entero y el mensual se fue a la columna lateral
 
 # EL BUG QUE VIO EL USUARIO: al tocar un cubicador el filtro se aplicaba pero el chip no
 # cambiaba de color, porque no se repintaban los chips. Parecía que el clic no hacía nada.
+# Hoy todos pasan por `repintarTodo()`: chips primero, lo pesado después (sección 27).
 check("tocar un cubicador repinta también los chips",
-      "pintarChips(); pintarObras(); pintarTablas();" in DSH)
+      "alternar(PERSONAS, p, ev);" in DSH and DSH.count("repintarTodo();") >= 3)
 check("...y tocar una obra, igual",
-      DSH.count("pintarChips(); pintarObras(); pintarTablas();") >= 2)
+      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n        repintarTodo();") == 1
+      and DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n          repintarTodo();") == 1)
 
 # EL DELAY al cambiar de sub-tab: 5.132 filas de cinco celdas son ~30.000 nodos del DOM.
 check("el detalle tiene tope de filas, para no construir 30.000 nodos",
@@ -897,6 +899,30 @@ check("los cálculos son funciones puras expuestas al test",
       and "resumenObras: resumenObras, pivotPor: pivotPor" in DSH)
 check("un solo gráfico de barras para los tres cuadros (una barra por serie, con número)",
       "function graficoBarras(ref, canvas, labels, datasets)" in DSH and DSH.count("graficoBarras(") == 3)
+
+# ── 27. Lo que el usuario corrigió al ver el tab (29-sep, tarde) ───────────
+print("\n27. Cubicado por tipo: nombre, total por mes, obras de prueba fuera, filtros ágiles")
+check("el tab se llama «Cubicado por tipo» y dice que es lo CUBICADO (por fecha de pedido)",
+      ">Cubicado por tipo</button>" in HTM and "CUBICADO POR MES · SEGMENTO" in HTM
+      and "CUBICADO POR MES · TIPO" in HTM and "OBRAS · CUBICADO" in HTM)
+check("cada mes lleva su total como segunda línea de la etiqueta del eje",
+      "return [l, kg0(datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0))];" in DSH)
+check("las obras de prueba y «NO USAR» quedan fuera de los TRES endpoints",
+      'PATRON_OBRAS_FUERA = r"\\m(prueba|no usar)\\M"' in PROG
+      and PROG.count("job_name !~* %s") == 3 and PROG.count("PATRON_OBRAS_FUERA") == 4)
+# Los filtros se sentían lentos: repintar miles de filas en el mismo clic, y el chip no se
+# pintaba hasta terminar. Ahora el chip va primero y lo pesado después; y las cajas de
+# Stock Cubicaciones tienen el mismo tope de filas que el detalle de códigos.
+check("el chip se pinta primero y el repintado pesado va en el cuadro siguiente",
+      "function diferir(fn)" in DSH and "function repintarTodo() { pintarChips(); diferir(" in DSH
+      and DSH.count("repintarTodo();") >= 3 and "var repintar = repintarTodo;" in DSH)
+check("año y mes encienden el chip antes de descargar, y avisan «Cargando…»",
+      DSH.count("pintarChips(); cargar();") == 2 and "$('dshEspejo').textContent = 'Cargando…';" in DSH)
+check("los botones de estado responden al instante",
+      "b.className = OCULTOS[caja].indexOf(e) !== -1 ? 'off' : '';" in DSH
+      and "diferir(function () { pintarObras(); pintarTablas(); });" in DSH)
+check("las cajas de Stock Cubicaciones tienen tope de filas",
+      "var recorte = filas.length > TOPE_FILAS;" in DSH and "(llevaFecha ? 6 : 5)" in DSH)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

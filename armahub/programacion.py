@@ -783,9 +783,10 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 "  FROM asa_pedidos p"
                 "  LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" + cond_periodo +
                 (" AND " if cond_periodo else " WHERE ") + "COALESCE(estado,'') <> %s"
+                "   AND job_name !~* %s"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
                 "          job_name, descr, control_code",
-                params + [ESTADO_NUNCA])
+                params + [ESTADO_NUNCA, PATRON_OBRAS_FUERA])
             filas = [
                 # `promesa` es la fecha que decide en qué caja cae la fila; `guia` la
                 # acompaña porque un pedido CON GUÍA salió de verdad aunque no tenga
@@ -853,6 +854,12 @@ TIPOS_OBRA = ("Cubicación", "Digitación")
 # «Otros» volvió a pedido del usuario: el retail (Sodimac) no es 1&2 ni 4&5 ni YPS.
 SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS", "Otros")
 
+# OBRAS QUE NO SON OBRAS: en aSa hay jobs de prueba («Obra de Prueba», «OBRA DE PRUEBA -
+# COTIZACIONES», «Prueba Moldajes IB») y uno que se llama «NO USAR». El usuario pidió
+# sacarlas «lisa y llanamente»: no entran a ningún reporte. Regex de Postgres con bordes
+# de palabra (\m \M), sin distinguir mayúsculas.
+PATRON_OBRAS_FUERA = r"\m(prueba|no usar)\M"
+
 
 @router.get("/programacion/asa/cubicador")
 def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
@@ -898,7 +905,7 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     anejo = f"{stock} AND order_date < CURRENT_DATE - make_interval(months => {MESES_STOCK_ANEJO})"
     sql = f"""
         WITH vivos AS (
-            SELECT * FROM asa_pedidos WHERE COALESCE(estado,'') <> %s
+            SELECT * FROM asa_pedidos WHERE COALESCE(estado,'') <> %s AND job_name !~* %s
         ),
         activas AS (
             SELECT DISTINCT job_name FROM asa_pedidos
@@ -944,7 +951,7 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (ESTADO_NUNCA, ventana, ventana))
+            cur.execute(sql, (ESTADO_NUNCA, PATRON_OBRAS_FUERA, ventana, ventana))
             filas = []
             for r in cur.fetchall():
                 st_cc, pr_cc = r[3], r[7]
@@ -987,7 +994,7 @@ def asa_atributos(meses: int = 12, user=Depends(get_current_user)):
                     SELECT job_name, MAX(asa_job_id) AS job, SUM(kg) AS kg,
                            MAX(GREATEST(order_date, proj_ship_date)) AS ultimo
                       FROM asa_pedidos
-                     WHERE COALESCE(estado,'') <> %s
+                     WHERE COALESCE(estado,'') <> %s AND job_name !~* %s
                      GROUP BY job_name
                     HAVING MAX(GREATEST(order_date, proj_ship_date))
                            >= CURRENT_DATE - make_interval(months => %s)
@@ -997,7 +1004,7 @@ def asa_atributos(meses: int = 12, user=Depends(get_current_user)):
                   FROM activas a
                   LEFT JOIN asa_obra_atributos t ON t.asa_job_id = a.job
                  ORDER BY a.job_name
-                """, (ESTADO_NUNCA, ventana))
+                """, (ESTADO_NUNCA, PATRON_OBRAS_FUERA, ventana))
             filas = [{"obra": r[0], "job": r[1], "kg": float(r[2] or 0),
                       "ultimo": r[3].isoformat() if r[3] else None,
                       "tipo": r[4], "segmento": r[5], "editado_por": r[6],
