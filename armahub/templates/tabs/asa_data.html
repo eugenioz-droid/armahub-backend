@@ -24,8 +24,9 @@
     <!-- Sub-tabs. Los próximos reportes sobre la misma data espejo entran acá al lado. -->
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:10px;">
       <button id="asaSubPlanta" onclick="asaSubTab('planta')" class="asasub on">Stock Cubicaciones</button>
+      <!-- Segundo a pedido del usuario: es la foto de la planta, la pareja natural del stock. -->
+      <button id="asaSubCub" onclick="asaSubTab('cub')" class="asasub">Programa aSa</button>
       <button id="asaSubObras" onclick="asaSubTab('obras')" class="asasub">Obras aSa</button>
-      <button id="asaSubCub" onclick="asaSubTab('cub')" class="asasub">Programado Cubicador</button>
       <!-- Tres tabs hermanos, la misma pantalla con distinta fila: gráfico + matriz. -->
       <button id="asaSubMes" onclick="asaSubTab('mes')" class="asasub">Por cubicador</button>
       <button id="asaSubSeg" onclick="asaSubTab('seg')" class="asasub">Por segmento</button>
@@ -183,7 +184,9 @@
         <div id="asaPanelMes" class="dshpanel" style="display:none;">
           <div class="card dshcard dshcod">
             <div class="dshth" title="Kilos cubicados en cada mes (por fecha de pedido), en cualquier estado">CUBICADO POR MES · CUBICADOR <span class="muted" id="dshMesPivN"></span></div>
-            <div style="position:relative; height:270px; flex:none;"><canvas id="dshMesChart"></canvas></div>
+            <!-- Más alto que sus hermanos: acá la columna de obras se esconde y el
+                 gráfico se lleva el ancho y el alto. -->
+            <div style="position:relative; height:340px; flex:none;"><canvas id="dshMesChart"></canvas></div>
             <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
               <table class="dsht dshpiv" id="dshMesPiv"></table></div>
           </div>

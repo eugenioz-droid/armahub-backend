@@ -682,8 +682,9 @@ check("...y no gasta CPU en las chicas, que son la mayoría", "minimum_size=1024
 # Una tabla por obra con tres estados EXCLUYENTES que suman el total. El dato que se
 # busca es el desbalance: mucho stock sin agendar frente a poca cola programada.
 print("\n20. Programado Cubicador")
-check("existe el tercer sub-tab", "asaSubCub" in HTM and "asaPanelCub" in HTM
-      and "Programado Cubicador" in HTM)
+check("existe el sub-tab, segundo y llamado «Programa aSa»", "asaSubCub" in HTM and "asaPanelCub" in HTM
+      and ">Programa aSa</button>" in HTM
+      and HTM.index('id="asaSubPlanta"') < HTM.index('id="asaSubCub"') < HTM.index('id="asaSubObras"'))
 check("es UNA tabla con los tres estados, no dos cajas",
       "dshCub" in HTM and "STOCK" in DSH and "PROGRAMADO" in DSH and "DESPACHADO" in DSH)
 check("se puede ordenar por cualquier columna", "ORDEN_CUB" in DSH)
@@ -900,7 +901,8 @@ check("segmento y tipo van en el orden del backend con «(sin)» al final; cubic
       and "return b.total - a.total;" in DSH)
 check("la lista de obras por estado vive en «Obras aSa» y ahí se esconde la columna fija",
       HTM.index('id="asaPanelObras"') < HTM.index('id="dshResObras"') < HTM.index('id="dshCc"')
-      and 'id="dshColObras"' in HTM and "col.style.display = (v === 'obras' || v === 'atr') ? 'none' : ''" in DSH
+      and 'id="dshColObras"' in HTM
+      and "col.style.display = (v === 'obras' || v === 'atr' || v === 'mes') ? 'none' : ''" in DSH
       and "pintarListaObras();" in DSH)
 check("...de mayor a menor, barra relativa a la más grande, partida por estado con el nombre real",
       "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH

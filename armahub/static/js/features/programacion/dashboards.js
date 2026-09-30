@@ -125,8 +125,9 @@
     // En «Obras aSa» la lista de obras va DENTRO del panel (con su barra por estado) y
     // en «Atributos» la tabla ya trae los kilos: en los dos la columna fija se esconde y
     // el panel se lleva ese ancho.
+    // ...y en «Por cubicador» también, para que el gráfico se lleve todo el ancho.
     var col = $('dshColObras');
-    if (col) col.style.display = (v === 'obras' || v === 'atr') ? 'none' : '';
+    if (col) col.style.display = (v === 'obras' || v === 'atr' || v === 'mes') ? 'none' : '';
     // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
     // pide la primera vez que se abre y no en cada cambio de pestaña.
     if (v === 'cub' && !CUB) { cargarCub().then(pintarTablas); return; }
