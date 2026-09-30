@@ -544,8 +544,8 @@ async function guardarRespuesta() {
     }
     // area_aplica ya no se envía: el área real vive en area_id (inferida del responsable).
     _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
-    var _finAnalisisEl = document.getElementById('recDetailFechaFinAnalisis');
-    if (_finAnalisisEl) _setIf('fecha_fin_analisis', _finAnalisisEl.value);
+    // fecha_fin_analisis NO se envía: la pone el backend al enviar a validación y la
+    // borra si el reclamo vuelve al analista.
     _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
     _setIf('tiempo_respuesta', parseInt(document.getElementById('recTiempoRespuestaAnalisis').value));
     // unidad solo si hay un tiempo asociado

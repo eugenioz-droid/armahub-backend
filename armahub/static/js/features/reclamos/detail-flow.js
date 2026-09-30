@@ -108,8 +108,7 @@ async function cerrarReclamo() {
   _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
   // area_aplica ya no se envía: el área real vive en area_id (inferida del responsable).
   _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
-  var _finAnalisisFlowEl = document.getElementById('recDetailFechaFinAnalisis');
-  if (_finAnalisisFlowEl) _setIf('fecha_fin_analisis', _finAnalisisFlowEl.value);
+  // fecha_fin_analisis NO se envía: la pone el backend con este mismo cambio de estado.
   _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
   _setIf('tiempo_respuesta', parseInt(document.getElementById('recTiempoRespuestaAnalisis').value));
   if (body.tiempo_respuesta != null) {

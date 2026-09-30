@@ -172,6 +172,33 @@ def _estado_bloquea_edicion_analisis(estado: str) -> bool:
 # ========================= CONSTANTS =========================
 
 ESTADOS_RECLAMO = ("abierto", "en_analisis", "en_revision", "validacion", "cerrado", "rechazado")
+
+
+def _hoy_chile() -> str:
+    """La fecha de hoy en Chile, YYYY-MM-DD. El servidor corre en UTC y de noche ya es
+    mañana allá: la fecha de fin de análisis tiene que ser la del analista."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/Santiago")).date().isoformat()
+    except Exception:
+        return datetime.now(timezone.utc).date().isoformat()
+
+
+def fecha_fin_analisis_automatica(estado_anterior: str, estado_nuevo: Optional[str]) -> Optional[str]:
+    """QUÉ HACER con `fecha_fin_analisis` en un cambio de estado. Devuelve:
+      "poner"  → el analista ENVÍA (de abierto/en_analisis a revisión o validación): se
+                 cierra con la fecha de hoy;
+      "borrar" → el reclamo VUELVE al analista (a en_analisis): se abre de nuevo;
+      None     → no se toca.
+    El usuario lo pidió así (30-sep): es un dato menos que llenar a mano, y la fecha real
+    de término es la del envío, no la que alguien se acuerde de escribir."""
+    if not estado_nuevo or estado_nuevo == estado_anterior:
+        return None
+    if estado_anterior in ("abierto", "en_analisis") and estado_nuevo in ("en_revision", "validacion"):
+        return "poner"
+    if estado_nuevo == "en_analisis":
+        return "borrar"
+    return None
 TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal",
                  "documentacion", "stock", "programacion", "diferencia_kg")
 VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
@@ -1768,7 +1795,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "id_proyecto", "titulo", "descripcion", "prioridad", "tipo_reclamo",
                 "categoria_ishikawa",
                 "sub_causa", "cod_causa", "responsable", "aplica",
-                "detectado_por", "fecha_deteccion", "fecha_analisis", "fecha_fin_analisis",
+                "detectado_por", "fecha_deteccion", "fecha_analisis",
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                 "id_calidad", "respuesta_texto", "validacion_resultado",
@@ -1780,7 +1807,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
-                               "detectado_por", "fecha_deteccion", "fecha_analisis", "fecha_fin_analisis",
+                               "detectado_por", "fecha_deteccion", "fecha_analisis",
                                "analista", "area_aplica", "explicacion_causa",
                                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                                "respuesta_texto", "validacion_resultado", "validacion_observaciones",
@@ -1951,6 +1978,17 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                         sets.append("validacion_fecha = NULL")
                     if not _col_in_sets("validacion_por"):
                         sets.append("validacion_por = NULL")
+
+            # FECHA FIN DE ANÁLISIS, automática: se cierra con la fecha de hoy cuando el
+            # analista envía a revisión/validación y se borra si el reclamo le vuelve.
+            # Ya no viene del formulario (se sacó de `updatable`), así que nunca pisa lo
+            # que escriba el usuario: no hay nada que pisar.
+            _ffa = fecha_fin_analisis_automatica(estado_anterior, body.estado)
+            if _ffa == "poner":
+                sets.append("fecha_fin_analisis = %s")
+                params.append(_hoy_chile())
+            elif _ffa == "borrar":
+                sets.append("fecha_fin_analisis = NULL")
 
             params.append(reclamo_id)
             cur.execute(f"UPDATE reclamos SET {', '.join(sets)} WHERE id = %s", params)
