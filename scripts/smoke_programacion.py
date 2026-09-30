@@ -194,6 +194,22 @@ if s == 200:
     r = cli.put("/api/v1/programacion/asa/atributos/NO-EXISTE-999", headers=H, json={"tipo": d["tipos"][0]})
     check("PUT a un job que no esta en el espejo -> 404", r.status_code == 404, r.text[:120])
 
+print("\n6b. Semana (maqueta): el lado real desde aSa")
+s, d = get("/programacion/semana-real")
+check("GET /programacion/semana-real -> 200", s == 200, str(d)[:160])
+if s == 200:
+    print("      %s -> %s · %d filas reales · %d obras programables · %d personas"
+          % (d["lunes"], d["viernes"], len(d["real"]), len(d["obras"]), len(d["personas"])))
+    check("...la semana va de lunes a viernes",
+          d["lunes"] <= d["viernes"] and all(d["lunes"] <= r["dia"] <= d["viernes"] for r in d["real"]))
+    check("...cada fila real trae persona, obra, dia y kg",
+          all(k in r for r in d["real"] for k in ("persona", "obra", "job", "dia", "kg", "cc")))
+    check("...las obras programables son SOLO de aSa, con su job",
+          len(d["obras"]) > 0 and all(o.get("job") for o in d["obras"]))
+    s2, d2 = get("/programacion/semana-real", desde="2026-09-16")
+    check("...y se puede pedir otra semana (16-sep cae en la del 14 al 18)",
+          s2 == 200 and d2["lunes"] == "2026-09-14" and d2["viernes"] == "2026-09-18")
+
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")
     t0 = time.time()

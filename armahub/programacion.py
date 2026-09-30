@@ -448,6 +448,52 @@ def semana(desde: Optional[str] = None, user=Depends(get_current_user)):
             "celdas": celdas, "cubicadores": cubicadores}
 
 
+@router.get("/programacion/semana-real")
+def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
+    """EL LADO REAL DE LA SEMANA, desde el espejo de aSa: kilos cubicados por cubicador,
+    obra y día (fecha de pedido). Nadie copia nada de aSa a mano: el tablero compara esto
+    contra lo programado. Trae además las obras activas —para que la semana se arme SÓLO
+    con obras que existen en aSa (regla del usuario, 30-sep)— y las personas.
+
+    Flujo semanal (30-sep): 1) se arma la semana por cubicador × obra × toneladas por
+    día; 2) el real llega solo de aSa; 3) el tablero muestra programado vs cubicado y el
+    cumplimiento por día; 4) el cierre acumula por cubicador. Hoy es MAQUETA: el programa
+    vive en el navegador; sólo el lado real es de verdad."""
+    _exigir_lectura(user)
+    try:
+        base = date.fromisoformat(desde) if desde else date.today()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha inválida.")
+    lunes = base - timedelta(days=base.weekday())
+    viernes = lunes + timedelta(days=4)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT detail_person, job_name, MAX(asa_job_id), order_date, SUM(kg), COUNT(*)
+                     FROM asa_pedidos
+                    WHERE order_date BETWEEN %s AND %s
+                      AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                    GROUP BY 1, 2, 4 ORDER BY 1, 2, 4""",
+                (lunes, viernes, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+            real = [{"persona": r[0], "obra": r[1], "job": r[2], "dia": r[3].isoformat(),
+                     "kg": float(r[4] or 0), "cc": r[5]} for r in cur.fetchall()]
+            # Las obras que se pueden programar: las de aSa con movimiento en el último
+            # año. Una obra que no está en aSa no se programa.
+            cur.execute(
+                """SELECT job_name, MAX(asa_job_id), ROUND(SUM(kg))
+                     FROM asa_pedidos
+                    WHERE COALESCE(estado,'') <> %s AND job_name !~* %s
+                      AND GREATEST(order_date, proj_ship_date) >= CURRENT_DATE - make_interval(months => 12)
+                    GROUP BY 1 ORDER BY 1""",
+                (ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+            obras = [{"obra": r[0], "job": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
+            cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
+                        " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
+            personas = [r[0] for r in cur.fetchall()]
+    return {"lunes": lunes.isoformat(), "viernes": viernes.isoformat(),
+            "real": real, "obras": obras, "personas": personas}
+
+
 # ---------------------------------------------------------------------------
 # OBRAS: el espejo de aSa y la asignación de USC
 # ---------------------------------------------------------------------------

@@ -55,6 +55,8 @@
       pintarObras();
       if (OBRAS.length) await abrirObra(OBRAS[0].id_proyecto);
       await pintarCal();
+      // El módulo abre en «Semana», el flujo aprobado (30-sep); lo demás queda detrás.
+      global.prgSubTab('semana');
     } catch (e) { aviso(e.message); }
   };
   function aviso(m) { if (global.showToast) global.showToast(m, 'error'); else alert(m); }
@@ -69,7 +71,8 @@
   }
 
   global.prgSubTab = function (v) {
-    [['usc','prgSubUsc','prgPanelUsc'], ['obras','prgSubObras','prgPanelObras'],
+    [['semana','prgSubSemana','prgPanelSemana'],
+     ['usc','prgSubUsc','prgPanelUsc'], ['obras','prgSubObras','prgPanelObras'],
      ['equipo','prgSubEquipo','prgPanelEquipo'], ['cub','prgSubCub','prgPanelCub']]
       .forEach(function (t) {
         var on = (t[0] === v), b = $(t[1]), p = $(t[2]);
@@ -79,6 +82,8 @@
     // El tab de Obras se carga al abrirlo, no al cargar el módulo: consulta el estado de
     // aSa y eso puede tardar. Nadie paga ese costo si no entra a la pestaña.
     if (v === 'obras' && !OBRAS_CARGADO) cargarObras();
+    // La semana (maqueta) vive en semana.js y trae su propia data (el real de aSa).
+    if (v === 'semana' && global.loadPrgSemana) global.loadPrgSemana();
   };
 
   // ── CAJA 1 · obras ───────────────────────────────────────────────────────────

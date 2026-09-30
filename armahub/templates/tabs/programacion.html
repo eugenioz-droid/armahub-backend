@@ -18,16 +18,43 @@
       </span>
     </div>
 
-    <!-- Sub-tabs: hoy sólo USC tiene contenido. -->
+    <!-- Sub-tabs. «Semana» es el flujo aprobado el 30-sep (maqueta); USC es el modelo
+         anterior por frentes, que queda hasta decidir qué se hace con él. -->
     <div style="display:flex; gap:2px; border-bottom:1px solid #e0e0e0; margin-bottom:12px;">
-      <button id="prgSubUsc" onclick="prgSubTab('usc')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #8BC34A; background:none; color:#33691e; cursor:pointer;">USC</button>
+      <button id="prgSubSemana" onclick="prgSubTab('semana')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #8BC34A; background:none; color:#33691e; cursor:pointer;">Semana</button>
+      <button id="prgSubUsc" onclick="prgSubTab('usc')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">USC</button>
       <button id="prgSubObras" onclick="prgSubTab('obras')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Obras</button>
       <button id="prgSubEquipo" onclick="prgSubTab('equipo')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Equipo</button>
       <button id="prgSubCub" onclick="prgSubTab('cub')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Cubicador</button>
     </div>
 
+    <!-- ══════════ SEMANA — el flujo aprobado (30-sep), como MAQUETA ══════════
+         1) armar la semana por cubicador × obra × toneladas por día (sólo obras de aSa);
+         2) el real llega solo de aSa; 3) tablero programado vs cubicado con cumplimiento
+         por día. El programa se guarda en este navegador hasta aprobar el formato. -->
+    <div id="prgPanelSemana" style="display:none;">
+      <div class="prgaviso" style="margin-bottom:8px;">
+        <b>Maqueta.</b> El programa se guarda sólo en este navegador; lo cubicado sí es real (aSa, por fecha de pedido).
+        Cumple el día = cubicó al menos el 90% de lo programado · <b>+</b> = cubicó sin programa ·
+        las obras se eligen de las activas en aSa (último año); una obra que no está en aSa no se programa.
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <button onclick="prgSemanaMover(-1)" style="border:1px solid #cfd8dc; background:#fff; border-radius:5px; padding:3px 9px; cursor:pointer; color:#546e7a;">‹</button>
+        <b id="prgSemTitulo" style="font-size:12.5px;"></b>
+        <button onclick="prgSemanaMover(1)" style="border:1px solid #cfd8dc; background:#fff; border-radius:5px; padding:3px 9px; cursor:pointer; color:#546e7a;">›</button>
+      </div>
+      <div class="card prgc" style="padding:8px 10px; margin:0 0 12px;">
+        <div class="prgh">1 · ARMAR LA SEMANA <span class="muted">toneladas por día, por cubicador y obra</span></div>
+        <div id="prgSemArmar" class="prgsemwrap"></div>
+      </div>
+      <div class="card prgc" style="padding:8px 10px; margin:0;">
+        <div class="prgh">2 · TABLERO DE LA SEMANA <span class="muted" id="prgSemTabN"></span></div>
+        <div id="prgSemTablero" class="prgsemwrap"></div>
+      </div>
+    </div>
+
     <!-- ══════════ USC ══════════ -->
-    <div id="prgPanelUsc">
+    <div id="prgPanelUsc" style="display:none;">
       <div class="prg4">
         <div class="card prgc"><div class="prgh">Obras <span class="muted" id="prgObrasN"></span></div>
           <div class="prgbd" id="prgObras"></div></div>
@@ -184,4 +211,42 @@
   .prgor.armahub{background:#f1f8e9; color:#558b2f}
   .prgt select.usc{font-size:10.5px; padding:1px 3px; border:1px solid #e0e4e8; border-radius:4px; max-width:170px;}
   .prgt tr.sinusc td{background:#fffdf5}
+
+  /* ── Tab Semana (maqueta) ────────────────────────────────────────────────── */
+  .prgsemwrap{overflow:auto; max-height:46vh;}
+  .prgsem{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
+  .prgsem th{position:sticky; top:0; background:#fafbfc; z-index:1; text-align:center; color:#546e7a; font-weight:600;
+             padding:4px 5px; border-bottom:1px solid #e3e8ef; white-space:nowrap; font-size:10.5px;}
+  .prgsem th small{display:block; font-weight:400; color:#90a4ae; font-size:9px;}
+  .prgsem th.ob, .prgsem td.ob{text-align:left; min-width:260px; max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .prgsem td{padding:3px 5px; border-top:1px solid #edf0f3; text-align:center; font-size:11px;}
+  .prgsem td.num{text-align:right;}
+  .prgsem tr.per td{background:#f6fbf1; border-top:2px solid #dcedc8;}
+  .prgsem tr.per td.sub{color:#78909c; font-size:10px;}
+  .prgsem tfoot td{border-top:2px solid #cfd8dc; font-weight:700; background:#fff;}
+  .prgsem input[type=number]{width:46px; text-align:right; font-size:11px; padding:2px 3px; border:1px solid #e0e4e8; border-radius:4px;}
+  .prgsem input[type=number]:focus{border-color:#8BC34A; outline:none;}
+  .prgsem button.mas{font-size:10px; font-weight:600; padding:1px 8px; border-radius:99px; cursor:pointer;
+                     border:1px solid #c5e1a5; background:#fff; color:#558b2f; margin-left:6px;}
+  .prgsem button.mas:hover{background:#f1f8e9;}
+  .prgsem button.q{border:0; background:none; color:#cfd8dc; cursor:pointer; padding:0 2px;} .prgsem button.q:hover{color:#c62828;}
+  /* el selector de obra, flotando bajo el botón */
+  .prgpick{position:absolute; z-index:5; background:#fff; border:1px solid #c5e1a5; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12);
+           width:380px; padding:6px;}
+  .prgpick input{width:100%; box-sizing:border-box; font-size:11px; padding:4px 7px; border:1px solid #cfd8dc; border-radius:4px; margin-bottom:4px;}
+  .prgpick .lista{max-height:220px; overflow:auto;}
+  .prgpick .lista div[data-obra]{padding:4px 6px; cursor:pointer; border-radius:4px;}
+  .prgpick .lista div[data-obra]:hover{background:#f1f8e9;}
+  .prgpick .lista b{display:block; font-weight:600; font-size:11px; color:#263238;}
+  .prgpick .lista small{color:#90a4ae; font-size:9.5px;}
+  .prgsem td.ob{position:relative;}
+  /* tablero */
+  .prgsem.tab tr.per{cursor:pointer;} .prgsem.tab tr.per:hover td{background:#eef7e3;}
+  .prgsem.tab tr.det td{background:#fff; color:#546e7a; font-size:10.5px;}
+  .prgsem.tab tr.det.ex td{color:#8d6e00;}
+  .prgsem .tri{color:#90a4ae; font-size:10px; margin-right:2px;}
+  .prgsem td.dia small{display:block; font-size:9px; color:#90a4ae;}
+  .prgsem .ok{color:#2e7d32; font-weight:700;} .prgsem .no{color:#c62828; font-weight:700;}
+  .prgsem .ex{color:#8d6e00; font-weight:700;} .prgsem .nd{color:#cfd8dc;}
+  .prgsem td.pct.ok{color:#2e7d32; font-weight:700;} .prgsem td.pct.no{color:#c62828; font-weight:700;}
 </style>
