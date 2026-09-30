@@ -418,71 +418,13 @@
   // códigos y cuántos kilos tiene cada una, ordenables por encabezado. Antes eso estaba
   // también en un cuadro aparte de «Obras aSa» — la misma información dos veces, y dos
   // lugares donde podía dejar de cuadrar.
-  var ORDEN_OBRA = { col: 'kg', desc: true };
-
   function pintarObras() {
-    // Las cifras salen de las filas que pasan TODOS los otros filtros menos el de obra:
-    // si la obra se filtrara a sí misma, al marcar una desaparecerían las demás.
-    var base = filtrar(todasLasFilas(), 'obra').filter(visible);
-    var por = {};
-    base.forEach(function (f) {
-      if (!por[f.obra]) por[f.obra] = { obra: f.obra, kg: 0, cc: 0 };
-      por[f.obra].kg += f.kg; por[f.obra].cc++;
-    });
-    // Una obra ya marcada se muestra siempre, aunque los otros filtros la dejarían
-    // fuera: si no, no habría cómo desmarcarla.
-    OBRAS.forEach(function (o) { if (!por[o]) por[o] = { obra: o, kg: 0, cc: 0 }; });
-
-    var lista = Object.keys(por).map(function (k) { return por[k]; })
-      .filter(function (o) { return !BUSCA || o.obra.toLowerCase().indexOf(BUSCA) !== -1; });
-    var dir = ORDEN_OBRA.desc ? -1 : 1;
-    lista.sort(function (a, b) {
-      var x = a[ORDEN_OBRA.col], y = b[ORDEN_OBRA.col];
-      if (typeof x === 'string') return dir * x.localeCompare(y, 'es');
-      return dir * (x - y);
-    });
-
-    var tkg = lista.reduce(function (a, o) { return a + o.kg; }, 0);
-    $('dshObrasN').innerHTML = '· ' + lista.length + ' · <b style="color:#33691e">' +
-                               kg0(tkg) + ' kg</b>';
-    if (!lista.length) { $('dshObras').innerHTML = '<div class="dshvacio">Sin obras</div>'; return; }
-
-    // La barra se mide contra la obra MÁS GRANDE: contra el total, con cien obras,
-    // quedarían todas en un hilo y no compararían nada.
-    var tope = lista.reduce(function (a, o) { return Math.max(a, o.kg); }, 0) || 1;
-    var flecha = function (c) {
-      return ORDEN_OBRA.col === c ? ' <b>' + (ORDEN_OBRA.desc ? '\u25bc' : '\u25b2') + '</b>' : '';
-    };
-    var html = '<table class="dshot"><thead><tr>' +
-      '<th data-ord="obra" style="width:66%">Obra' + flecha('obra') + '</th>' +
-      '<th data-ord="cc" class="num" style="width:11%">CC' + flecha('cc') + '</th>' +
-      '<th data-ord="kg" class="num" style="width:23%">Kilos' + flecha('kg') + '</th>' +
-      '</tr></thead><tbody>';
-    lista.forEach(function (o) {
-      var on = OBRAS.indexOf(o.obra) !== -1;
-      html += '<tr class="' + (on ? 'sel' : '') + '" data-obra="' + esc(o.obra) + '" title="' + esc(o.obra) + '">' +
-              '<td><input type="checkbox"' + (on ? ' checked' : '') + '> ' + esc(o.obra) + '</td>' +
-              '<td class="num">' + o.cc + '</td>' +
-              '<td class="num dshbar"><i style="width:' + (o.kg / tope * 100).toFixed(1) +
-              '%"></i><span>' + kg0(o.kg) + '</span></td></tr>';
-    });
-    $('dshObras').innerHTML = html + '</tbody></table>';
-
-    $('dshObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
-      tr.addEventListener('click', function (ev) {
-        alternar(OBRAS, tr.dataset.obra, ev);
-        repintarTodo();
-      });
-    });
-    $('dshObras').querySelectorAll('th[data-ord]').forEach(function (th) {
-      th.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        var c = th.dataset.ord;
-        if (ORDEN_OBRA.col === c) ORDEN_OBRA.desc = !ORDEN_OBRA.desc;
-        else { ORDEN_OBRA.col = c; ORDEN_OBRA.desc = (c !== 'obra'); }
-        pintarObras();
-      });
-    });
+    // LA COLUMNA FIJA ES LA LISTA MEJORADA (obra, CC, kilos y barra por estado), la
+    // misma de «Obras aSa»: al usuario le gustó y sobra ancho en las cajas. Nada de
+    // ordenar por encabezado: la más grande arriba, siempre.
+    var R = pintarLista($('dshObras'), BUSCA);
+    $('dshObrasN').innerHTML = '· ' + R.obras.length + ' · <b style="color:#33691e">' + kg0(R.total) + ' kg</b>';
+    $('dshObrasLey').innerHTML = leyenda(R);
   }
 
   // Las dos tablas tienen las mismas columnas salvo la fecha, así que se pintan con la
@@ -946,11 +888,14 @@
     CHARTS[cfg.chart] = graficoBarras(CHARTS[cfg.chart], canvas, m.columnas.map(nombre), datasets);
   }
 
-  // ── La lista de obras con su barra por estado (vive en «Obras aSa») ────────
-  // Una LISTA PLANA de obras —la más grande arriba— con sus códigos y una barra de kilos
-  // partida por estado (Open / Processed / Shipped). Reemplaza en ese tab a la columna
-  // fija de obras: se clickea igual y filtra igual. Al usuario le gustó tal cual.
-  // Los estados con el nombre real de aSa, en el orden del ciclo: pedido → producido → despachado.
+  // ── La lista de obras: la columna fija de todos los tabs y el cuadro de «Obras aSa» ──
+  // Una LISTA PLANA de obras —la más grande arriba— con sus códigos, sus kilos y una
+  // barra partida por estado (Open / Processed / Shipped / Cancelled). Se clickea para
+  // filtrar. Nació como cuadro de «Obras aSa» y al usuario le gustó tanto que reemplazó
+  // a la columna de obras de siempre en todos los tabs: es UNA función pintando en dos
+  // sitios, para que nunca dejen de cuadrar entre sí.
+  // Los estados con el nombre real de aSa, en el orden del ciclo: pedido → producido →
+  // despachado, y al final los que no son trabajo.
   var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#8bc34a', 'Shipped': '#90a4ae',
                        'Incomplete': '#ce93d8', 'Cancelled': '#e57373' };
   var ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete', 'Cancelled'];
@@ -973,49 +918,74 @@
              estados: orden, porEstado: estados };
   }
 
-  function pintarListaObras() {
-    var etq = function (s) { return s === SIN ? 'Sin dato' : s; };
-    var nomEst = function (e) { return (DATA.nombres_estado || {})[e] || e; };
-    // La lista pasa TODOS los filtros menos el de obra (no se filtra a sí misma), igual
-    // que la columna a la que reemplaza. Y es el ÚNICO cuadro que mira los anulados
-    // (DATA.filas, no todasLasFilas): el usuario quiere ver en la barra lo que se cubicó
-    // y después se canceló.
-    var R = resumenObras(filtrar(DATA.filas || [], 'obra'));
-    $('dshResN').innerHTML = '· ' + R.obras.length + ' · <b style="color:#33691e">' + kg0(R.total) + ' kg</b>';
-    $('dshResLey').innerHTML = R.estados.map(function (e) {
-      return '<span><i style="background:' + (COLOR_ESTADO[e] || SIN_COLOR) + '"></i>' + esc(nomEst(e)) +
+  function nombreEstado(e) { return (DATA.nombres_estado || {})[e] || e; }
+
+  function leyenda(R) {
+    return R.estados.map(function (e) {
+      return '<span><i style="background:' + (COLOR_ESTADO[e] || SIN_COLOR) + '"></i>' + esc(nombreEstado(e)) +
              ' <span class="muted">' + kg0(R.porEstado[e]) + '</span></span>';
     }).join('');
-    if (!R.obras.length) {
-      $('dshResObras').innerHTML = '<tbody><tr><td class="dshvacio">Sin obras con estos filtros</td></tr></tbody>';
-      return;
+  }
+
+  // Pinta la lista en `el` (un div) y devuelve lo que muestra: las obras que pasaron el
+  // buscador, sus kilos y el reparto por estado para la leyenda.
+  function pintarLista(el, busca) {
+    var etq = function (s) { return s === SIN ? 'Sin dato' : s; };
+    // La lista pasa TODOS los filtros menos el de obra (no se filtra a sí misma). Y es
+    // el ÚNICO cuadro que mira los anulados (DATA.filas, no todasLasFilas): el usuario
+    // quiere ver en la barra lo que se cubicó y después se canceló.
+    var R = resumenObras(filtrar(DATA.filas || [], 'obra'));
+    // Una obra ya marcada se muestra siempre, aunque los otros filtros la dejarían fuera:
+    // si no, no habría cómo desmarcarla.
+    OBRAS.forEach(function (o) {
+      if (!R.obras.some(function (x) { return x.obra === o; })) {
+        R.obras.push({ obra: o, job: null, cc: 0, kg: 0, porEstado: {}, segmento: SIN, tipo: SIN });
+      }
+    });
+    var lista = busca
+      ? R.obras.filter(function (o) { return o.obra.toLowerCase().indexOf(busca) !== -1; })
+      : R.obras;
+    var salida = { obras: lista, estados: R.estados, porEstado: R.porEstado,
+                   total: lista.reduce(function (a, o) { return a + o.kg; }, 0) };
+    if (!lista.length) {
+      el.innerHTML = '<div class="dshvacio">' + (busca ? 'Ninguna obra con «' + esc(busca) + '»' : 'Sin obras con estos filtros') + '</div>';
+      return salida;
     }
-    var html = '<colgroup><col style="width:42%"><col style="width:7%"><col style="width:13%">' +
-      '<col style="width:38%"></colgroup>' +
+    // La barra mide contra la obra MÁS GRANDE de las que se ven (la primera), y dentro
+    // cada estado ocupa su parte.
+    var max = lista[0].kg || 1;
+    var html = '<table class="dsht dshres"><colgroup><col style="width:42%"><col style="width:7%">' +
+      '<col style="width:13%"><col style="width:38%"></colgroup>' +
       '<thead><tr><th>Obra</th><th class="num">CC</th><th class="num">Kilos</th>' +
       '<th>Kilos por estado</th></tr></thead><tbody>';
-    R.obras.forEach(function (o) {
+    lista.forEach(function (o) {
       var on = OBRAS.indexOf(o.obra) !== -1;
-      // La barra mide contra la obra MÁS GRANDE (la primera), y dentro cada estado ocupa
-      // su parte.
       var barra = R.estados.map(function (e) {
         var v = o.porEstado[e] || 0;
         return v ? '<i style="width:' + (v / o.kg * 100).toFixed(1) + '%; background:' +
-                   (COLOR_ESTADO[e] || SIN_COLOR) + '" title="' + esc(nomEst(e)) + ': ' + kg0(v) + ' kg"></i>' : '';
+                   (COLOR_ESTADO[e] || SIN_COLOR) + '" title="' + esc(nombreEstado(e)) + ': ' + kg0(v) + ' kg"></i>' : '';
       }).join('');
       html += '<tr class="' + (on ? 'sel' : '') + '" data-obra="' + esc(o.obra) + '">' +
         '<td title="' + esc(o.obra) + (o.job ? ' · ' + esc(o.job) : '') + ' · ' + esc(etq(o.segmento)) +
         ' · ' + esc(etq(o.tipo)) + '">' + esc(o.obra) + '</td>' +
         '<td class="num">' + o.cc + '</td><td class="num">' + kg0(o.kg) + '</td>' +
-        '<td><div class="stk" style="width:' + (o.kg / R.max * 100).toFixed(1) + '%">' + barra + '</div></td></tr>';
+        '<td><div class="stk" style="width:' + (o.kg / max * 100).toFixed(1) + '%">' + barra + '</div></td></tr>';
     });
-    $('dshResObras').innerHTML = html + '</tbody>';
-    $('dshResObras').querySelectorAll('tr[data-obra]').forEach(function (tr) {
+    el.innerHTML = html + '</tbody></table>';
+    el.querySelectorAll('tr[data-obra]').forEach(function (tr) {
       tr.addEventListener('click', function (ev) {
         alternar(OBRAS, tr.dataset.obra, ev);
         repintarTodo();
       });
     });
+    return salida;
+  }
+
+  // El cuadro de «Obras aSa»: la misma lista, sin buscador (ahí está el de códigos).
+  function pintarListaObras() {
+    var R = pintarLista($('dshResObras'), '');
+    $('dshResN').innerHTML = '· ' + R.obras.length + ' · <b style="color:#33691e">' + kg0(R.total) + ' kg</b>';
+    $('dshResLey').innerHTML = leyenda(R);
   }
 
   // ── Sub-tab ATRIBUTOS DE OBRA ──────────────────────────────────────────────

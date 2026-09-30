@@ -444,7 +444,7 @@ check("el total se recalcula sobre las filas FILTRADAS",
 # desmarcarlo.
 check("los filtros se cruzan entre sí", "function valoresDe(" in DSH and "salvo !== 'obra'" in DSH)
 check("...pero ninguno se filtra a sí mismo",
-      "filtrar(todasLasFilas(), 'obra')" in DSH and "valoresDe('persona', 'persona'" in DSH)
+      "filtrar(DATA.filas || [], 'obra')" in DSH and "valoresDe('persona', 'persona'" in DSH)
 check("...y lo ya elegido sigue visible para poder desmarcarlo",
       "elegidos.forEach(function (v) { vistos[v] = 1; })" in DSH)
 check("elegir obra repinta los cubicadores y viceversa",
@@ -641,9 +641,12 @@ check("el detalle de códigos no muestra el id interno de la obra",
 # dejar de cuadrar. Y el detalle queda a la izquierda, el mensual angosto a la derecha.
 check("el cuadro OBRAS ya no existe: su info vive en la columna de obra",
       "dshPorObra" not in HTM and "dshPorObra" not in DSH)
-check("la columna de obra muestra códigos y kilos por obra",
-      "class=\"dshot\"" in DSH and "data-ord=\"cc\"" in DSH and "data-ord=\"kg\"" in DSH)
-check("...y se ordena por encabezado", "ORDEN_OBRA.desc = !ORDEN_OBRA.desc" in DSH)
+# Hoy la columna ES la lista mejorada (obra, CC, kilos y barra por estado), la misma de
+# «Obras aSa», pintada por una sola función. La tabla ordenable por encabezado se fue.
+check("la columna de obra es la lista con barra por estado, pintada por la misma función que Obras aSa",
+      "function pintarLista(el, busca)" in DSH and "pintarLista($('dshObras'), BUSCA)" in DSH
+      and "pintarLista($('dshResObras'), '')" in DSH and 'id="dshObrasLey"' in HTM)
+check("...sin la tabla ordenable de antes", "ORDEN_OBRA" not in DSH and "dshot" not in HTM and "dshot" not in DSH)
 check("el detalle ocupa el panel entero y el mensual se fue a la columna lateral",
       HTM.index('id="dshCc"') < HTM.index('id="dshPorMes"')
       and HTM.index('id="dshPorMes"') > HTM.index('id="dshLateral"'))
@@ -652,9 +655,9 @@ check("el detalle ocupa el panel entero y el mensual se fue a la columna lateral
 # cambiaba de color, porque no se repintaban los chips. Parecía que el clic no hacía nada.
 # Hoy todos pasan por `repintarTodo()`: chips primero, lo pesado después (sección 27).
 check("tocar un cubicador repinta también los chips",
-      "alternar(PERSONAS, p, ev);" in DSH and DSH.count("repintarTodo();") >= 3)
-check("...y tocar una obra, igual (en la columna fija y en la lista de «Obras aSa»)",
-      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n        repintarTodo();") == 2)
+      "alternar(PERSONAS, p, ev);" in DSH and DSH.count("repintarTodo();") >= 2)
+check("...y tocar una obra, igual (una sola función para la columna y «Obras aSa»)",
+      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);\n        repintarTodo();") == 1)
 
 # EL DELAY al cambiar de sub-tab: 5.132 filas de cinco celdas son ~30.000 nodos del DOM.
 check("el detalle tiene tope de filas, para no construir 30.000 nodos",
@@ -813,11 +816,10 @@ check("el gráfico es de barras AGRUPADAS (una por persona y mes), con Chart.js 
 check("...con el número real encima de cada barra (el plugin de etiquetas se enciende acá)",
       "[ChartDataLabels]" in DSH and "datalabels: { display: true" in DSH
       and "formatter: function (v) { return v ? kg0(v) : ''; }" in DSH)
-check("la columna de obras se achicó para darle ancho a las cajas",
-      ".dshobras{width:290px;}" in HTM)
-check("...y su letra es la de los cuadros de al lado (app.css mete td{font-size:13px})",
-      "overflow:hidden; text-overflow:ellipsis; font-size:10px;}" in HTM
-      and HTM.index(".dshot td{") < HTM.index("overflow:hidden; text-overflow:ellipsis; font-size:10px;}"))
+check("la columna de obras es ancha: lleva la lista completa",
+      ".dshobras{width:440px;}" in HTM)
+check("...y su letra es la de los cuadros de al lado (usa .dsht, que pisa el td{13px} de app.css)",
+      "'<table class=\"dsht dshres\"><colgroup>" in DSH)
 check("...y no se dibujan más de MAX_SERIES personas: el resto va en «Otros»",
       "MAX_SERIES = 8" in DSH and "'Otros (' + resto.length + ')'" in DSH)
 # Atributos
@@ -906,11 +908,11 @@ check("la lista de obras por estado vive en «Obras aSa» y ahí se esconde la c
       and "pintarListaObras();" in DSH)
 check("...de mayor a menor, barra relativa a la más grande, partida por estado con el nombre real",
       "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH
-      and "(o.kg / R.max * 100).toFixed(1)" in DSH
+      and "(o.kg / max * 100).toFixed(1)" in DSH
       and "ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete', 'Cancelled']" in DSH
       and "(DATA.nombres_estado || {})[e] || e" in DSH)
-check("...y se clickea para filtrar, igual que la columna que reemplaza",
-      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);") == 2 and "function resumenObras(filas)" in DSH)
+check("...y se clickea para filtrar",
+      DSH.count("alternar(OBRAS, tr.dataset.obra, ev);") == 1 and "function resumenObras(filas)" in DSH)
 check("un solo gráfico de barras para todos los cuadros (una barra por serie, con número)",
       "function graficoBarras(ref, canvas, labels, datasets)" in DSH and DSH.count("graficoBarras(") == 2)
 
@@ -929,7 +931,7 @@ check("las obras de prueba y «NO USAR» quedan fuera de los TRES endpoints",
 # Stock Cubicaciones tienen el mismo tope de filas que el detalle de códigos.
 check("el chip se pinta primero y el repintado pesado va en el cuadro siguiente",
       "function diferir(fn)" in DSH and "function repintarTodo() { pintarChips(); diferir(" in DSH
-      and DSH.count("repintarTodo();") >= 3 and "var repintar = repintarTodo;" in DSH)
+      and DSH.count("repintarTodo();") >= 2 and "var repintar = repintarTodo;" in DSH)
 check("año y mes encienden el chip antes de descargar, y avisan «Cargando…»",
       DSH.count("pintarChips(); cargar();") == 2 and "$('dshEspejo').textContent = 'Cargando…';" in DSH)
 check("los botones de estado responden al instante",
@@ -950,7 +952,7 @@ check("el front los separa una vez al cargar y todo lo demás usa las filas viva
       "FILAS_VIVAS = (DATA.filas || []).filter(function (f) { return f.estado !== DATA.estado_nunca; });" in DSH
       and "function todasLasFilas() {\n    return FILAS_VIVAS;\n  }" in DSH)
 check("...y sólo la lista de obras mira las filas completas",
-      DSH.count("filtrar(DATA.filas || [], 'obra')") == 1)
+      DSH.count("filtrar(DATA.filas || [], 'obra')") == 1 and DSH.count("resumenObras(filtrar(") == 1)
 check("Cancelled tiene color, orden y nombre con su explicación",
       "'Cancelled': '#e57373'" in DSH and '"Cancelled":  "Cancelled — anulado en aSa' in PROG
       and '"Cancelled":  "Cancelled",' in PROG)
