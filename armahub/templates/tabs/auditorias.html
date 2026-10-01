@@ -34,8 +34,9 @@
           <small class="muted">independencia: no audita lo propio</small>
         </div>
         <div class="audcampo" style="width:120px; flex:none;">
-          <label title="Cuántos elementos constructivos se revisan">Muestra</label>
+          <label title="Cuántos elementos constructivos se revisan. Un elemento es un eje completo con TODAS sus barras de ese piso y ciclo, no una barra suelta.">Muestra</label>
           <input type="number" id="audN" min="1" max="200" value="10"> <small class="muted" id="audNInfo"></small>
+          <small class="muted">elementos completos</small>
         </div>
         <div class="audcampo" style="width:230px; flex:none;">
           <label>Fechas <small class="muted" style="font-weight:400;">(automáticas)</small></label>
@@ -46,6 +47,9 @@
 
       <!-- El ALCANCE sale de la obra: lo que hay, con cuántos elementos tiene cada cosa. -->
       <div id="audAlcance" class="audalcance" style="display:none;">
+        <div class="audlbl" style="margin-bottom:6px;">Alcance <span class="muted" style="font-weight:400;">
+          qué parte de la obra entra al sorteo. El número de cada botón son los <b>elementos disponibles</b>.
+          Se pueden marcar <b>varios</b>; «Todos» suelta la selección.</span></div>
         <div class="audfila" style="align-items:flex-start;">
           <div class="audcampo" style="flex:none;">
             <label>Tipo</label>
@@ -60,8 +64,7 @@
             <div id="audCiclos" class="audchips"></div>
           </div>
         </div>
-        <div class="muted" style="font-size:10px;">clic = sólo ése · Ctrl+clic = sumar · sin nada marcado = todos ·
-          <span id="audRango"></span></div>
+        <div class="muted" style="font-size:10px;"><span id="audRango"></span></div>
       </div>
 
       <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
@@ -141,10 +144,14 @@
   .audchips{display:flex; flex-wrap:wrap; gap:4px;}
   .audchips button{font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:4px; cursor:pointer;
                    border:1px solid #dfe5ea; background:#fff; color:#607d8b;}
-  .audchips button small{font-weight:400; color:#90a4ae; margin-left:3px;}
+  /* El contador de cada chip, en su propia pastilla: pegado al nombre se leía como
+     parte del nombre y nadie entendía qué era ese número. */
+  .audchips button i{font-style:normal; font-weight:700; font-size:9px; margin-left:5px; padding:0 4px;
+                     border-radius:99px; background:#eceff1; color:#78909c;}
   .audchips button:hover{border-color:#90caf9;}
   .audchips button.on{background:#1565C0; border-color:#0d47a1; color:#fff;}
-  .audchips button.on small{color:#bbdefb;}
+  .audchips button.on i{background:rgba(255,255,255,.25); color:#fff;}
+  .audchips button.todos{border-style:dashed;}
   .audbtn{font-size:12px; font-weight:700; padding:6px 14px; background:#1565C0; color:#fff; border:none; border-radius:5px; cursor:pointer;}
   .audbtn:disabled{background:#b0bec5; cursor:not-allowed;}
   .audbd{max-height:40vh; overflow:auto;}

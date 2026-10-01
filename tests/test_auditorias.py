@@ -99,5 +99,15 @@ check("cada NC es una acción para quien cubicó; la corrección no la hace el a
 check("el resultado de la lista es la cuenta por hallazgo", "function resultadoDe(aud)" in JS
       and "a.resultado = resultadoDe(a);" in JS)
 
+print("\n6. El alcance se arma: multi-selección y contadores que se entienden")
+check("el clic simple suma (no exige Ctrl) y hay un botón «Todos» que suelta",
+      "function marcar(lista, valor)" in JS and "if (b.dataset.todos) activos.length = 0; else marcar(activos" in JS
+      and "data-todos=\"1\"" in JS and "alternar" not in JS)
+check("el contador va en su propia pastilla y dice qué es",
+      "elementos disponibles" in JS and ".audchips button i{" in HTM
+      and "<b>elementos disponibles</b>" in HTM)
+check("se dice que la muestra son elementos completos, no barras",
+      "elementos completos" in HTM and "un eje completo con TODAS sus barras" in HTM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

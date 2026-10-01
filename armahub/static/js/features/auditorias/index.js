@@ -25,13 +25,13 @@
     return data;
   }
 
-  // Misma regla de los filtros de aSa Data: clic = sólo ése, Ctrl+clic = sumar, clic en
-  // el único elegido = soltar (todos).
-  function alternar(lista, valor, ev) {
+  // ACÁ EL CLIC SIMPLE SUMA. En los filtros de aSa Data el clic deja «sólo ése» porque
+  // uno mira una cosa a la vez; acá se está ARMANDO un alcance —«los pisos 3, 4 y 5»— y
+  // elegir varios es el caso normal, no la excepción. Exigir Ctrl para lo normal se
+  // sentía roto. Lista vacía = todos.
+  function marcar(lista, valor) {
     var i = lista.indexOf(valor);
-    if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) { if (i === -1) lista.push(valor); else lista.splice(i, 1); }
-    else if (lista.length === 1 && i === 0) lista.length = 0;
-    else { lista.length = 0; lista.push(valor); }
+    if (i === -1) lista.push(valor); else lista.splice(i, 1);
     return lista;
   }
 
@@ -107,14 +107,24 @@
     var o = (BASE.obras || []).filter(function (x) { return x.id_proyecto === OBRA; })[0] || {};
     $('audObraInfo').textContent = UNIV.elementos + ' elementos · ' + kg0(o.kg) + ' kg · cubicaron: ' +
       (UNIV.cubicadores || []).map(function (c) { return c.email.split('@')[0]; }).join(', ');
+    // Cada chip lleva CUÁNTOS ELEMENTOS tiene disponibles, en su propia pastilla: pegado
+    // al nombre parecía parte del nombre («C12 8») y no se entendía qué era ese número.
+    // El primero es «Todos», que suelta la selección: así se ve que vacío = todos.
     var chips = function (cont, lista, clave, activos, etiqueta) {
-      cont.innerHTML = lista.map(function (x) {
-        var v = x[clave];
-        return '<button data-v="' + esc(v) + '" class="' + (activos.indexOf(v) !== -1 ? 'on' : '') + '">' +
-               esc(etiqueta ? etiqueta(x) : (v || '(sin)')) + '<small>' + x.elementos + '</small></button>';
-      }).join('') || '<span class="muted" style="font-size:10px">—</span>';
+      var total = lista.reduce(function (a, x) { return a + x.elementos; }, 0);
+      cont.innerHTML = '<button data-todos="1" class="todos' + (activos.length ? '' : ' on') + '"' +
+          ' title="Sin nada marcado se auditan todos">Todos <i>' + total + '</i></button>' +
+        lista.map(function (x) {
+          var v = x[clave], n = etiqueta ? etiqueta(x) : (v || '(sin dato)');
+          return '<button data-v="' + esc(v) + '" class="' + (activos.indexOf(v) !== -1 ? 'on' : '') + '"' +
+                 ' title="' + esc(n) + ' · ' + x.elementos + ' elementos disponibles">' +
+                 esc(n) + ' <i>' + x.elementos + '</i></button>';
+        }).join('');
       cont.querySelectorAll('button').forEach(function (b) {
-        b.addEventListener('click', function (ev) { alternar(activos, b.dataset.v, ev); pintarAlcance(); pintarEstado(); });
+        b.addEventListener('click', function () {
+          if (b.dataset.todos) activos.length = 0; else marcar(activos, b.dataset.v);
+          pintarAlcance(); pintarEstado();
+        });
       });
     };
     chips($('audSectores'), UNIV.sectores || [], 'sector', SECT, function (x) { return x.nombre; });
@@ -389,7 +399,7 @@
   global.loadAuditorias = async function () { await _loadAnterior(); if ($('audRevGuardar')) bindRevision(); };
 
   // Expuesto para los tests: lo puro.
-  global.__auditoriasTest = { alternar: alternar, sumaHabiles: sumaHabiles, DIAS_PLAZO: DIAS_PLAZO,
+  global.__auditoriasTest = { marcar: marcar, sumaHabiles: sumaHabiles, DIAS_PLAZO: DIAS_PLAZO,
                               resultadoDe: resultadoDe, estadoDe: estadoDe, accionesDe: accionesDe, claveDe: claveDe };
 
 })(window);

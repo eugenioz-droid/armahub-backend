@@ -66,10 +66,14 @@ const vie = new Date('2026-10-02T12:00:00');   // viernes
 const plazo = T.sumaHabiles(vie, T.DIAS_PLAZO);
 check('10 hábiles desde un viernes caen dos semanas después, en viernes',
       T.DIAS_PLAZO === 10 && plazo.getDay() === 5 && plazo.toISOString().slice(0, 10) === '2026-10-16');
-check('alternar: clic = sólo ése, Ctrl+clic suma, clic en el único lo suelta',
-      JSON.stringify(T.alternar(['P1'], 'P2', {})) === '["P2"]' &&
-      JSON.stringify(T.alternar(['P1'], 'P2', { ctrlKey: true })) === '["P1","P2"]' &&
-      JSON.stringify(T.alternar(['P1'], 'P1', {})) === '[]');
+// El alcance se ARMA: elegir varios pisos o ciclos es lo normal, así que el clic simple
+// suma (en los filtros de aSa Data el clic deja «sólo ése», pero eso es mirar, no armar).
+check('el clic simple SUMA: se eligen varios pisos sin Ctrl',
+      JSON.stringify(T.marcar(T.marcar(['P1'], 'P2'), 'P3')) === '["P1","P2","P3"]');
+check('...y volver a tocarlo lo quita',
+      JSON.stringify(T.marcar(['P1', 'P2'], 'P1')) === '["P2"]');
+check('...hasta dejarlo vacío, que significa todos',
+      JSON.stringify(T.marcar(['P1'], 'P1')) === '[]');
 
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);
