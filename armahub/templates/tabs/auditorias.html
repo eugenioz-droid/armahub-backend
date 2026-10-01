@@ -112,6 +112,22 @@
       </div>
     </div>
 
+    <!-- ══════ INDICADORES ══════
+         Lo que la auditoría deja: conformidad por cubicador y el Pareto de causas. Sin
+         esto los hallazgos se registran y nadie los suma. Sólo cuenta lo REVISADO. -->
+    <div class="card audc" id="audKpi" style="display:none;">
+      <div class="audh">Indicadores <span class="muted" id="audKpiN"></span>
+        <div style="flex:1"></div>
+        <button id="audKpiVer" class="audmini">ocultar</button></div>
+      <div class="audkpis" id="audKpiCajas"></div>
+      <div class="audres2">
+        <div><div class="audlbl" style="margin-bottom:4px;">Por cubicador</div>
+          <table class="audt" id="audKpiCub"></table></div>
+        <div><div class="audlbl" style="margin-bottom:4px;">Causas de las no conformidades</div>
+          <table class="audt" id="audKpiCausa"></table></div>
+      </div>
+    </div>
+
     <!-- ══════ 2 · LISTA ══════ -->
     <div class="card audc">
       <div class="audh">Auditorías <span class="muted" id="audListaN"></span>
@@ -130,6 +146,7 @@
     <div class="card audc" id="audDetalle" style="display:none;">
       <div class="audh"><span id="audDetTitulo"></span>
         <div style="flex:1"></div>
+        <button id="audPdf" class="audmini" title="Alcance, hallazgos, acciones y conclusión">Informe PDF</button>
         <button id="audDetCerrar" class="secondary" style="font-size:10.5px; padding:2px 8px;">cerrar</button>
       </div>
       <div id="audDetInfo" class="muted" style="font-size:11px; margin-bottom:6px;"></div>
@@ -258,4 +275,16 @@
   .audt td.venc{color:#c62828; font-weight:700;}
   .audx{border:0; background:none; color:#cfd8dc; cursor:pointer; padding:0 3px; font-size:12px;}
   .audx:hover{color:#c62828;}
+  /* Indicadores: cuatro números grandes y dos tablas al lado. */
+  .audkpis{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+  .audkpi{flex:1; min-width:120px; background:#f7f9fb; border:1px solid #e3e8ef; border-radius:6px; padding:8px 10px;}
+  .audkpi b{display:block; font-size:19px; color:#1565C0; line-height:1.1; font-variant-numeric:tabular-nums;}
+  .audkpi span{font-size:10px; color:#546e7a;}
+  .audkpi.mal b{color:#c62828;}
+  .audkpi.bien b{color:#2e7d32;}
+  .audres2{display:flex; gap:14px; flex-wrap:wrap;}
+  .audres2 > div{flex:1; min-width:280px;}
+  /* La barrita de conformidad dentro de la tabla: se compara de un vistazo. */
+  .audbar{position:relative; height:9px; background:#eceff1; border-radius:2px; min-width:50px;}
+  .audbar i{position:absolute; left:0; top:0; bottom:0; background:#8BC34A; border-radius:2px;}
 </style>

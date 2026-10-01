@@ -68,6 +68,7 @@
       pintarForm();
       await cargarLista();
       await cargarMisAcciones();
+      await cargarIndicadores();
     } catch (e) { aviso(e.message); }
   };
 
@@ -95,6 +96,72 @@
     $('audCrear').addEventListener('click', crear);
     $('audDetCerrar').addEventListener('click', function () { ABIERTA = null; AUD = null; ELEM = null; pintarLista(); pintarDetalle(); });
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
+    // El PDF se baja con fetch y no con un enlace: el token va en la cabecera, y un
+    // <a href> no la lleva (daría 401). Mismo camino que el informe de reclamos.
+    $('audPdf').addEventListener('click', async function () {
+      if (!AUD) return;
+      try {
+        var res = await fetch(global.apiUrl('/auditorias/' + AUD.id + '/pdf'), { headers: global.authHeaders() });
+        if (!res.ok) throw new Error('No se pudo generar el informe');
+        global.open(URL.createObjectURL(await res.blob()), '_blank');
+      } catch (e) { aviso(e.message); }
+    });
+    $('audKpiVer').addEventListener('click', function () {
+      var c = $('audKpiCajas').style.display === 'none';
+      $('audKpiCajas').style.display = c ? '' : 'none';
+      document.querySelector('#audKpi .audres2').style.display = c ? '' : 'none';
+      this.textContent = c ? 'ocultar' : 'ver';
+    });
+  }
+
+  // INDICADORES: lo que la auditoria deja. Se cuentan en la base y sobre lo REVISADO: un
+  // elemento pendiente no es ni conforme ni no conforme, y meterlo en el denominador
+  // castigaria a quien todavia no termina.
+  async function cargarIndicadores() {
+    var caja = $('audKpi');
+    if (!caja) return;
+    try {
+      var k = await req('GET', '/auditorias/indicadores');
+      if (!k || !k.total || !k.total.revisados) { caja.style.display = 'none'; return; }
+      caja.style.display = '';
+      var t = k.total, nc = (t.nc_menor || 0) + (t.nc_mayor || 0);
+      $('audKpiN').textContent = '· ' + k.auditorias + ' auditorías · ' + k.cerradas + ' cerradas';
+      $('audKpiCajas').innerHTML =
+        caj(t.conformidad + '%', 'conformidad sobre ' + t.revisados + ' elementos revisados',
+            t.conformidad >= 90 ? 'bien' : (t.conformidad < 70 ? 'mal' : '')) +
+        caj(nc, 'no conformidades (' + (t.nc_mayor || 0) + ' mayores)', nc ? 'mal' : 'bien') +
+        caj(t.observacion || 0, 'observaciones') +
+        caj(k.acciones.pendiente || 0, 'acciones sin corregir',
+            (k.acciones.pendiente || 0) ? 'mal' : 'bien');
+      $('audKpiCub').innerHTML = tabla(k.por_cubicador, 'cubicador', function (x) {
+        return esc((x.cubicador || '').split('@')[0]); });
+      $('audKpiCausa').innerHTML = k.causas.length
+        ? '<thead><tr><th>Causa</th><th class="num">NC</th><th></th></tr></thead><tbody>' +
+          k.causas.map(function (c) {
+            var tope = k.causas[0].n || 1;
+            return '<tr><td title="' + esc(c.causa) + '">' + esc(c.causa) + '</td>' +
+              '<td class="num">' + c.n + '</td>' +
+              '<td><div class="audbar"><i style="width:' + (c.n / tope * 100).toFixed(0) +
+              '%; background:#ef9a9a"></i></div></td></tr>';
+          }).join('') + '</tbody>'
+        : '<tbody><tr><td class="audvacio">Sin no conformidades todavía.</td></tr></tbody>';
+    } catch (e) { caja.style.display = 'none'; }
+  }
+
+  function caj(valor, texto, clase) {
+    return '<div class="audkpi ' + (clase || '') + '"><b>' + valor + '</b><span>' + texto + '</span></div>';
+  }
+
+  function tabla(filas, clave, etiqueta) {
+    if (!filas || !filas.length) return '<tbody><tr><td class="audvacio">Sin datos.</td></tr></tbody>';
+    return '<thead><tr><th>' + (clave === 'cubicador' ? 'Cubicó' : 'Obra') +
+      '</th><th class="num">Revisados</th><th class="num">NC</th><th class="num">Conformidad</th><th></th></tr></thead><tbody>' +
+      filas.map(function (x) {
+        return '<tr><td>' + etiqueta(x) + '</td><td class="num">' + x.revisados + '</td>' +
+          '<td class="num"' + (x.nc ? ' style="color:#c62828;font-weight:700"' : '') + '>' + x.nc + '</td>' +
+          '<td class="num">' + (x.conformidad == null ? '—' : x.conformidad + '%') + '</td>' +
+          '<td><div class="audbar"><i style="width:' + (x.conformidad || 0) + '%"></i></div></td></tr>';
+      }).join('') + '</tbody>';
   }
 
   function abrirForm(abrir) {
@@ -435,6 +502,7 @@
         hallazgo: on.dataset.h, texto: $('audRevTexto').value, causa: $('audRevCausa').value });
       ok('Hallazgo guardado');
       await cargarLista();
+      await cargarIndicadores();
       pintarDetalle();
     } catch (e) { aviso(e.message); $('audRevMsg').textContent = e.message; }
     $('audRevGuardar').disabled = false;

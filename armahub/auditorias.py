@@ -572,6 +572,75 @@ def _fila_lista(r):
             "acciones_abiertas": r[22], "kg": float(r[23] or 0)}
 
 
+@router.get("/auditorias/indicadores")
+def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)):
+    """LO QUE LA AUDITORÍA DEJA: conformidad por cubicador, por obra, por causa y por mes.
+    Sin esto los hallazgos se registran y nadie los suma, que es la forma más común de
+    que un sistema de calidad no sirva para nada.
+
+    Sólo cuenta elementos REVISADOS: un elemento pendiente no es ni conforme ni no
+    conforme, y meterlo en el denominador bajaría el porcentaje de quien aún no termina.
+    La «conformidad» es conformes sobre revisados; una observación no es conformidad."""
+    where, params = ["e.hallazgo IS NOT NULL"], []
+    if desde:
+        where.append("a.creada_fecha >= %s")
+        params.append(desde)
+    if hasta:
+        where.append("a.creada_fecha <= %s")
+        params.append(hasta)
+    cond = " AND ".join(where)
+    campos = ("COUNT(*) AS revisados,"
+              " COUNT(*) FILTER (WHERE e.hallazgo = 'conforme')    AS conforme,"
+              " COUNT(*) FILTER (WHERE e.hallazgo = 'observacion') AS observacion,"
+              " COUNT(*) FILTER (WHERE e.hallazgo = 'nc_menor')    AS nc_menor,"
+              " COUNT(*) FILTER (WHERE e.hallazgo = 'nc_mayor')    AS nc_mayor,"
+              " COALESCE(SUM(e.kg), 0) AS kg")
+
+    def arma(filas, clave):
+        salida = []
+        for r in filas:
+            rev = r[1] or 0
+            salida.append({clave: r[0], "revisados": rev, "conforme": r[2], "observacion": r[3],
+                           "nc_menor": r[4], "nc_mayor": r[5], "kg": float(r[6] or 0),
+                           "nc": (r[4] or 0) + (r[5] or 0),
+                           "conformidad": round((r[2] or 0) / rev * 100) if rev else None})
+        return salida
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            base = f"FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id WHERE {cond}"
+            cur.execute(f"SELECT COALESCE(e.cubicado_por,'(sin dato)'), {campos} {base} GROUP BY 1 ORDER BY 2 DESC", params)
+            por_cubicador = arma(cur.fetchall(), "cubicador")
+            cur.execute(f"SELECT a.obra, {campos} {base} GROUP BY 1 ORDER BY 2 DESC", params)
+            por_obra = arma(cur.fetchall(), "obra")
+            cur.execute(
+                f"""SELECT TO_CHAR(a.creada_fecha, 'YYYY-MM'), {campos} {base} GROUP BY 1 ORDER BY 1""", params)
+            por_mes = arma(cur.fetchall(), "mes")
+            # El Pareto de causas: sólo las no conformidades, que son las que piden acción.
+            cur.execute(
+                f"""SELECT COALESCE(e.causa,'(sin causa)'), COUNT(*), COALESCE(SUM(e.kg),0)
+                      {base} AND e.hallazgo IN ('nc_menor','nc_mayor')
+                     GROUP BY 1 ORDER BY 2 DESC""", params)
+            causas = [{"causa": r[0], "n": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
+            cur.execute(f"SELECT 'total', {campos} {base}", params)
+            total = (arma(cur.fetchall(), "x") or [{}])[0]
+            cur.execute(
+                f"""SELECT COUNT(*) FILTER (WHERE e.accion_estado = 'pendiente'),
+                           COUNT(*) FILTER (WHERE e.accion_estado = 'corregida'),
+                           COUNT(*) FILTER (WHERE e.accion_estado = 'verificada') {base}""", params)
+            p, c, v = cur.fetchone()
+            cur.execute(
+                """SELECT COUNT(*), COUNT(*) FILTER (WHERE estado = 'cerrada') FROM auditorias a
+                    WHERE (%s = '' OR a.creada_fecha >= %s::date) AND (%s = '' OR a.creada_fecha <= %s::date)""",
+                (desde, desde or None, hasta, hasta or None))
+            n_aud, n_cerradas = cur.fetchone()
+    return {"desde": desde, "hasta": hasta, "total": total,
+            "auditorias": n_aud, "cerradas": n_cerradas,
+            "acciones": {"pendiente": p, "corregida": c, "verificada": v},
+            "por_cubicador": por_cubicador, "por_obra": por_obra, "por_mes": por_mes,
+            "causas": causas}
+
+
 @router.get("/auditorias/{auditoria_id}")
 def detalle(auditoria_id: int, user=Depends(get_current_user)):
     """La auditoría con su muestra, elemento por elemento y con su hallazgo."""
@@ -756,6 +825,232 @@ def mis_acciones(user=Depends(get_current_user)):
                       "accion_estado": r[8], "plazo": r[9].isoformat() if r[9] else None,
                       "auditor": r[10]} for r in cur.fetchall()]
     return {"acciones": filas}
+
+
+@router.get("/auditorias/{auditoria_id}/pdf")
+def informe_pdf(auditoria_id: int, user=Depends(get_current_user)):
+    """El informe de la auditoría, para mandar o archivar. Una página cuando cabe."""
+    from fastapi import Response
+    aud = detalle(auditoria_id, user)
+    pdf = _InformePDF(aud).build()
+    audit(user.get("email", "?"), "auditoria_pdf", aud["codigo"], "auditoria", str(auditoria_id))
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="%s.pdf"' % aud["codigo"]})
+
+
+class _InformePDF:
+    """EL INFORME DE AUDITORÍA, en el orden que pide la ISO 19011: qué se auditó (alcance
+    y muestra), qué se encontró (hallazgos), qué hay que hacer (acciones) y la conclusión.
+    Mismo motor que el informe de reclamos (fpdf2, fuentes integradas)."""
+
+    COLOR = {"conforme": (139, 195, 74), "observacion": (255, 183, 77),
+             "nc_menor": (239, 154, 154), "nc_mayor": (198, 40, 40)}
+    NOMBRE = {"conforme": "Conforme", "observacion": "Observacion",
+              "nc_menor": "No conformidad menor", "nc_mayor": "No conformidad mayor"}
+
+    def __init__(self, aud):
+        from fpdf import FPDF
+        self.a = aud
+        self.pdf = FPDF(orientation="P", unit="mm", format="A4")
+        self.pdf.set_auto_page_break(auto=True, margin=16)
+        self.pdf.add_page()
+        self.pdf.set_margins(15, 15, 15)
+        self.w = 180
+
+    @staticmethod
+    def _s(t):
+        """Las fuentes integradas de fpdf2 son Latin-1: lo que no entra se reemplaza en vez
+        de reventar el informe."""
+        if t is None:
+            return ""
+        t = str(t)
+        for a, b in (("→", "->"), ("—", "-"), ("–", "-"), ("·", "-"),
+                     ("…", "..."), ("↱", "(gancho)"), ("’", "'")):
+            t = t.replace(a, b)
+        return t.encode("latin-1", "replace").decode("latin-1")
+
+    def build(self) -> bytes:
+        import io
+        self._encabezado()
+        self._ficha()
+        self._resultado()
+        self._hallazgos()
+        self._acciones()
+        self._conclusion()
+        buf = io.BytesIO()
+        self.pdf.output(buf)
+        buf.seek(0)
+        return buf.read()
+
+    def _titulo(self, texto, color=(21, 101, 192)):
+        p = self.pdf
+        p.ln(2)
+        p.set_font("Helvetica", "B", 10)
+        p.set_text_color(*color)
+        p.cell(0, 6, self._s(texto), new_x="LMARGIN", new_y="NEXT")
+        p.set_text_color(40, 40, 40)
+
+    def _encabezado(self):
+        p, a = self.pdf, self.a
+        p.set_font("Helvetica", "B", 16)
+        p.set_text_color(21, 101, 192)
+        p.cell(0, 9, self._s("Informe de auditoria %s" % a["codigo"]), new_x="LMARGIN", new_y="NEXT")
+        p.set_font("Helvetica", "", 10)
+        p.set_text_color(90, 90, 90)
+        p.cell(0, 5, self._s("%s   -   auditoria de cubicacion" % a["obra"]), new_x="LMARGIN", new_y="NEXT")
+        p.set_draw_color(21, 101, 192)
+        p.line(15, p.get_y() + 1, 195, p.get_y() + 1)
+        p.ln(3)
+        p.set_text_color(40, 40, 40)
+
+    def _ficha(self):
+        p, a = self.pdf, self.a
+        self._titulo("1. Alcance y muestra")
+        datos = [
+            ("Obra", a["obra"]),
+            ("Origen de la muestra", "ArmaHub (barras en el sistema)" if a.get("origen") != "asa" else "aSa (items del pedido)"),
+            ("Alcance", self._alcance()),
+            ("Muestra", "%d elementos de %d en el alcance (semilla %s)" % (a["n"], a["total_rango"], a["semilla"])),
+            ("Audita", a["auditor"]),
+            ("Fechas", "creada %s - plazo %s - inicio %s - cierre %s" % (
+                a["creada"] or "-", a["plazo"] or "-", a["inicio"] or "-", a["cierre"] or "-")),
+            ("Estado", {"planificada": "Planificada", "en_curso": "En curso", "cerrada": "Cerrada"}.get(a["estado"], a["estado"])),
+        ]
+        p.set_font("Helvetica", "", 9)
+        for k, v in datos:
+            p.set_font("Helvetica", "B", 9)
+            p.cell(42, 5, self._s(k), border=0)
+            p.set_font("Helvetica", "", 9)
+            p.multi_cell(self.w - 42, 5, self._s(v), new_x="LMARGIN", new_y="NEXT")
+
+    def _alcance(self):
+        a = self.a
+        if a.get("origen") == "asa":
+            partes = [", ".join(a.get("sectores") or []) or "todos los anios",
+                      ", ".join(a.get("pisos") or []) or "todos los estados",
+                      ", ".join(a.get("ciclos") or []) or "todos los cubicadores"]
+        else:
+            partes = [", ".join(a.get("sectores") or []) or "todos los tipos",
+                      ", ".join(a.get("pisos") or []) or "todos los pisos",
+                      ", ".join(a.get("ciclos") or []) or "todos los ciclos"]
+        return " - ".join(partes)
+
+    def _resultado(self):
+        p, a = self.pdf, self.a
+        r = a.get("resultado") or {}
+        self._titulo("2. Resultado")
+        p.set_font("Helvetica", "", 9)
+        rev = a.get("revisados") or 0
+        if not rev:
+            p.cell(0, 5, self._s("Sin elementos revisados todavia."), new_x="LMARGIN", new_y="NEXT")
+            return
+        for k in ("conforme", "observacion", "nc_menor", "nc_mayor"):
+            n = r.get(k) or 0
+            p.set_fill_color(*self.COLOR[k])
+            p.cell(4, 5, "", fill=True, border=0)
+            p.set_font("Helvetica", "B" if k.startswith("nc") and n else "", 9)
+            p.cell(52, 5, self._s("  " + self.NOMBRE[k]), border=0)
+            p.cell(16, 5, self._s("%d" % n), border=0, align="R")
+            p.cell(16, 5, self._s("%d%%" % round(n / rev * 100)), border=0, align="R")
+            # Barra proporcional, que es lo que se mira antes que el número.
+            ancho = max(0.4, (n / rev) * 80) if n else 0
+            if ancho:
+                p.set_fill_color(*self.COLOR[k])
+                p.cell(ancho, 4, "", fill=True, border=0)
+            p.ln(5)
+        p.ln(1)
+        p.set_font("Helvetica", "", 8)
+        p.set_text_color(110, 110, 110)
+        p.cell(0, 4, self._s("Revisados %d de %d elementos de la muestra." % (rev, a["n"])),
+               new_x="LMARGIN", new_y="NEXT")
+        p.set_text_color(40, 40, 40)
+
+    def _hallazgos(self):
+        p, a = self.pdf, self.a
+        # Primero lo que importa: las no conformidades, después las observaciones.
+        orden = {"nc_mayor": 0, "nc_menor": 1, "observacion": 2, "conforme": 3, None: 4}
+        els = sorted(a.get("elementos") or [], key=lambda e: (orden.get(e.get("hallazgo"), 4), e["nombre"]))
+        con = [e for e in els if e.get("hallazgo") and e["hallazgo"] != "conforme"]
+        self._titulo("3. Hallazgos")
+        if not con:
+            p.set_font("Helvetica", "", 9)
+            p.cell(0, 5, self._s("Sin observaciones ni no conformidades en la muestra revisada."),
+                   new_x="LMARGIN", new_y="NEXT")
+        for e in con:
+            p.set_fill_color(*self.COLOR[e["hallazgo"]])
+            p.cell(3, 5, "", fill=True, border=0)
+            p.set_font("Helvetica", "B", 9)
+            p.cell(0, 5, self._s("  %s - %s" % (self.NOMBRE[e["hallazgo"]], e["nombre"])),
+                   new_x="LMARGIN", new_y="NEXT")
+            p.set_font("Helvetica", "", 9)
+            p.set_x(18)
+            p.multi_cell(self.w - 3, 4.5, self._s(e.get("texto") or ""), new_x="LMARGIN", new_y="NEXT")
+            pie = []
+            if e.get("causa"):
+                pie.append("causa %s" % e["causa"])
+            if e.get("cubicado_por"):
+                pie.append("cubico %s" % e["cubicado_por"])
+            if e.get("revisado_el"):
+                pie.append("revisado %s" % str(e["revisado_el"])[:10])
+            if pie:
+                p.set_x(18)
+                p.set_font("Helvetica", "I", 8)
+                p.set_text_color(110, 110, 110)
+                p.cell(0, 4, self._s(" - ".join(pie)), new_x="LMARGIN", new_y="NEXT")
+                p.set_text_color(40, 40, 40)
+            p.ln(1)
+
+    def _acciones(self):
+        p, a = self.pdf, self.a
+        acc = [e for e in (a.get("elementos") or []) if e.get("accion_estado")]
+        if not acc:
+            return
+        self._titulo("4. Acciones")
+        p.set_font("Helvetica", "", 8)
+        p.set_text_color(110, 110, 110)
+        p.multi_cell(self.w, 4, self._s(
+            "La correccion la ejecuta quien cubico, en su cubicacion; el auditor verifica. "
+            "Una accion no se cierra sola."), new_x="LMARGIN", new_y="NEXT")
+        p.set_text_color(40, 40, 40)
+        p.set_font("Helvetica", "B", 8)
+        for t, w in (("Elemento", 74), ("Responsable", 50), ("Estado", 26), ("Fecha", 30)):
+            p.cell(w, 5, self._s(t), border="B")
+        p.ln(5)
+        p.set_font("Helvetica", "", 8)
+        for e in acc:
+            p.cell(74, 5, self._s(e["nombre"][:44]), border=0)
+            p.cell(50, 5, self._s((e.get("cubicado_por") or "")[:32]), border=0)
+            p.cell(26, 5, self._s({"pendiente": "Pendiente", "corregida": "Corregida",
+                                   "verificada": "Verificada"}.get(e["accion_estado"], "")), border=0)
+            p.cell(30, 5, self._s(str(e.get("accion_el") or "")[:10]), border=0)
+            p.ln(5)
+
+    def _conclusion(self):
+        p, a = self.pdf, self.a
+        r = a.get("resultado") or {}
+        rev = a.get("revisados") or 0
+        self._titulo("5. Conclusion")
+        p.set_font("Helvetica", "", 9)
+        if not rev:
+            texto = "La auditoria esta planificada y todavia no se revisa ningun elemento."
+        else:
+            nc = (r.get("nc_menor") or 0) + (r.get("nc_mayor") or 0)
+            conf = round((r.get("conforme") or 0) / rev * 100)
+            texto = ("Se revisaron %d elementos de la muestra. Conformidad %d%%. "
+                     "%s" % (rev, conf,
+                             ("Se detectaron %d no conformidad(es), con su accion asignada." % nc) if nc
+                             else "No se detectaron no conformidades."))
+            if a["estado"] != "cerrada":
+                texto += " La auditoria sigue abierta."
+        p.multi_cell(self.w, 5, self._s(texto), new_x="LMARGIN", new_y="NEXT")
+        p.ln(3)
+        p.set_font("Helvetica", "I", 7)
+        p.set_text_color(130, 130, 130)
+        p.multi_cell(self.w, 3.5, self._s(
+            "Generado por ArmaHub el %s. Muestra sorteada al azar dentro del alcance (semilla %s), "
+            "reproducible. Terminologia segun ISO 19011." % (
+                datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC"), a["semilla"])),
+            new_x="LMARGIN", new_y="NEXT")
 
 
 @router.delete("/auditorias/{auditoria_id}")

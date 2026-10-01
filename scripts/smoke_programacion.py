@@ -333,6 +333,26 @@ if s == 200 and d.get("obras"):
         s9, mias = get("/auditorias/mias/acciones")
         check("GET /auditorias/mias/acciones -> 200", s9 == 200, str(mias)[:160])
 
+        # EL INFORME: se genera de verdad y sale un PDF, no un error 500 con el primer
+        # caracter raro. Es lo que se manda, asi que tiene que existir.
+        r = cli.get("/api/v1/auditorias/%d/pdf" % aid, headers=H)
+        check("GET /auditorias/{id}/pdf -> 200 y es un PDF de verdad (%d KB)" % (len(r.content) // 1024),
+              r.status_code == 200 and r.content[:4] == b"%PDF" and len(r.content) > 1500, r.text[:160])
+
+        # INDICADORES: cuentan sobre lo revisado y cuadran con la auditoria recien cerrada.
+        s9, k = get("/auditorias/indicadores")
+        check("GET /auditorias/indicadores -> 200", s9 == 200, str(k)[:160])
+        if s9 == 200:
+            print("      %d auditorias · %d elementos revisados · conformidad %s%% · %d NC"
+                  % (k["auditorias"], k["total"]["revisados"], k["total"]["conformidad"],
+                     k["total"]["nc_menor"] + k["total"]["nc_mayor"]))
+            check("...la conformidad es conformes sobre REVISADOS",
+                  k["total"]["revisados"] > 0 and k["total"]["conformidad"] ==
+                  round(k["total"]["conforme"] / k["total"]["revisados"] * 100))
+            check("...y se abre por cubicador, obra, mes y causa",
+                  all(k.get(x) is not None for x in ("por_cubicador", "por_obra", "por_mes", "causas"))
+                  and sum(x["revisados"] for x in k["por_cubicador"]) == k["total"]["revisados"])
+
         r = cli.delete("/api/v1/auditorias/%d" % aid, headers=H)
         check("admin puede borrar la auditoria de prueba -> 200", r.status_code == 200, r.text[:160])
         s9, _ = get("/auditorias/%d" % aid)

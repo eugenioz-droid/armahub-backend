@@ -157,6 +157,26 @@ check("los lados de la barra se muestran como texto, sin dibujar",
 check("y la lista dice de qué origen salió cada auditoría",
       '"origen": r[16]' in SRC and 'class="audori ' in JS and ".audori.asa{" in HTM)
 
+print("\n5e. El informe y los indicadores")
+check("hay informe PDF, con el mismo motor que el de reclamos",
+      '@router.get("/auditorias/{auditoria_id}/pdf")' in SRC and "class _InformePDF" in SRC
+      and "from fpdf import FPDF" in SRC)
+check("...y sigue el orden de la ISO: alcance · resultado · hallazgos · acciones · conclusión",
+      all(s in SRC for s in ('"1. Alcance y muestra"', '"2. Resultado"', '"3. Hallazgos"',
+                             '"4. Acciones"', '"5. Conclusion"')))
+check("...las no conformidades van primero en el informe",
+      'orden = {"nc_mayor": 0, "nc_menor": 1' in SRC)
+check("...y se baja con fetch, no con un <a href> (el token va en la cabecera)",
+      "'/auditorias/' + AUD.id + '/pdf'" in JS and "URL.createObjectURL(await res.blob())" in JS)
+check("los indicadores se cuentan en la base, sólo sobre lo REVISADO",
+      '@router.get("/auditorias/indicadores")' in SRC and "e.hallazgo IS NOT NULL" in SRC
+      and "conformes sobre revisados" in SRC)
+check("...por cubicador, obra, mes y el Pareto de causas",
+      all(k in SRC for k in ('"por_cubicador"', '"por_obra"', '"por_mes"', '"causas"'))
+      and 'id="audKpiCub"' in HTM and 'id="audKpiCausa"' in HTM)
+check("...y la ruta va ANTES de /auditorias/{id}, o la tomaría como id",
+      SRC.index('@router.get("/auditorias/indicadores")') < SRC.index('@router.get("/auditorias/{auditoria_id}")'))
+
 print("\n5d. El formulario de creación está plegado tras un botón")
 check("hay un botón grande que abre el formulario, y arranca cerrado",
       'id="audNueva" class="audnueva"' in HTM and 'id="audForm" style="display:none;' in HTM
