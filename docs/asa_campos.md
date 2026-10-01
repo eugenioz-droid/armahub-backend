@@ -266,6 +266,52 @@ con la misma profundidad.
 | `Section` / `LevelID` / `Plan` / `WBSPath` / `WBSFullPath` | vacíos | ✖ no se usan en Matco |
 | `*Price` / `*EP*` (≈30 campos) | | ✖ precios y preparación de extremos |
 
+### La FIGURA y sus parámetros: vienen completos
+
+`ShpNameID` es el código de figura, y **no siempre es el mismo universo**:
+
+- Obras cubicadas con ArmaHub/ADetailer → `103A`, `104B`, `101A`… los **mismos códigos
+  del catálogo de ArmaHub** (`figuras_catalogo`, 65 figuras con su geometría).
+- Obras cubicadas directo en aSa Studio → formas nativas: `T1`, `T12`, `S6`, `J71`, `26`.
+- Barra recta → `ShpNameID` viene **null** (el tipo `st` del XML dice `LN`).
+
+Pero el código de figura **no hace falta**, porque la geometría viaja entera en dos
+campos:
+
+**`LegAngle`** — un XML con el eje de la barra, lado por lado. Es el más limpio: sólo
+trae lados reales.
+
+```xml
+<la><st>B</st><bc>3</bc><mbr><X>11400</X><Y>300</Y><Z>0</Z></mbr><lt>12000</lt>
+  <cp><t>H9</t>            <l>300</l>  <n>1</n><ln>A</ln></cp>
+  <cp><t>STD</t><a>90</a>  <l>11400</l><n>2</n><ln>B</ln></cp>
+  <cp><t>H9</t> <a>90</a>  <l>300</l>  <n>3</n><ln>C</ln></cp>
+</la>
+```
+
+| | |
+|---|---|
+| `st` | tipo de forma: `B` doblada · `S` · `T` estribo · `TP` · `LN` recta |
+| `bc` | cantidad de dobleces |
+| `mbr` | envolvente X·Y·Z de la barra |
+| `lt` | largo total |
+| `cp` | **un lado**: `t` tipo (`STD` recto, `H9`/`H3` gancho), `a` ángulo en grados, `l` largo en mm, `n` orden, `ln` nombre del lado (A, B, C…) |
+
+**`ShapeDims`** — el mismo eje en JSON, con más detalle por lado: `LegName` (A, B, C),
+`MMLength`, `ElemType` (`B` barra · `SB` doblez inclinado · `H9` gancho · `AN` ángulo ·
+`WS` cota), `IsHook`, `XAngleInRads`, `TopInteriorAngleInRad` y **`SlopingVector`** (el
+vector de dirección del lado, p. ej. `510,0,0`). Ojo: no todas las entradas son lados —
+las de tipo `AN` y `WS` son ángulos y cotas auxiliares; los lados son los que traen
+`LegNum`.
+
+Casos medidos: `103A` = 3 lados (gancho 300 · recto 11.400 · gancho 300); `104B` = 4
+lados con ángulos de −134,998° y −140,235°; `S6` = 5 lados con dos ganchos H9.
+
+**Consecuencia:** se puede DIBUJAR cualquier barra de aSa sin tenerla en ArmaHub. Dos
+caminos: por código, cuando `ShpNameID` está en `figuras_catalogo` (se le inyectan los
+largos a la geometría que ya existe); o directo desde `LegAngle`, construyendo la
+polilínea lado a lado — este sirve siempre, incluso para las formas nativas de aSa.
+
 **Pendiente de medir:** si se puede filtrar por `JobID` o por fecha para traer una obra
 entera (hoy sólo se probó CC a CC). De eso depende si los elementos se pueden espejar o
 hay que pedirlos a demanda al abrir la auditoría.
