@@ -218,6 +218,60 @@ ArmaHub (`asa_obra_atributos`, migración 115).
 
 ---
 
+## `getOrderItemView` — la barra, y **el elemento** (documentado 1-oct)
+
+**154 campos**, grano **una fila por barra** (ítem del pedido). Es el único endpoint que
+baja del código de control al detalle.
+
+**SE ATORA SIN FILTRO.** `?$top=3` a secas da timeout: aSa arma la vista entera antes de
+recortar. Hay que acotar siempre por `CtrlCode` (`$filter=CtrlCode eq 'SUQ1'`), que
+responde en un par de segundos con sus 150 ítems. Ojo: la clave es **`CtrlCode`**, no
+`ControlCode` — ese nombre da HTTP 400.
+
+### El hallazgo: el ELEMENTO existe en aSa
+
+El usuario dijo que dentro del CC hay un campo que agrupa barras y nombra el elemento.
+Es **`ElementID` + `ElementDesc`**, y viene en el **100%** de los ítems medidos.
+
+| Campo | Ejemplo real | Qué es |
+|---|---|---|
+| `ElementID` | `K(12-18)`, `11(F-H)`, `G(17)` · `01`, `02` · `TRAMO 1 Y 2` | **El elemento.** En muros es el EJE, con la misma nomenclatura que ArmaHub; en losas y fundaciones, un correlativo |
+| `ElementDesc` | `316-2 e=20, e=50 C.Malla` · `LOSA 201@206 PL-14E` · `1 MODULO (4.0 x 5.3 m)` | **La descripción del elemento** (espesor, malla, plano de origen) |
+| `ElementKey` / `ElementQty` | | id interno y cuántos elementos iguales |
+
+Casos medidos: `ELEV- P2 C2` de EBCO = 151 barras repartidas en **22 elementos**
+(`K(12-18)` 18 barras 1.021 kg, `11(F-H)` 4 barras 326 kg…); `LOSAS C-4 SUBT.` de TECNIA
+= 31 barras en 3 losas con su plano (`LOSA 207@212 PL-14E`).
+
+**Consecuencia para auditoría:** no hay que adivinar el elemento parseando el `Descr` del
+CC —medido: el eje aparece sólo en el 2% de las descripciones—. Se pide a `getOrderItemView`
+y viene el elemento real con sus barras. Una obra que no está en ArmaHub se puede auditar
+con la misma profundidad.
+
+### Los campos de la barra que sirven para auditar
+
+| Campo | Ejemplo | |
+|---|---|:-:|
+| `BarMark` | `10mmA110` | ✔ la marca |
+| `BarSizeDescr` / `GradeID` / `MaterialDescr` | `10mm` / `Carbon` | ✔ diámetro y material |
+| `TotalQty` / `Qty` / `Mult1` / `Mult2` | | ✔ cantidades |
+| `LengthCut` / `LengthPay` / `LengthTheor` | | ✔ largo de corte, de pago y teórico |
+| `ShapeTypeID` / `ShapeDims` / `_ShapeDims` / `PatternDescr` | | ✔ **la figura y sus dimensiones** |
+| `PinDiam` / `BCD` / `LegAngle` | | ○ radio de doblado y ángulos |
+| `LineWeight` | | ✔ peso de la línea |
+| `SeqNo` / `LineNum` / `OrderItemKey` | | ○ orden dentro del pedido |
+| `Notes` / `ShopMessage` / `FieldMessage` | | ○ notas al taller |
+| `PlacingCodeDescr` / `FabClassDescr` | | ○ |
+| `OrderDescr` | `ELEVACIONES ET-D PERIMETRAL` | ✔ es el `Descr` del CC, repetido en cada ítem |
+| `Section` / `LevelID` / `Plan` / `WBSPath` / `WBSFullPath` | vacíos | ✖ no se usan en Matco |
+| `*Price` / `*EP*` (≈30 campos) | | ✖ precios y preparación de extremos |
+
+**Pendiente de medir:** si se puede filtrar por `JobID` o por fecha para traer una obra
+entera (hoy sólo se probó CC a CC). De eso depende si los elementos se pueden espejar o
+hay que pedirlos a demanda al abrir la auditoría.
+
+---
+
 ## Pendientes de documentar
 
 - `getShippingTickets` — si `ShipID` de Scheduling no basta.
