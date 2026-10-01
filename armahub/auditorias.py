@@ -43,6 +43,8 @@ ROLES_AUDITAN = ("admin", "admin_calidad", "cubicador", "jefe_servicio", "miembr
 ESTADOS = ("planificada", "en_curso", "cerrada")
 # Hallazgos posibles sobre un elemento, en el idioma de la ISO.
 HALLAZGOS = ("conforme", "observacion", "nc_menor", "nc_mayor")
+# El área cuyo Ishikawa da las causas de una no conformidad (tabla `areas`).
+AREA_CUBICACIONES = "Cubicaciones"
 
 _CLAVE = "(sector, piso, ciclo, eje)"
 
@@ -75,9 +77,56 @@ def obras(user=Depends(get_current_user)):
                      FROM users WHERE COALESCE(activo, TRUE) AND role = ANY(%s) ORDER BY 2, 1""",
                 (list(ROLES_AUDITAN),))
             auditores = [{"email": r[0], "nombre": r[1] or r[0], "role": r[2]} for r in cur.fetchall()]
+            # Las CAUSAS posibles de una no conformidad: el Ishikawa del área Cubicaciones
+            # que Calidad ya tiene cargado. Así las auditorías alimentan el mismo Pareto
+            # que los reclamos, en vez de inventar otra lista.
+            cur.execute(
+                """SELECT c.slug, c.nombre, s.codigo, s.descripcion
+                     FROM area_rca_subcausas s
+                     JOIN area_rca_categorias c ON c.id = s.categoria_id
+                     JOIN areas a ON a.id = c.area_id
+                    WHERE a.nombre = %s AND COALESCE(s.activo, TRUE)
+                    ORDER BY c.orden, s.orden""", (AREA_CUBICACIONES,))
+            causas = [{"categoria": r[0], "categoria_nombre": r[1], "codigo": r[2], "descripcion": r[3]}
+                      for r in cur.fetchall()]
     return {"obras": lista, "auditores": auditores, "sectores": SECTORES,
-            "estados": list(ESTADOS), "hallazgos": list(HALLAZGOS),
+            "estados": list(ESTADOS), "hallazgos": list(HALLAZGOS), "causas": causas,
             "muestra_por_defecto": MUESTRA_POR_DEFECTO}
+
+
+@router.get("/auditorias/elemento")
+def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = "", eje: str = "",
+             user=Depends(get_current_user)):
+    """UN ELEMENTO ENTERO, barra por barra, para revisarlo: marca, diámetro, figura y sus
+    dimensiones, largo, cantidad, peso y de qué plano salió. Es lo que el auditor mira."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT marca, diam, figura, dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                          largo_total, cant, mult, cant_total, peso_unitario, peso_total,
+                          nombre_plano, tipo, INITCAP(estructura), COALESCE(creado_por, editado_por, '?'),
+                          bar_id, id_unico
+                     FROM barras
+                    WHERE id_proyecto = %s AND COALESCE(sector,'') = %s AND COALESCE(piso,'') = %s
+                      AND COALESCE(ciclo,'') = %s AND COALESCE(eje,'') = %s
+                    ORDER BY marca, diam, bar_id""",
+                (id_proyecto, sector, piso, ciclo, eje))
+            dims = "abcdefghi"
+            barras = []
+            for r in cur.fetchall():
+                barras.append({
+                    "marca": r[0], "diam": r[1], "figura": r[2],
+                    "dims": {dims[i]: r[3 + i] for i in range(9) if r[3 + i] not in (None, 0)},
+                    "largo": r[12], "cant": r[13], "mult": r[14], "cant_total": r[15],
+                    "peso_unitario": r[16], "peso_total": r[17], "plano": r[18], "tipo": r[19],
+                    "estructura": r[20], "cubicado_por": r[21], "bar_id": r[22], "id_unico": r[23]})
+    if not barras:
+        raise HTTPException(status_code=404, detail="Ese elemento no tiene barras.")
+    return {"id_proyecto": id_proyecto, "sector": sector, "piso": piso, "ciclo": ciclo, "eje": eje,
+            "barras": barras, "n": len(barras),
+            "kg": sum(float(b["peso_total"] or 0) for b in barras),
+            "planos": sorted({b["plano"] for b in barras if b["plano"]}),
+            "cubicaron": sorted({b["cubicado_por"] for b in barras})}
 
 
 @router.get("/auditorias/universo")

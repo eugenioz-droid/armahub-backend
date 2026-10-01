@@ -248,6 +248,18 @@ if s == 200 and d.get("obras"):
                   s4 == 200 and [e["nombre"] for e in m2["elementos"]] == [e["nombre"] for e in m["elementos"]])
             s5, _ = get("/auditorias/muestra", id_proyecto=ob["id_proyecto"], n=5, pisos="NO-EXISTE")
             check("un alcance vacio rebota con 400", s5 == 400)
+            # El elemento ENTERO, para revisarlo: sus barras cuadran con lo que dijo la muestra.
+            e0 = m["elementos"][0]
+            s6, el = get("/auditorias/elemento", id_proyecto=ob["id_proyecto"], sector=e0["sector"] or "",
+                         piso=e0["piso"] or "", ciclo=e0["ciclo"] or "", eje=e0["eje"] or "")
+            check("GET /auditorias/elemento -> 200 (%s)" % e0["nombre"][:40], s6 == 200, str(el)[:160])
+            if s6 == 200:
+                check("...trae las mismas barras y kilos que anuncio la muestra",
+                      el["n"] == e0["barras"] and abs(el["kg"] - e0["kg"]) < 1)
+                check("...cada barra con marca, diametro, figura, largo y peso",
+                      all(set(("marca", "diam", "figura", "dims", "largo", "peso_total", "plano")) <= set(b) for b in el["barras"]))
+    check("las causas de NC salen del Ishikawa de Cubicaciones (%d)" % len(d.get("causas", [])),
+          len(d.get("causas", [])) > 0 and all(c["codigo"] and c["categoria_nombre"] for c in d["causas"]))
 
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")

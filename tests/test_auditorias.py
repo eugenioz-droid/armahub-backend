@@ -50,7 +50,7 @@ check("el router está montado bajo /api/v1 (el front habla sólo por ahí)",
 
 print("\n2. Es MAQUETA: el backend sólo lee")
 check("sólo GET, ningún INSERT/UPDATE/DELETE",
-      SRC.count("@router.get(") == 3 and "@router.post" not in SRC and "@router.put" not in SRC
+      SRC.count("@router.get(") == 4 and "@router.post" not in SRC and "@router.put" not in SRC
       and "INSERT" not in SRC.upper().replace("INSERTAR", "") and "UPDATE " not in SRC and "DELETE " not in SRC)
 check("...y el front guarda las auditorías en el navegador, no en la base",
       "localStorage.setItem(CLAVE" in JS and "'audMaqueta'" in JS)
@@ -78,6 +78,26 @@ check("las fechas se llenan solas: creación hoy, plazo en días hábiles",
       "(automáticas)" in HTM and "DIAS_PLAZO = 10" in JS and "function sumaHabiles" in JS)
 check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
       "AS reclamos" in SRC and "reclamo(s) abierto(s)" in JS)
+
+print("\n5. La revisión elemento a elemento")
+check("el elemento se trae ENTERO: marca, Ø, figura, dimensiones, largo, cantidad, peso, plano",
+      '@router.get("/auditorias/elemento")' in SRC
+      and all(c in SRC for c in ("marca, diam, figura, dim_a", "largo_total, cant, mult, cant_total", "nombre_plano"))
+      and 'id="audRevBarras"' in HTM)
+check("el hallazgo tiene los cuatro niveles y texto obligatorio si no es conforme",
+      'id="audRevChips"' in HTM and "Di qué encontraste: sin texto no hay hallazgo." in JS
+      and "on.dataset.h !== 'conforme' && !texto" in JS)
+check("la causa sale del Ishikawa de Cubicaciones que Calidad ya tiene",
+      'AREA_CUBICACIONES = "Cubicaciones"' in SRC and "FROM area_rca_subcausas s" in SRC
+      and "BASE.causas" in JS)
+check("estado y fechas se derivan solos: en curso al primer hallazgo, cerrada al último",
+      "function estadoDe(aud)" in JS and "if (!a.inicio) a.inicio = iso(new Date());" in JS
+      and "a.cierre = a.estado === 'cerrada' ? iso(new Date()) : null;" in JS)
+check("cada NC es una acción para quien cubicó; la corrección no la hace el auditor",
+      "function accionesDe(aud)" in JS and "h.hallazgo !== 'nc_menor' && h.hallazgo !== 'nc_mayor'" in JS
+      and "La corrección no se hace aquí" in HTM)
+check("el resultado de la lista es la cuenta por hallazgo", "function resultadoDe(aud)" in JS
+      and "a.resultado = resultadoDe(a);" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

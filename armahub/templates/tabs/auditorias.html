@@ -92,10 +92,33 @@
       </div>
       <div id="audDetInfo" class="muted" style="font-size:11px; margin-bottom:6px;"></div>
       <div class="audbd"><table class="audt" id="audDetElems"></table></div>
+
+      <!-- LA REVISIÓN de un elemento: sus barras enteras y el hallazgo. Cuatro niveles
+           (ISO): conforme · observación · no conformidad menor · mayor; qué encontró
+           (obligatorio si no es conforme) y la causa del Ishikawa de Cubicaciones. -->
+      <div id="audRev" class="audrev" style="display:none;">
+        <div class="audh"><span id="audRevTitulo"></span>
+          <div style="flex:1"></div><span class="muted" id="audRevInfo" style="font-size:10.5px;"></span></div>
+        <div class="audbd" style="max-height:30vh;"><table class="audt" id="audRevBarras"></table></div>
+        <div class="audhall">
+          <span class="audlbl">Hallazgo</span>
+          <div class="audchips" id="audRevChips"></div>
+          <select id="audRevCausa" style="display:none;"></select>
+        </div>
+        <textarea id="audRevTexto" rows="2" placeholder="Qué encontró el auditor (obligatorio si no es conforme). La corrección no se hace aquí: se le exige a quien cubicó."></textarea>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button id="audRevGuardar" class="audbtn">Guardar hallazgo</button>
+          <span class="muted" id="audRevMsg" style="font-size:11px;"></span>
+        </div>
+      </div>
+
+      <!-- Las acciones que nacen de cada no conformidad: para quien cubicó. -->
+      <div id="audAcciones" class="audacc" style="display:none;"></div>
+
       <div class="muted" style="font-size:10.5px; margin-top:6px;">
-        Siguiente etapa: cada elemento se abre completo (sus barras y la figura) y el auditor marca
-        <b>conforme</b> · <b>observación</b> · <b>no conformidad menor / mayor</b>, con lo que encontró.
-        Una NC genera una <b>acción</b> para quien cubicó; el auditor <b>verifica</b> y cierra.
+        Clic en un elemento para revisarlo. El estado y las fechas de inicio y cierre se ponen solos:
+        <b>en curso</b> al primer hallazgo, <b>cerrada</b> al revisar el último. Una NC genera una
+        <b>acción</b> para quien cubicó; el cubicador corrige en su cubicación y el auditor <b>verifica</b>.
       </div>
     </div>
 
@@ -144,4 +167,23 @@
   .audley i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:-1px;}
   .audvacio{color:#90a4ae; font-size:11px; text-align:center; padding:18px 8px;}
   .audt td.indep{color:#c62828; font-weight:600;}
+  .audt td.cc{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#455a64;}
+  /* La revisión de un elemento: panel propio, bajo la muestra. */
+  .audrev{margin-top:10px; padding:10px 12px; background:#f7f9fb; border:1px solid #cfd8dc; border-radius:6px;}
+  .audhall{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 6px;}
+  .audlbl{font-size:10.5px; font-weight:700; color:#546e7a;}
+  .audhall select{font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px; max-width:520px;}
+  .audrev textarea{width:100%; box-sizing:border-box; font-size:11.5px; padding:6px 8px; border:1px solid #cfd8dc; border-radius:4px;
+                   margin-bottom:8px; resize:vertical; font-family:inherit;}
+  /* Los cuatro hallazgos, cada uno con su color cuando está encendido. */
+  .audchips button.hz.on{border-color:transparent; color:#fff;}
+  .audchips button.hz.conforme.on{background:#8BC34A;}
+  .audchips button.hz.observacion.on{background:#ffb74d;}
+  .audchips button.hz.nc_menor.on{background:#ef9a9a; color:#5d1a1a;}
+  .audchips button.hz.nc_mayor.on{background:#c62828;}
+  .audhz{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap; color:#fff;}
+  .audhz.conforme{background:#8BC34A;} .audhz.observacion{background:#ffb74d;}
+  .audhz.nc_menor{background:#ef9a9a; color:#5d1a1a;} .audhz.nc_mayor{background:#c62828;}
+  .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
+  .audacc .audsel{font-size:10.5px; padding:2px 4px; border:1px solid #cfd8dc; border-radius:4px;}
 </style>

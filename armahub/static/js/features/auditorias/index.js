@@ -202,35 +202,194 @@
     });
   }
 
-  // La auditoría abierta: la muestra que salió. Marca en rojo si el auditor cubicó ese
-  // elemento (independencia): ese elemento habría que cambiarlo.
+  // ── Las reglas, puras ───────────────────────────────────────────────────────
+  function claveDe(e) { return [e.sector, e.piso, e.ciclo, e.eje].join('|'); }
+  // RESULTADO = cuántos elementos quedaron en cada hallazgo. Null si no se revisó nada.
+  function resultadoDe(aud) {
+    var r = { conforme: 0, observacion: 0, nc_menor: 0, nc_mayor: 0 }, n = 0;
+    Object.keys(aud.hallazgos || {}).forEach(function (k) {
+      var h = aud.hallazgos[k];
+      if (h && r[h.hallazgo] != null) { r[h.hallazgo]++; n++; }
+    });
+    return n ? r : null;
+  }
+  // ESTADO se deriva, no se elige: sin revisar = planificada; algo revisado = en curso;
+  // todo revisado = cerrada. (Cuando deje de ser maqueta, cerrar exigirá además que las
+  // acciones de las NC estén verificadas.)
+  function estadoDe(aud) {
+    var n = Object.keys(aud.hallazgos || {}).length;
+    if (!n) return 'planificada';
+    return n >= (aud.elementos || []).length ? 'cerrada' : 'en_curso';
+  }
+  // ACCIONES: cada no conformidad es una acción para quien cubicó ese elemento. La
+  // corrección NO la hace el auditor en el sistema: se le exige al cubicador.
+  function accionesDe(aud) {
+    return (aud.elementos || []).map(function (e) {
+      var h = (aud.hallazgos || {})[claveDe(e)];
+      if (!h || (h.hallazgo !== 'nc_menor' && h.hallazgo !== 'nc_mayor')) return null;
+      return { elemento: e.nombre, para: e.cubicado_por, hallazgo: h.hallazgo, texto: h.texto,
+               causa: h.causa, estado: h.accion || 'pendiente' };
+    }).filter(Boolean);
+  }
+  var HALLAZGO_TXT = { conforme: 'Conforme', observacion: 'Observación', nc_menor: 'NC menor', nc_mayor: 'NC mayor' };
+
+  // La auditoría abierta: la muestra que salió, con el hallazgo de cada elemento. Marca
+  // en rojo si el auditor cubicó ese elemento (independencia): habría que cambiarlo.
+  var ELEM = null;   // el elemento que se está revisando
   function pintarDetalle() {
     var a = AUDS.filter(function (x) { return x.id === ABIERTA; })[0];
     var caja = $('audDetalle');
-    if (!a) { caja.style.display = 'none'; return; }
+    if (!a) { caja.style.display = 'none'; ELEM = null; pintarRevision(null); return; }
     caja.style.display = '';
+    var rev = Object.keys(a.hallazgos || {}).length;
     $('audDetTitulo').textContent = a.id + ' · ' + a.obra;
     $('audDetInfo').innerHTML = 'Audita <b>' + esc(a.auditor_nombre) + '</b> · alcance ' + esc(alcanceTxt(a)) +
       ' · muestra <b>' + a.n + '</b> de ' + a.total_rango + ' elementos · ' + a.barras + ' barras · ' + kg0(a.kg) +
-      ' kg · semilla <code>' + esc(a.semilla) + '</code>';
+      ' kg · revisados <b>' + rev + '/' + (a.elementos || []).length + '</b>' +
+      ' · <span class="audest ' + esc(a.estado) + '">' + esc(ESTADO_TXT[a.estado] || a.estado) + '</span>';
     var html = '<thead><tr><th>Elemento</th><th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
       '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th></tr></thead><tbody>';
     var conflicto = 0;
     (a.elementos || []).forEach(function (e) {
       var mismo = (e.cubicado_por || '').indexOf(a.auditor) !== -1;
       if (mismo) conflicto++;
-      html += '<tr><td title="' + esc(e.nombre) + '"><b>' + esc(e.nombre) + '</b></td>' +
+      var h = (a.hallazgos || {})[claveDe(e)];
+      var k = claveDe(e);
+      html += '<tr class="fila' + (ELEM && claveDe(ELEM) === k ? ' sel' : '') + '" data-k="' + esc(k) + '" title="Clic para revisar este elemento">' +
+        '<td title="' + esc(e.nombre) + '"><b>' + esc(e.nombre) + '</b></td>' +
         '<td>' + esc(e.tipo) + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>' +
         '<td class="num">' + e.barras + '</td><td class="num">' + kg0(e.kg) + '</td>' +
         '<td' + (mismo ? ' class="indep" title="Lo cubicó quien audita: hay que cambiar este elemento"' : '') + '>' +
         esc((e.cubicado_por || '').split('@')[0]) + (mismo ? ' ⚠' : '') + '</td>' +
-        '<td class="muted">pendiente</td></tr>';
+        '<td>' + (h ? '<span class="audhz ' + esc(h.hallazgo) + '">' + esc(HALLAZGO_TXT[h.hallazgo]) + '</span>' +
+                      (h.texto ? ' <span class="muted" title="' + esc(h.texto) + '">' + esc(h.texto.slice(0, 40)) + (h.texto.length > 40 ? '…' : '') + '</span>' : '')
+                    : '<span class="muted">pendiente</span>') + '</td></tr>';
     });
     $('audDetElems').innerHTML = html + '</tbody>';
     if (conflicto) $('audDetInfo').innerHTML += ' · <b style="color:#c62828">' + conflicto + ' elemento(s) cubicados por quien audita</b>';
+    $('audDetElems').querySelectorAll('tr.fila').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        var e = (a.elementos || []).filter(function (x) { return claveDe(x) === tr.dataset.k; })[0];
+        abrirElemento(a, e);
+      });
+    });
+    pintarAcciones(a);
+    if (ELEM && !(a.elementos || []).some(function (x) { return claveDe(x) === claveDe(ELEM); })) { ELEM = null; pintarRevision(null); }
   }
 
+  // Abrir un elemento: se traen sus barras y se muestra el formulario de hallazgo.
+  async function abrirElemento(a, e) {
+    ELEM = e; pintarDetalle();
+    $('audRev').style.display = '';
+    $('audRevTitulo').textContent = e.nombre;
+    $('audRevInfo').textContent = 'cargando…';
+    $('audRevBarras').innerHTML = '';
+    try {
+      var d = await req('/auditorias/elemento?id_proyecto=' + encodeURIComponent(a.id_proyecto) +
+        '&sector=' + encodeURIComponent(e.sector || '') + '&piso=' + encodeURIComponent(e.piso || '') +
+        '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || ''));
+      if (!d) return;
+      $('audRevInfo').textContent = d.n + ' barras · ' + kg0(d.kg) + ' kg · plano ' + (d.planos.join(', ') || '—') +
+        ' · cubicó ' + d.cubicaron.map(function (x) { return x.split('@')[0]; }).join(', ');
+      var html = '<thead><tr><th>Marca</th><th class="num">Ø</th><th>Figura</th><th>Dimensiones</th>' +
+        '<th class="num">Largo</th><th class="num">Cant</th><th class="num">Peso</th><th>Plano</th></tr></thead><tbody>';
+      d.barras.forEach(function (b) {
+        var dims = Object.keys(b.dims || {}).map(function (k) { return k + '=' + b.dims[k]; }).join(' · ');
+        html += '<tr><td class="cc">' + esc(b.marca || '') + '</td><td class="num">' + esc(b.diam || '') + '</td>' +
+          '<td>' + esc(b.figura || '') + '</td><td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
+          '<td class="num">' + (b.largo != null ? b.largo : '') + '</td><td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
+          '<td class="num">' + kg0(b.peso_total) + '</td><td>' + esc(b.plano || '') + '</td></tr>';
+      });
+      $('audRevBarras').innerHTML = html + '</tbody>';
+    } catch (err) { $('audRevInfo').textContent = err.message; }
+    pintarRevision(a);
+  }
+
+  // El formulario de hallazgo: cuatro niveles (ISO), texto, y la causa del Ishikawa.
+  function pintarRevision(a) {
+    var caja = $('audRev');
+    if (!a || !ELEM) { caja.style.display = 'none'; return; }
+    caja.style.display = '';
+    var h = (a.hallazgos || {})[claveDe(ELEM)] || {};
+    var sel = h.hallazgo || '';
+    $('audRevChips').innerHTML = Object.keys(HALLAZGO_TXT).map(function (k) {
+      return '<button data-h="' + k + '" class="hz ' + k + (sel === k ? ' on' : '') + '">' + HALLAZGO_TXT[k] + '</button>';
+    }).join('');
+    $('audRevChips').querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $('audRevChips').querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        $('audRevCausa').style.display = (b.dataset.h === 'conforme') ? 'none' : '';
+      });
+    });
+    var sc = $('audRevCausa');
+    sc.innerHTML = '<option value="">causa (Ishikawa Cubicaciones, opcional)</option>' + (BASE.causas || []).map(function (c) {
+      return '<option value="' + esc(c.codigo) + '">' + esc(c.codigo) + ' · ' + esc(c.categoria_nombre) + ' · ' + esc(c.descripcion) + '</option>';
+    }).join('');
+    sc.value = h.causa || '';
+    sc.style.display = (sel === 'conforme' || !sel) ? 'none' : '';
+    $('audRevTexto').value = h.texto || '';
+    $('audRevMsg').textContent = h.fecha ? 'Registrado ' + ddmm(h.fecha) + (h.por ? ' por ' + h.por.split('@')[0] : '') : '';
+  }
+
+  function guardarHallazgo() {
+    var a = AUDS.filter(function (x) { return x.id === ABIERTA; })[0];
+    if (!a || !ELEM) return;
+    var on = $('audRevChips').querySelector('button.on');
+    if (!on) { $('audRevMsg').textContent = 'Marca el hallazgo.'; return; }
+    var texto = $('audRevTexto').value.trim();
+    if (on.dataset.h !== 'conforme' && !texto) { $('audRevMsg').textContent = 'Di qué encontraste: sin texto no hay hallazgo.'; return; }
+    if (!a.hallazgos) a.hallazgos = {};
+    var previo = a.hallazgos[claveDe(ELEM)] || {};
+    a.hallazgos[claveDe(ELEM)] = { hallazgo: on.dataset.h, texto: texto, causa: on.dataset.h === 'conforme' ? '' : $('audRevCausa').value,
+                                   fecha: iso(new Date()), por: a.auditor, accion: previo.accion || 'pendiente' };
+    // Las fechas de inicio y cierre las pone el sistema, igual que la de creación.
+    if (!a.inicio) a.inicio = iso(new Date());
+    a.resultado = resultadoDe(a);
+    a.estado = estadoDe(a);
+    a.cierre = a.estado === 'cerrada' ? iso(new Date()) : null;
+    guardar();
+    pintarLista(); pintarDetalle(); pintarRevision(a);
+    $('audRevMsg').textContent = 'Guardado.';
+  }
+
+  // Las acciones que salen de las NC: para quién, qué y en qué estado. En la maqueta
+  // el estado se cambia acá mismo; en real lo marca el cubicador y lo verifica el auditor.
+  function pintarAcciones(a) {
+    var caja = $('audAcciones');
+    var acc = accionesDe(a);
+    if (!acc.length) { caja.style.display = 'none'; return; }
+    caja.style.display = '';
+    var ESTADO_ACC = { pendiente: 'Pendiente', corregida: 'Corregida (cubicador)', verificada: 'Verificada (auditor)' };
+    caja.innerHTML = '<div class="audh">Acciones <span class="muted">' + acc.length + ' · una por cada no conformidad, para quien cubicó</span></div>' +
+      '<table class="audt"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th><th>Qué se encontró</th><th>Causa</th><th>Estado</th></tr></thead><tbody>' +
+      acc.map(function (x, i) {
+        return '<tr><td>' + esc(x.elemento) + '</td><td>' + esc((x.para || '').split('@')[0]) + '</td>' +
+          '<td><span class="audhz ' + esc(x.hallazgo) + '">' + esc(HALLAZGO_TXT[x.hallazgo]) + '</span></td>' +
+          '<td title="' + esc(x.texto) + '">' + esc(x.texto) + '</td><td class="cc">' + esc(x.causa || '') + '</td>' +
+          '<td><select data-i="' + i + '" class="audsel">' + Object.keys(ESTADO_ACC).map(function (k) {
+            return '<option value="' + k + '"' + (x.estado === k ? ' selected' : '') + '>' + ESTADO_ACC[k] + '</option>'; }).join('') +
+          '</select></td></tr>';
+      }).join('') + '</tbody></table>';
+    caja.querySelectorAll('select.audsel').forEach(function (s) {
+      s.addEventListener('change', function () {
+        var x = acc[Number(s.dataset.i)];
+        var e = (a.elementos || []).filter(function (el) { return el.nombre === x.elemento; })[0];
+        if (e && a.hallazgos[claveDe(e)]) { a.hallazgos[claveDe(e)].accion = s.value; guardar(); }
+      });
+    });
+  }
+
+  var _bound2 = false;
+  function bindRevision() {
+    if (_bound2) return; _bound2 = true;
+    $('audRevGuardar').addEventListener('click', guardarHallazgo);
+  }
+  var _loadAnterior = global.loadAuditorias;
+  global.loadAuditorias = async function () { await _loadAnterior(); if ($('audRevGuardar')) bindRevision(); };
+
   // Expuesto para los tests: lo puro.
-  global.__auditoriasTest = { alternar: alternar, sumaHabiles: sumaHabiles, DIAS_PLAZO: DIAS_PLAZO };
+  global.__auditoriasTest = { alternar: alternar, sumaHabiles: sumaHabiles, DIAS_PLAZO: DIAS_PLAZO,
+                              resultadoDe: resultadoDe, estadoDe: estadoDe, accionesDe: accionesDe, claveDe: claveDe };
 
 })(window);
