@@ -38,6 +38,7 @@ from .notifications import router as notifications_router
 from .obra_config import router as obra_config_router
 from .programacion import router as programacion_router
 from .asistente import router as asistente_router
+from .auditorias import router as auditorias_router
 
 
 def create_app() -> FastAPI:
@@ -103,6 +104,8 @@ def create_app() -> FastAPI:
     # Asistente IA de enfierrado (SPECS seccion 12): chat del Template Editor que
     # arma recetas de muro via API de Anthropic. Solo POST /asistente/chat.
     app.include_router(asistente_router)
+    # Auditorías de cubicación (Calidad): hoy maqueta, sólo lecturas sobre las barras.
+    app.include_router(auditorias_router)
 
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
@@ -115,6 +118,7 @@ def create_app() -> FastAPI:
         # prefijo responde 404 a toda la pantalla, sin que ningún test lo note: el módulo
         # de Programación estuvo así desde que nació.
         programacion_router,
+        auditorias_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

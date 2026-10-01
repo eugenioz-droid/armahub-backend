@@ -224,6 +224,31 @@ if s == 200:
     check("...y se puede pedir otra semana (16-sep cae en la del 14 al 18)",
           s2 == 200 and d2["lunes"] == "2026-09-14" and d2["viernes"] == "2026-09-18")
 
+print("\n6c. Auditorias de cubicacion (maqueta): obra, alcance y muestra reales")
+s, d = get("/auditorias/obras")
+check("GET /auditorias/obras -> 200", s == 200, str(d)[:160])
+if s == 200 and d.get("obras"):
+    print("      %d obras con barras · %d auditores posibles" % (len(d["obras"]), len(d["auditores"])))
+    ob = max(d["obras"], key=lambda o: o["elementos"])
+    s2, u = get("/auditorias/universo", id_proyecto=ob["id_proyecto"])
+    check("GET /auditorias/universo -> 200 (%s: %d elementos)" % (ob["obra"][:30], u.get("elementos", 0) if s2 == 200 else 0), s2 == 200, str(u)[:160])
+    if s2 == 200:
+        print("      tipos %s · %d pisos · %d ciclos · cubicaron %d"
+              % ([x["nombre"] for x in u["sectores"]], len(u["pisos"]), len(u["ciclos"]), len(u["cubicadores"])))
+        check("...los elementos del universo cuadran con la lista de obras", u["elementos"] == ob["elementos"])
+        piso = u["pisos"][0]["piso"] if u["pisos"] else ""
+        s3, m = get("/auditorias/muestra", id_proyecto=ob["id_proyecto"], n=5, pisos=piso)
+        check("GET /auditorias/muestra (5 elementos del piso %s) -> 200" % piso, s3 == 200, str(m)[:160])
+        if s3 == 200:
+            check("...trae 5 elementos enteros, con barras, kilos y quien cubico",
+                  len(m["elementos"]) == 5 and all(e["barras"] > 0 and e["kg"] > 0 and e["cubicado_por"] for e in m["elementos"]))
+            check("...todos del piso pedido", all(e["piso"] == piso for e in m["elementos"]))
+            s4, m2 = get("/auditorias/muestra", id_proyecto=ob["id_proyecto"], n=5, pisos=piso, semilla=m["semilla"])
+            check("...y con la misma semilla sale la MISMA muestra",
+                  s4 == 200 and [e["nombre"] for e in m2["elementos"]] == [e["nombre"] for e in m["elementos"]])
+            s5, _ = get("/auditorias/muestra", id_proyecto=ob["id_proyecto"], n=5, pisos="NO-EXISTE")
+            check("un alcance vacio rebota con 400", s5 == 400)
+
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")
     t0 = time.time()

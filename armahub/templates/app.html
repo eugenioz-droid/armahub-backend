@@ -131,6 +131,7 @@
       <button class="tab-btn mod-cubicacion" onclick="switchTab('export')">📥 Exportación</button>
       <!-- Reclamos tabs (Nivel 1 — patrón shell estándar) -->
       <button class="tab-btn mod-reclamos" onclick="switchTab('reclamos')" style="display:none;">📋 Reclamos</button>
+      <button class="tab-btn mod-reclamos" onclick="switchTab('auditorias')" style="display:none;">🔎 Auditorías</button>
       <button id="recShellBtnDash" class="tab-btn mod-reclamos" onclick="switchTab('rec_dashboards')" style="display:none;">📊 Dashboards</button>
       <button id="recShellBtnProc" class="tab-btn mod-reclamos" onclick="switchTab('rec_procedimientos')" style="display:none;">📄 Procedimientos</button>
       <button id="recShellBtnSettings" class="tab-btn mod-reclamos" onclick="switchTab('rec_settings')" style="display:none;">⚙️ Mailing</button>
@@ -153,6 +154,7 @@
     {% include 'tabs/pedidos.html' %}
     {% include 'tabs/exportacion.html' %}
     {% include 'tabs/reclamos.html' %}
+    {% include 'tabs/auditorias.html' %}
     {% include 'tabs/rec_dashboards.html' %}
     {% include 'tabs/rec_procedimientos.html' %}
     {% include 'tabs/rec_settings.html' %}
@@ -340,6 +342,7 @@
 <script src="/static/js/features/programacion/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/dashboards.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/semana.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/auditorias/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/registry.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/shell.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/bootstrap.js?v={{ cache_bust }}"></script>
