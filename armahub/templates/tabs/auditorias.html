@@ -19,13 +19,24 @@
     <!-- LO MÍO primero: si tengo correcciones pendientes, las veo al entrar. -->
     <div class="card audc audmias" id="audMias" style="display:none;"></div>
 
-    <!-- ══════ 1 · CREAR ══════ -->
-    <div class="card audc" style="border-top:3px solid #1565C0;">
+    <!-- ══════ 1 · CREAR ══════
+         El formulario arranca PLEGADO: lo normal al entrar es mirar las auditorías que
+         hay, no crear una. Se abre con el botón. -->
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+      <button id="audNueva" class="audnueva">＋ Crear auditoría</button>
+      <span class="muted" style="font-size:11px;">Se sortea una muestra de elementos dentro del alcance que elijas.</span>
+    </div>
+
+    <div class="card audc" id="audForm" style="display:none; border-top:3px solid #1565C0;">
       <div class="audh">Nueva auditoría
-        <span class="muted">obra · quién audita · alcance · muestra. Las fechas se llenan solas.</span></div>
+        <span class="muted">obra · quién audita · alcance · muestra. Las fechas se llenan solas.</span>
+        <div style="flex:1"></div>
+        <button id="audFormCerrar" class="audx" title="Cerrar">✕</button></div>
 
       <div class="audfila">
         <div class="audcampo" style="flex:1.4;">
+          <!-- DOS FUENTES: las obras con barras en ArmaHub (auditoría más profunda) y las
+               de aSa, que son muchas más. La muestra sale de donde esté la obra. -->
           <label>Obra</label>
           <select id="audObra"><option value="">— elige la obra —</option></select>
           <small id="audObraInfo" class="muted"></small>
@@ -67,6 +78,32 @@
           </div>
         </div>
         <div class="muted" style="font-size:10px;"><span id="audRango"></span></div>
+      </div>
+
+      <!-- El alcance de una obra de aSa es OTRO: allá no hay sector, piso ni ciclo —el
+           sector va como texto libre en la descripción del código—, así que se acota por
+           año, estado y quién cubicó, más el buscador. Medido: del texto sólo se reconoce
+           el piso en el 27% y el eje en el 2%; clasificarlo solo sería inventar. -->
+      <div id="audAlcanceAsa" class="audalcance" style="display:none;">
+        <div class="audlbl" style="margin-bottom:6px;">Alcance en aSa <span class="muted" style="font-weight:400;">
+          el número de cada botón son los <b>códigos de control</b> disponibles. Se sortean códigos y de cada uno
+          se toma su elemento más pesado.</span></div>
+        <div class="audfila" style="align-items:flex-start;">
+          <div class="audcampo" style="flex:none;">
+            <label>Año</label><div id="audAnios" class="audchips"></div>
+          </div>
+          <div class="audcampo" style="flex:none;">
+            <label>Estado</label><div id="audEstados" class="audchips"></div>
+          </div>
+          <div class="audcampo" style="flex:1;">
+            <label>Cubicó</label><div id="audPersonas" class="audchips"></div>
+          </div>
+          <div class="audcampo" style="width:230px; flex:none;">
+            <label>Buscar en la descripción</label>
+            <input type="text" id="audBusca" placeholder="ELEV, LOSA, P3…">
+          </div>
+        </div>
+        <div class="muted" style="font-size:10px;"><span id="audRangoAsa"></span></div>
       </div>
 
       <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
@@ -157,6 +194,15 @@
   .audchips button.todos{border-style:dashed;}
   .audbtn{font-size:12px; font-weight:700; padding:6px 14px; background:#1565C0; color:#fff; border:none; border-radius:5px; cursor:pointer;}
   .audbtn:disabled{background:#b0bec5; cursor:not-allowed;}
+  /* El botón que abre el formulario: tiene que verse desde la puerta. */
+  .audnueva{font-size:13px; font-weight:700; padding:8px 18px; background:#1565C0; color:#fff;
+            border:none; border-radius:6px; cursor:pointer; box-shadow:0 1px 3px rgba(21,101,192,.3);}
+  .audnueva:hover{background:#0d47a1;}
+  .audnueva.on{background:#546e7a; box-shadow:none;}
+  /* De dónde salió la obra: ArmaHub (con barras acá) o aSa. */
+  .audori{font-size:9px; font-weight:700; border-radius:3px; padding:0 4px; letter-spacing:.3px;}
+  .audori.armahub{background:#f1f8e9; color:#558b2f;}
+  .audori.asa{background:#e3f2fd; color:#1565C0;}
   .audbd{max-height:40vh; overflow:auto;}
   .audt{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
   .audt th{position:sticky; top:0; background:#fafbfc; text-align:left; color:#546e7a; font-weight:600; padding:4px 6px;

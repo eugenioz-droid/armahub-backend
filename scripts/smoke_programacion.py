@@ -346,6 +346,53 @@ if s == 200 and d.get("obras"):
                 borradas = cur.rowcount
         check("el smoke limpia los avisos que genero (%d)" % borradas, borradas >= 0)
 
+    # AUDITAR UNA OBRA DE aSa: la que no esta en ArmaHub. Es lenta (pide los items a aSa
+    # codigo a codigo), asi que se sortean DOS elementos y se borra al final.
+    print("\n6e. Auditorias sobre una obra de aSa (consulta aSa en vivo)")
+    asas = d.get("obras_asa", [])
+    check("el selector trae tambien las obras de aSa (%d)" % len(asas),
+          len(asas) > 0 and all(o["job"] and o["cc"] for o in asas))
+    if asas:
+        oa = max(asas, key=lambda o: o["cc"])
+        s9, u = get("/auditorias/universo-asa", job=oa["job"])
+        check("GET /auditorias/universo-asa -> 200 (%s: %d CC)" % (oa["obra"][:28], u.get("cc", 0) if s9 == 200 else 0),
+              s9 == 200, str(u)[:160])
+        if s9 == 200:
+            check("...el alcance de aSa es por anio, estado y quien cubico",
+                  all(k in u for k in ("anios", "estados", "personas")) and u["maximo"] > 0)
+            t0 = time.time()
+            r = cli.post("/api/v1/auditorias", headers=H, json={
+                "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 2})
+            check("POST /auditorias origen=asa -> 200 en %.0fs" % (time.time() - t0), r.status_code == 200, r.text[:220])
+            if r.status_code == 200:
+                a = r.json()
+                print("      %s · %d elementos de %d codigos · %s"
+                      % (a["codigo"], len(a["elementos"]), a["total_rango"],
+                         " | ".join(e["nombre"][:40] for e in a["elementos"])))
+                check("...guarda el codigo de control y el elemento de aSa",
+                      a["origen"] == "asa" and all(e["cc"] and e["eje"] for e in a["elementos"]))
+                e0 = a["elementos"][0]
+                t0 = time.time()
+                s9, el = get("/auditorias/elemento-asa", cc=e0["cc"], element=e0["eje"])
+                check("GET /auditorias/elemento-asa -> 200 en %.0fs" % (time.time() - t0), s9 == 200, str(el)[:200])
+                if s9 == 200:
+                    check("...trae las barras con marca, diametro, figura y LADOS",
+                          el["n"] > 0 and all("marca" in b and "dims" in b for b in el["barras"]))
+                    conlados = [b for b in el["barras"] if b["dims"]]
+                    # La consola de Windows es cp1252 y el simbolo del gancho la revienta.
+                    ejemplo = str(conlados[0]["dims"] if conlados else {}).encode("ascii", "replace").decode()
+                    print("      %d barras · %d con lados · ejemplo %s" % (el["n"], len(conlados), ejemplo))
+                rr = cli.put("/api/v1/auditorias/%d/elementos/%d" % (a["id"], e0["id"]), headers=H,
+                             json={"hallazgo": "nc_menor", "texto": "gancho corto", "causa": causa})
+                check("se le puede registrar un hallazgo igual que a una de ArmaHub",
+                      rr.status_code == 200, rr.text[:160])
+                r = cli.delete("/api/v1/auditorias/%d" % a["id"], headers=H)
+                check("...y se borra al terminar la prueba", r.status_code == 200, r.text[:160])
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM notificaciones WHERE tipo_evento = 'auditoria_accion' "
+                                    "AND mensaje LIKE %s", ("Auditoría " + a["codigo"] + "%",))
+
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")
     t0 = time.time()

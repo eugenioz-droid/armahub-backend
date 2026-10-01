@@ -52,6 +52,14 @@ ESTADOS = ("planificada", "en_curso", "cerrada")
 HALLAZGOS = ("conforme", "observacion", "nc_menor", "nc_mayor")
 # El área cuyo Ishikawa da las causas de una no conformidad (tabla `areas`).
 AREA_CUBICACIONES = "Cubicaciones"
+# De dónde sale la muestra. 'armahub' = las barras de acá; 'asa' = los ítems de aSa, para
+# las obras que no están en ArmaHub (319 contra 18).
+ORIGENES = ("armahub", "asa")
+# Las obras de prueba de aSa no se auditan. Mismo patrón que usa Programación.
+PATRON_OBRAS_FUERA = r"\m(prueba|no usar)\M"
+# Una auditoría sobre aSa pide los ítems CC a CC (la vista entera se atora), y cada
+# consulta tarda entre 1 y 11 segundos. Con más de esto la creación se haría eterna.
+MUESTRA_MAXIMA_ASA = 20
 
 # Estados de la acción que nace de una no conformidad. La CORRECCIÓN la hace quien
 # cubicó, en su cubicación; el auditor sólo VERIFICA. Por eso son tres y no dos.
@@ -130,7 +138,25 @@ def obras(user=Depends(get_current_user)):
                     ORDER BY c.orden, s.orden""", (AREA_CUBICACIONES,))
             causas = [{"categoria": r[0], "categoria_nombre": r[1], "codigo": r[2], "descripcion": r[3]}
                       for r in cur.fetchall()]
-    return {"obras": lista, "auditores": auditores, "sectores": SECTORES,
+            # LAS OBRAS DE aSa: 319 activas contra 18 con barras en ArmaHub. Se auditan
+            # igual —el elemento vive en getOrderItemView—, sólo cambia de dónde sale la
+            # muestra. Las que YA están en ArmaHub no se repiten acá: ahí la auditoría es
+            # más profunda (las barras están en casa) y ésa es la que conviene.
+            cur.execute(
+                """SELECT p.job_name, MAX(p.asa_job_id), COUNT(*), COALESCE(SUM(p.kg), 0),
+                          MAX(GREATEST(p.order_date, p.proj_ship_date))
+                     FROM asa_pedidos p
+                    WHERE COALESCE(p.estado,'') <> 'Cancelled'
+                      AND p.job_name !~* %s
+                      AND GREATEST(p.order_date, p.proj_ship_date) >= CURRENT_DATE - make_interval(months => 12)
+                      AND NOT EXISTS (SELECT 1 FROM proyectos pr
+                                       WHERE pr.asa_job_id = p.asa_job_id
+                                         AND EXISTS (SELECT 1 FROM barras b WHERE b.id_proyecto = pr.id_proyecto))
+                    GROUP BY p.job_name ORDER BY p.job_name""",
+                (PATRON_OBRAS_FUERA,))
+            asa_obras = [{"job": r[1], "obra": r[0], "cc": r[2], "kg": float(r[3] or 0),
+                          "ultimo": r[4].isoformat() if r[4] else None} for r in cur.fetchall()]
+    return {"obras": lista, "obras_asa": asa_obras, "auditores": auditores, "sectores": SECTORES,
             "estados": list(ESTADOS), "hallazgos": list(HALLAZGOS), "acciones": list(ACCIONES),
             "causas": causas, "muestra_por_defecto": MUESTRA_POR_DEFECTO, "dias_plazo": DIAS_PLAZO}
 
@@ -257,15 +283,184 @@ def _sortear(cur, id_proyecto: str, n, sectores: str, pisos: str, ciclos: str, s
 
 
 # ---------------------------------------------------------------------------
+# EL MISMO TRABAJO, PERO SOBRE aSa
+# ---------------------------------------------------------------------------
+# El elemento de aSa es `CtrlCode` + `ElementID` de getOrderItemView. Se guarda en las
+# mismas columnas que el de ArmaHub: `eje` lleva el ElementID —que en muros ES el eje, con
+# la misma nomenclatura— y `estructura` el ElementDesc. Así la revisión, los hallazgos y
+# las acciones son UN solo camino y no dos.
+CAMPOS_ITEM = ["CtrlCode", "ElementID", "ElementDesc", "BarMark", "BarSizeDescr", "ShpNameID",
+               "ShapeDims", "LegAngle", "LengthCut", "TotalQty", "LineWeight", "PinDiam",
+               "Notes", "ShopMessage", "OrderDescr"]
+
+
+def _items_de(cc: str):
+    """Los ítems de UN código de control. aSa se atora si se le pide la vista sin filtrar
+    por CtrlCode, y el tope de este endpoint es 500 (no 2.000 como los otros)."""
+    from . import asa
+    try:
+        return asa.consultar("getOrderItemView", select=CAMPOS_ITEM, filtro="CtrlCode eq '%s'" % cc, top=500)
+    except asa.AsaError as e:
+        raise HTTPException(status_code=502, detail="aSa no respondió por el código %s: %s" % (cc, e))
+
+
+def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
+    """Agrupa los ítems de un CC por elemento. Un CC puede traer uno o veintidós."""
+    por: dict = {}
+    for it in items:
+        eid = (it.get("ElementID") or "").strip()
+        clave = eid or "(sin elemento)"
+        e = por.setdefault(clave, {"cc": cc, "sector": "", "piso": "", "ciclo": "", "eje": clave,
+                                   "estructura": (it.get("ElementDesc") or "").strip() or None,
+                                   "barras": 0, "kg": 0.0, "cubicado_por": cubico,
+                                   "tipo": None, "descr_cc": descr})
+        e["barras"] += 1
+        e["kg"] += float(it.get("LineWeight") or 0)
+    for clave, e in por.items():
+        e["nombre"] = " · ".join(x for x in (cc, clave if clave != "(sin elemento)" else "",
+                                             e["estructura"] or descr) if x)
+    return list(por.values())
+
+
+@router.get("/auditorias/universo-asa")
+def universo_asa(job: str, user=Depends(get_current_user)):
+    """De qué está hecha una obra EN aSa, para armar el alcance. Acá no hay sector ni piso
+    ni ciclo —aSa no los tiene: el sector va como texto libre en la descripción—, así que
+    el alcance es por año, estado y quién cubicó, más el buscador libre. Se mide: del
+    texto del CC sólo se reconoce el piso en el 27% y el eje en el 2%, así que clasificar
+    automáticamente sería inventar."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT anio, COUNT(*), COALESCE(SUM(kg),0) FROM asa_pedidos
+                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
+                    GROUP BY 1 ORDER BY 1 DESC""", (job,))
+            anios = [{"anio": r[0], "cc": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
+            cur.execute(
+                """SELECT COALESCE(estado,'?'), COUNT(*) FROM asa_pedidos
+                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
+                    GROUP BY 1 ORDER BY 2 DESC""", (job,))
+            estados = [{"estado": r[0], "cc": r[1]} for r in cur.fetchall()]
+            cur.execute(
+                """SELECT COALESCE(detail_person,'?'), COUNT(*) FROM asa_pedidos
+                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
+                    GROUP BY 1 ORDER BY 2 DESC""", (job,))
+            personas = [{"email": r[0], "cc": r[1]} for r in cur.fetchall()]
+            cur.execute(
+                """SELECT COUNT(*), MAX(job_name) FROM asa_pedidos
+                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'""", (job,))
+            total, nombre = cur.fetchone()
+    return {"job": job, "obra": nombre, "cc": total, "anios": anios, "estados": estados,
+            "personas": personas, "maximo": MUESTRA_MAXIMA_ASA}
+
+
+def _sortear_asa(cur, job: str, n, anios: str, estados: str, personas: str, busca: str, semilla: str):
+    """La muestra sobre aSa. Dos pasos, porque los ítems no están espejados: se sortean
+    CÓDIGOS DE CONTROL del espejo —ahí sí está todo— y recién de los sorteados se piden
+    los ítems a aSa, que es la parte lenta (1 a 11 s por código)."""
+    n = max(1, min(int(n or MUESTRA_POR_DEFECTO), MUESTRA_MAXIMA_ASA))
+    semilla = (semilla or secrets.token_hex(4)).strip()
+    where = ["asa_job_id = %s", "COALESCE(estado,'') <> 'Cancelled'", "job_name !~* %s"]
+    params: list = [job, PATRON_OBRAS_FUERA]
+    if _lista(anios):
+        where.append("anio = ANY(%s)")
+        params.append([int(a) for a in _lista(anios)])
+    if _lista(estados):
+        where.append("COALESCE(estado,'') = ANY(%s)")
+        params.append(_lista(estados))
+    if _lista(personas):
+        where.append("COALESCE(detail_person,'') = ANY(%s)")
+        params.append(_lista(personas))
+    if (busca or "").strip():
+        where.append("descr ILIKE %s")
+        params.append("%" + busca.strip() + "%")
+    cond = " AND ".join(where)
+    cur.execute(f"SELECT COUNT(*) FROM asa_pedidos WHERE {cond}", params)
+    total = cur.fetchone()[0]
+    if not total:
+        raise HTTPException(status_code=400, detail="No hay códigos de control en ese alcance.")
+    cur.execute(
+        f"""SELECT control_code, descr, detail_person FROM asa_pedidos WHERE {cond}
+             ORDER BY md5(control_code || '|' || %s) LIMIT %s""", params + [semilla, n])
+    ccs = cur.fetchall()
+    elementos = []
+    for cc, descr, quien in ccs:
+        items = _items_de(cc)
+        del_cc = _elementos_de_items(items, cc, descr or "", quien)
+        # UN elemento por código: si un CC trae 22, llevárselos todos sería auditar un
+        # solo pedido en vez de una muestra repartida. Se toma el más pesado, que es el
+        # que más vale la pena mirar.
+        if del_cc:
+            elementos.append(max(del_cc, key=lambda e: e["kg"]))
+    if not elementos:
+        raise HTTPException(status_code=502, detail="aSa no devolvió ítems para esos códigos de control.")
+    return total, elementos, semilla, len(elementos)
+
+
+@router.get("/auditorias/elemento-asa")
+def elemento_asa(cc: str, element: str = "", user=Depends(get_current_user)):
+    """Un elemento de aSa, barra por barra: marca, Ø, figura, largo, cantidad y peso. La
+    geometría viene entera en `LegAngle` (lado, largo, ángulo, gancho); acá se muestra
+    como texto, que es lo que pidió el usuario para revisar rápido."""
+    items = [it for it in _items_de(cc)
+             if not element or (it.get("ElementID") or "").strip() == element]
+    if not items:
+        raise HTTPException(status_code=404, detail="Ese elemento no tiene ítems en aSa.")
+    barras = [{
+        "marca": it.get("BarMark"), "diam": it.get("BarSizeDescr"), "figura": it.get("ShpNameID"),
+        "dims": _lados(it.get("LegAngle")), "largo": it.get("LengthCut"),
+        "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
+        "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
+        "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
+                                       (it.get("ShopMessage") or "").strip()) if x) or None,
+    } for it in items]
+    return {"cc": cc, "element": element, "barras": barras, "n": len(barras),
+            "kg": sum(float(b["peso_total"] or 0) for b in barras),
+            "planos": sorted({b["plano"] for b in barras if b["plano"]}),
+            "cubicaron": [], "descr": (items[0].get("OrderDescr") or "")}
+
+
+def _lados(xml: Optional[str]) -> dict:
+    """Los lados de la barra, del XML de `LegAngle`, como texto corto para la tabla:
+    `A=300 · B=11400 (90°) · C=300 ↱`. No se dibuja nada —el auditor sabe leer una
+    barra—, pero ver los lados en la misma línea es lo que acelera la revisión."""
+    if not xml:
+        return {}
+    import re as _re
+    salida = {}
+    for cp in _re.findall(r"<cp>(.*?)</cp>", str(xml)):
+        nombre = (_re.search(r"<ln>(.*?)</ln>", cp) or [None, ""])[1] if _re.search(r"<ln>", cp) else ""
+        largo = (_re.search(r"<l>(.*?)</l>", cp) or [None, ""])[1] if _re.search(r"<l>", cp) else ""
+        ang = _re.search(r"<a>(.*?)</a>", cp)
+        tipo = _re.search(r"<t>(.*?)</t>", cp)
+        if not largo:
+            continue
+        texto = largo
+        if ang:
+            texto += " (%s°)" % ang.group(1)
+        if tipo and tipo.group(1).upper().startswith("H"):
+            texto += " ↱"      # gancho
+        salida[nombre or str(len(salida) + 1)] = texto
+    return salida
+
+
+# ---------------------------------------------------------------------------
 # LA AUDITORÍA: crear, listar, revisar, cerrar
 # ---------------------------------------------------------------------------
 class CrearBody(BaseModel):
-    id_proyecto: str
+    id_proyecto: str            # obra de ArmaHub, o el JobID de aSa si origen='asa'
     auditor: str
+    origen: str = "armahub"
     n: int = MUESTRA_POR_DEFECTO
+    # Alcance de ArmaHub
     sectores: List[str] = []
     pisos: List[str] = []
     ciclos: List[str] = []
+    # Alcance de aSa (allá no hay sector/piso/ciclo: ver universo_asa)
+    anios: List[str] = []
+    estados: List[str] = []
+    personas: List[str] = []
+    busca: str = ""
     notas: Optional[str] = None
 
 
@@ -282,35 +477,53 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
     elementos no cambia: es contra ésa que se audita."""
     _puede_auditar(user)
     email = user.get("email", "?")
+    if body.origen not in ORIGENES:
+        raise HTTPException(status_code=422, detail="Origen no válido: " + " / ".join(ORIGENES))
+    es_asa = body.origen == "asa"
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COALESCE(nombre_proyecto, id_proyecto) FROM proyectos WHERE id_proyecto = %s",
-                        (body.id_proyecto,))
-            fila = cur.fetchone()
-            cur.execute("SELECT 1 FROM barras WHERE id_proyecto = %s LIMIT 1", (body.id_proyecto,))
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Esa obra no tiene barras en ArmaHub.")
-            obra = fila[0] if fila else body.id_proyecto
-            total, elementos, semilla, n = _sortear(
-                cur, body.id_proyecto, body.n, ",".join(body.sectores), ",".join(body.pisos),
-                ",".join(body.ciclos), "")
+            if es_asa:
+                # En aSa la obra es el JobID, y el nombre sale del espejo.
+                cur.execute("""SELECT MAX(job_name) FROM asa_pedidos WHERE asa_job_id = %s
+                                AND COALESCE(estado,'') <> 'Cancelled'""", (body.id_proyecto,))
+                fila = cur.fetchone()
+                if not fila or not fila[0]:
+                    raise HTTPException(status_code=404, detail="Ese job no está en el espejo de aSa.")
+                obra = fila[0]
+                total, elementos, semilla, n = _sortear_asa(
+                    cur, body.id_proyecto, body.n, ",".join(body.anios), ",".join(body.estados),
+                    ",".join(body.personas), body.busca, "")
+                alcance = (body.anios, body.estados, body.personas)
+            else:
+                cur.execute("SELECT COALESCE(nombre_proyecto, id_proyecto) FROM proyectos WHERE id_proyecto = %s",
+                            (body.id_proyecto,))
+                fila = cur.fetchone()
+                cur.execute("SELECT 1 FROM barras WHERE id_proyecto = %s LIMIT 1", (body.id_proyecto,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="Esa obra no tiene barras en ArmaHub.")
+                obra = fila[0] if fila else body.id_proyecto
+                total, elementos, semilla, n = _sortear(
+                    cur, body.id_proyecto, body.n, ",".join(body.sectores), ",".join(body.pisos),
+                    ",".join(body.ciclos), "")
+                alcance = (body.sectores, body.pisos, body.ciclos)
             hoy = _hoy()
             cur.execute(
-                """INSERT INTO auditorias (codigo, id_proyecto, obra, auditor, sectores, pisos, ciclos,
+                """INSERT INTO auditorias (codigo, id_proyecto, obra, auditor, origen, sectores, pisos, ciclos,
                                            n, total_rango, semilla, estado, creada_fecha, plazo_fecha,
                                            creada_por, notas)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planificada',%s,%s,%s,%s) RETURNING id""",
-                (_codigo(cur), body.id_proyecto, obra, body.auditor, body.sectores, body.pisos,
-                 body.ciclos, len(elementos), total, semilla, hoy, _habiles(hoy, DIAS_PLAZO),
-                 email, body.notas))
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planificada',%s,%s,%s,%s) RETURNING id""",
+                (_codigo(cur), body.id_proyecto, obra, body.auditor, body.origen,
+                 alcance[0], alcance[1], alcance[2], len(elementos), total, semilla, hoy,
+                 _habiles(hoy, DIAS_PLAZO), email, body.notas))
             aud_id = cur.fetchone()[0]
             cur.executemany(
                 """INSERT INTO auditoria_elementos
-                       (auditoria_id, sector, piso, ciclo, eje, nombre, estructura, barras, kg, cubicado_por)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                [(aud_id, e["sector"], e["piso"], e["ciclo"], e["eje"], e["nombre"], e["estructura"],
-                  e["barras"], e["kg"], e["cubicado_por"]) for e in elementos])
-            audit(email, "auditoria_crear", f"{obra}: {len(elementos)} de {total} elementos", "auditoria", str(aud_id))
+                       (auditoria_id, cc, sector, piso, ciclo, eje, nombre, estructura, barras, kg, cubicado_por)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                [(aud_id, e.get("cc"), e["sector"], e["piso"], e["ciclo"], e["eje"], e["nombre"],
+                  e["estructura"], e["barras"], e["kg"], e["cubicado_por"]) for e in elementos])
+            audit(email, "auditoria_crear",
+                  f"{body.origen} · {obra}: {len(elementos)} de {total}", "auditoria", str(aud_id))
     return detalle(aud_id, user)
 
 
@@ -387,10 +600,10 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             cur.execute(
                 """SELECT id, sector, piso, ciclo, eje, nombre, estructura, barras, kg, cubicado_por,
                           hallazgo, texto, causa, revisado_por, revisado_el,
-                          accion_estado, accion_por, accion_el, accion_nota
+                          accion_estado, accion_por, accion_el, accion_nota, cc
                      FROM auditoria_elementos WHERE auditoria_id = %s ORDER BY id""", (auditoria_id,))
             aud["elementos"] = [
-                {"id": e[0], "sector": e[1], "piso": e[2], "ciclo": e[3], "eje": e[4], "nombre": e[5],
+                {"id": e[0], "cc": e[19], "sector": e[1], "piso": e[2], "ciclo": e[3], "eje": e[4], "nombre": e[5],
                  "estructura": e[6], "barras": e[7], "kg": float(e[8] or 0), "cubicado_por": e[9],
                  "tipo": SECTORES.get(e[1] or "", e[1]),
                  "hallazgo": e[10], "texto": e[11], "causa": e[12],

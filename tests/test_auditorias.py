@@ -132,6 +132,37 @@ check("...y además tiene su propia caja «mis correcciones pendientes»",
 check("una auditoría con hallazgos NO se borra (es un registro de calidad)",
       "una auditoría con hallazgos no se borra" in SRC and "status_code=409" in SRC)
 
+print("\n5c. Se puede auditar una obra de aSa, no sólo las de ArmaHub")
+MIG118 = open(os.path.join(ROOT, "armahub", "migrations", "118_auditorias_asa.sql"), encoding="utf-8").read()
+check("los dos orígenes están declarados", A.ORIGENES == ("armahub", "asa")
+      and 'origen          TEXT NOT NULL DEFAULT \'armahub\'' in MIG
+      and "ADD COLUMN cc TEXT" in MIG118)
+check("el selector trae las dos fuentes, en dos grupos",
+      '"obras_asa": asa_obras' in SRC and 'optgroup label="En ArmaHub' in JS
+      and 'optgroup label="Sólo en aSa' in JS and "value=\"asa|" in JS)
+check("...y una obra que ya está en ArmaHub no se repite como obra de aSa",
+      "NOT EXISTS (SELECT 1 FROM proyectos pr" in SRC and "FROM barras b WHERE b.id_proyecto" in SRC)
+check("el elemento de aSa es CtrlCode + ElementID, guardado en las mismas columnas",
+      "def _elementos_de_items(" in SRC and '"eje": clave' in SRC
+      and "CtrlCode eq '%s'" in SRC and 'ADD COLUMN cc TEXT' in MIG118)
+check("el alcance de aSa es otro: año, estado, quién cubicó y buscador",
+      '@router.get("/auditorias/universo-asa")' in SRC and "def _sortear_asa(" in SRC
+      and all(('id="%s"' % x) in HTM for x in ("audAnios", "audEstados", "audPersonas", "audBusca")))
+check("...acotado, porque cada elemento cuesta una consulta a aSa",
+      "MUESTRA_MAXIMA_ASA = 20" in SRC and "tope de este endpoint es 500" in SRC)
+check("de cada código se toma UN elemento, el más pesado",
+      "max(del_cc, key=lambda e: e[\"kg\"])" in SRC)
+check("los lados de la barra se muestran como texto, sin dibujar",
+      "def _lados(" in SRC and "<cp>(.*?)</cp>" in SRC and "Lados / dimensiones" in JS)
+check("y la lista dice de qué origen salió cada auditoría",
+      '"origen": r[16]' in SRC and 'class="audori ' in JS and ".audori.asa{" in HTM)
+
+print("\n5d. El formulario de creación está plegado tras un botón")
+check("hay un botón grande que abre el formulario, y arranca cerrado",
+      'id="audNueva" class="audnueva"' in HTM and 'id="audForm" style="display:none;' in HTM
+      and "function abrirForm(abrir)" in JS and ".audnueva{" in HTM)
+check("...y al crear se cierra solo", "abrirForm(false);" in JS)
+
 print("\n6. El alcance se arma: multi-selección y contadores que se entienden")
 check("el clic simple suma (no exige Ctrl) y hay un botón «Todos» que suelta",
       "function marcar(lista, valor)" in JS and "if (b.dataset.todos) activos.length = 0; else marcar(activos" in JS

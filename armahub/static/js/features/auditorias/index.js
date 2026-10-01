@@ -51,7 +51,11 @@
   var ACCION_TXT = { pendiente: 'Pendiente', corregida: 'Corregida', verificada: 'Verificada' };
 
   var BASE = null, UNIV = null;
-  var OBRA = '', AUDITOR = '', SECT = [], PISOS = [], CICLOS = [];
+  // La obra se elige con su ORIGEN pegado ('armahub|PROY-x' o 'asa|2010136'): una misma
+  // pantalla sirve para las dos fuentes y no hay un segundo selector que mantener.
+  var ORIGEN = 'armahub', OBRA = '', AUDITOR = '';
+  var SECT = [], PISOS = [], CICLOS = [];              // alcance de ArmaHub
+  var ANIOS = [], ESTADOS = [], PERSONAS = [], BUSCA = '';  // alcance de aSa
   var LISTA = [], ABIERTA = null, AUD = null, ELEM = null;
 
   var _bound = false;
@@ -68,11 +72,21 @@
   };
 
   function bind() {
+    // El formulario arranca plegado: al entrar uno viene a mirar, no a crear.
+    $('audNueva').addEventListener('click', function () { abrirForm($('audForm').style.display === 'none'); });
+    $('audFormCerrar').addEventListener('click', function () { abrirForm(false); });
+    $('audBusca').addEventListener('input', function () { BUSCA = this.value; pintarEstado(); });
     $('audObra').addEventListener('change', async function () {
-      OBRA = this.value; SECT = []; PISOS = []; CICLOS = []; UNIV = null;
+      var p = (this.value || '').split('|');
+      ORIGEN = p[0] || 'armahub'; OBRA = p.slice(1).join('|');
+      SECT = []; PISOS = []; CICLOS = []; ANIOS = []; ESTADOS = []; PERSONAS = []; BUSCA = '';
+      $('audBusca').value = ''; UNIV = null;
       if (OBRA) {
-        try { UNIV = await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA)); }
-        catch (e) { aviso(e.message); }
+        try {
+          UNIV = ORIGEN === 'asa'
+            ? await req('GET', '/auditorias/universo-asa?job=' + encodeURIComponent(OBRA))
+            : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
+        } catch (e) { aviso(e.message); }
       }
       pintarAlcance(); pintarEstado();
     });
@@ -83,13 +97,29 @@
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
   }
 
+  function abrirForm(abrir) {
+    $('audForm').style.display = abrir ? '' : 'none';
+    $('audNueva').textContent = abrir ? '✕ Cerrar' : '＋ Crear auditoría';
+    $('audNueva').className = abrir ? 'audnueva on' : 'audnueva';
+  }
+
   function pintarForm() {
+    // DOS GRUPOS en el mismo selector. Arriba las de ArmaHub —ahí están las barras y la
+    // auditoría es más profunda—; abajo las de aSa, que son muchas más. Una obra que está
+    // en las dos aparece sólo arriba: el backend no la repite.
     var so = $('audObra');
-    so.innerHTML = '<option value="">— elige la obra —</option>' + (BASE.obras || []).map(function (o) {
-      return '<option value="' + esc(o.id_proyecto) + '">' + esc(o.obra) + ' · ' + o.elementos + ' elementos' +
-             (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s) abierto(s)' : '') + '</option>';
-    }).join('');
-    so.value = OBRA;
+    so.innerHTML = '<option value="">— elige la obra —</option>' +
+      '<optgroup label="En ArmaHub · con sus barras (' + (BASE.obras || []).length + ')">' +
+      (BASE.obras || []).map(function (o) {
+        return '<option value="armahub|' + esc(o.id_proyecto) + '">' + esc(o.obra) + ' · ' + o.elementos + ' elementos' +
+               (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s) abierto(s)' : '') + '</option>';
+      }).join('') + '</optgroup>' +
+      '<optgroup label="Sólo en aSa · últimos 12 meses (' + (BASE.obras_asa || []).length + ')">' +
+      (BASE.obras_asa || []).map(function (o) {
+        return '<option value="asa|' + esc(o.job) + '">' + esc(o.obra) + ' · ' + o.cc + ' códigos · ' +
+               kg0(o.kg) + ' kg</option>';
+      }).join('') + '</optgroup>';
+    so.value = OBRA ? (ORIGEN + '|' + OBRA) : '';
     var sa = $('audAuditor');
     sa.innerHTML = '<option value="">— quién audita —</option>' + (BASE.auditores || []).map(function (a) {
       return '<option value="' + esc(a.email) + '">' + esc(a.nombre) + '</option>';
@@ -103,9 +133,13 @@
 
   // El alcance se arma con lo que la obra TIENE: cada chip dice cuántos elementos trae.
   function pintarAlcance() {
-    var caja = $('audAlcance');
-    if (!UNIV) { caja.style.display = 'none'; $('audObraInfo').textContent = ''; return; }
-    caja.style.display = '';
+    var caja = $('audAlcance'), cajaAsa = $('audAlcanceAsa');
+    if (!UNIV) {
+      caja.style.display = 'none'; cajaAsa.style.display = 'none';
+      $('audObraInfo').textContent = ''; return;
+    }
+    if (ORIGEN === 'asa') { caja.style.display = 'none'; cajaAsa.style.display = ''; return pintarAlcanceAsa(); }
+    caja.style.display = ''; cajaAsa.style.display = 'none';
     var o = (BASE.obras || []).filter(function (x) { return x.id_proyecto === OBRA; })[0] || {};
     $('audObraInfo').textContent = UNIV.elementos + ' elementos · ' + kg0(o.kg) + ' kg · cubicaron: ' +
       (UNIV.cubicadores || []).map(function (c) { return c.email.split('@')[0]; }).join(', ');
@@ -134,10 +168,50 @@
     chips($('audCiclos'), UNIV.ciclos || [], 'ciclo', CICLOS);
   }
 
+  // El alcance de aSa: año, estado y quién cubicó. El contador es de CÓDIGOS DE CONTROL,
+  // no de elementos — en aSa el elemento sólo se conoce al pedir los ítems del código.
+  function pintarAlcanceAsa() {
+    $('audObraInfo').textContent = UNIV.cc + ' códigos de control · cubicaron: ' +
+      (UNIV.personas || []).slice(0, 6).map(function (p) { return (p.email || '').split('@')[0]; }).join(', ');
+    var chips = function (cont, lista, clave, activos, etiqueta) {
+      var total = lista.reduce(function (a, x) { return a + x.cc; }, 0);
+      cont.innerHTML = '<button data-todos="1" class="todos' + (activos.length ? '' : ' on') + '"' +
+          ' title="Sin nada marcado entran todos">Todos <i>' + total + '</i></button>' +
+        lista.map(function (x) {
+          var v = String(x[clave]), n = etiqueta ? etiqueta(x) : v;
+          return '<button data-v="' + esc(v) + '" class="' + (activos.indexOf(v) !== -1 ? 'on' : '') + '"' +
+                 ' title="' + esc(n) + ' · ' + x.cc + ' códigos disponibles">' + esc(n) + ' <i>' + x.cc + '</i></button>';
+        }).join('');
+      cont.querySelectorAll('button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (b.dataset.todos) activos.length = 0; else marcar(activos, b.dataset.v);
+          pintarAlcanceAsa(); pintarEstado();
+        });
+      });
+    };
+    chips($('audAnios'), UNIV.anios || [], 'anio', ANIOS);
+    chips($('audEstados'), UNIV.estados || [], 'estado', ESTADOS);
+    chips($('audPersonas'), UNIV.personas || [], 'email', PERSONAS, function (x) { return (x.email || '').split('@')[0]; });
+  }
+
   function pintarEstado() {
     var n = parseInt($('audN').value, 10) || 0;
     var listo = !!(OBRA && AUDITOR && n > 0 && UNIV);
     $('audCrear').disabled = !listo;
+    if (ORIGEN === 'asa') {
+      $('audRangoAsa').textContent = UNIV ? ('alcance: ' + (ANIOS.length ? ANIOS.join(', ') : 'todos los años') +
+        ' · ' + (ESTADOS.length ? ESTADOS.join(', ') : 'todos los estados') +
+        ' · ' + (PERSONAS.length ? PERSONAS.map(function (p) { return p.split('@')[0]; }).join(', ') : 'todos') +
+        (BUSCA ? ' · descripción contiene «' + BUSCA + '»' : '')) : '';
+      // En aSa cada elemento cuesta una consulta: por eso el tope es más bajo.
+      $('audNInfo').textContent = UNIV ? ('máx ' + UNIV.maximo) : '';
+      if (listo && n > (UNIV.maximo || 20)) {
+        $('audCrearMsg').textContent = 'En aSa el máximo es ' + UNIV.maximo + ': cada elemento se pide a aSa.';
+      } else {
+        $('audCrearMsg').textContent = listo ? 'Puede tardar: se le pide a aSa un código a la vez.' : 'Elige obra y quién audita.';
+      }
+      return;
+    }
     $('audRango').textContent = UNIV ? ('alcance: ' + (SECT.length ? SECT.map(function (s) {
       return ((UNIV.sectores || []).filter(function (x) { return x.sector === s; })[0] || {}).nombre || s; }).join(', ') : 'todos los tipos') +
       ' · ' + (PISOS.length ? PISOS.join(', ') : 'todos los pisos') + ' · ' + (CICLOS.length ? CICLOS.join(', ') : 'todos los ciclos')) : '';
@@ -149,11 +223,13 @@
     $('audCrear').disabled = true; $('audCrearMsg').textContent = 'Sorteando la muestra…';
     try {
       var a = await req('POST', '/auditorias', {
-        id_proyecto: OBRA, auditor: AUDITOR, n: parseInt($('audN').value, 10) || 10,
-        sectores: SECT, pisos: PISOS, ciclos: CICLOS
+        id_proyecto: OBRA, auditor: AUDITOR, origen: ORIGEN, n: parseInt($('audN').value, 10) || 10,
+        sectores: SECT, pisos: PISOS, ciclos: CICLOS,
+        anios: ANIOS, estados: ESTADOS, personas: PERSONAS, busca: BUSCA
       });
       if (!a) return;
       ok('Auditoría ' + a.codigo + ' creada');
+      abrirForm(false);
       $('audCrearMsg').textContent = a.codigo + ': ' + a.elementos.length + ' elementos de ' + a.total_rango + ' del alcance.';
       ABIERTA = a.id; AUD = a; ELEM = null;
       await cargarLista();
@@ -199,7 +275,8 @@
       var vencida = a.estado !== 'cerrada' && a.plazo && a.plazo < new Date().toISOString().slice(0, 10);
       html += '<tr class="fila' + (a.id === ABIERTA ? ' sel' : '') + '" data-id="' + a.id + '">' +
         '<td class="cc">' + esc(a.codigo) + '</td>' +
-        '<td title="' + esc(a.obra) + '">' + esc(a.obra) + '</td>' +
+        '<td title="' + esc(a.obra) + '">' + esc(a.obra) +
+          ' <span class="audori ' + esc(a.origen || 'armahub') + '">' + (a.origen === 'asa' ? 'aSa' : 'ArmaHub') + '</span></td>' +
         '<td title="' + esc(alcanceTxt(a)) + '">' + esc(alcanceTxt(a)) + '</td>' +
         '<td>' + esc((a.auditor || '').split('@')[0]) + '</td>' +
         '<td class="num" title="' + kg0(a.kg) + ' kg">' + a.revisados + '/' + a.n + ' de ' + a.total_rango + '</td>' +
@@ -291,20 +368,31 @@
     $('audRevBarras').innerHTML = '';
     pintarRevision();
     try {
-      var d = await req('GET', '/auditorias/elemento?id_proyecto=' + encodeURIComponent(AUD.id_proyecto) +
-        '&sector=' + encodeURIComponent(e.sector || '') + '&piso=' + encodeURIComponent(e.piso || '') +
-        '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || ''));
+      // De dónde se piden las barras depende del origen: las de ArmaHub están en casa;
+      // las de aSa se piden en vivo por código de control (1 a 11 segundos).
+      var d = AUD.origen === 'asa'
+        ? await req('GET', '/auditorias/elemento-asa?cc=' + encodeURIComponent(e.cc || '') +
+                           '&element=' + encodeURIComponent(e.eje || ''))
+        : await req('GET', '/auditorias/elemento?id_proyecto=' + encodeURIComponent(AUD.id_proyecto) +
+                           '&sector=' + encodeURIComponent(e.sector || '') + '&piso=' + encodeURIComponent(e.piso || '') +
+                           '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || ''));
       if (!d) return;
-      $('audRevInfo').textContent = d.n + ' barras · ' + kg0(d.kg) + ' kg · plano ' + (d.planos.join(', ') || '—') +
-        ' · cubicó ' + d.cubicaron.map(function (x) { return x.split('@')[0]; }).join(', ');
-      var html = '<thead><tr><th>Marca</th><th class="num">Ø</th><th>Figura</th><th>Dimensiones</th>' +
-        '<th class="num">Largo</th><th class="num">Cant</th><th class="num">Peso</th><th>Plano</th></tr></thead><tbody>';
+      $('audRevInfo').textContent = d.n + ' barras · ' + kg0(d.kg) + ' kg · ' +
+        (AUD.origen === 'asa' ? ('CC ' + d.cc + ' · ' + (d.descr || '')) :
+          ('plano ' + (d.planos.join(', ') || '—') + ' · cubicó ' +
+           (d.cubicaron || []).map(function (x) { return x.split('@')[0]; }).join(', ')));
+      var html = '<thead><tr><th>Marca</th><th class="num">Ø</th><th>Figura</th><th>Lados / dimensiones</th>' +
+        '<th class="num">Largo</th><th class="num">Cant</th><th class="num">Peso</th><th>' +
+        (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') + '</th></tr></thead><tbody>';
       d.barras.forEach(function (b) {
         var dims = Object.keys(b.dims || {}).map(function (k) { return k + '=' + b.dims[k]; }).join(' · ');
         html += '<tr><td class="cc">' + esc(b.marca || '') + '</td><td class="num">' + esc(b.diam || '') + '</td>' +
           '<td>' + esc(b.figura || '') + '</td><td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
-          '<td class="num">' + (b.largo != null ? b.largo : '') + '</td><td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
-          '<td class="num">' + kg0(b.peso_total) + '</td><td>' + esc(b.plano || '') + '</td></tr>';
+          '<td class="num">' + (b.largo != null ? Math.round(b.largo) : '') + '</td>' +
+          '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
+          '<td class="num">' + kg0(b.peso_total) + '</td>' +
+          '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
+            esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td></tr>';
       });
       $('audRevBarras').innerHTML = html + '</tbody>';
     } catch (err) { $('audRevInfo').textContent = err.message; }
