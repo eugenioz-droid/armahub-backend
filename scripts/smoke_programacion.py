@@ -56,6 +56,15 @@ cli = TestClient(app)
 H = {"Authorization": "Bearer " + create_token(ADMIN, "admin")}
 
 
+def _notifs_auditoria() -> int:
+    """Cuantos avisos de auditoria hay en la campana. La notificacion se escribe fuera de
+    la transaccion del hallazgo, asi que se consulta la base directo."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM notificaciones WHERE tipo_evento = 'auditoria_accion'")
+            return cur.fetchone()[0]
+
+
 def get(ruta, **params):
     r = cli.get("/api/v1" + ruta, headers=H, params=params or None)
     try:
@@ -260,6 +269,82 @@ if s == 200 and d.get("obras"):
                       all(set(("marca", "diam", "figura", "dims", "largo", "peso_total", "plano")) <= set(b) for b in el["barras"]))
     check("las causas de NC salen del Ishikawa de Cubicaciones (%d)" % len(d.get("causas", [])),
           len(d.get("causas", [])) > 0 and all(c["codigo"] and c["categoria_nombre"] for c in d["causas"]))
+
+    # EL CICLO COMPLETO contra la base real: crear -> hallazgos -> accion -> verificar ->
+    # borrar. Es lo unico que prueba que la auditoria se guarda y que el estado se deriva.
+    # Al final se borra: el smoke no deja basura.
+    print("\n6d. Auditorias: el ciclo completo (escribe y borra)")
+    causa = d["causas"][0]["codigo"]
+    r = cli.post("/api/v1/auditorias", headers=H, json={
+        "id_proyecto": ob["id_proyecto"], "auditor": ADMIN, "n": 3, "pisos": [piso]})
+    check("POST /auditorias -> 200", r.status_code == 200, r.text[:200])
+    if r.status_code == 200:
+        a = r.json()
+        aid = a["id"]
+        print("      %s · %d elementos de %d · semilla %s · plazo %s"
+              % (a["codigo"], len(a["elementos"]), a["total_rango"], a["semilla"], a["plazo"]))
+        check("...nace planificada, sin revisar, con fechas puestas por el sistema",
+              a["estado"] == "planificada" and a["revisados"] == 0 and a["creada"] and a["plazo"] > a["creada"])
+        check("...y la muestra quedo GUARDADA (3 elementos con su id)",
+              len(a["elementos"]) == 3 and all(e["id"] and e["nombre"] for e in a["elementos"]))
+        e1, e2, e3 = a["elementos"]
+
+        def hallazgo(eid, cuerpo):
+            return cli.put("/api/v1/auditorias/%d/elementos/%d" % (aid, eid), headers=H, json=cuerpo)
+
+        rr = hallazgo(e1["id"], {"hallazgo": "conforme"})
+        check("un hallazgo conforme no exige texto -> 200", rr.status_code == 200, rr.text[:160])
+        if rr.status_code == 200:
+            check("...y la auditoria pasa a EN CURSO con fecha de inicio",
+                  rr.json()["estado"] == "en_curso" and rr.json()["inicio"])
+        rr = hallazgo(e2["id"], {"hallazgo": "nc_mayor", "texto": "   "})
+        check("una NC sin texto rebota con 400 (no es evidencia)", rr.status_code == 400, rr.text[:160])
+        rr = hallazgo(e2["id"], {"hallazgo": "nc_mayor", "texto": "largo 4.25 debia ser 4.85", "causa": causa})
+        check("una NC con texto -> 200 y abre la accion pendiente", rr.status_code == 200, rr.text[:160])
+        if rr.status_code == 200:
+            el2 = [x for x in rr.json()["elementos"] if x["id"] == e2["id"]][0]
+            check("...la accion queda para quien cubico, en pendiente",
+                  el2["accion_estado"] == "pendiente" and el2["causa"] == causa)
+            check("...y se le dejo el aviso en la campana",
+                  _notifs_auditoria() > 0)
+        rr = hallazgo(e2["id"], {"hallazgo": "zzz", "texto": "x"})
+        check("un nivel de hallazgo inventado rebota con 422", rr.status_code == 422)
+
+        rr = cli.put("/api/v1/auditorias/%d/elementos/%d/accion" % (aid, e1["id"]), headers=H,
+                     json={"estado": "corregida"})
+        check("mover la accion de un elemento SIN no conformidad -> 400", rr.status_code == 400, rr.text[:160])
+        rr = cli.put("/api/v1/auditorias/%d/elementos/%d/accion" % (aid, e2["id"]), headers=H,
+                     json={"estado": "corregida"})
+        check("el cubicador marca corregida -> 200", rr.status_code == 200, rr.text[:160])
+        rr = cli.put("/api/v1/auditorias/%d/elementos/%d/accion" % (aid, e2["id"]), headers=H,
+                     json={"estado": "verificada"})
+        check("el auditor verifica -> 200", rr.status_code == 200, rr.text[:160])
+
+        rr = hallazgo(e3["id"], {"hallazgo": "observacion", "texto": "marca repetida"})
+        check("al revisar el ultimo, la auditoria se CIERRA sola con su fecha",
+              rr.status_code == 200 and rr.json()["estado"] == "cerrada" and rr.json()["cierre"], rr.text[:160])
+        if rr.status_code == 200:
+            res = rr.json()["resultado"]
+            check("...y el resultado cuadra con la muestra (1 conforme, 1 observacion, 1 NC mayor)",
+                  res["conforme"] == 1 and res["observacion"] == 1 and res["nc_mayor"] == 1
+                  and sum(res.values()) == 3)
+        s9, lst = get("/auditorias", id_proyecto=ob["id_proyecto"])
+        check("aparece en la lista de su obra", s9 == 200 and any(x["id"] == aid for x in lst["auditorias"]))
+        s9, mias = get("/auditorias/mias/acciones")
+        check("GET /auditorias/mias/acciones -> 200", s9 == 200, str(mias)[:160])
+
+        r = cli.delete("/api/v1/auditorias/%d" % aid, headers=H)
+        check("admin puede borrar la auditoria de prueba -> 200", r.status_code == 200, r.text[:160])
+        s9, _ = get("/auditorias/%d" % aid)
+        check("...y ya no existe (404), con sus elementos borrados en cascada", s9 == 404)
+        # El aviso de la campana NO cuelga de la auditoria (no tiene FK), asi que la
+        # cascada no se lo lleva: lo borra el smoke para no dejar basura.
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM notificaciones WHERE tipo_evento = 'auditoria_accion' "
+                            "AND mensaje LIKE %s", ("Auditoría " + a["codigo"] + "%",))
+                borradas = cur.rowcount
+        check("el smoke limpia los avisos que genero (%d)" % borradas, borradas >= 0)
 
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")

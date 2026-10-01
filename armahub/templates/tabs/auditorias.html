@@ -1,21 +1,23 @@
-<!-- TAB: CALIDAD / AUDITORÍAS DE CUBICACIÓN — MAQUETA (1-oct).
+<!-- TAB: CALIDAD / AUDITORÍAS DE CUBICACIÓN (1-oct).
 
      Se audita un ELEMENTO CONSTRUCTIVO (Muro Eje A P1 Ciclo 1), entero, con sus barras.
      Arriba el formulario que CREA la auditoría: obra, quién audita, alcance (tipo, pisos,
-     ciclos) y tamaño de la muestra; las fechas se llenan solas. El sistema saca los
-     elementos al azar dentro del alcance. Abajo, la lista de auditorías con su estado,
-     fechas y un resumen de lo que encontró. La revisión elemento a elemento es la etapa
-     siguiente; acá sólo se ve la muestra que salió.
+     ciclos) y tamaño de la muestra; las fechas las pone el sistema. Al crear, el servidor
+     sortea los elementos al azar dentro del alcance y los GUARDA: se audita contra esa
+     lista, que ya no cambia. Abajo la lista de auditorías, la muestra de la que esté
+     abierta, el formulario de hallazgo y las acciones que salen de cada no conformidad.
 
-     ES MAQUETA: las auditorías se guardan en este navegador. La obra, el alcance y la
-     muestra sí son reales (salen de las barras). -->
+     El estado y las fechas se DERIVAN de los hallazgos (backend): nadie los elige. -->
 <div id="tab-auditorias" class="tab-content">
   <div style="padding:4px 2px 12px;">
 
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
       <h3 style="margin:0; color:#1565C0;">🔎 Auditorías de cubicación</h3>
-      <span class="muted" style="font-size:11px;">Maqueta: las auditorías viven en este navegador; obra, alcance y muestra son reales.</span>
+      <span class="muted" style="font-size:11px;">Se revisa una muestra al azar de elementos constructivos; cada no conformidad le queda como acción a quien cubicó.</span>
     </div>
+
+    <!-- LO MÍO primero: si tengo correcciones pendientes, las veo al entrar. -->
+    <div class="card audc audmias" id="audMias" style="display:none;"></div>
 
     <!-- ══════ 1 · CREAR ══════ -->
     <div class="card audc" style="border-top:3px solid #1565C0;">
@@ -41,7 +43,7 @@
         <div class="audcampo" style="width:230px; flex:none;">
           <label>Fechas <small class="muted" style="font-weight:400;">(automáticas)</small></label>
           <div class="audfechas"><span>Creación <b id="audFCreacion">hoy</b></span><span>Plazo <b id="audFPlazo">—</b></span></div>
-          <small class="muted">cierre = cuando se revise el último elemento</small>
+          <small class="muted">inicio = primer hallazgo · cierre = último elemento revisado</small>
         </div>
       </div>
 
@@ -119,9 +121,10 @@
       <div id="audAcciones" class="audacc" style="display:none;"></div>
 
       <div class="muted" style="font-size:10.5px; margin-top:6px;">
-        Clic en un elemento para revisarlo. El estado y las fechas de inicio y cierre se ponen solos:
-        <b>en curso</b> al primer hallazgo, <b>cerrada</b> al revisar el último. Una NC genera una
-        <b>acción</b> para quien cubicó; el cubicador corrige en su cubicación y el auditor <b>verifica</b>.
+        Clic en un elemento para revisarlo. El estado y las fechas se ponen solos: <b>en curso</b> al
+        primer hallazgo, <b>cerrada</b> al revisar el último. Una no conformidad le llega como
+        <b>acción</b> a quien cubicó (le aparece en la campana y arriba en esta pantalla); él corrige
+        en su cubicación, la marca corregida, y el auditor <b>verifica</b>.
       </div>
     </div>
 
@@ -192,5 +195,21 @@
   .audhz.conforme{background:#8BC34A;} .audhz.observacion{background:#ffb74d;}
   .audhz.nc_menor{background:#ef9a9a; color:#5d1a1a;} .audhz.nc_mayor{background:#c62828;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
-  .audacc .audsel{font-size:10.5px; padding:2px 4px; border:1px solid #cfd8dc; border-radius:4px;}
+  /* Mis correcciones pendientes: lo primero que ve el cubicador al entrar. */
+  .audmias{background:#fffdf5; border-top:3px solid #ffb300;}
+  /* Estado de la acción. Pendiente pesa, verificada se apaga: lo cerrado no debe gritar. */
+  .audacc1{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
+  .audacc1.pendiente{background:#fff3e0; color:#e65100;}
+  .audacc1.corregida{background:#e3f2fd; color:#1565C0;}
+  .audacc1.verificada{background:#e8f5e9; color:#2e7d32;}
+  .audmini{font-size:10px; font-weight:600; padding:2px 9px; border-radius:4px; cursor:pointer;
+           border:1px solid #cfd8dc; background:#fff; color:#546e7a; white-space:nowrap;}
+  .audmini:hover{border-color:#1565C0; color:#1565C0;}
+  .audmini.ver{background:#1565C0; border-color:#0d47a1; color:#fff;}
+  .audmini:disabled{opacity:.5; cursor:wait;}
+  /* Acciones sin corregir, en la lista: el número que dice «esto sigue abierto». */
+  .audpend{background:#fff3e0; color:#e65100; font-size:9px; font-weight:700; border-radius:99px; padding:0 5px;}
+  .audt td.venc{color:#c62828; font-weight:700;}
+  .audx{border:0; background:none; color:#cfd8dc; cursor:pointer; padding:0 3px; font-size:12px;}
+  .audx:hover{color:#c62828;}
 </style>

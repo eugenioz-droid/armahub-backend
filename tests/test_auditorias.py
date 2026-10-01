@@ -48,12 +48,22 @@ check("el router está montado bajo /api/v1 (el front habla sólo por ahí)",
       "auditorias_router," in MAIN[MAIN.index("_api_routers = ["):MAIN.index("for r in _api_routers")]
       and "app.include_router(auditorias_router)" in MAIN)
 
-print("\n2. Es MAQUETA: el backend sólo lee")
-check("sólo GET, ningún INSERT/UPDATE/DELETE",
-      SRC.count("@router.get(") == 4 and "@router.post" not in SRC and "@router.put" not in SRC
-      and "INSERT" not in SRC.upper().replace("INSERTAR", "") and "UPDATE " not in SRC and "DELETE " not in SRC)
-check("...y el front guarda las auditorías en el navegador, no en la base",
-      "localStorage.setItem(CLAVE" in JS and "'audMaqueta'" in JS)
+print("\n2. Las auditorías viven en la BASE, no en el navegador")
+MIG = open(os.path.join(ROOT, "armahub", "migrations", "117_auditorias.sql"), encoding="utf-8").read()
+check("hay dos tablas: la auditoría y su muestra",
+      "CREATE TABLE IF NOT EXISTS auditorias" in MIG
+      and "CREATE TABLE IF NOT EXISTS auditoria_elementos" in MIG
+      and "REFERENCES auditorias(id) ON DELETE CASCADE" in MIG)
+check("...la muestra se guarda (no se resortea) y la semilla queda para explicarla",
+      "semilla         TEXT NOT NULL" in MIG and "INSERT INTO auditoria_elementos" in SRC
+      and "cur.executemany(" in SRC)
+check("...el mismo elemento no puede estar dos veces en una auditoría",
+      "ux_aud_elem" in MIG and "(auditoria_id, sector, piso, ciclo, eje)" in MIG)
+check("el front ya NO guarda en el navegador: todo pasa por la API",
+      "localStorage" not in JS and "req('POST', '/auditorias'" in JS
+      and "req('GET', '/auditorias/'" in JS)
+check("un solo sorteo para la vista previa y para la creación",
+      "def _sortear(cur" in SRC and SRC.count("_sortear(") == 3)
 
 print("\n3. El elemento constructivo y la muestra")
 check("el elemento es la clave sector · piso · ciclo · eje", A._CLAVE == "(sector, piso, ciclo, eje)")
@@ -74,8 +84,16 @@ check("estados: planificada · en curso · cerrada", A.ESTADOS == ("planificada"
 check("hallazgos: conforme · observación · NC menor · NC mayor",
       A.HALLAZGOS == ("conforme", "observacion", "nc_menor", "nc_mayor"))
 check("...y la pantalla usa esas palabras", all(w in HTM for w in ("conforme", "observación", "NC menor", "NC mayor", "acción", "verifica")))
-check("las fechas se llenan solas: creación hoy, plazo en días hábiles",
-      "(automáticas)" in HTM and "DIAS_PLAZO = 10" in JS and "function sumaHabiles" in JS)
+check("acciones: pendiente · corregida · verificada", A.ACCIONES == ("pendiente", "corregida", "verificada"))
+check("las fechas las pone el SISTEMA: creación hoy, plazo en días hábiles",
+      "(automáticas)" in HTM and "DIAS_PLAZO = 10" in SRC and "def _habiles(" in SRC
+      and "_habiles(hoy, DIAS_PLAZO)" in SRC)
+check("...y el estado se DERIVA de los hallazgos, en la base",
+      "def estado_de(revisados: int, total: int)" in SRC and "def _recalcular(cur" in SRC
+      and A.estado_de(0, 5) == "planificada" and A.estado_de(1, 5) == "en_curso"
+      and A.estado_de(5, 5) == "cerrada" and A.estado_de(6, 5) == "cerrada")
+check("...el plazo cuenta hábiles: 10 desde un viernes caen dos viernes después",
+      A._habiles(__import__("datetime").date(2026, 10, 2), 10) == __import__("datetime").date(2026, 10, 16))
 check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
       "AS reclamos" in SRC and "reclamo(s) abierto(s)" in JS)
 
@@ -84,20 +102,35 @@ check("el elemento se trae ENTERO: marca, Ø, figura, dimensiones, largo, cantid
       '@router.get("/auditorias/elemento")' in SRC
       and all(c in SRC for c in ("marca, diam, figura, dim_a", "largo_total, cant, mult, cant_total", "nombre_plano"))
       and 'id="audRevBarras"' in HTM)
-check("el hallazgo tiene los cuatro niveles y texto obligatorio si no es conforme",
-      'id="audRevChips"' in HTM and "Di qué encontraste: sin texto no hay hallazgo." in JS
-      and "on.dataset.h !== 'conforme' && !texto" in JS)
+check("el hallazgo tiene los cuatro niveles y el TEXTO LO EXIGE EL BACKEND si no es conforme",
+      'id="audRevChips"' in HTM
+      and 'detail="Di qué encontraste: un hallazgo sin texto no es evidencia."' in SRC
+      and 'body.hallazgo != "conforme" and not texto' in SRC)
 check("la causa sale del Ishikawa de Cubicaciones que Calidad ya tiene",
       'AREA_CUBICACIONES = "Cubicaciones"' in SRC and "FROM area_rca_subcausas s" in SRC
       and "BASE.causas" in JS)
-check("estado y fechas se derivan solos: en curso al primer hallazgo, cerrada al último",
-      "function estadoDe(aud)" in JS and "if (!a.inicio) a.inicio = iso(new Date());" in JS
-      and "a.cierre = a.estado === 'cerrada' ? iso(new Date()) : null;" in JS)
-check("cada NC es una acción para quien cubicó; la corrección no la hace el auditor",
-      "function accionesDe(aud)" in JS and "h.hallazgo !== 'nc_menor' && h.hallazgo !== 'nc_mayor'" in JS
-      and "La corrección no se hace aquí" in HTM)
-check("el resultado de la lista es la cuenta por hallazgo", "function resultadoDe(aud)" in JS
-      and "a.resultado = resultadoDe(a);" in JS)
+check("el resultado se cuenta en la BASE y el front sólo lo pinta",
+      "COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_mayor')" in SRC
+      and "resultadoDe" not in JS and "var r = a.resultado || {};" in JS)
+
+print("\n5b. La acción que nace de la no conformidad")
+check("sólo las NC abren acción, y arranca pendiente",
+      'es_nc = body.hallazgo in ("nc_menor", "nc_mayor")' in SRC and 'accion = "pendiente"' in SRC.replace(
+          'accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"',
+          'accion = "pendiente"'))
+check("...y lo ya verificado no se pisa al reeditar el hallazgo",
+      'accion_previa if accion_previa in ("corregida", "verificada")' in SRC)
+check("VERIFICAR es del auditor: el que corrigió no puede darse el visto bueno",
+      'body.estado == "verificada" and email != auditor and not es_admin' in SRC
+      and "Verificar es del auditor de esta auditoría." in SRC)
+check("a quien cubicó le llega aviso en la campana, sin romper el hallazgo si falla",
+      "def _avisar(" in SRC and "'auditoria_accion'" in SRC and "except Exception:" in SRC
+      and "reclamo_id` va NULL" in SRC)
+check("...y además tiene su propia caja «mis correcciones pendientes»",
+      '@router.get("/auditorias/mias/acciones")' in SRC and 'id="audMias"' in HTM
+      and "cargarMisAcciones" in JS)
+check("una auditoría con hallazgos NO se borra (es un registro de calidad)",
+      "una auditoría con hallazgos no se borra" in SRC and "status_code=409" in SRC)
 
 print("\n6. El alcance se arma: multi-selección y contadores que se entienden")
 check("el clic simple suma (no exige Ctrl) y hay un botón «Todos» que suelta",

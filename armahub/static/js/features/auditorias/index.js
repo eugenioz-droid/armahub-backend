@@ -1,11 +1,16 @@
-// AUDITORÍAS DE CUBICACIÓN — MAQUETA (1-oct). Ver tabs/auditorias.html y auditorias.py.
+// AUDITORÍAS DE CUBICACIÓN (1-oct). Ver tabs/auditorias.html y auditorias.py.
 //
-// Lo que hace hoy: el formulario que CREA la auditoría (obra, quién audita, alcance,
-// muestra, fechas automáticas), saca la muestra REAL de elementos al azar, y la lista de
-// auditorías con estado, fechas y resultado. La revisión elemento a elemento viene después.
+// Tres pantallas en una:
+//   1. CREAR: obra, quién audita, alcance (tipo · pisos · ciclos) y cuántos elementos.
+//      Las fechas las pone el sistema. Al crear, el servidor sortea la muestra y la
+//      GUARDA: de ahí en adelante se audita contra esa lista, que ya no cambia.
+//   2. REVISAR: la muestra, y al abrir un elemento sus barras enteras. Por elemento, un
+//      hallazgo en los cuatro niveles de la ISO, con qué se encontró y la causa.
+//   3. ACCIONES: cada no conformidad le queda al que cubicó. Él la marca corregida —en
+//      su cubicación, no acá— y el auditor la verifica.
 //
-// ES MAQUETA: las auditorías se guardan en ESTE navegador (localStorage). Cuando el
-// formato esté aprobado pasan a la base; la muestra se reproduce con su semilla.
+// El estado y las fechas NO se eligen: los deriva el backend de los hallazgos. El front
+// sólo muestra lo que vino.
 (function (global) {
   'use strict';
 
@@ -13,55 +18,52 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function kg0(n) { return Math.round(Number(n) || 0).toLocaleString('es-CL'); }
-  function iso(d) { return d.toISOString().slice(0, 10); }
   function ddmm(s) { if (!s) return '—'; var p = s.slice(0, 10).split('-'); return p[2] + '/' + p[1] + '/' + p[0].slice(2); }
   function aviso(m) { if (global.showToast) global.showToast(m, 'error'); else alert(m); }
+  function ok(m) { if (global.showToast) global.showToast(m, 'success'); }
 
-  async function req(url) {
-    var res = await fetch(global.apiUrl(url), { headers: global.authHeaders() });
+  async function req(metodo, url, cuerpo) {
+    var opts = { method: metodo, headers: Object.assign({}, global.authHeaders()) };
+    if (cuerpo !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(cuerpo); }
+    var res = await fetch(global.apiUrl(url), opts);
     if (res.status === 401) { global.logout(); return null; }
     var data = null; try { data = await res.json(); } catch (e) {}
-    if (!res.ok) throw new Error((data && data.detail) || ('Error ' + res.status));
+    if (!res.ok) {
+      var det = data && data.detail;
+      if (Array.isArray(det)) det = det.map(function (d) { return (d.loc || []).slice(-1) + ': ' + d.msg; }).join(' · ');
+      throw new Error((det && (det.msg || det)) || ('Error ' + res.status));
+    }
     return data;
   }
 
   // ACÁ EL CLIC SIMPLE SUMA. En los filtros de aSa Data el clic deja «sólo ése» porque
   // uno mira una cosa a la vez; acá se está ARMANDO un alcance —«los pisos 3, 4 y 5»— y
-  // elegir varios es el caso normal, no la excepción. Exigir Ctrl para lo normal se
-  // sentía roto. Lista vacía = todos.
+  // elegir varios es el caso normal, no la excepción. Lista vacía = todos.
   function marcar(lista, valor) {
     var i = lista.indexOf(valor);
     if (i === -1) lista.push(valor); else lista.splice(i, 1);
     return lista;
   }
 
-  // PLAZO: días hábiles desde la creación. Después lo fija el backend (y será configurable).
-  var DIAS_PLAZO = 10;
-  function sumaHabiles(desde, n) {
-    var d = new Date(desde.getTime());
-    while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; }
-    return d;
-  }
   var COLOR = { conforme: '#8BC34A', observacion: '#ffb74d', nc_menor: '#ef9a9a', nc_mayor: '#c62828' };
+  var HALLAZGO_TXT = { conforme: 'Conforme', observacion: 'Observación', nc_menor: 'NC menor', nc_mayor: 'NC mayor' };
   var ESTADO_TXT = { planificada: 'Planificada', en_curso: 'En curso', cerrada: 'Cerrada' };
+  var ACCION_TXT = { pendiente: 'Pendiente', corregida: 'Corregida', verificada: 'Verificada' };
 
   var BASE = null, UNIV = null;
   var OBRA = '', AUDITOR = '', SECT = [], PISOS = [], CICLOS = [];
-  var AUDS = [], ABIERTA = null;
-  var CLAVE = 'audMaqueta';
-  function leer() { try { return JSON.parse(localStorage.getItem(CLAVE) || '[]'); } catch (e) { return []; } }
-  function guardar() { try { localStorage.setItem(CLAVE, JSON.stringify(AUDS)); } catch (e) {} }
+  var LISTA = [], ABIERTA = null, AUD = null, ELEM = null;
 
   var _bound = false;
   global.loadAuditorias = async function () {
     if (!$('tab-auditorias')) return;
     try {
-      BASE = await req('/auditorias/obras');
+      BASE = await req('GET', '/auditorias/obras');
       if (!BASE) return;
-      AUDS = leer();
       if (!_bound) { _bound = true; bind(); }
       pintarForm();
-      pintarLista();
+      await cargarLista();
+      await cargarMisAcciones();
     } catch (e) { aviso(e.message); }
   };
 
@@ -69,7 +71,7 @@
     $('audObra').addEventListener('change', async function () {
       OBRA = this.value; SECT = []; PISOS = []; CICLOS = []; UNIV = null;
       if (OBRA) {
-        try { UNIV = await req('/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA)); }
+        try { UNIV = await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA)); }
         catch (e) { aviso(e.message); }
       }
       pintarAlcance(); pintarEstado();
@@ -77,7 +79,8 @@
     $('audAuditor').addEventListener('change', function () { AUDITOR = this.value; pintarEstado(); });
     $('audN').addEventListener('input', pintarEstado);
     $('audCrear').addEventListener('click', crear);
-    $('audDetCerrar').addEventListener('click', function () { ABIERTA = null; pintarLista(); pintarDetalle(); });
+    $('audDetCerrar').addEventListener('click', function () { ABIERTA = null; AUD = null; ELEM = null; pintarLista(); pintarDetalle(); });
+    $('audRevGuardar').addEventListener('click', guardarHallazgo);
   }
 
   function pintarForm() {
@@ -92,10 +95,9 @@
       return '<option value="' + esc(a.email) + '">' + esc(a.nombre) + '</option>';
     }).join('');
     sa.value = AUDITOR;
-    $('audN').value = $('audN').value || BASE.muestra_por_defecto || 10;
-    var hoy = new Date();
-    $('audFCreacion').textContent = ddmm(iso(hoy));
-    $('audFPlazo').textContent = ddmm(iso(sumaHabiles(hoy, DIAS_PLAZO))) + ' (' + DIAS_PLAZO + ' hábiles)';
+    if (!$('audN').value) $('audN').value = BASE.muestra_por_defecto || 10;
+    $('audFCreacion').textContent = 'hoy';
+    $('audFPlazo').textContent = (BASE.dias_plazo || 10) + ' días hábiles';
     pintarAlcance(); pintarEstado();
   }
 
@@ -134,168 +136,162 @@
 
   function pintarEstado() {
     var n = parseInt($('audN').value, 10) || 0;
-    var ok = !!(OBRA && AUDITOR && n > 0 && UNIV);
-    $('audCrear').disabled = !ok;
+    var listo = !!(OBRA && AUDITOR && n > 0 && UNIV);
+    $('audCrear').disabled = !listo;
     $('audRango').textContent = UNIV ? ('alcance: ' + (SECT.length ? SECT.map(function (s) {
       return ((UNIV.sectores || []).filter(function (x) { return x.sector === s; })[0] || {}).nombre || s; }).join(', ') : 'todos los tipos') +
       ' · ' + (PISOS.length ? PISOS.join(', ') : 'todos los pisos') + ' · ' + (CICLOS.length ? CICLOS.join(', ') : 'todos los ciclos')) : '';
     $('audNInfo').textContent = UNIV ? ('de ' + UNIV.elementos) : '';
-    $('audCrearMsg').textContent = ok ? '' : 'Elige obra y quién audita.';
+    $('audCrearMsg').textContent = listo ? '' : 'Elige obra y quién audita.';
   }
 
-  // CREAR = sacar la muestra y dejar la auditoría planificada. Las fechas las pone el sistema.
   async function crear() {
-    var n = parseInt($('audN').value, 10) || 10;
-    $('audCrear').disabled = true; $('audCrearMsg').textContent = 'Sacando la muestra…';
+    $('audCrear').disabled = true; $('audCrearMsg').textContent = 'Sorteando la muestra…';
     try {
-      var m = await req('/auditorias/muestra?id_proyecto=' + encodeURIComponent(OBRA) + '&n=' + n +
-        '&sectores=' + encodeURIComponent(SECT.join(',')) + '&pisos=' + encodeURIComponent(PISOS.join(',')) +
-        '&ciclos=' + encodeURIComponent(CICLOS.join(',')));
-      if (!m) return;
-      var o = (BASE.obras || []).filter(function (x) { return x.id_proyecto === OBRA; })[0] || {};
-      var a = (BASE.auditores || []).filter(function (x) { return x.email === AUDITOR; })[0] || {};
-      var hoy = new Date();
-      var aud = {
-        id: 'A-' + Date.now().toString(36).toUpperCase(), id_proyecto: OBRA, obra: o.obra || OBRA,
-        auditor: AUDITOR, auditor_nombre: a.nombre || AUDITOR,
-        alcance: { sectores: SECT.slice(), pisos: PISOS.slice(), ciclos: CICLOS.slice() },
-        n: m.n, total_rango: m.total_rango, semilla: m.semilla, elementos: m.elementos,
-        kg: m.kg, barras: m.barras,
-        creada: iso(hoy), plazo: iso(sumaHabiles(hoy, DIAS_PLAZO)), inicio: null, cierre: null,
-        estado: 'planificada', resultado: null
-      };
-      AUDS.unshift(aud); guardar();
-      ABIERTA = aud.id;
-      $('audCrearMsg').textContent = 'Lista: ' + m.elementos.length + ' elementos de ' + m.total_rango + ' en el alcance.';
-      pintarLista(); pintarDetalle();
+      var a = await req('POST', '/auditorias', {
+        id_proyecto: OBRA, auditor: AUDITOR, n: parseInt($('audN').value, 10) || 10,
+        sectores: SECT, pisos: PISOS, ciclos: CICLOS
+      });
+      if (!a) return;
+      ok('Auditoría ' + a.codigo + ' creada');
+      $('audCrearMsg').textContent = a.codigo + ': ' + a.elementos.length + ' elementos de ' + a.total_rango + ' del alcance.';
+      ABIERTA = a.id; AUD = a; ELEM = null;
+      await cargarLista();
+      pintarDetalle();
     } catch (e) { aviso(e.message); $('audCrearMsg').textContent = e.message; }
     pintarEstado();
   }
 
-  function alcanceTxt(a) {
-    var s = a.alcance || {};
-    var tipos = (s.sectores || []).map(function (x) { return (BASE.sectores || {})[x] || x; });
-    return [tipos.length ? tipos.join(', ') : 'Todo', s.pisos && s.pisos.length ? s.pisos.join(', ') : 'todos los pisos',
-            s.ciclos && s.ciclos.length ? s.ciclos.join(', ') : 'todos los ciclos'].join(' · ');
+  async function cargarLista() {
+    try {
+      var d = await req('GET', '/auditorias');
+      LISTA = (d && d.auditorias) || [];
+      pintarLista();
+    } catch (e) { aviso(e.message); }
   }
-  // La barrita del resultado: conforme / observación / NC menor / NC mayor sobre la muestra.
+
+  function alcanceTxt(a) {
+    var tipos = (a.sectores || []).map(function (x) { return (BASE.sectores || {})[x] || x; });
+    return [tipos.length ? tipos.join(', ') : 'Todo',
+            (a.pisos || []).length ? a.pisos.join(', ') : 'todos los pisos',
+            (a.ciclos || []).length ? a.ciclos.join(', ') : 'todos los ciclos'].join(' · ');
+  }
+  // La barrita del resultado: conforme / observación / NC menor / NC mayor de la muestra.
   function barraResultado(a) {
-    var r = a.resultado;
-    if (!r) return '<div class="audres" title="Sin revisar"></div>';
-    var tot = a.n || 1;
-    return '<div class="audres" title="' + esc(Object.keys(r).map(function (k) { return k + ': ' + r[k]; }).join(' · ')) + '">' +
-      Object.keys(COLOR).map(function (k) { return r[k] ? '<i style="width:' + (r[k] / tot * 100).toFixed(1) + '%; background:' + COLOR[k] + '"></i>' : ''; }).join('') + '</div>';
+    var r = a.resultado || {};
+    if (!a.revisados) return '<div class="audres" title="Sin revisar"></div>';
+    return '<div class="audres" title="' + Object.keys(HALLAZGO_TXT).map(function (k) {
+        return HALLAZGO_TXT[k] + ': ' + (r[k] || 0); }).join(' · ') + '">' +
+      Object.keys(COLOR).map(function (k) {
+        return r[k] ? '<i style="width:' + (r[k] / a.n * 100).toFixed(1) + '%; background:' + COLOR[k] + '"></i>' : '';
+      }).join('') + '</div>';
   }
 
   function pintarLista() {
-    $('audListaN').textContent = '· ' + AUDS.length;
-    if (!AUDS.length) {
+    $('audListaN').textContent = '· ' + LISTA.length;
+    if (!LISTA.length) {
       $('audLista').innerHTML = '<tbody><tr><td class="audvacio">Todavía no hay auditorías. Crea la primera arriba.</td></tr></tbody>';
       return;
     }
     var html = '<thead><tr><th>#</th><th>Obra</th><th>Alcance</th><th>Audita</th><th class="num">Muestra</th>' +
-      '<th>Creada</th><th>Plazo</th><th>Cierre</th><th>Estado</th><th>Resultado</th></tr></thead><tbody>';
-    AUDS.forEach(function (a) {
-      html += '<tr class="fila' + (a.id === ABIERTA ? ' sel' : '') + '" data-id="' + esc(a.id) + '">' +
-        '<td class="cc">' + esc(a.id) + '</td>' +
+      '<th>Creada</th><th>Plazo</th><th>Cierre</th><th>Estado</th><th>Resultado</th><th></th></tr></thead><tbody>';
+    LISTA.forEach(function (a) {
+      var vencida = a.estado !== 'cerrada' && a.plazo && a.plazo < new Date().toISOString().slice(0, 10);
+      html += '<tr class="fila' + (a.id === ABIERTA ? ' sel' : '') + '" data-id="' + a.id + '">' +
+        '<td class="cc">' + esc(a.codigo) + '</td>' +
         '<td title="' + esc(a.obra) + '">' + esc(a.obra) + '</td>' +
         '<td title="' + esc(alcanceTxt(a)) + '">' + esc(alcanceTxt(a)) + '</td>' +
-        '<td>' + esc(a.auditor_nombre) + '</td>' +
-        '<td class="num" title="' + a.barras + ' barras · ' + kg0(a.kg) + ' kg">' + a.n + ' de ' + a.total_rango + '</td>' +
-        '<td>' + ddmm(a.creada) + '</td><td>' + ddmm(a.plazo) + '</td><td>' + ddmm(a.cierre) + '</td>' +
-        '<td><span class="audest ' + esc(a.estado) + '">' + esc(ESTADO_TXT[a.estado] || a.estado) + '</span></td>' +
-        '<td>' + barraResultado(a) + '</td></tr>';
+        '<td>' + esc((a.auditor || '').split('@')[0]) + '</td>' +
+        '<td class="num" title="' + kg0(a.kg) + ' kg">' + a.revisados + '/' + a.n + ' de ' + a.total_rango + '</td>' +
+        '<td>' + ddmm(a.creada) + '</td>' +
+        '<td' + (vencida ? ' class="venc" title="Pasó el plazo"' : '') + '>' + ddmm(a.plazo) + '</td>' +
+        '<td>' + ddmm(a.cierre) + '</td>' +
+        '<td><span class="audest ' + esc(a.estado) + '">' + esc(ESTADO_TXT[a.estado] || a.estado) + '</span>' +
+          (a.acciones_abiertas ? ' <span class="audpend" title="Acciones sin corregir">' + a.acciones_abiertas + '</span>' : '') + '</td>' +
+        '<td>' + barraResultado(a) + '</td>' +
+        '<td>' + (a.revisados ? '' : '<button class="audx" data-borrar="' + a.id + '" title="Borrar: todavía no tiene hallazgos">✕</button>') + '</td></tr>';
     });
     $('audLista').innerHTML = html + '</tbody>';
     $('audLista').querySelectorAll('tr.fila').forEach(function (tr) {
-      tr.addEventListener('click', function () { ABIERTA = (ABIERTA === tr.dataset.id) ? null : tr.dataset.id; pintarLista(); pintarDetalle(); });
-    });
-  }
-
-  // ── Las reglas, puras ───────────────────────────────────────────────────────
-  function claveDe(e) { return [e.sector, e.piso, e.ciclo, e.eje].join('|'); }
-  // RESULTADO = cuántos elementos quedaron en cada hallazgo. Null si no se revisó nada.
-  function resultadoDe(aud) {
-    var r = { conforme: 0, observacion: 0, nc_menor: 0, nc_mayor: 0 }, n = 0;
-    Object.keys(aud.hallazgos || {}).forEach(function (k) {
-      var h = aud.hallazgos[k];
-      if (h && r[h.hallazgo] != null) { r[h.hallazgo]++; n++; }
-    });
-    return n ? r : null;
-  }
-  // ESTADO se deriva, no se elige: sin revisar = planificada; algo revisado = en curso;
-  // todo revisado = cerrada. (Cuando deje de ser maqueta, cerrar exigirá además que las
-  // acciones de las NC estén verificadas.)
-  function estadoDe(aud) {
-    var n = Object.keys(aud.hallazgos || {}).length;
-    if (!n) return 'planificada';
-    return n >= (aud.elementos || []).length ? 'cerrada' : 'en_curso';
-  }
-  // ACCIONES: cada no conformidad es una acción para quien cubicó ese elemento. La
-  // corrección NO la hace el auditor en el sistema: se le exige al cubicador.
-  function accionesDe(aud) {
-    return (aud.elementos || []).map(function (e) {
-      var h = (aud.hallazgos || {})[claveDe(e)];
-      if (!h || (h.hallazgo !== 'nc_menor' && h.hallazgo !== 'nc_mayor')) return null;
-      return { elemento: e.nombre, para: e.cubicado_por, hallazgo: h.hallazgo, texto: h.texto,
-               causa: h.causa, estado: h.accion || 'pendiente' };
-    }).filter(Boolean);
-  }
-  var HALLAZGO_TXT = { conforme: 'Conforme', observacion: 'Observación', nc_menor: 'NC menor', nc_mayor: 'NC mayor' };
-
-  // La auditoría abierta: la muestra que salió, con el hallazgo de cada elemento. Marca
-  // en rojo si el auditor cubicó ese elemento (independencia): habría que cambiarlo.
-  var ELEM = null;   // el elemento que se está revisando
-  function pintarDetalle() {
-    var a = AUDS.filter(function (x) { return x.id === ABIERTA; })[0];
-    var caja = $('audDetalle');
-    if (!a) { caja.style.display = 'none'; ELEM = null; pintarRevision(null); return; }
-    caja.style.display = '';
-    var rev = Object.keys(a.hallazgos || {}).length;
-    $('audDetTitulo').textContent = a.id + ' · ' + a.obra;
-    $('audDetInfo').innerHTML = 'Audita <b>' + esc(a.auditor_nombre) + '</b> · alcance ' + esc(alcanceTxt(a)) +
-      ' · muestra <b>' + a.n + '</b> de ' + a.total_rango + ' elementos · ' + a.barras + ' barras · ' + kg0(a.kg) +
-      ' kg · revisados <b>' + rev + '/' + (a.elementos || []).length + '</b>' +
-      ' · <span class="audest ' + esc(a.estado) + '">' + esc(ESTADO_TXT[a.estado] || a.estado) + '</span>';
-    var html = '<thead><tr><th>Elemento</th><th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
-      '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th></tr></thead><tbody>';
-    var conflicto = 0;
-    (a.elementos || []).forEach(function (e) {
-      var mismo = (e.cubicado_por || '').indexOf(a.auditor) !== -1;
-      if (mismo) conflicto++;
-      var h = (a.hallazgos || {})[claveDe(e)];
-      var k = claveDe(e);
-      html += '<tr class="fila' + (ELEM && claveDe(ELEM) === k ? ' sel' : '') + '" data-k="' + esc(k) + '" title="Clic para revisar este elemento">' +
-        '<td title="' + esc(e.nombre) + '"><b>' + esc(e.nombre) + '</b></td>' +
-        '<td>' + esc(e.tipo) + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>' +
-        '<td class="num">' + e.barras + '</td><td class="num">' + kg0(e.kg) + '</td>' +
-        '<td' + (mismo ? ' class="indep" title="Lo cubicó quien audita: hay que cambiar este elemento"' : '') + '>' +
-        esc((e.cubicado_por || '').split('@')[0]) + (mismo ? ' ⚠' : '') + '</td>' +
-        '<td>' + (h ? '<span class="audhz ' + esc(h.hallazgo) + '">' + esc(HALLAZGO_TXT[h.hallazgo]) + '</span>' +
-                      (h.texto ? ' <span class="muted" title="' + esc(h.texto) + '">' + esc(h.texto.slice(0, 40)) + (h.texto.length > 40 ? '…' : '') + '</span>' : '')
-                    : '<span class="muted">pendiente</span>') + '</td></tr>';
-    });
-    $('audDetElems').innerHTML = html + '</tbody>';
-    if (conflicto) $('audDetInfo').innerHTML += ' · <b style="color:#c62828">' + conflicto + ' elemento(s) cubicados por quien audita</b>';
-    $('audDetElems').querySelectorAll('tr.fila').forEach(function (tr) {
-      tr.addEventListener('click', function () {
-        var e = (a.elementos || []).filter(function (x) { return claveDe(x) === tr.dataset.k; })[0];
-        abrirElemento(a, e);
+      tr.addEventListener('click', function (ev) {
+        if (ev.target.dataset.borrar) return;
+        abrir(Number(tr.dataset.id));
       });
     });
-    pintarAcciones(a);
-    if (ELEM && !(a.elementos || []).some(function (x) { return claveDe(x) === claveDe(ELEM); })) { ELEM = null; pintarRevision(null); }
+    $('audLista').querySelectorAll('button[data-borrar]').forEach(function (b) {
+      b.addEventListener('click', async function (ev) {
+        ev.stopPropagation();
+        if (!confirm('¿Borrar esta auditoría? Todavía no tiene hallazgos.')) return;
+        try {
+          await req('DELETE', '/auditorias/' + b.dataset.borrar);
+          if (ABIERTA === Number(b.dataset.borrar)) { ABIERTA = null; AUD = null; }
+          await cargarLista(); pintarDetalle(); ok('Auditoría borrada');
+        } catch (e) { aviso(e.message); }
+      });
+    });
   }
 
-  // Abrir un elemento: se traen sus barras y se muestra el formulario de hallazgo.
-  async function abrirElemento(a, e) {
+  async function abrir(id) {
+    if (ABIERTA === id) { ABIERTA = null; AUD = null; ELEM = null; pintarLista(); pintarDetalle(); return; }
+    try {
+      AUD = await req('GET', '/auditorias/' + id);
+      ABIERTA = id; ELEM = null;
+      pintarLista(); pintarDetalle();
+    } catch (e) { aviso(e.message); }
+  }
+
+  function pintarDetalle() {
+    var caja = $('audDetalle');
+    if (!AUD) { caja.style.display = 'none'; $('audRev').style.display = 'none'; return; }
+    caja.style.display = '';
+    $('audDetTitulo').textContent = AUD.codigo + ' · ' + AUD.obra;
+    $('audDetInfo').innerHTML = 'Audita <b>' + esc((AUD.auditor || '').split('@')[0]) + '</b> · alcance ' +
+      esc(alcanceTxt(AUD)) + ' · muestra <b>' + AUD.n + '</b> de ' + AUD.total_rango +
+      ' · revisados <b>' + AUD.revisados + '/' + AUD.n + '</b> · ' + kg0(AUD.kg) + ' kg' +
+      ' · <span class="audest ' + esc(AUD.estado) + '">' + esc(ESTADO_TXT[AUD.estado] || AUD.estado) + '</span>' +
+      ' · semilla <code>' + esc(AUD.semilla) + '</code>';
+    var conflicto = (AUD.elementos || []).filter(function (e) { return e.conflicto; }).length;
+    if (conflicto) $('audDetInfo').innerHTML += ' · <b style="color:#c62828">' + conflicto + ' elemento(s) cubicados por quien audita</b>';
+
+    var html = '<thead><tr><th>Elemento</th><th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
+      '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th><th>Acción</th></tr></thead><tbody>';
+    (AUD.elementos || []).forEach(function (e) {
+      html += '<tr class="fila' + (ELEM && ELEM.id === e.id ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
+        '<td title="' + esc(e.nombre) + '"><b>' + esc(e.nombre) + '</b></td>' +
+        '<td>' + esc(e.tipo || '') + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>' +
+        '<td class="num">' + e.barras + '</td><td class="num">' + kg0(e.kg) + '</td>' +
+        '<td' + (e.conflicto ? ' class="indep" title="Lo cubicó quien audita: habría que cambiar este elemento"' : '') + '>' +
+          esc((e.cubicado_por || '').split('@')[0]) + (e.conflicto ? ' ⚠' : '') + '</td>' +
+        '<td>' + (e.hallazgo
+          ? '<span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span>' +
+            (e.texto ? ' <span class="muted" title="' + esc(e.texto) + '">' + esc(e.texto.slice(0, 36)) + (e.texto.length > 36 ? '…' : '') + '</span>' : '')
+          : '<span class="muted">pendiente</span>') + '</td>' +
+        '<td>' + (e.accion_estado ? '<span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' : '') + '</td></tr>';
+    });
+    $('audDetElems').innerHTML = html + '</tbody>';
+    $('audDetElems').querySelectorAll('tr.fila').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        var e = (AUD.elementos || []).filter(function (x) { return x.id === Number(tr.dataset.id); })[0];
+        abrirElemento(e);
+      });
+    });
+    pintarAcciones();
+    if (ELEM) {
+      var vivo = (AUD.elementos || []).filter(function (x) { return x.id === ELEM.id; })[0];
+      if (vivo) { ELEM = vivo; pintarRevision(); } else { ELEM = null; $('audRev').style.display = 'none'; }
+    }
+  }
+
+  // Abrir un elemento: se traen sus barras y aparece el formulario de hallazgo.
+  async function abrirElemento(e) {
     ELEM = e; pintarDetalle();
     $('audRev').style.display = '';
     $('audRevTitulo').textContent = e.nombre;
     $('audRevInfo').textContent = 'cargando…';
     $('audRevBarras').innerHTML = '';
+    pintarRevision();
     try {
-      var d = await req('/auditorias/elemento?id_proyecto=' + encodeURIComponent(a.id_proyecto) +
+      var d = await req('GET', '/auditorias/elemento?id_proyecto=' + encodeURIComponent(AUD.id_proyecto) +
         '&sector=' + encodeURIComponent(e.sector || '') + '&piso=' + encodeURIComponent(e.piso || '') +
         '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || ''));
       if (!d) return;
@@ -312,16 +308,13 @@
       });
       $('audRevBarras').innerHTML = html + '</tbody>';
     } catch (err) { $('audRevInfo').textContent = err.message; }
-    pintarRevision(a);
   }
 
   // El formulario de hallazgo: cuatro niveles (ISO), texto, y la causa del Ishikawa.
-  function pintarRevision(a) {
-    var caja = $('audRev');
-    if (!a || !ELEM) { caja.style.display = 'none'; return; }
-    caja.style.display = '';
-    var h = (a.hallazgos || {})[claveDe(ELEM)] || {};
-    var sel = h.hallazgo || '';
+  function pintarRevision() {
+    if (!ELEM) { $('audRev').style.display = 'none'; return; }
+    $('audRev').style.display = '';
+    var sel = ELEM.hallazgo || '';
     $('audRevChips').innerHTML = Object.keys(HALLAZGO_TXT).map(function (k) {
       return '<button data-h="' + k + '" class="hz ' + k + (sel === k ? ' on' : '') + '">' + HALLAZGO_TXT[k] + '</button>';
     }).join('');
@@ -336,70 +329,106 @@
     sc.innerHTML = '<option value="">causa (Ishikawa Cubicaciones, opcional)</option>' + (BASE.causas || []).map(function (c) {
       return '<option value="' + esc(c.codigo) + '">' + esc(c.codigo) + ' · ' + esc(c.categoria_nombre) + ' · ' + esc(c.descripcion) + '</option>';
     }).join('');
-    sc.value = h.causa || '';
+    sc.value = ELEM.causa || '';
     sc.style.display = (sel === 'conforme' || !sel) ? 'none' : '';
-    $('audRevTexto').value = h.texto || '';
-    $('audRevMsg').textContent = h.fecha ? 'Registrado ' + ddmm(h.fecha) + (h.por ? ' por ' + h.por.split('@')[0] : '') : '';
+    $('audRevTexto').value = ELEM.texto || '';
+    $('audRevMsg').textContent = ELEM.revisado_el
+      ? 'Registrado ' + ddmm(ELEM.revisado_el) + (ELEM.revisado_por ? ' por ' + ELEM.revisado_por.split('@')[0] : '')
+      : '';
   }
 
-  function guardarHallazgo() {
-    var a = AUDS.filter(function (x) { return x.id === ABIERTA; })[0];
-    if (!a || !ELEM) return;
+  async function guardarHallazgo() {
+    if (!AUD || !ELEM) return;
     var on = $('audRevChips').querySelector('button.on');
     if (!on) { $('audRevMsg').textContent = 'Marca el hallazgo.'; return; }
-    var texto = $('audRevTexto').value.trim();
-    if (on.dataset.h !== 'conforme' && !texto) { $('audRevMsg').textContent = 'Di qué encontraste: sin texto no hay hallazgo.'; return; }
-    if (!a.hallazgos) a.hallazgos = {};
-    var previo = a.hallazgos[claveDe(ELEM)] || {};
-    a.hallazgos[claveDe(ELEM)] = { hallazgo: on.dataset.h, texto: texto, causa: on.dataset.h === 'conforme' ? '' : $('audRevCausa').value,
-                                   fecha: iso(new Date()), por: a.auditor, accion: previo.accion || 'pendiente' };
-    // Las fechas de inicio y cierre las pone el sistema, igual que la de creación.
-    if (!a.inicio) a.inicio = iso(new Date());
-    a.resultado = resultadoDe(a);
-    a.estado = estadoDe(a);
-    a.cierre = a.estado === 'cerrada' ? iso(new Date()) : null;
-    guardar();
-    pintarLista(); pintarDetalle(); pintarRevision(a);
-    $('audRevMsg').textContent = 'Guardado.';
+    $('audRevGuardar').disabled = true;
+    try {
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id, {
+        hallazgo: on.dataset.h, texto: $('audRevTexto').value, causa: $('audRevCausa').value });
+      ok('Hallazgo guardado');
+      await cargarLista();
+      pintarDetalle();
+    } catch (e) { aviso(e.message); $('audRevMsg').textContent = e.message; }
+    $('audRevGuardar').disabled = false;
   }
 
-  // Las acciones que salen de las NC: para quién, qué y en qué estado. En la maqueta
-  // el estado se cambia acá mismo; en real lo marca el cubicador y lo verifica el auditor.
-  function pintarAcciones(a) {
+  // Las acciones que salen de las NC: para quien cubicó. Él marca corregida; el auditor verifica.
+  function pintarAcciones() {
     var caja = $('audAcciones');
-    var acc = accionesDe(a);
+    var acc = (AUD.elementos || []).filter(function (e) { return e.accion_estado; });
     if (!acc.length) { caja.style.display = 'none'; return; }
     caja.style.display = '';
-    var ESTADO_ACC = { pendiente: 'Pendiente', corregida: 'Corregida (cubicador)', verificada: 'Verificada (auditor)' };
-    caja.innerHTML = '<div class="audh">Acciones <span class="muted">' + acc.length + ' · una por cada no conformidad, para quien cubicó</span></div>' +
-      '<table class="audt"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th><th>Qué se encontró</th><th>Causa</th><th>Estado</th></tr></thead><tbody>' +
-      acc.map(function (x, i) {
-        return '<tr><td>' + esc(x.elemento) + '</td><td>' + esc((x.para || '').split('@')[0]) + '</td>' +
-          '<td><span class="audhz ' + esc(x.hallazgo) + '">' + esc(HALLAZGO_TXT[x.hallazgo]) + '</span></td>' +
-          '<td title="' + esc(x.texto) + '">' + esc(x.texto) + '</td><td class="cc">' + esc(x.causa || '') + '</td>' +
-          '<td><select data-i="' + i + '" class="audsel">' + Object.keys(ESTADO_ACC).map(function (k) {
-            return '<option value="' + k + '"' + (x.estado === k ? ' selected' : '') + '>' + ESTADO_ACC[k] + '</option>'; }).join('') +
-          '</select></td></tr>';
+    caja.innerHTML = '<div class="audh">Acciones <span class="muted">' + acc.length +
+      ' · una por cada no conformidad. La corrección la hace quien cubicó, en su cubicación; el auditor verifica.</span></div>' +
+      '<table class="audt"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th><th>Qué se encontró</th>' +
+      '<th>Causa</th><th>Estado</th><th></th></tr></thead><tbody>' +
+      acc.map(function (e) {
+        return '<tr><td title="' + esc(e.nombre) + '">' + esc(e.nombre) + '</td>' +
+          '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
+          '<td><span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span></td>' +
+          '<td title="' + esc(e.texto || '') + '">' + esc(e.texto || '') + '</td>' +
+          '<td class="cc" title="' + esc(e.causa || '') + '">' + esc(e.causa || '') + '</td>' +
+          '<td><span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' +
+            (e.accion_por ? ' <span class="muted" style="font-size:9px">' + esc(e.accion_por.split('@')[0]) + '</span>' : '') + '</td>' +
+          '<td>' + (e.accion_estado === 'pendiente'
+              ? '<button class="audmini" data-acc="corregida" data-el="' + e.id + '">Marcar corregida</button>'
+              : e.accion_estado === 'corregida'
+                ? '<button class="audmini ver" data-acc="verificada" data-el="' + e.id + '">Verificar</button>'
+                : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
-    caja.querySelectorAll('select.audsel').forEach(function (s) {
-      s.addEventListener('change', function () {
-        var x = acc[Number(s.dataset.i)];
-        var e = (a.elementos || []).filter(function (el) { return el.nombre === x.elemento; })[0];
-        if (e && a.hallazgos[claveDe(e)]) { a.hallazgos[claveDe(e)].accion = s.value; guardar(); }
+    caja.querySelectorAll('button[data-acc]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        b.disabled = true;
+        try {
+          AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + b.dataset.el + '/accion',
+                          { estado: b.dataset.acc });
+          ok('Acción ' + ACCION_TXT[b.dataset.acc].toLowerCase());
+          await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+        } catch (e) { aviso(e.message); b.disabled = false; }
       });
     });
   }
 
-  var _bound2 = false;
-  function bindRevision() {
-    if (_bound2) return; _bound2 = true;
-    $('audRevGuardar').addEventListener('click', guardarHallazgo);
+  // MIS ACCIONES: lo que a mí me toca corregir, sin tener que buscar en qué auditoría salió.
+  async function cargarMisAcciones() {
+    var caja = $('audMias');
+    if (!caja) return;
+    try {
+      var d = await req('GET', '/auditorias/mias/acciones');
+      var abiertas = ((d && d.acciones) || []).filter(function (a) { return a.accion_estado !== 'verificada'; });
+      if (!abiertas.length) { caja.style.display = 'none'; return; }
+      caja.style.display = '';
+      caja.innerHTML = '<div class="audh">Mis correcciones pendientes <span class="muted">' + abiertas.length +
+        ' · salieron de una auditoría de tu cubicación</span></div>' +
+        '<table class="audt"><thead><tr><th>Auditoría</th><th>Obra</th><th>Elemento</th><th>Hallazgo</th>' +
+        '<th>Qué encontró el auditor</th><th>Plazo</th><th>Estado</th><th></th></tr></thead><tbody>' +
+        abiertas.map(function (a) {
+          return '<tr><td class="cc">' + esc(a.codigo) + '</td><td>' + esc(a.obra) + '</td>' +
+            '<td>' + esc(a.elemento) + '</td>' +
+            '<td><span class="audhz ' + esc(a.hallazgo) + '">' + esc(HALLAZGO_TXT[a.hallazgo]) + '</span></td>' +
+            '<td title="' + esc(a.texto || '') + '">' + esc(a.texto || '') + '</td>' +
+            '<td>' + ddmm(a.plazo) + '</td>' +
+            '<td><span class="audacc1 ' + esc(a.accion_estado) + '">' + esc(ACCION_TXT[a.accion_estado]) + '</span></td>' +
+            '<td>' + (a.accion_estado === 'pendiente'
+              ? '<button class="audmini" data-mia="' + a.elemento_id + '" data-aud="' + a.auditoria_id + '">Ya la corregí</button>'
+              : '<span class="muted" style="font-size:9.5px">esperando al auditor</span>') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      caja.querySelectorAll('button[data-mia]').forEach(function (b) {
+        b.addEventListener('click', async function () {
+          b.disabled = true;
+          try {
+            await req('PUT', '/auditorias/' + b.dataset.aud + '/elementos/' + b.dataset.mia + '/accion',
+                      { estado: 'corregida' });
+            ok('Avisado al auditor');
+            await cargarMisAcciones(); await cargarLista();
+            if (AUD && AUD.id === Number(b.dataset.aud)) { AUD = await req('GET', '/auditorias/' + AUD.id); pintarDetalle(); }
+          } catch (e) { aviso(e.message); b.disabled = false; }
+        });
+      });
+    } catch (e) { caja.style.display = 'none'; }
   }
-  var _loadAnterior = global.loadAuditorias;
-  global.loadAuditorias = async function () { await _loadAnterior(); if ($('audRevGuardar')) bindRevision(); };
 
   // Expuesto para los tests: lo puro.
-  global.__auditoriasTest = { marcar: marcar, sumaHabiles: sumaHabiles, DIAS_PLAZO: DIAS_PLAZO,
-                              resultadoDe: resultadoDe, estadoDe: estadoDe, accionesDe: accionesDe, claveDe: claveDe };
+  global.__auditoriasTest = { marcar: marcar, HALLAZGO_TXT: HALLAZGO_TXT, ACCION_TXT: ACCION_TXT };
 
 })(window);
