@@ -414,10 +414,33 @@ if s == 200 and d.get("obras"):
                     # La consola de Windows es cp1252 y el simbolo del gancho la revienta.
                     ejemplo = str(conlados[0]["dims"] if conlados else {}).encode("ascii", "replace").decode()
                     print("      %d barras · %d con lados · ejemplo %s" % (el["n"], len(conlados), ejemplo))
-                rr = cli.put("/api/v1/auditorias/%d/elementos/%d" % (a["id"], e0["id"]), headers=H,
-                             json={"hallazgo": "nc_menor", "texto": "gancho corto", "causa": causa})
-                check("se le puede registrar un hallazgo igual que a una de ArmaHub",
-                      rr.status_code == 200, rr.text[:160])
+                # LA REVISION ES POR BARRA: se marca cada una y la severidad sale del conjunto.
+                if s9 == 200 and el["barras"]:
+                    refs = [b["ref"] for b in el["barras"]]
+                    check("...cada barra trae su referencia estable (la marca, con ordinal si repite)",
+                          all(refs) and len(set(refs)) == len(refs))
+                    rr = cli.put("/api/v1/auditorias/%d/elementos/%d/revision" % (a["id"], e0["id"]), headers=H,
+                                 json={"items": [{"ref": refs[0], "conforme": False, "observacion": ""}]})
+                    check("una barra NO conforme sin decir que tiene -> 400", rr.status_code == 400, rr.text[:160])
+                    cuerpo = {"items": [{"ref": r, "marca": r, "conforme": (i > 0),
+                                         "observacion": "" if i > 0 else "gancho corto, 8 cm en vez de 12"}
+                                        for i, r in enumerate(refs[:3])],
+                              "hallazgo": "nc_menor", "causa": causa}
+                    rr = cli.put("/api/v1/auditorias/%d/elementos/%d/revision" % (a["id"], e0["id"]),
+                                 headers=H, json=cuerpo)
+                    check("se registra la revision barra por barra -> 200", rr.status_code == 200, rr.text[:200])
+                    if rr.status_code == 200:
+                        ee = [x for x in rr.json()["elementos"] if x["id"] == e0["id"]][0]
+                        check("...el elemento queda con la severidad y su accion",
+                              ee["hallazgo"] == "nc_menor" and ee["accion_estado"] == "pendiente")
+                        check("...cuenta cuantas barras se revisaron y cuantas fallaron",
+                              ee["items"] == min(3, len(refs)) and ee["items_malos"] == 1)
+                        check("...y el texto del elemento se arma solo con lo de las barras",
+                              "gancho corto" in (ee["texto"] or ""))
+                        s9b, el2 = get("/auditorias/elemento-asa", cc=e0["cc"], element=e0["eje"],
+                                       elemento_id=e0["id"])
+                        check("...al reabrir el elemento vuelve lo ya marcado",
+                              s9b == 200 and el2["revisados"].get(refs[0], {}).get("conforme") is False)
                 r = cli.delete("/api/v1/auditorias/%d" % a["id"], headers=H)
                 check("...y se borra al terminar la prueba", r.status_code == 200, r.text[:160])
                 with get_conn() as conn:

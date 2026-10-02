@@ -61,6 +61,9 @@
   // reconocerlos del texto del código y era adivinar—, así que se eligen a mano.
   var CCS = [], CC_LISTA = [], CC_BUSCA = '';
   var LISTA = [], ABIERTA = null, AUD = null, ELEM = null, CB_OBRA = null;
+  // El veredicto de cada barra del elemento abierto: {ref: {conforme, observacion}}.
+  // Vive acá mientras se revisa y se guarda todo junto.
+  var BARRAS = [], VERED = {};
 
   // Las obras de las DOS fuentes en una sola lista, que es lo que come el combobox. El
   // origen viaja en el item, así que elegir una obra de aSa o de ArmaHub es lo mismo
@@ -488,7 +491,9 @@
       html += '<tr class="fila' + (ELEM && ELEM.id === e.id ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
         '<td title="' + esc(e.nombre) + '"><b>' + esc(e.nombre) + '</b></td>' +
         '<td>' + esc(e.tipo || '') + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>' +
-        '<td class="num">' + e.barras + '</td><td class="num">' + kg0(e.kg) + '</td>' +
+        '<td class="num" title="' + (e.items || 0) + ' revisada(s)' + (e.items_malos ? ', ' + e.items_malos + ' no conforme(s)' : '') + '">' +
+          (e.items ? '<b>' + e.items + '</b>/' : '') + e.barras + '</td>' +
+        '<td class="num">' + kg0(e.kg) + '</td>' +
         '<td' + (e.conflicto ? ' class="indep" title="Lo cubicó quien audita: habría que cambiar este elemento"' : '') + '>' +
           esc((e.cubicado_por || '').split('@')[0]) + (e.conflicto ? ' ⚠' : '') + '</td>' +
         '<td>' + (e.hallazgo
@@ -524,54 +529,110 @@
       // las de aSa se piden en vivo por código de control (1 a 11 segundos).
       var d = AUD.origen === 'asa'
         ? await req('GET', '/auditorias/elemento-asa?cc=' + encodeURIComponent(e.cc || '') +
-                           '&element=' + encodeURIComponent(e.eje || ''))
+                           '&element=' + encodeURIComponent(e.eje || '') + '&elemento_id=' + e.id)
         : await req('GET', '/auditorias/elemento?id_proyecto=' + encodeURIComponent(AUD.id_proyecto) +
                            '&sector=' + encodeURIComponent(e.sector || '') + '&piso=' + encodeURIComponent(e.piso || '') +
-                           '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || ''));
+                           '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || '') +
+                           '&elemento_id=' + e.id);
       if (!d) return;
       $('audRevInfo').textContent = d.n + ' barras · ' + kg0(d.kg) + ' kg · ' +
         (AUD.origen === 'asa' ? ('CC ' + d.cc + ' · ' + (d.descr || '')) :
           ('plano ' + (d.planos.join(', ') || '—') + ' · cubicó ' +
            (d.cubicaron || []).map(function (x) { return x.split('@')[0]; }).join(', ')));
-      var html = '<thead><tr><th>Marca</th><th class="num">Ø</th><th>Figura</th><th>Lados / dimensiones</th>' +
-        '<th class="num">Largo</th><th class="num">Cant</th><th class="num">Peso</th><th>' +
-        (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') + '</th></tr></thead><tbody>';
-      d.barras.forEach(function (b) {
-        var dims = Object.keys(b.dims || {}).map(function (k) { return k + '=' + b.dims[k]; }).join(' · ');
-        html += '<tr><td class="cc">' + esc(b.marca || '') + '</td><td class="num">' + esc(b.diam || '') + '</td>' +
-          '<td>' + esc(b.figura || '') + '</td><td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
-          '<td class="num">' + (b.largo != null ? Math.round(b.largo) : '') + '</td>' +
-          '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
-          '<td class="num">' + kg0(b.peso_total) + '</td>' +
-          '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
-            esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td></tr>';
+      // EL VEREDICTO ES POR BARRA. Lo ya guardado se repinta para poder corregirlo.
+      BARRAS = d.barras || [];
+      VERED = {};
+      Object.keys(d.revisados || {}).forEach(function (ref) {
+        VERED[ref] = { conforme: d.revisados[ref].conforme, observacion: d.revisados[ref].observacion || '' };
       });
-      $('audRevBarras').innerHTML = html + '</tbody>';
+      pintarBarras();
     } catch (err) { $('audRevInfo').textContent = err.message; }
   }
 
-  // El formulario de hallazgo: cuatro niveles (ISO), texto, y la causa del Ishikawa.
+  // LA TABLA DE BARRAS, con su veredicto. Conforme / No conforme por barra, y el campo
+  // de observación aparece sólo cuando se marca no conforme: así no se pide escribir
+  // trece veces «ok».
+  function pintarBarras() {
+    var html = '<thead><tr><th style="width:92px">Veredicto</th><th>Marca</th><th class="num">Ø</th>' +
+      '<th>Figura</th><th>Lados / dimensiones</th><th class="num">Largo</th><th class="num">Cant</th>' +
+      '<th class="num">Peso</th><th>' + (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') +
+      '</th></tr></thead><tbody>';
+    BARRAS.forEach(function (b) {
+      var v = VERED[b.ref], dims = Object.keys(b.dims || {}).map(function (k) { return k + '=' + b.dims[k]; }).join(' · ');
+      var clase = v ? (v.conforme ? ' class="bueno"' : ' class="malo"') : '';
+      html += '<tr' + clase + ' data-ref="' + esc(b.ref) + '">' +
+        '<td><span class="audvb">' +
+          '<button class="si' + (v && v.conforme ? ' on' : '') + '" data-v="1" data-ref="' + esc(b.ref) + '" title="Conforme">OK</button>' +
+          '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="No conforme">NC</button>' +
+        '</span></td>' +
+        '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
+        '<td class="num">' + esc(b.diam || '') + '</td>' +
+        '<td>' + esc(b.figura || '') + '</td><td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
+        '<td class="num">' + (b.largo != null ? Math.round(b.largo) : '') + '</td>' +
+        '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
+        '<td class="num">' + kg0(b.peso_total) + '</td>' +
+        '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
+          esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td></tr>';
+      if (v && v.conforme === false) {
+        html += '<tr class="malo"><td></td><td colspan="8">' +
+          '<input type="text" class="audobs" data-obs="' + esc(b.ref) + '" placeholder="Qué tiene esta barra (obligatorio)" value="' +
+          esc(v.observacion || '') + '"></td></tr>';
+      }
+    });
+    $('audRevBarras').innerHTML = html + '</tbody>';
+    $('audRevBarras').querySelectorAll('button[data-v]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var ref = b.dataset.ref, si = b.dataset.v === '1';
+        if (VERED[ref] && VERED[ref].conforme === si) delete VERED[ref];   // volver a tocarlo lo suelta
+        else VERED[ref] = { conforme: si, observacion: (VERED[ref] || {}).observacion || '' };
+        pintarBarras(); pintarRevision();
+      });
+    });
+    $('audRevBarras').querySelectorAll('input[data-obs]').forEach(function (i) {
+      i.addEventListener('input', function () {
+        if (VERED[i.dataset.obs]) VERED[i.dataset.obs].observacion = i.value;
+      });
+    });
+    pintarRevision();
+  }
+
+  function cuentaBarras() {
+    var refs = Object.keys(VERED);
+    var malas = refs.filter(function (r) { return VERED[r].conforme === false; }).length;
+    return { revisadas: refs.length, malas: malas, total: BARRAS.length };
+  }
+
+  // La SEVERIDAD es del elemento y sólo se pregunta si hay alguna barra no conforme.
   function pintarRevision() {
     if (!ELEM) { $('audRev').style.display = 'none'; return; }
     $('audRev').style.display = '';
-    var sel = ELEM.hallazgo || '';
-    $('audRevChips').innerHTML = Object.keys(HALLAZGO_TXT).map(function (k) {
-      return '<button data-h="' + k + '" class="hz ' + k + (sel === k ? ' on' : '') + '">' + HALLAZGO_TXT[k] + '</button>';
-    }).join('');
-    $('audRevChips').querySelectorAll('button').forEach(function (b) {
-      b.addEventListener('click', function () {
-        $('audRevChips').querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        $('audRevCausa').style.display = (b.dataset.h === 'conforme') ? 'none' : '';
+    var c = cuentaBarras();
+    $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
+      (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '');
+    // Sin barras malas no hay severidad que elegir: el elemento es conforme y punto.
+    $('audRevSev').style.display = c.malas ? 'flex' : 'none';
+    if (c.malas) {
+      var sel = (ELEM.hallazgo && ELEM.hallazgo !== 'conforme') ? ELEM.hallazgo : 'nc_menor';
+      var previos = $('audRevChips').querySelector('button.on');
+      if (previos) sel = previos.dataset.h;
+      $('audRevChips').innerHTML = ['observacion', 'nc_menor', 'nc_mayor'].map(function (k) {
+        return '<button data-h="' + k + '" class="hz ' + k + (sel === k ? ' on' : '') + '">' + HALLAZGO_TXT[k] + '</button>';
+      }).join('');
+      $('audRevChips').querySelectorAll('button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          $('audRevChips').querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
+          b.classList.add('on');
+        });
       });
-    });
-    var sc = $('audRevCausa');
-    sc.innerHTML = '<option value="">causa (Ishikawa Cubicaciones, opcional)</option>' + (BASE.causas || []).map(function (c) {
-      return '<option value="' + esc(c.codigo) + '">' + esc(c.codigo) + ' · ' + esc(c.categoria_nombre) + ' · ' + esc(c.descripcion) + '</option>';
-    }).join('');
-    sc.value = ELEM.causa || '';
-    sc.style.display = (sel === 'conforme' || !sel) ? 'none' : '';
-    $('audRevTexto').value = ELEM.texto || '';
+      var sc = $('audRevCausa');
+      if (!sc.options.length) {
+        sc.innerHTML = '<option value="">causa (Ishikawa Cubicaciones, opcional)</option>' + (BASE.causas || []).map(function (x) {
+          return '<option value="' + esc(x.codigo) + '">' + esc(x.codigo) + ' · ' + esc(x.categoria_nombre) + ' · ' + esc(x.descripcion) + '</option>';
+        }).join('');
+        sc.value = ELEM.causa || '';
+      }
+    }
+    if ($('audRevTexto').value === '' && ELEM.texto) $('audRevTexto').value = ELEM.texto;
     $('audRevMsg').textContent = ELEM.revisado_el
       ? 'Registrado ' + ddmm(ELEM.revisado_el) + (ELEM.revisado_por ? ' por ' + ELEM.revisado_por.split('@')[0] : '')
       : '';
@@ -579,13 +640,23 @@
 
   async function guardarHallazgo() {
     if (!AUD || !ELEM) return;
+    var c = cuentaBarras();
+    if (!c.revisadas) { $('audRevMsg').textContent = 'Marca al menos una barra como conforme o no conforme.'; return; }
+    var faltan = Object.keys(VERED).filter(function (r) {
+      return VERED[r].conforme === false && !(VERED[r].observacion || '').trim();
+    });
+    if (faltan.length) { $('audRevMsg').textContent = 'Di qué tienen las barras ' + faltan.join(', ') + '.'; return; }
     var on = $('audRevChips').querySelector('button.on');
-    if (!on) { $('audRevMsg').textContent = 'Marca el hallazgo.'; return; }
+    var items = Object.keys(VERED).map(function (r) {
+      var b = BARRAS.filter(function (x) { return x.ref === r; })[0] || {};
+      return { ref: r, marca: b.marca || null, conforme: VERED[r].conforme, observacion: VERED[r].observacion };
+    });
     $('audRevGuardar').disabled = true;
     try {
-      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id, {
-        hallazgo: on.dataset.h, texto: $('audRevTexto').value, causa: $('audRevCausa').value });
-      ok('Hallazgo guardado');
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/revision', {
+        items: items, hallazgo: (c.malas && on) ? on.dataset.h : null,
+        texto: $('audRevTexto').value, causa: c.malas ? $('audRevCausa').value : null });
+      ok('Revisión guardada');
       await cargarLista();
       await cargarIndicadores();
       pintarDetalle();

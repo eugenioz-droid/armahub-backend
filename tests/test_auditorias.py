@@ -113,6 +113,38 @@ check("el resultado se cuenta en la BASE y el front sólo lo pinta",
       "COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_mayor')" in SRC
       and "resultadoDe" not in JS and "var r = a.resultado || {};" in JS)
 
+print("\n5a. El veredicto se registra POR BARRA, no por elemento entero")
+MIG120 = open(os.path.join(ROOT, "armahub", "migrations", "120_auditoria_items.sql"), encoding="utf-8").read()
+check("hay una tabla de ítems, colgada del elemento",
+      "CREATE TABLE IF NOT EXISTS auditoria_items" in MIG120
+      and "REFERENCES auditoria_elementos(id) ON DELETE CASCADE" in MIG120
+      and "ux_aud_items" in MIG120)
+check("la referencia de una barra es su marca, con ordinal si se repite",
+      "def refs_de_barras(" in SRC
+      and A.refs_de_barras([{"marca": "10mmA1"}, {"marca": "10mmA2"}, {"marca": "10mmA1"}])
+          == ["10mmA1", "10mmA2", "10mmA1#2"]
+      and A.refs_de_barras([{}]) == ["?"])
+check("una barra no conforme EXIGE decir qué tiene",
+      "está marcada no conforme: di qué tiene." in SRC)
+check("la severidad es del ELEMENTO y se deriva de sus barras",
+      "def severidad_derivada(" in SRC
+      and A.severidad_derivada([{"conforme": True}, {"conforme": True}], None) == "conforme"
+      and A.severidad_derivada([{"conforme": True}, {"conforme": False}], None) == "nc_menor"
+      and A.severidad_derivada([{"conforme": False}], "nc_mayor") == "nc_mayor"
+      and A.severidad_derivada([], "conforme") == "conforme")
+check("...y nunca se suaviza sola a «observación»: por omisión es NC menor",
+      "nunca se suaviza a" in SRC and A.severidad_derivada([{"conforme": False}], None) == "nc_menor")
+check("el texto del elemento se arma de las observaciones de las barras",
+      'texto = (body.texto or "").strip() or " · ".join(' in SRC)
+check("el front marca barra por barra y el campo de texto aparece al marcar NC",
+      "function pintarBarras()" in JS and "var BARRAS = [], VERED = {};" in JS
+      and "class=\"audobs\"" in JS and 'id="audRevSev"' in HTM)
+check("...y la severidad sólo se pregunta si hay alguna barra no conforme",
+      "$('audRevSev').style.display = c.malas ? 'flex' : 'none';" in JS)
+check("al reabrir el elemento vuelve lo ya marcado",
+      "def _hallazgos_de_items(" in SRC and '"revisados": revisados' in SRC
+      and "Object.keys(d.revisados || {})" in JS)
+
 print("\n5b. La acción que nace de la no conformidad")
 check("sólo las NC abren acción, y arranca pendiente",
       'es_nc = body.hallazgo in ("nc_menor", "nc_mayor")' in SRC and 'accion = "pendiente"' in SRC.replace(

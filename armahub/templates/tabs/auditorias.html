@@ -177,15 +177,20 @@
         <div class="audh"><span id="audRevTitulo"></span>
           <div style="flex:1"></div><span class="muted" id="audRevInfo" style="font-size:10.5px;"></span></div>
         <div class="audbd" style="max-height:30vh;"><table class="audt" id="audRevBarras"></table></div>
-        <div class="audhall">
-          <span class="audlbl">Hallazgo</span>
+        <!-- La SEVERIDAD es del elemento —se decide mirando el conjunto— y sólo aparece
+             cuando hay alguna barra no conforme. El QUÉ se encontró va barra por barra,
+             arriba. -->
+        <div class="audhall" id="audRevSev" style="display:none;">
+          <span class="audlbl">Severidad del elemento</span>
           <div class="audchips" id="audRevChips"></div>
-          <select id="audRevCausa" style="display:none;"></select>
+          <select id="audRevCausa"></select>
         </div>
-        <textarea id="audRevTexto" rows="2" placeholder="Qué encontró el auditor (obligatorio si no es conforme). La corrección no se hace aquí: se le exige a quien cubicó."></textarea>
+        <textarea id="audRevTexto" rows="2" placeholder="Nota general del elemento (opcional: lo que encontraste ya va en cada barra)."></textarea>
         <div style="display:flex; gap:10px; align-items:center;">
-          <button id="audRevGuardar" class="audbtn">Guardar hallazgo</button>
+          <button id="audRevGuardar" class="audbtn">Guardar revisión</button>
           <span class="muted" id="audRevMsg" style="font-size:11px;"></span>
+          <div style="flex:1"></div>
+          <span class="muted" id="audRevCuenta" style="font-size:11px;"></span>
         </div>
       </div>
 
@@ -285,6 +290,17 @@
   .audhz{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap; color:#fff;}
   .audhz.conforme{background:#8BC34A;} .audhz.observacion{background:#ffb74d;}
   .audhz.nc_menor{background:#ef9a9a; color:#5d1a1a;} .audhz.nc_mayor{background:#c62828;}
+  /* El veredicto de cada barra: dos botones chicos y, si es NC, su campo de texto. */
+  .audvb{display:inline-flex; gap:2px;}
+  .audvb button{font-size:9.5px; font-weight:700; padding:1px 7px; border:1px solid #dfe5ea;
+                background:#fff; color:#90a4ae; cursor:pointer;}
+  .audvb button:first-child{border-radius:4px 0 0 4px;} .audvb button:last-child{border-radius:0 4px 4px 0;}
+  .audvb button.si.on{background:#8BC34A; border-color:#7cb342; color:#fff;}
+  .audvb button.no.on{background:#c62828; border-color:#b71c1c; color:#fff;}
+  .audt tr.malo td{background:#fff6f6;}
+  .audt tr.bueno td{background:#f8fbf4;}
+  .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
+          border:1px solid #ef9a9a; border-radius:4px;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
   /* Mis correcciones pendientes: lo primero que ve el cubicador al entrar. */
   .audmias{background:#fffdf5; border-top:3px solid #ffb300;}

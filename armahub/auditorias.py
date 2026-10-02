@@ -175,7 +175,7 @@ def obras(user=Depends(get_current_user)):
 
 @router.get("/auditorias/elemento")
 def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = "", eje: str = "",
-             user=Depends(get_current_user)):
+             elemento_id: int = 0, user=Depends(get_current_user)):
     """UN ELEMENTO ENTERO, barra por barra, para revisarlo: marca, diámetro, figura y sus
     dimensiones, largo, cantidad, peso y de qué plano salió. Es lo que el auditor mira."""
     with get_conn() as conn:
@@ -201,8 +201,14 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
                     "estructura": r[20], "cubicado_por": r[21], "bar_id": r[22], "id_unico": r[23]})
     if not barras:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene barras.")
+    _poner_refs(barras)
+    revisados = {}
+    if elemento_id:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                revisados = _hallazgos_de_items(cur, elemento_id)
     return {"id_proyecto": id_proyecto, "sector": sector, "piso": piso, "ciclo": ciclo, "eje": eje,
-            "barras": barras, "n": len(barras),
+            "barras": barras, "n": len(barras), "revisados": revisados,
             "kg": sum(float(b["peso_total"] or 0) for b in barras),
             "planos": sorted({b["plano"] for b in barras if b["plano"]}),
             "cubicaron": sorted({b["cubicado_por"] for b in barras})}
@@ -329,6 +335,37 @@ def _ya_auditados(cur, id_proyecto: str) -> set:
              FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
             WHERE a.id_proyecto = %s""", (id_proyecto,))
     return {tuple(r) for r in cur.fetchall()}
+
+
+def refs_de_barras(barras) -> list:
+    """La REFERENCIA de cada barra dentro del elemento: su marca, y un ordinal si esa
+    marca se repite (`10mmA110#2`). Es con lo que se guarda el hallazgo por barra.
+
+    No se usa el id interno de aSa porque las barras no están espejadas —se piden en
+    vivo— y ese id podría cambiar; la marca es lo que el cubicador ve en el plano y
+    lo que puede buscar para corregir. Función pura: se prueba sin base ni red."""
+    vistas: dict = {}
+    refs = []
+    for b in barras:
+        marca = str((b.get("marca") if isinstance(b, dict) else b) or "?").strip() or "?"
+        vistas[marca] = vistas.get(marca, 0) + 1
+        refs.append(marca if vistas[marca] == 1 else "%s#%d" % (marca, vistas[marca]))
+    return refs
+
+
+def _poner_refs(barras):
+    for b, r in zip(barras, refs_de_barras(barras)):
+        b["ref"] = r
+    return barras
+
+
+def _hallazgos_de_items(cur, elemento_id: int) -> dict:
+    """Lo ya registrado barra por barra, para repintarlo al reabrir el elemento."""
+    cur.execute(
+        """SELECT ref, conforme, observacion, revisado_por, revisado_el
+             FROM auditoria_items WHERE elemento_id = %s""", (elemento_id,))
+    return {r[0]: {"conforme": r[1], "observacion": r[2], "revisado_por": r[3],
+                   "revisado_el": r[4].isoformat() if r[4] else None} for r in cur.fetchall()}
 
 
 def _clave_elemento(e) -> tuple:
@@ -460,7 +497,7 @@ def _sortear_asa(cur, job: str, n, ccs, semilla: str):
 
 
 @router.get("/auditorias/elemento-asa")
-def elemento_asa(cc: str, element: str = "", user=Depends(get_current_user)):
+def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(get_current_user)):
     """Un elemento de aSa, barra por barra: marca, Ø, figura, largo, cantidad y peso. La
     geometría viene entera en `LegAngle` (lado, largo, ángulo, gancho); acá se muestra
     como texto, que es lo que pidió el usuario para revisar rápido."""
@@ -476,7 +513,13 @@ def elemento_asa(cc: str, element: str = "", user=Depends(get_current_user)):
         "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
                                        (it.get("ShopMessage") or "").strip()) if x) or None,
     } for it in items]
-    return {"cc": cc, "element": element, "barras": barras, "n": len(barras),
+    _poner_refs(barras)
+    revisados = {}
+    if elemento_id:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                revisados = _hallazgos_de_items(cur, elemento_id)
+    return {"cc": cc, "element": element, "barras": barras, "n": len(barras), "revisados": revisados,
             "kg": sum(float(b["peso_total"] or 0) for b in barras),
             "planos": sorted({b["plano"] for b in barras if b["plano"]}),
             "cubicaron": [], "descr": (items[0].get("OrderDescr") or "")}
@@ -725,10 +768,13 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             aud["notas"] = r[25]
             aud["creada_por"] = r[26]
             cur.execute(
-                """SELECT id, sector, piso, ciclo, eje, nombre, estructura, barras, kg, cubicado_por,
-                          hallazgo, texto, causa, revisado_por, revisado_el,
-                          accion_estado, accion_por, accion_el, accion_nota, cc
-                     FROM auditoria_elementos WHERE auditoria_id = %s ORDER BY id""", (auditoria_id,))
+                """SELECT e.id, e.sector, e.piso, e.ciclo, e.eje, e.nombre, e.estructura, e.barras,
+                          e.kg, e.cubicado_por, e.hallazgo, e.texto, e.causa, e.revisado_por,
+                          e.revisado_el, e.accion_estado, e.accion_por, e.accion_el, e.accion_nota, e.cc,
+                          (SELECT COUNT(*) FROM auditoria_items i WHERE i.elemento_id = e.id),
+                          (SELECT COUNT(*) FROM auditoria_items i
+                            WHERE i.elemento_id = e.id AND i.conforme IS FALSE)
+                     FROM auditoria_elementos e WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
             aud["elementos"] = [
                 {"id": e[0], "cc": e[19], "sector": e[1], "piso": e[2], "ciclo": e[3], "eje": e[4], "nombre": e[5],
                  "estructura": e[6], "barras": e[7], "kg": float(e[8] or 0), "cubicado_por": e[9],
@@ -737,6 +783,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "revisado_por": e[13], "revisado_el": e[14].isoformat() if e[14] else None,
                  "accion_estado": e[15], "accion_por": e[16],
                  "accion_el": e[17].isoformat() if e[17] else None, "accion_nota": e[18],
+                 "items": e[20], "items_malos": e[21],
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
@@ -831,6 +878,101 @@ def _recalcular(cur, auditoria_id: int):
 class AccionBody(BaseModel):
     estado: str
     nota: Optional[str] = None
+
+
+class ItemBody(BaseModel):
+    ref: str
+    marca: Optional[str] = None
+    conforme: bool
+    observacion: Optional[str] = None
+
+
+class RevisionBody(BaseModel):
+    """La revisión de UN elemento: el veredicto de cada barra y la severidad del conjunto."""
+    items: List[ItemBody] = []
+    hallazgo: Optional[str] = None     # severidad; si no viene, se deriva de las barras
+    causa: Optional[str] = None
+    texto: Optional[str] = None        # opcional: lo que se encontró ya está en las barras
+
+
+def severidad_derivada(items, severidad: Optional[str]) -> str:
+    """El hallazgo DEL ELEMENTO a partir de sus barras. Si todas están conformes es
+    conforme y no hay severidad que elegir; si alguna no lo está, manda lo que dijo el
+    auditor y, si no dijo nada, se asume la no conformidad menor —nunca se suaviza a
+    «observación» por omisión, porque eso borraría la acción—. Función pura."""
+    if not items:
+        return severidad or "conforme"
+    if all(getattr(i, "conforme", None) if not isinstance(i, dict) else i.get("conforme") for i in items):
+        return "conforme"
+    if severidad in ("observacion", "nc_menor", "nc_mayor"):
+        return severidad
+    return "nc_menor"
+
+
+@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")
+def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
+                     user=Depends(get_current_user)):
+    """Guarda la revisión completa de un elemento: cada barra con su veredicto y, si hay
+    alguna no conforme, la severidad y la causa del conjunto.
+
+    Una barra NO conforme EXIGE decir qué tiene: sin eso no es evidencia, y el cubicador
+    no sabría qué corregir."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    for it in body.items:
+        if not it.conforme and not (it.observacion or "").strip():
+            raise HTTPException(status_code=400,
+                                detail="La barra %s está marcada no conforme: di qué tiene." % it.ref)
+    hallazgo = severidad_derivada(body.items, body.hallazgo)
+    if hallazgo not in HALLAZGOS:
+        raise HTTPException(status_code=422, detail="Hallazgo no válido: " + " / ".join(HALLAZGOS))
+    malas = [it for it in body.items if not it.conforme]
+    # El texto del elemento se arma de las barras si el auditor no escribió uno: el
+    # informe necesita una línea que se entienda sin abrir el detalle.
+    texto = (body.texto or "").strip() or " · ".join(
+        "%s: %s" % (it.ref, (it.observacion or "").strip()) for it in malas)[:1000]
+    if hallazgo != "conforme" and not texto:
+        raise HTTPException(status_code=400, detail="Di qué encontraste: un hallazgo sin texto no es evidencia.")
+    es_nc = hallazgo in ("nc_menor", "nc_mayor")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT e.nombre, e.cubicado_por, e.accion_estado, a.codigo, a.obra
+                     FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE e.id = %s AND e.auditoria_id = %s""", (elemento_id, auditoria_id))
+            el = cur.fetchone()
+            if not el:
+                raise HTTPException(status_code=404, detail="Ese elemento no es de esta auditoría.")
+            nombre, cubico, accion_previa, codigo, obra = el
+            if body.items:
+                cur.executemany(
+                    """INSERT INTO auditoria_items (elemento_id, ref, marca, conforme, observacion,
+                                                    revisado_por, revisado_el)
+                       VALUES (%s,%s,%s,%s,%s,%s, now())
+                       ON CONFLICT (elemento_id, ref) DO UPDATE SET
+                           marca = EXCLUDED.marca, conforme = EXCLUDED.conforme,
+                           observacion = EXCLUDED.observacion, revisado_por = EXCLUDED.revisado_por,
+                           revisado_el = now()""",
+                    [(elemento_id, it.ref, it.marca, it.conforme,
+                      (it.observacion or "").strip() or None, email) for it in body.items])
+            accion = None
+            if es_nc:
+                accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"
+            cur.execute(
+                """UPDATE auditoria_elementos
+                      SET hallazgo = %s, texto = %s, causa = %s, revisado_por = %s, revisado_el = now(),
+                          accion_estado = %s
+                    WHERE id = %s""",
+                (hallazgo, texto or None, (body.causa or None) if hallazgo != "conforme" else None,
+                 email, accion, elemento_id))
+            _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_revision",
+                  "%s · %s: %s (%d barras, %d no conformes)" % (codigo, nombre, hallazgo,
+                                                                len(body.items), len(malas)),
+                  "auditoria", str(auditoria_id))
+    if es_nc and cubico and accion_previa != "verificada":
+        _avisar(cubico, "Auditoría %s · %s: %s en %s. %s" % (codigo, obra, _NOMBRE[hallazgo], nombre, texto[:120]))
+    return detalle(auditoria_id, user)
 
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/accion")
