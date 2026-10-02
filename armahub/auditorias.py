@@ -283,7 +283,9 @@ def _sortear(cur, id_proyecto: str, n, sectores: str, pisos: str, ciclos: str, s
              ORDER BY md5(COALESCE(sector,'') || '|' || COALESCE(piso,'') || '|' ||
                           COALESCE(ciclo,'') || '|' || COALESCE(eje,'') || '|' || %s)
              LIMIT %s""",
-        params + [semilla, n])
+        # Se piden de más porque después se descartan los ya auditados: pedir justo `n`
+        # dejaría la muestra corta en una obra que ya lleva varias auditorías.
+        params + [semilla, n * 4])
     elementos = [
         {"sector": r[0] or "", "tipo": SECTORES.get(r[0] or "", r[0]), "piso": r[1] or "",
          "ciclo": r[2] or "", "eje": r[3] or "", "estructura": r[4], "barras": r[5],
@@ -291,7 +293,13 @@ def _sortear(cur, id_proyecto: str, n, sectores: str, pisos: str, ciclos: str, s
          "nombre": " · ".join(x for x in (r[4] or SECTORES.get(r[0] or "", ""),
                                            ("Eje " + r[3]) if r[3] else "", r[1], r[2]) if x)}
         for r in cur.fetchall()]
-    return total, elementos, semilla, n
+    # Fuera los que ya salieron en otra auditoría de la obra.
+    vistos = _ya_auditados(cur, id_proyecto)
+    nuevos = [e for e in elementos if _clave_elemento(e) not in vistos]
+    if not nuevos:
+        raise HTTPException(status_code=400,
+                            detail="Todos los elementos de ese alcance ya fueron auditados. Amplía el alcance.")
+    return total, nuevos[:n], semilla, min(n, len(nuevos))
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +312,27 @@ def _sortear(cur, id_proyecto: str, n, sectores: str, pisos: str, ciclos: str, s
 CAMPOS_ITEM = ["CtrlCode", "ElementID", "ElementDesc", "BarMark", "BarSizeDescr", "ShpNameID",
                "ShapeDims", "LegAngle", "LengthCut", "TotalQty", "LineWeight", "PinDiam",
                "Notes", "ShopMessage", "OrderDescr"]
+
+
+def _ya_auditados(cur, id_proyecto: str) -> set:
+    """Los elementos que YA salieron en otra auditoría de esta obra.
+
+    Una obra grande necesita varias auditorías, y si el sorteo pudiera repetir
+    elementos se revisaría dos veces lo mismo mientras otras partes no se miran
+    nunca. Se excluyen los ya sorteados, no sólo los ya revisados: un elemento que
+    está en una auditoría abierta ya tiene dueño.
+
+    La clave incluye el código de control porque en aSa dos códigos distintos
+    pueden traer el mismo ElementID (`01`, `02`...)."""
+    cur.execute(
+        """SELECT COALESCE(e.cc,''), e.sector, e.piso, e.ciclo, e.eje
+             FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
+            WHERE a.id_proyecto = %s""", (id_proyecto,))
+    return {tuple(r) for r in cur.fetchall()}
+
+
+def _clave_elemento(e) -> tuple:
+    return (e.get("cc") or "", e["sector"], e["piso"], e["ciclo"], e["eje"])
 
 
 def _orden_azar(valor: str, semilla: str) -> str:
@@ -372,8 +401,18 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
                      FROM asa_pedidos WHERE asa_job_id = %s AND job_name !~* %s""",
                 (ESTADO_DESPACHADO, ESTADO_NUNCA, ESTADO_DESPACHADO, job, PATRON_OBRAS_FUERA))
             obra, despachados, vivos = cur.fetchone()
+            # Cuántos elementos de cada código ya salieron en otra auditoría: así se ve
+            # qué códigos conviene elegir y cuáles ya se miraron.
+            cur.execute(
+                """SELECT e.cc, COUNT(*) FROM auditoria_elementos e
+                          JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE a.id_proyecto = %s AND e.cc IS NOT NULL GROUP BY 1""", (job,))
+            ya = dict(cur.fetchall())
+    for c in ccs:
+        c["auditados"] = ya.get(c["cc"], 0)
     return {"job": job, "obra": obra, "ccs": ccs, "total": vivos or 0,
-            "despachados": despachados or 0, "maximo": MUESTRA_MAXIMA_ASA}
+            "despachados": despachados or 0, "maximo": MUESTRA_MAXIMA_ASA,
+            "con_auditoria": sum(1 for c in ccs if c["auditados"])}
 
 
 def _sortear_asa(cur, job: str, n, ccs, semilla: str):
@@ -409,6 +448,13 @@ def _sortear_asa(cur, job: str, n, ccs, semilla: str):
             break
     if not bolsa:
         raise HTTPException(status_code=502, detail="aSa no devolvió ítems para esos códigos de control.")
+    # Fuera los que ya salieron en otra auditoría de la obra: una obra grande necesita
+    # varias auditorías y repetir elementos deja partes sin mirar nunca.
+    vistos = _ya_auditados(cur, job)
+    bolsa = [e for e in bolsa if _clave_elemento(e) not in vistos]
+    if not bolsa:
+        raise HTTPException(status_code=400,
+                            detail="Todos los elementos de esos códigos ya fueron auditados. Elige otros códigos.")
     bolsa.sort(key=lambda e: _orden_azar(e["cc"] + "|" + e["eje"], semilla))
     return len(candidatos), bolsa[:n], semilla, min(n, len(bolsa))
 

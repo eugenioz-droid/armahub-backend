@@ -111,9 +111,10 @@
           elige de cuáles sacar la muestra. En aSa no hay piso ni ciclo: lo que hay es el nombre que
           se le puso al código. <b>No aparecen los despachados</b>: auditarlos llega tarde.</span></div>
         <div class="audccbar">
+          <label class="audcctodo" title="Marca o desmarca todos los que se ven">
+            <input type="checkbox" id="audCcTodos"> todos
+          </label>
           <input type="text" id="audCcBusca" placeholder="🔍 filtrar por nombre, código o quién cubicó…" class="audccb">
-          <button id="audCcTodos" class="audmini">Marcar los que se ven</button>
-          <button id="audCcNada" class="audmini">Ninguno</button>
           <span class="muted" id="audCcN"></span>
         </div>
         <div class="audcclista" id="audCcLista"></div>
@@ -325,6 +326,10 @@
   .audcc.on{background:#e8f1fb;}
   .audcc input{margin:0; flex:none;}
   .audcc .cod{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#1565C0; flex:none; width:52px;}
+  .audcctodo{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:#546e7a; cursor:pointer; white-space:nowrap;}
+  .audcctodo input{margin:0;}
+  /* Un código del que ya se auditó algo: se ve, pero apagado. */
+  .audcc .ya{flex:none; font-size:9px; font-weight:700; color:#2e7d32; background:#e8f5e9; border-radius:99px; padding:0 5px;}
   .audcc .d{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;}
   .audcc .k{color:#78909c; font-variant-numeric:tabular-nums; flex:none; width:70px; text-align:right;}
   .audcc .e{flex:none; width:70px; color:#90a4ae;}

@@ -123,7 +123,8 @@
     $('audCcN').innerHTML = CCS.length
       ? '<b style="color:#1565C0">' + CCS.length + ' elegidos</b> · ' + kg0(kg) + ' kg · ' + vis.length + ' a la vista'
       : vis.length + ' de ' + CC_LISTA.length + ' códigos' +
-        ((UNIV && UNIV.despachados) ? ' · ' + UNIV.despachados + ' despachados no entran' : '');
+        ((UNIV && UNIV.despachados) ? ' · ' + UNIV.despachados + ' despachados no entran' : '') +
+        ((UNIV && UNIV.con_auditoria) ? ' · ' + UNIV.con_auditoria + ' ya tienen elementos auditados' : '');
     if (!vis.length) {
       $('audCcLista').innerHTML = '<div class="audvacio">' +
         (CC_LISTA.length ? 'Ningún código coincide con la búsqueda.'
@@ -132,14 +133,24 @@
     }
     $('audCcLista').innerHTML = vis.map(function (c) {
       var on = CCS.indexOf(c.cc) !== -1;
-      return '<label class="audcc' + (on ? ' on' : '') + '" title="' + esc(c.descr) + '">' +
+      // El estado va PEGADO al código: es lo que se mira junto, no al final de la línea.
+      return '<label class="audcc' + (on ? ' on' : '') + '" title="' + esc(c.descr) +
+        (c.auditados ? ' · ' + c.auditados + ' elemento(s) ya auditados' : '') + '">' +
         '<input type="checkbox" data-cc="' + esc(c.cc) + '"' + (on ? ' checked' : '') + '>' +
         '<span class="cod">' + esc(c.cc) + '</span>' +
-        '<span class="d">' + esc(c.descr || '(sin nombre)') + '</span>' +
-        '<span class="k">' + kg0(c.kg) + ' kg</span>' +
         '<span class="e">' + esc(c.estado) + '</span>' +
+        '<span class="d">' + esc(c.descr || '(sin nombre)') + '</span>' +
+        (c.auditados ? '<span class="ya">' + c.auditados + ' auditado(s)</span>' : '') +
+        '<span class="k">' + kg0(c.kg) + ' kg</span>' +
         '<span class="q">' + esc((c.persona || '').split('@')[0]) + '</span></label>';
     }).join('');
+    // El check general refleja lo que se ve: marcado sólo si TODO lo visible está marcado.
+    var todos = $('audCcTodos');
+    if (todos) {
+      var marcados = vis.filter(function (c) { return CCS.indexOf(c.cc) !== -1; }).length;
+      todos.checked = vis.length > 0 && marcados === vis.length;
+      todos.indeterminate = marcados > 0 && marcados < vis.length;
+    }
     $('audCcLista').querySelectorAll('input[data-cc]').forEach(function (el) {
       el.addEventListener('change', function () { marcar(CCS, el.dataset.cc); pintarCC(); pintarEstado(); });
     });
@@ -181,11 +192,13 @@
     $('audNueva').addEventListener('click', function () { abrirForm($('audForm').style.display === 'none'); });
     $('audFormCerrar').addEventListener('click', function () { abrirForm(false); });
     $('audCcBusca').addEventListener('input', function () { CC_BUSCA = this.value.trim().toLowerCase(); pintarCC(); });
-    $('audCcTodos').addEventListener('click', function () {
-      ccVisibles().forEach(function (c) { if (CCS.indexOf(c.cc) === -1) CCS.push(c.cc); });
+    // Un solo check general: marca lo que se ve, y desmarca lo que se ve.
+    $('audCcTodos').addEventListener('change', function () {
+      var vis = ccVisibles();
+      if (this.checked) vis.forEach(function (c) { if (CCS.indexOf(c.cc) === -1) CCS.push(c.cc); });
+      else CCS = CCS.filter(function (x) { return !vis.some(function (c) { return c.cc === x; }); });
       pintarCC(); pintarEstado();
     });
-    $('audCcNada').addEventListener('click', function () { CCS = []; pintarCC(); pintarEstado(); });
     if (global.Combobox) {
       CB_OBRA = global.Combobox.crear($('audObra'), {
         items: obrasParaElegir,

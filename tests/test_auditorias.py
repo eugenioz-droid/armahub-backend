@@ -150,7 +150,7 @@ check("el elemento de aSa es CtrlCode + ElementID, guardado en las mismas column
       and "CtrlCode eq '%s'" in SRC and 'ADD COLUMN cc TEXT' in MIG118)
 check("el alcance de aSa son los CÓDIGOS DE CONTROL que se eligen a mano",
       '@router.get("/auditorias/cc")' in SRC and "def _sortear_asa(cur, job: str, n, ccs, semilla" in SRC
-      and all(('id="%s"' % x) in HTM for x in ("audCcLista", "audCcBusca", "audCcTodos", "audCcNada")))
+      and all(('id="%s"' % x) in HTM for x in ("audCcLista", "audCcBusca", "audCcTodos")))
 check("...y NO se adivinan piso ni ciclo del texto: eso se sacó",
       "def piso_de(" not in SRC and "def ciclo_de(" not in SRC and "universo-asa" not in SRC)
 check("...no entran los códigos ya despachados: auditarlos llega tarde",
@@ -158,6 +158,14 @@ check("...no entran los códigos ya despachados: auditarlos llega tarde",
       and "No aparecen los despachados" in HTM)
 check("...sin códigos marcados no se puede crear",
       "Elige al menos un código de control." in SRC and "listo = listo && CCS.length > 0;" in JS)
+check("una obra necesita varias auditorías: el sorteo NO repite elementos ya auditados",
+      "def _ya_auditados(cur, id_proyecto: str)" in SRC and SRC.count("_ya_auditados(cur,") == 3
+      and "ya fueron auditados" in SRC and "def _clave_elemento(e)" in SRC)
+check("...y la caja de códigos muestra cuáles ya tienen elementos auditados",
+      '"auditados"' in SRC and '"con_auditoria"' in SRC and "auditado(s)" in JS)
+check("la caja de códigos: estado pegado al código y un solo check general",
+      JS.index("'<span class=\"cod\">'") < JS.index("'<span class=\"e\">'") < JS.index("'<span class=\"d\">'")
+      and 'id="audCcTodos"' in HTM and "todos.indeterminate = marcados > 0" in JS)
 check("el alcance elegido se guarda, para poder decir de qué códigos salió la muestra",
       "ADD COLUMN ccs TEXT[]" in open(os.path.join(ROOT, "armahub", "migrations",
                                                    "119_auditorias_ccs.sql"), encoding="utf-8").read()
