@@ -333,6 +333,18 @@ if s == 200 and d.get("obras"):
         s9, mias = get("/auditorias/mias/acciones")
         check("GET /auditorias/mias/acciones -> 200", s9 == 200, str(mias)[:160])
 
+        # COBERTURA: cuanto de la obra se ha mirado, contando TODAS sus auditorias.
+        s9, cob = get("/auditorias/cobertura", id_proyecto=ob["id_proyecto"], origen="armahub")
+        check("GET /auditorias/cobertura -> 200", s9 == 200, str(cob)[:160])
+        if s9 == 200:
+            print("      %d de %d %s(s) auditados (%d%%) · %d%% de los kilos"
+                  % (cob["auditados"], cob["total"], cob["unidad"], cob["pct"], cob["pct_kg"]))
+            check("...lista TODOS los elementos de la obra, no solo los auditados",
+                  cob["total"] == ob["elementos"] and len(cob["filas"]) == cob["total"])
+            check("...y marca cuales se auditaron, con su hallazgo",
+                  cob["auditados"] > 0 and any(f["hallazgos"] for f in cob["filas"])
+                  and cob["pct"] == round(cob["auditados"] / cob["total"] * 100))
+
         # EL INFORME: se genera de verdad y sale un PDF, no un error 500 con el primer
         # caracter raro. Es lo que se manda, asi que tiene que existir.
         r = cli.get("/api/v1/auditorias/%d/pdf" % aid, headers=H)

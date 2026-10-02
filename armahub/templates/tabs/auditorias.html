@@ -197,6 +197,10 @@
       <!-- Las acciones que nacen de cada no conformidad: para quien cubicó. -->
       <div id="audAcciones" class="audacc" style="display:none;"></div>
 
+      <!-- CUÁNTO DE LA OBRA SE HA MIRADO, contando todas sus auditorías. Responde la
+           pregunta que una auditoría suelta no contesta: qué falta. -->
+      <div id="audCobertura" class="audcob" style="display:none;"></div>
+
       <div class="muted" style="font-size:10.5px; margin-top:6px;">
         Clic en un elemento para revisarlo. El estado y las fechas se ponen solos: <b>en curso</b> al
         primer hallazgo, <b>cerrada</b> al revisar el último. Una no conformidad le llega como
@@ -302,6 +306,15 @@
   .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
           border:1px solid #ef9a9a; border-radius:4px;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
+  .audcob{margin-top:10px; padding:10px 12px; background:#f7f9fb; border:1px solid #e3e8ef; border-radius:6px;}
+  .audcobbar{height:12px; background:#eceff1; border-radius:3px; overflow:hidden; margin:4px 0 8px;}
+  .audcobbar i{display:block; height:100%; background:#1565C0;}
+  /* La grilla de la obra: un cuadrito por elemento, pintado según cómo salió. */
+  .audgrid{display:flex; flex-wrap:wrap; gap:3px; max-height:26vh; overflow:auto;}
+  .audgrid span{width:13px; height:13px; border-radius:2px; background:#e3e8ef; display:block; cursor:default;}
+  .audgrid span.conforme{background:#8BC34A;} .audgrid span.observacion{background:#ffb74d;}
+  .audgrid span.nc_menor{background:#ef9a9a;} .audgrid span.nc_mayor{background:#c62828;}
+  .audgrid span.pendiente{background:#90caf9;}
   /* Mis correcciones pendientes: lo primero que ve el cubicador al entrar. */
   .audmias{background:#fffdf5; border-top:3px solid #ffb300;}
   /* Estado de la acción. Pendiente pesa, verificada se apaga: lo cerrado no debe gritar. */

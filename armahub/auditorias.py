@@ -742,6 +742,79 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
             "causas": causas}
 
 
+@router.get("/auditorias/cobertura")
+def cobertura(id_proyecto: str, origen: str = "armahub", user=Depends(get_current_user)):
+    """CUÁNTO DE LA OBRA SE HA AUDITADO, y qué falta. Lista TODO y marca lo auditado.
+
+    Es la pregunta que no responde una auditoría suelta: «¿qué parte de esta obra ya se
+    miró?». Sin esto se puede auditar tres veces el mismo sector y nunca el resto.
+
+    Las dos fuentes no se miden igual, y decirlo importa:
+      · ArmaHub: la unidad es el ELEMENTO (sector·piso·ciclo·eje) y se conocen todos,
+        así que el porcentaje es exacto.
+      · aSa: los elementos sólo se conocen pidiéndolos código a código, y eso tarda
+        segundos por código. Así que la unidad es el CÓDIGO DE CONTROL: se informa
+        cuántos tienen al menos un elemento auditado. Es más grueso, y se dice."""
+    if origen not in ORIGENES:
+        raise HTTPException(status_code=422, detail="Origen no válido.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COALESCE(e.cc,''), e.sector, e.piso, e.ciclo, e.eje, e.hallazgo,
+                          a.codigo, e.nombre
+                     FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE a.id_proyecto = %s""", (id_proyecto,))
+            auditados = {(r[0], r[1], r[2], r[3], r[4]): {"hallazgo": r[5], "auditoria": r[6],
+                                                          "nombre": r[7]} for r in cur.fetchall()}
+            filas = []
+            if origen == "asa":
+                cur.execute(
+                    """SELECT control_code, COALESCE(descr,''), kg, COALESCE(estado,''),
+                              COALESCE(detail_person,'')
+                         FROM asa_pedidos
+                        WHERE asa_job_id = %s AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                        ORDER BY order_date DESC NULLS LAST, control_code""",
+                    (id_proyecto, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+                por_cc: dict = {}
+                for clave, info in auditados.items():
+                    por_cc.setdefault(clave[0], []).append(info)
+                for r in cur.fetchall():
+                    vistos = por_cc.get(r[0], [])
+                    filas.append({"clave": r[0], "nombre": r[1] or r[0], "kg": float(r[2] or 0),
+                                  "estado": r[3], "quien": r[4], "auditados": len(vistos),
+                                  "hallazgos": [v["hallazgo"] for v in vistos if v["hallazgo"]],
+                                  "auditorias": sorted({v["auditoria"] for v in vistos})})
+                unidad = "código de control"
+            else:
+                cur.execute(
+                    f"""SELECT sector, piso, ciclo, eje, MAX(INITCAP(estructura)), COUNT(*),
+                               COALESCE(SUM(peso_total),0),
+                               STRING_AGG(DISTINCT COALESCE(creado_por, editado_por, '?'), ', ')
+                          FROM barras WHERE id_proyecto = %s
+                         GROUP BY 1,2,3,4 ORDER BY 1,2,3,4""", (id_proyecto,))
+                for r in cur.fetchall():
+                    info = auditados.get(("", r[0] or "", r[1] or "", r[2] or "", r[3] or ""))
+                    nombre = " · ".join(x for x in (r[4] or SECTORES.get(r[0] or "", ""),
+                                                    ("Eje " + r[3]) if r[3] else "", r[1], r[2]) if x)
+                    filas.append({"clave": "|".join([r[0] or "", r[1] or "", r[2] or "", r[3] or ""]),
+                                  "nombre": nombre, "kg": float(r[6] or 0), "estado": "",
+                                  "quien": r[7], "barras": r[5],
+                                  "auditados": 1 if info else 0,
+                                  "hallazgos": [info["hallazgo"]] if info and info["hallazgo"] else [],
+                                  "auditorias": [info["auditoria"]] if info else []})
+                unidad = "elemento"
+    total = len(filas)
+    con = sum(1 for f in filas if f["auditados"])
+    kg_total = sum(f["kg"] for f in filas)
+    kg_con = sum(f["kg"] for f in filas if f["auditados"])
+    return {"id_proyecto": id_proyecto, "origen": origen, "unidad": unidad,
+            "total": total, "auditados": con,
+            "pct": round(con / total * 100) if total else 0,
+            "kg": kg_total, "kg_auditados": kg_con,
+            "pct_kg": round(kg_con / kg_total * 100) if kg_total else 0,
+            "filas": filas}
+
+
 @router.get("/auditorias/{auditoria_id}")
 def detalle(auditoria_id: int, user=Depends(get_current_user)):
     """La auditoría con su muestra, elemento por elemento y con su hallazgo."""
@@ -788,6 +861,12 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
                 for e in cur.fetchall()]
+    # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
+    # responde «qué falta por mirar».
+    try:
+        aud["cobertura"] = cobertura(aud["id_proyecto"], aud.get("origen") or "armahub", user)
+    except HTTPException:
+        aud["cobertura"] = None
     return aud
 
 
@@ -1076,6 +1155,7 @@ class _InformePDF:
         self._resultado()
         self._hallazgos()
         self._acciones()
+        self._cobertura()
         self._conclusion()
         buf = io.BytesIO()
         self.pdf.output(buf)
@@ -1225,11 +1305,32 @@ class _InformePDF:
             p.cell(30, 5, self._s(str(e.get("accion_el") or "")[:10]), border=0)
             p.ln(5)
 
+    def _cobertura(self):
+        c = self.a.get("cobertura")
+        if not c or not c.get("total"):
+            return
+        p = self.pdf
+        self._titulo("5. Cobertura de la obra")
+        p.set_font("Helvetica", "", 9)
+        p.multi_cell(self.w, 5, self._s(
+            "Contando TODAS las auditorias de esta obra, se ha revisado %d de %d %s(s) (%d%%), "
+            "equivalentes al %d%% de los kilos. El resto no se ha mirado." % (
+                c["auditados"], c["total"], c["unidad"], c["pct"], c["pct_kg"])),
+            new_x="LMARGIN", new_y="NEXT")
+        # Barra de cobertura: se lee antes que el numero.
+        p.set_fill_color(236, 239, 241)
+        p.cell(self.w, 4, "", fill=True, border=0, new_x="LMARGIN", new_y="NEXT")
+        if c["pct"]:
+            p.set_y(p.get_y() - 4)
+            p.set_fill_color(21, 101, 192)
+            p.cell(max(0.5, self.w * c["pct"] / 100), 4, "", fill=True, border=0, new_x="LMARGIN", new_y="NEXT")
+        p.ln(1)
+
     def _conclusion(self):
         p, a = self.pdf, self.a
         r = a.get("resultado") or {}
         rev = a.get("revisados") or 0
-        self._titulo("5. Conclusion")
+        self._titulo("6. Conclusion")
         p.set_font("Helvetica", "", 9)
         if not rev:
             texto = "La auditoria esta planificada y todavia no se revisa ningun elemento."

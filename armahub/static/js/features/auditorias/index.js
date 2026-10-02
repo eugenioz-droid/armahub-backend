@@ -510,6 +510,7 @@
       });
     });
     pintarAcciones();
+    pintarCobertura();
     if (ELEM) {
       var vivo = (AUD.elementos || []).filter(function (x) { return x.id === ELEM.id; })[0];
       if (vivo) { ELEM = vivo; pintarRevision(); } else { ELEM = null; $('audRev').style.display = 'none'; }
@@ -699,6 +700,32 @@
         } catch (e) { aviso(e.message); b.disabled = false; }
       });
     });
+  }
+
+  // CUÁNTO DE LA OBRA SE HA MIRADO, contando TODAS sus auditorías. Un cuadrito por
+  // elemento (o por código, en aSa): gris lo no auditado, color según cómo salió. Es la
+  // respuesta a «qué falta», que una auditoría suelta no da.
+  function pintarCobertura() {
+    var caja = $('audCobertura'), c = AUD && AUD.cobertura;
+    if (!c || !c.total) { caja.style.display = 'none'; return; }
+    caja.style.display = '';
+    var falta = c.total - c.auditados;
+    caja.innerHTML = '<div class="audh">Cobertura de la obra <span class="muted">' +
+        'contando todas las auditorías de ' + esc(AUD.obra) + '</span></div>' +
+      '<div style="font-size:11.5px;"><b style="font-size:17px; color:#1565C0">' + c.pct + '%</b> · ' +
+        c.auditados + ' de ' + c.total + ' ' + esc(c.unidad) + '(s) auditados · ' +
+        c.pct_kg + '% de los kilos · <b>' + falta + ' sin mirar</b></div>' +
+      '<div class="audcobbar"><i style="width:' + c.pct + '%"></i></div>' +
+      '<div class="audgrid">' + c.filas.map(function (f) {
+        var h = (f.hallazgos || [])[0] || (f.auditados ? 'pendiente' : '');
+        return '<span class="' + esc(h) + '" title="' + esc(f.nombre) +
+               (f.auditados ? ' · auditado en ' + (f.auditorias || []).join(', ') : ' · sin auditar') + '"></span>';
+      }).join('') + '</div>' +
+      '<div class="muted" style="font-size:10px; margin-top:5px;">' +
+        (c.origen === 'asa'
+          ? 'En aSa la unidad es el código de control: los elementos sólo se conocen pidiéndolos uno a uno, así que la medida es más gruesa.'
+          : 'Cada cuadrito es un elemento de la obra.') +
+        ' Gris = sin auditar.</div>';
   }
 
   // MIS ACCIONES: lo que a mí me toca corregir, sin tener que buscar en qué auditoría salió.

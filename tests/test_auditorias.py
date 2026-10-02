@@ -227,7 +227,7 @@ check("hay informe PDF, con el mismo motor que el de reclamos",
       and "from fpdf import FPDF" in SRC)
 check("...y sigue el orden de la ISO: alcance · resultado · hallazgos · acciones · conclusión",
       all(s in SRC for s in ('"1. Alcance y muestra"', '"2. Resultado"', '"3. Hallazgos"',
-                             '"4. Acciones"', '"5. Conclusion"')))
+                             '"4. Acciones"', '"5. Cobertura de la obra"', '"6. Conclusion"')))
 check("...las no conformidades van primero en el informe",
       'orden = {"nc_mayor": 0, "nc_menor": 1' in SRC)
 check("...y se baja con fetch, no con un <a href> (el token va en la cabecera)",
@@ -240,6 +240,22 @@ check("...por cubicador, obra, mes y el Pareto de causas",
       and 'id="audKpiCub"' in HTM and 'id="audKpiCausa"' in HTM)
 check("...y la ruta va ANTES de /auditorias/{id}, o la tomaría como id",
       SRC.index('@router.get("/auditorias/indicadores")') < SRC.index('@router.get("/auditorias/{auditoria_id}")'))
+
+print("\n5f. Cobertura: cuánto de la obra se ha mirado")
+check("hay un endpoint que lista TODO y marca lo auditado",
+      '@router.get("/auditorias/cobertura")' in SRC and '"pct": round(con / total * 100)' in SRC
+      and '"pct_kg"' in SRC)
+check("...y va antes de /auditorias/{id}, o la tomaría como id",
+      SRC.index('@router.get("/auditorias/cobertura")') < SRC.index('@router.get("/auditorias/{auditoria_id}")'))
+check("la unidad se dice, porque las dos fuentes no se miden igual",
+      'unidad = "código de control"' in SRC and 'unidad = "elemento"' in SRC
+      and "es más gruesa" in JS)
+check("la pantalla la pinta como grilla, un cuadrito por elemento",
+      'id="audCobertura"' in HTM and ".audgrid span.nc_mayor" in HTM and "function pintarCobertura()" in JS
+      and "Gris = sin auditar" in JS)
+check("...y entra al informe como su propia sección",
+      "def _cobertura(self)" in SRC and '"5. Cobertura de la obra"' in SRC
+      and '"6. Conclusion"' in SRC and "self._cobertura()" in SRC)
 
 print("\n5d. El formulario de creación está plegado tras un botón")
 check("hay un botón grande que abre el formulario, y arranca cerrado",
