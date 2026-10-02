@@ -288,6 +288,12 @@ if s == 200 and d.get("obras"):
         check("...y la muestra quedo GUARDADA (3 elementos con su id)",
               len(a["elementos"]) == 3 and all(e["id"] and e["nombre"] for e in a["elementos"]))
         e1, e2, e3 = a["elementos"]
+        # En ArmaHub las cuatro columnas SON la clave con que se buscan las barras: si se
+        # pudieran editar desde la auditoria, el elemento quedaria apuntando a la nada.
+        rb = cli.put("/api/v1/auditorias/%d/elementos/%d/ubicacion" % (aid, e1["id"]),
+                     headers=H, json={"piso": "otro"})
+        check("en ArmaHub la ubicacion NO se edita desde la auditoria -> 400",
+              rb.status_code == 400 and "cubicaci" in rb.text, rb.text[:160])
 
         def hallazgo(eid, cuerpo):
             return cli.put("/api/v1/auditorias/%d/elementos/%d" % (aid, eid), headers=H, json=cuerpo)
@@ -411,6 +417,8 @@ if s == 200 and d.get("obras"):
                          " | ".join(e["nombre"][:40] for e in a["elementos"])))
                 check("...guarda el codigo de control y el elemento de aSa",
                       a["origen"] == "asa" and all(e["cc"] and e["eje"] for e in a["elementos"]))
+                check("...y guarda la referencia de aSa aparte del eje, que es editable",
+                      all(e.get("ref_origen") for e in a["elementos"]))
                 check("...los elementos salen SOLO de los codigos que se eligieron",
                       all(e["cc"] in elegidos for e in a["elementos"]))
                 check("...y el alcance queda guardado (de que codigos salio la muestra)",
@@ -462,6 +470,28 @@ if s == 200 and d.get("obras"):
                                        elemento_id=e0["id"])
                         check("...al reabrir el elemento vuelve lo ya marcado",
                               s9b == 200 and el2["revisados"].get(refs[0], {}).get("conforme") is False)
+                # DONDE ESTA EL ELEMENTO. En aSa el piso y el ciclo no existen en ningun
+                # campo: los escribe el auditor y tienen que salir en el informe.
+                ru = cli.put("/api/v1/auditorias/%d/elementos/%d/ubicacion" % (a["id"], e0["id"]),
+                             headers=H, json={"sector": "ELEV", "piso": "3", "ciclo": "2"})
+                check("PUT .../ubicacion -> 200 (el auditor escribe piso y ciclo)",
+                      ru.status_code == 200, ru.text[:200])
+                if ru.status_code == 200:
+                    eu = [x for x in ru.json()["elementos"] if x["id"] == e0["id"]][0]
+                    check("...queda guardado, con quien lo escribio",
+                          eu["sector"] == "ELEV" and eu["piso"] == "3" and eu["ciclo"] == "2"
+                          and eu["ubicado_por"] == ADMIN)
+                    check("...y la referencia de aSa NO se toca (con ella se piden las barras)",
+                          eu["ref_origen"] == e0["ref_origen"])
+                    s9c, el3 = get("/auditorias/elemento-asa", cc=e0["cc"], element=eu["ref_origen"])
+                    check("...asi que las barras siguen llegando despues de ubicarlo",
+                          s9c == 200 and el3["n"] == el["n"])
+                rb = cli.put("/api/v1/auditorias/%d/elementos/%d/ubicacion" % (a["id"], e0["id"]),
+                             headers=H, json={"sector": "NO_EXISTE"})
+                check("un tipo inventado se rechaza -> 422", rb.status_code == 422, rb.text[:160])
+                rb = cli.put("/api/v1/auditorias/%d/elementos/%d/ubicacion" % (a["id"], e0["id"]),
+                             headers=H, json={"eje": ""})
+                check("dejar el eje vacio se rechaza -> 400", rb.status_code == 400, rb.text[:160])
                 r = cli.delete("/api/v1/auditorias/%d" % a["id"], headers=H)
                 check("...y se borra al terminar la prueba", r.status_code == 200, r.text[:160])
                 with get_conn() as conn:

@@ -306,5 +306,60 @@ check("los tres campos van alineados y las aclaraciones en su propia fila",
       'class="audfila audtres"' in HTM and 'class="audpies"' in HTM
       and ".audtres input, .audtres select, .audtres .audfechas{height:28px" in HTM)
 
+print("\n7. Dónde está el elemento, cuando el sistema no lo puede saber")
+# El pedido: «el tipo piso ciclo y eje al final salía del texto del nombre del CC; si se
+# puede obtener bien, sino que lo llene el usuario». En aSa el piso y el ciclo NO existen
+# en ningún campo, así que los escribe el auditor; en ArmaHub salen de la cubicación y son
+# la clave del elemento, por eso allá no se tocan.
+check("hay un endpoint para escribir la ubicación",
+      '@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/ubicacion")' in SRC)
+check("en una obra de ArmaHub NO se toca: son la clave con que se buscan las barras",
+      'if origen != "asa":' in SRC and "Se corrigen en la " in SRC)
+check("el tipo se valida contra los sectores reales, no es texto libre",
+      "if s and s not in SECTORES" in SRC)
+check("piso, ciclo y eje son etiquetas de plano, con tope de largo",
+      "LARGO_UBICACION = 40" in SRC and "etiqueta de plano" in SRC)
+check("el eje no puede quedar vacío: es cómo se nombra el elemento",
+      "El eje no puede quedar vacío" in SRC)
+check("dos elementos de la misma auditoría no pueden quedar con la misma ubicación",
+      "except UniqueViolation" in SRC and "ya la tiene otro elemento" in SRC)
+check("queda registrado quién la escribió y cuándo",
+      ", ubicado_por = %s, ubicado_el = now() WHERE id = %s" in SRC and '"auditoria_ubicar"' in SRC)
+check("...y la lista de columnas que se pueden escribir es cerrada, no la manda el navegador",
+      'for nombre, valor in (("piso", body.piso), ("ciclo", body.ciclo), ("eje", body.eje)):' in SRC)
+
+# LO QUE HACE QUE ESTO NO SE ROMPA: el `eje` pasa a ser una etiqueta editable, así que la
+# referencia con la que se le piden las barras a aSa tiene que vivir aparte.
+check("la referencia en aSa (ElementID) se guarda aparte del eje",
+      "ref_origen" in SRC and '"ref_origen": eid' in SRC)
+check("...y es ESA la que se usa para pedir las barras, no el eje editable",
+      "e.ref_origen != null && e.ref_origen !== ''" in JS)
+check("...y en ArmaHub queda en NULL, porque allá la clave son las cuatro columnas",
+      'e.get("ref_origen") if es_asa else None' in SRC)
+check("el elemento sin ElementID ya no da 404 al pedir sus barras",
+      'SIN_ELEMENTO = "(sin elemento)"' in SRC
+      and '("" if element == SIN_ELEMENTO else element)' in SRC)
+
+print("\n7b. Y llenarlo tiene que servir de algo: sale en el informe")
+check("la ubicación va al PDF, debajo del hallazgo",
+      "def _ubicacion_txt(" in SRC and "pie.append(_ubicacion_txt(e))" in SRC)
+check("...sin repetir la etiqueta si el auditor ya la escribió",
+      A._ubicacion_txt({"sector": "ELEV", "piso": "3", "ciclo": "2", "eje": "Eje K2"})
+      == "Elevación · Piso 3 · Ciclo 2 · Eje K2")
+check("...y mostrando sólo lo que está lleno",
+      A._ubicacion_txt({"sector": "", "piso": "", "ciclo": "", "eje": "K(12-18)"}) == "Eje K(12-18)")
+check("...sin ensuciar el informe con la etiqueta de «sin elemento»",
+      A._ubicacion_txt({"sector": "FUND", "eje": A.SIN_ELEMENTO}) == "Fundación")
+
+print("\n7c. El formulario aparece sólo donde hace falta")
+check("los cuatro campos están en la pantalla de revisión",
+      'id="audUbTipo"' in HTM and 'id="audUbPiso"' in HTM and 'id="audUbCiclo"' in HTM
+      and 'id="audUbEje"' in HTM and 'id="audUbGuardar"' in HTM)
+check("...y sólo se muestran en las auditorías de aSa",
+      "AUD.origen !== 'asa'" in JS and "function pintarUbicacion()" in JS)
+check("...diciendo por qué están vacíos", "aSa no trae piso ni ciclo" in JS)
+check("el tipo se ofrece de la lista del backend, no de una copia en el navegador",
+      "BASE.sectores" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

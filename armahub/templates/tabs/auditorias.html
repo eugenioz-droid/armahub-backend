@@ -176,6 +176,19 @@
       <div id="audRev" class="audrev" style="display:none;">
         <div class="audh"><span id="audRevTitulo"></span>
           <div style="flex:1"></div><span class="muted" id="audRevInfo" style="font-size:10.5px;"></span></div>
+        <!-- DÓNDE ESTÁ EL ELEMENTO. En aSa no existen el piso ni el ciclo —lo único que hay
+             es el ElementID, que en muros ES el eje—, así que los escribe el auditor, que
+             tiene el plano delante. En ArmaHub salen de la cubicación y son la clave del
+             elemento: este bloque no aparece, y si están mal se arreglan allá. -->
+        <div class="audhall audubic" id="audUbic" style="display:none;">
+          <span class="audlbl">Dónde está</span>
+          <select id="audUbTipo" title="Tipo de elemento"></select>
+          <input type="text" id="audUbPiso" placeholder="Piso" maxlength="40">
+          <input type="text" id="audUbCiclo" placeholder="Ciclo" maxlength="40">
+          <input type="text" id="audUbEje" placeholder="Eje" maxlength="40">
+          <button id="audUbGuardar" class="secondary">Guardar ubicación</button>
+          <span class="muted" id="audUbMsg" style="font-size:10.5px;"></span>
+        </div>
         <div class="audbd" style="max-height:30vh;"><table class="audt" id="audRevBarras"></table></div>
         <!-- La SEVERIDAD es del elemento —se decide mirando el conjunto— y sólo aparece
              cuando hay alguna barra no conforme. El QUÉ se encontró va barra por barra,
@@ -283,6 +296,10 @@
   .audhall{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 6px;}
   .audlbl{font-size:10.5px; font-weight:700; color:#546e7a;}
   .audhall select{font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px; max-width:520px;}
+  /* Los campos de ubicación son etiquetas de plano («P3», «Eje K2»): angostos a propósito,
+     para que se lean como una coordenada y no como una descripción. */
+  .audubic input{width:82px; font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px;}
+  .audubic button{font-size:10.5px; padding:3px 9px;}
   .audrev textarea{width:100%; box-sizing:border-box; font-size:11.5px; padding:6px 8px; border:1px solid #cfd8dc; border-radius:4px;
                    margin-bottom:8px; resize:vertical; font-family:inherit;}
   /* Los cuatro hallazgos, cada uno con su color cuando está encendido. */

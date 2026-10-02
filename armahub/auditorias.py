@@ -33,6 +33,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from psycopg.errors import UniqueViolation
 from pydantic import BaseModel
 
 from .auth import get_current_user
@@ -79,10 +80,34 @@ ACCIONES = ("pendiente", "corregida", "verificada")
 DIAS_PLAZO = 10
 
 _CLAVE = "(sector, piso, ciclo, eje)"
+# Cuando un ítem de aSa no trae ElementID. Medido el 1-oct: viene en el 100%, pero si
+# faltara, el elemento se agrupa igual bajo esta etiqueta en vez de desaparecer.
+SIN_ELEMENTO = "(sin elemento)"
 
 
 def _lista(valor: Optional[str]):
     return [v for v in (valor or "").split(",") if v.strip()]
+
+
+def _ubicacion_txt(e) -> str:
+    """Dónde está el elemento, en una línea: «Elevación · Piso 3 · Ciclo 2 · Eje K2».
+
+    Sólo lo que está lleno. En aSa al principio viene sólo el eje, y el resto aparece
+    cuando el auditor lo escribe: por eso esto va al informe —si no, llenarlo no serviría
+    de nada, porque el informe seguiría diciendo lo mismo—.
+    """
+    partes = []
+    tipo = SECTORES.get(e.get("sector") or "", e.get("sector") or "")
+    if tipo:
+        partes.append(tipo)
+    for etiqueta, campo in (("Piso", "piso"), ("Ciclo", "ciclo"), ("Eje", "eje")):
+        valor = (e.get(campo) or "").strip()
+        if not valor or valor == SIN_ELEMENTO:
+            continue
+        # Si el auditor ya escribió «Eje K2», no se le pone «Eje» otra vez delante.
+        partes.append(valor if valor.lower().startswith(etiqueta.lower())
+                      else "%s %s" % (etiqueta, valor))
+    return " · ".join(partes)
 
 
 def _hoy() -> date:
@@ -404,15 +429,18 @@ def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
     por: dict = {}
     for it in items:
         eid = (it.get("ElementID") or "").strip()
-        clave = eid or "(sin elemento)"
+        clave = eid or SIN_ELEMENTO
+        # `ref_origen` es el ElementID TAL CUAL lo manda aSa: con él se vuelven a pedir las
+        # barras. `eje` arranca igual pero es la etiqueta, y el auditor la puede corregir.
         e = por.setdefault(clave, {"cc": cc, "sector": "", "piso": "", "ciclo": "", "eje": clave,
+                                   "ref_origen": eid,
                                    "estructura": (it.get("ElementDesc") or "").strip() or None,
                                    "barras": 0, "kg": 0.0, "cubicado_por": cubico,
                                    "tipo": None, "descr_cc": descr})
         e["barras"] += 1
         e["kg"] += float(it.get("LineWeight") or 0)
     for clave, e in por.items():
-        e["nombre"] = " · ".join(x for x in (cc, clave if clave != "(sin elemento)" else "",
+        e["nombre"] = " · ".join(x for x in (cc, clave if clave != SIN_ELEMENTO else "",
                                              e["estructura"] or descr) if x)
     return list(por.values())
 
@@ -514,8 +542,12 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
     geometría viene entera en `LegAngle` (lado, largo, ángulo, gancho); acá se muestra
     como texto, que es lo que pidió el usuario para revisar rápido."""
     _puede_ver(user)
+    # El elemento se pide por su referencia EN aSa (el ElementID). La etiqueta `(sin
+    # elemento)` no es un ElementID: significa «los ítems a los que aSa no les puso
+    # ninguno», y filtrar por ese texto devolvía cero ítems y un 404 sin explicación.
     items = [it for it in _items_de(cc)
-             if not element or (it.get("ElementID") or "").strip() == element]
+             if not element
+             or (it.get("ElementID") or "").strip() == ("" if element == SIN_ELEMENTO else element)]
     if not items:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene ítems en aSa.")
     from .figura_asa import figura_de
@@ -637,10 +669,14 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
             aud_id = cur.fetchone()[0]
             cur.executemany(
                 """INSERT INTO auditoria_elementos
-                       (auditoria_id, cc, sector, piso, ciclo, eje, nombre, estructura, barras, kg, cubicado_por)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                       (auditoria_id, cc, sector, piso, ciclo, eje, nombre, estructura, barras, kg,
+                        cubicado_por, ref_origen)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 [(aud_id, e.get("cc"), e["sector"], e["piso"], e["ciclo"], e["eje"], e["nombre"],
-                  e["estructura"], e["barras"], e["kg"], e["cubicado_por"]) for e in elementos])
+                  e["estructura"], e["barras"], e["kg"], e["cubicado_por"],
+                  # Sólo en aSa: la referencia con la que se le vuelven a pedir las barras.
+                  # En ArmaHub la clave son las cuatro columnas y no hay nada que guardar.
+                  e.get("ref_origen") if es_asa else None) for e in elementos])
             audit(email, "auditoria_crear",
                   f"{body.origen} · {obra}: {len(elementos)} de {total}", "auditoria", str(aud_id))
     aud = detalle(aud_id, user)
@@ -880,7 +916,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           e.revisado_el, e.accion_estado, e.accion_por, e.accion_el, e.accion_nota, e.cc,
                           (SELECT COUNT(*) FROM auditoria_items i WHERE i.elemento_id = e.id),
                           (SELECT COUNT(*) FROM auditoria_items i
-                            WHERE i.elemento_id = e.id AND i.conforme IS FALSE)
+                            WHERE i.elemento_id = e.id AND i.conforme IS FALSE),
+                          e.ref_origen, e.ubicado_por, e.ubicado_el
                      FROM auditoria_elementos e WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
             aud["elementos"] = [
                 {"id": e[0], "cc": e[19], "sector": e[1], "piso": e[2], "ciclo": e[3], "eje": e[4], "nombre": e[5],
@@ -891,6 +928,10 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "accion_estado": e[15], "accion_por": e[16],
                  "accion_el": e[17].isoformat() if e[17] else None, "accion_nota": e[18],
                  "items": e[20], "items_malos": e[21],
+                 # La referencia en aSa (con ella se piden las barras) viaja aparte del
+                 # `eje`, que es la etiqueta y el auditor puede corregir.
+                 "ref_origen": e[22], "ubicado_por": e[23],
+                 "ubicado_el": e[24].isoformat() if e[24] else None,
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
@@ -957,6 +998,95 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
 
 _NOMBRE = {"conforme": "Conforme", "observacion": "Observación",
            "nc_menor": "No conformidad menor", "nc_mayor": "No conformidad mayor"}
+
+# Cuánto se acepta escribir en cada campo de ubicación. Son etiquetas de plano («P3»,
+# «Ciclo 2», «Eje K2»), no descripciones.
+LARGO_UBICACION = 40
+
+
+class UbicacionBody(BaseModel):
+    sector: Optional[str] = None
+    piso: Optional[str] = None
+    ciclo: Optional[str] = None
+    eje: Optional[str] = None
+
+
+@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/ubicacion")
+def ubicar_elemento(auditoria_id: int, elemento_id: int, body: UbicacionBody,
+                    user=Depends(get_current_user)):
+    """DÓNDE ESTÁ EL ELEMENTO, cuando el sistema no lo puede saber.
+
+    QUÉ SE PUEDE SACAR SOLO Y QUÉ NO:
+
+      · En ArmaHub los cuatro campos SON la clave con la que se buscan las barras del
+        elemento, y vienen de la cubicación. Acá no se tocan: cambiarlos dejaría la
+        auditoría apuntando a un elemento que no existe. Si están mal, se arreglan en la
+        cubicación, que es donde el error importa de verdad.
+      · En aSa el único que existe es el `ElementID` —en muros ES el eje, con la misma
+        nomenclatura de ArmaHub—. El piso y el ciclo no están en ningún campo, y sacarlos
+        del texto del nombre del código de control sería adivinar. Así que llegan vacíos y
+        los escribe el auditor, que tiene el plano delante.
+
+    El `eje` se puede corregir (aSa dice «01» y en el plano es «Eje A»), y eso no rompe
+    nada porque la referencia con la que se le piden las barras a aSa vive aparte, en
+    `ref_origen`, y no se toca nunca.
+    """
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    campos = {}
+    if body.sector is not None:
+        s = (body.sector or "").strip()
+        if s and s not in SECTORES:
+            raise HTTPException(status_code=422, detail="Tipo no válido: " + " / ".join(SECTORES))
+        campos["sector"] = s
+    for nombre, valor in (("piso", body.piso), ("ciclo", body.ciclo), ("eje", body.eje)):
+        if valor is None:
+            continue
+        v = " ".join((valor or "").split())        # sin dobles espacios ni saltos
+        if len(v) > LARGO_UBICACION:
+            raise HTTPException(status_code=422,
+                                detail="El %s es una etiqueta de plano: hasta %d caracteres."
+                                       % (nombre, LARGO_UBICACION))
+        campos[nombre] = v
+    if not campos:
+        raise HTTPException(status_code=400, detail="No llegó ningún campo que escribir.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT a.origen, a.codigo, e.nombre, e.ref_origen, e.eje
+                     FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE e.id = %s AND e.auditoria_id = %s""", (elemento_id, auditoria_id))
+            el = cur.fetchone()
+            if not el:
+                raise HTTPException(status_code=404, detail="Ese elemento no es de esta auditoría.")
+            origen, codigo, nombre, ref, eje_actual = el
+            if origen != "asa":
+                raise HTTPException(
+                    status_code=400,
+                    detail="En una obra de ArmaHub el tipo, el piso, el ciclo y el eje salen de "
+                           "la cubicación y son la clave del elemento. Se corrigen en la "
+                           "cubicación, no en la auditoría.")
+            if "eje" in campos and not campos["eje"]:
+                raise HTTPException(status_code=400,
+                                    detail="El eje no puede quedar vacío: es cómo se nombra el elemento.")
+            # Los nombres de columna salen de una lista cerrada (sector/piso/ciclo/eje), no
+            # de lo que mande el navegador; los valores van como parámetros.
+            sets = ", ".join(c + " = %s" for c in campos)
+            try:
+                cur.execute(
+                    "UPDATE auditoria_elementos SET " + sets +
+                    ", ubicado_por = %s, ubicado_el = now() WHERE id = %s",
+                    list(campos.values()) + [email, elemento_id])
+            except UniqueViolation:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Esa ubicación ya la tiene otro elemento de esta auditoría. "
+                           "Dos elementos distintos no pueden llamarse igual.")
+            audit(email, "auditoria_ubicar",
+                  "%s · %s: %s" % (codigo, nombre,
+                                   ", ".join("%s=%s" % (k, v or "—") for k, v in campos.items())),
+                  "auditoria", str(auditoria_id))
+    return detalle(auditoria_id, user)
 
 
 def _html_correo(titulo: str, lineas: list, pie: str = "") -> str:
@@ -1363,6 +1493,9 @@ class _InformePDF:
             p.set_x(18)
             p.multi_cell(self.w - 3, 4.5, self._s(e.get("texto") or ""), new_x="LMARGIN", new_y="NEXT")
             pie = []
+            # Dónde está, primero: es lo que el auditado necesita para ir a buscarlo.
+            if _ubicacion_txt(e):
+                pie.append(_ubicacion_txt(e))
             if e.get("causa"):
                 pie.append("causa %s" % e["causa"])
             if e.get("cubicado_por"):

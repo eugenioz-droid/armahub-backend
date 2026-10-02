@@ -217,6 +217,7 @@
       pintarLista(); pintarDetalle(); cargarMisAcciones();
     });
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
+    $('audUbGuardar').addEventListener('click', guardarUbicacion);
     // El PDF se baja con fetch y no con un enlace: el token va en la cabecera, y un
     // <a href> no la lleva (daría 401). Mismo camino que el informe de reclamos.
     $('audPdf').addEventListener('click', async function () {
@@ -528,9 +529,13 @@
     try {
       // De dónde se piden las barras depende del origen: las de ArmaHub están en casa;
       // las de aSa se piden en vivo por código de control (1 a 11 segundos).
+      // Las barras de aSa se piden por su REFERENCIA EN aSa (el ElementID), no por el
+      // `eje`: ese el auditor lo puede corregir, y si se usara para consultar, corregirlo
+      // dejaría el elemento sin barras.
+      var ref = (e.ref_origen != null && e.ref_origen !== '') ? e.ref_origen : (e.eje || '');
       var d = AUD.origen === 'asa'
         ? await req('GET', '/auditorias/elemento-asa?cc=' + encodeURIComponent(e.cc || '') +
-                           '&element=' + encodeURIComponent(e.eje || '') + '&elemento_id=' + e.id)
+                           '&element=' + encodeURIComponent(ref) + '&elemento_id=' + e.id)
         : await req('GET', '/auditorias/elemento?id_proyecto=' + encodeURIComponent(AUD.id_proyecto) +
                            '&sector=' + encodeURIComponent(e.sector || '') + '&piso=' + encodeURIComponent(e.piso || '') +
                            '&ciclo=' + encodeURIComponent(e.ciclo || '') + '&eje=' + encodeURIComponent(e.eje || '') +
@@ -624,10 +629,48 @@
     return { revisadas: refs.length, malas: malas, total: BARRAS.length };
   }
 
+  // DÓNDE ESTÁ EL ELEMENTO. Sólo en las auditorías de aSa: allá el piso y el ciclo no
+  // existen en ningún campo y sacarlos del texto del código de control sería adivinar, así
+  // que los escribe quien tiene el plano delante. En ArmaHub salen de la cubicación —son la
+  // clave del elemento— y el bloque no se muestra.
+  function pintarUbicacion() {
+    var caja = $('audUbic');
+    if (!ELEM || !AUD || AUD.origen !== 'asa') { caja.style.display = 'none'; return; }
+    caja.style.display = 'flex';
+    var sel = $('audUbTipo');
+    if (!sel.options.length) {
+      sel.innerHTML = '<option value="">tipo…</option>' +
+        Object.keys(BASE.sectores || {}).map(function (k) {
+          return '<option value="' + esc(k) + '">' + esc(BASE.sectores[k]) + '</option>';
+        }).join('');
+    }
+    sel.value = ELEM.sector || '';
+    $('audUbPiso').value = ELEM.piso || '';
+    $('audUbCiclo').value = ELEM.ciclo || '';
+    $('audUbEje').value = ELEM.eje || '';
+    $('audUbMsg').textContent = ELEM.ubicado_el
+      ? 'escrita por ' + (ELEM.ubicado_por || '').split('@')[0]
+      : (ELEM.sector || ELEM.piso || ELEM.ciclo ? '' : 'aSa no trae piso ni ciclo: ponlos tú.');
+  }
+
+  async function guardarUbicacion() {
+    if (!AUD || !ELEM) return;
+    $('audUbGuardar').disabled = true;
+    try {
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/ubicacion', {
+        sector: $('audUbTipo').value, piso: $('audUbPiso').value,
+        ciclo: $('audUbCiclo').value, eje: $('audUbEje').value });
+      ok('Ubicación guardada');
+      pintarDetalle();
+    } catch (e) { aviso(e.message); $('audUbMsg').textContent = e.message; }
+    $('audUbGuardar').disabled = false;
+  }
+
   // La SEVERIDAD es del elemento y sólo se pregunta si hay alguna barra no conforme.
   function pintarRevision() {
-    if (!ELEM) { $('audRev').style.display = 'none'; return; }
+    if (!ELEM) { $('audRev').style.display = 'none'; $('audUbic').style.display = 'none'; return; }
     $('audRev').style.display = '';
+    pintarUbicacion();
     var c = cuentaBarras();
     $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
       (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '');
