@@ -374,15 +374,23 @@ if s == 200 and d.get("obras"):
           len(asas) > 0 and all(o["job"] and o["cc"] for o in asas))
     if asas:
         oa = max(asas, key=lambda o: o["cc"])
-        s9, u = get("/auditorias/universo-asa", job=oa["job"])
-        check("GET /auditorias/universo-asa -> 200 (%s: %d CC)" % (oa["obra"][:28], u.get("cc", 0) if s9 == 200 else 0),
-              s9 == 200, str(u)[:160])
+        s9, u = get("/auditorias/cc", job=oa["job"])
+        check("GET /auditorias/cc -> 200 (%s: %d codigos sin despachar)"
+              % (oa["obra"][:28], len(u.get("ccs", [])) if s9 == 200 else 0), s9 == 200, str(u)[:160])
         if s9 == 200:
-            check("...el alcance de aSa es por anio, estado y quien cubico",
-                  all(k in u for k in ("anios", "estados", "personas")) and u["maximo"] > 0)
+            print("      %d codigos elegibles · %d despachados fuera" % (len(u["ccs"]), u["despachados"]))
+            check("...el alcance de aSa son los codigos, con su nombre, kilos y quien cubico",
+                  len(u["ccs"]) > 0 and all(set(("cc", "descr", "kg", "estado", "persona")) <= set(c) for c in u["ccs"]))
+            check("...y NINGUNO esta despachado (auditarlo llegaria tarde)",
+                  all(c["estado"] != "Shipped" for c in u["ccs"]))
+            # Sin codigos elegidos no hay muestra posible.
+            r = cli.post("/api/v1/auditorias", headers=H, json={
+                "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 2, "ccs": []})
+            check("crear sin marcar codigos -> 400", r.status_code == 400, r.text[:160])
+            elegidos = [c["cc"] for c in sorted(u["ccs"], key=lambda c: -c["kg"])[:3]]
             t0 = time.time()
             r = cli.post("/api/v1/auditorias", headers=H, json={
-                "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 2})
+                "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 2, "ccs": elegidos})
             check("POST /auditorias origen=asa -> 200 en %.0fs" % (time.time() - t0), r.status_code == 200, r.text[:220])
             if r.status_code == 200:
                 a = r.json()
@@ -391,6 +399,10 @@ if s == 200 and d.get("obras"):
                          " | ".join(e["nombre"][:40] for e in a["elementos"])))
                 check("...guarda el codigo de control y el elemento de aSa",
                       a["origen"] == "asa" and all(e["cc"] and e["eje"] for e in a["elementos"]))
+                check("...los elementos salen SOLO de los codigos que se eligieron",
+                      all(e["cc"] in elegidos for e in a["elementos"]))
+                check("...y el alcance queda guardado (de que codigos salio la muestra)",
+                      sorted(a.get("ccs") or []) == sorted(elegidos))
                 e0 = a["elementos"][0]
                 t0 = time.time()
                 s9, el = get("/auditorias/elemento-asa", cc=e0["cc"], element=e0["eje"])

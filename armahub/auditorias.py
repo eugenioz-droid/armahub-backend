@@ -58,6 +58,13 @@ AREA_CUBICACIONES = "Cubicaciones"
 ORIGENES = ("armahub", "asa")
 # Las obras de prueba de aSa no se auditan. Mismo patrón que usa Programación.
 PATRON_OBRAS_FUERA = r"\m(prueba|no usar)\M"
+# Los dos estados de aSa que dejan un código FUERA de una auditoría, y por razones
+# distintas: el anulado no es trabajo, y el despachado ya se fabricó y se fue a la obra
+# —auditarlo llega tarde, y lo que vale es revisar antes de que salga—. Son los mismos
+# nombres que usa Programación (`programacion.ESTADO_NUNCA`): acá se repiten para no
+# importar ese módulo entero sólo por dos textos.
+ESTADO_NUNCA = "Cancelled"
+ESTADO_DESPACHADO = "Shipped"
 # Una auditoría sobre aSa pide los ítems CC a CC (la vista entera se atora), y cada
 # consulta tarda entre 1 y 11 segundos. Con más de esto la creación se haría eterna.
 MUESTRA_MAXIMA_ASA = 20
@@ -299,36 +306,6 @@ CAMPOS_ITEM = ["CtrlCode", "ElementID", "ElementDesc", "BarMark", "BarSizeDescr"
                "Notes", "ShopMessage", "OrderDescr"]
 
 
-# PISO Y CICLO EN aSa SALEN DEL TEXTO del código de control: allá no existen como campo
-# —el sector va como texto libre en la descripción—. Medido por obra: se reconoce el ciclo
-# en el 55-77% y el piso en el 27-77%, con chips limpios (C1…C16, P1…P21). Hay obras donde
-# no se reconoce casi nada (Pichilemu, 2%): ahí no salen chips y queda el buscador. Las
-# expresiones son CONSERVADORAS a propósito: antes de inventar un piso, no se reconoce.
-_RE_CICLO = re.compile(r"\bCICLO\s*0?(\d{1,2})\b|\bC\s?-\s?0?(\d{1,2})\b|\bC0?(\d{1,2})\b", re.I)
-_RE_PISO = re.compile(r"\bP\s?-?\s?0?(\d{1,2})\b|\b(\d{1,2})\s*[º°]\s*P\b|\b(S|SUBT\.?)\s?-?\s?(\d{1,2})?\b", re.I)
-
-
-def ciclo_de(texto: Optional[str]) -> Optional[str]:
-    m = _RE_CICLO.search(texto or "")
-    return ("C" + (m.group(1) or m.group(2) or m.group(3))) if m else None
-
-
-def piso_de(texto: Optional[str]) -> Optional[str]:
-    m = _RE_PISO.search(texto or "")
-    if not m:
-        return None
-    if m.group(1):
-        return "P" + m.group(1)
-    if m.group(2):
-        return "P" + m.group(2)
-    if m.group(3):
-        return ("S" + m.group(4)) if m.group(4) else "SUBT"
-    return None
-
-
-SIN_DATO = "(sin dato)"
-
-
 def _orden_azar(valor: str, semilla: str) -> str:
     """El mismo azar reproducible que usa el sorteo en SQL, pero en Python."""
     import hashlib
@@ -363,112 +340,77 @@ def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
     return list(por.values())
 
 
-@router.get("/auditorias/universo-asa")
-def universo_asa(job: str, user=Depends(get_current_user)):
-    """De qué está hecha una obra EN aSa, para armar el alcance. Acá no hay sector ni piso
-    ni ciclo —aSa no los tiene: el sector va como texto libre en la descripción—, así que
-    el alcance es por año, estado y quién cubicó, más el buscador libre. Se mide: del
-    texto del CC sólo se reconoce el piso en el 27% y el eje en el 2%, así que clasificar
-    automáticamente sería inventar."""
+@router.get("/auditorias/cc")
+def codigos_de_control(job: str, user=Depends(get_current_user)):
+    """LOS CÓDIGOS DE CONTROL de una obra de aSa, para elegir de cuáles sacar la muestra.
+
+    SÓLO LOS NO DESPACHADOS. Un código `Shipped` ya se fabricó y se fue a la obra:
+    auditarlo llega tarde, y lo que vale es revisar antes de que salga. Se informa
+    cuántos quedaron fuera por eso, para que no parezca que falta data.
+
+    En aSa no hay piso ni ciclo: lo que hay es `Descr`, el nombre que el usuario le
+    puso al código —en edificación suele llevar ELEV, FUND, LC o VC, pero no siempre—.
+    Por eso se eligen los códigos a mano en vez de intentar clasificarlos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT anio, COUNT(*), COALESCE(SUM(kg),0) FROM asa_pedidos
-                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
-                    GROUP BY 1 ORDER BY 1 DESC""", (job,))
-            anios = [{"anio": r[0], "cc": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
+                """SELECT control_code, COALESCE(descr,''), kg, order_date, COALESCE(estado,''),
+                          COALESCE(detail_person,''), sched_estado
+                     FROM asa_pedidos
+                    WHERE asa_job_id = %s
+                      AND COALESCE(estado,'') NOT IN (%s, %s)
+                      AND job_name !~* %s
+                    ORDER BY order_date DESC NULLS LAST, control_code""",
+                (job, ESTADO_NUNCA, ESTADO_DESPACHADO, PATRON_OBRAS_FUERA))
+            ccs = [{"cc": r[0], "descr": r[1], "kg": float(r[2] or 0),
+                    "fecha": r[3].isoformat() if r[3] else None, "estado": r[4],
+                    "persona": r[5], "planta": r[6]} for r in cur.fetchall()]
             cur.execute(
-                """SELECT COALESCE(estado,'?'), COUNT(*) FROM asa_pedidos
-                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
-                    GROUP BY 1 ORDER BY 2 DESC""", (job,))
-            estados = [{"estado": r[0], "cc": r[1]} for r in cur.fetchall()]
-            cur.execute(
-                """SELECT COALESCE(detail_person,'?'), COUNT(*) FROM asa_pedidos
-                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
-                    GROUP BY 1 ORDER BY 2 DESC""", (job,))
-            personas = [{"email": r[0], "cc": r[1]} for r in cur.fetchall()]
-            cur.execute(
-                """SELECT COUNT(*), MAX(job_name) FROM asa_pedidos
-                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'""", (job,))
-            total, nombre = cur.fetchone()
-            # Piso y ciclo salen del TEXTO del código: se ofrecen los que se reconocen en
-            # esta obra, con cuántos códigos tiene cada uno. Lo no reconocido va junto.
-            cur.execute(
-                """SELECT descr, COUNT(*) FROM asa_pedidos
-                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
-                    GROUP BY 1""", (job,))
-            pisos: dict = {}
-            ciclos: dict = {}
-            for descr, n in cur.fetchall():
-                pisos[piso_de(descr) or SIN_DATO] = pisos.get(piso_de(descr) or SIN_DATO, 0) + n
-                ciclos[ciclo_de(descr) or SIN_DATO] = ciclos.get(ciclo_de(descr) or SIN_DATO, 0) + n
-
-    def ordenar(d):
-        """Orden natural: P1, P2, …, P12 (no P1, P12, P2), y «(sin dato)» al final."""
-        def clave(k):
-            m = re.search(r"(\d+)", k)
-            return (k == SIN_DATO, re.sub(r"\d+", "", k), int(m.group(1)) if m else 0)
-        return [{"valor": k, "cc": v} for k, v in sorted(d.items(), key=lambda x: clave(x[0]))]
-
-    return {"job": job, "obra": nombre, "cc": total, "anios": anios, "estados": estados,
-            "personas": personas, "pisos": ordenar(pisos), "ciclos": ordenar(ciclos),
-            "maximo": MUESTRA_MAXIMA_ASA}
+                """SELECT MAX(job_name),
+                          COUNT(*) FILTER (WHERE COALESCE(estado,'') = %s),
+                          COUNT(*) FILTER (WHERE COALESCE(estado,'') NOT IN (%s, %s))
+                     FROM asa_pedidos WHERE asa_job_id = %s AND job_name !~* %s""",
+                (ESTADO_DESPACHADO, ESTADO_NUNCA, ESTADO_DESPACHADO, job, PATRON_OBRAS_FUERA))
+            obra, despachados, vivos = cur.fetchone()
+    return {"job": job, "obra": obra, "ccs": ccs, "total": vivos or 0,
+            "despachados": despachados or 0, "maximo": MUESTRA_MAXIMA_ASA}
 
 
-def _sortear_asa(cur, job: str, n, anios: str, estados: str, personas: str, busca: str, semilla: str,
-                 pisos: str = "", ciclos: str = ""):
-    """La muestra sobre aSa: `n` ELEMENTOS al azar. Dos pasos, porque los ítems no están
-    espejados:
+def _sortear_asa(cur, job: str, n, ccs, semilla: str):
+    """La muestra sobre aSa: `n` ELEMENTOS al azar, sacados de los códigos que se
+    eligieron. Dos pasos, porque los ítems no están espejados:
 
-      1. se sortean códigos de control del espejo —ahí sí está todo, y es instantáneo—;
-      2. se les piden los ítems a aSa uno por uno (1 a 11 s cada uno, la parte lenta) y
-         de la bolsa de elementos que salga se sortean los `n` finales.
+      1. se barajan los códigos elegidos (azar reproducible por semilla);
+      2. se les piden los ítems a aSa uno por uno —1 a 11 s cada uno, la parte lenta—
+         hasta juntar elementos de sobra, y de esa bolsa se sortean los `n` finales.
 
-    Antes se tomaba el elemento más pesado de cada código, o sea un código = un elemento.
-    Eso no es una muestra de elementos: es una muestra de pedidos. Ahora los elementos se
-    sortean de la bolsa, así que pueden venir dos del mismo código si el azar lo dice.
-
-    El piso y el ciclo se filtran EN PYTHON porque en aSa no son campos: se reconocen del
-    texto del código (ver `piso_de` y `ciclo_de`)."""
+    Son ELEMENTOS, no códigos: si un código trae 22 elementos, puede aportar más de uno.
+    El tope de consultas existe porque cada código le cuesta segundos a aSa."""
     n = max(1, min(int(n or MUESTRA_POR_DEFECTO), MUESTRA_MAXIMA_ASA))
     semilla = (semilla or secrets.token_hex(4)).strip()
-    where = ["asa_job_id = %s", "COALESCE(estado,'') <> 'Cancelled'", "job_name !~* %s"]
-    params: list = [job, PATRON_OBRAS_FUERA]
-    if _lista(anios):
-        where.append("anio = ANY(%s)")
-        params.append([int(a) for a in _lista(anios)])
-    if _lista(estados):
-        where.append("COALESCE(estado,'') = ANY(%s)")
-        params.append(_lista(estados))
-    if _lista(personas):
-        where.append("COALESCE(detail_person,'') = ANY(%s)")
-        params.append(_lista(personas))
-    if (busca or "").strip():
-        where.append("descr ILIKE %s")
-        params.append("%" + busca.strip() + "%")
-    cond = " AND ".join(where)
-    cur.execute(f"SELECT control_code, descr, detail_person FROM asa_pedidos WHERE {cond}", params)
+    elegidos = [str(c).strip() for c in (ccs or []) if str(c).strip()]
+    if not elegidos:
+        raise HTTPException(status_code=400, detail="Elige al menos un código de control.")
+    cur.execute(
+        """SELECT control_code, COALESCE(descr,''), COALESCE(detail_person,'')
+             FROM asa_pedidos
+            WHERE asa_job_id = %s AND control_code = ANY(%s)
+              AND COALESCE(estado,'') NOT IN (%s, %s)""",
+        (job, elegidos, ESTADO_NUNCA, ESTADO_DESPACHADO))
     candidatos = cur.fetchall()
-    lp, lc = _lista(pisos), _lista(ciclos)
-    if lp:
-        candidatos = [c for c in candidatos if (piso_de(c[1]) or SIN_DATO) in lp]
-    if lc:
-        candidatos = [c for c in candidatos if (ciclo_de(c[1]) or SIN_DATO) in lc]
-    total = len(candidatos)
-    if not total:
-        raise HTTPException(status_code=400, detail="No hay códigos de control en ese alcance.")
+    if not candidatos:
+        raise HTTPException(status_code=400,
+                            detail="Esos códigos no están en el espejo, o ya fueron despachados.")
     candidatos.sort(key=lambda c: _orden_azar(c[0], semilla))
-    # Se piden ítems hasta juntar elementos de sobra para sortear, con tope de consultas:
-    # cada código le cuesta a aSa entre 1 y 11 segundos.
     bolsa = []
     for cc, descr, quien in candidatos[:MUESTRA_MAXIMA_ASA]:
-        bolsa.extend(_elementos_de_items(_items_de(cc), cc, descr or "", quien))
+        bolsa.extend(_elementos_de_items(_items_de(cc), cc, descr, quien))
         if len(bolsa) >= n * 3:
             break
     if not bolsa:
         raise HTTPException(status_code=502, detail="aSa no devolvió ítems para esos códigos de control.")
     bolsa.sort(key=lambda e: _orden_azar(e["cc"] + "|" + e["eje"], semilla))
-    return total, bolsa[:n], semilla, min(n, len(bolsa))
+    return len(candidatos), bolsa[:n], semilla, min(n, len(bolsa))
 
 
 @router.get("/auditorias/elemento-asa")
@@ -530,13 +472,8 @@ class CrearBody(BaseModel):
     sectores: List[str] = []
     pisos: List[str] = []
     ciclos: List[str] = []
-    # Alcance de aSa (allá no hay sector/piso/ciclo: ver universo_asa)
-    anios: List[str] = []
-    estados: List[str] = []
-    personas: List[str] = []
-    asa_pisos: List[str] = []     # reconocidos del texto del código
-    asa_ciclos: List[str] = []
-    busca: str = ""
+    # Alcance de aSa: los códigos de control elegidos. Allá no hay sector/piso/ciclo.
+    ccs: List[str] = []
     notas: Optional[str] = None
 
 
@@ -566,14 +503,9 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
                 if not fila or not fila[0]:
                     raise HTTPException(status_code=404, detail="Ese job no está en el espejo de aSa.")
                 obra = fila[0]
-                total, elementos, semilla, n = _sortear_asa(
-                    cur, body.id_proyecto, body.n, ",".join(body.anios), ",".join(body.estados),
-                    ",".join(body.personas), body.busca, "",
-                    ",".join(body.asa_pisos), ",".join(body.asa_ciclos))
-                # El alcance de aSa se guarda en las mismas tres columnas: año/estado va
-                # en `sectores`, el piso en `pisos` y el ciclo en `ciclos`, que es lo que
-                # significan allá. Quién cubicó entra en la nota del alcance.
-                alcance = (body.anios + body.estados + body.personas, body.asa_pisos, body.asa_ciclos)
+                total, elementos, semilla, n = _sortear_asa(cur, body.id_proyecto, body.n, body.ccs, "")
+                # El alcance de aSa son los códigos elegidos: van en su propia columna.
+                alcance = ([], [], [])
             else:
                 cur.execute("SELECT COALESCE(nombre_proyecto, id_proyecto) FROM proyectos WHERE id_proyecto = %s",
                             (body.id_proyecto,))
@@ -590,11 +522,11 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
             cur.execute(
                 """INSERT INTO auditorias (codigo, id_proyecto, obra, auditor, origen, sectores, pisos, ciclos,
                                            n, total_rango, semilla, estado, creada_fecha, plazo_fecha,
-                                           creada_por, notas)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planificada',%s,%s,%s,%s) RETURNING id""",
+                                           creada_por, notas, ccs)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planificada',%s,%s,%s,%s,%s) RETURNING id""",
                 (_codigo(cur), body.id_proyecto, obra, body.auditor, body.origen,
                  alcance[0], alcance[1], alcance[2], len(elementos), total, semilla, hoy,
-                 _habiles(hoy, DIAS_PLAZO), email, body.notas))
+                 _habiles(hoy, DIAS_PLAZO), email, body.notas, body.ccs if es_asa else []))
             aud_id = cur.fetchone()[0]
             cur.executemany(
                 """INSERT INTO auditoria_elementos
@@ -622,7 +554,7 @@ def listar(id_proyecto: str = "", auditor: str = "", estado: str = "", limite: i
             cur.execute(
                 f"""SELECT a.id, a.codigo, a.obra, a.id_proyecto, a.auditor, a.sectores, a.pisos, a.ciclos,
                            a.n, a.total_rango, a.estado, a.creada_fecha, a.plazo_fecha, a.inicio_fecha,
-                           a.cierre_fecha, a.semilla, a.origen,
+                           a.cierre_fecha, a.semilla, a.origen, a.ccs,
                            COUNT(e.id) FILTER (WHERE e.hallazgo IS NOT NULL) AS revisados,
                            COUNT(e.id) FILTER (WHERE e.hallazgo = 'conforme')    AS conforme,
                            COUNT(e.id) FILTER (WHERE e.hallazgo = 'observacion') AS observacion,
@@ -647,9 +579,9 @@ def _fila_lista(r):
             "plazo": r[12].isoformat() if r[12] else None,
             "inicio": r[13].isoformat() if r[13] else None,
             "cierre": r[14].isoformat() if r[14] else None,
-            "semilla": r[15], "origen": r[16], "revisados": r[17],
-            "resultado": {"conforme": r[18], "observacion": r[19], "nc_menor": r[20], "nc_mayor": r[21]},
-            "acciones_abiertas": r[22], "kg": float(r[23] or 0)}
+            "semilla": r[15], "origen": r[16], "ccs": r[17] or [], "revisados": r[18],
+            "resultado": {"conforme": r[19], "observacion": r[20], "nc_menor": r[21], "nc_mayor": r[22]},
+            "acciones_abiertas": r[23], "kg": float(r[24] or 0)}
 
 
 @router.get("/auditorias/indicadores")
@@ -729,7 +661,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             cur.execute(
                 """SELECT a.id, a.codigo, a.obra, a.id_proyecto, a.auditor, a.sectores, a.pisos, a.ciclos,
                           a.n, a.total_rango, a.estado, a.creada_fecha, a.plazo_fecha, a.inicio_fecha,
-                          a.cierre_fecha, a.semilla, a.origen,
+                          a.cierre_fecha, a.semilla, a.origen, a.ccs,
                           COUNT(e.id) FILTER (WHERE e.hallazgo IS NOT NULL),
                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'conforme'),
                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'observacion'),
@@ -744,8 +676,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             if not r:
                 raise HTTPException(status_code=404, detail="Auditoría no encontrada.")
             aud = _fila_lista(r)
-            aud["notas"] = r[24]
-            aud["creada_por"] = r[25]
+            aud["notas"] = r[25]
+            aud["creada_por"] = r[26]
             cur.execute(
                 """SELECT id, sector, piso, ciclo, eje, nombre, estructura, barras, kg, cubicado_por,
                           hallazgo, texto, causa, revisado_por, revisado_el,

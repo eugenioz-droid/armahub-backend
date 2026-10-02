@@ -95,7 +95,7 @@ check("...y el estado se DERIVA de los hallazgos, en la base",
 check("...el plazo cuenta hábiles: 10 desde un viernes caen dos viernes después",
       A._habiles(__import__("datetime").date(2026, 10, 2), 10) == __import__("datetime").date(2026, 10, 16))
 check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
-      "AS reclamos" in SRC and "o.reclamos + ' reclamo(s)'" in JS)
+      "AS reclamos" in SRC and "reclamo(s) abierto(s)" in JS)
 
 print("\n5. La revisión elemento a elemento")
 check("el elemento se trae ENTERO: marca, Ø, figura, dimensiones, largo, cantidad, peso, plano",
@@ -148,22 +148,30 @@ check("...y una obra que ya está en ArmaHub no se repite como obra de aSa",
 check("el elemento de aSa es CtrlCode + ElementID, guardado en las mismas columnas",
       "def _elementos_de_items(" in SRC and '"eje": clave' in SRC
       and "CtrlCode eq '%s'" in SRC and 'ADD COLUMN cc TEXT' in MIG118)
-check("el alcance de aSa es otro: año, estado, quién cubicó, piso, ciclo y buscador",
-      '@router.get("/auditorias/universo-asa")' in SRC and "def _sortear_asa(" in SRC
-      and all(('id="%s"' % x) in HTM for x in ("audAnios", "audEstados", "audPersonas",
-                                               "audAsaPisos", "audAsaCiclos", "audBusca")))
-check("...el piso y el ciclo se reconocen del TEXTO del código, con reglas conservadoras",
-      "def piso_de(" in SRC and "def ciclo_de(" in SRC
-      and A.ciclo_de("LOSAS C-4 SUBT.") == "C4" and A.ciclo_de("ELEV- P2 C2") == "C2"
-      and A.piso_de("ELEV- P2 C2") == "P2" and A.piso_de("LC P13 C5") == "P13"
-      and A.ciclo_de("Adicional cliente") is None and A.piso_de("COLUMNAS ET-D") is None)
-check("...y lo no reconocido se agrupa en «(sin dato)», no se inventa",
-      'SIN_DATO = "(sin dato)"' in SRC and "piso_de(descr) or SIN_DATO" in SRC)
+check("el alcance de aSa son los CÓDIGOS DE CONTROL que se eligen a mano",
+      '@router.get("/auditorias/cc")' in SRC and "def _sortear_asa(cur, job: str, n, ccs, semilla" in SRC
+      and all(('id="%s"' % x) in HTM for x in ("audCcLista", "audCcBusca", "audCcTodos", "audCcNada")))
+check("...y NO se adivinan piso ni ciclo del texto: eso se sacó",
+      "def piso_de(" not in SRC and "def ciclo_de(" not in SRC and "universo-asa" not in SRC)
+check("...no entran los códigos ya despachados: auditarlos llega tarde",
+      "NOT IN (%s, %s)" in SRC and "ESTADO_NUNCA, ESTADO_DESPACHADO" in SRC
+      and "No aparecen los despachados" in HTM)
+check("...sin códigos marcados no se puede crear",
+      "Elige al menos un código de control." in SRC and "listo = listo && CCS.length > 0;" in JS)
+check("el alcance elegido se guarda, para poder decir de qué códigos salió la muestra",
+      "ADD COLUMN ccs TEXT[]" in open(os.path.join(ROOT, "armahub", "migrations",
+                                                   "119_auditorias_ccs.sql"), encoding="utf-8").read()
+      and '"ccs": r[17] or []' in SRC and "a.ccs.slice(0, 6)" in JS)
+check("el origen se elige primero y cambia el formulario",
+      'id="audOrigen"' in HTM and "function pintarOrigen()" in JS
+      and "var LOS_ORIGENES = [" in JS and "if (ORIGEN === 'asa') {" in JS)
+check("...y el combobox sólo ofrece obras de ese origen",
+      "no mezcla dos mundos" in JS and "if (ORIGEN === 'asa') {\n      return (BASE.obras_asa" in JS)
 check("...acotado, porque cada elemento cuesta una consulta a aSa",
       "MUESTRA_MAXIMA_ASA = 20" in SRC and "tope de este endpoint es 500" in SRC)
-check("la muestra son ELEMENTOS al azar, no un elemento por código",
-      "bolsa.sort(key=lambda e: _orden_azar(" in SRC and "return total, bolsa[:n]" in SRC
-      and "es una muestra de pedidos" in SRC)
+check("la muestra son ELEMENTOS al azar dentro de los códigos elegidos",
+      "bolsa.sort(key=lambda e: _orden_azar(" in SRC and "return len(candidatos), bolsa[:n]" in SRC
+      and "Son ELEMENTOS, no códigos" in SRC)
 check("...con el mismo azar reproducible que el sorteo en SQL",
       "def _orden_azar(" in SRC and "hashlib.md5" in SRC)
 check("el selector lista una fila por JOB de aSa, no por nombre (hay obras con dos)",

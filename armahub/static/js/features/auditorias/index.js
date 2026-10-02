@@ -57,36 +57,105 @@
   var SECT = [], PISOS = [], CICLOS = [];              // alcance de ArmaHub
   // Alcance de aSa. El piso y el ciclo se reconocen del TEXTO del código: allá no
   // son campos. Se ofrecen los que se reconocen en esa obra (55-77% según la obra).
-  var ANIOS = [], ESTADOS = [], PERSONAS = [], ASAPISOS = [], ASACICLOS = [], BUSCA = '';
+  // Alcance de aSa: los CÓDIGOS elegidos. Allá no hay piso ni ciclo —se intentó
+  // reconocerlos del texto del código y era adivinar—, así que se eligen a mano.
+  var CCS = [], CC_LISTA = [], CC_BUSCA = '';
   var LISTA = [], ABIERTA = null, AUD = null, ELEM = null, CB_OBRA = null;
 
   // Las obras de las DOS fuentes en una sola lista, que es lo que come el combobox. El
   // origen viaja en el item, así que elegir una obra de aSa o de ArmaHub es lo mismo
   // para la pantalla.
+  // Sólo las obras del origen elegido: el combobox no mezcla dos mundos.
   function obrasParaElegir() {
     if (!BASE) return [];
-    var a = (BASE.obras || []).map(function (o) {
+    if (ORIGEN === 'asa') {
+      return (BASE.obras_asa || []).map(function (o) {
+        return { id: 'asa|' + o.job, label: o.obra, origen: 'asa', clave: o.job,
+                 sub: 'job ' + o.job + ' · ' + o.cc + ' códigos · ' + kg0(o.kg) + ' kg' };
+      });
+    }
+    return (BASE.obras || []).map(function (o) {
       return { id: 'armahub|' + o.id_proyecto, label: o.obra, origen: 'armahub', clave: o.id_proyecto,
-               sub: 'ArmaHub · ' + o.elementos + ' elementos' + (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s)' : '') };
+               sub: o.elementos + ' elementos' + (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s) abierto(s)' : '') };
     });
-    var b = (BASE.obras_asa || []).map(function (o) {
-      return { id: 'asa|' + o.job, label: o.obra, origen: 'asa', clave: o.job,
-               sub: 'aSa ' + o.job + ' · ' + o.cc + ' códigos · ' + kg0(o.kg) + ' kg' };
+  }
+
+  // LA PRIMERA DECISIÓN: de dónde sale la muestra. Cambia el formulario entero, porque
+  // las dos fuentes no tienen la misma forma: en ArmaHub hay sector/piso/ciclo; en aSa
+  // lo único que hay son códigos de control con el nombre que les puso el cubicador.
+  var LOS_ORIGENES = [
+    ['armahub', 'ArmaHub', 'Obras cubicadas en ArmaHub: se audita ANTES de exportar a aSa, y el alcance es por tipo, piso y ciclo.'],
+    ['asa', 'aSa', 'Obras que no están en ArmaHub: se eligen los códigos de control y de ahí salen los elementos.']
+  ];
+  function pintarOrigen() {
+    $('audOrigen').innerHTML = LOS_ORIGENES.map(function (o) {
+      var n = o[0] === 'armahub' ? (BASE.obras || []).length : (BASE.obras_asa || []).length;
+      return '<button data-o="' + o[0] + '" class="' + (ORIGEN === o[0] ? 'on' : '') + '" title="' + esc(o[2]) + '">' +
+             esc(o[1]) + ' <i>' + n + '</i></button>';
+    }).join('');
+    $('audOrigen').querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (ORIGEN === b.dataset.o) return;
+        ORIGEN = b.dataset.o;
+        OBRA = ''; UNIV = null; CCS = []; CC_LISTA = []; CC_BUSCA = '';
+        SECT = []; PISOS = []; CICLOS = [];
+        if (CB_OBRA) CB_OBRA.limpiar();
+        pintarOrigen(); pintarAlcance(); pintarEstado();
+      });
     });
-    return a.concat(b);
+    $('audOrigenInfo').textContent = (LOS_ORIGENES.filter(function (o) { return o[0] === ORIGEN; })[0] || [])[2] || '';
+  }
+
+  // LA CAJA DE CÓDIGOS DE CONTROL: el alcance de una auditoría de aSa.
+  function ccVisibles() {
+    if (!CC_BUSCA) return CC_LISTA;
+    return CC_LISTA.filter(function (c) {
+      return (c.descr || '').toLowerCase().indexOf(CC_BUSCA) !== -1 ||
+             (c.cc || '').toLowerCase().indexOf(CC_BUSCA) !== -1 ||
+             (c.persona || '').toLowerCase().indexOf(CC_BUSCA) !== -1;
+    });
+  }
+
+  function pintarCC() {
+    var vis = ccVisibles();
+    var kg = CC_LISTA.filter(function (c) { return CCS.indexOf(c.cc) !== -1; })
+                     .reduce(function (a, c) { return a + c.kg; }, 0);
+    $('audCcN').innerHTML = CCS.length
+      ? '<b style="color:#1565C0">' + CCS.length + ' elegidos</b> · ' + kg0(kg) + ' kg · ' + vis.length + ' a la vista'
+      : vis.length + ' de ' + CC_LISTA.length + ' códigos' +
+        ((UNIV && UNIV.despachados) ? ' · ' + UNIV.despachados + ' despachados no entran' : '');
+    if (!vis.length) {
+      $('audCcLista').innerHTML = '<div class="audvacio">' +
+        (CC_LISTA.length ? 'Ningún código coincide con la búsqueda.'
+                         : 'Esta obra no tiene códigos sin despachar.') + '</div>';
+      return;
+    }
+    $('audCcLista').innerHTML = vis.map(function (c) {
+      var on = CCS.indexOf(c.cc) !== -1;
+      return '<label class="audcc' + (on ? ' on' : '') + '" title="' + esc(c.descr) + '">' +
+        '<input type="checkbox" data-cc="' + esc(c.cc) + '"' + (on ? ' checked' : '') + '>' +
+        '<span class="cod">' + esc(c.cc) + '</span>' +
+        '<span class="d">' + esc(c.descr || '(sin nombre)') + '</span>' +
+        '<span class="k">' + kg0(c.kg) + ' kg</span>' +
+        '<span class="e">' + esc(c.estado) + '</span>' +
+        '<span class="q">' + esc((c.persona || '').split('@')[0]) + '</span></label>';
+    }).join('');
+    $('audCcLista').querySelectorAll('input[data-cc]').forEach(function (el) {
+      el.addEventListener('change', function () { marcar(CCS, el.dataset.cc); pintarCC(); pintarEstado(); });
+    });
   }
 
   async function elegirObra(item) {
     ORIGEN = item ? item.origen : 'armahub';
     OBRA = item ? item.clave : '';
-    SECT = []; PISOS = []; CICLOS = []; ANIOS = []; ESTADOS = []; PERSONAS = [];
-    ASAPISOS = []; ASACICLOS = []; BUSCA = '';
-    $('audBusca').value = ''; UNIV = null;
+    SECT = []; PISOS = []; CICLOS = []; CCS = []; CC_LISTA = []; CC_BUSCA = '';
+    $('audCcBusca').value = ''; UNIV = null;
     if (OBRA) {
       try {
         UNIV = ORIGEN === 'asa'
-          ? await req('GET', '/auditorias/universo-asa?job=' + encodeURIComponent(OBRA))
+          ? await req('GET', '/auditorias/cc?job=' + encodeURIComponent(OBRA))
           : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
+        if (ORIGEN === 'asa') CC_LISTA = (UNIV && UNIV.ccs) || [];
       } catch (e) { aviso(e.message); }
     }
     pintarAlcance(); pintarEstado();
@@ -99,6 +168,7 @@
       BASE = await req('GET', '/auditorias/obras');
       if (!BASE) return;
       if (!_bound) { _bound = true; bind(); }
+      pintarOrigen();
       pintarForm();
       await cargarLista();
       await cargarMisAcciones();
@@ -110,7 +180,12 @@
     // El formulario arranca plegado: al entrar uno viene a mirar, no a crear.
     $('audNueva').addEventListener('click', function () { abrirForm($('audForm').style.display === 'none'); });
     $('audFormCerrar').addEventListener('click', function () { abrirForm(false); });
-    $('audBusca').addEventListener('input', function () { BUSCA = this.value; pintarEstado(); });
+    $('audCcBusca').addEventListener('input', function () { CC_BUSCA = this.value.trim().toLowerCase(); pintarCC(); });
+    $('audCcTodos').addEventListener('click', function () {
+      ccVisibles().forEach(function (c) { if (CCS.indexOf(c.cc) === -1) CCS.push(c.cc); });
+      pintarCC(); pintarEstado();
+    });
+    $('audCcNada').addEventListener('click', function () { CCS = []; pintarCC(); pintarEstado(); });
     if (global.Combobox) {
       CB_OBRA = global.Combobox.crear($('audObra'), {
         items: obrasParaElegir,
@@ -221,7 +296,7 @@
         (BASE.obras_asa || []).length + ' en aSa';
       return;
     }
-    if (ORIGEN === 'asa') { caja.style.display = 'none'; cajaAsa.style.display = ''; return pintarAlcanceAsa(); }
+    if (ORIGEN === 'asa') { caja.style.display = 'none'; cajaAsa.style.display = ''; return pintarCC(); }
     caja.style.display = ''; cajaAsa.style.display = 'none';
     var o = (BASE.obras || []).filter(function (x) { return x.id_proyecto === OBRA; })[0] || {};
     $('audObraInfo').textContent = UNIV.elementos + ' elementos · ' + kg0(o.kg) + ' kg · cubicaron: ' +
@@ -251,52 +326,19 @@
     chips($('audCiclos'), UNIV.ciclos || [], 'ciclo', CICLOS);
   }
 
-  // El alcance de aSa: año, estado y quién cubicó. El contador es de CÓDIGOS DE CONTROL,
-  // no de elementos — en aSa el elemento sólo se conoce al pedir los ítems del código.
-  function pintarAlcanceAsa() {
-    $('audObraInfo').textContent = UNIV.cc + ' códigos de control · cubicaron: ' +
-      (UNIV.personas || []).slice(0, 6).map(function (p) { return (p.email || '').split('@')[0]; }).join(', ');
-    var chips = function (cont, lista, clave, activos, etiqueta) {
-      var total = lista.reduce(function (a, x) { return a + x.cc; }, 0);
-      cont.innerHTML = '<button data-todos="1" class="todos' + (activos.length ? '' : ' on') + '"' +
-          ' title="Sin nada marcado entran todos">Todos <i>' + total + '</i></button>' +
-        lista.map(function (x) {
-          var v = String(x[clave]), n = etiqueta ? etiqueta(x) : v;
-          return '<button data-v="' + esc(v) + '" class="' + (activos.indexOf(v) !== -1 ? 'on' : '') + '"' +
-                 ' title="' + esc(n) + ' · ' + x.cc + ' códigos disponibles">' + esc(n) + ' <i>' + x.cc + '</i></button>';
-        }).join('');
-      cont.querySelectorAll('button').forEach(function (b) {
-        b.addEventListener('click', function () {
-          if (b.dataset.todos) activos.length = 0; else marcar(activos, b.dataset.v);
-          pintarAlcanceAsa(); pintarEstado();
-        });
-      });
-    };
-    chips($('audAnios'), UNIV.anios || [], 'anio', ANIOS);
-    chips($('audEstados'), UNIV.estados || [], 'estado', ESTADOS);
-    chips($('audPersonas'), UNIV.personas || [], 'email', PERSONAS, function (x) { return (x.email || '').split('@')[0]; });
-    chips($('audAsaPisos'), UNIV.pisos || [], 'valor', ASAPISOS);
-    chips($('audAsaCiclos'), UNIV.ciclos || [], 'valor', ASACICLOS);
-  }
-
   function pintarEstado() {
     var n = parseInt($('audN').value, 10) || 0;
     var listo = !!(OBRA && AUDITOR && n > 0 && UNIV);
     $('audCrear').disabled = !listo;
     if (ORIGEN === 'asa') {
-      $('audRangoAsa').textContent = UNIV ? ('alcance: ' + (ANIOS.length ? ANIOS.join(', ') : 'todos los años') +
-        ' · ' + (ESTADOS.length ? ESTADOS.join(', ') : 'todos los estados') +
-        ' · ' + (PERSONAS.length ? PERSONAS.map(function (p) { return p.split('@')[0]; }).join(', ') : 'todos') +
-        ' · ' + (ASAPISOS.length ? ASAPISOS.join(', ') : 'todos los pisos') +
-        ' · ' + (ASACICLOS.length ? ASACICLOS.join(', ') : 'todos los ciclos') +
-        (BUSCA ? ' · descripción contiene «' + BUSCA + '»' : '')) : '';
-      // En aSa cada elemento cuesta una consulta: por eso el tope es más bajo.
+      // Sin códigos marcados no hay de dónde sacar la muestra.
+      listo = listo && CCS.length > 0;
+      $('audCrear').disabled = !listo;
       $('audNInfo').textContent = UNIV ? ('máx ' + UNIV.maximo) : '';
-      if (listo && n > (UNIV.maximo || 20)) {
-        $('audCrearMsg').textContent = 'En aSa el máximo es ' + UNIV.maximo + ': cada elemento se pide a aSa.';
-      } else {
-        $('audCrearMsg').textContent = listo ? 'Puede tardar: se le pide a aSa un código a la vez.' : 'Elige obra y quién audita.';
-      }
+      if (!OBRA || !AUDITOR) $('audCrearMsg').textContent = 'Elige obra y quién audita.';
+      else if (!CCS.length) $('audCrearMsg').textContent = 'Marca los códigos de control de los que quieres sacar la muestra.';
+      else if (n > (UNIV.maximo || 20)) $('audCrearMsg').textContent = 'En aSa el máximo es ' + UNIV.maximo + ': cada código se le pide a aSa.';
+      else $('audCrearMsg').textContent = 'Puede tardar: se le piden los elementos a aSa, un código a la vez.';
       return;
     }
     $('audRango').textContent = UNIV ? ('alcance: ' + (SECT.length ? SECT.map(function (s) {
@@ -312,8 +354,7 @@
       var a = await req('POST', '/auditorias', {
         id_proyecto: OBRA, auditor: AUDITOR, origen: ORIGEN, n: parseInt($('audN').value, 10) || 10,
         sectores: SECT, pisos: PISOS, ciclos: CICLOS,
-        anios: ANIOS, estados: ESTADOS, personas: PERSONAS, busca: BUSCA,
-        asa_pisos: ASAPISOS, asa_ciclos: ASACICLOS
+        ccs: CCS
       });
       if (!a) return;
       ok('Auditoría ' + a.codigo + ' creada con ' + a.elementos.length + ' elementos');
@@ -336,6 +377,10 @@
   }
 
   function alcanceTxt(a) {
+    if (a.origen === 'asa') {
+      var n = (a.ccs || []).length;
+      return n ? (n + ' código(s): ' + a.ccs.slice(0, 6).join(', ') + (n > 6 ? '…' : '')) : 'códigos de control';
+    }
     var tipos = (a.sectores || []).map(function (x) { return (BASE.sectores || {})[x] || x; });
     return [tipos.length ? tipos.join(', ') : 'Todo',
             (a.pisos || []).length ? a.pisos.join(', ') : 'todos los pisos',

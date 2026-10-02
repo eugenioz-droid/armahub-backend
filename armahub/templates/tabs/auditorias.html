@@ -37,6 +37,19 @@
         <div style="flex:1"></div>
         <button id="audFormCerrar" class="audx" title="Cerrar">✕</button></div>
 
+      <!-- DE DÓNDE SALE LA MUESTRA. Es lo primero que se decide porque cambia el
+           formulario entero: en ArmaHub el alcance es tipo/piso/ciclo (los frentes están
+           en casa); en aSa son los códigos de control, que es lo único que aSa tiene. -->
+      <div class="audfila" style="margin-bottom:10px;">
+        <div class="audcampo" style="flex:none;">
+          <label>Cubicación a auditar</label>
+          <div class="audchips" id="audOrigen"></div>
+        </div>
+        <div class="audcampo" style="flex:1; justify-content:flex-end;">
+          <small class="muted" id="audOrigenInfo"></small>
+        </div>
+      </div>
+
       <!-- Los tres campos que se llenan van ALINEADOS: mismo alto de etiqueta y de
            control. Las aclaraciones van abajo, en su propia línea, porque si cuelgan de
            cada campo lo estiran distinto y las cajas quedan desparejas. -->
@@ -94,35 +107,16 @@
            año, estado y quién cubicó, más el buscador. Medido: del texto sólo se reconoce
            el piso en el 27% y el eje en el 2%; clasificarlo solo sería inventar. -->
       <div id="audAlcanceAsa" class="audalcance" style="display:none;">
-        <div class="audlbl" style="margin-bottom:6px;">Alcance en aSa <span class="muted" style="font-weight:400;">
-          el número de cada botón son los <b>códigos de control</b> disponibles. Se sortean códigos y de cada uno
-          se toma su elemento más pesado.</span></div>
-        <div class="audfila" style="align-items:flex-start;">
-          <div class="audcampo" style="flex:none;">
-            <label>Año</label><div id="audAnios" class="audchips"></div>
-          </div>
-          <div class="audcampo" style="flex:none;">
-            <label>Estado</label><div id="audEstados" class="audchips"></div>
-          </div>
-          <div class="audcampo" style="flex:1;">
-            <label>Cubicó</label><div id="audPersonas" class="audchips"></div>
-          </div>
+        <div class="audlbl" style="margin-bottom:6px;">Códigos de control <span class="muted" style="font-weight:400;">
+          elige de cuáles sacar la muestra. En aSa no hay piso ni ciclo: lo que hay es el nombre que
+          se le puso al código. <b>No aparecen los despachados</b>: auditarlos llega tarde.</span></div>
+        <div class="audccbar">
+          <input type="text" id="audCcBusca" placeholder="🔍 filtrar por nombre, código o quién cubicó…" class="audccb">
+          <button id="audCcTodos" class="audmini">Marcar los que se ven</button>
+          <button id="audCcNada" class="audmini">Ninguno</button>
+          <span class="muted" id="audCcN"></span>
         </div>
-        <div class="audfila" style="align-items:flex-start;">
-          <div class="audcampo" style="flex:1;">
-            <label title="Reconocido del texto del código de control: en aSa el piso no es un campo">Piso <small class="muted" style="font-weight:400;">(del texto)</small></label>
-            <div id="audAsaPisos" class="audchips"></div>
-          </div>
-          <div class="audcampo" style="flex:1;">
-            <label title="Reconocido del texto del código de control: en aSa el ciclo no es un campo">Ciclo <small class="muted" style="font-weight:400;">(del texto)</small></label>
-            <div id="audAsaCiclos" class="audchips"></div>
-          </div>
-          <div class="audcampo" style="width:230px; flex:none;">
-            <label>Buscar en la descripción</label>
-            <input type="text" id="audBusca" placeholder="ELEV, LOSA, P3…">
-          </div>
-        </div>
-        <div class="muted" style="font-size:10px;"><span id="audRangoAsa"></span></div>
+        <div class="audcclista" id="audCcLista"></div>
       </div>
 
       <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
@@ -320,4 +314,21 @@
   /* La barrita de conformidad dentro de la tabla: se compara de un vistazo. */
   .audbar{position:relative; height:9px; background:#eceff1; border-radius:2px; min-width:50px;}
   .audbar i{position:absolute; left:0; top:0; bottom:0; background:#8BC34A; border-radius:2px;}
+  /* La caja de códigos de control: es el alcance de una auditoría de aSa. */
+  .audccbar{display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;}
+  .audccb{flex:1; min-width:220px; font-size:11px; padding:4px 8px; border:1px solid #cfd8dc; border-radius:4px;}
+  .audcclista{max-height:30vh; overflow:auto; border:1px solid #e3e8ef; border-radius:5px; background:#fff;}
+  .audcc{display:flex; align-items:center; gap:7px; padding:3px 7px; font-size:10.5px; cursor:pointer;
+         border-top:1px solid #f4f6f8; white-space:nowrap;}
+  .audcc:first-child{border-top:0;}
+  .audcc:hover{background:#f3f7fc;}
+  .audcc.on{background:#e8f1fb;}
+  .audcc input{margin:0; flex:none;}
+  .audcc .cod{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#1565C0; flex:none; width:52px;}
+  .audcc .d{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;}
+  .audcc .k{color:#78909c; font-variant-numeric:tabular-nums; flex:none; width:70px; text-align:right;}
+  .audcc .e{flex:none; width:70px; color:#90a4ae;}
+  .audcc .q{flex:none; width:80px; color:#90a4ae; overflow:hidden; text-overflow:ellipsis;}
+  /* El origen, como dos botones grandes: es la primera decisión. */
+  #audOrigen button{font-size:11px; font-weight:700; padding:5px 14px;}
 </style>
