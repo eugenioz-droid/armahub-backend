@@ -161,6 +161,17 @@ def create_app() -> FastAPI:
             _hlog.error("health storage error: %s", sh.get("detail"))
         mh = mailer.health()
         result["mail"] = mh.get("mail", "?")
+        # EL RELOJ DE aSa. Sin esto no hay manera de saber desde afuera si el espejo se
+        # refresca solo: el hilo vive dentro del proceso web y no deja rastro hasta que
+        # dispara. Es un on/off —igual que `mail`—, no lleva horarios ni datos de obras.
+        try:
+            from . import asa, asa_scheduler
+            result["asa"] = "ok" if asa.configurado() else "not-configured"
+            _r = asa_scheduler.estado()
+            result["reloj"] = "on" if _r["corriendo"] else ("sin-hilo" if _r["activo"] else "off")
+        except Exception as e:
+            result["asa"] = "error"
+            _hlog.error("health asa error: %s", e)
         if result["db"] != "ok" or result["storage"] not in ("ok", "not-configured"):
             result["status"] = "error"
         return result

@@ -306,7 +306,14 @@ check("el incremental corta por LastModified y se solapa con la corrida anterior
       "LastModified ge" in SYNC and "SOLAPE_MINUTOS" in SYNC)
 check("...y si nunca hubo una corrida buena, mira unos días atrás",
       "DIAS_SIN_HISTORIA" in SYNC)
-check("el estado del reloj se ve en la interfaz", '"reloj"' in PROG and "def estado()" in RELOJ)
+check("el backend manda el estado del reloj", '"reloj"' in PROG and "def estado()" in RELOJ)
+# Esto medía sólo el backend y pasaba verde mientras la pantalla tiraba el dato: el usuario
+# no tenía cómo saber si el espejo se refresca solo. Ahora se mide lo que se VE.
+check("...y la pantalla lo muestra de verdad, con sus horarios y el próximo turno",
+      "textoReloj" in JS and "ASA.reloj" in JS and "r.horarios" in JS and "r.proxima" in JS)
+check("...diciendo qué falta cuando está apagado", "ASA_SYNC_ACTIVO=1" in JS)
+check("...y se puede comprobar desde afuera, sin entrar a la aplicación",
+      '"reloj"' in open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read())
 check("hay un botón para disparar el mismo refresco a mano y comprobarlo",
       "/programacion/asa/sincronizar-ahora" in PROG)
 

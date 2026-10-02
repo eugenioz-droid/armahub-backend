@@ -347,7 +347,29 @@
       var ui = esp.ultimo_intento;
       if (ui && !ui.ok && ui.detalle) txt += '<br><span style="color:#c62828">Último intento falló: ' + esc(ui.detalle) + '</span>';
     }
+    txt += textoReloj();
     av.innerHTML = txt;
+  }
+
+  // EL RELOJ. El backend siempre lo mandó y la pantalla lo tiraba: así nadie podía saber
+  // si la data se refresca sola, que es justo lo que uno asume cuando no se dice nada.
+  // Importa decirlo acá y no en otra pantalla: es el mismo recuadro donde está el botón
+  // de refrescar a mano, o sea donde uno va a preguntarse por qué la data está vieja.
+  function textoReloj() {
+    var r = (ASA && ASA.reloj) || null;
+    if (!r) return '';
+    if (r.corriendo) {
+      return '<br>Se refresca solo a las <b>' + esc((r.horarios || []).join(', ')) + '</b>' +
+             ' (hora de Chile)' +
+             (r.proxima ? '. Próximo turno: <b>' + esc(fechaHora(r.proxima)) + '</b>' : '') + '.';
+    }
+    if (r.activo) {
+      return '<br><span style="color:#c62828">El reloj está encendido pero su hilo no corre.</span> ' +
+             'Hay que reiniciar el servicio; mientras, el espejo sólo se actualiza a mano.';
+    }
+    return '<br><b>No se refresca solo:</b> el reloj está apagado. Se enciende con ' +
+           '<code>ASA_SYNC_ACTIVO=1</code> en Render → Environment. Mientras, la data ' +
+           'es la del último <b>↻ Refrescar</b>.';
   }
 
   function fechaHora(s) {
