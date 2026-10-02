@@ -422,6 +422,15 @@ if s == 200 and d.get("obras"):
                 if s9 == 200:
                     check("...trae las barras con marca, diametro, figura y LADOS",
                           el["n"] > 0 and all("marca" in b and "dims" in b for b in el["barras"]))
+                    # EL DIBUJO: se reconstruye del eje de aSa y se comprueba contra la
+                    # envolvente que ella declara. Lo que no cuadra no se dibuja.
+                    con_eje = [b for b in el["barras"] if (b.get("eje") or {}).get("ok")]
+                    print("      %d de %d barras con figura reconstruida y verificada"
+                          % (len(con_eje), el["n"]))
+                    check("...y el eje viene con su veredicto para cada barra",
+                          all("eje" in b and "ok" in (b["eje"] or {}) for b in el["barras"]))
+                    check("...las verificadas traen puntos de verdad",
+                          all(len(b["eje"]["puntos"]) >= 2 for b in con_eje))
                     conlados = [b for b in el["barras"] if b["dims"]]
                     # La consola de Windows es cp1252 y el simbolo del gancho la revienta.
                     ejemplo = str(conlados[0]["dims"] if conlados else {}).encode("ascii", "replace").decode()

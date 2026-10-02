@@ -568,7 +568,8 @@
         '</span></td>' +
         '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
         '<td class="num">' + esc(b.diam || '') + '</td>' +
-        '<td>' + esc(b.figura || '') + '</td><td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
+        '<td>' + (svgBarra(b.eje) || esc(b.figura || '')) + '</td>' +
+        '<td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
         '<td class="num">' + (b.largo != null ? Math.round(b.largo) : '') + '</td>' +
         '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
         '<td class="num">' + kg0(b.peso_total) + '</td>' +
@@ -595,6 +596,26 @@
       });
     });
     pintarRevision();
+  }
+
+  // EL DIBUJO DE LA BARRA, en SVG y sin librerías: el backend manda el eje ya armado y
+  // comprobado contra la envolvente que declara aSa. Si no se pudo comprobar no se
+  // dibuja nada: un dibujo equivocado en una auditoría es peor que ninguno, porque el
+  // auditor daría por buena una barra mala.
+  function svgBarra(eje) {
+    if (!eje || !eje.ok || !(eje.puntos || []).length) return '';
+    var xs = eje.puntos.map(function (p) { return p[0]; });
+    var ys = eje.puntos.map(function (p) { return p[1]; });
+    var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+    var an = Math.max(1, Math.max.apply(null, xs) - x0);
+    var al = Math.max(1, Math.max.apply(null, ys) - y0);
+    var m = Math.max(an, al) * 0.08 + 1;   // aire para que el trazo no se corte
+    var d = eje.puntos.map(function (p, i) {
+      // Y invertida: en pantalla crece hacia abajo y la barra se vería de cabeza.
+      return (i ? 'L' : 'M') + (p[0] - x0).toFixed(1) + ' ' + (al - (p[1] - y0)).toFixed(1);
+    }).join(' ');
+    return '<svg class="audfig" viewBox="' + (-m) + ' ' + (-m) + ' ' + (an + m * 2) + ' ' + (al + m * 2) +
+           '" preserveAspectRatio="xMidYMid meet"><path d="' + d + '"/></svg>';
   }
 
   function cuentaBarras() {

@@ -518,9 +518,14 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
              if not element or (it.get("ElementID") or "").strip() == element]
     if not items:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene ítems en aSa.")
+    from .figura_asa import figura_de
     barras = [{
         "marca": it.get("BarMark"), "diam": it.get("BarSizeDescr"), "figura": it.get("ShpNameID"),
         "dims": _lados(it.get("LegAngle")), "largo": it.get("LengthCut"),
+        # EL DIBUJO. Se reconstruye del eje que manda aSa y se COMPRUEBA contra la
+        # envolvente que ella misma declara: si no cuadra, viaja `ok: false` y la
+        # pantalla muestra las medidas en vez de un dibujo que mentiría.
+        "eje": figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam")),
         "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
         "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
         "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
