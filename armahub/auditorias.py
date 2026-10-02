@@ -27,6 +27,7 @@ LAS FECHAS LAS PONE EL SISTEMA. Creación hoy; plazo a DIAS_PLAZO hábiles; inic
 hallazgo; cierre cuando se revisa el último elemento. Y el ESTADO se DERIVA de los
 hallazgos: nadie lo elige. Así no puede haber una auditoría «cerrada» a medio revisar.
 """
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
@@ -142,17 +143,21 @@ def obras(user=Depends(get_current_user)):
             # igual —el elemento vive en getOrderItemView—, sólo cambia de dónde sale la
             # muestra. Las que YA están en ArmaHub no se repiten acá: ahí la auditoría es
             # más profunda (las barras están en casa) y ésa es la que conviene.
+            # UNA FILA POR JOB DE aSa, no por nombre. Nueve obras tienen dos jobs con el
+            # mismo nombre, y agrupando por nombre el conteo decía una cosa y la muestra
+            # miraba otra: se elegía «422 códigos» y se sorteaba dentro de 63.
             cur.execute(
-                """SELECT p.job_name, MAX(p.asa_job_id), COUNT(*), COALESCE(SUM(p.kg), 0),
+                """SELECT MAX(p.job_name), p.asa_job_id, COUNT(*), COALESCE(SUM(p.kg), 0),
                           MAX(GREATEST(p.order_date, p.proj_ship_date))
                      FROM asa_pedidos p
                     WHERE COALESCE(p.estado,'') <> 'Cancelled'
+                      AND p.asa_job_id IS NOT NULL
                       AND p.job_name !~* %s
                       AND GREATEST(p.order_date, p.proj_ship_date) >= CURRENT_DATE - make_interval(months => 12)
                       AND NOT EXISTS (SELECT 1 FROM proyectos pr
                                        WHERE pr.asa_job_id = p.asa_job_id
                                          AND EXISTS (SELECT 1 FROM barras b WHERE b.id_proyecto = pr.id_proyecto))
-                    GROUP BY p.job_name ORDER BY p.job_name""",
+                    GROUP BY p.asa_job_id ORDER BY 1""",
                 (PATRON_OBRAS_FUERA,))
             asa_obras = [{"job": r[1], "obra": r[0], "cc": r[2], "kg": float(r[3] or 0),
                           "ultimo": r[4].isoformat() if r[4] else None} for r in cur.fetchall()]
@@ -294,6 +299,42 @@ CAMPOS_ITEM = ["CtrlCode", "ElementID", "ElementDesc", "BarMark", "BarSizeDescr"
                "Notes", "ShopMessage", "OrderDescr"]
 
 
+# PISO Y CICLO EN aSa SALEN DEL TEXTO del código de control: allá no existen como campo
+# —el sector va como texto libre en la descripción—. Medido por obra: se reconoce el ciclo
+# en el 55-77% y el piso en el 27-77%, con chips limpios (C1…C16, P1…P21). Hay obras donde
+# no se reconoce casi nada (Pichilemu, 2%): ahí no salen chips y queda el buscador. Las
+# expresiones son CONSERVADORAS a propósito: antes de inventar un piso, no se reconoce.
+_RE_CICLO = re.compile(r"\bCICLO\s*0?(\d{1,2})\b|\bC\s?-\s?0?(\d{1,2})\b|\bC0?(\d{1,2})\b", re.I)
+_RE_PISO = re.compile(r"\bP\s?-?\s?0?(\d{1,2})\b|\b(\d{1,2})\s*[º°]\s*P\b|\b(S|SUBT\.?)\s?-?\s?(\d{1,2})?\b", re.I)
+
+
+def ciclo_de(texto: Optional[str]) -> Optional[str]:
+    m = _RE_CICLO.search(texto or "")
+    return ("C" + (m.group(1) or m.group(2) or m.group(3))) if m else None
+
+
+def piso_de(texto: Optional[str]) -> Optional[str]:
+    m = _RE_PISO.search(texto or "")
+    if not m:
+        return None
+    if m.group(1):
+        return "P" + m.group(1)
+    if m.group(2):
+        return "P" + m.group(2)
+    if m.group(3):
+        return ("S" + m.group(4)) if m.group(4) else "SUBT"
+    return None
+
+
+SIN_DATO = "(sin dato)"
+
+
+def _orden_azar(valor: str, semilla: str) -> str:
+    """El mismo azar reproducible que usa el sorteo en SQL, pero en Python."""
+    import hashlib
+    return hashlib.md5(("%s|%s" % (valor, semilla)).encode("utf-8")).hexdigest()
+
+
 def _items_de(cc: str):
     """Los ítems de UN código de control. aSa se atora si se le pide la vista sin filtrar
     por CtrlCode, y el tope de este endpoint es 500 (no 2.000 como los otros)."""
@@ -350,14 +391,45 @@ def universo_asa(job: str, user=Depends(get_current_user)):
                 """SELECT COUNT(*), MAX(job_name) FROM asa_pedidos
                     WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'""", (job,))
             total, nombre = cur.fetchone()
+            # Piso y ciclo salen del TEXTO del código: se ofrecen los que se reconocen en
+            # esta obra, con cuántos códigos tiene cada uno. Lo no reconocido va junto.
+            cur.execute(
+                """SELECT descr, COUNT(*) FROM asa_pedidos
+                    WHERE asa_job_id = %s AND COALESCE(estado,'') <> 'Cancelled'
+                    GROUP BY 1""", (job,))
+            pisos: dict = {}
+            ciclos: dict = {}
+            for descr, n in cur.fetchall():
+                pisos[piso_de(descr) or SIN_DATO] = pisos.get(piso_de(descr) or SIN_DATO, 0) + n
+                ciclos[ciclo_de(descr) or SIN_DATO] = ciclos.get(ciclo_de(descr) or SIN_DATO, 0) + n
+
+    def ordenar(d):
+        """Orden natural: P1, P2, …, P12 (no P1, P12, P2), y «(sin dato)» al final."""
+        def clave(k):
+            m = re.search(r"(\d+)", k)
+            return (k == SIN_DATO, re.sub(r"\d+", "", k), int(m.group(1)) if m else 0)
+        return [{"valor": k, "cc": v} for k, v in sorted(d.items(), key=lambda x: clave(x[0]))]
+
     return {"job": job, "obra": nombre, "cc": total, "anios": anios, "estados": estados,
-            "personas": personas, "maximo": MUESTRA_MAXIMA_ASA}
+            "personas": personas, "pisos": ordenar(pisos), "ciclos": ordenar(ciclos),
+            "maximo": MUESTRA_MAXIMA_ASA}
 
 
-def _sortear_asa(cur, job: str, n, anios: str, estados: str, personas: str, busca: str, semilla: str):
-    """La muestra sobre aSa. Dos pasos, porque los ítems no están espejados: se sortean
-    CÓDIGOS DE CONTROL del espejo —ahí sí está todo— y recién de los sorteados se piden
-    los ítems a aSa, que es la parte lenta (1 a 11 s por código)."""
+def _sortear_asa(cur, job: str, n, anios: str, estados: str, personas: str, busca: str, semilla: str,
+                 pisos: str = "", ciclos: str = ""):
+    """La muestra sobre aSa: `n` ELEMENTOS al azar. Dos pasos, porque los ítems no están
+    espejados:
+
+      1. se sortean códigos de control del espejo —ahí sí está todo, y es instantáneo—;
+      2. se les piden los ítems a aSa uno por uno (1 a 11 s cada uno, la parte lenta) y
+         de la bolsa de elementos que salga se sortean los `n` finales.
+
+    Antes se tomaba el elemento más pesado de cada código, o sea un código = un elemento.
+    Eso no es una muestra de elementos: es una muestra de pedidos. Ahora los elementos se
+    sortean de la bolsa, así que pueden venir dos del mismo código si el azar lo dice.
+
+    El piso y el ciclo se filtran EN PYTHON porque en aSa no son campos: se reconocen del
+    texto del código (ver `piso_de` y `ciclo_de`)."""
     n = max(1, min(int(n or MUESTRA_POR_DEFECTO), MUESTRA_MAXIMA_ASA))
     semilla = (semilla or secrets.token_hex(4)).strip()
     where = ["asa_job_id = %s", "COALESCE(estado,'') <> 'Cancelled'", "job_name !~* %s"]
@@ -375,26 +447,28 @@ def _sortear_asa(cur, job: str, n, anios: str, estados: str, personas: str, busc
         where.append("descr ILIKE %s")
         params.append("%" + busca.strip() + "%")
     cond = " AND ".join(where)
-    cur.execute(f"SELECT COUNT(*) FROM asa_pedidos WHERE {cond}", params)
-    total = cur.fetchone()[0]
+    cur.execute(f"SELECT control_code, descr, detail_person FROM asa_pedidos WHERE {cond}", params)
+    candidatos = cur.fetchall()
+    lp, lc = _lista(pisos), _lista(ciclos)
+    if lp:
+        candidatos = [c for c in candidatos if (piso_de(c[1]) or SIN_DATO) in lp]
+    if lc:
+        candidatos = [c for c in candidatos if (ciclo_de(c[1]) or SIN_DATO) in lc]
+    total = len(candidatos)
     if not total:
         raise HTTPException(status_code=400, detail="No hay códigos de control en ese alcance.")
-    cur.execute(
-        f"""SELECT control_code, descr, detail_person FROM asa_pedidos WHERE {cond}
-             ORDER BY md5(control_code || '|' || %s) LIMIT %s""", params + [semilla, n])
-    ccs = cur.fetchall()
-    elementos = []
-    for cc, descr, quien in ccs:
-        items = _items_de(cc)
-        del_cc = _elementos_de_items(items, cc, descr or "", quien)
-        # UN elemento por código: si un CC trae 22, llevárselos todos sería auditar un
-        # solo pedido en vez de una muestra repartida. Se toma el más pesado, que es el
-        # que más vale la pena mirar.
-        if del_cc:
-            elementos.append(max(del_cc, key=lambda e: e["kg"]))
-    if not elementos:
+    candidatos.sort(key=lambda c: _orden_azar(c[0], semilla))
+    # Se piden ítems hasta juntar elementos de sobra para sortear, con tope de consultas:
+    # cada código le cuesta a aSa entre 1 y 11 segundos.
+    bolsa = []
+    for cc, descr, quien in candidatos[:MUESTRA_MAXIMA_ASA]:
+        bolsa.extend(_elementos_de_items(_items_de(cc), cc, descr or "", quien))
+        if len(bolsa) >= n * 3:
+            break
+    if not bolsa:
         raise HTTPException(status_code=502, detail="aSa no devolvió ítems para esos códigos de control.")
-    return total, elementos, semilla, len(elementos)
+    bolsa.sort(key=lambda e: _orden_azar(e["cc"] + "|" + e["eje"], semilla))
+    return total, bolsa[:n], semilla, min(n, len(bolsa))
 
 
 @router.get("/auditorias/elemento-asa")
@@ -460,6 +534,8 @@ class CrearBody(BaseModel):
     anios: List[str] = []
     estados: List[str] = []
     personas: List[str] = []
+    asa_pisos: List[str] = []     # reconocidos del texto del código
+    asa_ciclos: List[str] = []
     busca: str = ""
     notas: Optional[str] = None
 
@@ -492,8 +568,12 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
                 obra = fila[0]
                 total, elementos, semilla, n = _sortear_asa(
                     cur, body.id_proyecto, body.n, ",".join(body.anios), ",".join(body.estados),
-                    ",".join(body.personas), body.busca, "")
-                alcance = (body.anios, body.estados, body.personas)
+                    ",".join(body.personas), body.busca, "",
+                    ",".join(body.asa_pisos), ",".join(body.asa_ciclos))
+                # El alcance de aSa se guarda en las mismas tres columnas: año/estado va
+                # en `sectores`, el piso en `pisos` y el ciclo en `ciclos`, que es lo que
+                # significan allá. Quién cubicó entra en la nota del alcance.
+                alcance = (body.anios + body.estados + body.personas, body.asa_pisos, body.asa_ciclos)
             else:
                 cur.execute("SELECT COALESCE(nombre_proyecto, id_proyecto) FROM proyectos WHERE id_proyecto = %s",
                             (body.id_proyecto,))

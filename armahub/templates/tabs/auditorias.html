@@ -16,6 +16,10 @@
       <span class="muted" style="font-size:11px;">Se revisa una muestra al azar de elementos constructivos; cada no conformidad le queda como acción a quien cubicó.</span>
     </div>
 
+    <!-- DOS VISTAS. Acá se CREA y se elige; para revisar se ENTRA a la auditoría, que
+         ocupa la pantalla entera. Nada de revisar con la lista encima. -->
+    <div id="audVistaLista">
+
     <!-- LO MÍO primero: si tengo correcciones pendientes, las veo al entrar. -->
     <div class="card audc audmias" id="audMias" style="display:none;"></div>
 
@@ -98,6 +102,16 @@
           <div class="audcampo" style="flex:1;">
             <label>Cubicó</label><div id="audPersonas" class="audchips"></div>
           </div>
+        </div>
+        <div class="audfila" style="align-items:flex-start;">
+          <div class="audcampo" style="flex:1;">
+            <label title="Reconocido del texto del código de control: en aSa el piso no es un campo">Piso <small class="muted" style="font-weight:400;">(del texto)</small></label>
+            <div id="audAsaPisos" class="audchips"></div>
+          </div>
+          <div class="audcampo" style="flex:1;">
+            <label title="Reconocido del texto del código de control: en aSa el ciclo no es un campo">Ciclo <small class="muted" style="font-weight:400;">(del texto)</small></label>
+            <div id="audAsaCiclos" class="audchips"></div>
+          </div>
           <div class="audcampo" style="width:230px; flex:none;">
             <label>Buscar en la descripción</label>
             <input type="text" id="audBusca" placeholder="ELEV, LOSA, P3…">
@@ -139,16 +153,20 @@
           <i style="background:#c62828"></i>NC mayor
         </span>
       </div>
-      <div class="audbd"><table class="audt" id="audLista"></table></div>
+      <div class="audbd" style="max-height:none;"><table class="audt" id="audLista"></table></div>
     </div>
 
-    <!-- ══════ 3 · LA AUDITORÍA ABIERTA: la muestra que salió ══════ -->
-    <div class="card audc" id="audDetalle" style="display:none;">
-      <div class="audh"><span id="audDetTitulo"></span>
+    </div><!-- fin vista LISTA -->
+
+    <!-- ══════ DENTRO DE LA AUDITORÍA: la muestra y la revisión ══════ -->
+    <div id="audDetalle" style="display:none;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+        <button id="audVolver" class="audnueva" style="background:#546e7a;">‹ Volver a las auditorías</button>
+        <b id="audDetTitulo" style="font-size:14px; color:#1565C0;"></b>
         <div style="flex:1"></div>
         <button id="audPdf" class="audmini" title="Alcance, hallazgos, acciones y conclusión">Informe PDF</button>
-        <button id="audDetCerrar" class="secondary" style="font-size:10.5px; padding:2px 8px;">cerrar</button>
       </div>
+      <div class="card audc">
       <div id="audDetInfo" class="muted" style="font-size:11px; margin-bottom:6px;"></div>
       <div class="audbd"><table class="audt" id="audDetElems"></table></div>
 
@@ -177,8 +195,9 @@
       <div class="muted" style="font-size:10.5px; margin-top:6px;">
         Clic en un elemento para revisarlo. El estado y las fechas se ponen solos: <b>en curso</b> al
         primer hallazgo, <b>cerrada</b> al revisar el último. Una no conformidad le llega como
-        <b>acción</b> a quien cubicó (le aparece en la campana y arriba en esta pantalla); él corrige
+        <b>acción</b> a quien cubicó (le aparece en la campana y en su lista al entrar); él corrige
         en su cubicación, la marca corregida, y el auditor <b>verifica</b>.
+      </div>
       </div>
     </div>
 

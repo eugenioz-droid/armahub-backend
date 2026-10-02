@@ -145,13 +145,26 @@ check("...y una obra que ya está en ArmaHub no se repite como obra de aSa",
 check("el elemento de aSa es CtrlCode + ElementID, guardado en las mismas columnas",
       "def _elementos_de_items(" in SRC and '"eje": clave' in SRC
       and "CtrlCode eq '%s'" in SRC and 'ADD COLUMN cc TEXT' in MIG118)
-check("el alcance de aSa es otro: año, estado, quién cubicó y buscador",
+check("el alcance de aSa es otro: año, estado, quién cubicó, piso, ciclo y buscador",
       '@router.get("/auditorias/universo-asa")' in SRC and "def _sortear_asa(" in SRC
-      and all(('id="%s"' % x) in HTM for x in ("audAnios", "audEstados", "audPersonas", "audBusca")))
+      and all(('id="%s"' % x) in HTM for x in ("audAnios", "audEstados", "audPersonas",
+                                               "audAsaPisos", "audAsaCiclos", "audBusca")))
+check("...el piso y el ciclo se reconocen del TEXTO del código, con reglas conservadoras",
+      "def piso_de(" in SRC and "def ciclo_de(" in SRC
+      and A.ciclo_de("LOSAS C-4 SUBT.") == "C4" and A.ciclo_de("ELEV- P2 C2") == "C2"
+      and A.piso_de("ELEV- P2 C2") == "P2" and A.piso_de("LC P13 C5") == "P13"
+      and A.ciclo_de("Adicional cliente") is None and A.piso_de("COLUMNAS ET-D") is None)
+check("...y lo no reconocido se agrupa en «(sin dato)», no se inventa",
+      'SIN_DATO = "(sin dato)"' in SRC and "piso_de(descr) or SIN_DATO" in SRC)
 check("...acotado, porque cada elemento cuesta una consulta a aSa",
       "MUESTRA_MAXIMA_ASA = 20" in SRC and "tope de este endpoint es 500" in SRC)
-check("de cada código se toma UN elemento, el más pesado",
-      "max(del_cc, key=lambda e: e[\"kg\"])" in SRC)
+check("la muestra son ELEMENTOS al azar, no un elemento por código",
+      "bolsa.sort(key=lambda e: _orden_azar(" in SRC and "return total, bolsa[:n]" in SRC
+      and "es una muestra de pedidos" in SRC)
+check("...con el mismo azar reproducible que el sorteo en SQL",
+      "def _orden_azar(" in SRC and "hashlib.md5" in SRC)
+check("el selector lista una fila por JOB de aSa, no por nombre (hay obras con dos)",
+      "GROUP BY p.asa_job_id" in SRC and "se sorteaba dentro de 63" in SRC)
 check("los lados de la barra se muestran como texto, sin dibujar",
       "def _lados(" in SRC and "<cp>(.*?)</cp>" in SRC and "Lados / dimensiones" in JS)
 check("y la lista dice de qué origen salió cada auditoría",
@@ -182,6 +195,11 @@ check("hay un botón grande que abre el formulario, y arranca cerrado",
       'id="audNueva" class="audnueva"' in HTM and 'id="audForm" style="display:none;' in HTM
       and "function abrirForm(abrir)" in JS and ".audnueva{" in HTM)
 check("...y al crear se cierra solo", "abrirForm(false);" in JS)
+check("la lista y la auditoría abierta son DOS vistas, nunca las dos a la vez",
+      'id="audVistaLista"' in HTM and "if (lista) lista.style.display = 'none';" in JS
+      and "if (lista) lista.style.display = '';" in JS and 'id="audVolver"' in HTM)
+check("...y al crear se entra directo a la auditoría recién creada",
+      "ABIERTA = a.id; AUD = a; ELEM = null;" in JS)
 
 print("\n6. El alcance se arma: multi-selección y contadores que se entienden")
 check("el clic simple suma (no exige Ctrl) y hay un botón «Todos» que suelta",

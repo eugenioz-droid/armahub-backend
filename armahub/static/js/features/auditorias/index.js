@@ -55,7 +55,9 @@
   // pantalla sirve para las dos fuentes y no hay un segundo selector que mantener.
   var ORIGEN = 'armahub', OBRA = '', AUDITOR = '';
   var SECT = [], PISOS = [], CICLOS = [];              // alcance de ArmaHub
-  var ANIOS = [], ESTADOS = [], PERSONAS = [], BUSCA = '';  // alcance de aSa
+  // Alcance de aSa. El piso y el ciclo se reconocen del TEXTO del código: allá no
+  // son campos. Se ofrecen los que se reconocen en esa obra (55-77% según la obra).
+  var ANIOS = [], ESTADOS = [], PERSONAS = [], ASAPISOS = [], ASACICLOS = [], BUSCA = '';
   var LISTA = [], ABIERTA = null, AUD = null, ELEM = null;
 
   var _bound = false;
@@ -80,7 +82,8 @@
     $('audObra').addEventListener('change', async function () {
       var p = (this.value || '').split('|');
       ORIGEN = p[0] || 'armahub'; OBRA = p.slice(1).join('|');
-      SECT = []; PISOS = []; CICLOS = []; ANIOS = []; ESTADOS = []; PERSONAS = []; BUSCA = '';
+      SECT = []; PISOS = []; CICLOS = []; ANIOS = []; ESTADOS = []; PERSONAS = [];
+      ASAPISOS = []; ASACICLOS = []; BUSCA = '';
       $('audBusca').value = ''; UNIV = null;
       if (OBRA) {
         try {
@@ -94,7 +97,10 @@
     $('audAuditor').addEventListener('change', function () { AUDITOR = this.value; pintarEstado(); });
     $('audN').addEventListener('input', pintarEstado);
     $('audCrear').addEventListener('click', crear);
-    $('audDetCerrar').addEventListener('click', function () { ABIERTA = null; AUD = null; ELEM = null; pintarLista(); pintarDetalle(); });
+    $('audVolver').addEventListener('click', function () {
+      ABIERTA = null; AUD = null; ELEM = null;
+      pintarLista(); pintarDetalle(); cargarMisAcciones();
+    });
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
     // El PDF se baja con fetch y no con un enlace: el token va en la cabecera, y un
     // <a href> no la lleva (daría 401). Mismo camino que el informe de reclamos.
@@ -259,6 +265,8 @@
     chips($('audAnios'), UNIV.anios || [], 'anio', ANIOS);
     chips($('audEstados'), UNIV.estados || [], 'estado', ESTADOS);
     chips($('audPersonas'), UNIV.personas || [], 'email', PERSONAS, function (x) { return (x.email || '').split('@')[0]; });
+    chips($('audAsaPisos'), UNIV.pisos || [], 'valor', ASAPISOS);
+    chips($('audAsaCiclos'), UNIV.ciclos || [], 'valor', ASACICLOS);
   }
 
   function pintarEstado() {
@@ -269,6 +277,8 @@
       $('audRangoAsa').textContent = UNIV ? ('alcance: ' + (ANIOS.length ? ANIOS.join(', ') : 'todos los años') +
         ' · ' + (ESTADOS.length ? ESTADOS.join(', ') : 'todos los estados') +
         ' · ' + (PERSONAS.length ? PERSONAS.map(function (p) { return p.split('@')[0]; }).join(', ') : 'todos') +
+        ' · ' + (ASAPISOS.length ? ASAPISOS.join(', ') : 'todos los pisos') +
+        ' · ' + (ASACICLOS.length ? ASACICLOS.join(', ') : 'todos los ciclos') +
         (BUSCA ? ' · descripción contiene «' + BUSCA + '»' : '')) : '';
       // En aSa cada elemento cuesta una consulta: por eso el tope es más bajo.
       $('audNInfo').textContent = UNIV ? ('máx ' + UNIV.maximo) : '';
@@ -292,12 +302,14 @@
       var a = await req('POST', '/auditorias', {
         id_proyecto: OBRA, auditor: AUDITOR, origen: ORIGEN, n: parseInt($('audN').value, 10) || 10,
         sectores: SECT, pisos: PISOS, ciclos: CICLOS,
-        anios: ANIOS, estados: ESTADOS, personas: PERSONAS, busca: BUSCA
+        anios: ANIOS, estados: ESTADOS, personas: PERSONAS, busca: BUSCA,
+        asa_pisos: ASAPISOS, asa_ciclos: ASACICLOS
       });
       if (!a) return;
-      ok('Auditoría ' + a.codigo + ' creada');
+      ok('Auditoría ' + a.codigo + ' creada con ' + a.elementos.length + ' elementos');
       abrirForm(false);
-      $('audCrearMsg').textContent = a.codigo + ': ' + a.elementos.length + ' elementos de ' + a.total_rango + ' del alcance.';
+      $('audCrearMsg').textContent = '';
+      // Se ENTRA de una a la auditoría recién creada: es lo que uno va a hacer después.
       ABIERTA = a.id; AUD = a; ELEM = null;
       await cargarLista();
       pintarDetalle();
@@ -385,9 +397,14 @@
   }
 
   function pintarDetalle() {
-    var caja = $('audDetalle');
-    if (!AUD) { caja.style.display = 'none'; $('audRev').style.display = 'none'; return; }
-    caja.style.display = '';
+    var caja = $('audDetalle'), lista = $('audVistaLista');
+    // O se está mirando la lista, o se está DENTRO de una auditoría. Nunca las dos.
+    if (!AUD) {
+      caja.style.display = 'none'; $('audRev').style.display = 'none';
+      if (lista) lista.style.display = '';
+      return;
+    }
+    caja.style.display = ''; if (lista) lista.style.display = 'none';
     $('audDetTitulo').textContent = AUD.codigo + ' · ' + AUD.obra;
     $('audDetInfo').innerHTML = 'Audita <b>' + esc((AUD.auditor || '').split('@')[0]) + '</b> · alcance ' +
       esc(alcanceTxt(AUD)) + ' · muestra <b>' + AUD.n + '</b> de ' + AUD.total_rango +
