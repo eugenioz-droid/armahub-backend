@@ -58,7 +58,39 @@
   // Alcance de aSa. El piso y el ciclo se reconocen del TEXTO del código: allá no
   // son campos. Se ofrecen los que se reconocen en esa obra (55-77% según la obra).
   var ANIOS = [], ESTADOS = [], PERSONAS = [], ASAPISOS = [], ASACICLOS = [], BUSCA = '';
-  var LISTA = [], ABIERTA = null, AUD = null, ELEM = null;
+  var LISTA = [], ABIERTA = null, AUD = null, ELEM = null, CB_OBRA = null;
+
+  // Las obras de las DOS fuentes en una sola lista, que es lo que come el combobox. El
+  // origen viaja en el item, así que elegir una obra de aSa o de ArmaHub es lo mismo
+  // para la pantalla.
+  function obrasParaElegir() {
+    if (!BASE) return [];
+    var a = (BASE.obras || []).map(function (o) {
+      return { id: 'armahub|' + o.id_proyecto, label: o.obra, origen: 'armahub', clave: o.id_proyecto,
+               sub: 'ArmaHub · ' + o.elementos + ' elementos' + (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s)' : '') };
+    });
+    var b = (BASE.obras_asa || []).map(function (o) {
+      return { id: 'asa|' + o.job, label: o.obra, origen: 'asa', clave: o.job,
+               sub: 'aSa ' + o.job + ' · ' + o.cc + ' códigos · ' + kg0(o.kg) + ' kg' };
+    });
+    return a.concat(b);
+  }
+
+  async function elegirObra(item) {
+    ORIGEN = item ? item.origen : 'armahub';
+    OBRA = item ? item.clave : '';
+    SECT = []; PISOS = []; CICLOS = []; ANIOS = []; ESTADOS = []; PERSONAS = [];
+    ASAPISOS = []; ASACICLOS = []; BUSCA = '';
+    $('audBusca').value = ''; UNIV = null;
+    if (OBRA) {
+      try {
+        UNIV = ORIGEN === 'asa'
+          ? await req('GET', '/auditorias/universo-asa?job=' + encodeURIComponent(OBRA))
+          : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
+      } catch (e) { aviso(e.message); }
+    }
+    pintarAlcance(); pintarEstado();
+  }
 
   var _bound = false;
   global.loadAuditorias = async function () {
@@ -79,21 +111,13 @@
     $('audNueva').addEventListener('click', function () { abrirForm($('audForm').style.display === 'none'); });
     $('audFormCerrar').addEventListener('click', function () { abrirForm(false); });
     $('audBusca').addEventListener('input', function () { BUSCA = this.value; pintarEstado(); });
-    $('audObra').addEventListener('change', async function () {
-      var p = (this.value || '').split('|');
-      ORIGEN = p[0] || 'armahub'; OBRA = p.slice(1).join('|');
-      SECT = []; PISOS = []; CICLOS = []; ANIOS = []; ESTADOS = []; PERSONAS = [];
-      ASAPISOS = []; ASACICLOS = []; BUSCA = '';
-      $('audBusca').value = ''; UNIV = null;
-      if (OBRA) {
-        try {
-          UNIV = ORIGEN === 'asa'
-            ? await req('GET', '/auditorias/universo-asa?job=' + encodeURIComponent(OBRA))
-            : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
-        } catch (e) { aviso(e.message); }
-      }
-      pintarAlcance(); pintarEstado();
-    });
+    if (global.Combobox) {
+      CB_OBRA = global.Combobox.crear($('audObra'), {
+        items: obrasParaElegir,
+        placeholder: '🔍 escribe para buscar la obra…',
+        onSelect: elegirObra
+      });
+    }
     $('audAuditor').addEventListener('change', function () { AUDITOR = this.value; pintarEstado(); });
     $('audN').addEventListener('input', pintarEstado);
     $('audCrear').addEventListener('click', crear);
@@ -177,22 +201,6 @@
   }
 
   function pintarForm() {
-    // DOS GRUPOS en el mismo selector. Arriba las de ArmaHub —ahí están las barras y la
-    // auditoría es más profunda—; abajo las de aSa, que son muchas más. Una obra que está
-    // en las dos aparece sólo arriba: el backend no la repite.
-    var so = $('audObra');
-    so.innerHTML = '<option value="">— elige la obra —</option>' +
-      '<optgroup label="En ArmaHub · con sus barras (' + (BASE.obras || []).length + ')">' +
-      (BASE.obras || []).map(function (o) {
-        return '<option value="armahub|' + esc(o.id_proyecto) + '">' + esc(o.obra) + ' · ' + o.elementos + ' elementos' +
-               (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s) abierto(s)' : '') + '</option>';
-      }).join('') + '</optgroup>' +
-      '<optgroup label="Sólo en aSa · últimos 12 meses (' + (BASE.obras_asa || []).length + ')">' +
-      (BASE.obras_asa || []).map(function (o) {
-        return '<option value="asa|' + esc(o.job) + '">' + esc(o.obra) + ' · ' + o.cc + ' códigos · ' +
-               kg0(o.kg) + ' kg</option>';
-      }).join('') + '</optgroup>';
-    so.value = OBRA ? (ORIGEN + '|' + OBRA) : '';
     var sa = $('audAuditor');
     sa.innerHTML = '<option value="">— quién audita —</option>' + (BASE.auditores || []).map(function (a) {
       return '<option value="' + esc(a.email) + '">' + esc(a.nombre) + '</option>';
@@ -209,7 +217,9 @@
     var caja = $('audAlcance'), cajaAsa = $('audAlcanceAsa');
     if (!UNIV) {
       caja.style.display = 'none'; cajaAsa.style.display = 'none';
-      $('audObraInfo').textContent = ''; return;
+      $('audObraInfo').textContent = (BASE.obras || []).length + ' obras en ArmaHub (con sus barras) · ' +
+        (BASE.obras_asa || []).length + ' en aSa';
+      return;
     }
     if (ORIGEN === 'asa') { caja.style.display = 'none'; cajaAsa.style.display = ''; return pintarAlcanceAsa(); }
     caja.style.display = ''; cajaAsa.style.display = 'none';

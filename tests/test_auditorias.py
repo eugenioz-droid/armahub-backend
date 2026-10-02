@@ -95,7 +95,7 @@ check("...y el estado se DERIVA de los hallazgos, en la base",
 check("...el plazo cuenta hábiles: 10 desde un viernes caen dos viernes después",
       A._habiles(__import__("datetime").date(2026, 10, 2), 10) == __import__("datetime").date(2026, 10, 16))
 check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
-      "AS reclamos" in SRC and "reclamo(s) abierto(s)" in JS)
+      "AS reclamos" in SRC and "o.reclamos + ' reclamo(s)'" in JS)
 
 print("\n5. La revisión elemento a elemento")
 check("el elemento se trae ENTERO: marca, Ø, figura, dimensiones, largo, cantidad, peso, plano",
@@ -137,9 +137,12 @@ MIG118 = open(os.path.join(ROOT, "armahub", "migrations", "118_auditorias_asa.sq
 check("los dos orígenes están declarados", A.ORIGENES == ("armahub", "asa")
       and 'origen          TEXT NOT NULL DEFAULT \'armahub\'' in MIG
       and "ADD COLUMN cc TEXT" in MIG118)
-check("el selector trae las dos fuentes, en dos grupos",
-      '"obras_asa": asa_obras' in SRC and 'optgroup label="En ArmaHub' in JS
-      and 'optgroup label="Sólo en aSa' in JS and "value=\"asa|" in JS)
+check("el selector trae las dos fuentes en una sola lista buscable (combobox estándar)",
+      '"obras_asa": asa_obras' in SRC and "function obrasParaElegir()" in JS
+      and "global.Combobox.crear($('audObra')" in JS
+      and "origen: 'armahub'" in JS and "origen: 'asa'" in JS)
+check("...y el origen viaja en el item, no se adivina del texto",
+      "ORIGEN = item ? item.origen : 'armahub';" in JS and "OBRA = item ? item.clave : '';" in JS)
 check("...y una obra que ya está en ArmaHub no se repite como obra de aSa",
       "NOT EXISTS (SELECT 1 FROM proyectos pr" in SRC and "FROM barras b WHERE b.id_proyecto" in SRC)
 check("el elemento de aSa es CtrlCode + ElementID, guardado en las mismas columnas",
@@ -209,7 +212,10 @@ check("el contador va en su propia pastilla y dice qué es",
       "elementos disponibles" in JS and ".audchips button i{" in HTM
       and "<b>elementos disponibles</b>" in HTM)
 check("se dice que la muestra son elementos completos, no barras",
-      "elementos completos" in HTM and "un eje completo con TODAS sus barras" in HTM)
+      "un eje completo con TODAS sus barras" in HTM)
+check("los tres campos van alineados y las aclaraciones en su propia fila",
+      'class="audfila audtres"' in HTM and 'class="audpies"' in HTM
+      and ".audtres input, .audtres select, .audtres .audfechas{height:28px" in HTM)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
