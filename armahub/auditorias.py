@@ -44,9 +44,11 @@ router = APIRouter()
 SECTORES = {"ELEV": "Elevación", "LCIELO": "Losa", "VCIELO": "Viga de cielo", "FUND": "Fundación"}
 MUESTRA_POR_DEFECTO = 10
 MUESTRA_MAXIMA = 200
-# Roles que pueden auditar: cualquiera del área que cubica o de Calidad. La regla de
-# INDEPENDENCIA (no auditas lo que tú cubicaste) se aplica elemento a elemento, no acá.
-ROLES_AUDITAN = ("admin", "admin_calidad", "cubicador", "jefe_servicio", "miembro", "usc")
+# QUIÉN VE Y HACE AUDITORÍAS: administración y los cubicadores, nadie más (decisión
+# del usuario, 2-oct). Un USC o un externo no tiene nada que hacer acá: esto mide el
+# trabajo del área de cubicación. La regla de INDEPENDENCIA —no auditas lo que tú
+# cubicaste— se avisa elemento a elemento, no se resuelve con el rol.
+ROLES_AUDITAN = ("admin", "admin_calidad", "cubicador")
 # Estados de la auditoría (los usa el front; se congelan acá para que haya UNA lista).
 ESTADOS = ("planificada", "en_curso", "cerrada")
 # Hallazgos posibles sobre un elemento, en el idioma de la ISO.
@@ -102,6 +104,12 @@ def _puede_auditar(user):
         raise HTTPException(status_code=403, detail="No tiene permiso para auditar.")
 
 
+def _puede_ver(user):
+    """Ver una auditoría es lo mismo que poder hacerla: administración y cubicadores. El
+    módulo entero queda cerrado para el resto, no sólo los botones."""
+    _puede_auditar(user)
+
+
 def estado_de(revisados: int, total: int) -> str:
     """El estado NO se elige: se deriva. Sin revisar es planificada; algo revisado, en
     curso; todo revisado, cerrada. Función pura para poder probarla."""
@@ -112,6 +120,7 @@ def estado_de(revisados: int, total: int) -> str:
 
 @router.get("/auditorias/obras")
 def obras(user=Depends(get_current_user)):
+    _puede_ver(user)
     """Las obras que tienen algo que auditar (barras en ArmaHub), con su tamaño y sus
     reclamos abiertos —el dato que después ordena el programa de auditorías—, y la
     gente que puede auditar."""
@@ -178,6 +187,7 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
              elemento_id: int = 0, user=Depends(get_current_user)):
     """UN ELEMENTO ENTERO, barra por barra, para revisarlo: marca, diámetro, figura y sus
     dimensiones, largo, cantidad, peso y de qué plano salió. Es lo que el auditor mira."""
+    _puede_ver(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -216,6 +226,7 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
 
 @router.get("/auditorias/universo")
 def universo(id_proyecto: str, user=Depends(get_current_user)):
+    _puede_ver(user)
     """De qué está hecha una obra, para armar el alcance: tipos (sector), pisos y ciclos
     con cuántos elementos tiene cada uno, y quién cubicó. Todo sale de las barras."""
     with get_conn() as conn:
@@ -408,6 +419,7 @@ def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
 
 @router.get("/auditorias/cc")
 def codigos_de_control(job: str, user=Depends(get_current_user)):
+    _puede_ver(user)
     """LOS CÓDIGOS DE CONTROL de una obra de aSa, para elegir de cuáles sacar la muestra.
 
     SÓLO LOS NO DESPACHADOS. Un código `Shipped` ya se fabricó y se fue a la obra:
@@ -501,6 +513,7 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
     """Un elemento de aSa, barra por barra: marca, Ø, figura, largo, cantidad y peso. La
     geometría viene entera en `LegAngle` (lado, largo, ángulo, gancho); acá se muestra
     como texto, que es lo que pidió el usuario para revisar rápido."""
+    _puede_ver(user)
     items = [it for it in _items_de(cc)
              if not element or (it.get("ElementID") or "").strip() == element]
     if not items:
@@ -625,7 +638,10 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
                   e["estructura"], e["barras"], e["kg"], e["cubicado_por"]) for e in elementos])
             audit(email, "auditoria_crear",
                   f"{body.origen} · {obra}: {len(elementos)} de {total}", "auditoria", str(aud_id))
-    return detalle(aud_id, user)
+    aud = detalle(aud_id, user)
+    # Fuera de la transacción: el correo avisa, no decide. Si falla, la auditoría ya está.
+    aud["correo"] = _avisar_auditoria_nueva(aud)
+    return aud
 
 
 @router.get("/auditorias")
@@ -633,6 +649,7 @@ def listar(id_proyecto: str = "", auditor: str = "", estado: str = "", limite: i
            user=Depends(get_current_user)):
     """La lista: estado, fechas y qué encontró cada una. El resumen por hallazgo se cuenta
     en la base, no en el navegador: es lo que se mira sin abrir nada."""
+    _puede_ver(user)
     where, params = ["1=1"], []
     for col, valor in (("a.id_proyecto", id_proyecto), ("a.auditor", auditor), ("a.estado", estado)):
         if valor:
@@ -682,6 +699,7 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
     Sólo cuenta elementos REVISADOS: un elemento pendiente no es ni conforme ni no
     conforme, y meterlo en el denominador bajaría el porcentaje de quien aún no termina.
     La «conformidad» es conformes sobre revisados; una observación no es conformidad."""
+    _puede_ver(user)
     where, params = ["e.hallazgo IS NOT NULL"], []
     if desde:
         where.append("a.creada_fecha >= %s")
@@ -755,6 +773,7 @@ def cobertura(id_proyecto: str, origen: str = "armahub", user=Depends(get_curren
       · aSa: los elementos sólo se conocen pidiéndolos código a código, y eso tarda
         segundos por código. Así que la unidad es el CÓDIGO DE CONTROL: se informa
         cuántos tienen al menos un elemento auditado. Es más grueso, y se dice."""
+    _puede_ver(user)
     if origen not in ORIGENES:
         raise HTTPException(status_code=422, detail="Origen no válido.")
     with get_conn() as conn:
@@ -782,6 +801,9 @@ def cobertura(id_proyecto: str, origen: str = "armahub", user=Depends(get_curren
                     vistos = por_cc.get(r[0], [])
                     filas.append({"clave": r[0], "nombre": r[1] or r[0], "kg": float(r[2] or 0),
                                   "estado": r[3], "quien": r[4], "auditados": len(vistos),
+                                  # Despachado = ya no se puede auditar. Entra al total de
+                                  # la obra pero no al denominador de lo auditable.
+                                  "auditable": r[3] != ESTADO_DESPACHADO,
                                   "hallazgos": [v["hallazgo"] for v in vistos if v["hallazgo"]],
                                   "auditorias": sorted({v["auditoria"] for v in vistos})})
                 unidad = "código de control"
@@ -799,25 +821,32 @@ def cobertura(id_proyecto: str, origen: str = "armahub", user=Depends(get_curren
                     filas.append({"clave": "|".join([r[0] or "", r[1] or "", r[2] or "", r[3] or ""]),
                                   "nombre": nombre, "kg": float(r[6] or 0), "estado": "",
                                   "quien": r[7], "barras": r[5],
-                                  "auditados": 1 if info else 0,
+                                  "auditados": 1 if info else 0, "auditable": True,
                                   "hallazgos": [info["hallazgo"]] if info and info["hallazgo"] else [],
                                   "auditorias": [info["auditoria"]] if info else []})
                 unidad = "elemento"
+    # DOS DENOMINADORES, y la diferencia importa: lo despachado ya no se puede auditar,
+    # así que medir contra el total de la obra castiga por algo que nadie puede hacer. Se
+    # informan los dos: contra lo auditable (lo exigible) y contra el total (el panorama).
     total = len(filas)
+    auditables = [f for f in filas if f["auditable"]]
     con = sum(1 for f in filas if f["auditados"])
     kg_total = sum(f["kg"] for f in filas)
+    kg_aud = sum(f["kg"] for f in auditables)
     kg_con = sum(f["kg"] for f in filas if f["auditados"])
     return {"id_proyecto": id_proyecto, "origen": origen, "unidad": unidad,
-            "total": total, "auditados": con,
-            "pct": round(con / total * 100) if total else 0,
-            "kg": kg_total, "kg_auditados": kg_con,
-            "pct_kg": round(kg_con / kg_total * 100) if kg_total else 0,
+            "total": total, "auditable": len(auditables), "auditados": con,
+            "pct": round(con / len(auditables) * 100) if auditables else 0,
+            "pct_total": round(con / total * 100) if total else 0,
+            "kg": kg_total, "kg_auditable": kg_aud, "kg_auditados": kg_con,
+            "pct_kg": round(kg_con / kg_aud * 100) if kg_aud else 0,
             "filas": filas}
 
 
 @router.get("/auditorias/{auditoria_id}")
 def detalle(auditoria_id: int, user=Depends(get_current_user)):
     """La auditoría con su muestra, elemento por elemento y con su hallazgo."""
+    _puede_ver(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -923,6 +952,67 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
 
 _NOMBRE = {"conforme": "Conforme", "observacion": "Observación",
            "nc_menor": "No conformidad menor", "nc_mayor": "No conformidad mayor"}
+
+
+def _html_correo(titulo: str, lineas: list, pie: str = "") -> str:
+    """El correo de una auditoría. Sobrio y corto: lo que hay que hacer y para cuándo."""
+    cuerpo = "".join("<p style='margin:0 0 8px'>%s</p>" % x for x in lineas)
+    return (
+        "<div style=\"font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;"
+        "font-size:14px;color:#263238;max-width:620px\">"
+        "<h2 style='color:#1565C0;margin:0 0 4px;font-size:18px'>%s</h2>"
+        "<hr style='border:0;border-top:2px solid #1565C0;margin:6px 0 14px'>"
+        "%s"
+        "<p style='margin-top:18px;font-size:12px;color:#78909c'>%s</p></div>"
+    ) % (titulo, cuerpo, pie or "ArmaHub · Auditorías de cubicación")
+
+
+def _avisar_correo(destinatarios, asunto: str, titulo: str, lineas: list):
+    """Manda el correo si Resend está configurado. NUNCA tumba lo que se estaba haciendo:
+    una auditoría creada no se deshace porque el correo falle."""
+    destinatarios = sorted({d for d in (destinatarios or []) if d and "@" in d})
+    if not destinatarios:
+        return {"enviado": False, "motivo": "sin destinatarios"}
+    try:
+        from . import mailer
+        if not mailer.is_configured():
+            return {"enviado": False, "motivo": "falta RESEND_API_KEY"}
+        mailer.send_email(to=destinatarios, subject=asunto, html=_html_correo(titulo, lineas))
+        return {"enviado": True, "a": destinatarios}
+    except Exception as e:
+        return {"enviado": False, "motivo": str(e)[:120]}
+
+
+def _avisar_auditoria_nueva(aud: dict) -> dict:
+    """Los dos correos que pidió el usuario al lanzar una auditoría:
+
+      · al AUDITOR, con qué le tocó y hasta cuándo;
+      · al AUDITADO (quien cubicó los elementos sorteados), para que lo sepa y pueda
+        hacerle llegar los antecedentes al auditor. No es un reproche: es que sin los
+        planos y los acuerdos con el cliente, el auditor revisa a ciegas.
+    """
+    cuantos = len(aud.get("elementos") or [])
+    cab = "%s · %s" % (aud["codigo"], aud["obra"])
+    r1 = _avisar_correo(
+        [aud["auditor"]], "Auditoría asignada: %s" % cab,
+        "Te asignaron una auditoría de cubicación",
+        ["Obra: <b>%s</b>" % aud["obra"],
+         "Auditoría <b>%s</b> · %d elemento(s) sorteados de %d del alcance."
+         % (aud["codigo"], cuantos, aud.get("total_rango") or 0),
+         "Plazo para cerrarla: <b>%s</b>." % (aud.get("plazo") or "sin plazo"),
+         "Entra a ArmaHub → Calidad → Auditorías para revisarla."])
+    auditados = sorted({(e.get("cubicado_por") or "").strip()
+                        for e in (aud.get("elementos") or []) if e.get("cubicado_por")})
+    r2 = _avisar_correo(
+        auditados, "Se está auditando tu cubicación: %s" % cab,
+        "Tu cubicación entró en una auditoría",
+        ["Obra: <b>%s</b>" % aud["obra"],
+         "Auditoría <b>%s</b>, a cargo de <b>%s</b>." % (aud["codigo"], aud["auditor"]),
+         "Se revisarán %d elemento(s). Si tienes planos, correos o acuerdos con el cliente "
+         "que expliquen cómo se cubicó, hazlos llegar al auditor." % cuantos,
+         "Plazo de la auditoría: <b>%s</b>." % (aud.get("plazo") or "sin plazo"),
+         "Si sale alguna no conformidad te va a llegar como acción, y la corriges en tu cubicación."])
+    return {"auditor": r1, "auditados": r2}
 
 
 def _avisar(destinatario: str, mensaje: str):
@@ -1090,6 +1180,7 @@ def mover_accion(auditoria_id: int, elemento_id: int, body: AccionBody, user=Dep
 @router.get("/auditorias/mias/acciones")
 def mis_acciones(user=Depends(get_current_user)):
     """Lo que le toca corregir a quien pregunta: sus no conformidades abiertas."""
+    _puede_ver(user)
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1109,6 +1200,7 @@ def mis_acciones(user=Depends(get_current_user)):
 @router.get("/auditorias/{auditoria_id}/pdf")
 def informe_pdf(auditoria_id: int, user=Depends(get_current_user)):
     """El informe de la auditoría, para mandar o archivar. Una página cuando cabe."""
+    _puede_ver(user)
     from fastapi import Response
     aud = detalle(auditoria_id, user)
     pdf = _InformePDF(aud).build()
@@ -1313,9 +1405,11 @@ class _InformePDF:
         self._titulo("5. Cobertura de la obra")
         p.set_font("Helvetica", "", 9)
         p.multi_cell(self.w, 5, self._s(
-            "Contando TODAS las auditorias de esta obra, se ha revisado %d de %d %s(s) (%d%%), "
-            "equivalentes al %d%% de los kilos. El resto no se ha mirado." % (
-                c["auditados"], c["total"], c["unidad"], c["pct"], c["pct_kg"])),
+            "Contando TODAS las auditorias de esta obra: %d de %d %s(s) AUDITABLES revisados "
+            "(%d%%), que son el %d%% de sus kilos. Sobre el total de la obra (%d, incluyendo "
+            "lo ya despachado, que no se puede auditar) es un %d%%." % (
+                c["auditados"], c["auditable"], c["unidad"], c["pct"], c["pct_kg"],
+                c["total"], c["pct_total"])),
             new_x="LMARGIN", new_y="NEXT")
         # Barra de cobertura: se lee antes que el numero.
         p.set_fill_color(236, 239, 241)

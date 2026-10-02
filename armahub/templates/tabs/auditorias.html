@@ -315,6 +315,13 @@
   .audgrid span.conforme{background:#8BC34A;} .audgrid span.observacion{background:#ffb74d;}
   .audgrid span.nc_menor{background:#ef9a9a;} .audgrid span.nc_mayor{background:#c62828;}
   .audgrid span.pendiente{background:#90caf9;}
+  /* Despachado: ya no se puede auditar. Se muestra rayado para que no se confunda con
+     «falta por mirar», que es lo único exigible. */
+  .audgrid span.fuera{background:repeating-linear-gradient(45deg,#eceff1,#eceff1 2px,#fff 2px,#fff 4px);}
+  .audleyc{display:flex; gap:12px; flex-wrap:wrap; font-size:10px; color:#546e7a; margin-top:6px; align-items:center;}
+  .audleyc i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px;}
+  .audleyc i.g{background:#e3e8ef;} .audleyc i.a{background:#8BC34A;}
+  .audleyc i.r{background:#c62828;} .audleyc i.f{background:repeating-linear-gradient(45deg,#eceff1,#eceff1 2px,#fff 2px,#fff 4px); border:1px solid #e3e8ef;}
   /* Mis correcciones pendientes: lo primero que ve el cubicador al entrar. */
   .audmias{background:#fffdf5; border-top:3px solid #ffb300;}
   /* Estado de la acción. Pendiente pesa, verificada se apaga: lo cerrado no debe gritar. */

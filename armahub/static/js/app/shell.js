@@ -163,6 +163,12 @@
     }
 
     if (mod === 'reclamos') {
+      // Auditorías: sólo administración y cubicadores (decisión del usuario, 2-oct). El
+      // backend valida igual; esto es para que no aparezca un tab que daría 403.
+      var puedeAuditar = ['admin', 'admin_calidad', 'cubicador'].indexOf(window.currentRole) !== -1;
+      document.querySelectorAll("[onclick=\"switchTab('auditorias')\"]").forEach(function (b) {
+        b.style.display = puedeAuditar ? '' : 'none';
+      });
       var puedeCrear = ['admin', 'admin_calidad', 'usc'].indexOf(window.currentRole) !== -1;
       var crearCard = document.getElementById('crearReclamoCard');
       if (crearCard) {

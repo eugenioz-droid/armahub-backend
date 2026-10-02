@@ -243,19 +243,44 @@ check("...y la ruta va ANTES de /auditorias/{id}, o la tomaría como id",
 
 print("\n5f. Cobertura: cuánto de la obra se ha mirado")
 check("hay un endpoint que lista TODO y marca lo auditado",
-      '@router.get("/auditorias/cobertura")' in SRC and '"pct": round(con / total * 100)' in SRC
-      and '"pct_kg"' in SRC)
+      '@router.get("/auditorias/cobertura")' in SRC
+      and '"pct": round(con / len(auditables) * 100)' in SRC and '"pct_kg"' in SRC)
 check("...y va antes de /auditorias/{id}, o la tomaría como id",
       SRC.index('@router.get("/auditorias/cobertura")') < SRC.index('@router.get("/auditorias/{auditoria_id}")'))
+check("...con DOS denominadores: lo auditable y el total de la obra",
+      '"auditable": len(auditables)' in SRC and '"pct_total"' in SRC
+      and '"auditable": r[3] != ESTADO_DESPACHADO' in SRC
+      and "castiga por algo que nadie puede hacer" in SRC
+      and "de lo auditable" in JS and "del total de la obra" in JS)
+check("...y tres estados en la grilla: sin mirar, auditado y no auditable",
+      ".audgrid span.fuera{" in HTM and "'fuera'" in JS and "despachado, ya no se audita" in JS)
 check("la unidad se dice, porque las dos fuentes no se miden igual",
       'unidad = "código de control"' in SRC and 'unidad = "elemento"' in SRC
-      and "es más gruesa" in JS)
+      and "auditar un elemento no agota el código" in JS)
 check("la pantalla la pinta como grilla, un cuadrito por elemento",
       'id="audCobertura"' in HTM and ".audgrid span.nc_mayor" in HTM and "function pintarCobertura()" in JS
-      and "Gris = sin auditar" in JS)
+      and "sin auditar</span>" in JS)
 check("...y entra al informe como su propia sección",
       "def _cobertura(self)" in SRC and '"5. Cobertura de la obra"' in SRC
       and '"6. Conclusion"' in SRC and "self._cobertura()" in SRC)
+
+print("\n5g. Permisos y correo")
+check("sólo administración y cubicadores entran al módulo",
+      A.ROLES_AUDITAN == ("admin", "admin_calidad", "cubicador")
+      and "def _puede_ver(user)" in SRC and SRC.count("_puede_ver(user)") >= 9)
+check("...y el tab se esconde para el resto (el backend igual valida)",
+      "switchTab('auditorias')" in SHELL and "puedeAuditar" in SHELL)
+check("al crear se avisa por correo al auditor y al auditado",
+      "def _avisar_auditoria_nueva(" in SRC and "Auditoría asignada" in SRC
+      and "Se está auditando tu cubicación" in SRC
+      and 'aud["correo"] = _avisar_auditoria_nueva(aud)' in SRC)
+check("...el auditor recibe su plazo y el auditado sabe a quién mandarle los antecedentes",
+      "Plazo para cerrarla" in SRC and "hazlos llegar al auditor" in SRC)
+check("...y si el correo falla, la auditoría igual queda creada",
+      "el correo avisa, no decide" in SRC and "def _avisar_correo(" in SRC
+      and 'return {"enviado": False, "motivo": str(e)[:120]}' in SRC)
+check("...usando el mailer único de la plataforma, no uno nuevo",
+      "from . import mailer" in SRC and "mailer.is_configured()" in SRC and "mailer.send_email(" in SRC)
 
 print("\n5d. El formulario de creación está plegado tras un botón")
 check("hay un botón grande que abre el formulario, y arranca cerrado",

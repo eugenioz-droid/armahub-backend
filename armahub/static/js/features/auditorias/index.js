@@ -710,22 +710,32 @@
     if (!c || !c.total) { caja.style.display = 'none'; return; }
     caja.style.display = '';
     var falta = c.total - c.auditados;
+    // DOS DENOMINADORES: contra lo auditable (lo exigible) y contra el total de la obra.
+    // Medir sólo contra el total castiga por lo despachado, que ya no se puede auditar.
+    var noAud = c.total - c.auditable;
     caja.innerHTML = '<div class="audh">Cobertura de la obra <span class="muted">' +
-        'contando todas las auditorías de ' + esc(AUD.obra) + '</span></div>' +
-      '<div style="font-size:11.5px;"><b style="font-size:17px; color:#1565C0">' + c.pct + '%</b> · ' +
-        c.auditados + ' de ' + c.total + ' ' + esc(c.unidad) + '(s) auditados · ' +
-        c.pct_kg + '% de los kilos · <b>' + falta + ' sin mirar</b></div>' +
-      '<div class="audcobbar"><i style="width:' + c.pct + '%"></i></div>' +
+        esc(AUD.obra) + ' · todas sus auditorías</span></div>' +
+      '<div class="audkpis">' +
+        caj(c.pct + '%', 'de lo auditable · ' + c.auditados + ' de ' + c.auditable,
+            c.pct >= 20 ? 'bien' : '') +
+        caj(c.pct_total + '%', 'del total de la obra (' + c.total + ')') +
+        caj(c.pct_kg + '%', 'de los kilos auditables') +
+        caj(falta, 'sin mirar' + (noAud ? ' · ' + noAud + ' ya despachados' : '')) +
+      '</div>' +
+      '<div class="audcobbar" title="' + c.pct + '% de lo auditable"><i style="width:' + c.pct + '%"></i></div>' +
       '<div class="audgrid">' + c.filas.map(function (f) {
-        var h = (f.hallazgos || [])[0] || (f.auditados ? 'pendiente' : '');
-        return '<span class="' + esc(h) + '" title="' + esc(f.nombre) +
-               (f.auditados ? ' · auditado en ' + (f.auditorias || []).join(', ') : ' · sin auditar') + '"></span>';
+        // Tres estados, no dos: sin mirar · con algo auditado · no auditable (despachado).
+        var cl = !f.auditable ? 'fuera'
+               : (f.auditados ? ((f.hallazgos || [])[0] || 'pendiente') : '');
+        return '<span class="' + esc(cl) + '" title="' + esc(f.nombre) +
+               (f.auditados ? ' · ' + f.auditados + ' elemento(s) auditado(s) en ' + (f.auditorias || []).join(', ')
+                            : (f.auditable ? ' · sin auditar' : ' · despachado, ya no se audita')) + '"></span>';
       }).join('') + '</div>' +
-      '<div class="muted" style="font-size:10px; margin-top:5px;">' +
-        (c.origen === 'asa'
-          ? 'En aSa la unidad es el código de control: los elementos sólo se conocen pidiéndolos uno a uno, así que la medida es más gruesa.'
-          : 'Cada cuadrito es un elemento de la obra.') +
-        ' Gris = sin auditar.</div>';
+      '<div class="audleyc">' +
+        '<span><i class="g"></i>sin auditar</span><span><i class="a"></i>auditado</span>' +
+        '<span><i class="r"></i>con no conformidad</span><span><i class="f"></i>despachado</span>' +
+        (c.origen === 'asa' ? '<span class="muted">· en aSa la unidad es el código: auditar un elemento no agota el código</span>' : '') +
+      '</div>';
   }
 
   // MIS ACCIONES: lo que a mí me toca corregir, sin tener que buscar en qué auditoría salió.
