@@ -546,16 +546,23 @@ function rhGrupoF(titulo, clave, valores, etiqueta) {
     }).join('') + '</div></div>';
 }
 
+// DOS LÍNEAS Y NO SEIS GRUPOS SUELTOS. Dejados a su aire, cada grupo se parte donde le
+// toca y la barra queda escalonada. Arriba van los cortos, que caben juntos; abajo los
+// dos largos, cubicador y tipo, que son los que necesitan el ancho entero.
 function rhPintarFiltros() {
   var cont = document.getElementById('rhFiltros');
   if (!cont) return;
   cont.innerHTML =
-    rhGrupoF('Ano', 'anio', rhValores('anio')) +
-    rhGrupoF('Servicio', 'servicio', rhValores('servicio'), function (v) { return RH_SERV_TXT[v] || v; }) +
-    rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) +
-    rhGrupoF('Segmento', 'segmento', rhValores('segmento')) +
-    rhGrupoF('Tipo', 'tipo', rhValores('tipo'), function (v) { return TIPO_TXT[v] || v; }) +
-    rhGrupoF('Aplica', 'aplica', ['si', 'pendiente', 'no'], function (v) { return RH_APLICA_TXT[v] || v; });
+    '<div class="rhfrow">' +
+      rhGrupoF('Año', 'anio', rhValores('anio')) +
+      rhGrupoF('Servicio', 'servicio', rhValores('servicio'), function (v) { return RH_SERV_TXT[v] || v; }) +
+      rhGrupoF('Aplica', 'aplica', ['si', 'pendiente', 'no'], function (v) { return RH_APLICA_TXT[v] || v; }) +
+      rhGrupoF('Segmento', 'segmento', rhValores('segmento')) +
+    '</div>' +
+    '<div class="rhfrow">' +
+      rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) +
+      rhGrupoF('Tipo', 'tipo', rhValores('tipo'), function (v) { return TIPO_TXT[v] || v; }) +
+    '</div>';
   cont.querySelectorAll('.rhfchips button').forEach(function (b) {
     b.addEventListener('click', function () {
       var g = b.parentNode.dataset.g;
@@ -583,22 +590,24 @@ function rhPintarTodo() {
       (fuera ? ' <span style="color:#90a4ae">(' + rhNum(fuera) + ' fuera por los filtros)</span>' : '');
   }
 
-  // Por ano: una barra por servicio, que es el corte que el usuario pidio ver.
+  // POR AÑO, separado entre lo que aplica al área y lo que no. El corte por servicio o
+  // por cubicador NO va acá: va en los filtros. Meter cada dimensión como una serie más
+  // llenaría el gráfico de barras y seguiría sin poder cruzar dos cosas a la vez.
   var etiq = anios.map(function (a) {
     var e = String(a) + (a === RH.anio_en_curso ? ' (en curso)' : '');
     return [e, rhNum((porAnio[a] || {}).n || 0)];
   });
-  var servicios = rhValores('servicio');
-  var COLOR_SERV = { Interno: '#c62828', Externo: '#1565C0', '(sin dato)': '#b0bec5' };
-  rhBarras('rhChartAnio', etiq, servicios.map(function (s) {
-    return {
-      nombre: RH_SERV_TXT[s] || s, color: COLOR_SERV[s] || '#90a4ae',
-      datos: anios.map(function (a) {
-        return filas.filter(function (f) { return f.anio === a && f.servicio === s; })
-          .reduce(function (x, f) { return x + f.n; }, 0);
-      })
-    };
-  }));
+  function porAplica(valor) {
+    return anios.map(function (a) {
+      return filas.filter(function (f) { return f.anio === a && f.aplica === valor; })
+        .reduce(function (x, f) { return x + f.n; }, 0);
+    });
+  }
+  rhBarras('rhChartAnio', etiq, [
+    { nombre: 'Aplican al área', datos: porAplica('si'), color: '#c62828' },
+    { nombre: 'No aplican', datos: porAplica('no'), color: '#b0bec5' },
+    { nombre: 'Por revisar', datos: porAplica('pendiente'), color: '#ffb74d' }
+  ]);
 
   var etiqKg = anios.map(function (a) {
     var p = porAnio[a] || { n: 0, con_kilos: 0 };

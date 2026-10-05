@@ -39,12 +39,15 @@
         /* LOS FILTROS SON BOTONES, siempre a la vista. Marcar y desmarcar cubicadores
            es lo que más se hace acá, y cada botón lleva su cuenta: sin ella hay que
            marcar para descubrir que uno no tiene nada. */
-        .rhfbar{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap;
-                background:#fff; border:1px solid #eee; border-radius:8px;
-                padding:9px 12px; margin-bottom:12px;}
-        .rhfg{display:flex; flex-direction:column; gap:3px;}
-        .rhflbl{font-size:9.5px; font-weight:700; color:#90a4ae; letter-spacing:.4px; text-transform:uppercase;}
-        .rhfchips{display:flex; gap:4px; flex-wrap:wrap; max-width:560px;}
+        .rhfbar{background:#fff; border:1px solid #eee; border-radius:8px;
+                padding:10px 12px 11px; margin-bottom:12px;}
+        /* DOS LÍNEAS. Cada una con sus grupos alineados arriba, y una raya tenue entre
+           medio para que se lean como dos bloques y no como seis cosas sueltas. */
+        .rhfrow{display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;}
+        .rhfrow + .rhfrow{margin-top:9px; padding-top:9px; border-top:1px solid #f2f4f6;}
+        .rhfg{display:flex; flex-direction:column; gap:4px;}
+        .rhflbl{font-size:9px; font-weight:700; color:#b0bec5; letter-spacing:.6px; text-transform:uppercase;}
+        .rhfchips{display:flex; gap:4px; flex-wrap:wrap;}
         .rhfchips button{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; background:#fff;
                          color:#546e7a; border-radius:11px; cursor:pointer; white-space:nowrap;}
         .rhfchips button.on{background:#5e35b1; border-color:#5e35b1; color:#fff; font-weight:700;}

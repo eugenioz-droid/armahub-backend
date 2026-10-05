@@ -121,13 +121,28 @@ check('hay un tercer sub-tab y apunta a su panel',
   sandbox.RH_F.cubicador = [];
   sandbox.rhPintarTodo();
 
-  console.log('\n6. El gráfico por año separa por servicio y avisa del año en curso');
+  console.log('\n6. El gráfico por año: aplica, y el resto se maneja con filtros');
+  // Las demás dimensiones NO van como series: meterlas llenaría el gráfico de barras y
+  // seguiría sin poder cruzar dos cosas a la vez. Para eso están los filtros.
   g = graficos[graficos.length - 2].cfg;
-  check('una serie por servicio', g.data.datasets.length >= 2);
+  check('tres series: aplican, no aplican y por revisar',
+    g.data.datasets.length === 3
+    && g.data.datasets[0].label === 'Aplican al área'
+    && g.data.datasets[2].label === 'Por revisar');
   check('...sin apilar, que no deja comparar', !(g.options.scales.x && g.options.scales.x.stacked));
   check('el total del año va en la etiqueta del eje', String(g.data.labels[0][1]) === '8');
   check('el número sobre la barra es el real', g.options.plugins.datalabels.formatter(142) === '142');
   check('...y el cero no se dibuja', g.options.plugins.datalabels.formatter(0) === '');
+
+  console.log('\n6b. La barra de filtros va en DOS líneas, no en seis grupos sueltos');
+  // Dejados a su aire, cada grupo se parte donde le toca y la barra queda escalonada.
+  var fb = nodo('rhFiltros').innerHTML;
+  check('son exactamente dos filas', (fb.match(/class="rhfrow"/g) || []).length === 2);
+  check('arriba los cortos: año, servicio, aplica y segmento',
+    fb.indexOf('Año') < fb.indexOf('Cubicador') && fb.indexOf('Aplica') < fb.indexOf('Cubicador'));
+  check('abajo los dos largos, que son los que piden el ancho entero',
+    fb.lastIndexOf('rhfrow') < fb.indexOf('Cubicador'));
+  check('cada botón lleva su cuenta adentro', fb.indexOf('<i>') > 0);
 
   console.log('\n7. En kilos se dice CUÁNTOS reclamos componen la barra');
   // Sin eso, un año con pocos kilos se lee como un buen año, cuando puede ser que no se
