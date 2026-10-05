@@ -681,8 +681,12 @@ def siguiente_numero_calidad(anio: int, tipo_origen: str = "externo", user=Depen
     """Sugerir siguiente numero_calidad para un año y tipo dado (externo/interno son series separadas)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # NOT historico: los 511 cargados de planillas tienen su propia numeracion
+            # por ano. Sin esto, abrir un reclamo con fecha de 2025 seguiria la serie
+            # vieja en vez de la de la plataforma.
             cur.execute(
-                "SELECT MAX(numero_calidad) FROM reclamos WHERE anio_calidad = %s AND tipo_origen = %s",
+                "SELECT MAX(numero_calidad) FROM reclamos "
+                "WHERE anio_calidad = %s AND tipo_origen = %s AND NOT historico",
                 (anio, tipo_origen)
             )
             max_num = cur.fetchone()[0]
@@ -711,7 +715,12 @@ def reclamos_kpi_causas(user=Depends(get_current_user)):
                        COUNT(*) FILTER (WHERE (categoria_ishikawa IS NULL OR categoria_ishikawa = '')
                                           AND COALESCE(aplica, '') <> 'no')
                 FROM reclamos
-                WHERE tipo_origen = 'externo' AND estado IN ('cerrado', 'rechazado')""")
+                WHERE tipo_origen = 'externo' AND estado IN ('cerrado', 'rechazado')
+                  -- Sin lo historico: este arbol es de los reclamos que se llevaron en
+                  -- la plataforma. Los 511 viejos casi no tienen causa todavia y
+                  -- mezclados harian ver un atraso que es de otra cosa; su catalogacion
+                  -- se trabaja en su propia pestania.
+                  AND NOT historico""")
             cerrados, con_causa, no_aplica, por_clasificar = cur.fetchone()
             cur.execute("""
                 SELECT categoria_ishikawa, COALESCE(NULLIF(TRIM(sub_causa), ''), '(sin sub-causa)'), COUNT(*)
@@ -750,6 +759,11 @@ def reclamos_mi_resumen(tipo_origen: Optional[str] = None, user=Depends(get_curr
     with get_conn() as conn:
         with conn.cursor() as cur:
             role_filter, role_params = build_role_filter(user, cur)
+            # LO HISTÓRICO NO CUENTA ACÁ. Este resumen es el encabezado de la pestaña
+            # donde se trabaja: al cargar los 511 de 2022-2025 decía «620 reclamos» y el
+            # gráfico mensual mostraba cuatro años encima del que importa. Lo viejo tiene
+            # su propio tablero, «Por año».
+            role_filter += " AND NOT r.historico"
             if tipo_origen in ("externo", "interno"):
                 role_filter += " AND r.tipo_origen = %s"
                 role_params = list(role_params) + [tipo_origen]
@@ -1154,13 +1168,16 @@ def reclamos_validacion_kpis(user=Depends(get_current_user)):
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'en_revision'")
+            # Todos con NOT historico: esto mide el trabajo de validacion que hay sobre
+            # la mesa. Los 511 cargados de planillas nacen cerrados y no pasan por
+            # validacion, asi que sumaban de golpe al contador de "cerrados".
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'en_revision' AND NOT historico")
             en_revision = int(cur.fetchone()[0])
-            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'validacion'")
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'validacion' AND NOT historico")
             pendientes = int(cur.fetchone()[0])
-            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado')")
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado') AND NOT historico")
             abiertos = int(cur.fetchone()[0])
-            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'cerrado'")
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'cerrado' AND NOT historico")
             cerrados = int(cur.fetchone()[0])
     return {"en_revision": en_revision, "pendientes": pendientes, "abiertos": abiertos, "cerrados": cerrados}
 

@@ -539,6 +539,32 @@ with get_conn() as conn:
         check("el smoke devuelve el contador de auditorias que gasto (quedo en %d)"
               % cur.fetchone()[0], True)
 
+print("\n6e2. Lo historico NO se mete en las pantallas de trabajo")
+# Cargar 511 reclamos viejos los metio en cinco pantallas que son de la operacion del
+# dia: la lista, el resumen de la pestania, el tablero, los KPI de validacion y el
+# arbol de causas. Cada una se arreglo por separado y cada una se puede volver a
+# romper por separado, asi que se miden todas.
+s, d = get("/reclamos")
+vivos = d.get("total_base") if isinstance(d, dict) else None
+check("GET /reclamos deja fuera lo historico (%s)" % vivos, s == 200 and vivos is not None)
+s2, d2 = get("/reclamos", historico="true")
+todos = d2.get("total_base") if isinstance(d2, dict) else None
+check("...y se puede pedir expresamente (%s con historico)" % todos,
+      s2 == 200 and todos is not None and todos > (vivos or 0))
+s, d = get("/reclamos/mi-resumen", tipo_origen="externo")
+anios_graf = sorted({x["anio"] for x in (d.get("por_anio_mes") or [])}) if s == 200 else []
+check("el Resumen General cuenta solo lo vivo (%s reclamos)" % (d.get("total") if s == 200 else "?"),
+      s == 200 and len(anios_graf) <= 2, str(anios_graf))
+s, d = get("/reclamos/validacion-kpis")
+check("los KPI de validacion no cuentan los 511 cerrados de golpe (%s cerrados)"
+      % (d.get("cerrados") if s == 200 else "?"), s == 200 and d.get("cerrados", 9999) < 200, str(d))
+s, d = get("/reclamos/admin-dashboards")
+pp = (d.get("por_proyecto") or []) if s == 200 else []
+sin_proy = [x for x in pp if x["proyecto"] == "Sin proyecto"]
+check("el tablero por proyecto no queda tapado por una barra 'Sin proyecto'",
+      s == 200 and (not sin_proy or sin_proy[0]["count"] < 20),
+      str(sin_proy[:1]))
+
 print("\n6f. Tablero de reclamos por ano (lee lo historico y lo vivo juntos)")
 s, d = get("/reclamos/historico")
 check("GET /reclamos/historico -> 200", s == 200, str(d)[:200])
