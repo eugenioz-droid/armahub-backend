@@ -11,6 +11,66 @@
       <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Matriz RCA</button>
       <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Presentaciones</button>
       <button id="recSubBtnVal" onclick="switchRecSubTab('validaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Validaciones</button>
+      <button id="recSubBtnAnalisis" onclick="switchRecSubTab('analisis')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Análisis histórico</button>
+    </div>
+
+    <!-- ANÁLISIS HISTÓRICO (5-oct) — la arqueología: clasificar la causa de los reclamos
+         de 2022 a 2025 que entraron de las planillas. Está hecho para trabajar seguido,
+         no para mirar: lista a la izquierda, el reclamo abierto a la derecha, y al
+         guardar salta solo al siguiente. -->
+    <div id="recSubAnalisis" style="display:none;">
+      <style>
+        .ahbar{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px;}
+        .ahgrupo{display:flex; flex-direction:column; gap:3px;}
+        .ahlbl{font-size:9.5px; font-weight:700; color:#90a4ae; letter-spacing:.4px; text-transform:uppercase;}
+        .ahchips{display:flex; gap:4px; flex-wrap:wrap; max-width:620px;}
+        /* El filtro es un botón que se ve apretado o suelto. Nada escondido tras un
+           menú: acá hay que marcar y desmarcar cubicadores muchas veces. */
+        .ahchips button{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; background:#fff;
+                        color:#546e7a; border-radius:11px; cursor:pointer; white-space:nowrap;}
+        .ahchips button.on{background:#5e35b1; border-color:#5e35b1; color:#fff; font-weight:700;}
+        .ahchips button i{font-style:normal; opacity:.65; margin-left:4px; font-size:9.5px;}
+        .ahcuerpo{display:grid; grid-template-columns:420px 1fr; gap:12px; align-items:start;}
+        .ahcaja{background:#fff; border:1px solid #eee; border-radius:8px;}
+        .ahlista{max-height:62vh; overflow-y:auto;}
+        .ahfila{padding:7px 10px; border-bottom:1px solid #f4f6f8; cursor:pointer; font-size:11.5px;}
+        .ahfila:hover{background:#f7f5fc;}
+        .ahfila.sel{background:#ede7f6; border-left:3px solid #5e35b1; padding-left:7px;}
+        .ahfila .t{font-weight:600; color:#263238; display:block; overflow:hidden;
+                   text-overflow:ellipsis; white-space:nowrap;}
+        .ahfila .m{font-size:10px; color:#90a4ae; margin-top:1px;}
+        .ahpunto{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px;}
+        .ahpunto.sin_causa{background:#ef9a9a;}
+        .ahpunto.por_validar{background:#ffb74d;}
+        .ahpunto.validado{background:#66bb6a;}
+        .ahdet{padding:14px 16px;}
+        .ahtit{font-size:14px; font-weight:700; color:#263238; margin-bottom:2px;}
+        .ahmeta{font-size:11px; color:#78909c; margin-bottom:10px;}
+        .ahdato{font-size:11.5px; color:#37474f; background:#fafbfc; border:1px solid #f0f2f5;
+                border-radius:5px; padding:8px 10px; margin-bottom:8px; white-space:pre-wrap;}
+        .ahdato b{color:#546e7a; font-size:10px; display:block; text-transform:uppercase;
+                  letter-spacing:.4px; margin-bottom:3px;}
+        .ahform label{font-size:10px; font-weight:700; color:#546e7a; text-transform:uppercase;
+                      letter-spacing:.4px; display:block; margin:10px 0 3px;}
+        .ahform select, .ahform textarea, .ahform input{width:100%; box-sizing:border-box;
+                      font-size:11.5px; padding:6px 8px; border:1px solid #cfd8dc; border-radius:5px;}
+        .ahpie{display:flex; gap:10px; align-items:center; margin-top:12px;}
+        .ahbtn{background:#5e35b1; color:#fff; border:none; border-radius:5px; padding:7px 16px;
+               font-size:12px; font-weight:700; cursor:pointer;}
+        .ahbtn:disabled{background:#b0bec5; cursor:default;}
+        .ahavance{font-size:11px; color:#546e7a;}
+        .ahavance b{color:#5e35b1;}
+      </style>
+
+      <div class="ahbar" id="ahFiltros"></div>
+      <div class="ahbar" style="margin-bottom:8px;">
+        <span class="ahavance" id="ahAvance"></span>
+      </div>
+
+      <div class="ahcuerpo">
+        <div class="ahcaja ahlista" id="ahLista"></div>
+        <div class="ahcaja ahdet" id="ahDetalle"></div>
+      </div>
     </div>
 
     <!-- Sub-panel: Reclamos Clientes (contenido actual) -->

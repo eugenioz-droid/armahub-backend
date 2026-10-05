@@ -565,6 +565,32 @@ check("el tablero por proyecto no queda tapado por una barra 'Sin proyecto'",
       s == 200 and (not sin_proy or sin_proy[0]["count"] < 20),
       str(sin_proy[:1]))
 
+print("\n6e3. Pantalla de analisis historico (donde se clasifican las causas)")
+s, d = get("/reclamos/analisis")
+check("GET /reclamos/analisis -> 200", s == 200, str(d)[:160])
+if s == 200:
+    filas = d.get("filas") or []
+    estados = {}
+    for f in filas:
+        estados[f["estado"]] = estados.get(f["estado"], 0) + 1
+    print("      %d reclamos: %s" % (len(filas), estados))
+    check("...trae el historico de 2022 a 2025", len(filas) > 400)
+    check("...y NINGUNO del ano en curso (ese tiene su propio flujo)",
+          all(f["anio"] <= d["anio_tope"] for f in filas))
+    check("...con el catalogo de causas listo (%d)" % len(d.get("causas") or []),
+          len(d.get("causas") or []) >= 30)
+    # Tres estados y no dos: un analisis importado de planilla NO esta validado.
+    check("...y cada reclamo dice en que va su analisis",
+          set(estados) <= {"sin_causa", "por_validar", "validado"}, str(estados))
+    check("...hay reclamos traidos de planilla esperando validacion",
+          estados.get("por_validar", 0) > 0)
+    pend = [f for f in filas if f["estado"] == "sin_causa"]
+    if pend:
+        s2, det = get("/reclamos/analisis/%d" % pend[0]["id"])
+        check("GET el detalle de uno -> 200", s2 == 200, str(det)[:160])
+        check("...trae lo que hace falta para decidir la causa",
+              s2 == 200 and all(k in det for k in ("descripcion", "obra", "cubicador", "acciones")))
+
 print("\n6f. Tablero de reclamos por ano (lee lo historico y lo vivo juntos)")
 s, d = get("/reclamos/historico")
 check("GET /reclamos/historico -> 200", s == 200, str(d)[:200])

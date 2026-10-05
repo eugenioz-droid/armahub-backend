@@ -26,7 +26,12 @@ var REC_SUBTABS = {
   acciones:      { panel: 'recSubAcciones',       btn: 'recSubBtnAcciones', color: '#00897b', roles: null },
   rca:           { panel: 'recSubRCA',            btn: 'recSubBtnRCA',      color: '#e65100', roles: ['admin','admin_calidad'] },
   presentaciones:{ panel: 'recSubPresentaciones', btn: 'recSubBtnPres',     color: '#7B1FA2', roles: ['admin','admin_calidad','miembro','externo'] },
-  validaciones:  { panel: 'recSubValidaciones',   btn: 'recSubBtnVal',      color: '#7B1FA2', roles: ['admin','admin_calidad'] }
+  validaciones:  { panel: 'recSubValidaciones',   btn: 'recSubBtnVal',      color: '#7B1FA2', roles: ['admin','admin_calidad'] },
+  // Sólo administración, por decisión del usuario. Mientras los análisis no estén
+  // hechos, estos 511 reclamos viejos se leen como un marcador de quién lo hizo peor,
+  // con gente que ya no está y sin la causa que explica cada caso. El backend valida
+  // lo mismo: esconder el botón no es un permiso.
+  analisis:      { panel: 'recSubAnalisis',       btn: 'recSubBtnAnalisis', color: '#5e35b1', roles: ['admin'] }
 };
 
 // ¿El rol actual puede ver este sub-tab? roles=null → visible para todos.
@@ -77,6 +82,7 @@ function switchRecSubTab(sub) {
   if (sub === 'validaciones') { _ensureModalFueraDeSubpaneles(); loadRecValidaciones(); }
   if (sub === 'internos') { _ensureModalFueraDeSubpaneles(); if (typeof loadReclamosInternos === 'function') loadReclamosInternos(); if (typeof initInternosForm === 'function') initInternosForm(); }
   if (sub === 'acciones') { _ensureModalFueraDeSubpaneles(); if (typeof loadRecAccionesSeguimiento === 'function') loadRecAccionesSeguimiento(); }
+  if (sub === 'analisis') { cargarAnalisisHistorico(); }
 
   if (typeof window.__armahubUpdateNavHash === 'function') {
     window.__armahubUpdateNavHash(window.currentModule, 'reclamos', sub);
@@ -560,6 +566,282 @@ async function loadDashHistorico() {
         : '<tr><td colspan="3" style="color:#90a4ae; font-style:italic">Todavía no hay reclamos con causa asignada.</td></tr>') +
       '</tbody>';
   }
+}
+
+// ── ANÁLISIS HISTÓRICO (5-oct) ───────────────────────────────────────────────────
+// La arqueología: clasificar la causa de los reclamos de 2022-2025. Hecho para hacer
+// muchos seguidos, así que todo lo que se repite está a un clic y al guardar se salta
+// solo al siguiente pendiente.
+var AH = { filas: [], sel: null, detalle: null, causas: [], cargado: false };
+// Qué filtros están puestos. Vacío = todos: así empieza y así se vuelve con «Todos».
+var AH_F = { anio: [], cubicador: [], segmento: [], tipo: [], estado: [] };
+var AH_ESTADOS = [
+  { k: 'sin_causa', t: 'Sin causa' },
+  { k: 'por_validar', t: 'Por validar' },
+  { k: 'validado', t: 'Validado' }
+];
+
+function ahEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+// Marcar y desmarcar: el clic simple suma y resta, sin pedir Ctrl. Acá se hace mucho.
+function ahMarcar(lista, valor) {
+  var i = lista.indexOf(valor);
+  if (i >= 0) lista.splice(i, 1); else lista.push(valor);
+}
+
+function ahPasa(f) {
+  return (!AH_F.anio.length || AH_F.anio.indexOf(f.anio) >= 0)
+    && (!AH_F.cubicador.length || AH_F.cubicador.indexOf(f.cubicador) >= 0)
+    && (!AH_F.segmento.length || AH_F.segmento.indexOf(f.segmento) >= 0)
+    && (!AH_F.tipo.length || AH_F.tipo.indexOf(f.tipo) >= 0)
+    && (!AH_F.estado.length || AH_F.estado.indexOf(f.estado) >= 0);
+}
+
+function ahVisibles() {
+  return AH.filas.filter(ahPasa);
+}
+
+// UN GRUPO DE BOTONES. Cada uno lleva su cuenta dentro: sin eso hay que marcar para
+// descubrir que un cubicador no tiene nada, que es justo el ruido que se quiere sacar.
+function ahGrupo(titulo, clave, valores, etiqueta) {
+  var sel = AH_F[clave];
+  var cuenta = {};
+  AH.filas.forEach(function (f) { cuenta[f[clave]] = (cuenta[f[clave]] || 0) + 1; });
+  return '<div class="ahgrupo"><span class="ahlbl">' + ahEsc(titulo) + '</span><div class="ahchips" data-g="' + clave + '">' +
+    '<button data-todos="1" class="' + (sel.length ? '' : 'on') + '">Todos</button>' +
+    valores.map(function (v) {
+      return '<button data-v="' + ahEsc(v) + '" class="' + (sel.indexOf(v) >= 0 ? 'on' : '') + '">' +
+        ahEsc(etiqueta ? etiqueta(v) : v) + '<i>' + (cuenta[v] || 0) + '</i></button>';
+    }).join('') + '</div></div>';
+}
+
+function ahDistintos(clave) {
+  var vistos = [];
+  AH.filas.forEach(function (f) { if (vistos.indexOf(f[clave]) < 0) vistos.push(f[clave]); });
+  return vistos.sort(function (a, b) {
+    if (typeof a === 'number') return b - a;      // los años, del más nuevo al más viejo
+    return String(a).localeCompare(String(b));
+  });
+}
+
+function ahPintarFiltros() {
+  var cont = document.getElementById('ahFiltros');
+  if (!cont) return;
+  cont.innerHTML =
+    ahGrupo('Año', 'anio', ahDistintos('anio')) +
+    ahGrupo('Estado', 'estado', AH_ESTADOS.map(function (e) { return e.k; }), function (k) {
+      var e = AH_ESTADOS.filter(function (x) { return x.k === k; })[0];
+      return e ? e.t : k;
+    }) +
+    ahGrupo('Cubicador', 'cubicador', ahDistintos('cubicador')) +
+    ahGrupo('Segmento', 'segmento', ahDistintos('segmento')) +
+    ahGrupo('Tipo', 'tipo', ahDistintos('tipo'), function (t) { return TIPO_TXT[t] || t; });
+  cont.querySelectorAll('.ahchips button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var g = b.parentNode.dataset.g;
+      if (b.dataset.todos) AH_F[g].length = 0;
+      else {
+        var v = b.dataset.v;
+        // Los años viajan como número y el resto como texto: sin esto el filtro de año
+        // no casaría nunca, porque '2024' no es 2024.
+        ahMarcar(AH_F[g], g === 'anio' ? Number(v) : v);
+      }
+      ahPintarFiltros(); ahPintarLista();
+    });
+  });
+}
+
+function ahPintarLista() {
+  var cont = document.getElementById('ahLista');
+  var vis = ahVisibles();
+  var pend = vis.filter(function (f) { return f.estado !== 'validado'; }).length;
+  var av = document.getElementById('ahAvance');
+  if (av) {
+    av.innerHTML = '<b>' + vis.length + '</b> reclamos a la vista · <b>' + pend +
+      '</b> sin validar · ' + (vis.length - pend) + ' listos' +
+      (vis.length < AH.filas.length ? ' <span style="color:#90a4ae">(de ' + AH.filas.length + ' en total)</span>' : '');
+  }
+  if (!cont) return;
+  if (!vis.length) {
+    cont.innerHTML = '<div style="padding:18px; text-align:center; color:#90a4ae; font-size:11.5px;">' +
+      'Ningún reclamo con esos filtros.</div>';
+    return;
+  }
+  cont.innerHTML = vis.map(function (f) {
+    return '<div class="ahfila' + (AH.sel === f.id ? ' sel' : '') + '" data-id="' + f.id + '">' +
+      '<span class="t"><span class="ahpunto ' + f.estado + '"></span>' + ahEsc(f.titulo) + '</span>' +
+      '<span class="m">' + ahEsc(f.fecha || '') + ' · ' + ahEsc(f.obra) + ' · ' +
+      ahEsc(f.cubicador) + (f.kilos ? ' · ' + rhNum(f.kilos) + ' kg' : '') + '</span></div>';
+  }).join('');
+  cont.querySelectorAll('.ahfila').forEach(function (d) {
+    d.addEventListener('click', function () { ahAbrir(Number(d.dataset.id)); });
+  });
+}
+
+async function ahAbrir(id) {
+  AH.sel = id;
+  ahPintarLista();
+  var det = document.getElementById('ahDetalle');
+  if (det) det.innerHTML = '<div style="color:#90a4ae; font-size:11.5px;">Cargando…</div>';
+  AH.detalle = await apiGet('/reclamos/analisis/' + id);
+  ahPintarDetalle();
+}
+
+function ahPintarDetalle() {
+  var det = document.getElementById('ahDetalle');
+  var d = AH.detalle;
+  if (!det) return;
+  if (!d) {
+    det.innerHTML = '<div style="color:#90a4ae; font-size:11.5px; padding:20px; text-align:center;">' +
+      'Elige un reclamo de la lista para analizarlo.</div>';
+    return;
+  }
+  // Lo que trajo la planilla va arriba y en modo lectura: es lo que hay que leer para
+  // decidir la causa, y no se toca desde acá.
+  var bloques = [
+    ['Qué pasó', d.descripcion],
+    ['Observaciones', d.observaciones],
+    ['Explicación de la causa', d.explicacion]
+  ].filter(function (x) { return x[1]; }).map(function (x) {
+    return '<div class="ahdato"><b>' + x[0] + '</b>' + ahEsc(x[1]) + '</div>';
+  }).join('');
+
+  var acc = (d.acciones || []).length
+    ? '<div class="ahdato"><b>Acciones de la ficha</b>' + d.acciones.map(function (a) {
+        return '· ' + ahEsc(a.descripcion) + (a.responsable ? ' (' + ahEsc(a.responsable) + ')' : '');
+      }).join('\n') + '</div>'
+    : '';
+
+  var porCat = {};
+  AH.causas.forEach(function (c) {
+    (porCat[c.categoria_nombre] = porCat[c.categoria_nombre] || []).push(c);
+  });
+  var opciones = '<option value="">— sin causa todavía —</option>' +
+    Object.keys(porCat).sort().map(function (cat) {
+      return '<optgroup label="' + ahEsc(cat) + '">' + porCat[cat].map(function (c) {
+        return '<option value="' + ahEsc(c.codigo) + '"' + (d.cod_causa === c.codigo ? ' selected' : '') +
+          '>' + ahEsc(c.descripcion) + '</option>';
+      }).join('') + '</optgroup>';
+    }).join('');
+
+  var sello = d.validado_el
+    ? '<span style="color:#2e7d32; font-weight:700;">Validado por ' + ahEsc((d.validado_por || '').split('@')[0]) + '</span>'
+    : (d.categoria
+        ? '<span style="color:#e65100; font-weight:700;">Viene de planilla, falta validarlo</span>'
+        : '<span style="color:#c62828; font-weight:700;">Sin causa</span>');
+
+  det.innerHTML =
+    '<div class="ahtit">' + ahEsc(d.titulo) + '</div>' +
+    '<div class="ahmeta">' + ahEsc(d.correlativo || '') + ' · ' + ahEsc(d.fecha || '') + ' · ' +
+      ahEsc(d.obra) + ' · cubicó ' + ahEsc(d.cubicador) +
+      (d.kilos ? ' · <b>' + rhNum(d.kilos) + ' kg</b> mal fabricados' : ' · sin kilos') +
+      (d.analista ? ' · analizó ' + ahEsc(d.analista) : '') + ' · ' + sello + '</div>' +
+    bloques + acc +
+    '<div class="ahform">' +
+      '<label>Causa raíz (Ishikawa)</label>' +
+      '<select id="ahCausa">' + opciones + '</select>' +
+      '<label>Explicación</label>' +
+      '<textarea id="ahExplicacion" rows="3" placeholder="Por qué ocurrió, en tus palabras.">' +
+        ahEsc(d.explicacion || '') + '</textarea>' +
+      '<div style="display:flex; gap:10px; margin-top:8px;">' +
+        '<div style="flex:1"><label>Aplica al área</label><select id="ahAplica">' +
+          ['si', 'no', 'pendiente'].map(function (v) {
+            return '<option value="' + v + '"' + (d.aplica === v ? ' selected' : '') + '>' +
+              ({ si: 'Sí aplica', no: 'No aplica', pendiente: 'Por revisar' })[v] + '</option>';
+          }).join('') + '</select></div>' +
+        '<div style="flex:1"><label>Tipo</label><select id="ahTipo">' +
+          Object.keys(TIPO_TXT).map(function (v) {
+            return '<option value="' + v + '"' + (d.tipo === v ? ' selected' : '') + '>' +
+              ahEsc(TIPO_TXT[v]) + '</option>';
+          }).join('') + '</select></div>' +
+      '</div>' +
+      '<div class="ahpie">' +
+        '<button class="ahbtn" id="ahGuardar">Guardar y siguiente</button>' +
+        '<span style="font-size:10.5px; color:#90a4ae;" id="ahMsg">' +
+          (d.fuente ? 'Origen: ' + ahEsc(d.fuente) : '') + '</span>' +
+      '</div>' +
+    '</div>';
+  document.getElementById('ahGuardar').addEventListener('click', ahGuardar);
+}
+
+// No hay helper de PUT en la capa compartida; se arma como en el resto del archivo.
+async function ahPut(ruta, cuerpo) {
+  var r = await fetch(apiUrl(ruta), {
+    method: 'PUT',
+    headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(cuerpo)
+  });
+  var j = await r.json().catch(function () { return null; });
+  if (!r.ok) throw new Error((j && (j.detail || j.message)) || ('Error ' + r.status));
+  return j;
+}
+
+async function ahGuardar() {
+  var d = AH.detalle;
+  if (!d) return;
+  var btn = document.getElementById('ahGuardar');
+  btn.disabled = true;
+  try {
+    var guardado = await ahPut('/reclamos/analisis/' + d.id, {
+      cod_causa: document.getElementById('ahCausa').value || null,
+      explicacion: document.getElementById('ahExplicacion').value,
+      aplica: document.getElementById('ahAplica').value,
+      tipo_reclamo: document.getElementById('ahTipo').value
+    });
+    if (guardado) {
+      // Se actualiza la fila en la lista sin recargar todo: recargar perdería el
+      // desplazamiento y los filtros puestos, que es lo que más molesta haciendo esto
+      // en serie.
+      AH.filas.forEach(function (f) {
+        if (f.id === d.id) {
+          f.estado = guardado.estado; f.categoria = guardado.categoria;
+          f.cod_causa = guardado.cod_causa; f.aplica = guardado.aplica;
+          f.tipo = guardado.tipo;
+        }
+      });
+      ahPintarFiltros();
+      ahSiguiente(d.id);
+    }
+  } catch (e) {
+    var m = document.getElementById('ahMsg');
+    if (m) { m.textContent = e.message; m.style.color = '#c62828'; }
+  }
+  btn.disabled = false;
+}
+
+// AL GUARDAR, EL SIGUIENTE. Es lo que hace la diferencia entre clasificar veinte en una
+// sentada o cinco: el siguiente PENDIENTE de la lista visible, saltándose los ya listos.
+function ahSiguiente(desdeId) {
+  var vis = ahVisibles();
+  var i = vis.findIndex(function (f) { return f.id === desdeId; });
+  for (var k = i + 1; k < vis.length; k++) {
+    if (vis[k].estado !== 'validado') { ahAbrir(vis[k].id); return; }
+  }
+  for (var j = 0; j < vis.length; j++) {
+    if (vis[j].estado !== 'validado') { ahAbrir(vis[j].id); return; }
+  }
+  ahPintarLista();
+  AH.detalle = null;
+  ahPintarDetalle();
+}
+
+async function cargarAnalisisHistorico() {
+  if (AH.cargado) { ahPintarFiltros(); ahPintarLista(); return; }
+  var d = await apiGet('/reclamos/analisis');
+  if (!d) return;
+  AH.filas = d.filas || [];
+  AH.causas = d.causas || [];
+  AH.cargado = true;
+  // Se abre en lo que falta: entrar y ver los ya validados primero sería empezar
+  // buscando.
+  AH_F.estado = ['sin_causa', 'por_validar'];
+  ahPintarFiltros();
+  ahPintarLista();
+  ahPintarDetalle();
 }
 
 // Cómo se dice cada tipo en pantalla. El valor crudo es el que viaja a la base.

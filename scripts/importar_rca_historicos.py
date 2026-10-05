@@ -265,6 +265,17 @@ def main():
                 cod = slug = sub = None
                 if d["_causa"]:
                     cod, slug, sub = d["_causa"]
+                # LO QUE EL ANALISTA ESCRIBIO NO SE PIERDE. Cuando lo que puso en la fila
+                # del Ishikawa no es una causa del catalogo sino una frase suya
+                # ("Interpretacion incompleta del plano de elevacion y fundacion"), esa
+                # frase dice algo del caso y se SUMA a la explicacion en vez de perderse.
+                # No reemplaza: las dos fichas donde pasa tienen ademas su explicacion
+                # propia, que es mas completa. La causa queda vacia a proposito, para que
+                # el usuario la elija.
+                explicacion = d.get("explicacion")
+                if not d["_causa"] and d.get("causa_texto"):
+                    suelto = d["causa_texto"].lstrip("◦ ").strip()
+                    explicacion = " · ".join(x for x in (explicacion, suelto) if x)
                 aplica = {"si aplica": "si", "no aplica": "no"}.get(norm(d.get("aplica")))
                 cur.execute(
                     """UPDATE reclamos SET
@@ -280,10 +291,13 @@ def main():
                          sub_causa = COALESCE(%s, sub_causa),
                          observaciones = COALESCE(observaciones, %s),
                          metodo_rca = 'ishikawa'
-                       WHERE id = %s""",
+                         -- NO SE PISA LO QUE EL USUARIO YA VALIDO. Esta carga siembra; una
+                     -- vez que el analisis se reviso en la pantalla, volver a correr
+                     -- esto no puede deshacerlo.
+                   WHERE id = %s AND analisis_validado_el IS NULL""",
                     (d.get("analista"), aplica,
                      None if norm(d.get("area_aplica")) in ("na", "") else d.get("area_aplica"),
-                     d.get("explicacion"), d.get("fecha_analisis"), d.get("deteccion"),
+                     explicacion, d.get("fecha_analisis"), d.get("deteccion"),
                      d.get("detectado_por"), slug, cod, sub, d.get("observaciones"),
                      d["_reclamo_id"]))
                 # Las acciones se rehacen enteras, pero SOLO las de esta importacion: las

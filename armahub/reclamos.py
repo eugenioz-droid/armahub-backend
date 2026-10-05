@@ -1074,6 +1074,200 @@ def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
             "anio_en_curso": en_curso}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ANÁLISIS DE LO HISTÓRICO (5-oct)
+#
+# La arqueología: 411 reclamos de 2022-2025 que aplican y no tienen causa, más 36 que
+# la tienen pero importada de planilla y todavía sin validar. Es trabajo de una persona
+# sentada clasificando, así que esto está hecho para eso y no para mirar.
+#
+# POR QUÉ UNA PUERTA APARTE Y NO EL PATCH DE SIEMPRE. El PATCH de reclamos bloquea
+# editar el análisis cuando el reclamo está cerrado, que es lo correcto en el flujo
+# vivo. Los 511 históricos nacen cerrados: por ahí no se pueden tocar nunca.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# QUIÉN ENTRA. Sólo administración, por decisión del usuario: «tal vez accedo yo nomás».
+# Mientras los análisis no estén hechos, estos 511 reclamos se leen como un marcador de
+# quién lo hizo peor, con gente que ya no está y sin la causa que explica cada caso.
+# Para abrirlo a los cubicadores basta agregar su rol a esta tupla.
+ROLES_ANALISIS = ("admin",)
+# Hasta qué año entra a la lista. 2026 se lleva en la plataforma y tiene su propio
+# flujo: mezclarlo acá sería trabajar dos veces el mismo reclamo.
+ANIO_TOPE_ANALISIS = 2025
+
+
+def _exigir_analisis(user):
+    if user.get("role") not in ROLES_ANALISIS:
+        raise HTTPException(status_code=403, detail="Esta pantalla es de administración.")
+
+
+def _estado_analisis(categoria, validado_el) -> str:
+    """En qué va el análisis de un reclamo. Tres estados y no dos: un análisis importado
+    de planilla NO es un análisis validado, y confundirlos esconde el trabajo que falta."""
+    if not categoria:
+        return "sin_causa"
+    return "validado" if validado_el else "por_validar"
+
+
+@router.get("/reclamos/analisis")
+def reclamos_analisis_lista(user=Depends(get_current_user)):
+    """LA LISTA DE TRABAJO: un reclamo por fila, con lo justo para elegir cuál abrir.
+
+    Viaja entera y se filtra en el navegador. Son 511 filas sin los textos largos: pedir
+    al servidor en cada clic de un filtro haría que marcar y desmarcar cubicadores se
+    sienta lento, que es justo lo que hay que hacer mucho acá.
+    """
+    _exigir_analisis(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT r.id, r.correlativo, r.anio_calidad, r.fecha_deteccion,
+                       COALESCE(p.nombre_proyecto, r.obra_texto, '(sin obra)'),
+                       COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''),
+                                r.cubicador_asignado, 'Sin cubicador'),
+                       -- El %% va doble porque esta consulta SÍ lleva parámetros: con
+                       -- uno solo, psycopg lo lee como un marcador y revienta.
+                       COALESCE(at.segmento,
+                                CASE WHEN r.segmento ILIKE 'edificaci%%' THEN '4 y 5'
+                                     ELSE NULLIF(r.segmento, '') END, '(sin segmento)'),
+                       COALESCE(r.tipo_reclamo, 'error'), r.kilos_mal_fabricados,
+                       r.titulo, r.aplica, r.categoria_ishikawa, r.cod_causa,
+                       r.analisis_validado_el, r.analisis_validado_por
+                  FROM reclamos r
+                  LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                  LEFT JOIN users u ON u.email = r.cubicador_asignado
+                  LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
+                 WHERE r.historico AND r.anio_calidad <= %s
+                 ORDER BY r.anio_calidad DESC, r.fecha_deteccion""",
+                (ANIO_TOPE_ANALISIS,))
+            filas = [{
+                "id": r[0], "correlativo": r[1], "anio": r[2], "fecha": r[3],
+                "obra": r[4], "cubicador": r[5], "segmento": r[6], "tipo": r[7],
+                "kilos": float(r[8]) if r[8] is not None else None,
+                "titulo": r[9], "aplica": r[10] or "si",
+                "categoria": r[11], "cod_causa": r[12],
+                "validado_por": r[14],
+                "estado": _estado_analisis(r[11], r[13]),
+            } for r in cur.fetchall()]
+            # El catálogo viaja junto a la lista y no en otra llamada: es el mismo para
+            # todas las filas, son 35 causas, y así el selector está listo apenas se
+            # abre el primer reclamo.
+            cur.execute("""SELECT s.codigo, c.slug, c.nombre, s.descripcion
+                             FROM area_rca_subcausas s
+                             JOIN area_rca_categorias c ON c.id = s.categoria_id
+                             JOIN areas a ON a.id = c.area_id
+                            WHERE a.nombre = 'Cubicaciones' AND COALESCE(s.activo, TRUE)
+                            ORDER BY c.nombre, s.orden, s.id""")
+            causas = [{"codigo": r[0], "categoria": r[1], "categoria_nombre": r[2],
+                       "descripcion": r[3]} for r in cur.fetchall()]
+    return {"filas": filas, "causas": causas, "anio_tope": ANIO_TOPE_ANALISIS}
+
+
+@router.get("/reclamos/analisis/{reclamo_id}")
+def reclamos_analisis_detalle(reclamo_id: int, user=Depends(get_current_user)):
+    """Todo lo que hace falta para decidir la causa de UN reclamo: lo que trajo la
+    planilla y lo que ya se haya escrito."""
+    _exigir_analisis(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT r.id, r.correlativo, r.anio_calidad, r.fecha_deteccion, r.titulo,
+                       r.descripcion, r.observaciones,
+                       COALESCE(p.nombre_proyecto, r.obra_texto, '(sin obra)'),
+                       COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''),
+                                r.cubicador_asignado, 'Sin cubicador'),
+                       r.kilos_mal_fabricados, r.tipo_reclamo, r.aplica,
+                       r.categoria_ishikawa, r.cod_causa, r.sub_causa, r.explicacion_causa,
+                       r.analista, r.fecha_analisis, r.analisis_validado_por,
+                       r.analisis_validado_el, r.fuente, r.id_calidad, r.detectado_por
+                  FROM reclamos r
+                  LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                  LEFT JOIN users u ON u.email = r.cubicador_asignado
+                 WHERE r.id = %s AND r.historico""", (reclamo_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Ese reclamo no es del histórico.")
+            # Las acciones que traía la ficha de análisis, si venía con alguna.
+            cur.execute("""SELECT tipo, descripcion, responsable, fecha_prevista
+                             FROM reclamo_acciones WHERE reclamo_id = %s ORDER BY id""",
+                        (reclamo_id,))
+            acciones = [{"tipo": a[0], "descripcion": a[1], "responsable": a[2],
+                         "fecha_prevista": a[3]} for a in cur.fetchall()]
+    return {
+        "id": r[0], "correlativo": r[1], "anio": r[2], "fecha": r[3], "titulo": r[4],
+        "descripcion": r[5], "observaciones": r[6], "obra": r[7], "cubicador": r[8],
+        "kilos": float(r[9]) if r[9] is not None else None,
+        "tipo": r[10], "aplica": r[11] or "si",
+        "categoria": r[12], "cod_causa": r[13], "sub_causa": r[14], "explicacion": r[15],
+        "analista": r[16], "fecha_analisis": r[17],
+        "validado_por": r[18], "validado_el": r[19].isoformat() if r[19] else None,
+        "fuente": r[20], "id_calidad": r[21], "detectado_por": r[22],
+        "estado": _estado_analisis(r[12], r[19]), "acciones": acciones,
+    }
+
+
+class AnalisisBody(BaseModel):
+    cod_causa: Optional[str] = None
+    explicacion: Optional[str] = None
+    aplica: Optional[str] = None
+    tipo_reclamo: Optional[str] = None
+
+
+@router.put("/reclamos/analisis/{reclamo_id}")
+def reclamos_analisis_guardar(reclamo_id: int, body: AnalisisBody,
+                              user=Depends(get_current_user)):
+    """Guarda el análisis de un reclamo histórico y lo deja VALIDADO.
+
+    La categoría no se manda: sale del código de la sub-causa, que es lo que el usuario
+    elige. Mandar las dos permitiría guardar una causa de Mano de obra con la categoría
+    de Máquina, que es exactamente el error que traían algunas fichas en planilla.
+    """
+    _exigir_analisis(user)
+    email = user.get("email", "?")
+    if body.aplica and body.aplica not in APLICA_VALUES:
+        raise HTTPException(status_code=422, detail="Aplica no válido: " + " / ".join(APLICA_VALUES))
+    if body.tipo_reclamo and body.tipo_reclamo not in TIPOS_RECLAMO:
+        raise HTTPException(status_code=422, detail="Tipo no válido: " + " / ".join(TIPOS_RECLAMO))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT correlativo FROM reclamos WHERE id = %s AND historico", (reclamo_id,))
+            fila = cur.fetchone()
+            if not fila:
+                raise HTTPException(status_code=404, detail="Ese reclamo no es del histórico.")
+            categoria = sub = None
+            if body.cod_causa:
+                cur.execute("""SELECT c.slug, s.descripcion
+                                 FROM area_rca_subcausas s
+                                 JOIN area_rca_categorias c ON c.id = s.categoria_id
+                                 JOIN areas a ON a.id = c.area_id
+                                WHERE a.nombre = 'Cubicaciones' AND s.codigo = %s""",
+                            (body.cod_causa,))
+                cau = cur.fetchone()
+                if not cau:
+                    raise HTTPException(status_code=422, detail="Esa causa no existe en el catálogo.")
+                categoria, sub = cau
+            # Se estampa como validado SÓLO si quedó con causa: guardar sin elegir causa
+            # es dejarlo a medias, y marcarlo listo lo sacaría de la lista de pendientes.
+            validado = bool(categoria)
+            cur.execute(
+                """UPDATE reclamos SET
+                     categoria_ishikawa = %s, cod_causa = %s, sub_causa = %s,
+                     explicacion_causa = COALESCE(%s, explicacion_causa),
+                     aplica = COALESCE(%s, aplica),
+                     tipo_reclamo = COALESCE(%s, tipo_reclamo),
+                     metodo_rca = CASE WHEN %s THEN 'ishikawa' ELSE metodo_rca END,
+                     analisis_validado_por = CASE WHEN %s THEN %s ELSE NULL END,
+                     analisis_validado_el = CASE WHEN %s THEN now() ELSE NULL END,
+                     fecha_actualizacion = now()::text
+                   WHERE id = %s""",
+                (categoria, body.cod_causa if categoria else None, sub,
+                 (body.explicacion or "").strip() or None, body.aplica, body.tipo_reclamo,
+                 validado, validado, email, validado, reclamo_id))
+            audit(email, "reclamo_analisis_historico",
+                  "%s: %s" % (fila[0], body.cod_causa or "sin causa"), "reclamo", str(reclamo_id))
+    return reclamos_analisis_detalle(reclamo_id, user)
+
+
 @router.get("/reclamos/ishikawa")
 def get_ishikawa(area_id: Optional[int] = None, user=Depends(get_current_user)):
     """Devuelve la matriz Ishikawa del área indicada (desde BD).
