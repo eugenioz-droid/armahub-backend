@@ -507,11 +507,6 @@ async function loadDashHistorico() {
   rhBarras('rhChartKilos', etiqKg, [
     { nombre: 'Kilos mal fabricados', datos: d.anios.map(function (a) { return a.kilos; }), color: '#5e35b1' }
   ]);
-  var nota = document.getElementById('rhNotaKilos');
-  if (nota && d.nota_kilos_2022 && anios.indexOf(2022) >= 0) {
-    nota.style.display = ''; nota.textContent = d.nota_kilos_2022;
-  }
-
   // Meses: acá los años son las FILAS, así que el orden es cronológico y no por tamaño.
   var porMes = [];
   (d.meses || []).forEach(function (m) {

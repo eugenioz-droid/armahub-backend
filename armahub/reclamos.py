@@ -407,14 +407,22 @@ def listar_reclamos(
     abierto_cerrado: Optional[str] = None,  # 'abiertos' | 'cerrados' (filtro macro)
     tipo_origen: Optional[str] = None,      # 'externo' | 'interno' (separa las dos listas)
     solo_mios: bool = False,
+    historico: bool = False,                # ver los reclamos viejos cargados de planillas
     user=Depends(get_current_user),
 ):
-    """Lista reclamos con filtros opcionales. solo_mios filtra por rol."""
+    """Lista reclamos con filtros opcionales. solo_mios filtra por rol.
+
+    LO HISTÓRICO NO ENTRA SALVO QUE SE PIDA. Los 511 reclamos de 2022-2025 cargados de
+    las planillas son registros cerrados de años pasados: en la lista de trabajo no se
+    hace nada con ellos, y mezclados sepultan los del año en curso —serían 622 filas
+    donde hay 111 que importan—. Se ven con `historico=true`, y su estadística vive en
+    el tablero «Por año».
+    """
     email = user.get("email", "")
     role = user.get("role", "usc")
     with get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
-            where = "WHERE 1=1"
+            where = "WHERE 1=1" if historico else "WHERE NOT r.historico"
             params = []
             if solo_mios:
                 if role == "usc":
@@ -788,15 +796,22 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
     if cached:
         return cached
 
+    # ESTE TABLERO ES LA OPERACIÓN, NO LA HISTORIA. Al cargar los 511 reclamos de
+    # 2022-2025 estos números se fueron de 111 a 622 y el gráfico por proyecto quedó
+    # tapado por una sola barra: los años viejos no apuntan a un proyecto de ArmaHub.
+    # Mezclados no responden ninguna de las dos preguntas. Acá se mira lo que se está
+    # llevando hoy; los cinco años juntos viven en el tablero «Por año».
+    SOLO_VIVOS = " AND NOT r.historico"
     with get_conn() as conn:
         with conn.cursor() as cur:
-            total = q_total(cur)
-            abiertos = q_abiertos(cur)
-            por_tipo = q_por_tipo(cur)
-            resueltos_no_resueltos = q_resueltos_no_resueltos(cur)
-            por_anio_mes = q_por_anio_mes(cur, fecha_col="fecha_deteccion")
-            ishikawa_global = q_por_categoria(cur, where=" AND r.categoria_ishikawa IS NOT NULL")
-            por_estado = q_por_estado(cur)
+            total = q_total(cur, where=SOLO_VIVOS)
+            abiertos = q_abiertos(cur, where=SOLO_VIVOS)
+            por_tipo = q_por_tipo(cur, where=SOLO_VIVOS)
+            resueltos_no_resueltos = q_resueltos_no_resueltos(cur, where=SOLO_VIVOS)
+            por_anio_mes = q_por_anio_mes(cur, fecha_col="fecha_deteccion", where=SOLO_VIVOS)
+            ishikawa_global = q_por_categoria(
+                cur, where=" AND r.categoria_ishikawa IS NOT NULL" + SOLO_VIVOS)
+            por_estado = q_por_estado(cur, where=SOLO_VIVOS)
 
             # --- USC breakdown ---
             cur.execute("""
@@ -834,6 +849,7 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
                 ) AS cub, COUNT(*)
                 FROM reclamos r
                 LEFT JOIN users u ON u.email = r.cubicador_asignado
+                WHERE NOT r.historico
                 GROUP BY cub ORDER BY 2 DESC
             """)
             por_cubicador_asignado = [{"cubicador": r[0], "count": int(r[1])} for r in cur.fetchall()]
@@ -862,6 +878,7 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
                 FROM reclamos r
                 LEFT JOIN users u ON u.email = r.cubicador_asignado
                 WHERE r.kilos_mal_fabricados IS NOT NULL AND r.kilos_mal_fabricados > 0
+                  AND NOT r.historico
                 GROUP BY cub ORDER BY kilos DESC
             """)
             kilos_por_cubicador = [{"cubicador": r[0], "kilos": round(float(r[1]), 1)} for r in cur.fetchall()]
@@ -881,19 +898,23 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
             por_proyecto = []
             proyecto_por_mes = []
             try:
-                por_proyecto = q_por_proyecto(cur)
+                por_proyecto = q_por_proyecto(cur, solo_vivos=True)
             except Exception as e:
                 print(f"[DASH] por_proyecto error: {e}")
                 conn.rollback()
 
             try:
                 cur.execute("""
-                    SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proy,
+                    -- Mismo COALESCE que q_por_proyecto: la obra de los reclamos
+                    -- históricos viaja como texto, no como proyecto.
+                    SELECT COALESCE(p.nombre_proyecto, r.id_proyecto,
+                                    NULLIF(TRIM(r.obra_texto), ''), 'Sin proyecto') AS proy,
                            TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp, 'YYYY-MM') AS mes,
                            COUNT(*) AS total
                     FROM reclamos r
                     LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
                     WHERE COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp >= NOW() - INTERVAL '12 months'
+                      AND NOT r.historico
                     GROUP BY 1, 2 ORDER BY 1, 2
                 """)
                 proyecto_por_mes = [{"proyecto": str(r[0]), "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
@@ -1020,10 +1041,7 @@ def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
 
     return {"anios": anios, "meses": meses, "cubicadores": cubicadores,
             "segmentos": segmentos, "tipos": tipos, "causas": causas,
-            "anio_en_curso": en_curso,
-            # Lo que el tablero tiene que advertir para no mentir con sus propios números.
-            "nota_kilos_2022": ("En 2022 no se tenían todos los kilos: se aplicó un estándar "
-                                "definido ese año, así que ese total no es comparable con el resto.")}
+            "anio_en_curso": en_curso}
 
 
 @router.get("/reclamos/ishikawa")

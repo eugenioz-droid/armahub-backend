@@ -54,7 +54,6 @@ const cabeceraMes = { children: Array.from({ length: 14 }, () => ({ textContent:
 // Data con la FORMA REAL del endpoint, con los números que hoy tiene la base.
 const DATA = {
   anio_en_curso: 2026,
-  nota_kilos_2022: 'En 2022 no se tenían todos los kilos: se aplicó un estándar definido ese año.',
   anios: [
     { anio: 2022, total: 156, aplican: 142, no_aplican: 12, pendientes: 2, kilos: 48776, con_kilos: 156, con_causa: 0, en_curso: false },
     { anio: 2023, total: 104, aplican: 102, no_aplican: 2, pendientes: 0, kilos: 41286, con_kilos: 38, con_causa: 0, en_curso: false },
@@ -132,8 +131,9 @@ check('...y tiene botón propio', sandbox.DASH_SUBTABS.historico.btn === 'dashSu
   const k = graficos[1].cfg;
   check('la etiqueta dice cuántos están valorizados',
     k.data.labels[1][1] === '38 de 104 valorizados');
-  check('y el aviso de 2022 aparece', nodo('rhNotaKilos').style.display === ''
-    && nodo('rhNotaKilos').textContent.indexOf('estándar') > 0);
+  // El aviso de 2022 se sacó: el usuario lo pidió fuera. La etiqueta de la barra ya
+  // dice cuántos reclamos la componen, que es lo que evita leerla mal.
+  check('no se cuelan avisos de texto sobre el gráfico', nodo('rhNotaKilos').textContent === '');
 
   console.log('\n5. Las matrices suman y ordenan bien');
   const cub = nodo('rhMatrizCub').innerHTML;

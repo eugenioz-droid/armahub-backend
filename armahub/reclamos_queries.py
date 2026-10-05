@@ -65,13 +65,25 @@ def q_por_categoria(cur, where="", params=None):
     return [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
 
-def q_por_proyecto(cur, limit=None):
-    """Top proyectos con más reclamos → [{proyecto, count}]."""
+def q_por_proyecto(cur, limit=None, solo_vivos=False):
+    """Top proyectos con más reclamos → [{proyecto, count}].
+
+    LA OBRA PUEDE VENIR POR DOS CAMINOS. Los reclamos que nacen en la plataforma apuntan a
+    un proyecto; los 511 históricos de 2022-2025 no pueden, porque esas obras no existen
+    como proyecto en ArmaHub y la columna tiene llave foránea. En ellos la obra viaja como
+    texto en `obra_texto`.
+
+    Sin este COALESCE los 511 caían juntos en una sola barra «Sin proyecto» que tapaba
+    todo el gráfico: parecía un error de carga y en realidad era la pregunta mal hecha.
+    """
     limit_clause = f" LIMIT {int(limit)}" if limit else ""
+    # `solo_vivos` lo usa el tablero de operacion, que mira lo que se esta llevando hoy.
+    filtro = " WHERE NOT r.historico" if solo_vivos else ""
     cur.execute(f"""
-        SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proy, COUNT(*)
+        SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, NULLIF(TRIM(r.obra_texto), ''),
+                        'Sin proyecto') AS proy, COUNT(*)
         FROM reclamos r
-        LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+        LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto{filtro}
         GROUP BY 1 ORDER BY 2 DESC{limit_clause}
     """)
     return [{"proyecto": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
