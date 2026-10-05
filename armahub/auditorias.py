@@ -90,13 +90,17 @@ def _lista(valor: Optional[str]):
 
 
 def _ubicacion_txt(e) -> str:
-    """Dónde está el elemento, en una línea: «Elevación · Piso 3 · Ciclo 2 · Eje K2».
+    """Dónde está el elemento, en una línea: «CC SUP4 · Elevación · Piso 3 · Ciclo 2 · Eje K2».
 
-    Sólo lo que está lleno. En aSa al principio viene sólo el eje, y el resto aparece
-    cuando el auditor lo escribe: por eso esto va al informe —si no, llenarlo no serviría
-    de nada, porque el informe seguiría diciendo lo mismo—.
+    Sólo lo que está lleno. En aSa al principio vienen sólo el código y el eje, y el resto
+    aparece cuando el auditor lo escribe: por eso esto va al informe —si no, llenarlo no
+    serviría de nada, porque el informe seguiría diciendo lo mismo—.
     """
     partes = []
+    # El código de control manda: es lo primero que el auditado busca para ubicarse. En la
+    # pantalla va en su propia columna, pero el informe se lee suelto y tiene que decirlo.
+    if e.get("cc"):
+        partes.append("CC %s" % e["cc"])
     tipo = SECTORES.get(e.get("sector") or "", e.get("sector") or "")
     if tipo:
         partes.append(tipo)
@@ -440,8 +444,12 @@ def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
         e["barras"] += 1
         e["kg"] += float(it.get("LineWeight") or 0)
     for clave, e in por.items():
-        e["nombre"] = " · ".join(x for x in (cc, clave if clave != SIN_ELEMENTO else "",
-                                             e["estructura"] or descr) if x)
+        # EL NOMBRE ES SÓLO DEL ELEMENTO. El código de control y su descripción tienen sus
+        # propias columnas: pegarlos acá daba «SUP4 · INF · FUN C17», que además repite el
+        # eje. Cada columna dice una cosa.
+        e["nombre"] = (e["estructura"]
+                       or (clave if clave != SIN_ELEMENTO else "")
+                       or descr or cc)
     return list(por.values())
 
 
@@ -617,10 +625,23 @@ class CrearBody(BaseModel):
 
 
 def _codigo(cur) -> str:
-    """A-2026-001: el número que se dice en voz alta. Corre por año."""
+    """A-2026-001: el número que se dice en voz alta. Corre por año.
+
+    NO SE CUENTAN LAS QUE HAY: se lleva un correlativo aparte. Contarlas tenía dos caras
+    y las dos muerden. Borrar una dejaba un hueco y la siguiente pedía un número ya usado,
+    que chocaba con el índice único y salía como «Error interno del servidor». Y aunque no
+    chocara, REUSAR el número es peor: al crear una auditoría se manda un correo con su
+    código, así que dos correos distintos hablarían de la misma A-2026-002.
+
+    El INSERT ... ON CONFLICT DO UPDATE toma el candado de la fila del año, así que dos
+    personas creando a la vez se ordenan solas: no hacen falta reintentos.
+    """
     anio = _hoy().year
-    cur.execute("SELECT COUNT(*) FROM auditorias WHERE EXTRACT(YEAR FROM creada_fecha) = %s", (anio,))
-    return "A-%d-%03d" % (anio, (cur.fetchone()[0] or 0) + 1)
+    cur.execute(
+        """INSERT INTO auditoria_correlativo (anio, ultimo) VALUES (%s, 1)
+           ON CONFLICT (anio) DO UPDATE SET ultimo = auditoria_correlativo.ultimo + 1
+           RETURNING ultimo""", (anio,))
+    return "A-%d-%03d" % (anio, cur.fetchone()[0])
 
 
 @router.post("/auditorias")
@@ -670,13 +691,17 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
             cur.executemany(
                 """INSERT INTO auditoria_elementos
                        (auditoria_id, cc, sector, piso, ciclo, eje, nombre, estructura, barras, kg,
-                        cubicado_por, ref_origen)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        cubicado_por, ref_origen, descr_cc)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 [(aud_id, e.get("cc"), e["sector"], e["piso"], e["ciclo"], e["eje"], e["nombre"],
                   e["estructura"], e["barras"], e["kg"], e["cubicado_por"],
                   # Sólo en aSa: la referencia con la que se le vuelven a pedir las barras.
                   # En ArmaHub la clave son las cuatro columnas y no hay nada que guardar.
-                  e.get("ref_origen") if es_asa else None) for e in elementos])
+                  e.get("ref_origen") if es_asa else None,
+                  # La descripción del código de control, en foto: el nombre que alguien le
+                  # puso en aSa puede cambiar, y el informe tiene que seguir diciendo
+                  # contra qué se auditó.
+                  e.get("descr_cc") if es_asa else None) for e in elementos])
             audit(email, "auditoria_crear",
                   f"{body.origen} · {obra}: {len(elementos)} de {total}", "auditoria", str(aud_id))
     aud = detalle(aud_id, user)
@@ -917,7 +942,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           (SELECT COUNT(*) FROM auditoria_items i WHERE i.elemento_id = e.id),
                           (SELECT COUNT(*) FROM auditoria_items i
                             WHERE i.elemento_id = e.id AND i.conforme IS FALSE),
-                          e.ref_origen, e.ubicado_por, e.ubicado_el
+                          e.ref_origen, e.ubicado_por, e.ubicado_el, e.descr_cc
                      FROM auditoria_elementos e WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
             aud["elementos"] = [
                 {"id": e[0], "cc": e[19], "sector": e[1], "piso": e[2], "ciclo": e[3], "eje": e[4], "nombre": e[5],
@@ -932,6 +957,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  # `eje`, que es la etiqueta y el auditor puede corregir.
                  "ref_origen": e[22], "ubicado_por": e[23],
                  "ubicado_el": e[24].isoformat() if e[24] else None,
+                 # El código de control y su descripción son columnas, no parte del nombre.
+                 "descr_cc": e[25],
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
@@ -1241,13 +1268,16 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT e.nombre, e.cubicado_por, e.accion_estado, a.codigo, a.obra
+                """SELECT e.nombre, e.cubicado_por, e.accion_estado, a.codigo, a.obra, e.cc
                      FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
                     WHERE e.id = %s AND e.auditoria_id = %s""", (elemento_id, auditoria_id))
             el = cur.fetchone()
             if not el:
                 raise HTTPException(status_code=404, detail="Ese elemento no es de esta auditoría.")
-            nombre, cubico, accion_previa, codigo, obra = el
+            nombre, cubico, accion_previa, codigo, obra, cc = el
+            # El nombre es sólo del elemento: en un aviso suelto hay que decir el código,
+            # o el cubicador no sabe en cuál de sus veinte códigos mirar.
+            nombre = " · ".join(x for x in (cc, nombre) if x)
             if body.items:
                 cur.executemany(
                     """INSERT INTO auditoria_items (elemento_id, ref, marca, conforme, observacion,
@@ -1320,7 +1350,11 @@ def mis_acciones(user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT a.id, a.codigo, a.obra, e.id, e.nombre, e.hallazgo, e.texto, e.causa,
+                # El elemento con su código de control delante: esta lista se mira sin
+                # abrir la auditoría, y el nombre solo no dice en qué código buscarlo.
+                """SELECT a.id, a.codigo, a.obra, e.id,
+                          CONCAT_WS(' · ', NULLIF(e.cc, ''), e.nombre),
+                          e.hallazgo, e.texto, e.causa,
                           e.accion_estado, a.plazo_fecha, a.auditor
                      FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
                     WHERE e.cubicado_por ILIKE %s AND e.accion_estado IS NOT NULL
@@ -1487,7 +1521,8 @@ class _InformePDF:
             p.set_fill_color(*self.COLOR[e["hallazgo"]])
             p.cell(3, 5, "", fill=True, border=0)
             p.set_font("Helvetica", "B", 9)
-            p.cell(0, 5, self._s("  %s - %s" % (self.NOMBRE[e["hallazgo"]], e["nombre"])),
+            titulo = " · ".join(x for x in (e.get("cc"), e["nombre"]) if x)
+            p.cell(0, 5, self._s("  %s - %s" % (self.NOMBRE[e["hallazgo"]], titulo)),
                    new_x="LMARGIN", new_y="NEXT")
             p.set_font("Helvetica", "", 9)
             p.set_x(18)
@@ -1528,7 +1563,9 @@ class _InformePDF:
         p.ln(5)
         p.set_font("Helvetica", "", 8)
         for e in acc:
-            p.cell(74, 5, self._s(e["nombre"][:44]), border=0)
+            # Con el código delante: esta tabla se lee sola, sin volver a la de hallazgos.
+            quien = " · ".join(x for x in (e.get("cc"), e["nombre"]) if x)
+            p.cell(74, 5, self._s(quien[:44]), border=0)
             p.cell(50, 5, self._s((e.get("cubicado_por") or "")[:32]), border=0)
             p.cell(26, 5, self._s({"pendiente": "Pendiente", "corregida": "Corregida",
                                    "verificada": "Verificada"}.get(e["accion_estado"], "")), border=0)

@@ -486,11 +486,21 @@
     var conflicto = (AUD.elementos || []).filter(function (e) { return e.conflicto; }).length;
     if (conflicto) $('audDetInfo').innerHTML += ' · <b style="color:#c62828">' + conflicto + ' elemento(s) cubicados por quien audita</b>';
 
-    var html = '<thead><tr><th>Elemento</th><th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
+    // EN aSa EL ELEMENTO VIVE DENTRO DE UN CÓDIGO DE CONTROL, y son dos cosas distintas:
+    // el código con su descripción por un lado, el elemento por otro. Pegados con puntos
+    // («SUP4 · INF · FUN C17») quedaba ilegible y encima repetía el eje. Van en columnas
+    // propias, y sólo aparecen en las auditorías de aSa: en ArmaHub no hay código.
+    var esAsa = AUD.origen === 'asa';
+    var html = '<thead><tr>' +
+      (esAsa ? '<th>Código</th><th>Descripción del código</th>' : '') +
+      '<th>Elemento</th><th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
       '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th><th>Acción</th></tr></thead><tbody>';
     (AUD.elementos || []).forEach(function (e) {
       html += '<tr class="fila' + (ELEM && ELEM.id === e.id ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
-        '<td title="' + esc(e.nombre) + '"><b>' + esc(e.nombre) + '</b></td>' +
+        (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' +
+                 '<td class="auddcc" title="' + esc(e.descr_cc || '') + '">' + esc(e.descr_cc || '') + '</td>' : '') +
+        // Lo que ancla la fila va en negrita: en aSa es el código, en ArmaHub el elemento.
+        '<td title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
         '<td>' + esc(e.tipo || '') + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>' +
         '<td class="num" title="' + (e.items || 0) + ' revisada(s)' + (e.items_malos ? ', ' + e.items_malos + ' no conforme(s)' : '') + '">' +
           (e.items ? '<b>' + e.items + '</b>/' : '') + e.barras + '</td>' +
@@ -518,11 +528,17 @@
     }
   }
 
+  // El elemento nombrado ENTERO, para cuando se lee fuera de la tabla —el título de la
+  // revisión, la lista de acciones— y no hay una columna de código al lado.
+  function nombreCompleto(e) {
+    return (e.cc ? e.cc + ' · ' : '') + (e.nombre || '');
+  }
+
   // Abrir un elemento: se traen sus barras y aparece el formulario de hallazgo.
   async function abrirElemento(e) {
     ELEM = e; pintarDetalle();
     $('audRev').style.display = '';
-    $('audRevTitulo').textContent = e.nombre;
+    $('audRevTitulo').textContent = nombreCompleto(e);
     $('audRevInfo').textContent = 'cargando…';
     $('audRevBarras').innerHTML = '';
     pintarRevision();
@@ -740,7 +756,7 @@
       '<table class="audt"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th><th>Qué se encontró</th>' +
       '<th>Causa</th><th>Estado</th><th></th></tr></thead><tbody>' +
       acc.map(function (e) {
-        return '<tr><td title="' + esc(e.nombre) + '">' + esc(e.nombre) + '</td>' +
+        return '<tr><td title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
           '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
           '<td><span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span></td>' +
           '<td title="' + esc(e.texto || '') + '">' + esc(e.texto || '') + '</td>' +

@@ -234,6 +234,16 @@ if s == 200:
           s2 == 200 and d2["lunes"] == "2026-09-14" and d2["viernes"] == "2026-09-18")
 
 print("\n6c. Auditorias de cubicacion (maqueta): obra, alcance y muestra reales")
+# EL CONTADOR DE AUDITORIAS ES DEL USUARIO, no del smoke. Cada auditoria que esta prueba
+# crea le quema un numero a la serie real (A-2026-xxx), y el numero NO se reutiliza a
+# proposito, porque viaja en un correo. Sin devolverlo, la serie del usuario saltaria de
+# diez en diez cada vez que se corre esto. Se anota aca y se restituye al final.
+with get_conn() as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT ultimo FROM auditoria_correlativo "
+                    "WHERE anio = EXTRACT(YEAR FROM CURRENT_DATE)")
+        _f = cur.fetchone()
+        CORRELATIVO = _f[0] if _f else 0
 s, d = get("/auditorias/obras")
 check("GET /auditorias/obras -> 200", s == 200, str(d)[:160])
 if s == 200 and d.get("obras"):
@@ -419,6 +429,9 @@ if s == 200 and d.get("obras"):
                       a["origen"] == "asa" and all(e["cc"] and e["eje"] for e in a["elementos"]))
                 check("...y guarda la referencia de aSa aparte del eje, que es editable",
                       all(e.get("ref_origen") for e in a["elementos"]))
+                check("...el codigo de control y su descripcion van aparte del nombre",
+                      all(e["cc"] and e["nombre"] and not e["nombre"].startswith(e["cc"])
+                          for e in a["elementos"]))
                 check("...los elementos salen SOLO de los codigos que se eligieron",
                       all(e["cc"] in elegidos for e in a["elementos"]))
                 check("...y el alcance queda guardado (de que codigos salio la muestra)",
@@ -494,10 +507,37 @@ if s == 200 and d.get("obras"):
                 check("dejar el eje vacio se rechaza -> 400", rb.status_code == 400, rb.text[:160])
                 r = cli.delete("/api/v1/auditorias/%d" % a["id"], headers=H)
                 check("...y se borra al terminar la prueba", r.status_code == 200, r.text[:160])
+                # BORRAR Y VOLVER A CREAR. Aca salto el bug: el numero de la auditoria se
+                # sacaba contando las del ano, asi que al borrar una quedaba un hueco y la
+                # siguiente pedia un codigo ya usado -> 500 sin explicacion.
+                r2 = cli.post("/api/v1/auditorias", headers=H, json={
+                    "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 1,
+                    "ccs": elegidos})
+                check("crear otra DESPUES de borrar -> 200 (el numero no se repite)",
+                      r2.status_code == 200, r2.text[:200])
+                if r2.status_code == 200:
+                    a2 = r2.json()
+                    check("...y sale con un codigo distinto del que se borro",
+                          a2["codigo"] != a["codigo"], "%s vs %s" % (a2["codigo"], a["codigo"]))
+                    cli.delete("/api/v1/auditorias/%d" % a2["id"], headers=H)
                 with get_conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute("DELETE FROM notificaciones WHERE tipo_evento = 'auditoria_accion' "
                                     "AND mensaje LIKE %s", ("Auditoría " + a["codigo"] + "%",))
+
+with get_conn() as conn:
+    with conn.cursor() as cur:
+        # GREATEST y no el valor crudo: si entre medio naciera una auditoria de verdad, su
+        # numero manda. Asi devolver el contador NUNCA puede repetir uno ya emitido.
+        cur.execute(""" UPDATE auditoria_correlativo SET ultimo = GREATEST(%s, (
+                           SELECT COALESCE(MAX(substring(codigo from '^A-[0-9]{4}-([0-9]+)$')::int), 0)
+                             FROM auditorias
+                            WHERE codigo LIKE 'A-' || anio || '-%%'))
+                        WHERE anio = EXTRACT(YEAR FROM CURRENT_DATE)""", (CORRELATIVO,))
+        cur.execute("SELECT ultimo FROM auditoria_correlativo "
+                    "WHERE anio = EXTRACT(YEAR FROM CURRENT_DATE)")
+        check("el smoke devuelve el contador de auditorias que gasto (quedo en %d)"
+              % cur.fetchone()[0], True)
 
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")

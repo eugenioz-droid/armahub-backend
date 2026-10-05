@@ -31,6 +31,10 @@ APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf
 HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
 SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"), encoding="utf-8").read()
+MIG122 = open(os.path.join(ROOT, "armahub", "migrations", "122_auditoria_descr_cc.sql"),
+              encoding="utf-8").read()
+MIG123 = open(os.path.join(ROOT, "armahub", "migrations", "123_auditoria_correlativo.sql"),
+              encoding="utf-8").read()
 
 print("TEST: auditorías de cubicación (maqueta)")
 
@@ -360,6 +364,75 @@ check("...y sólo se muestran en las auditorías de aSa",
 check("...diciendo por qué están vacíos", "aSa no trae piso ni ciclo" in JS)
 check("el tipo se ofrece de la lista del backend, no de una copia en el navegador",
       "BASE.sectores" in JS)
+
+print("\n7d. El código de control es una columna, no parte del nombre")
+# «Es mejor poner encabezado para el CC, para Descr del CC y separarlo del nombre del
+# elemento porque queda enredado y confuso». Antes el nombre era «SUP4 · INF · FUN C17»:
+# tres cosas pegadas, y el «INF» ya estaba en la columna Eje.
+check("el nombre del elemento es sólo del elemento, sin el código pegado",
+      "EL NOMBRE ES SÓLO DEL ELEMENTO" in SRC
+      and 'e["nombre"] = (e["estructura"]' in SRC)
+check("la descripción del código se guarda en su propia columna",
+      "descr_cc" in SRC and "ADD COLUMN descr_cc" in MIG122)
+check("...en foto, porque en aSa la pueden renombrar",
+      "puede cambiar, y el informe tiene que seguir diciendo" in SRC)
+check("la tabla tiene encabezado para el código y para su descripción",
+      "<th>Código</th><th>Descripción del código</th>" in JS)
+check("...y sólo en las auditorías de aSa, que es donde existe el código",
+      "var esAsa = AUD.origen === 'asa';" in JS and "(esAsa ? '<th>Código</th>" in JS)
+check("la descripción larga se corta y queda entera en el title",
+      ".audt td.auddcc{max-width" in HTM and 'class="auddcc" title=' in JS)
+# Fuera de la tabla no hay columna al lado que lo diga, así que el código tiene que viajar
+# junto al nombre: el informe, los avisos y la lista de acciones se leen sueltos.
+check("fuera de la tabla el elemento se nombra con su código",
+      "function nombreCompleto(e)" in JS and "nombreCompleto(e)" in JS.split("function nombreCompleto")[1])
+check("...y el informe también lo dice",
+      'partes.append("CC %s" % e["cc"])' in SRC
+      and 'titulo = " · ".join(x for x in (e.get("cc"), e["nombre"]) if x)' in SRC)
+check("...igual que el aviso al cubicador y la lista de «mis acciones»",
+      "o el cubicador no sabe en cuál de sus veinte códigos mirar" in SRC
+      and "CONCAT_WS(' · ', NULLIF(e.cc, ''), e.nombre)" in SRC)
+check("las auditorías viejas se arreglan solas en la migración",
+      "SET nombre = COALESCE(NULLIF(btrim(e.estructura), '')" in MIG122
+      and "SET descr_cc = (SELECT NULLIF(p.descr, '')" in MIG122)
+
+print("\n7e. El número de la auditoría no se repite después de borrar una")
+# BUG REAL, visto en el smoke: `_codigo` contaba las auditorías del año, asi que al borrar
+# una quedaba un hueco y la siguiente volvía a pedir un código ya usado. El INSERT chocaba
+# con el índice único de `codigo` y el usuario veía «Error interno del servidor», que no
+# dice nada. Y pasa justo cuando alguien levanta una auditoría por error y la borra.
+check("el número sale de un correlativo aparte, no de contar las auditorías",
+      "INSERT INTO auditoria_correlativo (anio, ultimo) VALUES (%s, 1)" in SRC
+      and "COUNT(*) FROM auditorias WHERE EXTRACT" not in SRC)
+check("...así que borrar una NO devuelve su número a la fila",
+      "REUSAR el número es peor" in SRC and "CREATE TABLE IF NOT EXISTS auditoria_correlativo" in MIG123)
+check("...lo que importa porque al crear se manda un correo con ese código",
+      "dos correos distintos hablarían de la misma" in SRC)
+check("dos personas creando a la vez se ordenan con el candado de la fila, sin reintentos",
+      "ON CONFLICT (anio) DO UPDATE SET ultimo = auditoria_correlativo.ultimo + 1" in SRC
+      and "SAVEPOINT" not in SRC)
+check("el correlativo arranca donde iba la serie ya escrita",
+      "ON CONFLICT (anio) DO NOTHING" in MIG123 and "MAX(substring(codigo from" in MIG123)
+
+
+class _CurFalso:
+    """Un cursor de mentira para probar el generador de códigos sin base."""
+
+    def __init__(self, siguiente):
+        self.siguiente, self.sql, self.params = siguiente, None, None
+
+    def execute(self, sql, params=None):
+        self.sql, self.params = sql, params
+
+    def fetchone(self):
+        return (self.siguiente,)
+
+
+c = _CurFalso(1)
+check("el primero del año es el 001", A._codigo(c) == "A-%d-001" % A._hoy().year)
+check("...y el correlativo se pide para ESTE año", c.params == (A._hoy().year,))
+check("el octavo es el 008", A._codigo(_CurFalso(8)) == "A-%d-008" % A._hoy().year)
+check("...y pasado el 999 no se trunca", A._codigo(_CurFalso(1004)) == "A-%d-1004" % A._hoy().year)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
