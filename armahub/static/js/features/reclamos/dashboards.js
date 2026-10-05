@@ -355,8 +355,9 @@ async function loadRecLanding() {
 // pinta el botón. Los tableros de siempre viven en 'tableros' y no se tocaron;
 // 'kpis' es la sección nueva, que carga su data la primera vez que se abre.
 var DASH_SUBTABS = {
-  tableros: { panel: 'dashSubTableros', btn: 'dashSubBtnTableros', color: '#1565C0' },
-  kpis:     { panel: 'dashSubKpis',     btn: 'dashSubBtnKpis',     color: '#00897b' }
+  tableros:  { panel: 'dashSubTableros', btn: 'dashSubBtnTableros', color: '#1565C0' },
+  kpis:      { panel: 'dashSubKpis',     btn: 'dashSubBtnKpis',     color: '#00897b' },
+  historico: { panel: 'dashSubHist',     btn: 'dashSubBtnHist',     color: '#5e35b1' }
 };
 var _dashSubActual = 'tableros';
 var _dashKpisLoaded = false;
@@ -376,7 +377,202 @@ function switchDashSubTab(sub) {
   });
   if (sub === 'tableros') loadRecAdminDashboards();
   if (sub === 'kpis') loadDashKpis();
+  if (sub === 'historico') loadDashHistorico();
 }
+
+// ── POR AÑO (5-oct) ──────────────────────────────────────────────────────────────
+// La foto de varios años junta: lo cargado de las planillas viejas y lo que se lleva
+// hoy. Todo se agrupa en la base; acá sólo se dibuja.
+var _dashHistLoaded = false;
+var _rhCharts = {};
+var MESES_C = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+function rhNum(n) {
+  return (n == null ? 0 : Math.round(n)).toLocaleString('es-CL');
+}
+
+function rhEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+// La matriz que se repite en cuatro cajas: filas por lo que sea, años en columnas y
+// totales a los dos lados. Una sola función, porque son la misma tabla con otra fila.
+function rhMatriz(el, filas, anios, cfg) {
+  cfg = cfg || {};
+  var tabla = document.getElementById(el);
+  if (!tabla) return;
+  var claves = [];
+  var mapa = {};
+  filas.forEach(function (f) {
+    if (!mapa[f.clave]) { mapa[f.clave] = {}; claves.push(f.clave); }
+    mapa[f.clave][f.col] = (mapa[f.clave][f.col] || 0) + f.valor;
+  });
+  var total = {};
+  claves.forEach(function (k) {
+    total[k] = anios.reduce(function (a, c) { return a + (mapa[k][c] || 0); }, 0);
+  });
+  // Ordenado por el total, de mayor a menor: lo que más pesa se lee primero. Salvo que
+  // las filas sean años, donde el orden es el cronológico. Se ORDENA de verdad y no se
+  // confía en el orden en que llegó la data: si el backend cambia un ORDER BY, la tabla
+  // saldría con los años barajados y nadie lo relacionaría con eso.
+  claves.sort(cfg.ordenNatural
+    ? function (a, b) { return (parseFloat(a) || 0) - (parseFloat(b) || 0) || a.localeCompare(b); }
+    : function (a, b) { return total[b] - total[a]; });
+  var th = '<thead><tr><th>' + rhEsc(cfg.titulo || '') + '</th>' +
+    anios.map(function (a) {
+      return '<th>' + a + (cfg.enCurso === a ? '<span class="rhcurso">en curso</span>' : '') + '</th>';
+    }).join('') + '<th>Total</th></tr></thead>';
+  var tb = '<tbody>' + claves.map(function (k) {
+    return '<tr><td title="' + rhEsc(k) + '">' + rhEsc(k) + '</td>' +
+      anios.map(function (a) {
+        var v = mapa[k][a] || 0;
+        return '<td class="' + (v ? '' : 'cero') + '">' + (v ? rhNum(v) : '·') + '</td>';
+      }).join('') + '<td><b>' + rhNum(total[k]) + '</b></td></tr>';
+  }).join('') + '</tbody>';
+  var sumas = anios.map(function (a) {
+    return claves.reduce(function (acc, k) { return acc + (mapa[k][a] || 0); }, 0);
+  });
+  var tf = '<tfoot><tr><td>Total</td>' + sumas.map(function (s) { return '<td>' + rhNum(s) + '</td>'; }).join('') +
+    '<td>' + rhNum(sumas.reduce(function (a, b) { return a + b; }, 0)) + '</td></tr></tfoot>';
+  tabla.innerHTML = th + tb + tf;
+}
+
+// El gráfico de barras de siempre: una barra por serie, el número real encima y el
+// total del año en la etiqueta del eje. Sin apilar, que no deja comparar.
+function rhBarras(canvas, etiquetas, series, opciones) {
+  opciones = opciones || {};
+  if (_rhCharts[canvas]) _rhCharts[canvas].destroy();
+  var ctx = document.getElementById(canvas);
+  if (!ctx) return;
+  _rhCharts[canvas] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: etiquetas,
+      datasets: series.map(function (s) {
+        return { label: s.nombre, data: s.datos, backgroundColor: s.color, borderRadius: 3,
+                 maxBarThickness: 46 };
+      })
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: series.length > 1, position: 'bottom',
+                  labels: { boxWidth: 10, font: { size: 10 } } },
+        datalabels: {
+          display: true, anchor: 'end', align: 'end', offset: 1,
+          color: '#546e7a', font: { size: 9, weight: '700' },
+          formatter: function (v) { return v ? rhNum(v) : ''; }
+        },
+        tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + rhNum(c.parsed.y); } } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        // Aire arriba para que el número sobre la barra más alta no quede cortado.
+        y: { beginAtZero: true, grace: '14%', ticks: { font: { size: 9 },
+             callback: function (v) { return rhNum(v); } },
+             grid: { color: '#f2f4f6' } }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+  if (opciones.sufijo) { /* reservado */ }
+}
+
+async function loadDashHistorico() {
+  if (_dashHistLoaded) return;
+  var d = await apiGet('/reclamos/historico');
+  if (!d) return;
+  _dashHistLoaded = true;
+
+  var anios = (d.anios || []).map(function (a) { return a.anio; });
+  var etiq = (d.anios || []).map(function (a) {
+    // El total va en la etiqueta del eje: así la barra dice su detalle y el eje el total.
+    return a.en_curso ? [String(a.anio) + ' (en curso)', rhNum(a.total)] : [String(a.anio), rhNum(a.total)];
+  });
+
+  rhBarras('rhChartAnio', etiq, [
+    { nombre: 'Aplican al área', datos: d.anios.map(function (a) { return a.aplican; }), color: '#c62828' },
+    { nombre: 'No aplican', datos: d.anios.map(function (a) { return a.no_aplican; }), color: '#b0bec5' },
+    { nombre: 'Por revisar', datos: d.anios.map(function (a) { return a.pendientes; }), color: '#ffb74d' }
+  ]);
+
+  // En kilos la etiqueta lleva cuántos reclamos componen la barra: un año con pocos
+  // kilos puede ser que hubo pocos errores o que no se valorizaron, y son cosas
+  // distintas. Sin ese dato el gráfico se leería mal.
+  var etiqKg = (d.anios || []).map(function (a) {
+    return [String(a.anio) + (a.en_curso ? ' (en curso)' : ''), a.con_kilos + ' de ' + a.total + ' valorizados'];
+  });
+  rhBarras('rhChartKilos', etiqKg, [
+    { nombre: 'Kilos mal fabricados', datos: d.anios.map(function (a) { return a.kilos; }), color: '#5e35b1' }
+  ]);
+  var nota = document.getElementById('rhNotaKilos');
+  if (nota && d.nota_kilos_2022 && anios.indexOf(2022) >= 0) {
+    nota.style.display = ''; nota.textContent = d.nota_kilos_2022;
+  }
+
+  // Meses: acá los años son las FILAS, así que el orden es cronológico y no por tamaño.
+  var porMes = [];
+  (d.meses || []).forEach(function (m) {
+    porMes.push({ clave: String(m.anio), col: m.mes, valor: m.n });
+  });
+  rhMatriz('rhMatrizMes', porMes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+           { titulo: 'Año', ordenNatural: true });
+  // Los meses salen numerados de la matriz genérica; se les pone nombre.
+  var cab = document.querySelector('#rhMatrizMes thead tr');
+  if (cab) {
+    for (var i = 1; i <= 12; i++) cab.children[i].textContent = MESES_C[i - 1];
+  }
+
+  rhMatriz('rhMatrizCub',
+           (d.cubicadores || []).map(function (c) { return { clave: c.nombre, col: c.anio, valor: c.n }; }),
+           anios, { titulo: 'Cubicador', enCurso: d.anio_en_curso });
+  rhMatriz('rhMatrizSeg',
+           (d.segmentos || []).map(function (s) { return { clave: s.segmento, col: s.anio, valor: s.n }; }),
+           anios, { titulo: 'Segmento', enCurso: d.anio_en_curso });
+  rhMatriz('rhMatrizTipo',
+           (d.tipos || []).map(function (t) { return { clave: TIPO_TXT[t.tipo] || t.tipo, col: t.anio, valor: t.n }; }),
+           anios, { titulo: 'Tipo', enCurso: d.anio_en_curso });
+
+  // Cobertura del análisis: cuántos tienen causa de los que la necesitan. Los que no
+  // aplican no la necesitan por definición, así que no entran al denominador.
+  var tabla = document.getElementById('rhMatrizCausa');
+  if (tabla) {
+    tabla.innerHTML = '<thead><tr><th>Año</th><th>Necesitan causa</th><th>Tienen</th>' +
+      '<th>Falta catalogar</th><th style="width:110px">Avance</th></tr></thead><tbody>' +
+      (d.anios || []).map(function (a) {
+        var necesitan = a.total - a.no_aplican;
+        var falta = Math.max(0, necesitan - a.con_causa);
+        var pct = necesitan ? Math.round(a.con_causa * 100 / necesitan) : 0;
+        return '<tr><td>' + a.anio + (a.en_curso ? '<span class="rhcurso">en curso</span>' : '') + '</td>' +
+          '<td>' + rhNum(necesitan) + '</td><td>' + rhNum(a.con_causa) + '</td>' +
+          '<td' + (falta ? ' style="color:#e65100; font-weight:700"' : '') + '>' + rhNum(falta) + '</td>' +
+          '<td><div class="rhbarra" title="' + pct + '%"><i style="width:' + pct + '%"></i></div></td></tr>';
+      }).join('') + '</tbody>';
+  }
+
+  var top = document.getElementById('rhTopCausas');
+  if (top) {
+    var maxc = Math.max.apply(null, [1].concat((d.causas || []).map(function (c) { return c.n; })));
+    top.innerHTML = '<thead><tr><th>Causa</th><th>Reclamos</th><th style="width:90px"></th></tr></thead><tbody>' +
+      ((d.causas || []).length
+        ? d.causas.map(function (c) {
+            return '<tr><td title="' + rhEsc(c.causa) + '">' + rhEsc(c.causa) + '</td>' +
+              '<td><b>' + c.n + '</b></td>' +
+              '<td><div class="rhbarra"><i style="width:' + Math.round(c.n * 100 / maxc) + '%; background:#5e35b1"></i></div></td></tr>';
+          }).join('')
+        : '<tr><td colspan="3" style="color:#90a4ae; font-style:italic">Todavía no hay reclamos con causa asignada.</td></tr>') +
+      '</tbody>';
+  }
+}
+
+// Cómo se dice cada tipo en pantalla. El valor crudo es el que viaja a la base.
+var TIPO_TXT = {
+  error: 'Error de cubicación', faltante: 'Faltante de cubicación', atraso: 'Atraso',
+  actualizacion_portal: 'Actualización portal', documentacion: 'Documentación',
+  stock: 'Stock', programacion: 'Programación', diferencia_kg: 'Diferencia de kg'
+};
 
 // KPI: causas de los reclamos CERRADOS, como árbol causa → sub-causa. La sub-causa
 // es la que importa (pedido del usuario); la causa gruesa solo agrupa. Barras

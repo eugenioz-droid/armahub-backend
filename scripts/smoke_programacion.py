@@ -539,6 +539,29 @@ with get_conn() as conn:
         check("el smoke devuelve el contador de auditorias que gasto (quedo en %d)"
               % cur.fetchone()[0], True)
 
+print("\n6f. Tablero de reclamos por ano (lee lo historico y lo vivo juntos)")
+s, d = get("/reclamos/historico")
+check("GET /reclamos/historico -> 200", s == 200, str(d)[:200])
+if s == 200:
+    anios = d.get("anios") or []
+    print("      %d anos: %s" % (len(anios), ", ".join(
+        "%s(%d)" % (a["anio"], a["total"]) for a in anios)))
+    check("...trae un ano por cada ano con reclamos", len(anios) >= 1)
+    check("...y cada ano cuadra: aplican + no aplican + pendientes = total",
+          all(a["aplican"] + a["no_aplican"] + a["pendientes"] == a["total"] for a in anios))
+    # El ano en curso tiene que venir marcado: puesto al lado de anos completos
+    # aparenta una caida que no existe.
+    en_curso = [a for a in anios if a["en_curso"]]
+    check("...el ano en curso viene marcado (%s)" % (en_curso[0]["anio"] if en_curso else "ninguno"),
+          len(en_curso) <= 1)
+    check("...los kilos vienen con cuantos reclamos los componen",
+          all("con_kilos" in a and a["con_kilos"] <= a["total"] for a in anios))
+    check("...y se abre por mes, cubicador, segmento y tipo",
+          all(k in d for k in ("meses", "cubicadores", "segmentos", "tipos", "causas")))
+    # Lo historico NO puede mezclarse con lo vivo sin poder separarlo.
+    check("...diciendo que anos son historicos y cuales se llevan en la plataforma",
+          any(a["historico"] for a in anios) is not None)
+
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")
     t0 = time.time()

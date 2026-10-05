@@ -8,6 +8,86 @@
     <div style="display:flex; gap:4px; border-bottom:1px solid #e0e0e0; margin-bottom:12px;">
       <button id="dashSubBtnTableros" onclick="switchDashSubTab('tableros')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">Tableros</button>
       <button id="dashSubBtnKpis" onclick="switchDashSubTab('kpis')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">RCA · Ishikawa</button>
+      <button id="dashSubBtnHist" onclick="switchDashSubTab('historico')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Por año</button>
+    </div>
+
+    <!-- Sub-panel: POR AÑO. La foto de varios años junta: lo cargado de las planillas
+         viejas (2022-2025) y lo que se lleva hoy en la plataforma. La gracia es poder
+         compararlos, así que entra todo; el año en curso va marcado, porque puesto al
+         lado de años completos aparenta una caída que no existe. -->
+    <div id="dashSubHist" style="display:none;">
+      <style>
+        .rhcaja{background:#fff; border:1px solid #eee; border-radius:8px; padding:12px 14px;}
+        .rhtit{font-size:11px; font-weight:700; color:#37474f; letter-spacing:.3px; margin-bottom:2px;}
+        .rhsub{font-size:10.5px; color:#90a4ae; margin-bottom:8px;}
+        .rhfila{display:grid; gap:12px; margin-bottom:12px;}
+        .rht{width:100%; border-collapse:collapse; font-size:11px;}
+        .rht th{font-size:10px; font-weight:700; color:#607d8b; text-align:right; padding:3px 6px;
+                border-bottom:1px solid #eceff1; white-space:nowrap;}
+        .rht th:first-child{text-align:left;}
+        /* app.css trae un td{font-size:13px}: el tamaño va en la celda o no se aplica. */
+        .rht td{font-size:11px; padding:3px 6px; text-align:right; border-top:1px solid #f4f6f8;
+                white-space:nowrap; font-variant-numeric:tabular-nums;}
+        .rht td:first-child{text-align:left; color:#37474f;}
+        .rht tbody tr:hover td{background:#f7fafc;}
+        .rht tfoot td{border-top:2px solid #cfd8dc; font-weight:700; color:#263238;}
+        .rht td.cero{color:#cfd8dc;}
+        .rhcurso{font-size:9.5px; font-weight:700; color:#e65100; background:#fff3e0;
+                 border-radius:3px; padding:1px 5px; margin-left:4px;}
+        .rhaviso{font-size:10.5px; color:#8d6e63; background:#fff8e1; border:1px solid #ffecb3;
+                 border-radius:5px; padding:6px 9px; margin-top:8px;}
+        .rhbarra{height:7px; background:#eceff1; border-radius:4px; overflow:hidden; min-width:70px;}
+        .rhbarra i{display:block; height:100%; background:#00897b;}
+      </style>
+
+      <div class="rhfila" style="grid-template-columns:1fr 1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Reclamos por año</div>
+          <div class="rhsub">Separados entre los que aplican al área y los que no. El número sobre cada barra es real, no una escala.</div>
+          <div style="position:relative; height:220px;"><canvas id="rhChartAnio"></canvas></div>
+        </div>
+        <div class="rhcaja">
+          <div class="rhtit">Kilos mal fabricados por año</div>
+          <div class="rhsub">Sólo los reclamos que su planilla trajo valorizados. Debajo va cuántos componen cada barra.</div>
+          <div style="position:relative; height:220px;"><canvas id="rhChartKilos"></canvas></div>
+          <div id="rhNotaKilos" class="rhaviso" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="rhfila" style="grid-template-columns:1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Por mes</div>
+          <div class="rhsub">Años en filas, meses en columnas. Sirve para ver si un año se concentró en una época o fue parejo.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="rhMatrizMes"></table></div>
+        </div>
+      </div>
+
+      <div class="rhfila" style="grid-template-columns:1.4fr 1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Por cubicador</div>
+          <div class="rhsub">Una persona cuenta igual aunque en las planillas viejas apareciera sólo con su nombre de pila.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="rhMatrizCub"></table></div>
+        </div>
+        <div class="rhcaja">
+          <div class="rhtit">Por segmento y por tipo</div>
+          <div class="rhsub">El segmento viene de las planillas, así que los reclamos nuevos todavía no lo traen.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="rhMatrizSeg"></table></div>
+          <div style="overflow-x:auto; margin-top:10px;"><table class="rht" id="rhMatrizTipo"></table></div>
+        </div>
+      </div>
+
+      <div class="rhfila" style="grid-template-columns:1fr 1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Cuánto del análisis causa raíz está hecho</div>
+          <div class="rhsub">El Ishikawa empezó a usarse después, así que los años viejos están casi vacíos. Esto es lo que falta por catalogar.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="rhMatrizCausa"></table></div>
+        </div>
+        <div class="rhcaja">
+          <div class="rhtit">Las causas que más se repiten</div>
+          <div class="rhsub">De todos los años, contando sólo los reclamos que ya tienen causa asignada.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="rhTopCausas"></table></div>
+        </div>
+      </div>
     </div>
 
     <!-- Sub-panel: KPIs -->

@@ -925,6 +925,107 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
 # [ELIMINADOS] /reclamos/kpis y /reclamos/dashboard — endpoints huérfanos sin consumo frontend.
 
 
+# El año que todavía se está llevando. Se marca aparte porque comparar un año a medias
+# contra años completos hace ver una caída que no existe. Sale de `_hoy_chile`, que ya
+# resuelve la zona horaria: a fin de año el servidor en UTC ya está en el siguiente.
+def _anio_en_curso() -> int:
+    return int(_hoy_chile()[:4])
+
+
+@router.get("/reclamos/historico")
+def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
+    """LA FOTO DE VARIOS AÑOS: errores por año y por mes, abiertos por cubicador, por
+    segmento y por tipo, más cuánto del análisis causa raíz está hecho.
+
+    Entra TODO, lo cargado de las planillas viejas y lo que se lleva hoy en la
+    plataforma: la gracia es justamente comparar los años entre sí. El año en curso viaja
+    marcado, porque va a medias y puesto al lado de años completos aparenta una caída.
+
+    Se agrupa en la base y no en el navegador: son seiscientas y tantas filas hoy, pero
+    esto crece todos los años y mandar la tabla entera para sumarla allá no escala.
+
+    OJO CON LOS KILOS. No todos los reclamos tienen kilos mal fabricados, sólo los que la
+    planilla de su año traía valorizados. Un año con pocos kilos puede significar que
+    hubo pocos o que no se valorizaron, así que junto a la suma viaja CUÁNTOS reclamos la
+    componen. Y 2022 lleva un estándar definido ese año, no mediciones: va avisado.
+    """
+    # El nombre del cubicador: en los reclamos de hoy viene el correo, en los históricos
+    # puede venir el nombre de alguien que ya no es usuario. Las dos formas se resuelven
+    # al mismo nombre para que una persona no salga partida en dos.
+    NOMBRE_CUB = ("COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), "
+                  "r.cubicador_asignado, 'Sin asignar')")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT r.anio_calidad,
+                       COUNT(*),
+                       COUNT(*) FILTER (WHERE r.aplica = 'si'),
+                       COUNT(*) FILTER (WHERE r.aplica = 'no'),
+                       COUNT(*) FILTER (WHERE r.aplica IS NULL OR r.aplica = 'pendiente'),
+                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint,
+                       COUNT(*) FILTER (WHERE COALESCE(r.kilos_mal_fabricados, 0) > 0),
+                       COUNT(*) FILTER (WHERE r.categoria_ishikawa IS NOT NULL),
+                       BOOL_OR(r.historico)
+                  FROM reclamos r
+                 WHERE r.anio_calidad IS NOT NULL
+                 GROUP BY 1 ORDER BY 1""")
+            en_curso = _anio_en_curso()
+            anios = [{"anio": r[0], "total": r[1], "aplican": r[2], "no_aplican": r[3],
+                      "pendientes": r[4], "kilos": int(r[5] or 0), "con_kilos": r[6],
+                      "con_causa": r[7], "historico": bool(r[8]),
+                      "en_curso": r[0] == en_curso} for r in cur.fetchall()]
+
+            cur.execute("""
+                SELECT r.anio_calidad,
+                       EXTRACT(MONTH FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::int,
+                       COUNT(*), COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
+                  FROM reclamos r
+                 WHERE r.anio_calidad IS NOT NULL
+                   AND COALESCE(r.fecha_deteccion, r.fecha_creacion) ~ '^\\d{4}-\\d{2}-\\d{2}'
+                 GROUP BY 1, 2 ORDER BY 1, 2""")
+            meses = [{"anio": r[0], "mes": r[1], "n": r[2], "kilos": int(r[3] or 0)}
+                     for r in cur.fetchall()]
+
+            cur.execute(f"""
+                SELECT {NOMBRE_CUB}, r.anio_calidad, COUNT(*),
+                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
+                  FROM reclamos r
+                  LEFT JOIN users u ON u.email = r.cubicador_asignado
+                 WHERE r.anio_calidad IS NOT NULL
+                 GROUP BY 1, 2""")
+            cubicadores = [{"nombre": r[0], "anio": r[1], "n": r[2], "kilos": int(r[3] or 0)}
+                           for r in cur.fetchall()]
+
+            cur.execute("""
+                SELECT COALESCE(NULLIF(r.segmento, ''), '(sin segmento)'), r.anio_calidad, COUNT(*),
+                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
+                  FROM reclamos r WHERE r.anio_calidad IS NOT NULL
+                 GROUP BY 1, 2""")
+            segmentos = [{"segmento": r[0], "anio": r[1], "n": r[2], "kilos": int(r[3] or 0)}
+                         for r in cur.fetchall()]
+
+            cur.execute("""
+                SELECT COALESCE(r.tipo_reclamo, 'sin tipo'), r.anio_calidad, COUNT(*)
+                  FROM reclamos r WHERE r.anio_calidad IS NOT NULL
+                 GROUP BY 1, 2""")
+            tipos = [{"tipo": r[0], "anio": r[1], "n": r[2]} for r in cur.fetchall()]
+
+            # Las causas más repetidas, para que el tablero diga algo y no sólo cuente.
+            cur.execute("""
+                SELECT COALESCE(NULLIF(r.sub_causa, ''), r.cod_causa, '(sin detalle)'),
+                       r.categoria_ishikawa, COUNT(*)
+                  FROM reclamos r WHERE r.categoria_ishikawa IS NOT NULL
+                 GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 12""")
+            causas = [{"causa": r[0], "categoria": r[1], "n": r[2]} for r in cur.fetchall()]
+
+    return {"anios": anios, "meses": meses, "cubicadores": cubicadores,
+            "segmentos": segmentos, "tipos": tipos, "causas": causas,
+            "anio_en_curso": en_curso,
+            # Lo que el tablero tiene que advertir para no mentir con sus propios números.
+            "nota_kilos_2022": ("En 2022 no se tenían todos los kilos: se aplicó un estándar "
+                                "definido ese año, así que ese total no es comparable con el resto.")}
+
+
 @router.get("/reclamos/ishikawa")
 def get_ishikawa(area_id: Optional[int] = None, user=Depends(get_current_user)):
     """Devuelve la matriz Ishikawa del área indicada (desde BD).
