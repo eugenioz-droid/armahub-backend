@@ -55,6 +55,17 @@ RUIDO = {"sa", "ltda", "spa", "eirl", "cia", "constructora", "ingenieria", "cons
 COBERTURA_MINIMA = 0.75
 PALABRAS_MINIMAS = 2
 
+# LAS QUE EL NOMBRE NO ALCANZA A RESOLVER, fijadas a mano. Van acá y no como un UPDATE
+# suelto en la base: así sobreviven a que se rehaga la carga y se puede ver por qué está
+# cada una. La llave es el nombre tal como aparece en ArmaHub, en minúsculas.
+ALIAS = {
+    # En aSa la obra se llama "OHL - ESTACION VESPUCIO"; no comparte palabras suficientes
+    # con "Metro L7 Vespucio" para enlazarla sin adivinar. Es el mismo metro.
+    "ohl - metro l7 vespucio": "2012972",
+    # El nombre mezcla dos clientes. En aSa es "BRAVO E IZQ - EDIF UNAB SEDE ECHAURREN".
+    "sack - bravo izquierdo unab": "2008391",
+}
+
 
 def tokens(s):
     s = unicodedata.normalize("NFKD", str(s or ""))
@@ -67,32 +78,57 @@ def tokens(s):
     return salida
 
 
+def solo_obra(s):
+    """El nombre SIN el cliente. Los dos lados escriben «CLIENTE - OBRA», pero el cliente
+    no siempre se dice igual: la misma obra es «EI - Edificio La Pastora» en ArmaHub y
+    «ECHEVERRIA - EDIFICIO LA PASTORA» en aSa. Comparando sólo la parte de la obra, esa
+    calza exacta; comparando el nombre entero se perdía por una palabra."""
+    partes = re.split(r"\s+-\s+|\s-\s", str(s or ""), maxsplit=1)
+    return tokens(partes[1] if len(partes) > 1 and tokens(partes[1]) else s)
+
+
 def enlazar(nombre, obras):
     """La obra de aSa que corresponde a ese nombre, o None con el motivo.
 
     Devuelve (asa_job_id, nombre_obra, segmento) o (None, None, motivo).
     """
-    tp = tokens(nombre)
+    fijo = ALIAS.get(str(nombre or "").strip().lower())
+    if fijo:
+        for job, onom, seg, ta, tao in obras:
+            if job == fijo:
+                return job, onom, seg
+        return None, None, "el alias apunta a la obra %s, que no esta en el espejo" % fijo
+    tp, tpo = tokens(nombre), solo_obra(nombre)
     if not tp:
         return None, None, "el nombre no tiene palabras utiles"
     candidatos = []
-    for job, onom, seg, ta in obras:
-        comun = tp & ta
-        if len(comun) < PALABRAS_MINIMAS:
-            continue
-        if len(comun) / max(1, min(len(tp), len(ta))) >= COBERTURA_MINIMA:
-            candidatos.append((len(comun), job, onom, seg))
+    for job, onom, seg, ta, tao in obras:
+        # Dos intentos: el nombre completo y sólo la parte de la obra. Basta que uno
+        # calce, y se puntúa con el que mejor haya salido.
+        puntos = 0
+        for a, b in ((tp, ta), (tpo, tao)):
+            comun = a & b
+            if len(comun) >= PALABRAS_MINIMAS and \
+               len(comun) / max(1, min(len(a), len(b))) >= COBERTURA_MINIMA:
+                puntos = max(puntos, len(comun))
+        if puntos:
+            candidatos.append((puntos, job, onom, seg))
     if not candidatos:
         return None, None, "ninguna obra de aSa se le parece lo suficiente"
     candidatos.sort(reverse=True)
     tope = candidatos[0][0]
     cabeza = [c for c in candidatos if c[0] == tope]
-    # EN aSa LA MISMA OBRA SUELE TENER DOS CODIGOS con el mismo nombre. Que empaten no es
-    # ambiguedad; lo es solo si las candidatas dicen segmentos DISTINTOS.
-    segs = {c[3] for c in cabeza if c[3]}
+    # EN aSa LA MISMA OBRA SUELE TENER DOS CODIGOS con el mismo nombre, uno de ellos con
+    # el sufijo «- BARRAS», y a veces sólo UNO está categorizado. Entre empatados se
+    # prefiere el que SÍ tiene segmento: enlazar al otro dejaría el reclamo sin segmento
+    # teniendo la respuesta al lado.
+    con_seg = [c for c in cabeza if c[3]]
+    segs = {c[3] for c in con_seg}
     if len(segs) > 1:
         return None, None, "dos obras calzan igual y con segmento distinto (%s)" % ", ".join(sorted(segs))
-    return cabeza[0][1], cabeza[0][2], (list(segs)[0] if segs else None)
+    if con_seg:
+        return con_seg[0][1], con_seg[0][2], con_seg[0][3]
+    return cabeza[0][1], cabeza[0][2], None
 
 
 def main():
@@ -103,7 +139,7 @@ def main():
                              FROM asa_obras o
                              LEFT JOIN asa_obra_atributos a ON a.asa_job_id = o.asa_job_id
                             WHERE o.nombre IS NOT NULL""")
-            obras = [(j, n, s, tokens(n)) for j, n, s in cur.fetchall()]
+            obras = [(j, n, s, tokens(n), solo_obra(n)) for j, n, s in cur.fetchall()]
             print("obras en el espejo de aSa: %d" % len(obras))
 
             # El nombre de la obra de cada reclamo, venga del proyecto o del texto viejo.
