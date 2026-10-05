@@ -561,6 +561,21 @@ if s == 200:
     # Lo historico NO puede mezclarse con lo vivo sin poder separarlo.
     check("...diciendo que anos son historicos y cuales se llevan en la plataforma",
           any(a["historico"] for a in anios) is not None)
+    # EL SEGMENTO SALE DE LA OBRA, no del reclamo: es donde el usuario lo categoriza.
+    # Las planillas viejas solo tenian "Edificacion" y "Otro"; si eso llegara crudo al
+    # tablero, la misma cosa saldria en dos filas ("Edificacion" y "4 y 5") y los
+    # totales por segmento no sumarian con nada.
+    segs = {s["segmento"] for s in d.get("segmentos") or []}
+    print("      segmentos: %s" % ", ".join(sorted(segs)))
+    check("...el segmento usa UNA escala, la de la plataforma",
+          not any(s.lower().startswith("edificaci") for s in segs), str(sorted(segs)))
+    # Los reclamos del ano en curso tienen obra y su obra esta categorizada: si salen
+    # casi todos sin segmento, es que el enlace reclamo -> obra se rompio.
+    curso = [s for s in (d.get("segmentos") or []) if s["anio"] == d["anio_en_curso"]]
+    con_seg = sum(s["n"] for s in curso if s["segmento"] != "(sin segmento)")
+    total_curso = sum(s["n"] for s in curso)
+    check("...y el ano en curso tiene segmento en la mayoria (%d de %d)" % (con_seg, total_curso),
+          total_curso == 0 or con_seg > total_curso * 0.6)
 
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")

@@ -1017,10 +1017,26 @@ def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
             cubicadores = [{"nombre": r[0], "anio": r[1], "n": r[2], "kilos": int(r[3] or 0)}
                            for r in cur.fetchall()]
 
+            # EL SEGMENTO SE LEE DE LA OBRA, no del reclamo. Es donde el usuario lo
+            # categoriza y lo sigue corrigiendo; copiado al reclamo se quedaría con el
+            # valor viejo sin avisar. El enlace reclamo → obra lo deja puesto
+            # `scripts/enlazar_reclamos_obra.py`.
+            #
+            # Si no hay obra enlazada queda lo que traía la planilla, traducido a la
+            # misma escala: las planillas viejas sólo tenían «Edificación» y «Otro», y
+            # Edificación es el segmento 4 y 5. Sin traducir, la misma cosa saldría en
+            # dos filas distintas de la tabla. Comprobado contra las obras ya
+            # categorizadas: de 246 reclamos cruzables, 242 coinciden.
             cur.execute("""
-                SELECT COALESCE(NULLIF(r.segmento, ''), '(sin segmento)'), r.anio_calidad, COUNT(*),
+                SELECT COALESCE(at.segmento,
+                                CASE WHEN r.segmento ILIKE 'edificaci%' THEN '4 y 5'
+                                     ELSE NULLIF(r.segmento, '') END,
+                                '(sin segmento)'),
+                       r.anio_calidad, COUNT(*),
                        COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
-                  FROM reclamos r WHERE r.anio_calidad IS NOT NULL
+                  FROM reclamos r
+                  LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
+                 WHERE r.anio_calidad IS NOT NULL
                  GROUP BY 1, 2""")
             segmentos = [{"segmento": r[0], "anio": r[1], "n": r[2], "kilos": int(r[3] or 0)}
                          for r in cur.fetchall()]
