@@ -967,111 +967,83 @@ def _anio_en_curso() -> int:
     return int(_hoy_chile()[:4])
 
 
+# QUIEN ES INTERNO Y QUIEN EXTERNO. Lo dicto el usuario y la data lo confirma: de los 511
+# reclamos historicos que traian el dato, el servicio del reclamo coincide con esto en el
+# 100% de los casos. Hace falta declararlo porque los reclamos de este ano no traen la
+# columna de servicio, y porque algunos externos ya no son usuarios de la plataforma.
+CUBICADORES_INTERNOS = {
+    "Gerardo Mendoza", "Daniel Venegas", "Jose Rodriguez", "José Rodriguez",
+    "Emilio Ramirez", "Hans Mondaca", "Nicolas Lopez", "Nicolás Lopez",
+}
+
 @router.get("/reclamos/historico")
 def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
-    """LA FOTO DE VARIOS AÑOS: errores por año y por mes, abiertos por cubicador, por
-    segmento y por tipo, más cuánto del análisis causa raíz está hecho.
+    """LA FOTO DE VARIOS ANOS, para filtrarla en pantalla sin volver a preguntar.
 
     Entra TODO, lo cargado de las planillas viejas y lo que se lleva hoy en la
-    plataforma: la gracia es justamente comparar los años entre sí. El año en curso viaja
-    marcado, porque va a medias y puesto al lado de años completos aparenta una caída.
+    plataforma: la gracia es comparar los anos entre si. El ano en curso viaja marcado,
+    porque va a medias y puesto al lado de anos completos aparenta una caida.
 
-    Se agrupa en la base y no en el navegador: son seiscientas y tantas filas hoy, pero
-    esto crece todos los años y mandar la tabla entera para sumarla allá no escala.
+    QUE VIAJA. No cuatro resumenes ya hechos, sino los HECHOS agrupados por todas sus
+    dimensiones a la vez: ano, mes, cubicador, servicio, segmento, tipo, si aplica, como
+    va su analisis y que causa tiene. De ahi el navegador arma los cuatro cuadros y los
+    rearma al tocar un filtro, sin pedir nada.
 
-    OJO CON LOS KILOS. No todos los reclamos tienen kilos mal fabricados, sólo los que la
-    planilla de su año traía valorizados. Un año con pocos kilos puede significar que
-    hubo pocos o que no se valorizaron, así que junto a la suma viaja CUÁNTOS reclamos la
-    componen. Y 2022 lleva un estándar definido ese año, no mediciones: va avisado.
+    Y NO ES MUCHO: una fila por combinacion distinta, que como maximo son tantas como
+    reclamos hay. Hoy son seiscientos y tantos. Mandar cuatro resumenes ya sumados era
+    mas corto, pero entonces marcar un cubicador no podia cambiarlos.
+
+    OJO CON LOS KILOS. No todos los reclamos tienen kilos mal fabricados, solo los que la
+    planilla de su ano traia valorizados. Un ano con pocos kilos puede significar que hubo
+    pocos o que no se valorizaron, asi que junto a la suma viaja CUANTOS la componen.
     """
-    # El nombre del cubicador: en los reclamos de hoy viene el correo, en los históricos
+    # El nombre del cubicador: en los reclamos de hoy viene el correo, en los historicos
     # puede venir el nombre de alguien que ya no es usuario. Las dos formas se resuelven
     # al mismo nombre para que una persona no salga partida en dos.
     NOMBRE_CUB = ("COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), "
                   "r.cubicador_asignado, 'Sin asignar')")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT r.anio_calidad,
-                       COUNT(*),
-                       COUNT(*) FILTER (WHERE r.aplica = 'si'),
-                       COUNT(*) FILTER (WHERE r.aplica = 'no'),
-                       COUNT(*) FILTER (WHERE r.aplica IS NULL OR r.aplica = 'pendiente'),
-                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint,
-                       COUNT(*) FILTER (WHERE COALESCE(r.kilos_mal_fabricados, 0) > 0),
-                       COUNT(*) FILTER (WHERE r.categoria_ishikawa IS NOT NULL),
-                       BOOL_OR(r.historico)
-                  FROM reclamos r
-                 WHERE r.anio_calidad IS NOT NULL
-                 GROUP BY 1 ORDER BY 1""")
-            en_curso = _anio_en_curso()
-            anios = [{"anio": r[0], "total": r[1], "aplican": r[2], "no_aplican": r[3],
-                      "pendientes": r[4], "kilos": int(r[5] or 0), "con_kilos": r[6],
-                      "con_causa": r[7], "historico": bool(r[8]),
-                      "en_curso": r[0] == en_curso} for r in cur.fetchall()]
-
-            cur.execute("""
+            cur.execute(f"""
                 SELECT r.anio_calidad,
                        EXTRACT(MONTH FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::int,
-                       COUNT(*), COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
-                  FROM reclamos r
-                 WHERE r.anio_calidad IS NOT NULL
-                   AND COALESCE(r.fecha_deteccion, r.fecha_creacion) ~ '^\\d{4}-\\d{2}-\\d{2}'
-                 GROUP BY 1, 2 ORDER BY 1, 2""")
-            meses = [{"anio": r[0], "mes": r[1], "n": r[2], "kilos": int(r[3] or 0)}
-                     for r in cur.fetchall()]
-
-            cur.execute(f"""
-                SELECT {NOMBRE_CUB}, r.anio_calidad, COUNT(*),
-                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
+                       {NOMBRE_CUB},
+                       -- EL SERVICIO. Los historicos lo traen de su planilla; los de este
+                       -- ano no, porque esa columna no existia. Cuando falta se deduce de
+                       -- QUIEN cubico: ser interno o externo es de la persona, no del
+                       -- reclamo. Comprobado contra los 511 historicos: coincide en
+                       -- TODOS los que traian el dato. (Sin signos de porcentaje en los
+                       -- comentarios del SQL: psycopg los lee como marcadores.)
+                       COALESCE(r.servicio,
+                                CASE WHEN r.cubicador_asignado IS NULL THEN NULL
+                                     WHEN {NOMBRE_CUB} = ANY(%s) THEN 'Interno'
+                                     ELSE 'Externo' END,
+                                '(sin dato)'),
+                       COALESCE(at.segmento,
+                                CASE WHEN r.segmento ILIKE 'edificaci%%' THEN '4 y 5'
+                                     ELSE NULLIF(r.segmento, '') END, '(sin segmento)'),
+                       COALESCE(r.tipo_reclamo, 'error'),
+                       COALESCE(r.aplica, 'si'),
+                       CASE WHEN r.categoria_ishikawa IS NULL THEN 'sin_causa'
+                            WHEN r.analisis_validado_el IS NULL THEN 'por_validar'
+                            ELSE 'validado' END,
+                       COALESCE(NULLIF(r.sub_causa, ''), r.cod_causa),
+                       r.historico,
+                       COUNT(*),
+                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint,
+                       COUNT(*) FILTER (WHERE COALESCE(r.kilos_mal_fabricados, 0) > 0)
                   FROM reclamos r
                   LEFT JOIN users u ON u.email = r.cubicador_asignado
-                 WHERE r.anio_calidad IS NOT NULL
-                 GROUP BY 1, 2""")
-            cubicadores = [{"nombre": r[0], "anio": r[1], "n": r[2], "kilos": int(r[3] or 0)}
-                           for r in cur.fetchall()]
-
-            # EL SEGMENTO SE LEE DE LA OBRA, no del reclamo. Es donde el usuario lo
-            # categoriza y lo sigue corrigiendo; copiado al reclamo se quedaría con el
-            # valor viejo sin avisar. El enlace reclamo → obra lo deja puesto
-            # `scripts/enlazar_reclamos_obra.py`.
-            #
-            # Si no hay obra enlazada queda lo que traía la planilla, traducido a la
-            # misma escala: las planillas viejas sólo tenían «Edificación» y «Otro», y
-            # Edificación es el segmento 4 y 5. Sin traducir, la misma cosa saldría en
-            # dos filas distintas de la tabla. Comprobado contra las obras ya
-            # categorizadas: de 246 reclamos cruzables, 242 coinciden.
-            cur.execute("""
-                SELECT COALESCE(at.segmento,
-                                CASE WHEN r.segmento ILIKE 'edificaci%' THEN '4 y 5'
-                                     ELSE NULLIF(r.segmento, '') END,
-                                '(sin segmento)'),
-                       r.anio_calidad, COUNT(*),
-                       COALESCE(SUM(r.kilos_mal_fabricados), 0)::bigint
-                  FROM reclamos r
                   LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
                  WHERE r.anio_calidad IS NOT NULL
-                 GROUP BY 1, 2""")
-            segmentos = [{"segmento": r[0], "anio": r[1], "n": r[2], "kilos": int(r[3] or 0)}
-                         for r in cur.fetchall()]
-
-            cur.execute("""
-                SELECT COALESCE(r.tipo_reclamo, 'sin tipo'), r.anio_calidad, COUNT(*)
-                  FROM reclamos r WHERE r.anio_calidad IS NOT NULL
-                 GROUP BY 1, 2""")
-            tipos = [{"tipo": r[0], "anio": r[1], "n": r[2]} for r in cur.fetchall()]
-
-            # Las causas más repetidas, para que el tablero diga algo y no sólo cuente.
-            cur.execute("""
-                SELECT COALESCE(NULLIF(r.sub_causa, ''), r.cod_causa, '(sin detalle)'),
-                       r.categoria_ishikawa, COUNT(*)
-                  FROM reclamos r WHERE r.categoria_ishikawa IS NOT NULL
-                 GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 12""")
-            causas = [{"causa": r[0], "categoria": r[1], "n": r[2]} for r in cur.fetchall()]
-
-    return {"anios": anios, "meses": meses, "cubicadores": cubicadores,
-            "segmentos": segmentos, "tipos": tipos, "causas": causas,
-            "anio_en_curso": en_curso}
+                 GROUP BY 1,2,3,4,5,6,7,8,9,10""", (list(CUBICADORES_INTERNOS),))
+            datos = [{"anio": r[0], "mes": r[1], "cubicador": r[2], "servicio": r[3],
+                      "segmento": r[4], "tipo": r[5], "aplica": r[6], "analisis": r[7],
+                      "causa": r[8], "historico": bool(r[9]),
+                      "n": r[10], "kilos": int(r[11] or 0), "con_kilos": r[12]}
+                     for r in cur.fetchall()]
+    return {"datos": datos, "anio_en_curso": _anio_en_curso(),
+            "internos": sorted(CUBICADORES_INTERNOS)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

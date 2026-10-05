@@ -486,86 +486,206 @@ function rhBarras(canvas, etiquetas, series, opciones) {
   if (opciones.sufijo) { /* reservado */ }
 }
 
+// LOS FILTROS. Vacio = todos, salvo `aplica`, que arranca dejando fuera lo que NO
+// aplica al area: el usuario lo pidio asi, «los no aplica debieran visibilizarse pero
+// salir de la data». Visible como boton, fuera de los numeros mientras no se encienda.
+var RH = { datos: [], anio_en_curso: null, internos: [] };
+var RH_F = { anio: [], cubicador: [], servicio: [], segmento: [], tipo: [], aplica: ['si', 'pendiente'] };
+var RH_APLICA_TXT = { si: 'Aplica', no: 'No aplica', pendiente: 'Por revisar' };
+var RH_SERV_TXT = { Interno: 'Interno', Externo: 'Externo', '(sin dato)': 'Sin dato' };
+
+function rhMarcar(lista, valor) {
+  var i = lista.indexOf(valor);
+  if (i >= 0) lista.splice(i, 1); else lista.push(valor);
+}
+
+function rhPasa(f) {
+  return (!RH_F.anio.length || RH_F.anio.indexOf(f.anio) >= 0)
+    && (!RH_F.cubicador.length || RH_F.cubicador.indexOf(f.cubicador) >= 0)
+    && (!RH_F.servicio.length || RH_F.servicio.indexOf(f.servicio) >= 0)
+    && (!RH_F.segmento.length || RH_F.segmento.indexOf(f.segmento) >= 0)
+    && (!RH_F.tipo.length || RH_F.tipo.indexOf(f.tipo) >= 0)
+    && (!RH_F.aplica.length || RH_F.aplica.indexOf(f.aplica) >= 0);
+}
+
+function rhFilas() { return RH.datos.filter(rhPasa); }
+
+// Suma el cubo por una clave. Devuelve {valor: {n, kilos, con_kilos}}.
+function rhSuma(filas, clave) {
+  var m = {};
+  filas.forEach(function (f) {
+    var k = f[clave];
+    if (k == null) return;
+    if (!m[k]) m[k] = { n: 0, kilos: 0, con_kilos: 0 };
+    m[k].n += f.n; m[k].kilos += f.kilos; m[k].con_kilos += f.con_kilos;
+  });
+  return m;
+}
+
+function rhValores(clave) {
+  var v = [];
+  RH.datos.forEach(function (f) { if (f[clave] != null && v.indexOf(f[clave]) < 0) v.push(f[clave]); });
+  return v.sort(function (a, b) {
+    if (typeof a === 'number') return b - a;
+    return String(a).localeCompare(String(b));
+  });
+}
+
+// Un grupo de botones, con la cuenta de cada valor adentro. La cuenta se calcula sobre
+// TODO y no sobre lo filtrado: si se encogiera al filtrar, los botones apagados
+// marcarian cero y no se sabria que hay detras de encenderlos.
+function rhGrupoF(titulo, clave, valores, etiqueta) {
+  var sel = RH_F[clave];
+  var cuenta = rhSuma(RH.datos, clave);
+  return '<div class="rhfg"><span class="rhflbl">' + rhEsc(titulo) + '</span>' +
+    '<div class="rhfchips" data-g="' + clave + '">' +
+    '<button data-todos="1" class="' + (sel.length ? '' : 'on') + '">Todos</button>' +
+    valores.map(function (v) {
+      return '<button data-v="' + rhEsc(v) + '" class="' + (sel.indexOf(v) >= 0 ? 'on' : '') + '">' +
+        rhEsc(etiqueta ? etiqueta(v) : v) + '<i>' + ((cuenta[v] || {}).n || 0) + '</i></button>';
+    }).join('') + '</div></div>';
+}
+
+function rhPintarFiltros() {
+  var cont = document.getElementById('rhFiltros');
+  if (!cont) return;
+  cont.innerHTML =
+    rhGrupoF('Ano', 'anio', rhValores('anio')) +
+    rhGrupoF('Servicio', 'servicio', rhValores('servicio'), function (v) { return RH_SERV_TXT[v] || v; }) +
+    rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) +
+    rhGrupoF('Segmento', 'segmento', rhValores('segmento')) +
+    rhGrupoF('Tipo', 'tipo', rhValores('tipo'), function (v) { return TIPO_TXT[v] || v; }) +
+    rhGrupoF('Aplica', 'aplica', ['si', 'pendiente', 'no'], function (v) { return RH_APLICA_TXT[v] || v; });
+  cont.querySelectorAll('.rhfchips button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var g = b.parentNode.dataset.g;
+      if (b.dataset.todos) RH_F[g].length = 0;
+      // Los anos viajan como numero y el resto como texto: sin esto '2024' no casaria
+      // nunca con 2024 y el filtro de ano no haria nada.
+      else rhMarcar(RH_F[g], g === 'anio' ? Number(b.dataset.v) : b.dataset.v);
+      rhPintarTodo();
+    });
+  });
+}
+
+function rhPintarTodo() {
+  var filas = rhFilas();
+  var anios = rhValores('anio').slice().sort(function (a, b) { return a - b; })
+    .filter(function (a) { return !RH_F.anio.length || RH_F.anio.indexOf(a) >= 0; });
+
+  var porAnio = rhSuma(filas, 'anio');
+  var res = document.getElementById('rhResumen');
+  if (res) {
+    var tot = filas.reduce(function (a, f) { return a + f.n; }, 0);
+    var kg = filas.reduce(function (a, f) { return a + f.kilos; }, 0);
+    var fuera = RH.datos.reduce(function (a, f) { return a + f.n; }, 0) - tot;
+    res.innerHTML = '<b>' + rhNum(tot) + '</b> reclamos · <b>' + rhNum(kg) + '</b> kg mal fabricados' +
+      (fuera ? ' <span style="color:#90a4ae">(' + rhNum(fuera) + ' fuera por los filtros)</span>' : '');
+  }
+
+  // Por ano: una barra por servicio, que es el corte que el usuario pidio ver.
+  var etiq = anios.map(function (a) {
+    var e = String(a) + (a === RH.anio_en_curso ? ' (en curso)' : '');
+    return [e, rhNum((porAnio[a] || {}).n || 0)];
+  });
+  var servicios = rhValores('servicio');
+  var COLOR_SERV = { Interno: '#c62828', Externo: '#1565C0', '(sin dato)': '#b0bec5' };
+  rhBarras('rhChartAnio', etiq, servicios.map(function (s) {
+    return {
+      nombre: RH_SERV_TXT[s] || s, color: COLOR_SERV[s] || '#90a4ae',
+      datos: anios.map(function (a) {
+        return filas.filter(function (f) { return f.anio === a && f.servicio === s; })
+          .reduce(function (x, f) { return x + f.n; }, 0);
+      })
+    };
+  }));
+
+  var etiqKg = anios.map(function (a) {
+    var p = porAnio[a] || { n: 0, con_kilos: 0 };
+    return [String(a) + (a === RH.anio_en_curso ? ' (en curso)' : ''),
+            p.con_kilos + ' de ' + p.n + ' valorizados'];
+  });
+  rhBarras('rhChartKilos', etiqKg, [{
+    nombre: 'Kilos mal fabricados', color: '#5e35b1',
+    datos: anios.map(function (a) { return (porAnio[a] || {}).kilos || 0; })
+  }]);
+
+  var porMes = [];
+  filas.forEach(function (f) {
+    if (f.mes) porMes.push({ clave: String(f.anio), col: f.mes, valor: f.n });
+  });
+  rhMatriz('rhMatrizMes', porMes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+           { titulo: 'Ano', ordenNatural: true });
+  var cab = document.querySelector('#rhMatrizMes thead tr');
+  if (cab) { for (var i = 1; i <= 12; i++) if (cab.children[i]) cab.children[i].textContent = MESES_C[i - 1]; }
+
+  rhMatriz('rhMatrizCub', filas.map(function (f) {
+    return { clave: f.cubicador, col: f.anio, valor: f.n };
+  }), anios, { titulo: 'Cubicador', enCurso: RH.anio_en_curso });
+  rhMatriz('rhMatrizSeg', filas.map(function (f) {
+    return { clave: f.segmento, col: f.anio, valor: f.n };
+  }), anios, { titulo: 'Segmento', enCurso: RH.anio_en_curso });
+  rhMatriz('rhMatrizTipo', filas.map(function (f) {
+    return { clave: TIPO_TXT[f.tipo] || f.tipo, col: f.anio, valor: f.n };
+  }), anios, { titulo: 'Tipo', enCurso: RH.anio_en_curso });
+
+  rhPintarCobertura(filas, anios);
+  rhPintarCausas(filas);
+}
+
+// Cuanto del analisis causa raiz esta hecho. Lo que NO aplica no necesita causa, asi que
+// no entra al denominador: meterlo haria ver un atraso que no existe.
+function rhPintarCobertura(filas, anios) {
+  var tabla = document.getElementById('rhMatrizCausa');
+  if (!tabla) return;
+  tabla.innerHTML = '<thead><tr><th>Ano</th><th>Necesitan causa</th><th>Con causa</th>' +
+    '<th>Por validar</th><th>Falta catalogar</th><th style="width:100px">Avance</th></tr></thead><tbody>' +
+    anios.map(function (a) {
+      var f = filas.filter(function (x) { return x.anio === a && x.aplica !== 'no'; });
+      var nec = f.reduce(function (s, x) { return s + x.n; }, 0);
+      var val = f.filter(function (x) { return x.analisis === 'validado'; })
+                 .reduce(function (s, x) { return s + x.n; }, 0);
+      var porv = f.filter(function (x) { return x.analisis === 'por_validar'; })
+                  .reduce(function (s, x) { return s + x.n; }, 0);
+      var falta = Math.max(0, nec - val - porv);
+      var pct = nec ? Math.round(val * 100 / nec) : 0;
+      return '<tr><td>' + a + (a === RH.anio_en_curso ? '<span class="rhcurso">en curso</span>' : '') + '</td>' +
+        '<td>' + rhNum(nec) + '</td><td>' + rhNum(val) + '</td>' +
+        '<td' + (porv ? ' style="color:#e65100; font-weight:700"' : '') + '>' + rhNum(porv) + '</td>' +
+        '<td' + (falta ? ' style="color:#c62828; font-weight:700"' : '') + '>' + rhNum(falta) + '</td>' +
+        '<td><div class="rhbarra" title="' + pct + '%"><i style="width:' + pct + '%"></i></div></td></tr>';
+    }).join('') + '</tbody>';
+}
+
+function rhPintarCausas(filas) {
+  var top = document.getElementById('rhTopCausas');
+  if (!top) return;
+  var m = rhSuma(filas.filter(function (f) { return f.causa; }), 'causa');
+  var lista = Object.keys(m).map(function (k) { return { causa: k, n: m[k].n }; })
+    .sort(function (a, b) { return b.n - a.n; }).slice(0, 12);
+  var maxc = Math.max.apply(null, [1].concat(lista.map(function (c) { return c.n; })));
+  top.innerHTML = '<thead><tr><th>Causa</th><th>Reclamos</th><th style="width:90px"></th></tr></thead><tbody>' +
+    (lista.length
+      ? lista.map(function (c) {
+          return '<tr><td title="' + rhEsc(c.causa) + '">' + rhEsc(c.causa) + '</td>' +
+            '<td><b>' + c.n + '</b></td>' +
+            '<td><div class="rhbarra"><i style="width:' + Math.round(c.n * 100 / maxc) +
+            '%; background:#5e35b1"></i></div></td></tr>';
+        }).join('')
+      : '<tr><td colspan="3" style="color:#90a4ae; font-style:italic">Ningun reclamo con causa en lo filtrado.</td></tr>') +
+    '</tbody>';
+}
+
 async function loadDashHistorico() {
-  if (_dashHistLoaded) return;
+  if (_dashHistLoaded) { rhPintarFiltros(); rhPintarTodo(); return; }
   var d = await apiGet('/reclamos/historico');
   if (!d) return;
   _dashHistLoaded = true;
-
-  var anios = (d.anios || []).map(function (a) { return a.anio; });
-  var etiq = (d.anios || []).map(function (a) {
-    // El total va en la etiqueta del eje: así la barra dice su detalle y el eje el total.
-    return a.en_curso ? [String(a.anio) + ' (en curso)', rhNum(a.total)] : [String(a.anio), rhNum(a.total)];
-  });
-
-  rhBarras('rhChartAnio', etiq, [
-    { nombre: 'Aplican al área', datos: d.anios.map(function (a) { return a.aplican; }), color: '#c62828' },
-    { nombre: 'No aplican', datos: d.anios.map(function (a) { return a.no_aplican; }), color: '#b0bec5' },
-    { nombre: 'Por revisar', datos: d.anios.map(function (a) { return a.pendientes; }), color: '#ffb74d' }
-  ]);
-
-  // En kilos la etiqueta lleva cuántos reclamos componen la barra: un año con pocos
-  // kilos puede ser que hubo pocos errores o que no se valorizaron, y son cosas
-  // distintas. Sin ese dato el gráfico se leería mal.
-  var etiqKg = (d.anios || []).map(function (a) {
-    return [String(a.anio) + (a.en_curso ? ' (en curso)' : ''), a.con_kilos + ' de ' + a.total + ' valorizados'];
-  });
-  rhBarras('rhChartKilos', etiqKg, [
-    { nombre: 'Kilos mal fabricados', datos: d.anios.map(function (a) { return a.kilos; }), color: '#5e35b1' }
-  ]);
-  // Meses: acá los años son las FILAS, así que el orden es cronológico y no por tamaño.
-  var porMes = [];
-  (d.meses || []).forEach(function (m) {
-    porMes.push({ clave: String(m.anio), col: m.mes, valor: m.n });
-  });
-  rhMatriz('rhMatrizMes', porMes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-           { titulo: 'Año', ordenNatural: true });
-  // Los meses salen numerados de la matriz genérica; se les pone nombre.
-  var cab = document.querySelector('#rhMatrizMes thead tr');
-  if (cab) {
-    for (var i = 1; i <= 12; i++) cab.children[i].textContent = MESES_C[i - 1];
-  }
-
-  rhMatriz('rhMatrizCub',
-           (d.cubicadores || []).map(function (c) { return { clave: c.nombre, col: c.anio, valor: c.n }; }),
-           anios, { titulo: 'Cubicador', enCurso: d.anio_en_curso });
-  rhMatriz('rhMatrizSeg',
-           (d.segmentos || []).map(function (s) { return { clave: s.segmento, col: s.anio, valor: s.n }; }),
-           anios, { titulo: 'Segmento', enCurso: d.anio_en_curso });
-  rhMatriz('rhMatrizTipo',
-           (d.tipos || []).map(function (t) { return { clave: TIPO_TXT[t.tipo] || t.tipo, col: t.anio, valor: t.n }; }),
-           anios, { titulo: 'Tipo', enCurso: d.anio_en_curso });
-
-  // Cobertura del análisis: cuántos tienen causa de los que la necesitan. Los que no
-  // aplican no la necesitan por definición, así que no entran al denominador.
-  var tabla = document.getElementById('rhMatrizCausa');
-  if (tabla) {
-    tabla.innerHTML = '<thead><tr><th>Año</th><th>Necesitan causa</th><th>Tienen</th>' +
-      '<th>Falta catalogar</th><th style="width:110px">Avance</th></tr></thead><tbody>' +
-      (d.anios || []).map(function (a) {
-        var necesitan = a.total - a.no_aplican;
-        var falta = Math.max(0, necesitan - a.con_causa);
-        var pct = necesitan ? Math.round(a.con_causa * 100 / necesitan) : 0;
-        return '<tr><td>' + a.anio + (a.en_curso ? '<span class="rhcurso">en curso</span>' : '') + '</td>' +
-          '<td>' + rhNum(necesitan) + '</td><td>' + rhNum(a.con_causa) + '</td>' +
-          '<td' + (falta ? ' style="color:#e65100; font-weight:700"' : '') + '>' + rhNum(falta) + '</td>' +
-          '<td><div class="rhbarra" title="' + pct + '%"><i style="width:' + pct + '%"></i></div></td></tr>';
-      }).join('') + '</tbody>';
-  }
-
-  var top = document.getElementById('rhTopCausas');
-  if (top) {
-    var maxc = Math.max.apply(null, [1].concat((d.causas || []).map(function (c) { return c.n; })));
-    top.innerHTML = '<thead><tr><th>Causa</th><th>Reclamos</th><th style="width:90px"></th></tr></thead><tbody>' +
-      ((d.causas || []).length
-        ? d.causas.map(function (c) {
-            return '<tr><td title="' + rhEsc(c.causa) + '">' + rhEsc(c.causa) + '</td>' +
-              '<td><b>' + c.n + '</b></td>' +
-              '<td><div class="rhbarra"><i style="width:' + Math.round(c.n * 100 / maxc) + '%; background:#5e35b1"></i></div></td></tr>';
-          }).join('')
-        : '<tr><td colspan="3" style="color:#90a4ae; font-style:italic">Todavía no hay reclamos con causa asignada.</td></tr>') +
-      '</tbody>';
-  }
+  RH.datos = d.datos || [];
+  RH.anio_en_curso = d.anio_en_curso;
+  RH.internos = d.internos || [];
+  rhPintarFiltros();
+  rhPintarTodo();
 }
 
 // ── ANÁLISIS HISTÓRICO (5-oct) ───────────────────────────────────────────────────

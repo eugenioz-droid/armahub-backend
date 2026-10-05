@@ -36,7 +36,25 @@
                  border-radius:3px; padding:1px 5px; margin-left:4px;}
         .rhbarra{height:7px; background:#eceff1; border-radius:4px; overflow:hidden; min-width:70px;}
         .rhbarra i{display:block; height:100%; background:#00897b;}
+        /* LOS FILTROS SON BOTONES, siempre a la vista. Marcar y desmarcar cubicadores
+           es lo que más se hace acá, y cada botón lleva su cuenta: sin ella hay que
+           marcar para descubrir que uno no tiene nada. */
+        .rhfbar{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap;
+                background:#fff; border:1px solid #eee; border-radius:8px;
+                padding:9px 12px; margin-bottom:12px;}
+        .rhfg{display:flex; flex-direction:column; gap:3px;}
+        .rhflbl{font-size:9.5px; font-weight:700; color:#90a4ae; letter-spacing:.4px; text-transform:uppercase;}
+        .rhfchips{display:flex; gap:4px; flex-wrap:wrap; max-width:560px;}
+        .rhfchips button{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; background:#fff;
+                         color:#546e7a; border-radius:11px; cursor:pointer; white-space:nowrap;}
+        .rhfchips button.on{background:#5e35b1; border-color:#5e35b1; color:#fff; font-weight:700;}
+        .rhfchips button i{font-style:normal; opacity:.6; margin-left:4px; font-size:9.5px;}
+        .rhresumen{font-size:11px; color:#546e7a; margin-bottom:10px;}
+        .rhresumen b{color:#5e35b1;}
       </style>
+
+      <div class="rhfbar" id="rhFiltros"></div>
+      <div class="rhresumen" id="rhResumen"></div>
 
       <div class="rhfila" style="grid-template-columns:1fr 1fr;">
         <div class="rhcaja">

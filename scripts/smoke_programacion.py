@@ -595,39 +595,46 @@ print("\n6f. Tablero de reclamos por ano (lee lo historico y lo vivo juntos)")
 s, d = get("/reclamos/historico")
 check("GET /reclamos/historico -> 200", s == 200, str(d)[:200])
 if s == 200:
-    anios = d.get("anios") or []
-    print("      %d anos: %s" % (len(anios), ", ".join(
-        "%s(%d)" % (a["anio"], a["total"]) for a in anios)))
-    check("...trae un ano por cada ano con reclamos", len(anios) >= 1)
-    check("...y cada ano cuadra: aplican + no aplican + pendientes = total",
-          all(a["aplican"] + a["no_aplican"] + a["pendientes"] == a["total"] for a in anios))
-    # El ano en curso tiene que venir marcado: puesto al lado de anos completos
-    # aparenta una caida que no existe.
-    en_curso = [a for a in anios if a["en_curso"]]
-    check("...el ano en curso viene marcado (%s)" % (en_curso[0]["anio"] if en_curso else "ninguno"),
-          len(en_curso) <= 1)
-    check("...los kilos vienen con cuantos reclamos los componen",
-          all("con_kilos" in a and a["con_kilos"] <= a["total"] for a in anios))
-    check("...y se abre por mes, cubicador, segmento y tipo",
-          all(k in d for k in ("meses", "cubicadores", "segmentos", "tipos", "causas")))
-    # Lo historico NO puede mezclarse con lo vivo sin poder separarlo.
-    check("...diciendo que anos son historicos y cuales se llevan en la plataforma",
-          any(a["historico"] for a in anios) is not None)
+    filas = d.get("datos") or []
+    total = sum(f["n"] for f in filas)
+    anios = sorted({f["anio"] for f in filas})
+    print("      %d filas de cubo, %d reclamos, anos %s" % (len(filas), total, anios))
+    # El cubo trae los hechos abiertos por TODAS sus dimensiones a la vez, para que la
+    # pantalla pueda filtrar sin volver a preguntar. Nunca puede tener mas filas que
+    # reclamos: si las tuviera, algo se estaria duplicando.
+    check("...viaja el cubo y no resumenes ya sumados", len(filas) <= total)
+    check("...con todas las dimensiones que la pantalla filtra",
+          all(all(k in f for k in ("anio", "mes", "cubicador", "servicio", "segmento",
+                                   "tipo", "aplica", "analisis", "n", "kilos", "con_kilos"))
+              for f in filas))
+    check("...el ano en curso viene marcado (%s)" % d.get("anio_en_curso"),
+          d.get("anio_en_curso") in anios or not anios)
+    # El servicio es la diferencia entre cubicador interno y externo. Si quedara vacio,
+    # el filtro que el usuario pidio no tendria nada que separar.
+    serv = {}
+    for f in filas:
+        serv[f["servicio"]] = serv.get(f["servicio"], 0) + f["n"]
+    print("      servicio: %s" % serv)
+    check("...el servicio esta resuelto en casi todos", serv.get("(sin dato)", 0) < total * 0.05)
+    check("...y se declara quienes son internos (%d)" % len(d.get("internos") or []),
+          len(d.get("internos") or []) >= 4)
     # EL SEGMENTO SALE DE LA OBRA, no del reclamo: es donde el usuario lo categoriza.
     # Las planillas viejas solo tenian "Edificacion" y "Otro"; si eso llegara crudo al
     # tablero, la misma cosa saldria en dos filas ("Edificacion" y "4 y 5") y los
     # totales por segmento no sumarian con nada.
-    segs = {s["segmento"] for s in d.get("segmentos") or []}
+    segs = {f["segmento"] for f in filas}
     print("      segmentos: %s" % ", ".join(sorted(segs)))
+    # Las planillas viejas solo tenian "Edificacion" y "Otro". Si eso llegara crudo, la
+    # misma cosa saldria en dos filas de la tabla y los totales no sumarian con nada.
     check("...el segmento usa UNA escala, la de la plataforma",
           not any(s.lower().startswith("edificaci") for s in segs), str(sorted(segs)))
     # Los reclamos del ano en curso tienen obra y su obra esta categorizada: si salen
     # casi todos sin segmento, es que el enlace reclamo -> obra se rompio.
-    curso = [s for s in (d.get("segmentos") or []) if s["anio"] == d["anio_en_curso"]]
-    con_seg = sum(s["n"] for s in curso if s["segmento"] != "(sin segmento)")
-    total_curso = sum(s["n"] for s in curso)
+    curso = [f for f in filas if f["anio"] == d["anio_en_curso"]]
+    con_seg = sum(f["n"] for f in curso if f["segmento"] != "(sin segmento)")
+    total_curso = sum(f["n"] for f in curso)
     check("...y el ano en curso tiene segmento en la mayoria (%d de %d)" % (con_seg, total_curso),
-          total_curso == 0 or con_seg > total_curso * 0.6)
+          total_curso > 0 and con_seg > total_curso * 0.6)
 
 if SYNC:
     print("\n7. Sincronizacion desde aSa (escribe en el espejo)")
