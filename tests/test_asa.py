@@ -398,7 +398,8 @@ check("la sincronización le pide a aSa que AGREGUE ($apply)", "consultar_agrega
 check("...y el cliente arma groupby+aggregate de OData",
       "groupby((" in SRC and "aggregate(" in SRC)
 check("se sincroniza UN año por llamada (porque $apply no pagina)",
-      "OrderDate ge %d-01-01" in SYNC)
+      'OrderDate ge %d-%s and OrderDate le %d-%s' in SYNC
+      and 'filas = _pedir_pedidos(anio, "01-01", "12-31")' in SYNC)
 check("el año viene acotado, no se acepta cualquiera", "2015 <= anio" in PROG)
 # El año es un interruptor: tocar el encendido lo suelta y se ve la historia completa.
 # Hace falta un valor EXPLÍCITO (0) porque la ausencia del parámetro ya significaba «el
@@ -985,7 +986,7 @@ os.environ.pop("ASA_TIMEOUT_CARGA", None)
 check("quien llama puede fijar la espera de una consulta", A._timeout(77) == 77.0)
 check("y la carga de un año la pide: es la consulta que se atoraba",
       'carga: bool = False' in SRC and "_timeout_carga() if carga else None" in SRC
-      and 'alias="Kgs", filtro=filtro, carga=True' in open(os.path.join(ROOT, "armahub", "asa_sync.py"), encoding="utf-8").read())
+      and 'alias="Kgs", carga=True' in SYNC)
 check("el reintento conserva la espera que le pidieron",
       "def _reintentar(url: str, intento: int, motivo: str, timeout: Optional[float] = None)" in SRC
       and "return _pedir(url, intento + 1, timeout)" in SRC)
@@ -1016,6 +1017,23 @@ check("...cada fila las pinta", "ddmm(f.pedido)" in DSH and "ddmm(f.ultima_mod)"
 check("...y el encabezado avisa que la última modificación no es «cubicación terminada»",
       "aSa no guarda cuándo se terminó de " in DSH and "fabricar o despachar también la mueven" in DSH)
 check("el aviso de recorte cuenta bien las columnas nuevas", "(llevaFecha ? 9 : 8)" in DSH)
+
+# ── 31. Si aSa no puede con el año entero, se pide por trimestres ─────────
+# Medido el 6-oct: 2023, 2024 y 2025 enteros devuelven «HTTP 500 · An error has occurred»
+# de forma intermitente —la misma consulta falla dos veces y pasa a la tercera—. Es el
+# propio consejo del error de aSa: «hay que acotarla con un filtro».
+print("\n31. El año que aSa no aguanta se pide por trimestres")
+check("hay cuatro trozos y una función que pide uno",
+      "TROZOS_ANIO = [(\"01-01\", \"03-31\")" in SYNC and "def _pedir_pedidos(" in SYNC)
+check("se intenta el año entero primero y sólo al fallar se parte",
+      'filas = _pedir_pedidos(anio, "01-01", "12-31")' in SYNC
+      and "se pide por trimestres." in SYNC and "for desde, hasta in TROZOS_ANIO:" in SYNC)
+check("si no viene ni un trozo, el año falla como antes",
+      "if not filas:" in SYNC and "_cerrar_bitacora(sync_id, False, detalle=str(entero))" in SYNC)
+check("...y si vienen algunos, se guardan pero el año queda marcado INCOMPLETO",
+      'detalle="Año incompleto, faltan trozos — "' in SYNC and 'r["incompleto"] = fallos' in SYNC)
+check("la bitácora deja dicho cuándo hubo que partirlo",
+      'detalle="Pedido por trimestres: aSa no pudo con el año entero."' in SYNC)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -220,25 +220,62 @@ def _guardar_pedidos(filas, sync_id: int, anio_por_defecto: int) -> dict:
     return {"filas": len(valores), "nuevas": nuevas}
 
 
+# Los trozos en que se parte un año cuando aSa no puede con él entero: los cuatro
+# trimestres. No es una precaución teórica — medido el 6-oct: pedir 2023, 2024 y 2025
+# enteros devuelve «HTTP 500 · An error has occurred» de forma intermitente (la MISMA
+# consulta que falla dos veces seguidas funciona a la tercera), mientras que 2021, 2022 y
+# 2026 pasan siempre. Es el propio consejo del error de aSa: «hay que acotarla con un
+# filtro». Un año en cuatro pedazos es más lento pero termina; medio año no alcanzaba.
+TROZOS_ANIO = [("01-01", "03-31"), ("04-01", "06-30"), ("07-01", "09-30"), ("10-01", "12-31")]
+
+
+def _pedir_pedidos(anio: int, desde: str, hasta: str):
+    return asa.consultar_agregado(
+        "getOrderSummary", DIMS_PEDIDOS, "TotalKgs", alias="Kgs", carga=True,
+        filtro="OrderDate ge %d-%s and OrderDate le %d-%s" % (anio, desde, anio, hasta))
+
+
 def sincronizar_pedidos(anio: int, lanzado_por: str = "sistema") -> dict:
     """Trae UN AÑO completo de pedidos, agregados por código de control.
 
     Un año por llamada, a propósito: `$apply` no pagina —devuelve todo el resultado en una
     respuesta— así que el año es lo único que acota el tamaño. Pedir varios años de una
-    sería justo la consulta que atora a aSa."""
+    sería justo la consulta que atora a aSa.
+
+    Si el año entero no pasa, se pide por TRIMESTRES (ver TROZOS_ANIO) antes de darlo por
+    perdido: aSa devuelve 500 de forma intermitente en los años grandes, y el usuario no
+    tiene por qué quedarse sin su año porque el servidor de allá tuvo un mal momento."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             sync_id = _abrir_bitacora(cur, "getOrderSummary/%d" % anio, lanzado_por)
         conn.commit()
-    filtro = "OrderDate ge %d-01-01 and OrderDate le %d-12-31" % (anio, anio)
+    partido = False
     try:
-        filas = asa.consultar_agregado("getOrderSummary", DIMS_PEDIDOS, "TotalKgs",
-                                       alias="Kgs", filtro=filtro, carga=True)
-    except asa.AsaError as e:
-        _cerrar_bitacora(sync_id, False, detalle=str(e))
-        raise
+        filas = _pedir_pedidos(anio, "01-01", "12-31")
+    except asa.AsaError as entero:
+        log.warning("aSa no pudo con %d entero (%s); se pide por trimestres.", anio, entero)
+        partido = True
+        filas, fallos = [], []
+        for desde, hasta in TROZOS_ANIO:
+            try:
+                filas.extend(_pedir_pedidos(anio, desde, hasta))
+            except asa.AsaError as trozo:
+                fallos.append("%s a %s: %s" % (desde, hasta, trozo))
+        if not filas:
+            _cerrar_bitacora(sync_id, False, detalle=str(entero))
+            raise
+        if fallos:
+            # Lo que sí vino se guarda igual, pero el año queda marcado como incompleto:
+            # un año a medias que se vea como bueno es peor que uno que falló entero.
+            r = _guardar_pedidos(filas, sync_id, anio)
+            _cerrar_bitacora(sync_id, False, r["filas"], r["nuevas"],
+                             detalle="Año incompleto, faltan trozos — " + " · ".join(fallos))
+            r["anio"] = anio
+            r["incompleto"] = fallos
+            return r
     r = _guardar_pedidos(filas, sync_id, anio)
-    _cerrar_bitacora(sync_id, True, r["filas"], r["nuevas"])
+    _cerrar_bitacora(sync_id, True, r["filas"], r["nuevas"],
+                     detalle="Pedido por trimestres: aSa no pudo con el año entero." if partido else None)
     r["anio"] = anio
     return r
 
