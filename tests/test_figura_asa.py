@@ -174,5 +174,37 @@ check("...B y F son colineales con D (una «Ω» achatada: sube, cruza, baja), a
 check("...y como aSa no declara envolvente para las TP, se dibuja sin comprobar y lo dice",
       r["ok"] and r["motivo"] == "sin envolvente para comprobar")
 
+# ── Caso 10: una figura en 3D (vector con componente Z) se avisa ──
+print("\n10. La figura tridimensional se dibuja en planta, pero se dice")
+DIMS_3D = json.dumps([
+    {"MMLength": 300.0, "LegNum": 1, "LegName": "A", "ElemType": "B", "SlopingVector": "100,0,0"},
+    {"MMLength": 200.0, "LegNum": 2, "LegName": "B", "ElemType": "B", "SlopingVector": "0,0,80"},
+    {"MMLength": 300.0, "LegNum": 3, "LegName": "C", "ElemType": "B", "SlopingVector": "-100,0,0"},
+])
+XML_3D = ("<la><st>TP</st><bc>3</bc><mbr><X>0</X><Y>0</Y><Z>0</Z></mbr><lt>800</lt>"
+          "<cp><t>STD</t><l>300</l><n>1</n><ln>A</ln></cp><cp><t>STD</t><a>90</a><l>200</l><n>2</n><ln>B</ln></cp>"
+          "<cp><t>STD</t><a>90</a><l>300</l><n>3</n><ln>C</ln></cp></la>")
+r = figura_de(DIMS_3D, XML_3D, pin_diam=48.0, diam_mm=12.0)
+check("se reconoce por la componente Z del vector", r["tridimensional"])
+check("...se dibuja igual (su proyección) pero con aviso, no como si fuera plana",
+      len(r["puntos"]) == 4 and not r["ok"] and "tridimensional" in r["motivo"])
+check("y una figura plana no lleva ese aviso", not figura_de(DIMS_T12, T12, 48.0, 12.0)["tridimensional"])
+
+# ── Caso 11: un arco de más de 180° (estribo circular) se parte para el motor ──
+print("\n11. El estribo circular: un arco de 300° son dos pedazos de 150°")
+CIRC = ("<la><st>R</st><bc>5</bc><mbr><X>0</X><Y>0</Y><Z>0</Z></mbr><lt>2618</lt>"
+        "<cp><t>RB</t><l>2618</l><n>1</n><s>300</s><r>500</r><ln>A</ln></cp></la>")
+DIMS_CIRC = json.dumps([
+    {"MMLength": 2618.0, "XAngleInRads": 5.235987755982989, "LegNum": 1, "LegName": "A",
+     "ElemType": "RB", "SlopingVector": "0,0,0", "IsRadial": True},
+    {"MMLength": 500.0, "LegName": "R", "ElemType": "WR", "SlopingVector": "0,0,0"},
+])
+r = figura_de(DIMS_CIRC, CIRC)
+check("dos tramos en arco del mismo radio, cada uno de a lo más 180°",
+      tipos(r) == ["arco", "arco"] and all(t["radio"] == 500 for t in r["tramos"]) and len(r["puntos"]) == 3)
+check("...el lado se rotula una sola vez", [t["lado"] for t in r["tramos"]] == ["A", ""])
+check("...y la figura mide lo que un arco de 300° de radio 500 mide: 1.000 de ancho",
+      abs(r["ancho"] - 1000) < 2)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

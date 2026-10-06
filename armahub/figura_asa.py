@@ -61,6 +61,11 @@ TOLERANCIA = 0.03
 GANCHO_135 = "H3"
 # Desde qué giro un doblez deja de ser un vértice y pasa a ser un arco propio.
 GIRO_ARCO = 90.5
+# El motor 2D dibuja cada arco con el comando A de SVG en su versión CORTA (large-arc 0): un
+# arco de más de 180° hay que partirlo. Un estribo circular o una espiral son varios pedazos.
+ARCO_MAXIMO = 180.0
+# Un vector con componente Z mayor que esto (sobre el largo del vector) es una figura en 3D.
+Z_MINIMA = 0.02
 # Lados que son geometría. El resto de las entradas de ShapeDims son cotas y ángulos
 # auxiliares (`WS`, `AN`, `WR`): números para el taller, no tramos del eje.
 TIPOS_LADO = ("B", "SB", "RB", "H3", "H9", "H18", "H13", "STD")
@@ -105,8 +110,9 @@ def _vectores(shapedims):
             continue
         v = str(d.get("SlopingVector") or "").split(",")
         vx, vy = (_num(v[0]), _num(v[1])) if len(v) >= 2 else (0.0, 0.0)
+        vz = _num(v[2]) if len(v) >= 3 else 0.0
         letra = d.get("LegName") or ""
-        por_letra[letra] = {"vx": vx, "vy": vy, "gancho": bool(d.get("IsHook")),
+        por_letra[letra] = {"vx": vx, "vy": vy, "vz": vz, "gancho": bool(d.get("IsHook")),
                             "tipo": d.get("ElemType") or "", "largo": _num(d.get("MMLength")),
                             "barrido": _num(d.get("XAngleInRads"), -1.0), "n": int(_num(d.get("LegNum")))}
         orden.append(letra)
@@ -136,7 +142,7 @@ def _legs(legangle: Optional[str], shapedims):
                      "arco": tipo == "RB" or v.get("tipo") == "RB",
                      "radio": _num(r.group(1)) if r else radio, "barrido": barrido,
                      "gancho": tipo.startswith("H") or bool(v.get("gancho")),
-                     "vx": v.get("vx", 0.0), "vy": v.get("vy", 0.0)})
+                     "vx": v.get("vx", 0.0), "vy": v.get("vy", 0.0), "vz": v.get("vz", 0.0)})
     if not legs and orden_sd:
         for letra in sorted(orden_sd, key=lambda k: vec[k]["n"]):
             v = vec[letra]
@@ -145,8 +151,18 @@ def _legs(legangle: Optional[str], shapedims):
             legs.append({"nombre": letra, "largo": v["largo"], "tipo": v["tipo"], "angulo": None,
                          "arco": v["tipo"] == "RB", "radio": radio,
                          "barrido": math.degrees(v["barrido"]) if v["barrido"] > 0 else None,
-                         "gancho": v["gancho"], "vx": v["vx"], "vy": v["vy"]})
+                         "gancho": v["gancho"], "vx": v["vx"], "vy": v["vy"], "vz": v["vz"]})
     return legs, radio
+
+
+def _es_tridimensional(legs) -> bool:
+    """¿Algún lado sale del plano? Las trabas TP (26, 305A) doblan en dos planos: aSa lo
+    dice con la componente Z del vector. Acá se dibuja su proyección en planta, y se avisa."""
+    for leg in legs:
+        n = math.hypot(leg["vx"], leg["vy"], leg.get("vz", 0.0))
+        if n and abs(leg.get("vz", 0.0)) / n > Z_MINIMA:
+            return True
+    return False
 
 
 def _unit(vx, vy):
@@ -203,6 +219,34 @@ def _arco(centro, radio, a0, barrido, pasos):
              centro[1] + radio * math.sin(a0 + barrido * k / pasos)) for k in range(1, pasos + 1)]
 
 
+def _emitir_arco(puntos, muestra, tramos, pts_arco, radio, signo, lado, largo):
+    """Agrega un arco a la policurva, partido en pedazos de a lo más ARCO_MAXIMO grados (el
+    motor dibuja la versión corta de cada arco). Devuelve el punto final."""
+    muestra.extend(pts_arco)
+    n = len(pts_arco)
+    # Cuántos pedazos: el barrido total sale de los pasos muestreados (cada paso = barrido/n).
+    pedazos = max(1, int(math.ceil(abs(_barrido_de(pts_arco, puntos[-1], radio)) / math.radians(ARCO_MAXIMO) - 1e-9)))
+    for k in range(1, pedazos + 1):
+        corte = pts_arco[min(n - 1, int(round(n * k / pedazos)) - 1)]
+        desde = len(puntos) - 1
+        puntos.append(corte)
+        tramos.append({"tipo": "arco", "radio": radio, "sweep": 1 if signo > 0 else 0,
+                       "lado": lado if k == 1 else "", "largo": largo if k == 1 else None,
+                       "desde": desde, "hasta": len(puntos) - 1})
+    return puntos[-1]
+
+
+def _barrido_de(pts_arco, inicio, radio):
+    """El ángulo barrido por un arco muestreado, sumando los pasos (cada cuerda chica)."""
+    total = 0.0
+    prev = inicio
+    for p in pts_arco:
+        c = math.hypot(p[0] - prev[0], p[1] - prev[1])
+        total += 2.0 * math.asin(max(-1.0, min(1.0, c / (2.0 * radio)))) if radio > 0 else 0.0
+        prev = p
+    return total
+
+
 def _trazar(legs, dirs, radio_codo, pasos):
     """Recorre los lados y arma la policurva. Devuelve (puntos, tramos, muestra): los
     puntos son los nodos (los arcos van como cuerda, el motor los dibuja con su radio); la
@@ -224,12 +268,7 @@ def _trazar(legs, dirs, radio_codo, pasos):
                 centro = (x - dp[1] * signo * radio_codo, y + dp[0] * signo * radio_codo)
                 a0 = math.atan2(y - centro[1], x - centro[0])
                 pts_arco = _arco(centro, radio_codo, a0, math.radians(giro), pasos)
-                muestra.extend(pts_arco)
-                desde = len(puntos) - 1
-                puntos.append(pts_arco[-1])
-                x, y = pts_arco[-1]
-                tramos.append({"tipo": "arco", "radio": radio_codo, "sweep": 1 if signo > 0 else 0,
-                               "lado": "", "largo": None, "desde": desde, "hasta": len(puntos) - 1})
+                x, y = _emitir_arco(puntos, muestra, tramos, pts_arco, radio_codo, signo, "", None)
         desde = len(puntos) - 1
         if leg["arco"] and leg["radio"] and leg["radio"] > 0:
             r = leg["radio"]
@@ -243,12 +282,9 @@ def _trazar(legs, dirs, radio_codo, pasos):
             ang = math.atan2(d[1], d[0]) if i > 0 else (-signo * barrido / 2.0)
             centro = (x - math.sin(ang) * signo * r, y + math.cos(ang) * signo * r)
             a0 = math.atan2(y - centro[1], x - centro[0])
-            pts_arco = _arco(centro, r, a0, signo * barrido, pasos * 2)
-            muestra.extend(pts_arco)
-            puntos.append(pts_arco[-1])
-            x, y = pts_arco[-1]
-            tramos.append({"tipo": "arco", "radio": r, "sweep": 1 if signo > 0 else 0,
-                           "lado": leg["nombre"], "largo": round(leg["largo"]), "desde": desde, "hasta": len(puntos) - 1})
+            pasos_rb = max(pasos * 2, int(math.ceil(math.degrees(barrido) / 10.0)))
+            pts_arco = _arco(centro, r, a0, signo * barrido, pasos_rb)
+            x, y = _emitir_arco(puntos, muestra, tramos, pts_arco, r, signo, leg["nombre"], round(leg["largo"]))
         else:
             x += d[0] * leg["largo"]
             y += d[1] * leg["largo"]
@@ -340,6 +376,7 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
         return {"ok": False, "motivo": "un lado viene sin dirección",
                 "puntos": [], "tramos": [], "mbr": mbr}
     puntos, tramos, muestra = _orientar(puntos, tramos, muestra)
+    tridimensional = _es_tridimensional(legs)
 
     medido = _recortar_por_doblado(muestra, pin / 2.0)
     xs = [p[0] for p in medido]
@@ -361,8 +398,12 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
             ok = False
     else:
         ok, motivo = (ancho > 0 or alto > 0), "sin envolvente para comprobar"
+    if tridimensional:
+        # Se dibuja la proyección en planta y se dice: una traba doblada en dos planos no
+        # es lo que se ve, y el auditor tiene que saberlo.
+        ok, motivo = False, "figura tridimensional (aSa la dobla en dos planos): se muestra su proyección en planta"
 
-    return {"ok": ok, "motivo": motivo,
+    return {"ok": ok, "motivo": motivo, "tridimensional": tridimensional,
             "puntos": [[round(p[0], 1), round(p[1], 1)] for p in puntos],
             "tramos": tramos, "ancho": round(ancho), "alto": round(alto), "mbr": mbr,
             "radio": round(radio_curvo) if radio_curvo else None}
