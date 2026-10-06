@@ -138,6 +138,34 @@ check('está registrado con su panel', sandbox.DASH_SUBTABS && sandbox.DASH_SUBT
   check('en cubicador sólo se ofrecen los que tienen base en aSa',
     fb.indexOf('Gerardo Mendoza') > 0 && fb.indexOf('Cubicador Sin Base') < 0 && fb.indexOf('Oortega') < 0);
 
+  console.log('\n7. Interno contra externo: la pregunta del usuario, contestada con el dato');
+  // Con la fixture: interno = 20 reclamos / 10.000 ton = 2,0; externo = 8 (Mario 5 +
+  // Sin Base 3) / 1.050 ton (Mario 1.000 + Oortega 50) = 7,6. Los 40 de Mario en 2022
+  // no entran: ese año no tiene base.
+  var ts = nodo('inServicioTabla').innerHTML;
+  check('la tasa de cada servicio está bien dividida',
+    /Reclamos por 1\.000 ton<\/td><td class="mejor">2,0<\/td><td class="peor">7,6<\/td>/.test(ts));
+  check('el peor en cada medida va en rojo y el otro en verde',
+    (ts.match(/class="peor"/g) || []).length >= 2 && (ts.match(/class="mejor"/g) || []).length >= 2);
+  // Las medidas no van todas para el mismo lado en la fixture: externo pierde en tasa y
+  // en kilos, interno pierde en reclamos por obra y en % de obras con reclamo. La
+  // lectura TIENE que decirlo así, en vez de forzar una conclusión.
+  check('la lectura no fuerza una conclusión cuando las medidas no van parejas',
+    nodo('inServicioLectura').innerHTML.indexOf('No es parejo') >= 0
+    && nodo('inServicioLectura').innerHTML.indexOf('<b>2</b>') >= 0);
+  // El filtro de servicio no se aplica a este cuadro: existe para comparar los dos.
+  sandbox.IN_F.servicio = ['Interno'];
+  sandbox.inPintarTodo();
+  check('filtrar por un servicio no vacía la comparación',
+    nodo('inServicioTabla').innerHTML.indexOf('7,6') > 0 && nodo('inServicioTabla').innerHTML.indexOf('2,0') > 0);
+  sandbox.IN_F.servicio = [];
+  sandbox.inPintarTodo();
+  var gs = graficos.filter(function (x) { return x.ctx && x.ctx.id === 'inChartServicio'; }).pop().cfg;
+  check('el gráfico por año lleva una serie por servicio', gs.data.datasets.length === 2
+    && gs.data.datasets[0].label === 'Interno' && gs.data.datasets[1].label === 'Externo');
+  check('...y el año sin base queda en cero con su aviso',
+    gs.data.labels.some(function (l) { return String(l[1]) === 'sin base en aSa'; }));
+
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
   process.exit(fallos ? 1 : 0);
 })();

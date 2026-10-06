@@ -54,6 +54,8 @@ RUIDO = {"sa", "ltda", "spa", "eirl", "cia", "constructora", "ingenieria", "cons
 # el mas corto, porque aSa suele agregar sufijos ("- BARRAS", "ET2") que ArmaHub no pone.
 COBERTURA_MINIMA = 0.75
 PALABRAS_MINIMAS = 2
+# El sufijo con que aSa marca el segundo codigo de una obra, el de barras dimensionadas.
+ES_BARRAS = re.compile(r"(^|[ -])barras?( |$|-)", re.IGNORECASE)
 
 # LAS QUE EL NOMBRE NO ALCANZA A RESOLVER, fijadas a mano. Van acá y no como un UPDATE
 # suelto en la base: así sobreviven a que se rehaga la carga y se puede ver por qué está
@@ -118,17 +120,20 @@ def enlazar(nombre, obras):
     candidatos.sort(reverse=True)
     tope = candidatos[0][0]
     cabeza = [c for c in candidatos if c[0] == tope]
-    # EN aSa LA MISMA OBRA SUELE TENER DOS CODIGOS con el mismo nombre, uno de ellos con
-    # el sufijo «- BARRAS», y a veces sólo UNO está categorizado. Entre empatados se
-    # prefiere el que SÍ tiene segmento: enlazar al otro dejaría el reclamo sin segmento
-    # teniendo la respuesta al lado.
-    con_seg = [c for c in cabeza if c[3]]
-    segs = {c[3] for c in con_seg}
+    # EN aSa LA MISMA OBRA SUELE TENER DOS CODIGOS con el mismo nombre, uno con el sufijo
+    # «- BARRAS» para las barras dimensionadas. Los dos son LA MISMA OBRA, asi que si
+    # dicen segmentos distintos es un error de categorizacion y no se elige a ciegas.
+    segs = {c[3] for c in cabeza if c[3]}
     if len(segs) > 1:
         return None, None, "dos obras calzan igual y con segmento distinto (%s)" % ", ".join(sorted(segs))
-    if con_seg:
-        return con_seg[0][1], con_seg[0][2], con_seg[0][3]
-    return cabeza[0][1], cabeza[0][2], None
+    # SE ENLAZA A LA PRINCIPAL, no a la «- BARRAS». El usuario lo dijo: las obras de
+    # barras duplican la data y no cuentan ni kilos ni obras. Antes se prefería la que
+    # tuviera segmento, y como las categorizadas solian ser las BARRAS, 361 de 478
+    # reclamos quedaron colgando de un codigo que la base de indicadores no considera.
+    # El segmento se saca de la hermana que lo tenga: es de la obra, no del codigo.
+    principales = [c for c in cabeza if not ES_BARRAS.search(c[2] or "")]
+    elegido = (principales or cabeza)[0]
+    return elegido[1], elegido[2], (list(segs)[0] if segs else None)
 
 
 def main():

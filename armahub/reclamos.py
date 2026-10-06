@@ -1270,6 +1270,11 @@ ASA_PERSONA = {
 # Una tasa sobre ese denominador saldría tres o cuatro veces inflada, así que no se
 # calcula: se muestra el año sin base.
 ANIOS_SIN_BASE_ASA = (2021, 2022)
+# LAS OBRAS «- BARRAS» NO SON OBRAS. En aSa casi cada obra tiene un segundo código con
+# ese sufijo para las barras dimensionadas: son 268 de 675 nombres y 15.735 toneladas
+# en 2023-2026. El usuario lo dijo claro: «no deben sumar kilos ni contabilizar obras
+# porque estarían duplicando data». Fuera del denominador, kilos y obras por igual.
+PATRON_OBRA_BARRAS = r"(^|[ -])barras?( |$|-)"
 # El estado de aSa que significa «nunca se fabricó»; lo mismo que usa el módulo de aSa.
 ESTADO_NUNCA_ASA = "Cancelled"
 
@@ -1306,7 +1311,8 @@ def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
                   LEFT JOIN asa_obra_atributos at ON at.asa_job_id = p.asa_job_id
                  WHERE p.order_date IS NOT NULL
                    AND COALESCE(p.estado, '') <> %s
-                 GROUP BY 1, 2, 3, 5""", (ESTADO_NUNCA_ASA,))
+                   AND COALESCE(p.job_name, '') !~* %s
+                 GROUP BY 1, 2, 3, 5""", (ESTADO_NUNCA_ASA, PATRON_OBRA_BARRAS))
             base = []
             for anio, login, job, obra, seg, cc, kg in cur.fetchall():
                 persona = ASA_PERSONA.get((login or "").strip().lower(), (login or "?").strip())

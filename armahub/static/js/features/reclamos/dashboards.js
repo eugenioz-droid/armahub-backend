@@ -1149,6 +1149,7 @@ function inPintarTodo() {
          datos: anios.map(function (a) { var x = porAnio[a]; return x && x.tasa != null ? Math.round(x.tasa * 10) / 10 : 0; }) }]);
 
   inTabla('inSegmentos', inCruce('segmento'), 'Segmento', tasa, false);
+  inPintarServicio(anios);
   inTabla('inCubicadores', inCruce('persona'), 'Cubicador', tasa, true);
   inPareto(rec, base);
   inLectura(tasa, n, ton, inCruce('persona'), rec, base);
@@ -1205,6 +1206,99 @@ function inPareto(rec, base) {
         '<td>' + inNum(o.kilos) + '</td></tr>';
     }).join('') + '</tbody>';
   IN._pareto = { lista: lista, total: total };
+}
+
+// INTERNO CONTRA EXTERNO. Las cuatro medidas del período para cada servicio, y la tasa
+// por año para ver si la diferencia se sostiene o es de un año puntual. El filtro de
+// servicio NO se aplica acá a propósito: este cuadro existe para comparar los dos, y
+// filtrando uno quedaría comparando contra nada. Los demás filtros sí.
+function inMedidasServicio(filtroAnio) {
+  var out = {};
+  ['Interno', 'Externo'].forEach(function (s) {
+    out[s] = { ton: 0, n: 0, kilos: 0, obras: {}, obrasRec: {} };
+  });
+  var pasaSinServicio = function (f) {
+    return (!IN_F.anio.length || IN_F.anio.indexOf(f.anio) >= 0)
+      && (!IN_F.cubicador.length || IN_F.cubicador.indexOf(f.persona) >= 0)
+      && (!IN_F.segmento.length || IN_F.segmento.indexOf(f.segmento) >= 0)
+      && (filtroAnio == null || f.anio === filtroAnio);
+  };
+  inConBase(IN.base.filter(pasaSinServicio)).forEach(function (b) {
+    var o = out[b.servicio]; if (!o) return;
+    o.ton += b.ton; o.obras[b.obra_id] = 1;
+  });
+  inConBase(IN.reclamos.filter(pasaSinServicio)).forEach(function (r) {
+    if (r.aplica === 'no') return;
+    var o = out[r.servicio]; if (!o) return;
+    o.n += r.n; o.kilos += r.kilos;
+    if (r.obra_id) o.obrasRec[r.obra_id] = 1;
+  });
+  Object.keys(out).forEach(function (s) {
+    var o = out[s];
+    o.nobras = Object.keys(o.obras).length;
+    o.nobrasRec = Object.keys(o.obrasRec).filter(function (k) { return o.obras[k]; }).length;
+    o.tasa = o.ton > 0 ? o.n * 1000 / o.ton : null;
+    o.pct_kg = o.ton > 0 ? o.kilos / (o.ton * 1000) * 100 : null;
+    o.por_obra = o.nobras ? o.n / o.nobras : null;
+    o.pct_obras = o.nobras ? o.nobrasRec * 100 / o.nobras : null;
+  });
+  return out;
+}
+
+function inPintarServicio(anios) {
+  var COLOR = { Interno: '#c62828', Externo: '#1565C0' };
+  rhBarras('inChartServicio', anios.map(function (a) {
+    var sinBase = IN.sin_base.indexOf(a) >= 0;
+    return [String(a) + (a === IN.anio_en_curso ? ' (en curso)' : ''), sinBase ? 'sin base en aSa' : ''];
+  }), ['Interno', 'Externo'].map(function (s) {
+    return { nombre: s, color: COLOR[s], datos: anios.map(function (a) {
+      if (IN.sin_base.indexOf(a) >= 0) return 0;
+      var m = inMedidasServicio(a)[s];
+      return m.tasa != null ? Math.round(m.tasa * 10) / 10 : 0;
+    }) };
+  }));
+
+  var m = inMedidasServicio(null);
+  var t = document.getElementById('inServicioTabla');
+  var filas = [
+    ['Toneladas cubicadas', function (o) { return inNum(o.ton); }, null],
+    ['Reclamos', function (o) { return inNum(o.n); }, null],
+    ['Reclamos por 1.000 ton', function (o) { return inNum(o.tasa, 1); }, 'tasa'],
+    ['% kilos mal fabricados', function (o) { return o.pct_kg == null ? '·' : inNum(o.pct_kg, 3) + '%'; }, 'pct_kg'],
+    ['Reclamos por obra', function (o) { return inNum(o.por_obra, 2); }, 'por_obra'],
+    ['% obras con algún reclamo', function (o) { return o.pct_obras == null ? '·' : inNum(o.pct_obras, 0) + '%'; }, 'pct_obras']
+  ];
+  var peor = {};   // quién sale peor en cada medida comparable
+  filas.forEach(function (f) {
+    if (!f[2]) return;
+    var i = m.Interno[f[2]], e = m.Externo[f[2]];
+    if (i == null || e == null || i === e) return;
+    peor[f[2]] = i > e ? 'Interno' : 'Externo';
+  });
+  if (t) {
+    t.innerHTML = '<thead><tr><th>Medida</th><th>Interno</th><th>Externo</th></tr></thead><tbody>' +
+      filas.map(function (f) {
+        return '<tr><td>' + f[0] + '</td>' + ['Interno', 'Externo'].map(function (s) {
+          var cls = f[2] && peor[f[2]] === s ? 'peor' : (f[2] && peor[f[2]] && peor[f[2]] !== s ? 'mejor' : '');
+          return '<td class="' + cls + '">' + f[1](m[s]) + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody>';
+  }
+
+  // LA CONCLUSIÓN EN UNA LÍNEA. Cuenta en cuántas de las cuatro medidas sale peor cada
+  // uno: si es 4 a 0 la diferencia es contundente; si es 2 a 2, no lo es, y decirlo es
+  // tan importante como lo otro.
+  var el = document.getElementById('inServicioLectura');
+  if (el) {
+    var cuenta = { Interno: 0, Externo: 0 };
+    Object.keys(peor).forEach(function (k) { cuenta[peor[k]]++; });
+    var total = Object.keys(peor).length;
+    if (!total) el.innerHTML = 'No hay base suficiente para comparar.';
+    else if (cuenta.Externo === total) el.innerHTML = 'El servicio <b>externo sale peor en las ' + total + ' medidas</b>.';
+    else if (cuenta.Interno === total) el.innerHTML = 'El servicio <b>interno sale peor en las ' + total + ' medidas</b>.';
+    else el.innerHTML = 'No es parejo: el externo sale peor en <b>' + cuenta.Externo + '</b> medida' +
+      (cuenta.Externo === 1 ? '' : 's') + ' y el interno en <b>' + cuenta.Interno + '</b>.';
+  }
 }
 
 // LA LECTURA: una línea que dice qué está pasando, para quien no quiera leer tablas.

@@ -51,6 +51,24 @@
         </div>
       </div>
 
+      <!-- INTERNO CONTRA EXTERNO. La pregunta que el usuario quiere contestada con el
+           dato y no con la intuición: ¿el servicio externo es peor? Un gráfico de la tasa
+           por año, para ver si la diferencia se sostiene en el tiempo, y al lado las
+           cuatro medidas lado a lado. -->
+      <div class="rhfila" style="grid-template-columns:1.2fr 1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Interno contra externo: reclamos por cada 1.000 toneladas, por año</div>
+          <div class="rhsub">La misma tasa separada por quién cubicó. Si una barra es consistentemente más alta, la diferencia es real y no de un año.</div>
+          <div style="position:relative; height:220px;"><canvas id="inChartServicio"></canvas></div>
+        </div>
+        <div class="rhcaja">
+          <div class="rhtit">Las cuatro medidas, lado a lado</div>
+          <div class="rhsub">En rojo el servicio que sale peor en cada medida. Las toneladas dicen sobre cuánto se calcula.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="inServicioTabla"></table></div>
+          <div class="inlect" id="inServicioLectura" style="margin:10px 0 0;"></div>
+        </div>
+      </div>
+
       <div class="rhfila" style="grid-template-columns:1fr;">
         <div class="rhcaja">
           <div class="rhtit">Por cubicador: volumen contra reclamos</div>
