@@ -1274,11 +1274,14 @@ ASA_PERSONA = {
     "eramirez": "Emilio Ramirez", "hmondaca": "Hans Mondaca", "csantos": "Carlos Santos",
     "nlopez": "Nicolas Lopez", "rmc": "RMC",
 }
-# Años en que aSa NO estaba completo: venía en implementación y lo cubicado ese año no
-# está entero en el espejo (2022 tiene 3.092 toneladas contra 26.410 del año siguiente).
-# Una tasa sobre ese denominador saldría tres o cuatro veces inflada, así que no se
-# calcula: se muestra el año sin base.
-ANIOS_SIN_BASE_ASA = (2021, 2022)
+# Años SIN base: ni aSa ni la planilla tienen lo cubicado (2021: aSa empezó en abril y la
+# planilla de calidad parte en 2022). No se calcula tasa: se muestra el año sin base.
+ANIOS_SIN_BASE_ASA = (2021,)
+# Años cuya base sale de la PLANILLA DE CALIDAD y no de aSa: aSa venía en implementación
+# (del 2022 tiene 3.092 toneladas contra las 29.931 que registró el área por cubicador y
+# obra). La tabla base_cubicacion_planilla la carga scripts/importar_base_cubicacion.py.
+# De 2023 en adelante planilla y aSa coinciden dentro del 10% y manda aSa, que está viva.
+ANIOS_BASE_PLANILLA = (2022,)
 # LAS OBRAS «- BARRAS» NO SON OBRAS. En aSa casi cada obra tiene un segundo código con
 # ese sufijo para las barras dimensionadas: son 268 de 675 nombres y 15.735 toneladas
 # en 2023-2026. El usuario lo dijo claro: «no deben sumar kilos ni contabilizar obras
@@ -1321,7 +1324,8 @@ def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
                  WHERE p.order_date IS NOT NULL
                    AND COALESCE(p.estado, '') <> %s
                    AND COALESCE(p.job_name, '') !~* %s
-                 GROUP BY 1, 2, 3, 5""", (ESTADO_NUNCA_ASA, PATRON_OBRA_BARRAS))
+                   AND EXTRACT(YEAR FROM p.order_date)::int <> ALL(%s)
+                 GROUP BY 1, 2, 3, 5""", (ESTADO_NUNCA_ASA, PATRON_OBRA_BARRAS, list(ANIOS_BASE_PLANILLA)))
             base = []
             for anio, login, job, obra, seg, cc, kg in cur.fetchall():
                 persona = ASA_PERSONA.get((login or "").strip().lower(), (login or "?").strip())
@@ -1331,8 +1335,20 @@ def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
                 # lo deja fuera de la base diciendo cuánto queda fuera (6-oct).
                 base.append({"anio": anio, "persona": persona, "conocido": conocido,
                              "servicio": servicio_de(persona) if conocido else None,
-                             "segmento": seg or "(sin segmento)",
+                             "segmento": seg or "(sin segmento)", "fuente": "asa",
                              "obra_id": job, "obra": obra, "cc": cc, "ton": round(float(kg) / 1000.0, 2)})
+            # LA BASE DEL 2022, DE LA PLANILLA (ver ANIOS_BASE_PLANILLA). Una fila por
+            # cubicador y obra; el servicio es el que dice la planilla, el segmento el de
+            # aSa si la obra calzó. Sin códigos de control: la planilla no los trae.
+            cur.execute("""SELECT anio, cubicador, servicio, obra, asa_job_id, segmento, kg
+                             FROM base_cubicacion_planilla WHERE anio = ANY(%s)""",
+                        (list(ANIOS_BASE_PLANILLA),))
+            for anio, cub, serv, obra, job, seg, kg in cur.fetchall():
+                base.append({"anio": anio, "persona": cub, "conocido": True,
+                             "servicio": serv or servicio_de(cub),
+                             "segmento": seg or "(sin segmento)", "fuente": "planilla",
+                             "obra_id": job or ("planilla|" + obra), "obra": obra, "cc": 0,
+                             "ton": round(float(kg) / 1000.0, 2)})
 
             NOMBRE_CUB = ("COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), "
                           "r.cubicador_asignado)")

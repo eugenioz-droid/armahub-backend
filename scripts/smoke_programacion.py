@@ -610,7 +610,11 @@ if s == 200:
     print("      cubicadores que cruzan: %d de %d con reclamos" % (len(cruzan), len(personas_rec)))
     check("...los cubicadores de aSa y los de reclamos se llaman igual (cruzan %d)" % len(cruzan),
           len(cruzan) >= 8)
-    check("...los anos sin base vienen declarados", 2022 in (d.get("anios_sin_base") or []))
+    check("...los anos sin base vienen declarados (2021; el 2022 tiene base desde la planilla)",
+          2021 in (d.get("anios_sin_base") or []) and 2022 not in (d.get("anios_sin_base") or []))
+    check("...y la base del 2022 viene de la planilla, marcada",
+          any(b["anio"] == 2022 and b.get("fuente") == "planilla" for b in base)
+          and not any(b["anio"] == 2022 and b.get("fuente") == "asa" for b in base))
     # La tasa del ultimo ano completo tiene que ser un numero razonable, no un disparate
     # por un denominador vacio o duplicado.
     a = max(x["anio"] for x in base if x["anio"] not in d["anios_sin_base"] and x["anio"] != d["anio_en_curso"])

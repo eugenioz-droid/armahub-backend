@@ -1084,9 +1084,9 @@ function inNum(x, dec) {
 }
 
 // LA ETIQUETA DE UN AÑO SIN BASE. «Sin base en aSa» se leía como un cero (el usuario lo
-// preguntó por 2022). No es cero: 2022 tiene 149 reclamos y aSa trae 3.092 ton de ese
-// año —el 12% de un año normal, porque estaba en implementación—; dividir uno por otro
-// daría 48 por 1.000 ton, un número falso. Se dice lo que hay y que por eso no hay tasa.
+// preguntó por 2022, que después pasó a tener base desde la planilla de calidad). No es
+// cero: puede haber reclamos y una base parcial de aSa que no alcanza para una tasa
+// honesta. Se dice lo que hay y que por eso no hay tasa.
 function inEtiquetaSinBase(anio) {
   var n = 0, ton = 0;
   IN.reclamos.forEach(function (r) { if (r.anio === anio && r.aplica !== 'no') n += r.n; });
@@ -1120,6 +1120,7 @@ function inCruce(clave, claveRec) {
     var k = b[clave]; if (k == null) return;
     (m[k] = m[k] || { k: k, ton: 0, cc: 0, obras: {}, n: 0, kilos: 0, servicio: b.servicio })
     ; m[k].ton += b.ton; m[k].cc += b.cc; m[k].obras[b.obra_id] = 1;
+    if (b.fuente === 'planilla') m[k].planilla = true;   // la base de ese año no es de aSa
   });
   inReclamosUtiles().forEach(function (r) {
     var k = r[claveRec]; if (k == null) return;
@@ -1211,16 +1212,42 @@ function inPintarTodo() {
     var x = porAnio[a];
     var sinBase = IN.sin_base.indexOf(a) >= 0;
     return [String(a) + (a === IN.anio_en_curso ? ' (en curso)' : ''),
-            sinBase ? inEtiquetaSinBase(a) : (x ? inNum(x.n) + ' recl · ' + inNum(x.ton) + ' ton' : '')];
+            sinBase ? inEtiquetaSinBase(a)
+                    : (x ? inNum(x.n) + ' recl · ' + inNum(x.ton) + ' ton' + (x.planilla ? ' · base: planilla' : '') : '')];
   }), [{ nombre: 'Reclamos por 1.000 ton', color: '#00897b',
          datos: anios.map(function (a) { var x = porAnio[a]; return x && x.tasa != null ? Math.round(x.tasa * 10) / 10 : 0; }) }]);
 
+  inFuentes();
   inTabla('inSegmentos', inCruce('segmento'), 'Segmento', tasa, false);
   inPintarServicio(anios);
   inTabla('inCubicadores', inCruce('persona'), 'Cubicador', tasa, true);
   inNotaBaseOtros();
   inPareto(rec, base);
   inLectura(tasa, n, ton, inCruce('persona'), rec, base);
+}
+
+// DE DÓNDE SALE LA BASE DE CADA AÑO. No toda la base es de aSa Studio: el 2022 sale de la
+// planilla de calidad. Eso tiene que quedar dicho en la pantalla, año por año (pedido del
+// usuario, 6-oct: «dejar trazabilidad para entender que hay data que no sale de aSa»).
+function inFuentes() {
+  var el = document.getElementById('inFuentes');
+  if (!el) return;
+  var porFuente = {};
+  IN.base.forEach(function (b) {
+    var f = b.fuente === 'planilla' ? 'planilla' : 'asa';
+    (porFuente[f] = porFuente[f] || {})[b.anio] = true;
+  });
+  var anios = function (f) { return Object.keys(porFuente[f] || {}).map(Number).sort(function (a, b) { return a - b; }); };
+  var rango = function (lista) {
+    if (!lista.length) return '';
+    var seguidos = lista.every(function (a, i) { return !i || a === lista[i - 1] + 1; });
+    return seguidos && lista.length > 2 ? lista[0] + '–' + lista[lista.length - 1] : lista.join(', ');
+  };
+  var partes = [];
+  if (anios('asa').length) partes.push('<b>aSa Studio</b> para ' + rango(anios('asa')));
+  if (anios('planilla').length) partes.push('<b>planilla de calidad</b> («Analisis Errores Acumulado al 2025») para ' + rango(anios('planilla')));
+  if (IN.sin_base.length) partes.push(IN.sin_base.join(', ') + ' sin base');
+  el.innerHTML = partes.length ? 'Base de toneladas: ' + partes.join(' · ') + '.' : '';
 }
 
 // LO QUE QUEDA FUERA DE LA BASE: toneladas ingresadas en aSa por usuarios que no son
