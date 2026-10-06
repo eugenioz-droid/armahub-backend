@@ -363,7 +363,8 @@ async function loadRecLanding() {
 var DASH_SUBTABS = {
   tableros:  { panel: 'dashSubTableros', btn: 'dashSubBtnTableros', color: '#1565C0' },
   kpis:      { panel: 'dashSubKpis',     btn: 'dashSubBtnKpis',     color: '#00897b' },
-  historico: { panel: 'dashSubHist',     btn: 'dashSubBtnHist',     color: '#5e35b1' }
+  historico: { panel: 'dashSubHist',     btn: 'dashSubBtnHist',     color: '#5e35b1' },
+  indicadores: { panel: 'dashSubInd',    btn: 'dashSubBtnInd',      color: '#00897b' }
 };
 var _dashSubActual = 'tableros';
 var _dashKpisLoaded = false;
@@ -384,6 +385,7 @@ function switchDashSubTab(sub) {
   if (sub === 'tableros') loadRecAdminDashboards();
   if (sub === 'kpis') loadDashKpis();
   if (sub === 'historico') loadDashHistorico();
+  if (sub === 'indicadores') loadDashIndicadores();
 }
 
 // ── POR AÑO (5-oct) ──────────────────────────────────────────────────────────────
@@ -1012,6 +1014,229 @@ async function cargarAnalisisHistorico() {
   ahPintarFiltros();
   ahPintarLista();
   ahPintarDetalle();
+}
+
+// ── INDICADORES (5-oct) ─────────────────────────────────────────────────────────
+// Los reclamos contra lo cubicado. Un reclamo solo no dice nada; la TASA —reclamos por
+// cada 1.000 toneladas— sí, y es la que orienta dónde apuntar. El denominador viene de
+// aSa; las dos fuentes se cruzan acá por año, persona, obra y segmento.
+var IN = { base: [], reclamos: [], anio_en_curso: null, sin_base: [], cargado: false };
+var IN_F = { anio: [], servicio: [], cubicador: [], segmento: [] };
+
+function inNum(x, dec) {
+  if (x == null || isNaN(x)) return '·';
+  return Number(x).toLocaleString('es-CL', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+}
+
+function inPasa(f) {
+  return (!IN_F.anio.length || IN_F.anio.indexOf(f.anio) >= 0)
+    && (!IN_F.servicio.length || IN_F.servicio.indexOf(f.servicio) >= 0)
+    && (!IN_F.cubicador.length || IN_F.cubicador.indexOf(f.persona) >= 0)
+    && (!IN_F.segmento.length || IN_F.segmento.indexOf(f.segmento) >= 0);
+}
+
+// LOS AÑOS CON BASE. Una tasa necesita numerador y denominador del mismo período: si
+// aSa no estaba completo ese año, no se calcula nada con él. Y lo que NO aplica al área
+// no es un error de cubicación: sale del numerador.
+function inConBase(filas) {
+  return filas.filter(function (f) { return IN.sin_base.indexOf(f.anio) < 0; });
+}
+function inReclamosUtiles() {
+  return inConBase(IN.reclamos.filter(inPasa)).filter(function (r) { return r.aplica !== 'no'; });
+}
+
+// Suma base y reclamos por una clave, y calcula la tasa. Devuelve filas ordenadas.
+function inCruce(clave, claveRec) {
+  claveRec = claveRec || clave;
+  var m = {};
+  inConBase(IN.base.filter(inPasa)).forEach(function (b) {
+    var k = b[clave]; if (k == null) return;
+    (m[k] = m[k] || { k: k, ton: 0, cc: 0, obras: {}, n: 0, kilos: 0, servicio: b.servicio })
+    ; m[k].ton += b.ton; m[k].cc += b.cc; m[k].obras[b.obra_id] = 1;
+  });
+  inReclamosUtiles().forEach(function (r) {
+    var k = r[claveRec]; if (k == null) return;
+    (m[k] = m[k] || { k: k, ton: 0, cc: 0, obras: {}, n: 0, kilos: 0, servicio: r.servicio });
+    m[k].n += r.n; m[k].kilos += r.kilos;
+  });
+  return Object.keys(m).map(function (k) {
+    var x = m[k];
+    x.nobras = Object.keys(x.obras).length;
+    x.tasa = x.ton > 0 ? x.n * 1000 / x.ton : null;
+    x.pct_kg = x.ton > 0 ? x.kilos / (x.ton * 1000) * 100 : null;
+    return x;
+  });
+}
+
+function inValores(clave, fuente) {
+  var v = [];
+  (fuente || IN.base.concat(IN.reclamos)).forEach(function (f) {
+    var k = f[clave]; if (k != null && v.indexOf(k) < 0) v.push(k);
+  });
+  return v.sort(function (a, b) { return typeof a === 'number' ? b - a : String(a).localeCompare(String(b)); });
+}
+
+function inGrupo(titulo, clave, valores, etiqueta) {
+  var sel = IN_F[clave];
+  return '<span class="dshbl">' + rhEsc(titulo) + '</span><div class="dshchips" data-g="' + clave + '">' +
+    valores.map(function (v) {
+      return '<button data-v="' + rhEsc(v) + '" class="' + (sel.indexOf(v) >= 0 ? 'on' : '') + '">' +
+        rhEsc(etiqueta ? etiqueta(v) : v) + '</button>';
+    }).join('') + '</div>';
+}
+
+function inPintarFiltros() {
+  var cont = document.getElementById('inFiltros');
+  if (!cont) return;
+  // Los cubicadores que se ofrecen son los que TIENEN base en aSa: son los únicos con
+  // tasa. Los demás salen igual en la tabla, abajo, marcados sin base.
+  var conBase = inValores('persona', IN.base.filter(function (b) { return b.conocido; }));
+  cont.innerHTML =
+    '<div class="dshbarra">' +
+      inGrupo('Año', 'anio', inValores('anio')) + '<span class="dshsep"></span>' +
+      inGrupo('Servicio', 'servicio', ['Interno', 'Externo']) + '<span class="dshsep"></span>' +
+      inGrupo('Segmento', 'segmento', inValores('segmento', IN.base)) +
+      '<span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>' +
+    '</div>' +
+    '<div class="dshbarra">' + inGrupo('Cubicador', 'cubicador', conBase) + '</div>';
+  cont.querySelectorAll('.dshchips button').forEach(function (b) {
+    b.addEventListener('click', function (ev) {
+      var g = b.parentNode.dataset.g;
+      rhMarcar(IN_F[g], g === 'anio' ? Number(b.dataset.v) : b.dataset.v, ev);
+      inPintarFiltros(); inPintarTodo();
+    });
+  });
+}
+
+function inPintarTodo() {
+  var base = inConBase(IN.base.filter(inPasa));
+  var rec = inReclamosUtiles();
+  var ton = base.reduce(function (a, b) { return a + b.ton; }, 0);
+  var n = rec.reduce(function (a, r) { return a + r.n; }, 0);
+  var kilos = rec.reduce(function (a, r) { return a + r.kilos; }, 0);
+  var obrasBase = {}; base.forEach(function (b) { obrasBase[b.obra_id] = 1; });
+  var obrasRec = {}; rec.forEach(function (r) { if (r.obra_id) obrasRec[r.obra_id] = 1; });
+  var nObras = Object.keys(obrasBase).length;
+  var nObrasRec = Object.keys(obrasRec).filter(function (o) { return obrasBase[o]; }).length;
+  var tasa = ton > 0 ? n * 1000 / ton : null;
+  var pctKg = ton > 0 ? kilos / (ton * 1000) * 100 : null;
+
+  // LOS CUATRO NÚMEROS QUE RESUMEN EL PERÍODO, cada uno con su detalle debajo.
+  var k = document.getElementById('inKpis');
+  if (k) {
+    k.innerHTML =
+      '<div class="inkpi"><div class="l">Reclamos por 1.000 ton</div><div class="v">' + inNum(tasa, 1) +
+        '</div><div class="d">' + inNum(n) + ' reclamos sobre ' + inNum(ton) + ' ton cubicadas</div></div>' +
+      '<div class="inkpi"><div class="l">Kilos mal fabricados</div><div class="v">' + inNum(pctKg, 2) + '<small>%</small>' +
+        '</div><div class="d">' + inNum(kilos) + ' kg de ' + inNum(ton * 1000) + ' kg cubicados</div></div>' +
+      '<div class="inkpi"><div class="l">Reclamos por obra</div><div class="v">' + inNum(nObras ? n / nObras : null, 2) +
+        '</div><div class="d">' + inNum(n) + ' reclamos en ' + inNum(nObras) + ' obras cubicadas</div></div>' +
+      '<div class="inkpi"><div class="l">Obras con algún reclamo</div><div class="v">' +
+        inNum(nObras ? nObrasRec * 100 / nObras : null, 0) + '<small>%</small>' +
+        '</div><div class="d">' + inNum(nObrasRec) + ' de ' + inNum(nObras) + ' obras</div></div>';
+  }
+
+  // Tasa por año. Los años sin base van en la etiqueta pero sin barra.
+  var anios = inValores('anio').slice().sort(function (a, b) { return a - b; })
+    .filter(function (a) { return !IN_F.anio.length || IN_F.anio.indexOf(a) >= 0; });
+  var porAnio = {}; inCruce('anio').forEach(function (x) { porAnio[x.k] = x; });
+  rhBarras('inChartTasa', anios.map(function (a) {
+    var x = porAnio[a];
+    var sinBase = IN.sin_base.indexOf(a) >= 0;
+    return [String(a) + (a === IN.anio_en_curso ? ' (en curso)' : ''),
+            sinBase ? 'sin base en aSa' : (x ? inNum(x.n) + ' recl · ' + inNum(x.ton) + ' ton' : '')];
+  }), [{ nombre: 'Reclamos por 1.000 ton', color: '#00897b',
+         datos: anios.map(function (a) { var x = porAnio[a]; return x && x.tasa != null ? Math.round(x.tasa * 10) / 10 : 0; }) }]);
+
+  inTabla('inSegmentos', inCruce('segmento'), 'Segmento', tasa, false);
+  inTabla('inCubicadores', inCruce('persona'), 'Cubicador', tasa, true);
+  inPareto(rec, base);
+  inLectura(tasa, n, ton, inCruce('persona'), rec, base);
+}
+
+// La tabla volumen-contra-reclamos. Ordenada por tasa; sin base al final.
+function inTabla(id, filas, titulo, promedio, conServicio) {
+  var t = document.getElementById(id);
+  if (!t) return;
+  filas.sort(function (a, b) {
+    if (a.tasa == null && b.tasa == null) return b.n - a.n;
+    if (a.tasa == null) return 1; if (b.tasa == null) return -1;
+    return b.tasa - a.tasa;
+  });
+  var maxTasa = Math.max.apply(null, [0.1].concat(filas.map(function (f) { return f.tasa || 0; })));
+  t.innerHTML = '<thead><tr><th>' + rhEsc(titulo) + '</th>' + (conServicio ? '<th>Servicio</th>' : '') +
+    '<th>Ton cubicadas</th><th>Obras</th><th>Reclamos</th><th>Reclamos / 1.000 ton</th><th style="width:120px"></th>' +
+    '<th>Kg mal fabricados</th><th>% del cubicado</th></tr></thead><tbody>' +
+    filas.map(function (f) {
+      var cls = f.tasa == null ? 'sinbase' : (promedio != null && f.tasa > promedio * 1.15 ? 'peor' : (promedio != null && f.tasa < promedio * 0.85 ? 'mejor' : ''));
+      return '<tr><td title="' + rhEsc(f.k) + '">' + rhEsc(f.k) + '</td>' +
+        (conServicio ? '<td>' + rhEsc(f.servicio || '') + '</td>' : '') +
+        '<td>' + (f.ton ? inNum(f.ton) : '<span class="sinbase">·</span>') + '</td>' +
+        '<td>' + (f.nobras || '·') + '</td><td><b>' + inNum(f.n) + '</b></td>' +
+        '<td class="' + cls + '">' + (f.tasa == null ? 'sin base' : inNum(f.tasa, 1)) + '</td>' +
+        '<td><span class="inbar" style="width:' + (f.tasa ? Math.round(f.tasa / maxTasa * 110) : 0) + 'px"></span></td>' +
+        '<td>' + inNum(f.kilos) + '</td><td>' + (f.pct_kg == null ? '·' : inNum(f.pct_kg, 2) + '%') + '</td></tr>';
+    }).join('') + '</tbody>';
+}
+
+// PARETO DE OBRAS: cuántas obras juntan la mitad y el 80% de los reclamos.
+function inPareto(rec, base) {
+  var t = document.getElementById('inObras');
+  if (!t) return;
+  var porObra = {};
+  rec.forEach(function (r) {
+    var k = r.obra_id || r.obra;
+    (porObra[k] = porObra[k] || { obra: r.obra, id: r.obra_id, n: 0, kilos: 0, ton: 0 });
+    porObra[k].n += r.n; porObra[k].kilos += r.kilos;
+  });
+  base.forEach(function (b) { if (porObra[b.obra_id]) porObra[b.obra_id].ton += b.ton; });
+  var lista = Object.keys(porObra).map(function (k) { return porObra[k]; }).sort(function (a, b) { return b.n - a.n; });
+  var total = lista.reduce(function (a, o) { return a + o.n; }, 0);
+  var acum = 0;
+  t.innerHTML = '<thead><tr><th>Obra</th><th>Reclamos</th><th>% del total</th><th>Acumulado</th>' +
+    '<th>Ton cubicadas</th><th>Reclamos / 1.000 ton</th><th>Kg mal fabricados</th></tr></thead><tbody>' +
+    lista.slice(0, 15).map(function (o) {
+      acum += o.n;
+      return '<tr><td title="' + rhEsc(o.obra) + '">' + rhEsc(o.obra) + '</td><td><b>' + inNum(o.n) + '</b></td>' +
+        '<td>' + (total ? inNum(o.n * 100 / total, 0) : '·') + '%</td>' +
+        '<td>' + (total ? inNum(acum * 100 / total, 0) : '·') + '%</td>' +
+        '<td>' + (o.ton ? inNum(o.ton) : '<span class="sinbase">·</span>') + '</td>' +
+        '<td>' + (o.ton ? inNum(o.n * 1000 / o.ton, 1) : '<span class="sinbase">sin base</span>') + '</td>' +
+        '<td>' + inNum(o.kilos) + '</td></tr>';
+    }).join('') + '</tbody>';
+  IN._pareto = { lista: lista, total: total };
+}
+
+// LA LECTURA: una línea que dice qué está pasando, para quien no quiera leer tablas.
+function inLectura(tasa, n, ton, personas, rec, base) {
+  var el = document.getElementById('inLectura');
+  if (!el) return;
+  if (!ton) { el.innerHTML = 'No hay toneladas cubicadas en aSa para lo filtrado, así que no se puede calcular una tasa.'; return; }
+  var partes = ['<b>' + inNum(tasa, 1) + ' reclamos por cada 1.000 toneladas</b> cubicadas'];
+  var p = IN._pareto || { lista: [], total: 0 };
+  if (p.total) {
+    var acum = 0, k = 0;
+    for (var i = 0; i < p.lista.length; i++) { acum += p.lista[i].n; k++; if (acum >= p.total / 2) break; }
+    partes.push('la mitad de los reclamos está en <b>' + k + ' obra' + (k === 1 ? '' : 's') + '</b>');
+  }
+  var conTasa = personas.filter(function (x) { return x.tasa != null && x.n > 0; });
+  if (conTasa.length > 1) {
+    conTasa.sort(function (a, b) { return b.tasa - a.tasa; });
+    partes.push('la tasa más alta es la de <b>' + rhEsc(conTasa[0].k) + '</b> (' + inNum(conTasa[0].tasa, 1) +
+      ') y la más baja la de <b>' + rhEsc(conTasa[conTasa.length - 1].k) + '</b> (' + inNum(conTasa[conTasa.length - 1].tasa, 1) + ')');
+  }
+  el.innerHTML = partes.join(' · ') + '.';
+}
+
+async function loadDashIndicadores() {
+  if (IN.cargado) { inPintarFiltros(); inPintarTodo(); return; }
+  var d = await apiGet('/reclamos/indicadores');
+  if (!d) return;
+  IN.base = d.base || []; IN.reclamos = d.reclamos || [];
+  IN.anio_en_curso = d.anio_en_curso; IN.sin_base = d.anios_sin_base || [];
+  IN.cargado = true;
+  inPintarFiltros();
+  inPintarTodo();
 }
 
 // Cómo se dice cada tipo en pantalla. El valor crudo es el que viaja a la base.

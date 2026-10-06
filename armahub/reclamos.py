@@ -1015,14 +1015,15 @@ def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
                        -- TODOS los que traian el dato. (Sin signos de porcentaje en los
                        -- comentarios del SQL: psycopg los lee como marcadores.)
                        COALESCE(r.servicio,
+                                -- SOLO HAY DOS SERVICIOS: interno y externo, y dependen
+                                -- de QUIEN cubico. Un reclamo sin cubicador no tiene un
+                                -- tercer servicio: no tiene ninguno, y va en NULL. Poner
+                                -- ahi un "(sin dato)" lo convertia en una tercera opcion
+                                -- del filtro, que es mezclar dos cosas distintas: si hay
+                                -- o no cubicador se mira en el filtro de cubicador.
                                 CASE WHEN r.cubicador_asignado IS NULL THEN NULL
                                      WHEN {NOMBRE_CUB} = ANY(%s) THEN 'Interno'
-                                     ELSE 'Externo' END,
-                                -- Habiendo cubicador SIEMPRE sale interno o externo, asi
-                                -- que lo unico que cae aca es un reclamo sin cubicador.
-                                -- Decirlo asi y no "sin dato" evita leerlo como un tercer
-                                -- tipo de servicio, que no existe.
-                                '(sin cubicador)'),
+                                     ELSE 'Externo' END),
                        COALESCE(at.segmento,
                                 CASE WHEN r.segmento ILIKE 'edificaci%%' THEN '4 y 5'
                                      ELSE NULLIF(r.segmento, '') END, '(sin segmento)'),
@@ -1242,6 +1243,103 @@ def reclamos_analisis_guardar(reclamo_id: int, body: AnalisisBody,
             audit(email, "reclamo_analisis_historico",
                   "%s: %s" % (fila[0], body.cod_causa or "sin causa"), "reclamo", str(reclamo_id))
     return reclamos_analisis_detalle(reclamo_id, user)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INDICADORES: LOS RECLAMOS CONTRA LO QUE SE CUBICÓ (5-oct)
+#
+# Un reclamo solo no dice nada: 100 reclamos sobre 30.000 toneladas es mejor que 20 sobre
+# 2.000. Lo que orienta dónde apuntar es la TASA, reclamos por tonelada cubicada, y eso
+# necesita el denominador, que vive en aSa (el espejo `asa_pedidos`). Acá se juntan las
+# dos fuentes por lo único que comparten: quién cubicó, qué obra y en qué año.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# QUIÉN ES QUIÉN EN aSa. `DetailPerson` viene como login (Gmendoza, MarioP) y los
+# reclamos traen el nombre de la persona. Doce correspondencias dictadas por la data: cada
+# login detalla las mismas obras que esa persona tiene reclamadas. RMC va aparte: no es
+# una persona sino un proveedor externo de cubicación, y en aSa detalló 703 códigos en
+# 2024 en las mismas obras donde sus reclamos quedaron sin cubicador.
+ASA_PERSONA = {
+    "gmendoza": "Gerardo Mendoza", "dvenegas": "Daniel Venegas", "jrodriguez": "Jose Rodriguez",
+    "jhvelasquez": "Javier Velasquez", "jsanchez": "Johnny Sanchez", "mariop": "Mario Puyo",
+    "eramirez": "Emilio Ramirez", "hmondaca": "Hans Mondaca", "csantos": "Carlos Santos",
+    "nlopez": "Nicolas Lopez", "rmc": "RMC",
+}
+# Años en que aSa NO estaba completo: venía en implementación y lo cubicado ese año no
+# está entero en el espejo (2022 tiene 3.092 toneladas contra 26.410 del año siguiente).
+# Una tasa sobre ese denominador saldría tres o cuatro veces inflada, así que no se
+# calcula: se muestra el año sin base.
+ANIOS_SIN_BASE_ASA = (2021, 2022)
+# El estado de aSa que significa «nunca se fabricó»; lo mismo que usa el módulo de aSa.
+ESTADO_NUNCA_ASA = "Cancelled"
+
+
+def _sin_acento(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(s or ""))
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+@router.get("/reclamos/indicadores")
+def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
+    """LAS DOS FUENTES, agrupadas por las mismas dimensiones, para que el navegador las cruce
+    y calcule tasas al filtrar.
+
+    `base` es lo cubicado, de aSa: por año, persona, obra y segmento, con códigos de
+    control y toneladas. `reclamos` es lo reclamado, por las mismas dimensiones. Viajan
+    separadas y no ya divididas: una tasa pre-calculada no se puede volver a filtrar, y
+    filtrar es justamente lo que hace útil este tablero.
+
+    Lo cancelado en aSa no cuenta como cubicado: nunca se fabricó.
+    """
+    internos = {_sin_acento(x).lower() for x in CUBICADORES_INTERNOS}
+
+    def servicio_de(nombre):
+        return "Interno" if _sin_acento(nombre or "").lower() in internos else "Externo"
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT EXTRACT(YEAR FROM p.order_date)::int, p.detail_person, p.asa_job_id,
+                       MAX(p.job_name), at.segmento, COUNT(*), COALESCE(SUM(p.kg), 0)
+                  FROM asa_pedidos p
+                  LEFT JOIN asa_obra_atributos at ON at.asa_job_id = p.asa_job_id
+                 WHERE p.order_date IS NOT NULL
+                   AND COALESCE(p.estado, '') <> %s
+                 GROUP BY 1, 2, 3, 5""", (ESTADO_NUNCA_ASA,))
+            base = []
+            for anio, login, job, obra, seg, cc, kg in cur.fetchall():
+                persona = ASA_PERSONA.get((login or "").strip().lower(), (login or "?").strip())
+                base.append({"anio": anio, "persona": persona,
+                             "conocido": (login or "").strip().lower() in ASA_PERSONA,
+                             "servicio": servicio_de(persona), "segmento": seg or "(sin segmento)",
+                             "obra_id": job, "obra": obra, "cc": cc, "ton": round(float(kg) / 1000.0, 2)})
+
+            NOMBRE_CUB = ("COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), "
+                          "r.cubicador_asignado)")
+            cur.execute(f"""
+                SELECT r.anio_calidad, {NOMBRE_CUB}, r.asa_job_id,
+                       COALESCE(o.nombre, p2.nombre_proyecto, r.obra_texto),
+                       COALESCE(at.segmento,
+                                CASE WHEN r.segmento ILIKE 'edificaci%%' THEN '4 y 5'
+                                     ELSE NULLIF(r.segmento, '') END, '(sin segmento)'),
+                       COALESCE(r.aplica, 'si'), r.servicio,
+                       COUNT(*), COALESCE(SUM(r.kilos_mal_fabricados), 0)
+                  FROM reclamos r
+                  LEFT JOIN users u ON u.email = r.cubicador_asignado
+                  LEFT JOIN proyectos p2 ON p2.id_proyecto = r.id_proyecto
+                  LEFT JOIN asa_obras o ON o.asa_job_id = r.asa_job_id
+                  LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
+                 WHERE r.anio_calidad IS NOT NULL
+                 GROUP BY 1, 2, 3, 4, 5, 6, 7""")
+            reclamos = []
+            for anio, cub, job, obra, seg, aplica, serv, n, kg in cur.fetchall():
+                reclamos.append({"anio": anio, "persona": cub or "Sin asignar", "obra_id": job,
+                                 "obra": obra or "(sin obra)", "segmento": seg, "aplica": aplica,
+                                 "servicio": serv or (servicio_de(cub) if cub else None),
+                                 "n": n, "kilos": int(kg or 0)})
+    return {"base": base, "reclamos": reclamos, "anio_en_curso": _anio_en_curso(),
+            "anios_sin_base": list(ANIOS_SIN_BASE_ASA)}
 
 
 @router.get("/reclamos/ishikawa")

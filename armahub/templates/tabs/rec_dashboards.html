@@ -9,6 +9,63 @@
       <button id="dashSubBtnTableros" onclick="switchDashSubTab('tableros')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">Tableros</button>
       <button id="dashSubBtnKpis" onclick="switchDashSubTab('kpis')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">RCA · Ishikawa</button>
       <button id="dashSubBtnHist" onclick="switchDashSubTab('historico')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Por año</button>
+      <button id="dashSubBtnInd" onclick="switchDashSubTab('indicadores')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Indicadores</button>
+    </div>
+
+    <!-- Sub-panel: INDICADORES. Los reclamos puestos contra lo que se cubicó, que es lo
+         que orienta dónde apuntar: 100 reclamos sobre 30.000 toneladas es mejor que 20
+         sobre 2.000. Todo normalizado por volumen; los conteos pelados viven en «Por año». -->
+    <div id="dashSubInd" style="display:none;">
+      <style>
+        .inkpis{display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:12px;}
+        .inkpi{background:#fff; border:1px solid #eee; border-radius:8px; padding:12px 14px;}
+        .inkpi .l{font-size:9.5px; font-weight:700; color:#90a4ae; letter-spacing:.5px; text-transform:uppercase;}
+        .inkpi .v{font-size:28px; font-weight:700; color:#263238; line-height:1.15; margin:4px 0 2px;
+                  font-variant-numeric:tabular-nums;}
+        .inkpi .v small{font-size:12px; font-weight:600; color:#78909c; margin-left:4px;}
+        .inkpi .d{font-size:10.5px; color:#78909c;}
+        .inlect{font-size:11.5px; color:#37474f; background:#fff; border:1px solid #eee;
+                border-left:4px solid #00897b; border-radius:8px; padding:9px 13px; margin-bottom:12px;}
+        .inlect b{color:#00897b;}
+        /* Lo que está peor que el promedio se marca, para que la mirada vaya ahí. */
+        .rht td.peor{color:#c62828; font-weight:700;}
+        .rht td.mejor{color:#2e7d32;}
+        .rht td.sinbase{color:#b0bec5; font-style:italic;}
+        .inbar{display:inline-block; height:7px; background:#00897b; border-radius:3px; vertical-align:middle;}
+      </style>
+
+      <div id="inFiltros"></div>
+      <div class="inlect" id="inLectura"></div>
+      <div class="inkpis" id="inKpis"></div>
+
+      <div class="rhfila" style="grid-template-columns:1fr 1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Reclamos por cada 1.000 toneladas cubicadas, por año</div>
+          <div class="rhsub">La tasa, no el conteo: un año con más obra tiene más reclamos sin ser peor. Los años sin base en aSa no se calculan.</div>
+          <div style="position:relative; height:220px;"><canvas id="inChartTasa"></canvas></div>
+        </div>
+        <div class="rhcaja">
+          <div class="rhtit">Por segmento</div>
+          <div class="rhsub">Toneladas cubicadas, reclamos y la tasa de cada uno. El segmento sale de la obra.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="inSegmentos"></table></div>
+        </div>
+      </div>
+
+      <div class="rhfila" style="grid-template-columns:1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Por cubicador: volumen contra reclamos</div>
+          <div class="rhsub">Ordenado por tasa. En rojo lo que está sobre el promedio del período; en verde lo que está bajo. Quien no tiene base en aSa no tiene tasa.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="inCubicadores"></table></div>
+        </div>
+      </div>
+
+      <div class="rhfila" style="grid-template-columns:1fr;">
+        <div class="rhcaja">
+          <div class="rhtit">Las obras que concentran los reclamos</div>
+          <div class="rhsub">Pareto: las obras con más reclamos y cuánto acumulan. Si pocas obras juntan la mayoría, ahí está el esfuerzo.</div>
+          <div style="overflow-x:auto;"><table class="rht" id="inObras"></table></div>
+        </div>
+      </div>
     </div>
 
     <!-- Sub-panel: POR AÑO. La foto de varios años junta: lo cargado de las planillas

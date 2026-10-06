@@ -591,6 +591,35 @@ if s == 200:
         check("...trae lo que hace falta para decidir la causa",
               s2 == 200 and all(k in det for k in ("descripcion", "obra", "cubicador", "acciones")))
 
+print("\n6g. Indicadores: los reclamos contra lo cubicado en aSa")
+s, d = get("/reclamos/indicadores")
+check("GET /reclamos/indicadores -> 200", s == 200, str(d)[:160])
+if s == 200:
+    base, rec = d.get("base") or [], d.get("reclamos") or []
+    ton = sum(b["ton"] for b in base)
+    print("      base: %d filas, %s ton | reclamos: %d filas" % (len(base), "{:,.0f}".format(ton).replace(",", "."), len(rec)))
+    check("...trae lo cubicado de aSa con toneladas", ton > 50000)
+    check("...y lo reclamado por las mismas dimensiones",
+          rec and all(k in rec[0] for k in ("anio", "persona", "obra_id", "segmento", "aplica", "n", "kilos")))
+    # LAS DOS FUENTES SE TIENEN QUE PODER CRUZAR POR PERSONA. Si los logins de aSa no se
+    # tradujeran a los nombres que usan los reclamos, cada cubicador saldria dos veces,
+    # una con toneladas y sin reclamos y otra al reves, y ninguna tasa se podria calcular.
+    personas_base = {b["persona"] for b in base if b["conocido"]}
+    personas_rec = {r["persona"] for r in rec if r["persona"] not in ("Sin asignar",)}
+    cruzan = personas_base & personas_rec
+    print("      cubicadores que cruzan: %d de %d con reclamos" % (len(cruzan), len(personas_rec)))
+    check("...los cubicadores de aSa y los de reclamos se llaman igual (cruzan %d)" % len(cruzan),
+          len(cruzan) >= 8)
+    check("...los anos sin base vienen declarados", 2022 in (d.get("anios_sin_base") or []))
+    # La tasa del ultimo ano completo tiene que ser un numero razonable, no un disparate
+    # por un denominador vacio o duplicado.
+    a = max(x["anio"] for x in base if x["anio"] not in d["anios_sin_base"] and x["anio"] != d["anio_en_curso"])
+    t_a = sum(b["ton"] for b in base if b["anio"] == a)
+    n_a = sum(r["n"] for r in rec if r["anio"] == a and r["aplica"] != "no")
+    tasa = n_a * 1000 / t_a if t_a else None
+    print("      %d: %d reclamos / %s ton = %.1f por 1.000 ton" % (a, n_a, "{:,.0f}".format(t_a).replace(",", "."), tasa or 0))
+    check("...la tasa de %d es razonable (entre 0,5 y 20 por 1.000 ton)" % a, tasa and 0.5 < tasa < 20)
+
 print("\n6f. Tablero de reclamos por ano (lee lo historico y lo vivo juntos)")
 s, d = get("/reclamos/historico")
 check("GET /reclamos/historico -> 200", s == 200, str(d)[:200])
@@ -615,7 +644,11 @@ if s == 200:
     for f in filas:
         serv[f["servicio"]] = serv.get(f["servicio"], 0) + f["n"]
     print("      servicio: %s" % serv)
-    check("...el servicio esta resuelto en casi todos", serv.get("(sin dato)", 0) < total * 0.05)
+    # Solo hay DOS servicios, interno y externo, y dependen de quien cubico. Un reclamo
+    # sin cubicador no tiene un tercero: viaja en None y no crea un chip de mas.
+    check("...el servicio tiene solo dos valores, mas los sin cubicador",
+          set(serv) <= {"Interno", "Externo", None}, str(sorted(map(str, serv))))
+    check("...y casi todos lo tienen resuelto", serv.get(None, 0) < total * 0.05)
     check("...y se declara quienes son internos (%d)" % len(d.get("internos") or []),
           len(d.get("internos") or []) >= 4)
     # EL SEGMENTO SALE DE LA OBRA, no del reclamo: es donde el usuario lo categoriza.
