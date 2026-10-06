@@ -513,8 +513,7 @@
         '<td title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
         (esAsa ? '<td class="auddcc" title="' + esc(e.descr_cc || '') + '">' + esc(e.descr_cc || '') + '</td>' : '') +
         // En la fila ABIERTA de una auditoría de aSa la ubicación se escribe acá mismo.
-        (esAsa && abierto ? celdasUbicacion(e)
-          : '<td>' + esc(e.tipo || '') + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>') +
+        (esAsa && abierto ? celdasUbicacion(e) : celdasUbicacionTexto(e, esAsa)) +
         '<td class="num" title="' + (e.items || 0) + ' revisada(s)' + (e.items_malos ? ', ' + e.items_malos + ' no conforme(s)' : '') + '">' +
           (e.items ? '<b>' + e.items + '</b>/' : '') + e.barras + '</td>' +
         '<td class="num">' + kg0(e.kg) + '</td>' +
@@ -754,10 +753,20 @@
   // grilla de barras; el usuario la vio fuera de lugar (6-oct): son datos del elemento,
   // van en su fila. En ArmaHub salen de la cubicación —son la clave del elemento— y no se
   // editan acá; si están mal se arreglan allá.
+  // Las mismas cuatro celdas en texto. En aSa, lo que se LEYÓ del nombre y nadie confirmó
+  // va en gris cursiva: se ve que es una lectura, no un dato.
+  function celdasUbicacionTexto(e, esAsa) {
+    var leido = esAsa && !e.ubicado_el && (e.sector || e.piso || e.ciclo);
+    var td = leido ? '<td class="audderiv" title="Leído del nombre del código, sin confirmar">' : '<td>';
+    return td + esc(e.tipo || '') + '</td>' + td + esc(e.piso) + '</td>' + td + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>';
+  }
+
   function celdasUbicacion(e) {
     var tit = e.ubicado_el
       ? 'Escrita por ' + (e.ubicado_por || '').split('@')[0]
-      : 'aSa no trae tipo, piso ni ciclo: los pones tú. Se guarda al salir del campo.';
+      : (e.sector || e.piso || e.ciclo)
+        ? 'Leído del nombre del código, sin confirmar: corrígelo si no es. Se guarda al salir del campo.'
+        : 'aSa no trae tipo, piso ni ciclo: los pones tú. Se guarda al salir del campo.';
     var opciones = '<option value="">tipo…</option>' + Object.keys(BASE.sectores || {}).map(function (k) {
       return '<option value="' + esc(k) + '"' + (e.sector === k ? ' selected' : '') + '>' + esc(BASE.sectores[k]) + '</option>';
     }).join('');

@@ -357,6 +357,31 @@ check("...y mostrando sólo lo que está lleno",
 check("...sin ensuciar el informe con la etiqueta de «sin elemento»",
       A._ubicacion_txt({"sector": "FUND", "eje": A.SIN_ELEMENTO}) == "Fundación")
 
+print("\n7b2. Lo que se lee del nombre del código (y el auditor completa sólo los raros)")
+# «Si puedes derivarlo del nombre y es fácil, mucho mejor: así completas los raros
+# solamente» (6-oct). Los ejemplos son los de su pantalla y de las 12.000 descripciones.
+U = A._ubicacion_desde_nombre
+check("«LC S1 C5 Lourdes» + ElementDesc «LCIELO» → losa de cielo, piso S1, ciclo C5",
+      U("LC S1 C5 Lourdes", "LCIELO") == {"sector": "LCIELO", "piso": "S1", "ciclo": "C5"})
+check("«Elev P3 C3 Basilica» + «ELEV» → elevación, P3, C3",
+      U("Elev P3 C3 Basilica", "ELEV") == {"sector": "ELEV", "piso": "P3", "ciclo": "C3"})
+check("«L Fund C5» + «L Fund» → fundación, sin piso, C5",
+      U("L Fund C5", "L Fund") == {"sector": "FUND", "piso": "", "ciclo": "C5"})
+check("«ELEV. 10°P (CICLO 1)» → elevación, P10, C1 (las formas con grado y la palabra CICLO)",
+      U("ELEV. 10°P (CICLO 1)", "") == {"sector": "ELEV", "piso": "P10", "ciclo": "C1"})
+check("«ELEV 1°SUBT. (CICLO B4)» → S1 y el ciclo tal cual lo escribieron",
+      U("ELEV 1°SUBT. (CICLO B4)", "") == {"sector": "ELEV", "piso": "S1", "ciclo": "B4"})
+check("«VC - P4 C3» → viga de cielo, P4, C3", U("VC - P4 C3", "") == {"sector": "VCIELO", "piso": "P4", "ciclo": "C3"})
+check("lo ambiguo NO se adivina: «VIGAS+LOSAS P2» deja el tipo vacío (y lee el piso)",
+      U("VIGAS+LOSAS P2", "") == {"sector": "", "piso": "P2", "ciclo": ""})
+check("«BARRAS STOCK» o «Solicitud Fierro»: nada que leer", U("BARRAS STOCK", "") == {"sector": "", "piso": "", "ciclo": ""}
+      and U("Solicitud Fierro", "") == {"sector": "", "piso": "", "ciclo": ""})
+check("«LOSAS C2°P (CICLO 2)»: el C2°P es el piso 2, no el ciclo; el ciclo es el 2 de CICLO",
+      U("LOSAS C2°P (CICLO 2)", "") == {"sector": "LCIELO", "piso": "P2", "ciclo": "C2"})
+check("se aplica al armar la muestra de aSa, y en pantalla lo leído se ve como lectura, no como dato",
+      'e.update(_ubicacion_desde_nombre(descr, e["estructura"]))' in SRC
+      and "function celdasUbicacionTexto(" in JS and 'class="audderiv"' in JS and ".audt td.audderiv{" in HTM)
+
 print("\n7c. La ubicación se escribe en la fila del elemento abierto")
 # 6-oct: la barra «Dónde está» sobre la grilla de barras estaba fuera de lugar («son para
 # completar, debieran ir en el listado de elementos y no en la grilla»). Los cuatro campos

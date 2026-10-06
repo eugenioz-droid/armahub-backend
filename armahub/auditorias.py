@@ -462,6 +462,70 @@ def _items_de(cc: str):
         raise HTTPException(status_code=502, detail="aSa no respondió por el código %s: %s" % (cc, e))
 
 
+# LO QUE SE LEE DEL NOMBRE. En aSa el tipo, el piso y el ciclo no son campos, pero el
+# cubicador los escribe en el nombre del código («Elev S3 C7», «LC S1 C5 Lourdes», «ELEV.
+# 10°P (CICLO 1)») y el tipo suele venir además en el ElementDesc («LCIELO», «ELEV»,
+# «L Fund»). Se leen con reglas cortas y conservadoras —sólo las formas que se repiten en
+# las 12.000 descripciones de 2025— y lo que no se reconoce queda vacío para que lo
+# complete el auditor, que corrige en la fila. Lo leído NO se da por confirmado: viaja
+# sin `ubicado_el` y la pantalla lo muestra como «leído del nombre». Decisión del usuario
+# (6-oct): «si puedes derivarlo del nombre y es fácil, mucho mejor: así completas los
+# raros solamente».
+_FAMILIAS_SECTOR = (
+    ("ELEV", re.compile(r"^(ELEV|ELEVACION(ES)?|MURO(S)?)\.?$")),
+    ("LCIELO", re.compile(r"^(LC|L\.?C\.?|LOSA(S)?|LCIELO)\.?$")),
+    ("VCIELO", re.compile(r"^(VC|V\.?C\.?|VIGA(S)?|VCIELO)\.?$")),
+    ("FUND", re.compile(r"^(FUND|FUNDACION(ES)?|L\.?\s?FUND)\.?$")),
+)
+# El piso: «P3» / «S1» / «PB», o el número con grado («10°P», «1°SUBT.», «C2°P» = cielo del
+# 2° piso) o con la palabra entera («10 PISO», «4SUBT»). Con grado no hace falta mirar qué
+# hay antes: el ° ya dice que es un ordinal.
+_RE_PISO = re.compile(r"(?<![A-Z0-9])(?:(P|S)(\d{1,2})|(PB))(?![A-Z0-9°])"
+                      r"|(\d{1,2})\s*°\s*(P|PISO|S|SUBT|SUB)\b"
+                      r"|(?<![A-Z0-9])(\d{1,2})\s*(PISO|SUBT|SUB)\b")
+_RE_CICLO = re.compile(r"(?<![A-Z0-9])(?:C(\d{1,2})(?![A-Z0-9°])|CICLO\s*([A-Z]?\d{1,2})\b)")
+
+
+def _ubicacion_desde_nombre(descr: Optional[str], estructura: Optional[str]) -> dict:
+    """{sector, piso, ciclo} leídos del nombre del código y del ElementDesc; vacío lo que
+    no se reconoce con certeza. Nunca adivina: «VIGAS+LOSAS» no es ni viga ni losa."""
+    descr_u = (descr or "").upper().replace("_", " ")
+    estr_u = (estructura or "").upper().replace("_", " ")
+    sector = ""
+    # El tipo: primero el ElementDesc entero («L Fund»), después los tokens del nombre.
+    for sec, patron in _FAMILIAS_SECTOR:
+        if estr_u and patron.match(estr_u.strip()):
+            sector = sec
+            break
+    if not sector:
+        for token in re.split(r"[\s,;/()\-]+", descr_u):
+            for sec, patron in _FAMILIAS_SECTOR:
+                if token and patron.match(token):
+                    sector = sec
+                    break
+            if sector:
+                break
+    piso = ciclo = ""
+    for texto in (descr_u, estr_u):
+        if not piso:
+            m = _RE_PISO.search(texto)
+            if m:
+                if m.group(3):
+                    piso = "PB"
+                elif m.group(1):
+                    piso = m.group(1) + m.group(2)
+                else:
+                    numero = m.group(4) or m.group(6)
+                    palabra = m.group(5) or m.group(7)
+                    piso = ("S" if palabra.startswith("S") else "P") + numero
+        if not ciclo:
+            m = _RE_CICLO.search(texto)
+            if m:
+                bruto = m.group(1) or m.group(2)
+                ciclo = ("C" + bruto) if bruto.isdigit() else bruto
+    return {"sector": sector, "piso": piso, "ciclo": ciclo}
+
+
 def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
     """Agrupa los ítems de un CC por elemento. Un CC puede traer uno o veintidós."""
     por: dict = {}
@@ -484,6 +548,8 @@ def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
         e["nombre"] = (e["estructura"]
                        or (clave if clave != SIN_ELEMENTO else "")
                        or descr or cc)
+        # Tipo, piso y ciclo: lo que se lee del nombre (ver _ubicacion_desde_nombre).
+        e.update(_ubicacion_desde_nombre(descr, e["estructura"]))
     return list(por.values())
 
 
