@@ -270,7 +270,8 @@ check("...y entra al informe como su propia sección",
 
 print("\n5g. Permisos y correo")
 check("sólo administración y cubicadores entran al módulo",
-      A.ROLES_AUDITAN == ("admin", "admin_calidad", "cubicador")
+      A.ROLES_AUDITAN == ("admin", "admin_calidad", "miembro", "externo")
+      and A.AREA_AUDITA == "Cubicaciones" and "def _es_del_area(" in SRC
       and "def _puede_ver(user)" in SRC and SRC.count("_puede_ver(user)") >= 9)
 check("...y el tab se esconde para el resto (el backend igual valida)",
       "switchTab('auditorias')" in SHELL and "puedeAuditar" in SHELL)

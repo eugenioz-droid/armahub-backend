@@ -163,9 +163,11 @@
     }
 
     if (mod === 'reclamos') {
-      // Auditorías: sólo administración y cubicadores (decisión del usuario, 2-oct). El
-      // backend valida igual; esto es para que no aparezca un tab que daría 403.
-      var puedeAuditar = ['admin', 'admin_calidad', 'cubicador'].indexOf(window.currentRole) !== -1;
+      // Auditorías: administración y cubicadores (decisión del usuario, 2-oct). No hay
+      // un rol «cubicador»: son miembros o externos que integran el área de
+      // Cubicaciones, y eso lo valida el backend. Acá se muestra el tab a los roles
+      // que PUEDEN serlo; al que no integre el área el backend le contesta 403.
+      var puedeAuditar = ['admin', 'admin_calidad', 'miembro', 'externo'].indexOf(window.currentRole) !== -1;
       document.querySelectorAll("[onclick=\"switchTab('auditorias')\"]").forEach(function (b) {
         b.style.display = puedeAuditar ? '' : 'none';
       });

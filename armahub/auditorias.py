@@ -49,7 +49,15 @@ MUESTRA_MAXIMA = 200
 # del usuario, 2-oct). Un USC o un externo no tiene nada que hacer acá: esto mide el
 # trabajo del área de cubicación. La regla de INDEPENDENCIA —no auditas lo que tú
 # cubicaste— se avisa elemento a elemento, no se resuelve con el rol.
-ROLES_AUDITAN = ("admin", "admin_calidad", "cubicador")
+# QUIEN AUDITA. No existe un rol «cubicador»: los cubicadores son usuarios con rol
+# miembro (los contratados por Armacero) o externo, y lo que los define es pertenecer al
+# AREA de Cubicaciones. Filtrar por un rol inexistente dejaba en la lista solo a los dos
+# administradores y les escondia el tab a los que de verdad auditan.
+ROLES_ADMINISTRAN = ("admin", "admin_calidad")
+AREA_AUDITA = "Cubicaciones"
+# Se mantiene el nombre por los tests y el shell: son los roles que PUEDEN contener a un
+# auditor. La pertenencia al area la decide la base, no el rol.
+ROLES_AUDITAN = ("admin", "admin_calidad", "miembro", "externo")
 # Estados de la auditoría (los usa el front; se congelan acá para que haya UNA lista).
 ESTADOS = ("planificada", "en_curso", "cerrada")
 # Hallazgos posibles sobre un elemento, en el idioma de la ISO.
@@ -128,9 +136,25 @@ def _habiles(desde: date, n: int) -> date:
     return d
 
 
+def _es_del_area(cur, email: str) -> bool:
+    cur.execute("""SELECT 1 FROM area_usuarios au
+                     JOIN areas a ON a.id = au.area_id
+                     JOIN users u ON u.id = au.user_id
+                    WHERE a.nombre = %s AND u.email = %s LIMIT 1""", (AREA_AUDITA, email))
+    return cur.fetchone() is not None
+
+
 def _puede_auditar(user):
-    if user.get("role") not in ROLES_AUDITAN:
-        raise HTTPException(status_code=403, detail="No tiene permiso para auditar.")
+    """Administracion siempre; el resto, solo si integra el area de Cubicaciones. Se
+    consulta ANTES de que el endpoint abra su propia conexion, asi que no se anidan."""
+    if user.get("role") in ROLES_ADMINISTRAN:
+        return
+    if user.get("role") in ROLES_AUDITAN:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                if _es_del_area(cur, user.get("email", "")):
+                    return
+    raise HTTPException(status_code=403, detail="No tiene permiso para auditar.")
 
 
 def _puede_ver(user):
@@ -167,10 +191,17 @@ def obras(user=Depends(get_current_user)):
                      GROUP BY 1, 2 ORDER BY 2""")
             lista = [{"id_proyecto": r[0], "obra": r[1], "barras": r[2], "kg": float(r[3] or 0),
                       "elementos": r[4], "reclamos": r[5]} for r in cur.fetchall()]
+            # Los que pueden quedar como auditor: los integrantes del area de
+            # Cubicaciones. Es la misma lista que mantiene el usuario en el panel de
+            # areas, asi que agregar o sacar un cubicador se hace alla y no aca.
             cur.execute(
-                """SELECT email, TRIM(COALESCE(nombre,'') || ' ' || COALESCE(apellido,'')), role
-                     FROM users WHERE COALESCE(activo, TRUE) AND role = ANY(%s) ORDER BY 2, 1""",
-                (list(ROLES_AUDITAN),))
+                """SELECT DISTINCT u.email, TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), u.role
+                     FROM users u
+                     JOIN area_usuarios au ON au.user_id = u.id
+                     JOIN areas a ON a.id = au.area_id
+                    WHERE a.nombre = %s AND COALESCE(u.activo, TRUE)
+                    ORDER BY 2, 1""",
+                (AREA_AUDITA,))
             auditores = [{"email": r[0], "nombre": r[1] or r[0], "role": r[2]} for r in cur.fetchall()]
             # Las CAUSAS posibles de una no conformidad: el Ishikawa del área Cubicaciones
             # que Calidad ya tiene cargado. Así las auditorías alimentan el mismo Pareto
