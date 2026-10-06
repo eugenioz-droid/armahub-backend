@@ -54,7 +54,7 @@ const DATOS = [
   { anio: 2025, mes: 3, cubicador: 'Mario Puyo', servicio: 'Externo', segmento: '4 y 5', tipo: 'faltante', aplica: 'si', analisis: 'sin_causa', causa: null, historico: true, n: 7, kilos: 0, con_kilos: 0 },
   { anio: 2025, mes: 3, cubicador: 'Mario Puyo', servicio: 'Externo', segmento: '1 y 2', tipo: 'error', aplica: 'no', analisis: 'sin_causa', causa: null, historico: true, n: 4, kilos: 900, con_kilos: 4 },
   { anio: 2024, mes: 6, cubicador: 'Gerardo Mendoza', servicio: 'Interno', segmento: '1 y 2', tipo: 'error', aplica: 'si', analisis: 'por_validar', causa: 'No revisa lo ingresado', historico: true, n: 5, kilos: 200, con_kilos: 2 },
-  { anio: 2024, mes: 6, cubicador: 'Sin asignar', servicio: '(sin cubicador)', segmento: '(sin segmento)', tipo: 'atraso', aplica: 'pendiente', analisis: 'sin_causa', causa: null, historico: true, n: 3, kilos: 0, con_kilos: 0 },
+  { anio: 2024, mes: 6, cubicador: 'Sin asignar', servicio: null, segmento: '(sin segmento)', tipo: 'atraso', aplica: 'pendiente', analisis: 'sin_causa', causa: null, historico: true, n: 3, kilos: 0, con_kilos: 0 },
 ];
 
 sandbox.apiGet = async function (ruta) {
@@ -93,11 +93,17 @@ check('hay un tercer sub-tab y apunta a su panel',
 
   console.log('\n3. El filtro de servicio separa internos de externos');
   // Hace falta porque la mitad del equipo es externa y mezclarlos no deja comparar.
-  // Y 'sin cubicador' NO es un tercer tipo de servicio: habiendo cubicador siempre
-  // sale interno o externo, asi que lo unico que cae ahi es un reclamo sin nadie.
-  check('«sin cubicador» se llama por lo que es, no «sin dato»',
-    sandbox.RH_SERV_TXT['(sin cubicador)'] === 'Sin cubicador'
-    && sandbox.RH_SERV_TXT['(sin dato)'] === undefined);
+  // SOLO HAY DOS SERVICIOS. Dependen de quien cubico, asi que un reclamo sin
+  // cubicador no tiene un tercero: no tiene ninguno. Ofrecer un chip mas mezclaba
+  // dos preguntas distintas; si hay o no cubicador se mira en su propio filtro.
+  check('el filtro de servicio ofrece dos opciones y no tres',
+    Object.keys(sandbox.RH_SERV_TXT).length === 2
+    && sandbox.RH_SERV_TXT.Interno && sandbox.RH_SERV_TXT.Externo);
+  check('...y el reclamo sin cubicador no inventa un servicio',
+    sandbox.rhValores('servicio').length === 2);
+  check('...pero sigue contando cuando no se filtra por servicio',
+    sandbox.RH_F.servicio.length === 0
+    && sandbox.rhFilas().some(function (f) { return f.servicio == null; }));
   sandbox.RH_F.servicio = ['Interno'];
   check('sólo internos: 15 reclamos', sandbox.rhFilas().reduce((a, f) => a + f.n, 0) === 15);
   sandbox.RH_F.servicio = ['Externo'];
