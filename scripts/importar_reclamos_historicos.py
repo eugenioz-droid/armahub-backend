@@ -132,8 +132,12 @@ NOMBRES = {
     # usuario y por aSa, donde detallo 703 codigos en 2024 en las mismas obras de sus
     # reclamos. Cuenta como un cubicador externo mas; antes quedaba "sin asignar".
     "rmc": "RMC",
+    # Mapec, lo mismo: proveedor externo, confirmado por el usuario. Un reclamo de 2022.
+    "mapec": "Mapec",
 }
-NO_PERSONAS = {"mapec", "na", ""}   # basura o un dato suelto: no son un cubicador
+# Lo unico que no es un cubicador: la celda vacia y el "NA" que alguien escribio por no
+# saber quien fue. Ese reclamo queda sin cubicador a proposito, hasta que se sepa.
+NO_PERSONAS = {"na", ""}
 
 
 def sinacento(s):

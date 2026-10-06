@@ -85,11 +85,12 @@ check("...y Pantoja sólo entra cuando viene con apellido",
 check("los nombres de pila se completan", NOMBRES["gerardo"] == "Gerardo Mendoza"
       and NOMBRES["mario"] == "Mario Puyo" and NOMBRES["carlos"] == "Carlos Santos")
 check("lo que no es una persona no cuenta como cubicador",
-      "mapec" in NO_PERSONAS and "na" in NO_PERSONAS)
+      "na" in NO_PERSONAS and "" in NO_PERSONAS and "mapec" not in NO_PERSONAS)
 # RMC es un proveedor externo de cubicacion, no basura: el usuario lo confirmo y en aSa
 # detallo 703 codigos en 2024. Cuenta como un cubicador externo mas.
-check("RMC cuenta como cubicador externo, no como dato perdido",
-      NOMBRES.get("rmc") == "RMC" and "rmc" not in NO_PERSONAS)
+check("RMC y Mapec cuentan como cubicadores externos, no como dato perdido",
+      NOMBRES.get("rmc") == "RMC" and NOMBRES.get("mapec") == "Mapec"
+      and "rmc" not in NO_PERSONAS and "mapec" not in NO_PERSONAS)
 check("recargar no pisa el aplica ni el tipo de lo ya analizado",
       "THEN EXCLUDED.aplica ELSE reclamos.aplica END" in SRC
       and "THEN EXCLUDED.tipo_reclamo ELSE reclamos.tipo_reclamo END" in SRC)
