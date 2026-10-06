@@ -744,7 +744,8 @@ async function loadDashHistorico() {
 // La arqueología: clasificar la causa de los reclamos de 2022-2025. Hecho para hacer
 // muchos seguidos, así que todo lo que se repite está a un clic y al guardar se salta
 // solo al siguiente pendiente.
-var AH = { filas: [], sel: null, detalle: null, causas: [], cargado: false };
+var AH = { filas: [], sel: null, detalle: null, causas: [], cargado: false, area_id: null,
+           causaSel: null, cbCubicador: null };
 // Qué filtros están puestos. Vacío = todos: así empieza y así se vuelve con «Todos».
 var AH_F = { anio: [], cubicador: [], segmento: [], tipo: [], estado: [] };
 var AH_ESTADOS = [
@@ -759,11 +760,9 @@ function ahEsc(s) {
   });
 }
 
-// Marcar y desmarcar: el clic simple suma y resta, sin pedir Ctrl. Acá se hace mucho.
-function ahMarcar(lista, valor) {
-  var i = lista.indexOf(valor);
-  if (i >= 0) lista.splice(i, 1); else lista.push(valor);
-}
+// Elegir como en los dashboards de programación: clic deja sólo ése, Ctrl+clic suma,
+// tocar el único encendido lo suelta. Misma regla en toda la plataforma.
+function ahMarcar(lista, valor, ev) { rhMarcar(lista, valor, ev); }
 
 function ahPasa(f) {
   return (!AH_F.anio.length || AH_F.anio.indexOf(f.anio) >= 0)
@@ -777,18 +776,27 @@ function ahVisibles() {
   return AH.filas.filter(ahPasa);
 }
 
-// UN GRUPO DE BOTONES. Cada uno lleva su cuenta dentro: sin eso hay que marcar para
-// descubrir que un cubicador no tiene nada, que es justo el ruido que se quiere sacar.
-function ahGrupo(titulo, clave, valores, etiqueta) {
+// LOS CHIPS, con la cuenta de cada valor adentro. Se calcula sobre TODO y no sobre lo
+// filtrado: si se encogiera al filtrar, los apagados marcarían cero y no se sabría qué
+// hay detrás de encenderlos.
+function ahChips(idCont, clave, valores, etiqueta) {
+  var cont = document.getElementById(idCont);
+  if (!cont) return;
   var sel = AH_F[clave];
   var cuenta = {};
   AH.filas.forEach(function (f) { cuenta[f[clave]] = (cuenta[f[clave]] || 0) + 1; });
-  return '<div class="ahgrupo"><span class="ahlbl">' + ahEsc(titulo) + '</span><div class="ahchips" data-g="' + clave + '">' +
-    '<button data-todos="1" class="' + (sel.length ? '' : 'on') + '">Todos</button>' +
-    valores.map(function (v) {
-      return '<button data-v="' + ahEsc(v) + '" class="' + (sel.indexOf(v) >= 0 ? 'on' : '') + '">' +
-        ahEsc(etiqueta ? etiqueta(v) : v) + '<i>' + (cuenta[v] || 0) + '</i></button>';
-    }).join('') + '</div></div>';
+  cont.innerHTML = valores.map(function (v) {
+    return '<button data-v="' + ahEsc(v) + '" class="' + (sel.indexOf(v) >= 0 ? 'on' : '') + '">' +
+      ahEsc(etiqueta ? etiqueta(v) : v) + '<i>' + (cuenta[v] || 0) + '</i></button>';
+  }).join('');
+  cont.querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('click', function (ev) {
+      // Los años viajan como número y el resto como texto: sin esto '2024' no casaría
+      // nunca con 2024 y el filtro de año no haría nada.
+      ahMarcar(AH_F[clave], clave === 'anio' ? Number(b.dataset.v) : b.dataset.v, ev);
+      ahPintarFiltros(); ahPintarLista();
+    });
+  });
 }
 
 function ahDistintos(clave) {
@@ -800,31 +808,48 @@ function ahDistintos(clave) {
   });
 }
 
+// El cubicador es un DESPLEGABLE CON BÚSQUEDA, no una fila de chips: la lista es larga y
+// con nombres parecidos, y escribir tres letras es más rápido que buscar el botón. Es el
+// mismo combobox compartido de toda la plataforma, montado UNA vez.
+function ahMontarCubicador() {
+  var input = document.getElementById('ahCubicador');
+  if (!input || AH.cbCubicador || !window.Combobox) return;
+  AH.cbCubicador = window.Combobox.crear(input, {
+    items: function () {
+      var cuenta = {};
+      AH.filas.forEach(function (f) { cuenta[f.cubicador] = (cuenta[f.cubicador] || 0) + 1; });
+      return [{ id: '', label: 'Todos los cubicadores', sub: AH.filas.length + ' reclamos' }].concat(
+        ahDistintos('cubicador').map(function (c) { return { id: c, label: c, sub: cuenta[c] + ' reclamos' }; }));
+    },
+    placeholder: '🔍 todos · escribe para buscar',
+    onSelect: function (it) {
+      AH_F.cubicador = (it && it.id) ? [it.id] : [];
+      if (!it || !it.id) AH.cbCubicador.setValor(null);
+      ahPintarFiltros(); ahPintarLista();
+    }
+  });
+}
+
 function ahPintarFiltros() {
-  var cont = document.getElementById('ahFiltros');
-  if (!cont) return;
-  cont.innerHTML =
-    ahGrupo('Año', 'anio', ahDistintos('anio')) +
-    ahGrupo('Estado', 'estado', AH_ESTADOS.map(function (e) { return e.k; }), function (k) {
-      var e = AH_ESTADOS.filter(function (x) { return x.k === k; })[0];
-      return e ? e.t : k;
-    }) +
-    ahGrupo('Cubicador', 'cubicador', ahDistintos('cubicador')) +
-    ahGrupo('Segmento', 'segmento', ahDistintos('segmento')) +
-    ahGrupo('Tipo', 'tipo', ahDistintos('tipo'), function (t) { return TIPO_TXT[t] || t; });
-  cont.querySelectorAll('.ahchips button').forEach(function (b) {
-    b.addEventListener('click', function () {
-      var g = b.parentNode.dataset.g;
-      if (b.dataset.todos) AH_F[g].length = 0;
-      else {
-        var v = b.dataset.v;
-        // Los años viajan como número y el resto como texto: sin esto el filtro de año
-        // no casaría nunca, porque '2024' no es 2024.
-        ahMarcar(AH_F[g], g === 'anio' ? Number(v) : v);
-      }
+  ahChips('ahAnios', 'anio', ahDistintos('anio'));
+  ahChips('ahEstados', 'estado', AH_ESTADOS.map(function (e) { return e.k; }), function (k) {
+    var e = AH_ESTADOS.filter(function (x) { return x.k === k; })[0];
+    return e ? e.t : k;
+  });
+  ahChips('ahSegmentos', 'segmento', ahDistintos('segmento'));
+  ahMontarCubicador();
+  // El tipo es un select: son pocos valores y no hace falta verlos todos a la vez.
+  var sel = document.getElementById('ahTipo');
+  if (sel && !sel.dataset.listo) {
+    sel.innerHTML = '<option value="">Todos</option>' + ahDistintos('tipo').map(function (t) {
+      return '<option value="' + ahEsc(t) + '">' + ahEsc(TIPO_TXT[t] || t) + '</option>';
+    }).join('');
+    sel.dataset.listo = '1';
+    sel.addEventListener('change', function () {
+      AH_F.tipo = sel.value ? [sel.value] : [];
       ahPintarFiltros(); ahPintarLista();
     });
-  });
+  }
 }
 
 function ahPintarLista() {
@@ -888,17 +913,8 @@ function ahPintarDetalle() {
       }).join('\n') + '</div>'
     : '';
 
-  var porCat = {};
-  AH.causas.forEach(function (c) {
-    (porCat[c.categoria_nombre] = porCat[c.categoria_nombre] || []).push(c);
-  });
-  var opciones = '<option value="">— sin causa todavía —</option>' +
-    Object.keys(porCat).sort().map(function (cat) {
-      return '<optgroup label="' + ahEsc(cat) + '">' + porCat[cat].map(function (c) {
-        return '<option value="' + ahEsc(c.codigo) + '"' + (d.cod_causa === c.codigo ? ' selected' : '') +
-          '>' + ahEsc(c.descripcion) + '</option>';
-      }).join('') + '</optgroup>';
-    }).join('');
+  // La causa se arranca de lo que trae el reclamo; después la cambia el modal.
+  AH.causaSel = d.cod_causa ? { categoria: d.categoria, cod_causa: d.cod_causa, sub_causa: d.sub_causa } : null;
 
   var sello = d.validado_el
     ? '<span style="color:#2e7d32; font-weight:700;">Validado por ' + ahEsc((d.validado_por || '').split('@')[0]) + '</span>'
@@ -914,8 +930,15 @@ function ahPintarDetalle() {
       (d.analista ? ' · analizó ' + ahEsc(d.analista) : '') + ' · ' + sello + '</div>' +
     bloques + acc +
     '<div class="ahform">' +
+      // LA MISMA FILA QUE EN RECLAMOS: el texto de la causa, la lupa que abre el modal
+      // de Ishikawa y la equis que la quita. Un select propio acá era otra forma de
+      // hacer lo mismo, y el modal se lee mejor: las causas van agrupadas por M.
       '<label>Causa raíz (Ishikawa)</label>' +
-      '<select id="ahCausa">' + opciones + '</select>' +
+      '<div style="display:flex; gap:6px; align-items:center;">' +
+        '<input type="text" id="ahCausaDisplay" readonly style="flex:1; cursor:pointer;" value="' + ahEsc(ahCausaTexto()) + '" placeholder="Sin causa todavía · clic para elegir">' +
+        '<button type="button" class="secondary" id="ahCausaBuscar" style="font-size:11px; padding:4px 8px;">🔍</button>' +
+        '<button type="button" class="secondary" id="ahCausaQuitar" style="font-size:11px; padding:4px 8px; color:#b42318;" title="Quitar la causa">✕</button>' +
+      '</div>' +
       '<label>Explicación</label>' +
       '<textarea id="ahExplicacion" rows="3" placeholder="Por qué ocurrió, en tus palabras.">' +
         ahEsc(d.explicacion || '') + '</textarea>' +
@@ -938,6 +961,37 @@ function ahPintarDetalle() {
       '</div>' +
     '</div>';
   document.getElementById('ahGuardar').addEventListener('click', ahGuardar);
+  var abrir = function () { if (typeof abrirIshikawaModal === 'function') abrirIshikawaModal('analisis'); };
+  document.getElementById('ahCausaDisplay').addEventListener('click', abrir);
+  document.getElementById('ahCausaBuscar').addEventListener('click', abrir);
+  document.getElementById('ahCausaQuitar').addEventListener('click', function () {
+    AH.causaSel = null;
+    document.getElementById('ahCausaDisplay').value = '';
+  });
+}
+
+function ahCausaTexto() {
+  var c = AH.causaSel;
+  if (!c || !c.cod_causa) return '';
+  // El nombre de la categoría y el texto de la sub-causa salen del catálogo cuando el
+  // reclamo no los trae: lo importado de planilla a veces tiene el código y no el
+  // texto, y mostrar sólo «[MO06] Mano de Obra» deja la fila a medias.
+  var del = AH.causas.filter(function (x) { return x.codigo === c.cod_causa; })[0] || {};
+  var cat = del.categoria_nombre || c.categoria || '';
+  var sub = c.sub_causa || del.descripcion || '';
+  return '[' + c.cod_causa + '] ' + cat + (sub ? ' > ' + sub : '');
+}
+
+// LO QUE EL MODAL NECESITA SABER de esta pantalla, y lo que devuelve. Expuesto en
+// window porque el modal vive en otro archivo y así no hay que duplicarlo.
+window.ahIshikawa = function () {
+  return { categoria: AH.causaSel && AH.causaSel.categoria, cod_causa: AH.causaSel && AH.causaSel.cod_causa,
+           sub_causa: AH.causaSel && AH.causaSel.sub_causa, area_id: AH.area_id };
+};
+window.ahCausaElegida = function (sel) {
+  AH.causaSel = { categoria: sel.categoria, cod_causa: sel.cod_causa, sub_causa: sel.sub_causa };
+  var el = document.getElementById('ahCausaDisplay');
+  if (el) el.value = ahCausaTexto();
 }
 
 // No hay helper de PUT en la capa compartida; se arma como en el resto del archivo.
@@ -959,7 +1013,7 @@ async function ahGuardar() {
   btn.disabled = true;
   try {
     var guardado = await ahPut('/reclamos/analisis/' + d.id, {
-      cod_causa: document.getElementById('ahCausa').value || null,
+      cod_causa: (AH.causaSel && AH.causaSel.cod_causa) || null,
       explicacion: document.getElementById('ahExplicacion').value,
       aplica: document.getElementById('ahAplica').value,
       tipo_reclamo: document.getElementById('ahTipo').value
@@ -1007,6 +1061,7 @@ async function cargarAnalisisHistorico() {
   if (!d) return;
   AH.filas = d.filas || [];
   AH.causas = d.causas || [];
+  AH.area_id = d.area_id || null;
   AH.cargado = true;
   // Se abre en lo que falta: entrar y ver los ya validados primero sería empezar
   // buscando.

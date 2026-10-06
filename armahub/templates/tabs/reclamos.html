@@ -20,16 +20,13 @@
          guardar salta solo al siguiente. -->
     <div id="recSubAnalisis" style="display:none;">
       <style>
-        .ahbar{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px;}
-        .ahgrupo{display:flex; flex-direction:column; gap:3px;}
-        .ahlbl{font-size:9.5px; font-weight:700; color:#90a4ae; letter-spacing:.4px; text-transform:uppercase;}
-        .ahchips{display:flex; gap:4px; flex-wrap:wrap; max-width:620px;}
-        /* El filtro es un botón que se ve apretado o suelto. Nada escondido tras un
-           menú: acá hay que marcar y desmarcar cubicadores muchas veces. */
-        .ahchips button{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; background:#fff;
-                        color:#546e7a; border-radius:11px; cursor:pointer; white-space:nowrap;}
-        .ahchips button.on{background:#5e35b1; border-color:#5e35b1; color:#fff; font-weight:700;}
-        .ahchips button i{font-style:normal; opacity:.65; margin-left:4px; font-size:9.5px;}
+        /* LOS FILTROS SON LOS DE LOS DASHBOARDS DE PROGRAMACIÓN (.dshbarra/.dshchips,
+           definidos en asa_data.html y cargados en el mismo documento). Año, estado y
+           segmento son botones; el cubicador es un desplegable con búsqueda porque la
+           lista es larga; el tipo, un select. Lo único propio es la cuenta en el chip. */
+        .dshchips button i{font-style:normal; opacity:.6; margin-left:4px; font-size:9.5px;}
+        .ahcub{width:260px; font-size:11px; padding:3px 7px; border:1px solid #dfe5ea; border-radius:4px;}
+        .ahsel{font-size:11px; padding:3px 7px; border:1px solid #dfe5ea; border-radius:4px; background:#f7f9fa; color:#607d8b;}
         .ahcuerpo{display:grid; grid-template-columns:420px 1fr; gap:12px; align-items:start;}
         .ahcaja{background:#fff; border:1px solid #eee; border-radius:8px;}
         .ahlista{max-height:62vh; overflow-y:auto;}
@@ -62,10 +59,22 @@
         .ahavance b{color:#5e35b1;}
       </style>
 
-      <div class="ahbar" id="ahFiltros"></div>
-      <div class="ahbar" style="margin-bottom:8px;">
-        <span class="ahavance" id="ahAvance"></span>
+      <div class="dshbarra">
+        <span class="dshbl">Año</span><div id="ahAnios" class="dshchips" data-g="anio"></div>
+        <span class="dshsep"></span>
+        <span class="dshbl">Estado</span><div id="ahEstados" class="dshchips" data-g="estado"></div>
+        <span class="dshsep"></span>
+        <span class="dshbl">Segmento</span><div id="ahSegmentos" class="dshchips" data-g="segmento"></div>
+        <span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>
       </div>
+      <div class="dshbarra">
+        <span class="dshbl">Cubicador</span>
+        <input type="text" id="ahCubicador" class="ahcub" placeholder="🔍 todos · escribe para buscar">
+        <span class="dshsep"></span>
+        <span class="dshbl">Tipo</span>
+        <select id="ahTipo" class="ahsel"><option value="">Todos</option></select>
+      </div>
+      <div style="margin:0 0 8px;"><span class="ahavance" id="ahAvance"></span></div>
 
       <div class="ahcuerpo">
         <div class="ahcaja ahlista" id="ahLista"></div>

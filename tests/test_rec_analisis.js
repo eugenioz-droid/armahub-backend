@@ -30,14 +30,26 @@ function nodo(id) {
   return nodos[id];
 }
 
+// El combobox compartido, de mentira: guarda lo que le pasan y deja disparar onSelect.
+const combos = [];
+function ComboboxFalso(input, opts) {
+  const cb = { input, opts, valor: null, setValor(it) { this.valor = it; } };
+  combos.push(cb);
+  return cb;
+}
 const sandbox = {
   console, window: {}, ChartDataLabels: {},
+  Combobox: { crear: ComboboxFalso },
+  abrirIshikawaModal(target) { sandbox.__modalAbierto = target; },
   Chart: function (ctx, cfg) { this.cfg = cfg; this.destroy = function () {}; },
   document: { getElementById: (id) => nodo(id), querySelectorAll: () => [], querySelector: () => null },
   setTimeout, clearTimeout, fetch: async () => ({ ok: true, json: async () => ({}) }),
   apiUrl: (p) => p, authHeaders: () => ({}),
 };
 sandbox.Chart.defaults = { plugins: {} };
+// En el navegador `window` ES el global: `window.Combobox` y `Combobox` son lo mismo. El
+// sandbox tiene que imitarlo, o el código que busca `window.Combobox` no lo encuentra.
+sandbox.window = sandbox;
 
 // La lista con la forma real del endpoint: dos años, cuatro cubicadores, los tres
 // estados. Lo justo para que cada filtro tenga algo que dejar fuera.
@@ -83,10 +95,26 @@ check('...y limitado al rol admin',
 (async function () {
   await sandbox.cargarAnalisisHistorico();
 
+  console.log('\n1b. Los filtros siguen el diseño de la plataforma');
+  // Año, estado y segmento son botones del mismo estilo que los dashboards; el
+  // cubicador es el desplegable con búsqueda compartido, montado UNA vez; el tipo, un
+  // select. Nada inventado para esta pantalla.
+  check('los años se pintan como chips con su cuenta',
+    nodo('ahAnios').innerHTML.indexOf('data-v="2025"') >= 0 && nodo('ahAnios').innerHTML.indexOf('<i>2</i>') >= 0);
+  check('el estado también', nodo('ahEstados').innerHTML.indexOf('Por validar') >= 0);
+  check('el segmento también', nodo('ahSegmentos').innerHTML.indexOf('4 y 5') >= 0);
+  check('el cubicador es el combobox compartido, montado una sola vez',
+    combos.length === 1 && combos[0].input.id === 'ahCubicador');
+  check('...con «Todos» como primera opción y la cuenta de cada uno',
+    combos[0].opts.items()[0].id === '' && combos[0].opts.items().some(function (i) { return i.label === 'José Pantoja' && i.sub === '1 reclamos'; }));
+  check('el tipo es un select con «Todos» y los tipos en castellano',
+    nodo('ahTipo').innerHTML.indexOf('<option value="">Todos</option>') === 0
+    && nodo('ahTipo').innerHTML.indexOf('Faltante de cubicación') > 0);
+
   console.log('\n2. Abre en lo que falta, no en lo ya hecho');
   // Entrar y ver primero los validados sería empezar buscando.
   check('arranca filtrando por sin causa y por validar',
-    JSON.stringify(sandbox.AH_F.estado.sort()) === JSON.stringify(['por_validar', 'sin_causa']));
+    JSON.stringify(sandbox.AH_F.estado.slice().sort()) === JSON.stringify(['por_validar', 'sin_causa']));
   check('...así que el validado no aparece', sandbox.ahVisibles().length === 3);
   check('y se abrió el primero pendiente solo', nodo('ahLista').innerHTML.indexOf('Faltante eje J') > 0);
 
@@ -101,6 +129,12 @@ check('...y limitado al rol admin',
   check('los filtros se combinan con Y, no con O',
     sandbox.ahVisibles()[0].correlativo === 'H-2024-011');
   sandbox.AH_F.anio.length = 0; sandbox.AH_F.cubicador.length = 0;
+
+  console.log('\n3b. Elegir en el desplegable filtra, y «Todos» suelta');
+  combos[0].opts.onSelect({ id: 'Gerardo Mendoza', label: 'Gerardo Mendoza' });
+  check('un cubicador elegido deja sólo sus reclamos', sandbox.ahVisibles().length === 2);
+  combos[0].opts.onSelect({ id: '', label: 'Todos los cubicadores' });
+  check('«Todos» vuelve a mostrar todo', sandbox.AH_F.cubicador.length === 0 && sandbox.ahVisibles().length === 4);
 
   console.log('\n4. El contador dice lo que falta');
   sandbox.ahPintarLista();
@@ -140,16 +174,26 @@ check('...y limitado al rol admin',
   await sandbox.ahAbrir(2);
   var det = nodo('ahDetalle').innerHTML;
   check('el título y la obra', det.indexOf('Patas cortas') > 0 && det.indexOf('SANTOLAYA') > 0);
-  check('la causa que trae queda elegida en el selector',
-    det.indexOf('value="MO06" selected') > 0);
+  // LA CAUSA SE ELIGE EN EL MISMO MODAL DE RECLAMOS, no en un select propio. La fila
+  // es la misma que allá: el texto, la lupa y la equis.
+  check('la causa que trae se muestra como en Reclamos: [código] categoría > sub-causa',
+    det.indexOf('value="[MO06] Mano de Obra &gt; Error al digitar o transcribir datos"') > 0
+    || det.indexOf('value="[MO06] Mano de Obra > Error al digitar o transcribir datos"') > 0);
   check('...y se avisa que viene de planilla y falta validarla',
     det.indexOf('falta validarlo') > 0);
-  check('las causas se agrupan por categoría, que son 35 en una lista plana',
-    det.indexOf('<optgroup label="Mano de Obra">') > 0);
-  check('se puede dejar sin causa a propósito', det.indexOf('sin causa todav') > 0);
+  check('hay lupa para abrir el modal y equis para quitar la causa',
+    det.indexOf('id="ahCausaBuscar"') > 0 && det.indexOf('id="ahCausaQuitar"') > 0);
+  check('no hay un select propio de causas', det.indexOf('<optgroup') < 0 && det.indexOf('id="ahCausa"') < 0);
+  // El modal devuelve la elección por window.ahCausaElegida y la pantalla la toma.
+  sandbox.window.ahCausaElegida({ categoria: 'metodo', cod_causa: 'MD01', sub_causa: 'No se indica en procedimiento estandarizado' });
+  check('lo que el modal devuelve queda como causa a guardar',
+    sandbox.AH.causaSel.cod_causa === 'MD01' && nodo('ahCausaDisplay').value.indexOf('[MD01]') === 0);
+  check('...y el modal sabe desde dónde se abrió: área y selección actual',
+    sandbox.window.ahIshikawa().cod_causa === 'MD01' && 'area_id' in sandbox.window.ahIshikawa());
   await sandbox.ahAbrir(1);
-  check('un reclamo sin kilos lo dice, en vez de mostrar un cero falso',
+  check('un reclamo con kilos los muestra',
     nodo('ahDetalle').innerHTML.indexOf('180 kg') > 0);
+  check('...y uno sin causa arranca con el display vacío', sandbox.AH.causaSel === null);
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
   process.exit(fallos ? 1 : 0);

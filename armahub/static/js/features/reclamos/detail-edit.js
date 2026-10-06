@@ -1116,10 +1116,14 @@ async function _initRcaMetodoParaReclamo(data) {
 async function abrirIshikawaModal(target) {
   _ishikawaTarget = target || 'create';
 
-  // Preserve existing selection if it exists
-  var existingCat = document.getElementById('recDetailCategoria').value;
-  var existingSub = document.getElementById('recDetailSubCausa').value;
-  var existingCod = document.getElementById('recDetailCodCausa').value;
+  // Preserve existing selection if it exists. Con destino 'analisis' (la pantalla de
+  // análisis histórico) la selección actual y el área no salen del formulario del
+  // reclamo sino de esa pantalla, que las expone en window.ahIshikawa. Así el mismo
+  // modal sirve para las dos sin duplicarlo.
+  var ext = (_ishikawaTarget === 'analisis' && window.ahIshikawa) ? window.ahIshikawa() : null;
+  var existingCat = ext ? (ext.categoria || '') : document.getElementById('recDetailCategoria').value;
+  var existingSub = ext ? (ext.sub_causa || '') : document.getElementById('recDetailSubCausa').value;
+  var existingCod = ext ? (ext.cod_causa || '') : document.getElementById('recDetailCodCausa').value;
   
   if (existingCat && existingSub && existingCod) {
     _ishikawaSelection = { categoria: existingCat, sub_causa: existingSub, cod_causa: existingCod };
@@ -1131,7 +1135,7 @@ async function abrirIshikawaModal(target) {
   }
 
   // Cargar matriz del área actual del reclamo (con cache por área)
-  var areaId = _reclamoActual && _reclamoActual.area_id;
+  var areaId = ext ? ext.area_id : (_reclamoActual && _reclamoActual.area_id);
   await _cargarMatrizIshikawa(areaId);
   // Si el área no tiene matriz Ishikawa, sugerir 5 Por Qué y cerrar
   if (!_ishikawaTieneCategorias()) {
@@ -1171,6 +1175,11 @@ function seleccionarIshikawa(radio) {
 
 function confirmarIshikawa() {
   if (!_ishikawaSelection.categoria) { alert('Selecciona una causa primero'); return; }
+  if (_ishikawaTarget === 'analisis' && window.ahCausaElegida) {
+    window.ahCausaElegida(_ishikawaSelection);
+    cerrarIshikawaModal();
+    return;
+  }
   var displayText = '[' + _ishikawaSelection.cod_causa + '] ' + (_recIshikawaLabels[_ishikawaSelection.categoria] || '') + ' > ' + _ishikawaSelection.sub_causa;
   document.getElementById('recDetailCausaDisplay').value = displayText;
   document.getElementById('recDetailCategoria').value = _ishikawaSelection.categoria;

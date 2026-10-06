@@ -1141,7 +1141,12 @@ def reclamos_analisis_lista(user=Depends(get_current_user)):
                             ORDER BY c.nombre, s.orden, s.id""")
             causas = [{"codigo": r[0], "categoria": r[1], "categoria_nombre": r[2],
                        "descripcion": r[3]} for r in cur.fetchall()]
-    return {"filas": filas, "causas": causas, "anio_tope": ANIO_TOPE_ANALISIS}
+            # El area de Cubicaciones: el modal de causas de Reclamos carga la matriz
+            # Ishikawa por area, y todos los historicos son de esa area.
+            cur.execute("SELECT id FROM areas WHERE nombre = 'Cubicaciones' LIMIT 1")
+            fila_area = cur.fetchone()
+    return {"filas": filas, "causas": causas, "anio_tope": ANIO_TOPE_ANALISIS,
+            "area_id": fila_area[0] if fila_area else None}
 
 
 @router.get("/reclamos/analisis/{reclamo_id}")
