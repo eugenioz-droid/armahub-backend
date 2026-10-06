@@ -129,6 +129,12 @@ s, d = get("/programacion/asa/reporte")
 check("GET /programacion/asa/reporte SIN parametros -> 200 (era el 422)", s == 200, str(d)[:160])
 s, d = get("/programacion/asa/reporte", anio=2026, meses="8,9")
 check("GET /programacion/asa/reporte?anio=2026&meses=8,9 -> 200", s == 200, str(d)[:160])
+# CUANDO SE TRAJO Y COMO FUE EL ULTIMO INTENTO. El 6-oct la carga de 2026 se atoro a los
+# 20 s y la pantalla siguio mostrando lo de una semana antes sin decirlo.
+esp = (d or {}).get("espejo") or {}
+check("...y dice cuando se trajo y como fue el ultimo intento",
+      isinstance(esp.get("filas_anio"), int) and "ultima_sync" in esp and "ultimo_intento" in esp,
+      str(esp)[:200])
 # El reporte manda UNA lista con todas las filas del periodo; separarlas en las dos cajas
 # y filtrar por estado lo hace el front, que es el que sabe que obra y que cubicador tiene
 # marcados el usuario. Antes el estado se filtraba aca y los conteos de los botones salian

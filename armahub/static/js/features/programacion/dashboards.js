@@ -186,12 +186,33 @@
     $('dshAviso').innerHTML = '<b>No se pudo cargar el reporte.</b> ' + esc(msg || '');
   }
 
+  // CUÁNDO SE TRAJO ESTO. Un espejo no dice su edad solo, y el 6-oct la carga de 2026 se
+  // atoró a los 20 s: la pantalla siguió mostrando lo de una semana antes como si nada
+  // («presioné actualizar y creería que no se actualizó nada»). Ahora el encabezado dice
+  // cuándo se trajo, y si el último intento de ESE año falló lo dice con su motivo.
+  function fechaHora(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var dos = function (n) { return (n < 10 ? '0' : '') + n; };
+    return dos(d.getDate()) + '/' + dos(d.getMonth() + 1) + ' ' + dos(d.getHours()) + ':' + dos(d.getMinutes());
+  }
+
   function pintarTodo() {
     var esp = DATA.espejo || {};
+    var intento = esp.ultimo_intento;
     $('dshEspejo').textContent = esp.filas_anio
       ? esp.filas_anio + ' códigos de control en ' + (DATA.anio ? DATA.anio : 'toda la historia') +
-        (DATA.anulados ? ' · ' + DATA.anulados + ' anulados (sólo en la barra por estado de Obras aSa)' : '')
+        (DATA.anulados ? ' · ' + DATA.anulados + ' anulados (sólo en la barra por estado de Obras aSa)' : '') +
+        (esp.ultima_sync ? ' · traído de aSa el ' + fechaHora(esp.ultima_sync) : '')
       : '';
+    if (intento && intento.ok === false) {
+      $('dshAviso').className = 'prgaviso mal';
+      $('dshAviso').innerHTML = '<b>Lo último que se trajo de ' + esc(String(DATA.anio || '')) +
+        ' falló</b>' + (intento.fin ? ' (' + esc(fechaHora(intento.fin)) + ')' : '') + ': ' +
+        esc(intento.detalle || 'sin detalle') + '. Lo que se ve es de la última vez que sí se pudo' +
+        (esp.ultima_sync ? ', el ' + esc(fechaHora(esp.ultima_sync)) : '') + '. Vuelve a pulsar ↻ Traer de aSa.';
+    }
     // Un espejo vacío no es un error, pero tampoco es «no hay trabajo»: hay que decir
     // que falta traer la data, o el usuario lee cero donde hay cientos de toneladas.
     if (!esp.filas_anio) {
@@ -1093,6 +1114,13 @@
       total + ' códigos de control · ' + nuevos + ' nuevos', fallidos.length ? 'error' : 'success');
     if (fallidos.length) aviso('No se pudo traer: ' + fallidos.join(', '));
     await cargar();
+    // El aviso del año que falló lo pinta `pintarTodo` desde el espejo; acá sólo se deja
+    // dicho en el encabezado si el año a la vista fue uno de los que no se pudo traer.
+    if (fallidos.some(function (f) { return String(f).indexOf(String(ANIO)) === 0; })) {
+      $('dshAviso').className = 'prgaviso mal';
+      $('dshAviso').innerHTML = '<b>No se pudo traer ' + esc(String(ANIO)) + ' de aSa.</b> ' +
+        'Lo que se ve es lo que había antes. Intenta de nuevo en un rato.';
+    }
   }
 
   // Expuesto SÓLO para los tests: las reglas puras, sin DOM. Poder ejecutarlas es lo que

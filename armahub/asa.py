@@ -86,11 +86,29 @@ def _base() -> str:
     return url.rstrip("/")
 
 
-def _timeout() -> float:
+def _timeout(segundos: Optional[float] = None) -> float:
+    """La espera por una respuesta de aSa. `segundos` lo fija quien llama, para las
+    consultas que se sabe que son largas (ver TIMEOUT_CARGA)."""
+    if segundos:
+        return float(segundos)
     try:
         return float(_cfg("ASA_TIMEOUT", "20"))
     except ValueError:
         return 20.0
+
+
+# LA CARGA DE UN AÑO COMPLETO NO CABE EN 20 SEGUNDOS (6-oct). El `$apply` de un año entero
+# es la consulta más pesada que se le hace a aSa, y la del año EN CURSO es la más pesada de
+# todas porque es la que más códigos tiene: el 6-oct el «Traer de aSa» trajo 2025 y la
+# planta, y se atoró justo en 2026 —«se agotó la espera de 20.0s»—, así que el usuario
+# quedó mirando datos de una semana antes sin saberlo. Esta espera es sólo para esa carga,
+# que la dispara una persona a propósito y puede esperar; el resto de las consultas sigue
+# con los 20 s, que es lo que hace falta para que una pantalla no se quede colgada.
+def _timeout_carga() -> float:
+    try:
+        return float(_cfg("ASA_TIMEOUT_CARGA", "150"))
+    except ValueError:
+        return 150.0
 
 
 def _armar_url(endpoint: str, opciones: Dict[str, Any]) -> str:
@@ -166,13 +184,13 @@ def _extra_headers() -> Dict[str, str]:
     return extra
 
 
-def _pedir(url: str, intento: int = 0) -> Any:
+def _pedir(url: str, intento: int = 0, timeout: Optional[float] = None) -> Any:
     headers = {"Accept": "application/json", "User-Agent": "ArmaHub/1.0 (+programacion)"}
     headers.update(_extra_headers())
     url_con_auth = _aplicar_auth(url, headers)
     req = urllib.request.Request(url_con_auth, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=_timeout()) as resp:
+        with urllib.request.urlopen(req, timeout=_timeout(timeout)) as resp:
             crudo = resp.read()
     except urllib.error.HTTPError as e:
         cuerpo = ""
@@ -191,7 +209,7 @@ def _pedir(url: str, intento: int = 0) -> Any:
         if e.code == 429:
             raise AsaError("aSa pidió que bajemos el ritmo (HTTP 429). Se corta acá.")
         if 500 <= e.code < 600 and intento < REINTENTOS:
-            return _reintentar(url, intento, "HTTP %s" % e.code)
+            return _reintentar(url, intento, "HTTP %s" % e.code, timeout)
         raise AsaError("aSa respondió HTTP %s." % e.code)
     except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
         # Aquí cae el "se quedó pegado" que el usuario ve en Power BI. OJO: cuando aSa
@@ -199,9 +217,9 @@ def _pedir(url: str, intento: int = 0) -> Any:
         # `TimeoutError` pelado, NO un URLError — si sólo se captura URLError, el caso más
         # frecuente de todos se va al `except Exception` de abajo, no se reintenta y el
         # mensaje no dice nada útil. Pasó en la primera consulta real a getOrderSummary.
-        razon = getattr(e, "reason", None) or "se agotó la espera de %ss" % _timeout()
+        razon = getattr(e, "reason", None) or "se agotó la espera de %ss" % _timeout(timeout)
         if intento < REINTENTOS:
-            return _reintentar(url, intento, str(razon))
+            return _reintentar(url, intento, str(razon), timeout)
         log.error("aSa no respondió en %s — %s", _sin_clave(url), razon)
         raise AsaError("aSa se atoró con la consulta (%s). Suele pasar cuando se le pide "
                        "demasiado de una vez: hay que acotarla con un filtro." % razon)
@@ -215,11 +233,11 @@ def _pedir(url: str, intento: int = 0) -> Any:
         raise AsaError("aSa respondió algo que no es JSON.")
 
 
-def _reintentar(url: str, intento: int, motivo: str) -> Any:
+def _reintentar(url: str, intento: int, motivo: str, timeout: Optional[float] = None) -> Any:
     log.warning("aSa se atoró (%s) en %s — reintento %d de %d en %.0fs",
                 motivo, _sin_clave(url), intento + 1, REINTENTOS, ESPERA_REINTENTO)
     time.sleep(ESPERA_REINTENTO)
-    return _pedir(url, intento + 1)
+    return _pedir(url, intento + 1, timeout)
 
 
 _RE_CREDENCIAL = re.compile(r"(?i)\b(apikey|api_key|key|token|password)=[^&]*")
@@ -279,7 +297,8 @@ def consultar_todo(endpoint: str, select: Optional[List[str]] = None,
 
 
 def consultar_agregado(endpoint: str, dimensiones: List[str], medida: str,
-                       alias: str = "Total", filtro: Optional[str] = None) -> List[dict]:
+                       alias: str = "Total", filtro: Optional[str] = None,
+                       carga: bool = False) -> List[dict]:
     """Pide a aSa que AGREGUE, en vez de traerse el detalle y sumar acá (OData `$apply`).
 
     Es la diferencia entre una consulta viable y una que se atora. `getOrderSummary` viene
@@ -289,13 +308,16 @@ def consultar_agregado(endpoint: str, dimensiones: List[str], medida: str,
 
     OJO: `$apply` devuelve TODO el resultado en una respuesta, sin paginar. Por eso quien
     llama tiene que acotar el filtro (por año, típicamente) y no pedir la historia entera.
+
+    `carga=True` para la carga de un año completo: espera larga (ver _timeout_carga).
     """
     partes = []
     if filtro:
         partes.append("filter(%s)" % filtro)
     partes.append("groupby((%s),aggregate(%s with sum as %s))"
                   % (",".join(dimensiones), medida, alias))
-    return _filas(_pedir(_armar_url(endpoint, {"$apply": "/".join(partes)})))
+    return _filas(_pedir(_armar_url(endpoint, {"$apply": "/".join(partes)}),
+                         timeout=_timeout_carga() if carga else None))
 
 
 # ---------------------------------------------------------------------------

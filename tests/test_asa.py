@@ -964,5 +964,33 @@ check("Cancelled tiene color, orden y nombre con su explicación",
       "'Cancelled': '#e57373'" in DSH and '"Cancelled":  "Cancelled — anulado en aSa' in PROG
       and '"Cancelled":  "Cancelled",' in PROG)
 
+# ── 29. La carga de un año tiene su propia espera, larga ──────────────────
+# El 6-oct el «Traer de aSa» se atoró justo en 2026 —«se agotó la espera de 20.0s»— y el
+# usuario quedó viendo datos de una semana antes sin que nada se lo dijera. Medido: ese
+# año tarda 32 s en responder. La espera corta sigue para todo lo demás, que es lo que
+# evita que una pantalla se quede colgada.
+print("\n29. Traer un año completo puede tardar, y la pantalla dice cuándo se trajo")
+import armahub.asa as A  # noqa: E402
+os.environ.pop("ASA_TIMEOUT", None)
+os.environ.pop("ASA_TIMEOUT_CARGA", None)
+check("la espera normal sigue siendo corta (20 s)", A._timeout() == 20.0)
+check("...la de carga es larga (150 s) y se puede cambiar por variable",
+      A._timeout_carga() == 150.0)
+os.environ["ASA_TIMEOUT_CARGA"] = "200"
+check("...por ASA_TIMEOUT_CARGA", A._timeout_carga() == 200.0)
+os.environ.pop("ASA_TIMEOUT_CARGA", None)
+check("quien llama puede fijar la espera de una consulta", A._timeout(77) == 77.0)
+check("y la carga de un año la pide: es la consulta que se atoraba",
+      'carga: bool = False' in SRC and "_timeout_carga() if carga else None" in SRC
+      and 'alias="Kgs", filtro=filtro, carga=True' in open(os.path.join(ROOT, "armahub", "asa_sync.py"), encoding="utf-8").read())
+check("el reintento conserva la espera que le pidieron",
+      "def _reintentar(url: str, intento: int, motivo: str, timeout: Optional[float] = None)" in SRC
+      and "return _pedir(url, intento + 1, timeout)" in SRC)
+check("el reporte dice cómo fue el último intento de ESE año",
+      '"getOrderSummary/%d" % anio' in PROG and '"ultimo_intento": ({"fin"' in PROG)
+check("y la pantalla dice cuándo se trajo y avisa si lo último falló",
+      "' · traído de aSa el ' + fechaHora(esp.ultima_sync)" in DSH
+      and "intento.ok === false" in DSH and "Lo que se ve es de la última vez que sí se pudo" in DSH)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

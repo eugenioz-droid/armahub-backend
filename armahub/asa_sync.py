@@ -228,7 +228,7 @@ def sincronizar_pedidos(anio: int, lanzado_por: str = "sistema") -> dict:
     filtro = "OrderDate ge %d-01-01 and OrderDate le %d-12-31" % (anio, anio)
     try:
         filas = asa.consultar_agregado("getOrderSummary", DIMS_PEDIDOS, "TotalKgs",
-                                       alias="Kgs", filtro=filtro)
+                                       alias="Kgs", filtro=filtro, carga=True)
     except asa.AsaError as e:
         _cerrar_bitacora(sync_id, False, detalle=str(e))
         raise

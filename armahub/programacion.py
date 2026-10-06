@@ -908,6 +908,14 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
             else:
                 cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos WHERE anio = %s", (anio,))
             n_anio, ultimo = cur.fetchone()
+            # CÓMO FUE EL ÚLTIMO INTENTO DE TRAER ESTE AÑO. `ultima_sync` dice cuándo se
+            # trajo la info; esto dice si lo último que se intentó funcionó. Hacían falta
+            # los dos: el 6-oct la carga de 2026 se atoró, el espejo se quedó con los
+            # datos de una semana antes y en pantalla no se veía nada raro.
+            cur.execute("""SELECT endpoint, fin, filas, ok, detalle FROM asa_sync
+                             WHERE endpoint = %s ORDER BY id DESC LIMIT 1""",
+                        ("getOrderSummary/%d" % anio,) if not todos else ("getOrderSummary",))
+            intento = cur.fetchone()
 
     return {
         "anio": anio, "meses": lista_meses,
@@ -922,7 +930,10 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "estado_nunca": ESTADO_NUNCA,
         "filas": filas,
         "espejo": {"filas_anio": n_anio or 0,
-                   "ultima_sync": ultimo.isoformat() if ultimo else None},
+                   "ultima_sync": ultimo.isoformat() if ultimo else None,
+                   "ultimo_intento": ({"fin": intento[1].isoformat() if intento[1] else None,
+                                       "filas": intento[2], "ok": intento[3], "detalle": intento[4]}
+                                      if intento else None)},
     }
 
 
