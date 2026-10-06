@@ -137,7 +137,13 @@ check('hay un tercer sub-tab y apunta a su panel',
   check('...y los que no aplican se cuentan bajo el total del eje',
     g.data.labels.some(function (l) { return String(l[2] || '').indexOf('no aplican') > 0; }));
   check('...con el numero correcto (4 en 2025)',
-    g.data.labels.filter(function (l) { return String(l[0]) === '2025'; })[0][2] === '4 no aplican');
+    g.data.labels.filter(function (l) { return String(l[0]) === '2025'; })[0][2] === '4 no aplican, fuera');
+  // Y el total dice DE QUE es: suelto no se sabia si incluia a los que quedaron fuera,
+  // habia que sumar las barras para deducirlo.
+  check('el total dice cuanto se dibuja y cuanto hubo',
+    g.data.labels.filter(function (l) { return String(l[0]) === '2025'; })[0][1] === '17 de 21');
+  check('...y si no queda nada fuera, el total va solo',
+    g.data.labels.filter(function (l) { return String(l[0]) === '2024'; })[0][1] === '8');
   check('...sin apilar, que no deja comparar', !(g.options.scales.x && g.options.scales.x.stacked));
   check('el total del año va en la etiqueta del eje', String(g.data.labels[0][1]) === '8');
   check('el número sobre la barra es el real', g.options.plugins.datalabels.formatter(142) === '142');

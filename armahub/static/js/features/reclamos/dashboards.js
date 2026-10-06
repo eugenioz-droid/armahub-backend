@@ -619,11 +619,16 @@ function rhPintarTodo() {
     if (RH_F.tipo.length && RH_F.tipo.indexOf(f.tipo) < 0) return;
     noAplican[f.anio] = (noAplican[f.anio] || 0) + f.n;
   });
+  // LA ETIQUETA DICE DE QUÉ ES EL NÚMERO. Un total suelto no deja saber si incluye o no
+  // a los que quedaron fuera: hay que ponerse a sumar las barras para deducirlo. Con
+  // «149 de 156» queda dicho que 149 es lo dibujado y 156 lo que hubo ese año.
   var mostrandoNoAplica = RH_F.aplica.indexOf('no') >= 0;
   var etiq = anios.map(function (a) {
     var e = String(a) + (a === RH.anio_en_curso ? ' (en curso)' : '');
-    var fila = [e, rhNum((porAnio[a] || {}).n || 0)];
-    if (!mostrandoNoAplica && noAplican[a]) fila.push(noAplican[a] + ' no aplican');
+    var dentro = (porAnio[a] || {}).n || 0;
+    var fuera = (!mostrandoNoAplica && noAplican[a]) ? noAplican[a] : 0;
+    var fila = [e, fuera ? (rhNum(dentro) + ' de ' + rhNum(dentro + fuera)) : rhNum(dentro)];
+    if (fuera) fila.push(fuera + ' no aplican, fuera');
     return fila;
   });
   function porAplica(valor) {
