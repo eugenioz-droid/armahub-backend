@@ -217,7 +217,6 @@
       pintarLista(); pintarDetalle(); cargarMisAcciones();
     });
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
-    $('audUbGuardar').addEventListener('click', guardarUbicacion);
     // El PDF se baja con fetch y no con un enlace: el token va en la cabecera, y un
     // <a href> no la lleva (daría 401). Mismo camino que el informe de reclamos.
     $('audPdf').addEventListener('click', async function () {
@@ -498,19 +497,24 @@
     // EN aSa EL ELEMENTO VIVE DENTRO DE UN CÓDIGO DE CONTROL, y son dos cosas distintas:
     // el código con su descripción por un lado, el elemento por otro. Pegados con puntos
     // («SUP4 · INF · FUN C17») quedaba ilegible y encima repetía el eje. Van en columnas
-    // propias, y sólo aparecen en las auditorías de aSa: en ArmaHub no hay código.
+    // propias, y sólo aparecen en las auditorías de aSa: en ArmaHub no hay código. El
+    // elemento va ANTES que la descripción del código (6-oct, a pedido del usuario): es
+    // lo que se revisa; la descripción es el contexto.
     var esAsa = AUD.origen === 'asa';
     var html = '<thead><tr>' +
-      (esAsa ? '<th>Código</th><th>Descripción del código</th>' : '') +
-      '<th>Elemento</th><th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
+      (esAsa ? '<th>Código</th>' : '') + '<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '') +
+      '<th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
       '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th><th>Acción</th></tr></thead><tbody>';
     (AUD.elementos || []).forEach(function (e) {
-      html += '<tr class="fila' + (ELEM && ELEM.id === e.id ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
-        (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' +
-                 '<td class="auddcc" title="' + esc(e.descr_cc || '') + '">' + esc(e.descr_cc || '') + '</td>' : '') +
+      var abierto = ELEM && ELEM.id === e.id;
+      html += '<tr class="fila' + (abierto ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
+        (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' : '') +
         // Lo que ancla la fila va en negrita: en aSa es el código, en ArmaHub el elemento.
         '<td title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
-        '<td>' + esc(e.tipo || '') + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>' +
+        (esAsa ? '<td class="auddcc" title="' + esc(e.descr_cc || '') + '">' + esc(e.descr_cc || '') + '</td>' : '') +
+        // En la fila ABIERTA de una auditoría de aSa la ubicación se escribe acá mismo.
+        (esAsa && abierto ? celdasUbicacion(e)
+          : '<td>' + esc(e.tipo || '') + '</td><td>' + esc(e.piso) + '</td><td>' + esc(e.ciclo) + '</td><td>' + esc(e.eje) + '</td>') +
         '<td class="num" title="' + (e.items || 0) + ' revisada(s)' + (e.items_malos ? ', ' + e.items_malos + ' no conforme(s)' : '') + '">' +
           (e.items ? '<b>' + e.items + '</b>/' : '') + e.barras + '</td>' +
         '<td class="num">' + kg0(e.kg) + '</td>' +
@@ -526,15 +530,29 @@
     $('audDetElems').querySelectorAll('tr.fila').forEach(function (tr) {
       tr.addEventListener('click', function () {
         var e = (AUD.elementos || []).filter(function (x) { return x.id === Number(tr.dataset.id); })[0];
+        if (ELEM && e && ELEM.id === e.id) return;   // ya está abierto: el clic es para escribir en sus campos
         abrirElemento(e);
       });
+    });
+    $('audDetElems').querySelectorAll('.audub').forEach(function (inp) {
+      inp.addEventListener('click', function (ev) { ev.stopPropagation(); });
+      inp.addEventListener('change', guardarUbicacion);
     });
     pintarAcciones();
     pintarCobertura();
     if (ELEM) {
       var vivo = (AUD.elementos || []).filter(function (x) { return x.id === ELEM.id; })[0];
-      if (vivo) { ELEM = vivo; pintarRevision(); } else { ELEM = null; $('audRev').style.display = 'none'; }
+      if (vivo) { ELEM = vivo; pintarRevision(); } else { ELEM = null; mostrarRevision(false); }
     }
+  }
+
+  // El panel de revisión se ve (o no), y con él la lista se comprime a un lado en las
+  // pantallas anchas (ver .audcols.abierta en el HTML): la muestra a la izquierda, las
+  // barras a la derecha, las dos a la vista.
+  function mostrarRevision(visible) {
+    $('audRev').style.display = visible ? '' : 'none';
+    var cols = $('audCols');
+    if (cols) cols.classList.toggle('abierta', !!visible);
   }
 
   // El elemento nombrado ENTERO, para cuando se lee fuera de la tabla —el título de la
@@ -728,48 +746,47 @@
     return { revisadas: refs.length, malas: malas, total: BARRAS.length };
   }
 
-  // DÓNDE ESTÁ EL ELEMENTO. Sólo en las auditorías de aSa: allá el piso y el ciclo no
-  // existen en ningún campo y sacarlos del texto del código de control sería adivinar, así
-  // que los escribe quien tiene el plano delante. En ArmaHub salen de la cubicación —son la
-  // clave del elemento— y el bloque no se muestra.
-  function pintarUbicacion() {
-    var caja = $('audUbic');
-    if (!ELEM || !AUD || AUD.origen !== 'asa') { caja.style.display = 'none'; return; }
-    caja.style.display = 'flex';
-    var sel = $('audUbTipo');
-    if (!sel.options.length) {
-      sel.innerHTML = '<option value="">tipo…</option>' +
-        Object.keys(BASE.sectores || {}).map(function (k) {
-          return '<option value="' + esc(k) + '">' + esc(BASE.sectores[k]) + '</option>';
-        }).join('');
+  // DÓNDE ESTÁ EL ELEMENTO, escrito en su propia fila. Sólo en las auditorías de aSa: allá
+  // el tipo, el piso y el ciclo no existen en ningún campo —lo único que hay es el
+  // ElementID, que en muros ES el eje— y sacarlos del texto del código sería adivinar, así
+  // que los escribe quien tiene el plano delante, en la fila del elemento que está
+  // revisando, y se guardan al salir del campo. Antes iban en una barra aparte sobre la
+  // grilla de barras; el usuario la vio fuera de lugar (6-oct): son datos del elemento,
+  // van en su fila. En ArmaHub salen de la cubicación —son la clave del elemento— y no se
+  // editan acá; si están mal se arreglan allá.
+  function celdasUbicacion(e) {
+    var tit = e.ubicado_el
+      ? 'Escrita por ' + (e.ubicado_por || '').split('@')[0]
+      : 'aSa no trae tipo, piso ni ciclo: los pones tú. Se guarda al salir del campo.';
+    var opciones = '<option value="">tipo…</option>' + Object.keys(BASE.sectores || {}).map(function (k) {
+      return '<option value="' + esc(k) + '"' + (e.sector === k ? ' selected' : '') + '>' + esc(BASE.sectores[k]) + '</option>';
+    }).join('');
+    function campo(nombre, valor) {
+      return '<td class="audubcel"><input type="text" class="audub" data-campo="' + nombre + '" value="' + esc(valor || '') +
+             '" placeholder="' + nombre + '" maxlength="40" title="' + esc(tit) + '"></td>';
     }
-    sel.value = ELEM.sector || '';
-    $('audUbPiso').value = ELEM.piso || '';
-    $('audUbCiclo').value = ELEM.ciclo || '';
-    $('audUbEje').value = ELEM.eje || '';
-    $('audUbMsg').textContent = ELEM.ubicado_el
-      ? 'escrita por ' + (ELEM.ubicado_por || '').split('@')[0]
-      : (ELEM.sector || ELEM.piso || ELEM.ciclo ? '' : 'aSa no trae piso ni ciclo: ponlos tú.');
+    return '<td class="audubcel"><select class="audub" data-campo="sector" title="' + esc(tit) + '">' + opciones + '</select></td>' +
+           campo('piso', e.piso) + campo('ciclo', e.ciclo) + campo('eje', e.eje);
   }
 
   async function guardarUbicacion() {
     if (!AUD || !ELEM) return;
-    $('audUbGuardar').disabled = true;
+    var cuerpo = {};
+    $('audDetElems').querySelectorAll('.audub').forEach(function (inp) { cuerpo[inp.dataset.campo] = inp.value; });
     try {
-      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/ubicacion', {
-        sector: $('audUbTipo').value, piso: $('audUbPiso').value,
-        ciclo: $('audUbCiclo').value, eje: $('audUbEje').value });
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/ubicacion', cuerpo);
+      // No se repinta la lista: el auditor puede estar pasando al campo de al lado y un
+      // repintado le quitaría el foco. Se actualiza lo que cambia de nombre.
+      var vivo = (AUD.elementos || []).filter(function (x) { return x.id === ELEM.id; })[0];
+      if (vivo) { ELEM = vivo; $('audRevTitulo').textContent = nombreCompleto(ELEM); }
       ok('Ubicación guardada');
-      pintarDetalle();
-    } catch (e) { aviso(e.message); $('audUbMsg').textContent = e.message; }
-    $('audUbGuardar').disabled = false;
+    } catch (e) { aviso(e.message); }
   }
 
   // La SEVERIDAD es del elemento y sólo se pregunta si hay alguna barra no conforme.
   function pintarRevision() {
-    if (!ELEM) { $('audRev').style.display = 'none'; $('audUbic').style.display = 'none'; return; }
-    $('audRev').style.display = '';
-    pintarUbicacion();
+    mostrarRevision(!!ELEM);
+    if (!ELEM) return;
     var c = cuentaBarras();
     $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
       (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '');

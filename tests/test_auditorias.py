@@ -357,15 +357,26 @@ check("...y mostrando sólo lo que está lleno",
 check("...sin ensuciar el informe con la etiqueta de «sin elemento»",
       A._ubicacion_txt({"sector": "FUND", "eje": A.SIN_ELEMENTO}) == "Fundación")
 
-print("\n7c. El formulario aparece sólo donde hace falta")
-check("los cuatro campos están en la pantalla de revisión",
-      'id="audUbTipo"' in HTM and 'id="audUbPiso"' in HTM and 'id="audUbCiclo"' in HTM
-      and 'id="audUbEje"' in HTM and 'id="audUbGuardar"' in HTM)
-check("...y sólo se muestran en las auditorías de aSa",
-      "AUD.origen !== 'asa'" in JS and "function pintarUbicacion()" in JS)
-check("...diciendo por qué están vacíos", "aSa no trae piso ni ciclo" in JS)
+print("\n7c. La ubicación se escribe en la fila del elemento abierto")
+# 6-oct: la barra «Dónde está» sobre la grilla de barras estaba fuera de lugar («son para
+# completar, debieran ir en el listado de elementos y no en la grilla»). Los cuatro campos
+# van en la fila del elemento que se está revisando, y se guardan al salir del campo.
+check("los cuatro campos van en la fila, no en una barra aparte",
+      "function celdasUbicacion(" in JS and "data-campo=\"sector\"" in JS
+      and "campo('piso', e.piso) + campo('ciclo', e.ciclo) + campo('eje', e.eje)" in JS
+      and 'id="audUbic"' not in HTM and 'id="audUbGuardar"' not in HTM)
+check("...sólo en las auditorías de aSa y sólo en la fila abierta",
+      "(esAsa && abierto ? celdasUbicacion(e)" in JS)
+check("...se guardan al salir del campo, sin repintar la lista (el foco se quedaría sin dueño)",
+      "inp.addEventListener('change', guardarUbicacion);" in JS and "No se repinta la lista" in JS)
+check("...y el clic en un campo no vuelve a abrir el elemento",
+      "ev.stopPropagation()" in JS and "ya está abierto: el clic es para escribir" in JS)
+check("...diciendo por qué están vacíos", "aSa no trae tipo, piso ni ciclo" in JS)
 check("el tipo se ofrece de la lista del backend, no de una copia en el navegador",
       "BASE.sectores" in JS)
+check("con un elemento abierto y pantalla ancha, la lista se comprime a un lado y las barras van al otro",
+      'id="audCols"' in HTM and ".audcols.abierta{display:grid;" in HTM
+      and "function mostrarRevision(" in JS and "classList.toggle('abierta'" in JS)
 
 print("\n7d. El código de control es una columna, no parte del nombre")
 # «Es mejor poner encabezado para el CC, para Descr del CC y separarlo del nombre del
@@ -378,8 +389,8 @@ check("la descripción del código se guarda en su propia columna",
       "descr_cc" in SRC and "ADD COLUMN descr_cc" in MIG122)
 check("...en foto, porque en aSa la pueden renombrar",
       "puede cambiar, y el informe tiene que seguir diciendo" in SRC)
-check("la tabla tiene encabezado para el código y para su descripción",
-      "<th>Código</th><th>Descripción del código</th>" in JS)
+check("la tabla tiene encabezado para el código y para su descripción, con el elemento entre medio",
+      "(esAsa ? '<th>Código</th>' : '') + '<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '')" in JS)
 check("...y sólo en las auditorías de aSa, que es donde existe el código",
       "var esAsa = AUD.origen === 'asa';" in JS and "(esAsa ? '<th>Código</th>" in JS)
 check("la descripción larga se corta y queda entera en el title",
