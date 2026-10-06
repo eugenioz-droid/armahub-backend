@@ -1018,7 +1018,11 @@ def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
                                 CASE WHEN r.cubicador_asignado IS NULL THEN NULL
                                      WHEN {NOMBRE_CUB} = ANY(%s) THEN 'Interno'
                                      ELSE 'Externo' END,
-                                '(sin dato)'),
+                                -- Habiendo cubicador SIEMPRE sale interno o externo, asi
+                                -- que lo unico que cae aca es un reclamo sin cubicador.
+                                -- Decirlo asi y no "sin dato" evita leerlo como un tercer
+                                -- tipo de servicio, que no existe.
+                                '(sin cubicador)'),
                        COALESCE(at.segmento,
                                 CASE WHEN r.segmento ILIKE 'edificaci%%' THEN '4 y 5'
                                      ELSE NULLIF(r.segmento, '') END, '(sin segmento)'),

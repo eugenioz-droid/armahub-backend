@@ -492,7 +492,7 @@ function rhBarras(canvas, etiquetas, series, opciones) {
 var RH = { datos: [], anio_en_curso: null, internos: [] };
 var RH_F = { anio: [], cubicador: [], servicio: [], segmento: [], tipo: [], aplica: ['si', 'pendiente'] };
 var RH_APLICA_TXT = { si: 'Aplica', no: 'No aplica', pendiente: 'Por revisar' };
-var RH_SERV_TXT = { Interno: 'Interno', Externo: 'Externo', '(sin dato)': 'Sin dato' };
+var RH_SERV_TXT = { Interno: 'Interno', Externo: 'Externo', '(sin cubicador)': 'Sin cubicador' };
 
 // Elegir como en los dashboards de programacion: clic deja SOLO ese, Ctrl+clic suma, y
 // volver a tocar el unico encendido lo suelta y se ven todos. Es lo que el usuario ya
