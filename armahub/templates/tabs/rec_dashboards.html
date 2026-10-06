@@ -35,8 +35,25 @@
         .rht tr.rhsubfila td{text-align:left; font-size:10px; font-weight:700; color:#607d8b; padding-top:8px;
                              border-top:2px solid #e3e8ef; text-transform:uppercase; letter-spacing:.3px;}
         .inbar{display:inline-block; height:7px; background:#00897b; border-radius:3px; vertical-align:middle;}
+        .inacciones{display:flex; justify-content:flex-end; margin-bottom:6px;}
+        .inacciones button{font-size:11px; padding:4px 12px;}
+        /* IMPRIMIR: sólo el tablero, en una hoja A4 apaisada. El truco de visibilidad deja
+           el resto de la aplicación en blanco sin tocar su layout; el tablero se achica para
+           que quepa en la hoja y ninguna caja se parte entre dos páginas. */
+        @media print {
+          @page { size: A4 landscape; margin: 9mm; }
+          body.imprimiendo-indicadores * { visibility: hidden; }
+          body.imprimiendo-indicadores #dashSubInd, body.imprimiendo-indicadores #dashSubInd * { visibility: visible; }
+          body.imprimiendo-indicadores #dashSubInd { position:absolute; left:0; top:0; width:100%; display:block !important;
+                                                     zoom:0.62; background:#fff; }
+          body.imprimiendo-indicadores .inacciones, body.imprimiendo-indicadores #inFiltros { display:none !important; }
+          body.imprimiendo-indicadores .rhcaja, body.imprimiendo-indicadores .inkpis { break-inside:avoid; page-break-inside:avoid; }
+          body.imprimiendo-indicadores .rht td.peor { color:#c62828 !important; }
+          body.imprimiendo-indicadores .rht td.mejor { color:#2e7d32 !important; }
+        }
       </style>
 
+      <div class="inacciones"><button id="inImprimir" class="secondary" title="Una hoja A4 apaisada con este tablero">Imprimir</button></div>
       <div id="inFiltros"></div>
       <div class="inlect" id="inLectura"></div>
       <div class="inkpis" id="inKpis"></div>
@@ -68,7 +85,6 @@
           <div class="rhtit">Las cuatro medidas, lado a lado</div>
           <div class="rhsub">En rojo el servicio que sale peor en cada medida. Las toneladas dicen sobre cuánto se calcula. Abajo, la tasa por segmento.</div>
           <div style="overflow-x:auto;"><table class="rht" id="inServicioTabla"></table></div>
-          <div class="inlect" id="inServicioLectura" style="margin:10px 0 0;"></div>
         </div>
       </div>
 
@@ -77,6 +93,7 @@
           <div class="rhtit">Por cubicador: volumen contra reclamos</div>
           <div class="rhsub">Ordenado por tasa. En rojo lo que está sobre el promedio del período; en verde lo que está bajo. Quien no tiene base en aSa no tiene tasa.</div>
           <div style="overflow-x:auto;"><table class="rht" id="inCubicadores"></table></div>
+          <div class="rhsub" id="inBaseOtros" style="margin-top:6px;"></div>
         </div>
       </div>
 

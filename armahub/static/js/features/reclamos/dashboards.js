@@ -1075,12 +1075,24 @@ async function cargarAnalisisHistorico() {
 // Los reclamos contra lo cubicado. Un reclamo solo no dice nada; la TASA —reclamos por
 // cada 1.000 toneladas— sí, y es la que orienta dónde apuntar. El denominador viene de
 // aSa; las dos fuentes se cruzan acá por año, persona, obra y segmento.
-var IN = { base: [], reclamos: [], anio_en_curso: null, sin_base: [], cargado: false };
+var IN = { base: [], base_otros: [], reclamos: [], anio_en_curso: null, sin_base: [], cargado: false };
 var IN_F = { anio: [], servicio: [], cubicador: [], segmento: [] };
 
 function inNum(x, dec) {
   if (x == null || isNaN(x)) return '·';
   return Number(x).toLocaleString('es-CL', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+}
+
+// LA ETIQUETA DE UN AÑO SIN BASE. «Sin base en aSa» se leía como un cero (el usuario lo
+// preguntó por 2022). No es cero: 2022 tiene 149 reclamos y aSa trae 3.092 ton de ese
+// año —el 12% de un año normal, porque estaba en implementación—; dividir uno por otro
+// daría 48 por 1.000 ton, un número falso. Se dice lo que hay y que por eso no hay tasa.
+function inEtiquetaSinBase(anio) {
+  var n = 0, ton = 0;
+  IN.reclamos.forEach(function (r) { if (r.anio === anio && r.aplica !== 'no') n += r.n; });
+  IN.base.forEach(function (b) { if (b.anio === anio) ton += b.ton; });
+  if (!n && !ton) return 'sin base en aSa';
+  return (n ? inNum(n) + ' recl · ' : '') + (ton ? 'aSa parcial: ' + inNum(ton) + ' ton · ' : 'sin base en aSa · ') + 'sin tasa';
 }
 
 function inPasa(f) {
@@ -1199,15 +1211,32 @@ function inPintarTodo() {
     var x = porAnio[a];
     var sinBase = IN.sin_base.indexOf(a) >= 0;
     return [String(a) + (a === IN.anio_en_curso ? ' (en curso)' : ''),
-            sinBase ? 'sin base en aSa' : (x ? inNum(x.n) + ' recl · ' + inNum(x.ton) + ' ton' : '')];
+            sinBase ? inEtiquetaSinBase(a) : (x ? inNum(x.n) + ' recl · ' + inNum(x.ton) + ' ton' : '')];
   }), [{ nombre: 'Reclamos por 1.000 ton', color: '#00897b',
          datos: anios.map(function (a) { var x = porAnio[a]; return x && x.tasa != null ? Math.round(x.tasa * 10) / 10 : 0; }) }]);
 
   inTabla('inSegmentos', inCruce('segmento'), 'Segmento', tasa, false);
   inPintarServicio(anios);
   inTabla('inCubicadores', inCruce('persona'), 'Cubicador', tasa, true);
+  inNotaBaseOtros();
   inPareto(rec, base);
   inLectura(tasa, n, ton, inCruce('persona'), rec, base);
+}
+
+// LO QUE QUEDA FUERA DE LA BASE: toneladas ingresadas en aSa por usuarios que no son
+// cubicadores. Se dice, con nombres, para que no parezca que la base es todo lo cubicado.
+function inNotaBaseOtros() {
+  var el = document.getElementById('inBaseOtros');
+  if (!el) return;
+  var filas = inConBase(IN.base_otros.filter(function (f) {
+    return !IN_F.anio.length || IN_F.anio.indexOf(f.anio) >= 0;
+  }));
+  if (!filas.length) { el.innerHTML = ''; return; }
+  var ton = 0, cc = 0, quienes = {};
+  filas.forEach(function (f) { ton += f.ton; cc += f.cc; quienes[f.persona] = (quienes[f.persona] || 0) + f.ton; });
+  var nombres = Object.keys(quienes).sort(function (a, b) { return quienes[b] - quienes[a]; });
+  el.innerHTML = 'Fuera de la base: <b>' + inNum(ton) + ' ton</b> en ' + inNum(cc) + ' códigos ingresados por usuarios que no son cubicadores (' +
+    nombres.map(rhEsc).join(', ') + ').';
 }
 
 // La tabla volumen-contra-reclamos. Ordenada por tasa; sin base al final.
@@ -1312,7 +1341,7 @@ function inPintarServicio(anios) {
   var COLOR = { Interno: '#c62828', Externo: '#1565C0' };
   rhBarras('inChartServicio', anios.map(function (a) {
     var sinBase = IN.sin_base.indexOf(a) >= 0;
-    return [String(a) + (a === IN.anio_en_curso ? ' (en curso)' : ''), sinBase ? 'sin base en aSa' : ''];
+    return [String(a) + (a === IN.anio_en_curso ? ' (en curso)' : ''), sinBase ? inEtiquetaSinBase(a) : ''];
   }), ['Interno', 'Externo'].map(function (s) {
     return { nombre: s, color: COLOR[s], datos: anios.map(function (a) {
       if (IN.sin_base.indexOf(a) >= 0) return 0;
@@ -1368,29 +1397,9 @@ function inPintarServicio(anios) {
         }).join('') : '') + '</tbody>';
   }
 
-  // LA CONCLUSIÓN EN UNA LÍNEA. Cuenta en cuántas de las cuatro medidas sale peor cada
-  // uno: si es 4 a 0 la diferencia es contundente; si es 2 a 2, no lo es, y decirlo es
-  // tan importante como lo otro.
-  var el = document.getElementById('inServicioLectura');
-  if (el) {
-    var cuenta = { Interno: 0, Externo: 0 };
-    Object.keys(peor).forEach(function (k) { cuenta[peor[k]]++; });
-    var total = Object.keys(peor).length;
-    if (!total) el.innerHTML = 'No hay base suficiente para comparar.';
-    else if (cuenta.Externo === total) el.innerHTML = 'El servicio <b>externo sale peor en las ' + total + ' medidas</b>.';
-    else if (cuenta.Interno === total) el.innerHTML = 'El servicio <b>interno sale peor en las ' + total + ' medidas</b>.';
-    else el.innerHTML = 'No es parejo: el externo sale peor en <b>' + cuenta.Externo + '</b> medida' +
-      (cuenta.Externo === 1 ? '' : 's') + ' y el interno en <b>' + cuenta.Interno + '</b>.';
-    // Y por segmento, en una frase: dónde sale peor cada uno (sólo donde se puede comparar).
-    var peorExt = porSeg.filter(function (x) { return x.peor === 'Externo'; }).map(function (x) { return x.seg; });
-    var peorInt = porSeg.filter(function (x) { return x.peor === 'Interno'; }).map(function (x) { return x.seg; });
-    if (peorExt.length || peorInt.length) {
-      var partes = [];
-      if (peorExt.length) partes.push('el externo sale peor en <b>' + peorExt.map(rhEsc).join('</b> y <b>') + '</b>');
-      if (peorInt.length) partes.push('el interno sale peor en <b>' + peorInt.map(rhEsc).join('</b> y <b>') + '</b>');
-      el.innerHTML += ' Por segmento, ' + partes.join('; ') + '.';
-    }
-  }
+  // Sin frase de conclusión. La hubo («el externo sale peor en las 4 medidas») y el
+  // usuario la leyó como un sesgo, como si el tablero buscara eso (6-oct). La tabla con su
+  // rojo y su verde ya lo dice; que hable el dato.
 }
 
 // LA LECTURA: una línea que dice qué está pasando, para quien no quiera leer tablas.
@@ -1414,12 +1423,34 @@ function inLectura(tasa, n, ton, personas, rec, base) {
   el.innerHTML = partes.join(' · ') + '.';
 }
 
+// IMPRIMIR EL TABLERO. Una hoja A4 apaisada con el tablero y nada más (ver @media print
+// en el HTML). Chart.js dibuja al tamaño de pantalla: antes de imprimir se redibuja cada
+// gráfico al ancho de la hoja, y al volver, al de la pantalla.
+function inImprimir() {
+  document.body.classList.add('imprimiendo-indicadores');
+  Object.keys(_rhCharts).forEach(function (k) { try { _rhCharts[k].resize(); } catch (e) {} });
+  var volver = function () {
+    document.body.classList.remove('imprimiendo-indicadores');
+    Object.keys(_rhCharts).forEach(function (k) { try { _rhCharts[k].resize(); } catch (e) {} });
+    window.removeEventListener('afterprint', volver);
+  };
+  window.addEventListener('afterprint', volver);
+  setTimeout(function () { window.print(); }, 60);
+}
+
 async function loadDashIndicadores() {
   if (IN.cargado) { inPintarFiltros(); inPintarTodo(); return; }
   var d = await apiGet('/reclamos/indicadores');
   if (!d) return;
-  IN.base = d.base || []; IN.reclamos = d.reclamos || [];
+  // LA BASE SON LOS CUBICADORES. Lo que ingresó un login que no es cubicador (aSaAdmin,
+  // MDIAZ, EugenioZ…: administración, planificación) no es ni interno ni externo y no
+  // compara con nadie: queda aparte, y la nota bajo la tabla dice cuánto es.
+  IN.base = (d.base || []).filter(function (b) { return b.conocido !== false; });
+  IN.base_otros = (d.base || []).filter(function (b) { return b.conocido === false; });
+  IN.reclamos = d.reclamos || [];
   IN.anio_en_curso = d.anio_en_curso; IN.sin_base = d.anios_sin_base || [];
+  var btn = document.getElementById('inImprimir');
+  if (btn && !btn.dataset.listo) { btn.dataset.listo = '1'; btn.addEventListener('click', inImprimir); }
   IN.cargado = true;
   inPintarFiltros();
   inPintarTodo();

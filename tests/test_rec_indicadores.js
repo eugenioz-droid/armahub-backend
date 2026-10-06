@@ -46,7 +46,11 @@ const BASE = [
   { anio: 2024, persona: 'Gerardo Mendoza', conocido: true, servicio: 'Interno', segmento: '4 y 5', obra_id: 'B', obra: 'Obra B', cc: 80, ton: 4000 },
   { anio: 2025, persona: 'Mario Puyo', conocido: true, servicio: 'Externo', segmento: '1 y 2', obra_id: 'C', obra: 'Obra C', cc: 20, ton: 1000 },
   { anio: 2022, persona: 'Mario Puyo', conocido: true, servicio: 'Externo', segmento: '1 y 2', obra_id: 'C', obra: 'Obra C', cc: 5, ton: 100 },
-  { anio: 2025, persona: 'Oortega', conocido: false, servicio: 'Externo', segmento: '4 y 5', obra_id: 'A', obra: 'Obra A', cc: 3, ton: 50 },
+  // Un login de aSa que NO es cubicador (administración): sus toneladas no entran a la
+  // base ni a interno/externo; se dicen aparte.
+  { anio: 2025, persona: 'Oortega', conocido: false, servicio: null, segmento: '4 y 5', obra_id: 'A', obra: 'Obra A', cc: 3, ton: 50 },
+  // Un externo conocido sin reclamos, en 4 y 5: para que haya con qué comparar ahí.
+  { anio: 2025, persona: 'Carlos Santos', conocido: true, servicio: 'Externo', segmento: '4 y 5', obra_id: 'D', obra: 'Obra D', cc: 10, ton: 500 },
 ];
 const RECLAMOS = [
   { anio: 2025, persona: 'Gerardo Mendoza', obra_id: 'A', obra: 'Obra A', segmento: '4 y 5', aplica: 'si', servicio: 'Interno', n: 15, kilos: 3000 },
@@ -82,12 +86,15 @@ check('está registrado con su panel', sandbox.DASH_SUBTABS && sandbox.DASH_SUBT
 
   console.log('\n2. La tasa divide bien y deja fuera lo que no corresponde');
   const kp = nodo('inKpis').innerHTML;
-  // 28 reclamos que aplican (Gerardo 15+5, Mario 5, Pantoja 3) sobre 11.050 ton con
-  // base (6000+4000+1000+50). Los 7 que no aplican NO cuentan: no son errores de
-  // cubicación. Los 40 de 2022 tampoco: ese año no tiene base y meterlos inflaría la
-  // tasa cuatro veces.
-  check('reclamos por 1.000 ton = 28 / 11,05 = 2,5', kp.indexOf('>2,5<') > 0);
-  check('...y el detalle dice sobre qué se calculó', kp.indexOf('28 reclamos sobre 11.050 ton') > 0);
+  // 28 reclamos que aplican (Gerardo 15+5, Mario 5, Sin Base 3) sobre 11.500 ton con
+  // base de CUBICADORES (6000+4000+1000+500; las 50 de Oortega no son de un cubicador).
+  // Los 7 que no aplican NO cuentan: no son errores de cubicación. Los 40 de 2022
+  // tampoco: ese año no tiene base y meterlos inflaría la tasa cuatro veces.
+  check('reclamos por 1.000 ton = 28 / 11,5 = 2,4', kp.indexOf('>2,4<') > 0);
+  check('...y el detalle dice sobre qué se calculó', kp.indexOf('28 reclamos sobre 11.500 ton') > 0);
+  check('lo ingresado por quien no es cubicador queda fuera de la base, y se dice cuánto y quién',
+    nodo('inBaseOtros').innerHTML.indexOf('Fuera de la base: <b>50 ton</b>') >= 0 && nodo('inBaseOtros').innerHTML.indexOf('Oortega') > 0
+    && nodo('inCubicadores').innerHTML.indexOf('Oortega') < 0);
   // Pantoja no tiene obra en aSa pero su reclamo es de 2025, un año con base: ES un
   // error de ese período y cuenta en el numerador. Lo que no tiene es tasa propia.
   check('un reclamo sin obra en aSa igual cuenta en el período', kp.indexOf('28 reclamos') > 0);
@@ -130,8 +137,12 @@ check('está registrado con su panel', sandbox.DASH_SUBTABS && sandbox.DASH_SUBT
 
   console.log('\n6. El gráfico por año y los filtros de la barra');
   const g = graficos[graficos.length - 1].cfg;
-  check('el año sin base no lleva barra, pero sí etiqueta que lo dice',
-    g.data.labels.some(function (l) { return String(l[1]) === 'sin base en aSa'; }));
+  // 2022 en la fixture: 40 reclamos y 100 ton parciales en aSa. No es un cero: la
+  // etiqueta dice lo que hay y que por eso no hay tasa (el usuario leyó «0» en 2022).
+  check('el año sin base no lleva barra, pero la etiqueta dice lo que hay y por qué no hay tasa',
+    g.data.labels.some(function (l) { return String(l[1]) === '40 recl · aSa parcial: 100 ton · sin tasa'; }));
+  // (2021 no está en la fixture: sin filas no hay etiqueta; se prueba la regla directo.)
+  check('...y un año sin nada (2021) dice sólo que no hay base', sandbox.inEtiquetaSinBase(2021) === 'sin base en aSa');
   const fb = nodo('inFiltros').innerHTML;
   check('los filtros son los mismos de programación', (fb.match(/class="dshbarra"/g) || []).length === 2);
   check('el servicio ofrece dos opciones, interno y externo', (fb.match(/data-v="(Interno|Externo)"/g) || []).length === 2);
@@ -140,33 +151,29 @@ check('está registrado con su panel', sandbox.DASH_SUBTABS && sandbox.DASH_SUBT
 
   console.log('\n7. Interno contra externo: la pregunta del usuario, contestada con el dato');
   // Con la fixture: interno = 20 reclamos / 10.000 ton = 2,0; externo = 8 (Mario 5 +
-  // Sin Base 3) / 1.050 ton (Mario 1.000 + Oortega 50) = 7,6. Los 40 de Mario en 2022
-  // no entran: ese año no tiene base.
+  // Sin Base 3) / 1.500 ton (Mario 1.000 + Carlos 500) = 5,3. Los 40 de Mario en 2022
+  // no entran: ese año no tiene base. Y las 50 ton de Oortega tampoco: no es cubicador.
   var ts = nodo('inServicioTabla').innerHTML;
   check('la tasa de cada servicio está bien dividida',
-    /Reclamos por 1\.000 ton<\/td><td class="mejor">2,0<\/td><td class="peor">7,6<\/td>/.test(ts));
+    /Reclamos por 1\.000 ton<\/td><td class="mejor">2,0<\/td><td class="peor">5,3<\/td>/.test(ts));
   check('el peor en cada medida va en rojo y el otro en verde',
     (ts.match(/class="peor"/g) || []).length >= 2 && (ts.match(/class="mejor"/g) || []).length >= 2);
-  // Las medidas no van todas para el mismo lado en la fixture: externo pierde en tasa y
-  // en kilos, interno pierde en reclamos por obra y en % de obras con reclamo. La
-  // lectura TIENE que decirlo así, en vez de forzar una conclusión.
-  check('la lectura no fuerza una conclusión cuando las medidas no van parejas',
-    nodo('inServicioLectura').innerHTML.indexOf('No es parejo') >= 0
-    && nodo('inServicioLectura').innerHTML.indexOf('<b>2</b>') >= 0);
+  // SIN FRASE DE CONCLUSIÓN (6-oct): el usuario la leyó como sesgo. Que hable la tabla.
+  check('no hay frase de conclusión bajo la tabla: habla el dato',
+    !nodos['inServicioLectura'] || nodo('inServicioLectura').innerHTML === '');
   // POR SEGMENTO (6-oct). En la fixture: 4 y 5 tiene interno 20 / 10.000 ton = 2,0 y
   // externo 0 / 50 ton (Oortega) = 0,0 → el interno sale peor ahí; 1 y 2 sólo tiene base
   // externa (Mario, 5,0): sin interno no hay con qué comparar y no se marca nada; YPS no
   // tiene nada y no aparece.
   check('debajo de las cuatro medidas va la tasa por segmento, con su subtítulo',
     ts.indexOf('Reclamos por 1.000 ton, por segmento') > 0 && ts.indexOf('Segmento 1 y 2') > 0 && ts.indexOf('Segmento 4 y 5') > 0);
-  check('4 y 5: interno 2,0 (peor) contra externo 0,0',
-    /Segmento 4 y 5<\/td><td class="peor"[^>]*>2,0<\/td><td class="mejor"[^>]*>0,0<\/td>/.test(ts));
+  check('4 y 5: interno 2,0 (peor) contra externo 0,0 (Carlos, 500 ton sin reclamos)',
+    /Segmento 4 y 5<\/td><td class="peor"[^>]*>2,0<\/td><td class="mejor" title="0 reclamos sobre 500 ton">0,0<\/td>/.test(ts));
   check('1 y 2: sólo hay base externa (5,0); sin con qué comparar no se marca peor ni mejor',
     /Segmento 1 y 2<\/td><td class=""[^>]*>·<\/td><td class=""[^>]*>5,0<\/td>/.test(ts));
   check('...cada celda dice sobre cuántos reclamos y toneladas se calculó',
     ts.indexOf('title="5 reclamos sobre 1.000 ton"') > 0);
   check('un segmento sin datos (YPS) no aparece', ts.indexOf('YPS') < 0);
-  check('y la lectura lo dice por segmento', nodo('inServicioLectura').innerHTML.indexOf('Por segmento, el interno sale peor en <b>4 y 5</b>') > 0);
   // Las filas por segmento no se vacían si arriba se filtró otro segmento: son un desglose fijo.
   sandbox.IN_F.segmento = ['1 y 2'];
   sandbox.inPintarTodo();
@@ -178,14 +185,27 @@ check('está registrado con su panel', sandbox.DASH_SUBTABS && sandbox.DASH_SUBT
   sandbox.IN_F.servicio = ['Interno'];
   sandbox.inPintarTodo();
   check('filtrar por un servicio no vacía la comparación',
-    nodo('inServicioTabla').innerHTML.indexOf('7,6') > 0 && nodo('inServicioTabla').innerHTML.indexOf('2,0') > 0);
+    nodo('inServicioTabla').innerHTML.indexOf('5,3') > 0 && nodo('inServicioTabla').innerHTML.indexOf('2,0') > 0);
   sandbox.IN_F.servicio = [];
   sandbox.inPintarTodo();
   var gs = graficos.filter(function (x) { return x.ctx && x.ctx.id === 'inChartServicio'; }).pop().cfg;
   check('el gráfico por año lleva una serie por servicio', gs.data.datasets.length === 2
     && gs.data.datasets[0].label === 'Interno' && gs.data.datasets[1].label === 'Externo');
-  check('...y el año sin base queda en cero con su aviso',
-    gs.data.labels.some(function (l) { return String(l[1]) === 'sin base en aSa'; }));
+  check('...y el año sin base queda sin barra, con la misma etiqueta que explica por qué',
+    gs.data.labels.some(function (l) { return String(l[1]).indexOf('sin tasa') > 0; }));
+
+  console.log('\n8. Imprimir: el tablero en una hoja');
+  var impreso = 0;
+  sandbox.window.print = function () { impreso++; };
+  sandbox.window.addEventListener = function () {}; sandbox.window.removeEventListener = function () {};
+  sandbox.document.body = { classList: { add() {}, remove() {} } };
+  sandbox.inImprimir();
+  await new Promise(function (r) { setTimeout(r, 120); });
+  check('el botón manda a imprimir (window.print) después de redibujar los gráficos', impreso === 1);
+  var htmlInd = fs.readFileSync(path.join(__dirname, '..', 'armahub', 'templates', 'tabs', 'rec_dashboards.html'), 'utf8');
+  check('hay botón Imprimir y una hoja A4 apaisada que muestra sólo el tablero',
+    htmlInd.indexOf('id="inImprimir"') > 0 && htmlInd.indexOf('size: A4 landscape') > 0
+    && htmlInd.indexOf('body.imprimiendo-indicadores #dashSubInd') > 0);
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
   process.exit(fallos ? 1 : 0);

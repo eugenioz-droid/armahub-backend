@@ -1325,9 +1325,13 @@ def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
             base = []
             for anio, login, job, obra, seg, cc, kg in cur.fetchall():
                 persona = ASA_PERSONA.get((login or "").strip().lower(), (login or "?").strip())
-                base.append({"anio": anio, "persona": persona,
-                             "conocido": (login or "").strip().lower() in ASA_PERSONA,
-                             "servicio": servicio_de(persona), "segmento": seg or "(sin segmento)",
+                conocido = (login or "").strip().lower() in ASA_PERSONA
+                # Un login que no está en ASA_PERSONA no es cubicador (administración,
+                # planificación, el propio usuario): no es interno ni externo, y el tablero
+                # lo deja fuera de la base diciendo cuánto queda fuera (6-oct).
+                base.append({"anio": anio, "persona": persona, "conocido": conocido,
+                             "servicio": servicio_de(persona) if conocido else None,
+                             "segmento": seg or "(sin segmento)",
                              "obra_id": job, "obra": obra, "cc": cc, "ton": round(float(kg) / 1000.0, 2)})
 
             NOMBRE_CUB = ("COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), "
