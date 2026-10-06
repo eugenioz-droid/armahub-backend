@@ -584,16 +584,27 @@
     } catch (err) { $('audRevInfo').textContent = err.message; }
   }
 
-  // LA TABLA DE BARRAS, con su veredicto. Conforme / No conforme por barra, y el campo
-  // de observación aparece sólo cuando se marca no conforme: así no se pide escribir
-  // trece veces «ok».
+  // LA TABLA DE BARRAS, con su veredicto: la misma grilla del Bar Manager —φ, figura, el
+  // dibujo, un lado por columna (A…I), los ángulos (α) y el radio— porque el auditor
+  // compara contra el plano, y en el plano las medidas van en columnas, no en una frase.
+  // Las medidas van en cm, como en toda la plataforma (aSa las manda en mm). Conforme /
+  // No conforme por barra; el campo de observación aparece sólo cuando se marca no
+  // conforme: así no se pide escribir trece veces «ok».
   function pintarBarras() {
-    var html = '<thead><tr><th style="width:92px">Veredicto</th><th>Marca</th><th class="num">Ø</th>' +
-      '<th>Figura</th><th>Lados / dimensiones</th><th class="num">Largo</th><th class="num">Cant</th>' +
-      '<th class="num">Peso</th><th>' + (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') +
-      '</th></tr></thead><tbody>';
-    BARRAS.forEach(function (b) {
-      var v = VERED[b.ref], dims = Object.keys(b.dims || {}).map(function (k) { return k + '=' + b.dims[k]; }).join(' · ');
+    var filas = BARRAS.map(function (b) { return normalizarBarra(b, AUD.origen); });
+    var letras = letrasUsadas(filas);
+    var nAng = filas.reduce(function (m, f) { return Math.max(m, f.angulos.length); }, 0);
+    var conRadio = filas.some(function (f) { return f.radio > 0; });
+    var nCols = 9 + letras.length + nAng + (conRadio ? 1 : 0);
+    var html = '<thead><tr><th style="width:92px">Veredicto</th><th>Marca</th><th class="num">φ</th>' +
+      '<th>Figura</th><th>Render</th>' +
+      letras.map(function (L) { return '<th class="num g">' + esc(L) + '</th>'; }).join('') +
+      rango(nAng).map(function (i) { return '<th class="num g">α' + (i + 1) + '</th>'; }).join('') +
+      (conRadio ? '<th class="num g">R</th>' : '') +
+      '<th class="num">Largo</th><th class="num">Cant</th><th class="num">Peso</th>' +
+      '<th>' + (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') + '</th></tr></thead><tbody>';
+    BARRAS.forEach(function (b, i) {
+      var f = filas[i], v = VERED[b.ref];
       var clase = v ? (v.conforme ? ' class="bueno"' : ' class="malo"') : '';
       html += '<tr' + clase + ' data-ref="' + esc(b.ref) + '">' +
         '<td><span class="audvb">' +
@@ -601,16 +612,19 @@
           '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="No conforme">NC</button>' +
         '</span></td>' +
         '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
-        '<td class="num">' + esc(b.diam || '') + '</td>' +
-        '<td class="audfigcel">' + celdaFigura(b, AUD.origen) + '</td>' +
-        '<td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
-        '<td class="num">' + (b.largo != null ? Math.round(b.largo) : '') + '</td>' +
+        '<td class="num">' + num(f.diam) + '</td>' +
+        '<td class="cc">' + esc(b.figura || '') + '</td>' +
+        '<td class="audfigcel">' + celdaFigura(f) + '</td>' +
+        letras.map(function (L) { return '<td class="num g">' + num(f.dims[L]) + '</td>'; }).join('') +
+        rango(nAng).map(function (k) { return '<td class="num g">' + num(f.angulos[k]) + '</td>'; }).join('') +
+        (conRadio ? '<td class="num g">' + num(f.radio, 1) + '</td>' : '') +
+        '<td class="num">' + num(f.largo) + '</td>' +
         '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
         '<td class="num">' + kg0(b.peso_total) + '</td>' +
         '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
           esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td></tr>';
       if (v && v.conforme === false) {
-        html += '<tr class="malo"><td></td><td colspan="8">' +
+        html += '<tr class="malo"><td></td><td colspan="' + (nCols - 1) + '">' +
           '<input type="text" class="audobs" data-obs="' + esc(b.ref) + '" placeholder="Qué tiene esta barra (obligatorio)" value="' +
           esc(v.observacion || '') + '"></td></tr>';
       }
@@ -632,64 +646,76 @@
     pintarRevision();
   }
 
+  function rango(n) { var r = []; for (var i = 0; i < n; i++) r.push(i); return r; }
+  // Un número para la grilla: vacío si no hay dato (igual que el Bar Manager).
+  function num(v, dec) {
+    if (v == null || v === '' || isNaN(v)) return '';
+    return dec ? Number(v).toFixed(dec) : String(Math.round(Number(v)));
+  }
+  // Las letras de lado que usa alguna barra del elemento, en orden: son las columnas.
+  function letrasUsadas(filas) {
+    var vistas = {};
+    filas.forEach(function (f) { Object.keys(f.dims).forEach(function (L) { vistas[L] = true; }); });
+    return Object.keys(vistas).sort();
+  }
+
+  // UNA BARRA DE CUALQUIERA DE LAS DOS FUENTES, en lo que entienden la grilla y el renderer
+  // del Bar Manager: {figura, diam (mm), dims {A: cm}, dim_a… (cm), angulos, radio, largo (cm)}.
+  // aSa manda mm y el φ como texto («10mm»); ArmaHub ya viene en cm, con las letras en
+  // minúscula. El radio de aSa es el diámetro del mandril, otra cosa que el R del Bar
+  // Manager: no se mezclan.
+  function normalizarBarra(b, origen) {
+    var k = origen === 'asa' ? 0.1 : 1;
+    var f = { figura: b.figura, diam: parseFloat(b.diam), dims: {}, eje: b.eje || null,
+              angulos: (b.angulos || []).map(Number).filter(function (x) { return !isNaN(x); }),
+              radio: origen === 'asa' ? 0 : (Number(b.radio) || 0),
+              largo: (b.largo != null && b.largo !== '') ? Number(b.largo) * k : null };
+    Object.keys(b.dims || {}).forEach(function (key) {
+      var v = Number(b.dims[key]);
+      if (!(v > 0)) return;
+      var L = String(key).toUpperCase();
+      f.dims[L] = v * k;
+      f['dim_' + L.toLowerCase()] = v * k;
+    });
+    return f;
+  }
+
   // EL DIBUJO DE LA BARRA: el MISMO motor que el editor de despieces y el Bar Manager.
   // La figura del catálogo —el código de aSa (ShpNameID) es el mismo código del catálogo
   // de la plataforma— escalada a las medidas reales de ESTA barra y con el trazo según su
   // φ, al tamaño M del Bar Manager. Así el auditor ve la barra igual que en el resto de la
   // plataforma, y no una miniatura con otro formato.
-  //   · Si el código no está en el catálogo, se dibuja con el mismo motor el eje que el
-  //     backend reconstruye de aSa, sólo si se pudo comprobar contra la envolvente que
-  //     aSa declara: un dibujo equivocado en una auditoría es peor que ninguno.
-  //   · Si tampoco hay eje, queda el código en texto.
+  //   · Si el código no está en el catálogo (figuras nativas de aSa: T12, 104E1…), se
+  //     dibuja con el mismo motor el eje que el backend reconstruye de aSa, rotulado con
+  //     sus lados. Si la envolvente no cuadra con la que aSa declara, se dibuja igual y
+  //     queda un aviso al lado con el porqué: el auditor decide, no se le esconde nada.
+  //   · Si tampoco hay eje, un guion.
   var FIG_TAM = 'm';
 
-  // Lo que espera el renderer del Bar Manager: {figura, diam (mm), dim_a..dim_i (cm)}.
-  // En aSa los lados vienen en MILÍMETROS y con su letra, en el eje reconstruido (o, si
-  // no hubo eje, como texto «5430 (-135°)» en `dims`); en ArmaHub ya vienen en cm en
-  // `dims` {a: 600}. El φ de aSa viene como texto («10mm»).
-  function barraParaDibujo(b, origen) {
-    var out = { figura: b.figura, diam: parseFloat(b.diam) };
-    if (origen === 'asa') {
-      var lados = (b.eje && b.eje.lados) || [];
-      if (lados.length) {
-        lados.forEach(function (l) {
-          if (l.nombre && l.largo > 0) out['dim_' + String(l.nombre).toLowerCase()] = l.largo / 10;
-        });
-      } else {
-        Object.keys(b.dims || {}).forEach(function (k) {
-          var v = parseFloat(b.dims[k]);
-          if (v > 0) out['dim_' + k.toLowerCase()] = v / 10;
-        });
-      }
-    } else {
-      Object.keys(b.dims || {}).forEach(function (k) {
-        var v = Number(b.dims[k]);
-        if (v > 0) out['dim_' + k.toLowerCase()] = v;
-      });
-    }
-    return out;
+  function celdaFigura(f) {
+    var svg = global._bmFiguraSvg ? global._bmFiguraSvg(f, FIG_TAM) : '';
+    if (svg) return svg;
+    svg = svgEje(f);
+    if (!svg) return '<span class="muted">—</span>';
+    return svg + (f.eje.ok ? '' :
+      '<span class="audfigav" title="' + esc(f.eje.motivo || 'La envolvente no cuadra con la que declara aSa') + '">⚠</span>');
   }
 
   // El eje reconstruido de aSa (puntos en mm, Y hacia arriba como en el motor), dibujado
-  // con el motor para que se vea igual que una figura del catálogo. Sin letras ni
-  // ángulos: los lados de un arco son 24 puntitos y rotularlos sería ruido.
-  function svgEje(eje, diam) {
-    var M = global.disenadorMotor;
-    if (!eje || !eje.ok || !(eje.puntos || []).length || !M || !M.svgDesdePuntos || !global._bmTam) return '';
+  // con el motor y con un rótulo por tramo: la medida del lado en cm, como en el Bar
+  // Manager. Si hay un arco, sus puntitos no son lados y va sin rótulos.
+  function svgEje(f) {
+    var eje = f.eje, M = global.disenadorMotor;
+    if (!eje || !(eje.puntos || []).length || !M || !M.svgDesdePuntos || !global._bmTam) return '';
     var t = global._bmTam(FIG_TAM);
     var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
+    var lados = eje.lados || [];
+    var rectos = lados.length === pts.length - 1 && !lados.some(function (l) { return l.arco; });
+    var labels = rectos ? lados.map(function (l) { return String(Math.round(l.largo / 10)); }) : [];
     try {
-      return M.svgDesdePuntos(pts, { width: t.w, height: t.h, pad: 20, labels_auto: false, angulos: false,
-                                     diam_mm: diam, metrico: true });
+      return M.svgDesdePuntos(pts, { width: t.w, height: t.h, pad: 20, labels: labels,
+                                     labels_auto: rectos, angulos: rectos, diam_mm: f.diam, metrico: true });
     } catch (e) { return ''; }
-  }
-
-  function celdaFigura(b, origen) {
-    var bar = barraParaDibujo(b, origen);
-    var svg = (global._bmFiguraSvg ? global._bmFiguraSvg(bar, FIG_TAM) : '') || svgEje(b.eje, bar.diam);
-    var cod = esc(b.figura || '');
-    if (!svg) return cod;
-    return '<div class="audfig">' + svg + '<div class="audfigcod">' + cod + '</div></div>';
   }
 
   function esAdmin() {
@@ -916,6 +942,7 @@
 
   // Expuesto para los tests: lo puro.
   global.__auditoriasTest = { marcar: marcar, HALLAZGO_TXT: HALLAZGO_TXT, ACCION_TXT: ACCION_TXT,
-                              barraParaDibujo: barraParaDibujo, celdaFigura: celdaFigura, FIG_TAM: FIG_TAM };
+                              normalizarBarra: normalizarBarra, letrasUsadas: letrasUsadas,
+                              celdaFigura: celdaFigura, FIG_TAM: FIG_TAM };
 
 })(window);

@@ -220,8 +220,9 @@ check("...con el mismo azar reproducible que el sorteo en SQL",
       "def _orden_azar(" in SRC and "hashlib.md5" in SRC)
 check("el selector lista una fila por JOB de aSa, no por nombre (hay obras con dos)",
       "GROUP BY p.asa_job_id" in SRC and "se sorteaba dentro de 63" in SRC)
-check("los lados de la barra se muestran como texto, sin dibujar",
-      "def _lados(" in SRC and "<cp>(.*?)</cp>" in SRC and "Lados / dimensiones" in JS)
+check("los lados de la barra van en columnas y en cm, como en el Bar Manager",
+      "def _lados(" in SRC and "<cp>(.*?)</cp>" in SRC and "function letrasUsadas(" in JS
+      and "function normalizarBarra(" in JS and "ang1, ang2, ang3, ang4, radio" in SRC)
 check("y la lista dice de qué origen salió cada auditoría",
       '"origen": r[16]' in SRC and 'class="audori ' in JS and ".audori.asa{" in HTM)
 

@@ -254,7 +254,7 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
                 """SELECT marca, diam, figura, dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                           largo_total, cant, mult, cant_total, peso_unitario, peso_total,
                           nombre_plano, tipo, INITCAP(estructura), COALESCE(creado_por, editado_por, '?'),
-                          bar_id, id_unico
+                          bar_id, id_unico, ang1, ang2, ang3, ang4, radio
                      FROM barras
                     WHERE id_proyecto = %s AND COALESCE(sector,'') = %s AND COALESCE(piso,'') = %s
                       AND COALESCE(ciclo,'') = %s AND COALESCE(eje,'') = %s
@@ -268,7 +268,10 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
                     "dims": {dims[i]: r[3 + i] for i in range(9) if r[3 + i] not in (None, 0)},
                     "largo": r[12], "cant": r[13], "mult": r[14], "cant_total": r[15],
                     "peso_unitario": r[16], "peso_total": r[17], "plano": r[18], "tipo": r[19],
-                    "estructura": r[20], "cubicado_por": r[21], "bar_id": r[22], "id_unico": r[23]})
+                    "estructura": r[20], "cubicado_por": r[21], "bar_id": r[22], "id_unico": r[23],
+                    # Los ángulos y el radio, como los muestra el Bar Manager (0 = no usado).
+                    "angulos": [float(r[i]) for i in range(24, 28) if r[i] not in (None, 0)],
+                    "radio": r[28] or None})
     if not barras:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene barras.")
     _poner_refs(barras)
@@ -590,18 +593,24 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
     if not items:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene ítems en aSa.")
     from .figura_asa import figura_de
-    barras = [{
-        "marca": it.get("BarMark"), "diam": it.get("BarSizeDescr"), "figura": it.get("ShpNameID"),
-        "dims": _lados(it.get("LegAngle")), "largo": it.get("LengthCut"),
-        # EL DIBUJO. Se reconstruye del eje que manda aSa y se COMPRUEBA contra la
-        # envolvente que ella misma declara: si no cuadra, viaja `ok: false` y la
-        # pantalla muestra las medidas en vez de un dibujo que mentiría.
-        "eje": figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam")),
-        "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
-        "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
-        "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
-                                       (it.get("ShopMessage") or "").strip()) if x) or None,
-    } for it in items]
+    barras = []
+    for it in items:
+        lados = _lados(it.get("LegAngle"))
+        barras.append({
+            "marca": it.get("BarMark"), "diam": it.get("BarSizeDescr"), "figura": it.get("ShpNameID"),
+            # Los lados en mm con su letra, los ángulos entre lados y qué lados son gancho:
+            # la grilla los pone en columnas, en cm, igual que el Bar Manager.
+            "dims": lados["dims"], "angulos": lados["angulos"], "ganchos": lados["ganchos"],
+            "largo": it.get("LengthCut"),
+            # EL DIBUJO. Se reconstruye del eje que manda aSa y se comprueba contra la
+            # envolvente que ella misma declara: si no cuadra viaja `ok: false` y la
+            # pantalla dibuja igual, con el aviso y el porqué al lado.
+            "eje": figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam")),
+            "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
+            "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
+            "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
+                                           (it.get("ShopMessage") or "").strip()) if x) or None,
+        })
     _poner_refs(barras)
     revisados = {}
     if elemento_id:
@@ -615,26 +624,26 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
 
 
 def _lados(xml: Optional[str]) -> dict:
-    """Los lados de la barra, del XML de `LegAngle`, como texto corto para la tabla:
-    `A=300 · B=11400 (90°) · C=300 ↱`. No se dibuja nada —el auditor sabe leer una
-    barra—, pero ver los lados en la misma línea es lo que acelera la revisión."""
+    """Los lados de la barra, del XML de `LegAngle`, para la grilla: `dims` {letra: mm},
+    `angulos` [grados entre cada lado y el anterior] y `ganchos` [letras]. Si aSa no le
+    puso letra a un lado (las rectas), se nombra por posición: A, B, C… que es como las
+    nombra ella misma cuando sí lo hace."""
+    salida = {"dims": {}, "angulos": [], "ganchos": []}
     if not xml:
-        return {}
+        return salida
     import re as _re
-    salida = {}
-    for cp in _re.findall(r"<cp>(.*?)</cp>", str(xml)):
-        nombre = (_re.search(r"<ln>(.*?)</ln>", cp) or [None, ""])[1] if _re.search(r"<ln>", cp) else ""
-        largo = (_re.search(r"<l>(.*?)</l>", cp) or [None, ""])[1] if _re.search(r"<l>", cp) else ""
-        ang = _re.search(r"<a>(.*?)</a>", cp)
-        tipo = _re.search(r"<t>(.*?)</t>", cp)
+    for i, cp in enumerate(_re.findall(r"<cp>(.*?)</cp>", str(xml))):
+        largo = _re.search(r"<l>([-\d.]+)</l>", cp)
         if not largo:
             continue
-        texto = largo
+        nombre = (_re.search(r"<ln>(.*?)</ln>", cp) or [None, ""])[1] or "ABCDEFGHI"[i:i + 1] or str(i + 1)
+        salida["dims"][nombre] = float(largo.group(1))
+        ang = _re.search(r"<a>([-\d.]+)</a>", cp)
         if ang:
-            texto += " (%s°)" % ang.group(1)
+            salida["angulos"].append(float(ang.group(1)))
+        tipo = _re.search(r"<t>(.*?)</t>", cp)
         if tipo and tipo.group(1).upper().startswith("H"):
-            texto += " ↱"      # gancho
-        salida[nombre or str(len(salida) + 1)] = texto
+            salida["ganchos"].append(nombre)
     return salida
 
 

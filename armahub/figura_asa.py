@@ -19,8 +19,20 @@ que adivinar — es un vector — y el resultado cuadra con `mbr` dentro del 1%.
 
 CÓMO SE SABE SI SALIÓ BIEN. aSa manda la envolvente (`mbr`) de la barra. Se dibuja, se
 mide la envolvente de lo dibujado y se comparan: si no cuadran, `ok` viene en False y la
-pantalla muestra las medidas en texto en vez de un dibujo equivocado. Un dibujo mal hecho
-en una auditoría es peor que ningún dibujo: el auditor daría por buena una barra mala.
+pantalla dibuja igual pero con un aviso al lado (6-oct; antes no dibujaba nada, y el
+auditor se quedaba sin figura justamente en las barras que aSa tiene y la plataforma no).
+La comparación tolera lo que el doblez puede mover: aSa modela los codos y acá no, así
+que una traba de ganchos a 135° mide 95 de alto donde aSa declara 114 —19 mm, menos de
+un mandril— y eso no es un dibujo equivocado. Lo que sí se avisa es la forma mal
+reconstruida: un gancho hacia el lado contrario duplica el alto, y eso ningún codo lo
+explica.
+
+EL GANCHO SÍSMICO AL FINAL VIENE AL REVÉS. Medido sobre 27 barras reales con gancho al
+final: en los de 135° (`H3`) el `SlopingVector` apunta desde la punta libre hacia el
+cuerpo —al revés del recorrido— en 10 de 10; en los de 90° (`H9`) va en el sentido del
+recorrido en 17 de 17. Al gancho del inicio no le pasa: ahí «de la punta al cuerpo» ES
+el recorrido. Sin esto el gancho final de una traba T12 salía hacia afuera (45° en vez
+de 135°) y la figura medía 189 de alto donde aSa declara 114.
 
 LOS CURVOS. Un lado `RB` es un arco: `ShapeDims` trae su radio en una entrada aparte
 (`ElemType` `WR`, `LegName` `R`) y el ángulo barrido en `XAngleInRads`. Comprobado contra
@@ -32,9 +44,12 @@ import math
 import re
 from typing import Optional
 
-# Cuánto puede diferir la envolvente dibujada de la que declara aSa para darla por buena.
-# El 3% cubre el acortamiento por radio de doblado, que no se modela lado a lado.
+# Cuánto puede diferir la envolvente dibujada de la que declara aSa para darla por buena:
+# el 3% o lo que mueven dos codos (un mandril por lado), lo que sea mayor. Lo segundo es
+# lo que no se modela acá y aSa sí (ver arriba, «cómo se sabe si salió bien»).
 TOLERANCIA = 0.03
+# Ganchos de 135°: su vector viene de la punta al cuerpo (ver arriba).
+GANCHO_135 = "H3"
 # Lados que son geometría. El resto de las entradas de ShapeDims son cotas y ángulos
 # auxiliares (`WS`, `AN`, `WR`): números para el taller, no tramos del eje.
 TIPOS_LADO = ("B", "SB", "RB", "H3", "H9", "H18", "H13", "STD")
@@ -86,6 +101,7 @@ def _lados(shapedims):
             "largo": _num(d.get("MMLength")),
             "vx": vx, "vy": vy,
             "gancho": bool(d.get("IsHook")),
+            "tipo": d.get("ElemType") or "",
             "arco": bool(d.get("IsRadial")) or (d.get("ElemType") or "") == "RB",
             "barrido": _num(d.get("XAngleInRads"), -1.0),
         })
@@ -104,8 +120,8 @@ def _lados_de_xml(legangle: Optional[str]):
     m = re.search(r"<l>([-\d.]+)</l>", cps[0])
     if not m:
         return []
-    return [{"n": 1, "nombre": "", "largo": _num(m.group(1)), "vx": 1.0, "vy": 0.0,
-             "gancho": False, "arco": False, "barrido": -1.0}]
+    return [{"n": 1, "nombre": "A", "largo": _num(m.group(1)), "vx": 1.0, "vy": 0.0,
+             "gancho": False, "tipo": "STD", "arco": False, "barrido": -1.0}]
 
 
 def _recortar_por_doblado(puntos, radio_doblado: float):
@@ -154,11 +170,13 @@ def _recortar_por_doblado(puntos, radio_doblado: float):
 
 def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
               pasos_arco: int = 24) -> dict:
-    """El EJE de la barra como una polilínea de puntos en milímetros.
+    """El EJE de la barra como una polilínea de puntos en milímetros, vértice a vértice.
 
     Devuelve `{ok, puntos, lados, ancho, alto, mbr, motivo}`. `ok` es False cuando no se
-    pudo reconstruir o cuando lo dibujado no cuadra con la envolvente que declara aSa:
-    en ese caso la pantalla muestra las medidas en texto y no un dibujo inventado.
+    pudo reconstruir o cuando lo dibujado no cuadra con la envolvente que declara aSa; la
+    pantalla dibuja igual (si hay puntos) y pone el aviso al lado. Los puntos van al
+    VÉRTICE, sin descontar el doblez: el motor que dibuja redondea los codos él mismo y
+    rotula cada tramo con su lado, así que un tramo tiene que ser un lado.
     """
     lados, radio = _lados(shapedims)
     mbr = envolvente_declarada(legangle)
@@ -168,6 +186,9 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
     if not lados:
         return {"ok": False, "motivo": "aSa no mandó los lados de esta barra",
                 "puntos": [], "lados": [], "mbr": mbr}
+    ultimo = lados[-1]
+    if len(lados) > 1 and ultimo["gancho"] and ultimo["tipo"] == GANCHO_135:
+        ultimo["vx"], ultimo["vy"] = -ultimo["vx"], -ultimo["vy"]
 
     x = y = 0.0
     puntos = [(0.0, 0.0)]
@@ -209,19 +230,22 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
                        "gancho": lado["gancho"], "arco": lado["arco"],
                        "desde": desde, "hasta": len(puntos) - 1})
 
-    # Los largos vienen medidos AL VÉRTICE: hay que descontar lo que se come el doblez.
-    puntos = _recortar_por_doblado(puntos, _num(pin_diam) / 2.0)
-
-    xs = [p[0] for p in puntos]
-    ys = [p[1] for p in puntos]
+    # La comprobación se hace sobre la polilínea con el doblez descontado (los largos
+    # vienen medidos al vértice y en la barra real la esquina es curva), que es lo más
+    # parecido a lo que mide aSa. Lo que se devuelve para dibujar son los vértices.
+    pin = _num(pin_diam)
+    medido = _recortar_por_doblado(puntos, pin / 2.0)
+    xs = [p[0] for p in medido]
+    ys = [p[1] for p in medido]
     ancho, alto = max(xs) - min(xs), max(ys) - min(ys)
 
     ok, motivo = True, ""
     if mbr:
-        # La comprobación: lo dibujado tiene que medir lo que aSa dice que mide.
+        # Lo dibujado tiene que medir lo que aSa dice que mide, salvo lo que un codo por
+        # lado puede mover.
         for dibujado, declarado, cual in ((ancho, mbr[0], "ancho"), (alto, mbr[1], "alto")):
-            ref = max(declarado, 1.0)
-            if abs(dibujado - declarado) / ref > TOLERANCIA:
+            tolerancia = max(max(declarado, 1.0) * TOLERANCIA, 2 * pin)
+            if abs(dibujado - declarado) > tolerancia:
                 ok, motivo = False, ("la envolvente no cuadra: %s dibujado %d, aSa dice %d"
                                      % (cual, round(dibujado), round(declarado)))
                 break

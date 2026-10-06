@@ -324,11 +324,12 @@
   .audvb button.no.on{background:#c62828; border-color:#b71c1c; color:#fff;}
   .audt tr.malo td{background:#fff6f6;}
   .audt tr.bueno td{background:#f8fbf4;}
-  /* El dibujo de la barra: el render del Bar Manager (tamaño M) con el código debajo. */
-  .audt td.audfigcel{text-align:center; white-space:normal;}
-  .audfig{display:inline-block; background:#fff; border:1px solid #eef1f4; border-radius:3px; padding:2px 4px 0;}
-  .audfig svg{display:block; margin:0 auto;}
-  .audfigcod{font-family:ui-monospace,Consolas,monospace; font-size:9.5px; font-weight:700; color:#78909c; padding:0 0 2px;}
+  /* La grilla de barras sigue al Bar Manager: medidas en columnas, el dibujo (render,
+     tamaño M) en la suya. El aviso ⚠ va cuando el eje de aSa no cuadra con su envolvente. */
+  .audt td.audfigcel{text-align:center; white-space:nowrap;}
+  .audt td.audfigcel svg{vertical-align:middle;}
+  .audt td.g{color:#444;} .audt th.g{color:#78909c;}
+  .audfigav{display:inline-block; margin-left:3px; color:#e65100; font-weight:700; cursor:help; vertical-align:middle;}
   .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
           border:1px solid #ef9a9a; border-radius:4px;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}

@@ -59,31 +59,41 @@ check('no hay localStorage: una auditoría es un registro de calidad, va a la ba
 check('el estado y las fechas no se calculan acá: vienen del backend',
       fuente.indexOf('function estadoDe') === -1 && fuente.indexOf('function resultadoDe') === -1);
 
-console.log('\n4. El dibujo de la barra: el mismo motor que el editor de despieces');
-const asa = T.barraParaDibujo({ figura: '104B', diam: '10mm',
-  eje: { ok: false, lados: [{ nombre: 'A', largo: 120 }, { nombre: 'B', largo: 5430 }] } }, 'asa');
+console.log('\n4. La grilla de barras: la del Bar Manager, en cm');
+const asa = T.normalizarBarra({ figura: '104B', diam: '10mm', dims: { A: 120, B: 5430 }, angulos: [-135, -90], largo: 5905, radio: 48 }, 'asa');
 check('aSa: los lados pasan de mm a cm con su letra, y el φ «10mm» queda en 10',
-      asa.figura === '104B' && asa.diam === 10 && asa.dim_a === 12 && asa.dim_b === 543 && !('dim_c' in asa));
-const asaTxt = T.barraParaDibujo({ figura: '101A', diam: '12mm', eje: { ok: false, lados: [] },
-  dims: { A: '300 (90°)', B: '11400' } }, 'asa');
-check('...y sin eje reconstruido se leen del texto de los lados', asaTxt.dim_a === 30 && asaTxt.dim_b === 1140);
-const propia = T.barraParaDibujo({ figura: '101A', diam: 12, dims: { a: 600 } }, 'armahub');
-check('ArmaHub: las medidas ya están en cm y van tal cual', propia.dim_a === 600 && propia.diam === 12);
+      asa.figura === '104B' && asa.diam === 10 && asa.dim_a === 12 && asa.dim_b === 543 && asa.dims.A === 12 && !('dim_c' in asa));
+check('...el largo también, los ángulos van tal cual y el mandril de aSa NO es el R del Bar Manager',
+      asa.largo === 590.5 && asa.angulos.join(',') === '-135,-90' && asa.radio === 0);
+const propia = T.normalizarBarra({ figura: '101A', diam: 12, dims: { a: 600 }, angulos: [], radio: 3 }, 'armahub');
+check('ArmaHub: las medidas ya están en cm y van tal cual, con su radio', propia.dim_a === 600 && propia.dims.A === 600 && propia.radio === 3);
+check('las columnas son las letras que usa alguna barra del elemento, ordenadas',
+      T.letrasUsadas([asa, propia, T.normalizarBarra({ dims: { G: 130 } }, 'asa')]).join('') === 'ABG');
 
+console.log('\n5. El dibujo de la barra: el mismo motor que el editor de despieces');
 llamadasBm.length = 0;
-const celda = T.celdaFigura({ figura: '104B', diam: '10mm', eje: { ok: true, puntos: [[0, 0], [1200, 0]], lados: [{ nombre: 'A', largo: 1200 }] } }, 'asa');
-check('con la figura en el catálogo dibuja el Bar Manager, al tamaño M, con el código debajo',
-      celda.indexOf('<svg class="bm">') !== -1 && celda.indexOf('>104B<') !== -1 &&
-      llamadasBm.length === 1 && llamadasBm[0].tam === 'm' && llamadasBm[0].b.dim_a === 120);
+const celda = T.celdaFigura(T.normalizarBarra({ figura: '104B', diam: '10mm', dims: { A: 1200 } }, 'asa'));
+check('con la figura en el catálogo dibuja el Bar Manager, al tamaño M, con las medidas en cm',
+      celda === '<svg class="bm"></svg>' && llamadasBm.length === 1 && llamadasBm[0].tam === 'm' && llamadasBm[0].b.dim_a === 120);
 llamadasMotor.length = 0;
-const celdaEje = T.celdaFigura({ figura: 'ZZZ', diam: '16mm', eje: { ok: true, puntos: [[0, 0], [1200, 0]], lados: [] } }, 'asa');
-check('sin la figura en el catálogo, el eje de aSa se dibuja con el motor, en cm y con grosor por φ',
-      celdaEje.indexOf('<svg class="eje">') !== -1 && llamadasMotor.length === 1 &&
+const nativa = T.normalizarBarra({ figura: 'T12', diam: '16mm', dims: { A: 1200 },
+  eje: { ok: true, puntos: [[0, 0], [1200, 0]], lados: [{ nombre: 'A', largo: 1200, arco: false }] } }, 'asa');
+const celdaEje = T.celdaFigura(nativa);
+check('sin la figura en el catálogo, el eje de aSa se dibuja con el motor: en cm, grosor por φ y el lado rotulado',
+      celdaEje === '<svg class="eje"></svg>' && llamadasMotor.length === 1 &&
       llamadasMotor[0].pts[1].x === 120 && llamadasMotor[0].o.metrico === true &&
-      llamadasMotor[0].o.diam_mm === 16 && llamadasMotor[0].o.labels_auto === false);
-check('...pero sólo si el eje se pudo comprobar: si no, queda el código en texto',
-      T.celdaFigura({ figura: 'ZZZ', diam: '16mm', eje: { ok: false, puntos: [[0, 0], [1200, 0]], lados: [] } }, 'asa') === 'ZZZ');
-check('ya no hay un dibujante propio: el formato es el de la plataforma', fuente.indexOf('function svgBarra') === -1);
+      llamadasMotor[0].o.diam_mm === 16 && llamadasMotor[0].o.labels.join() === '120' && llamadasMotor[0].o.labels_auto === true);
+const arco = T.normalizarBarra({ figura: 'RB1', diam: '16mm', dims: {},
+  eje: { ok: true, puntos: [[0, 0], [10, 1], [20, 3]], lados: [{ nombre: 'B', largo: 20, arco: true }] } }, 'asa');
+T.celdaFigura(arco);
+check('...y si hay un arco, sus puntitos no se rotulan', llamadasMotor[1].o.labels.length === 0 && llamadasMotor[1].o.labels_auto === false);
+const dudosa = T.celdaFigura(T.normalizarBarra({ figura: 'ZZZ', diam: '16mm', dims: { A: 1200 },
+  eje: { ok: false, motivo: 'la envolvente no cuadra: alto dibujado 189, aSa dice 114', puntos: [[0, 0], [1200, 0]], lados: [] } }, 'asa'));
+check('si la envolvente no cuadra se dibuja igual, con el aviso y su porqué al lado',
+      dudosa.indexOf('<svg class="eje"></svg>') === 0 && dudosa.indexOf('class="audfigav"') !== -1 && dudosa.indexOf('aSa dice 114') !== -1);
+check('sin figura ni eje, un guion', T.celdaFigura(T.normalizarBarra({ figura: 'ZZZ', diam: '16mm' }, 'asa')).indexOf('—') !== -1);
+check('ya no hay un dibujante propio ni la frase de lados: el formato es el de la plataforma',
+      fuente.indexOf('function svgBarra') === -1 && fuente.indexOf('Lados / dimensiones') === -1);
 
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

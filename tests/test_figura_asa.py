@@ -73,10 +73,11 @@ check("...y la flecha 1.011 contra 1.007", abs(r["alto"] - 1007) < 1007 * TOLERA
 check("...así que se puede dibujar", r["ok"])
 
 # ── Caso 4: la comprobación tiene que RECHAZAR lo que no cuadra ──
-print("\n4. Lo que no se puede comprobar NO se dibuja")
+print("\n4. Lo que no cuadra con aSa se avisa")
 MENTIRA = TRES.replace("<X>11400</X>", "<X>5000</X>")
 r = figura_de(DIMS3, MENTIRA)
-check("si lo dibujado no mide lo que dice aSa, no se dibuja", not r["ok"] and "no cuadra" in r["motivo"])
+check("si lo dibujado no mide lo que dice aSa, viene ok=False con el porqué (la pantalla dibuja y avisa)",
+      not r["ok"] and "no cuadra" in r["motivo"] and len(r["puntos"]) == 4)
 r = figura_de(None, None)
 check("sin datos tampoco se inventa nada", not r["ok"] and r["puntos"] == [])
 r = figura_de(json.dumps([{"MMLength": 100.0, "LegNum": 1, "ElemType": "B", "SlopingVector": "0,0,0"}]), None)
@@ -92,6 +93,27 @@ DIMS_MIX = json.dumps([
 r = figura_de(DIMS_MIX, None)
 check("los ángulos (AN) y las cotas (WS) no son lados: se ignoran",
       [l["nombre"] for l in r["lados"]] == ["A", "B"])
+
+# ── Caso 7: la traba T12 REAL de aSa (SUP4 · 12mmA27): ganchos de 135° en los dos extremos ──
+# El vector del gancho final viene de la punta al cuerpo (al revés del recorrido). Sin
+# darlo vuelta, el gancho salía hacia afuera y la figura medía 189 de alto; aSa declara 114.
+T12 = ("<la><st>T</st><bc>6</bc><mbr><X>898</X><Y>114</Y><Z>0</Z></mbr><lt>1160</lt><v>4.0</v>"
+       "<cp><t>H3</t><l>130</l><n>1</n><ln>A</ln></cp><cp><t>STD</t><a>135</a><l>900</l><n>2</n><ln>B</ln></cp>"
+       "<cp><t>H3</t><a>135</a><l>130</l><n>3</n><ln>G</ln></cp></la>")
+DIMS_T12 = json.dumps([
+    {"MMLength": 130.0, "LegNum": 1, "LegName": "A", "ElemType": "H3", "IsHook": True, "SlopingVector": "-16,-17,0"},
+    {"MMLength": 900.0, "LegNum": 2, "LegName": "B", "ElemType": "B", "SlopingVector": "132,0,0"},
+    {"MMLength": 130.0, "LegNum": 3, "LegName": "G", "ElemType": "H3", "IsHook": True, "SlopingVector": "16,-17,0"},
+])
+print("\n7. El gancho sísmico (135°) al final viene al revés")
+r = figura_de(DIMS_T12, T12, pin_diam=48.0)
+check("las dos puntas quedan al mismo lado de la barra (una traba, no una Z)",
+      abs(r["puntos"][0][1] - r["puntos"][-1][1]) < 1 and r["alto"] < 120)
+check("...y la figura cuadra con aSa dentro de lo que mueve el doblez", r["ok"], )
+check("...los puntos van al vértice: un tramo por lado, para rotularlos",
+      len(r["puntos"]) == 4 and [l["nombre"] for l in r["lados"]] == ["A", "B", "G"])
+r90 = figura_de(DIMS3, TRES)
+check("el gancho de 90° (H9) NO se da vuelta: sigue midiendo 11400 × 300", r90["ok"] and r90["alto"] == 300)
 
 print("\n6. La envolvente declarada se lee del XML")
 check("se saca el mbr", envolvente_declarada(TRES) == (11400.0, 300.0))
