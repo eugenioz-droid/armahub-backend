@@ -87,13 +87,13 @@ check('hay un tercer sub-tab y apunta a su panel',
     sandbox.rhFilas().reduce((a, f) => a + f.n, 0) === 25);
   check('...y el resumen dice cuántos quedaron fuera',
     nodo('rhResumen').innerHTML.indexOf('4 fuera por los filtros') > 0);
-  sandbox.RH_F.aplica.push('no');
+  sandbox.RH_F.aplica = ['si', 'pendiente', 'no'];
   check('encendiéndolo entran los 29', sandbox.rhFilas().reduce((a, f) => a + f.n, 0) === 29);
   sandbox.RH_F.aplica = ['si', 'pendiente'];
 
   console.log('\n3. El filtro de servicio separa internos de externos');
   // Hace falta porque la mitad del equipo es externa y mezclarlos no deja comparar.
-  sandbox.RH_F.servicio.push('Interno');
+  sandbox.RH_F.servicio = ['Interno'];
   check('sólo internos: 15 reclamos', sandbox.rhFilas().reduce((a, f) => a + f.n, 0) === 15);
   sandbox.RH_F.servicio = ['Externo'];
   check('sólo externos: 7 (el no-aplica sigue fuera)',
@@ -101,16 +101,16 @@ check('hay un tercer sub-tab y apunta a su panel',
   sandbox.RH_F.servicio = [];
 
   console.log('\n4. El filtro de cubicador, que es el que saca el ruido');
-  sandbox.RH_F.cubicador.push('Gerardo Mendoza');
+  sandbox.RH_F.cubicador = ['Gerardo Mendoza'];
   check('un cubicador: 15 en dos años', sandbox.rhFilas().reduce((a, f) => a + f.n, 0) === 15);
-  sandbox.RH_F.anio.push(2024);
+  sandbox.RH_F.anio = [2024];
   check('...y con el año, 5', sandbox.rhFilas().reduce((a, f) => a + f.n, 0) === 5);
   check('los filtros se combinan con Y, no con O', sandbox.rhFilas().length === 1);
   sandbox.RH_F.cubicador = []; sandbox.RH_F.anio = [];
 
   console.log('\n5. Los cuadros se REARMAN con el filtro, no sólo la lista');
   graficos = [];
-  sandbox.RH_F.cubicador.push('Mario Puyo');
+  sandbox.RH_F.cubicador = ['Mario Puyo'];
   sandbox.rhPintarTodo();
   check('se redibujan los dos gráficos', graficos.length === 2);
   var g = graficos[0].cfg;
@@ -125,24 +125,48 @@ check('hay un tercer sub-tab y apunta a su panel',
   // Las demás dimensiones NO van como series: meterlas llenaría el gráfico de barras y
   // seguiría sin poder cruzar dos cosas a la vez. Para eso están los filtros.
   g = graficos[graficos.length - 2].cfg;
-  check('tres series: aplican, no aplican y por revisar',
-    g.data.datasets.length === 3
+  // Se dibujan SOLO las series que tienen algo: una serie en cero deja una leyenda
+  // que no corresponde a ninguna barra. Con el filtro por defecto, 'No aplican' no
+  // tiene nada que dibujar.
+  check('las series son por aplica, y sólo las que tienen datos',
+    g.data.datasets.length === 2
     && g.data.datasets[0].label === 'Aplican al área'
-    && g.data.datasets[2].label === 'Por revisar');
+    && g.data.datasets[1].label === 'Por revisar');
+  // LOS QUE NO APLICAN, en la etiqueta del eje debajo del total: estan fuera de las
+  // barras, pero sin decir cuantos son el ano parece mas chico de lo que fue.
+  check('...y los que no aplican se cuentan bajo el total del eje',
+    g.data.labels.some(function (l) { return String(l[2] || '').indexOf('no aplican') > 0; }));
+  check('...con el numero correcto (4 en 2025)',
+    g.data.labels.filter(function (l) { return String(l[0]) === '2025'; })[0][2] === '4 no aplican');
   check('...sin apilar, que no deja comparar', !(g.options.scales.x && g.options.scales.x.stacked));
   check('el total del año va en la etiqueta del eje', String(g.data.labels[0][1]) === '8');
   check('el número sobre la barra es el real', g.options.plugins.datalabels.formatter(142) === '142');
   check('...y el cero no se dibuja', g.options.plugins.datalabels.formatter(0) === '');
 
-  console.log('\n6b. La barra de filtros va en DOS líneas, no en seis grupos sueltos');
-  // Dejados a su aire, cada grupo se parte donde le toca y la barra queda escalonada.
+  console.log('\n6b. Los filtros son los MISMOS que los de programación');
+  // Dos pantallas con filtros que se ven y se usan distinto obligarian a aprender
+  // dos veces lo mismo. Se reusan las clases de alla, no unas propias parecidas.
   var fb = nodo('rhFiltros').innerHTML;
-  check('son exactamente dos filas', (fb.match(/class="rhfrow"/g) || []).length === 2);
-  check('arriba los cortos: año, servicio, aplica y segmento',
+  check('usa las barras de programación, no un estilo propio',
+    (fb.match(/class="dshbarra"/g) || []).length === 2 && fb.indexOf('rhfchips') < 0);
+  check('...con sus chips y sus separadores',
+    fb.indexOf('class="dshchips"') > 0 && fb.indexOf('class="dshsep"') > 0);
+  check('arriba los cortos, abajo cubicador y tipo',
     fb.indexOf('Año') < fb.indexOf('Cubicador') && fb.indexOf('Aplica') < fb.indexOf('Cubicador'));
-  check('abajo los dos largos, que son los que piden el ancho entero',
-    fb.lastIndexOf('rhfrow') < fb.indexOf('Cubicador'));
-  check('cada botón lleva su cuenta adentro', fb.indexOf('<i>') > 0);
+  check('cada chip lleva su cuenta adentro', fb.indexOf('<i>') > 0);
+  check('...y se explica cómo se eligen, como allá', fb.indexOf('Ctrl+clic = sumar') > 0);
+
+  console.log('\n6c. Elegir funciona igual que en programación');
+  // Clic deja SOLO ese, Ctrl+clic suma, y volver a tocar el unico encendido lo suelta.
+  sandbox.RH_F.anio.length = 0;
+  sandbox.rhMarcar(sandbox.RH_F.anio, 2024, null);
+  check('clic simple deja sólo ése', JSON.stringify(sandbox.RH_F.anio) === '[2024]');
+  sandbox.rhMarcar(sandbox.RH_F.anio, 2025, { ctrlKey: true });
+  check('Ctrl+clic suma', sandbox.RH_F.anio.length === 2);
+  sandbox.rhMarcar(sandbox.RH_F.anio, 2024, null);
+  check('...y clic simple vuelve a dejar uno', JSON.stringify(sandbox.RH_F.anio) === '[2024]');
+  sandbox.rhMarcar(sandbox.RH_F.anio, 2024, null);
+  check('tocar el único encendido lo suelta: se ven todos', sandbox.RH_F.anio.length === 0);
 
   console.log('\n7. En kilos se dice CUÁNTOS reclamos componen la barra');
   // Sin eso, un año con pocos kilos se lee como un buen año, cuando puede ser que no se

@@ -494,9 +494,18 @@ var RH_F = { anio: [], cubicador: [], servicio: [], segmento: [], tipo: [], apli
 var RH_APLICA_TXT = { si: 'Aplica', no: 'No aplica', pendiente: 'Por revisar' };
 var RH_SERV_TXT = { Interno: 'Interno', Externo: 'Externo', '(sin dato)': 'Sin dato' };
 
-function rhMarcar(lista, valor) {
+// Elegir como en los dashboards de programacion: clic deja SOLO ese, Ctrl+clic suma, y
+// volver a tocar el unico encendido lo suelta y se ven todos. Es lo que el usuario ya
+// conoce; inventar otra forma en esta pantalla seria hacerle aprender dos.
+function rhMarcar(lista, valor, ev) {
   var i = lista.indexOf(valor);
-  if (i >= 0) lista.splice(i, 1); else lista.push(valor);
+  if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
+    if (i === -1) lista.push(valor); else lista.splice(i, 1);
+  } else if (lista.length === 1 && i === 0) {
+    lista.length = 0;
+  } else {
+    lista.length = 0; lista.push(valor);
+  }
 }
 
 function rhPasa(f) {
@@ -536,14 +545,15 @@ function rhValores(clave) {
 // marcarian cero y no se sabria que hay detras de encenderlos.
 function rhGrupoF(titulo, clave, valores, etiqueta) {
   var sel = RH_F[clave];
+  // La cuenta se calcula sobre TODO y no sobre lo filtrado: si se encogiera al filtrar,
+  // los chips apagados marcarian cero y no se sabria que hay detras de encenderlos.
   var cuenta = rhSuma(RH.datos, clave);
-  return '<div class="rhfg"><span class="rhflbl">' + rhEsc(titulo) + '</span>' +
-    '<div class="rhfchips" data-g="' + clave + '">' +
-    '<button data-todos="1" class="' + (sel.length ? '' : 'on') + '">Todos</button>' +
+  return '<span class="dshbl">' + rhEsc(titulo) + '</span>' +
+    '<div class="dshchips" data-g="' + clave + '">' +
     valores.map(function (v) {
       return '<button data-v="' + rhEsc(v) + '" class="' + (sel.indexOf(v) >= 0 ? 'on' : '') + '">' +
         rhEsc(etiqueta ? etiqueta(v) : v) + '<i>' + ((cuenta[v] || {}).n || 0) + '</i></button>';
-    }).join('') + '</div></div>';
+    }).join('') + '</div>';
 }
 
 // DOS LÍNEAS Y NO SEIS GRUPOS SUELTOS. Dejados a su aire, cada grupo se parte donde le
@@ -553,23 +563,25 @@ function rhPintarFiltros() {
   var cont = document.getElementById('rhFiltros');
   if (!cont) return;
   cont.innerHTML =
-    '<div class="rhfrow">' +
-      rhGrupoF('Año', 'anio', rhValores('anio')) +
+    '<div class="dshbarra">' +
+      rhGrupoF('Año', 'anio', rhValores('anio')) + '<span class="dshsep"></span>' +
       rhGrupoF('Servicio', 'servicio', rhValores('servicio'), function (v) { return RH_SERV_TXT[v] || v; }) +
+      '<span class="dshsep"></span>' +
       rhGrupoF('Aplica', 'aplica', ['si', 'pendiente', 'no'], function (v) { return RH_APLICA_TXT[v] || v; }) +
+      '<span class="dshsep"></span>' +
       rhGrupoF('Segmento', 'segmento', rhValores('segmento')) +
+      '<span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>' +
     '</div>' +
-    '<div class="rhfrow">' +
-      rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) +
+    '<div class="dshbarra">' +
+      rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) + '<span class="dshsep"></span>' +
       rhGrupoF('Tipo', 'tipo', rhValores('tipo'), function (v) { return TIPO_TXT[v] || v; }) +
     '</div>';
-  cont.querySelectorAll('.rhfchips button').forEach(function (b) {
-    b.addEventListener('click', function () {
+  cont.querySelectorAll('.dshchips button').forEach(function (b) {
+    b.addEventListener('click', function (ev) {
       var g = b.parentNode.dataset.g;
-      if (b.dataset.todos) RH_F[g].length = 0;
       // Los anos viajan como numero y el resto como texto: sin esto '2024' no casaria
       // nunca con 2024 y el filtro de ano no haria nada.
-      else rhMarcar(RH_F[g], g === 'anio' ? Number(b.dataset.v) : b.dataset.v);
+      rhMarcar(RH_F[g], g === 'anio' ? Number(b.dataset.v) : b.dataset.v, ev);
       rhPintarTodo();
     });
   });
@@ -593,9 +605,26 @@ function rhPintarTodo() {
   // POR AÑO, separado entre lo que aplica al área y lo que no. El corte por servicio o
   // por cubicador NO va acá: va en los filtros. Meter cada dimensión como una serie más
   // llenaría el gráfico de barras y seguiría sin poder cruzar dos cosas a la vez.
+  // LOS QUE NO APLICAN VAN EN LA ETIQUETA, debajo del total. Estan fuera de las barras
+  // porque el filtro los deja fuera, pero sin decir cuantos son el ano parece mas chico
+  // de lo que fue. Se cuentan con TODOS los demas filtros puestos menos el de aplica:
+  // asi, filtrando por un cubicador, el numero es el de ese cubicador.
+  var noAplican = {};
+  RH.datos.forEach(function (f) {
+    if (f.aplica !== 'no') return;
+    if (RH_F.anio.length && RH_F.anio.indexOf(f.anio) < 0) return;
+    if (RH_F.cubicador.length && RH_F.cubicador.indexOf(f.cubicador) < 0) return;
+    if (RH_F.servicio.length && RH_F.servicio.indexOf(f.servicio) < 0) return;
+    if (RH_F.segmento.length && RH_F.segmento.indexOf(f.segmento) < 0) return;
+    if (RH_F.tipo.length && RH_F.tipo.indexOf(f.tipo) < 0) return;
+    noAplican[f.anio] = (noAplican[f.anio] || 0) + f.n;
+  });
+  var mostrandoNoAplica = RH_F.aplica.indexOf('no') >= 0;
   var etiq = anios.map(function (a) {
     var e = String(a) + (a === RH.anio_en_curso ? ' (en curso)' : '');
-    return [e, rhNum((porAnio[a] || {}).n || 0)];
+    var fila = [e, rhNum((porAnio[a] || {}).n || 0)];
+    if (!mostrandoNoAplica && noAplican[a]) fila.push(noAplican[a] + ' no aplican');
+    return fila;
   });
   function porAplica(valor) {
     return anios.map(function (a) {
@@ -607,7 +636,9 @@ function rhPintarTodo() {
     { nombre: 'Aplican al área', datos: porAplica('si'), color: '#c62828' },
     { nombre: 'No aplican', datos: porAplica('no'), color: '#b0bec5' },
     { nombre: 'Por revisar', datos: porAplica('pendiente'), color: '#ffb74d' }
-  ]);
+  // Sin las series vacias: una leyenda que no corresponde a ninguna barra confunde mas
+  // de lo que informa.
+  ].filter(function (s) { return s.datos.some(function (x) { return x > 0; }); }));
 
   var etiqKg = anios.map(function (a) {
     var p = porAnio[a] || { n: 0, con_kilos: 0 };

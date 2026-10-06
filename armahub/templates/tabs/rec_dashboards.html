@@ -36,27 +36,19 @@
                  border-radius:3px; padding:1px 5px; margin-left:4px;}
         .rhbarra{height:7px; background:#eceff1; border-radius:4px; overflow:hidden; min-width:70px;}
         .rhbarra i{display:block; height:100%; background:#00897b;}
-        /* LOS FILTROS SON BOTONES, siempre a la vista. Marcar y desmarcar cubicadores
-           es lo que más se hace acá, y cada botón lleva su cuenta: sin ella hay que
-           marcar para descubrir que uno no tiene nada. */
-        .rhfbar{background:#fff; border:1px solid #eee; border-radius:8px;
-                padding:10px 12px 11px; margin-bottom:12px;}
-        /* DOS LÍNEAS. Cada una con sus grupos alineados arriba, y una raya tenue entre
-           medio para que se lean como dos bloques y no como seis cosas sueltas. */
-        .rhfrow{display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;}
-        .rhfrow + .rhfrow{margin-top:9px; padding-top:9px; border-top:1px solid #f2f4f6;}
-        .rhfg{display:flex; flex-direction:column; gap:4px;}
-        .rhflbl{font-size:9px; font-weight:700; color:#b0bec5; letter-spacing:.6px; text-transform:uppercase;}
-        .rhfchips{display:flex; gap:4px; flex-wrap:wrap;}
-        .rhfchips button{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; background:#fff;
-                         color:#546e7a; border-radius:11px; cursor:pointer; white-space:nowrap;}
-        .rhfchips button.on{background:#5e35b1; border-color:#5e35b1; color:#fff; font-weight:700;}
-        .rhfchips button i{font-style:normal; opacity:.6; margin-left:4px; font-size:9.5px;}
+        /* LOS FILTROS SON LOS MISMOS que los de los dashboards de programación: las
+           clases .dshbarra, .dshbl, .dshchips y .dshsep viven en asa_data.html y la
+           plantilla entera carga en el mismo documento, así que se reusan tal cual. Dos
+           pantallas con filtros que se ven y se usan distinto obligarían a aprender dos
+           veces lo mismo. Lo único propio es la cuenta dentro del chip. */
+        .dshchips button i{font-style:normal; opacity:.6; margin-left:4px; font-size:9.5px;}
         .rhresumen{font-size:11px; color:#546e7a; margin-bottom:10px;}
         .rhresumen b{color:#5e35b1;}
       </style>
 
-      <div class="rhfbar" id="rhFiltros"></div>
+      <!-- Las dos barras de filtros las dibuja el JS; cada una es una `.dshbarra`, la
+           misma caja blanca de los dashboards de programación. -->
+      <div id="rhFiltros"></div>
       <div class="rhresumen" id="rhResumen"></div>
 
       <div class="rhfila" style="grid-template-columns:1fr 1fr;">
