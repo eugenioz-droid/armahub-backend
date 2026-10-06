@@ -651,6 +651,11 @@ if s == 200:
     check("...y casi todos lo tienen resuelto", serv.get(None, 0) < total * 0.05)
     check("...y se declara quienes son internos (%d)" % len(d.get("internos") or []),
           len(d.get("internos") or []) >= 4)
+    # Los reclamos INTERNOS (a los servicios de Armacero) no son de cubicacion y no
+    # entran. Hoy son dos, sin cubicador: si el cubo trae filas sin servicio ni
+    # cubicador, es que se colaron.
+    check("...sin los reclamos internos de servicios (no son de cubicacion)",
+          not any(f["servicio"] is None and f["cubicador"] == "Sin asignar" for f in filas))
     # EL SEGMENTO SALE DE LA OBRA, no del reclamo: es donde el usuario lo categoriza.
     # Las planillas viejas solo tenian "Edificacion" y "Otro"; si eso llegara crudo al
     # tablero, la misma cosa saldria en dos filas ("Edificacion" y "4 y 5") y los

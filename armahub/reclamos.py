@@ -1041,6 +1041,10 @@ def reclamos_historico(user=Depends(require_admin_or_admin_calidad)):
                   LEFT JOIN users u ON u.email = r.cubicador_asignado
                   LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
                  WHERE r.anio_calidad IS NOT NULL
+                   -- SOLO RECLAMOS DE CUBICACION. Los «internos» son reclamos a los
+                   -- servicios de Armacero, de toda la planta: otra serie, otra cosa.
+                   -- No confundir con los cubicadores internos, que si van aca.
+                   AND COALESCE(r.tipo_origen, 'externo') = 'externo'
                  GROUP BY 1,2,3,4,5,6,7,8,9,10""", (list(CUBICADORES_INTERNOS),))
             datos = [{"anio": r[0], "mes": r[1], "cubicador": r[2], "servicio": r[3],
                       "segmento": r[4], "tipo": r[5], "aplica": r[6], "analisis": r[7],
@@ -1337,6 +1341,7 @@ def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
                   LEFT JOIN asa_obras o ON o.asa_job_id = r.asa_job_id
                   LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
                  WHERE r.anio_calidad IS NOT NULL
+                   AND COALESCE(r.tipo_origen, 'externo') = 'externo'
                  GROUP BY 1, 2, 3, 4, 5, 6, 7""")
             reclamos = []
             for anio, cub, job, obra, seg, aplica, serv, n, kg in cur.fetchall():
