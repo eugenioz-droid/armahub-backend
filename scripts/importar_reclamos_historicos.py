@@ -128,8 +128,12 @@ NOMBRES = {
     "jose": "José Rodriguez",          # en 2023-2025 "Jose" es siempre Rodriguez
     "javier": "Javier Velasquez", "emilio": "Emilio Ramirez",
     "nicolas": "Nicolas Lopez", "hans": "Hans Mondaca",
+    # RMC no es una persona: es un proveedor EXTERNO de cubicacion. Confirmado por el
+    # usuario y por aSa, donde detallo 703 codigos en 2024 en las mismas obras de sus
+    # reclamos. Cuenta como un cubicador externo mas; antes quedaba "sin asignar".
+    "rmc": "RMC",
 }
-NO_PERSONAS = {"rmc", "mapec", "na", ""}   # empresas o basura: no son un cubicador
+NO_PERSONAS = {"mapec", "na", ""}   # basura o un dato suelto: no son un cubicador
 
 
 def sinacento(s):
@@ -441,7 +445,12 @@ def main():
                        ON CONFLICT (clave_import) WHERE clave_import IS NOT NULL
                        DO UPDATE SET
                           titulo = EXCLUDED.titulo, descripcion = EXCLUDED.descripcion,
-                          tipo_reclamo = EXCLUDED.tipo_reclamo, aplica = EXCLUDED.aplica,
+                          -- Lo que las fichas de RCA o el usuario ya corrigieron no se
+                          -- pisa: la planilla es el punto de partida, no la ultima palabra.
+                          tipo_reclamo = CASE WHEN reclamos.analista IS NULL AND reclamos.analisis_validado_el IS NULL
+                                              THEN EXCLUDED.tipo_reclamo ELSE reclamos.tipo_reclamo END,
+                          aplica = CASE WHEN reclamos.analista IS NULL AND reclamos.analisis_validado_el IS NULL
+                                        THEN EXCLUDED.aplica ELSE reclamos.aplica END,
                           observaciones = EXCLUDED.observaciones, obra_texto = EXCLUDED.obra_texto,
                           segmento = EXCLUDED.segmento, servicio = EXCLUDED.servicio,
                           fecha_deteccion = EXCLUDED.fecha_deteccion,
