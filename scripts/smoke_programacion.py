@@ -131,6 +131,10 @@ s, d = get("/programacion/asa/reporte", anio=2026, meses="8,9")
 check("GET /programacion/asa/reporte?anio=2026&meses=8,9 -> 200", s == 200, str(d)[:160])
 # CUANDO SE TRAJO Y COMO FUE EL ULTIMO INTENTO. El 6-oct la carga de 2026 se atoro a los
 # 20 s y la pantalla siguio mostrando lo de una semana antes sin decirlo.
+# Quien cubico y las dos fechas del codigo: son columnas de la tabla de aSa Data.
+f0 = ((d or {}).get("filas") or [{}])[0]
+check("...y cada codigo trae quien cubico, la fecha del pedido y la ultima modificacion",
+      all(k in f0 for k in ("persona", "pedido", "ultima_mod")), str(f0)[:200])
 esp = (d or {}).get("espejo") or {}
 check("...y dice cuando se trajo y como fue el ultimo intento",
       isinstance(esp.get("filas_anio"), int) and "ultima_sync" in esp and "ultimo_intento" in esp,

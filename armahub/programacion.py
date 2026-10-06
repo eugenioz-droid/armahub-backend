@@ -864,7 +864,13 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 "       anio,"
                 # Tipo y segmento de la obra (lo que cargan los cubicadores): van en cada
                 # fila para que sean filtros de todos los tabs y la base del «Resumen».
-                "       t.tipo, t.segmento"
+                "       t.tipo, t.segmento,"
+                # LAS DOS FECHAS DEL CÓDIGO. aSa no tiene una de «cubicación terminada»
+                # (no está en getOrderSummary, getOrderItemView ni getScheduling): la del
+                # pedido es la que no se mueve y la última modificación es lo más cercano
+                # a cuándo se dejó de cubicar, con la salvedad de que fabricar y despachar
+                # también la mueven. Viajan las dos y la pantalla dice qué es cada una.
+                "       p.order_date, p.ultima_mod"
                 "  FROM asa_pedidos p"
                 "  LEFT JOIN asa_obra_atributos t ON t.asa_job_id = p.asa_job_id" + cond_periodo +
                 # Los ANULADOS sí viajan (antes no): la lista de obras de «Obras aSa» los
@@ -889,6 +895,8 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                  "fab": r[9].isoformat() if r[9] else None,
                  "mes": r[10], "job": r[11], "anio": r[12],
                  "tipo": r[13], "segmento": r[14],
+                 "pedido": r[15].isoformat() if r[15] else None,
+                 "ultima_mod": r[16].isoformat() if r[16] else None,
                  "programado": bool(r[8] in ESTADOS_PLANTA_PROGRAMADO or r[7])}
                 for r in cur.fetchall()
             ]

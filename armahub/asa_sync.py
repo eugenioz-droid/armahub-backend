@@ -54,8 +54,11 @@ FILTRO_SOLO_ABIERTAS = "JobStatusID eq 'O'"
 # ── Pedidos ───────────────────────────────────────────────────────────────────
 # Las dimensiones por las que aSa agrupa. Todo lo que el reporte muestra o filtra tiene que
 # estar acá, porque `$apply` sólo devuelve lo que se le pide agrupar.
+# `LastModified` es lo más cercano que tiene aSa a «cuándo se dejó de cubicar»: no existe
+# una fecha de cubicación terminada en ninguno de sus endpoints. Agregarlo al groupby NO
+# parte los códigos (medido: 1.138 filas antes y después), porque es del pedido.
 DIMS_PEDIDOS = ["ControlCode", "JobID", "JobName", "Descr", "DetailPerson",
-                "OrderDate", "PromisedDeliveryDate", "Status"]
+                "OrderDate", "PromisedDeliveryDate", "Status", "LastModified"]
 
 # Cuántos días hacia atrás mira el incremental si nunca hubo una corrida buena, y cuánto se
 # solapa con la anterior. El solape no es paranoia: si un pedido se modificó justo mientras
@@ -187,7 +190,8 @@ def _guardar_pedidos(filas, sync_id: int, anio_por_defecto: int) -> dict:
             (f.get("Descr") or None), (f.get("DetailPerson") or None),
             orden, _fecha(f.get("PromisedDeliveryDate")),
             (f.get("Status") or None), round(float(f.get("Kgs") or 0), 2),
-            orden.year if orden else anio_por_defecto, sync_id))
+            orden.year if orden else anio_por_defecto,
+            (f.get("LastModified") or None), sync_id))
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -198,13 +202,14 @@ def _guardar_pedidos(filas, sync_id: int, anio_por_defecto: int) -> dict:
                     """
                     INSERT INTO asa_pedidos (control_code, asa_job_id, job_name, descr,
                                              detail_person, order_date, promised_date,
-                                             estado, kg, anio, visto_el, sync_id)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), %s)
+                                             estado, kg, anio, ultima_mod, visto_el, sync_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), %s)
                     ON CONFLICT (control_code) DO UPDATE
                        SET asa_job_id=EXCLUDED.asa_job_id, job_name=EXCLUDED.job_name,
                            descr=EXCLUDED.descr, detail_person=EXCLUDED.detail_person,
                            order_date=EXCLUDED.order_date, promised_date=EXCLUDED.promised_date,
                            estado=EXCLUDED.estado, kg=EXCLUDED.kg, anio=EXCLUDED.anio,
+                           ultima_mod=EXCLUDED.ultima_mod,
                            visto_el=now(), sync_id=EXCLUDED.sync_id
                     """,
                     valores,

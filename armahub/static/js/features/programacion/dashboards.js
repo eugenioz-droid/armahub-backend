@@ -465,15 +465,27 @@
     // mismo aunque PROGRAMADOS tenga una columna más. Los porcentajes de cada variante
     // suman 100 y salen de las dos columnas angostas (código y fecha), que son de largo
     // conocido; lo que sobra se reparte entre obra y descripción.
+    // QUIÉN Y CUÁNDO. El usuario necesita saber cuándo se dejó de cubicar un código, y aSa
+    // no tiene esa fecha en ninguno de sus tres endpoints. Van las dos que sí existen: la
+    // del PEDIDO, que no se mueve, y la ÚLTIMA MODIFICACIÓN del pedido, que es lo más
+    // cercano —medido sobre 1.138 códigos: en los abiertos el 47% no se tocó después del
+    // día del pedido, pero en los despachados la mediana sube a 10 días, o sea que
+    // fabricar y despachar también la mueven—. El encabezado lo dice en su title.
+    var TIT_MOD = 'Última vez que aSa tocó el pedido. aSa no guarda cuándo se terminó de ' +
+                  'cubicar: mientras el código está por programar suele ser el cubicador, ' +
+                  'pero fabricar o despachar también la mueven.';
     var html = llevaFecha
-      ? '<thead><tr><th style="width:27%">Obra</th><th style="width:7%">Job</th>' +
-        '<th style="width:39%">Descr</th>' +
-        '<th style="width:7%">Código</th><th style="width:7%">Despacho</th>' +
-        '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>'
-      : '<thead><tr><th style="width:31%">Obra</th><th style="width:7%">Job</th>' +
-        '<th style="width:42%">Descr</th>' +
-        '<th style="width:7%">Código</th>' +
-        '<th class="num" style="width:13%">Kilos</th></tr></thead><tbody>';
+      ? '<thead><tr><th style="width:20%">Obra</th><th style="width:6%">Job</th>' +
+        '<th style="width:26%">Descr</th><th style="width:10%">Cubicó</th>' +
+        '<th style="width:6%">Código</th><th style="width:7%">Pedido</th>' +
+        '<th style="width:7%" title="' + esc(TIT_MOD) + '">Últ. cambio</th>' +
+        '<th style="width:7%">Despacho</th>' +
+        '<th class="num" style="width:11%">Kilos</th></tr></thead><tbody>'
+      : '<thead><tr><th style="width:23%">Obra</th><th style="width:6%">Job</th>' +
+        '<th style="width:30%">Descr</th><th style="width:10%">Cubicó</th>' +
+        '<th style="width:6%">Código</th><th style="width:7%">Pedido</th>' +
+        '<th style="width:7%" title="' + esc(TIT_MOD) + '">Últ. cambio</th>' +
+        '<th class="num" style="width:11%">Kilos</th></tr></thead><tbody>';
     // TOPE DE FILAS, igual que en el detalle de códigos: con los despachados encendidos
     // son 4.300 filas por caja, y dibujarlas en cada clic es lo que hacía lentos los
     // filtros. El total del encabezado sí es de todas.
@@ -483,12 +495,15 @@
       html += '<tr><td title="' + esc(f.obra) + '">' + esc(f.obra) + '</td>' +
               '<td class="cc">' + esc(f.job || '') + '</td>' +
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
+              '<td title="' + esc(f.persona || '') + '">' + esc(f.persona || '') + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
+              '<td>' + ddmm(f.pedido) + '</td>' +
+              '<td title="' + esc(TIT_MOD) + '">' + ddmm(f.ultima_mod) + '</td>' +
               (llevaFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
               '<td class="num">' + kg(f.kg) + '</td></tr>';
     });
     if (recorte) {
-      html += '<tr><td colspan="' + (llevaFecha ? 6 : 5) + '" class="dshvacio">Se muestran las primeras ' +
+      html += '<tr><td colspan="' + (llevaFecha ? 9 : 8) + '" class="dshvacio">Se muestran las primeras ' +
               TOPE_FILAS + ' de ' + filas.length + ' · filtra por obra o cubicador ' +
               '(el total del encabezado sí es de todas)</td></tr>';
     }

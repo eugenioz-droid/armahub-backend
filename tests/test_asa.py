@@ -45,6 +45,8 @@ from armahub import asa  # noqa: E402
 
 SRC = open(os.path.join(ROOT, "armahub", "asa.py"), encoding="utf-8").read()
 PROG = open(os.path.join(ROOT, "armahub", "programacion.py"), encoding="utf-8").read()
+SYNC = open(os.path.join(ROOT, "armahub", "asa_sync.py"), encoding="utf-8").read()
+MIG128 = open(os.path.join(ROOT, "armahub", "migrations", "128_asa_pedidos_ultima_mod.sql"), encoding="utf-8").read()
 MIG = open(os.path.join(ROOT, "armahub", "migrations", "112_asa.sql"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion", "index.js"),
           encoding="utf-8").read()
@@ -787,7 +789,8 @@ check("el reporte manda asa_job_id en cada CC", "AS mes, p.asa_job_id" in PROG
 check("el cubicador también lo manda por obra", "MAX(p.asa_job_id)" in PROG
       and '"job": r[1]' in PROG)
 check("Obra y luego Job en las tres cabeceras (Stock con y sin fecha, Obras aSa)",
-      DSH.count('>Obra</th><th style="width:7%">Job</th>') == 3)
+      DSH.count('>Obra</th><th style="width:6%">Job</th>') == 2
+      and DSH.count('>Obra</th><th style="width:7%">Job</th>') == 1)
 check("...y la celda va después de la obra",
       DSH.count("esc(f.obra) + '</td>' +\n              '<td class=\"cc\">' + esc(f.job || '') + '</td>'") == 2)
 check("Obras aSa: Obra, Job, Descripción",
@@ -945,7 +948,7 @@ check("los botones de estado responden al instante",
       "b.className = OCULTOS[caja].indexOf(e) !== -1 ? 'off' : '';" in DSH
       and "diferir(function () { pintarObras(); pintarTablas(); });" in DSH)
 check("las cajas de Stock Cubicaciones tienen tope de filas",
-      "var recorte = filas.length > TOPE_FILAS;" in DSH and "(llevaFecha ? 6 : 5)" in DSH)
+      "var recorte = filas.length > TOPE_FILAS;" in DSH and "(llevaFecha ? 9 : 8)" in DSH)
 
 # ── 28. Los anulados, sólo en la barra por estado ──────────────────────────
 # El usuario quiere ver en la lista de obras cuánto se cubicó y se canceló. Para eso el
@@ -991,6 +994,28 @@ check("el reporte dice cómo fue el último intento de ESE año",
 check("y la pantalla dice cuándo se trajo y avisa si lo último falló",
       "' · traído de aSa el ' + fechaHora(esp.ultima_sync)" in DSH
       and "intento.ok === false" in DSH and "Lo que se ve es de la última vez que sí se pudo" in DSH)
+
+# ── 30. Quién cubicó y cuándo, en la tabla de códigos ─────────────────────
+# «Me serviría tener la fecha de creación del CC o última actualización… la idea es tener
+# certeza de cuándo se dejó de cubicar» (6-oct). aSa NO tiene esa fecha: se comprobó campo
+# por campo en getOrderSummary, getOrderItemView y getScheduling. Lo que hay son dos, y van
+# las dos con lo que significan, porque la última modificación también la mueve el despacho
+# (medido: en los códigos despachados la mediana es 10 días después del pedido).
+print("\n30. Quién cubicó y las dos fechas del código")
+check("se pide LastModified a aSa y se guarda en el espejo",
+      '"Status", "LastModified"' in SYNC and "ultima_mod=EXCLUDED.ultima_mod" in SYNC
+      and "ADD COLUMN IF NOT EXISTS ultima_mod" in MIG128)
+check("...y se dice por qué: agregarlo no parte los códigos",
+      "NO\n# parte los códigos" in SYNC or "NO parte los códigos" in SYNC.replace("\n# ", " "))
+check("el reporte manda la fecha del pedido y la última modificación",
+      "p.order_date, p.ultima_mod" in PROG and '"pedido": r[15]' in PROG and '"ultima_mod": r[16]' in PROG)
+check("la tabla tiene columna de cubicador y las dos fechas",
+      "<th style=\"width:10%\">Cubicó</th>" in DSH and ">Pedido</th>" in DSH and ">Últ. cambio</th>" in DSH)
+check("...cada fila las pinta", "ddmm(f.pedido)" in DSH and "ddmm(f.ultima_mod)" in DSH
+      and "esc(f.persona || '')" in DSH)
+check("...y el encabezado avisa que la última modificación no es «cubicación terminada»",
+      "aSa no guarda cuándo se terminó de " in DSH and "fabricar o despachar también la mueven" in DSH)
+check("el aviso de recorte cuenta bien las columnas nuevas", "(llevaFecha ? 9 : 8)" in DSH)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
