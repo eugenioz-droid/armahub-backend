@@ -189,7 +189,7 @@
           <button id="audUbGuardar" class="secondary">Guardar ubicación</button>
           <span class="muted" id="audUbMsg" style="font-size:10.5px;"></span>
         </div>
-        <div class="audbd" style="max-height:30vh;"><table class="audt" id="audRevBarras"></table></div>
+        <div class="audbd" style="max-height:60vh;"><table class="audt" id="audRevBarras"></table></div>
         <!-- La SEVERIDAD es del elemento —se decide mirando el conjunto— y sólo aparece
              cuando hay alguna barra no conforme. El QUÉ se encontró va barra por barra,
              arriba. -->
@@ -324,10 +324,11 @@
   .audvb button.no.on{background:#c62828; border-color:#b71c1c; color:#fff;}
   .audt tr.malo td{background:#fff6f6;}
   .audt tr.bueno td{background:#f8fbf4;}
-  /* El dibujo de la barra: chico, al lado de sus medidas. Sólo aparece cuando la
-     reconstrucción se pudo comprobar contra la envolvente que declara aSa. */
-  .audfig{display:block; width:86px; height:34px; background:#fff; border:1px solid #eef1f4; border-radius:3px;}
-  .audfig path{fill:none; stroke:#1565C0; stroke-width:2.2; stroke-linejoin:round; stroke-linecap:round;}
+  /* El dibujo de la barra: el render del Bar Manager (tamaño M) con el código debajo. */
+  .audt td.audfigcel{text-align:center; white-space:normal;}
+  .audfig{display:inline-block; background:#fff; border:1px solid #eef1f4; border-radius:3px; padding:2px 4px 0;}
+  .audfig svg{display:block; margin:0 auto;}
+  .audfigcod{font-family:ui-monospace,Consolas,monospace; font-size:9.5px; font-weight:700; color:#78909c; padding:0 0 2px;}
   .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
           border:1px solid #ef9a9a; border-radius:4px;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}

@@ -55,6 +55,12 @@ const BM_TAM = { s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160
 const BM_MIN_LADO_REL = 0.28;
 const BM_LADOS = ['A','B','C','D','E','F','G','H','I'];
 
+// El tamaño del dibujo: el que pide el llamador o, si no pide, el del toggle S/M/L/XL.
+// Auditorías dibuja sus barras con este mismo renderer y no tiene toggle: pide 'm'.
+function _bmTam(tam) {
+  return (tam && BM_TAM[tam]) || BM_TAM[bmTam] || BM_TAM.m;
+}
+
 // COLOR DEL DIBUJO: azul si la barra nació del editor 3D, la tinta de siempre si no.
 // El criterio es `template_instancia_id` —el dato de RAÍZ, el mismo que usa la grilla del
 // despiece para pintarles el fondo de fila— y NO el campo `origen`, que es sólo la
@@ -73,7 +79,8 @@ function _bmTinta(b) {
 // original pero con la LONGITUD nueva (cada lado a su dim). En figuras con radio/etiquetas
 // manuales se deja el dibujo original del catálogo (deuda: los radios aún no escalan).
 // Devuelve '' si no hay figura/geometría/motor (la celda degrada a solo texto).
-function _bmFiguraSvg(b) {
+// `tam` ('s'|'m'|'l'|'xl') es opcional: sin él manda el toggle del Bar Manager.
+function _bmFiguraSvg(b, tam) {
   if (!b) return '';
   var f = b.figura && _bmGeometrias && _bmGeometrias[b.figura];
   var geo = f && f.geometria;
@@ -128,7 +135,7 @@ function _bmFiguraSvg(b) {
     });
   }
   try {
-    var t = BM_TAM[bmTam] || BM_TAM.m;   // tamaño elegido (S/M/L/XL)
+    var t = _bmTam(tam);   // tamaño pedido, o el elegido en el toggle (S/M/L/XL)
     return '<span style="display:inline-block; vertical-align:middle;">' +
       // El trazo crece con el φ SOLO si los puntos se reconstruyeron en cm (escalable); si
       // no, `scale` no es px/cm y el motor cae al trazo nominal. φ va en mm (b.diam).

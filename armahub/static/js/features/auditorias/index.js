@@ -437,7 +437,13 @@
         '<td><span class="audest ' + esc(a.estado) + '">' + esc(ESTADO_TXT[a.estado] || a.estado) + '</span>' +
           (a.acciones_abiertas ? ' <span class="audpend" title="Acciones sin corregir">' + a.acciones_abiertas + '</span>' : '') + '</td>' +
         '<td>' + barraResultado(a) + '</td>' +
-        '<td>' + (a.revisados ? '' : '<button class="audx" data-borrar="' + a.id + '" title="Borrar: todavía no tiene hallazgos">✕</button>') + '</td></tr>';
+        // BORRAR. Sin hallazgos, cualquiera que la creó. Con hallazgos, sólo administración:
+        // el backend ya lo permitía y el botón no aparecía, así que mientras se prueba el
+        // módulo no había cómo limpiar. La confirmación dice cuántos hallazgos se pierden.
+        '<td>' + ((!a.revisados || esAdmin())
+          ? '<button class="audx" data-borrar="' + a.id + '" data-revisados="' + (a.revisados || 0) + '" title="' +
+            (a.revisados ? 'Borrar (tiene ' + a.revisados + ' hallazgo(s): sólo administración)' : 'Borrar: todavía no tiene hallazgos') + '">✕</button>'
+          : '') + '</td></tr>';
     });
     $('audLista').innerHTML = html + '</tbody>';
     $('audLista').querySelectorAll('tr.fila').forEach(function (tr) {
@@ -449,7 +455,10 @@
     $('audLista').querySelectorAll('button[data-borrar]').forEach(function (b) {
       b.addEventListener('click', async function (ev) {
         ev.stopPropagation();
-        if (!confirm('¿Borrar esta auditoría? Todavía no tiene hallazgos.')) return;
+        var nrev = Number(b.dataset.revisados || 0);
+        if (!confirm(nrev
+          ? '¿Borrar esta auditoría? Tiene ' + nrev + ' hallazgo(s) registrados y se pierden con ella.'
+          : '¿Borrar esta auditoría? Todavía no tiene hallazgos.')) return;
         try {
           await req('DELETE', '/auditorias/' + b.dataset.borrar);
           if (ABIERTA === Number(b.dataset.borrar)) { ABIERTA = null; AUD = null; }
@@ -543,6 +552,9 @@
     $('audRevBarras').innerHTML = '';
     pintarRevision();
     try {
+      // Las geometrías del catálogo (para dibujar) se piden a la vez que las barras: la
+      // carga es una sola para toda la sesión y la hace el Bar Manager.
+      var geos = global._bmCargarGeometrias ? global._bmCargarGeometrias() : null;
       // De dónde se piden las barras depende del origen: las de ArmaHub están en casa;
       // las de aSa se piden en vivo por código de control (1 a 11 segundos).
       // Las barras de aSa se piden por su REFERENCIA EN aSa (el ElementID), no por el
@@ -567,6 +579,7 @@
       Object.keys(d.revisados || {}).forEach(function (ref) {
         VERED[ref] = { conforme: d.revisados[ref].conforme, observacion: d.revisados[ref].observacion || '' };
       });
+      if (geos) await geos;
       pintarBarras();
     } catch (err) { $('audRevInfo').textContent = err.message; }
   }
@@ -589,7 +602,7 @@
         '</span></td>' +
         '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
         '<td class="num">' + esc(b.diam || '') + '</td>' +
-        '<td>' + (svgBarra(b.eje) || esc(b.figura || '')) + '</td>' +
+        '<td class="audfigcel">' + celdaFigura(b, AUD.origen) + '</td>' +
         '<td class="cc" title="' + esc(dims) + '">' + esc(dims) + '</td>' +
         '<td class="num">' + (b.largo != null ? Math.round(b.largo) : '') + '</td>' +
         '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
@@ -619,24 +632,68 @@
     pintarRevision();
   }
 
-  // EL DIBUJO DE LA BARRA, en SVG y sin librerías: el backend manda el eje ya armado y
-  // comprobado contra la envolvente que declara aSa. Si no se pudo comprobar no se
-  // dibuja nada: un dibujo equivocado en una auditoría es peor que ninguno, porque el
-  // auditor daría por buena una barra mala.
-  function svgBarra(eje) {
-    if (!eje || !eje.ok || !(eje.puntos || []).length) return '';
-    var xs = eje.puntos.map(function (p) { return p[0]; });
-    var ys = eje.puntos.map(function (p) { return p[1]; });
-    var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
-    var an = Math.max(1, Math.max.apply(null, xs) - x0);
-    var al = Math.max(1, Math.max.apply(null, ys) - y0);
-    var m = Math.max(an, al) * 0.08 + 1;   // aire para que el trazo no se corte
-    var d = eje.puntos.map(function (p, i) {
-      // Y invertida: en pantalla crece hacia abajo y la barra se vería de cabeza.
-      return (i ? 'L' : 'M') + (p[0] - x0).toFixed(1) + ' ' + (al - (p[1] - y0)).toFixed(1);
-    }).join(' ');
-    return '<svg class="audfig" viewBox="' + (-m) + ' ' + (-m) + ' ' + (an + m * 2) + ' ' + (al + m * 2) +
-           '" preserveAspectRatio="xMidYMid meet"><path d="' + d + '"/></svg>';
+  // EL DIBUJO DE LA BARRA: el MISMO motor que el editor de despieces y el Bar Manager.
+  // La figura del catálogo —el código de aSa (ShpNameID) es el mismo código del catálogo
+  // de la plataforma— escalada a las medidas reales de ESTA barra y con el trazo según su
+  // φ, al tamaño M del Bar Manager. Así el auditor ve la barra igual que en el resto de la
+  // plataforma, y no una miniatura con otro formato.
+  //   · Si el código no está en el catálogo, se dibuja con el mismo motor el eje que el
+  //     backend reconstruye de aSa, sólo si se pudo comprobar contra la envolvente que
+  //     aSa declara: un dibujo equivocado en una auditoría es peor que ninguno.
+  //   · Si tampoco hay eje, queda el código en texto.
+  var FIG_TAM = 'm';
+
+  // Lo que espera el renderer del Bar Manager: {figura, diam (mm), dim_a..dim_i (cm)}.
+  // En aSa los lados vienen en MILÍMETROS y con su letra, en el eje reconstruido (o, si
+  // no hubo eje, como texto «5430 (-135°)» en `dims`); en ArmaHub ya vienen en cm en
+  // `dims` {a: 600}. El φ de aSa viene como texto («10mm»).
+  function barraParaDibujo(b, origen) {
+    var out = { figura: b.figura, diam: parseFloat(b.diam) };
+    if (origen === 'asa') {
+      var lados = (b.eje && b.eje.lados) || [];
+      if (lados.length) {
+        lados.forEach(function (l) {
+          if (l.nombre && l.largo > 0) out['dim_' + String(l.nombre).toLowerCase()] = l.largo / 10;
+        });
+      } else {
+        Object.keys(b.dims || {}).forEach(function (k) {
+          var v = parseFloat(b.dims[k]);
+          if (v > 0) out['dim_' + k.toLowerCase()] = v / 10;
+        });
+      }
+    } else {
+      Object.keys(b.dims || {}).forEach(function (k) {
+        var v = Number(b.dims[k]);
+        if (v > 0) out['dim_' + k.toLowerCase()] = v;
+      });
+    }
+    return out;
+  }
+
+  // El eje reconstruido de aSa (puntos en mm, Y hacia arriba como en el motor), dibujado
+  // con el motor para que se vea igual que una figura del catálogo. Sin letras ni
+  // ángulos: los lados de un arco son 24 puntitos y rotularlos sería ruido.
+  function svgEje(eje, diam) {
+    var M = global.disenadorMotor;
+    if (!eje || !eje.ok || !(eje.puntos || []).length || !M || !M.svgDesdePuntos || !global._bmTam) return '';
+    var t = global._bmTam(FIG_TAM);
+    var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
+    try {
+      return M.svgDesdePuntos(pts, { width: t.w, height: t.h, pad: 20, labels_auto: false, angulos: false,
+                                     diam_mm: diam, metrico: true });
+    } catch (e) { return ''; }
+  }
+
+  function celdaFigura(b, origen) {
+    var bar = barraParaDibujo(b, origen);
+    var svg = (global._bmFiguraSvg ? global._bmFiguraSvg(bar, FIG_TAM) : '') || svgEje(b.eje, bar.diam);
+    var cod = esc(b.figura || '');
+    if (!svg) return cod;
+    return '<div class="audfig">' + svg + '<div class="audfigcod">' + cod + '</div></div>';
+  }
+
+  function esAdmin() {
+    return ['admin', 'admin_calidad'].indexOf(global.currentRole) !== -1;
   }
 
   function cuentaBarras() {
@@ -858,6 +915,7 @@
   }
 
   // Expuesto para los tests: lo puro.
-  global.__auditoriasTest = { marcar: marcar, HALLAZGO_TXT: HALLAZGO_TXT, ACCION_TXT: ACCION_TXT };
+  global.__auditoriasTest = { marcar: marcar, HALLAZGO_TXT: HALLAZGO_TXT, ACCION_TXT: ACCION_TXT,
+                              barraParaDibujo: barraParaDibujo, celdaFigura: celdaFigura, FIG_TAM: FIG_TAM };
 
 })(window);
