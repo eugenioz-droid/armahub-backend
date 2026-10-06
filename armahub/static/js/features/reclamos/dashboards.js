@@ -1267,7 +1267,14 @@ function inPareto(rec, base) {
 // por año para ver si la diferencia se sostiene o es de un año puntual. El filtro de
 // servicio NO se aplica acá a propósito: este cuadro existe para comparar los dos, y
 // filtrando uno quedaría comparando contra nada. Los demás filtros sí.
-function inMedidasServicio(filtroAnio) {
+// LOS SEGMENTOS QUE SE COMPARAN APARTE, debajo de las cuatro medidas: donde hay obras y
+// reclamos de los dos servicios. «Otros» no (6 obras) y «(sin segmento)» tampoco: no dicen
+// nada. YPS va porque el usuario quiso verlo aunque casi no tenga reclamos (6-oct).
+var IN_SEGMENTOS_LADO_A_LADO = ['1 y 2', '4 y 5', 'YPS'];
+
+// `segmento`: si viene, manda sobre el filtro de segmento de la barra; es para las filas por
+// segmento, que son un desglose fijo y no deben vaciarse porque arriba se eligió otro.
+function inMedidasServicio(filtroAnio, segmento) {
   var out = {};
   ['Interno', 'Externo'].forEach(function (s) {
     out[s] = { ton: 0, n: 0, kilos: 0, obras: {}, obrasRec: {} };
@@ -1275,7 +1282,8 @@ function inMedidasServicio(filtroAnio) {
   var pasaSinServicio = function (f) {
     return (!IN_F.anio.length || IN_F.anio.indexOf(f.anio) >= 0)
       && (!IN_F.cubicador.length || IN_F.cubicador.indexOf(f.persona) >= 0)
-      && (!IN_F.segmento.length || IN_F.segmento.indexOf(f.segmento) >= 0)
+      && (segmento != null ? f.segmento === segmento
+                           : (!IN_F.segmento.length || IN_F.segmento.indexOf(f.segmento) >= 0))
       && (filtroAnio == null || f.anio === filtroAnio);
   };
   inConBase(IN.base.filter(pasaSinServicio)).forEach(function (b) {
@@ -1330,6 +1338,17 @@ function inPintarServicio(anios) {
     if (i == null || e == null || i === e) return;
     peor[f[2]] = i > e ? 'Interno' : 'Externo';
   });
+  // POR SEGMENTO: la tasa de cada servicio dentro de 1 y 2, 4 y 5 e YPS. Sólo los
+  // segmentos con algo que mostrar, y el rojo sólo donde hay con qué comparar (los dos
+  // servicios con base).
+  var porSeg = IN_SEGMENTOS_LADO_A_LADO.map(function (seg) {
+    var ms = inMedidasServicio(null, seg);
+    var pe = null;
+    if (ms.Interno.tasa != null && ms.Externo.tasa != null && ms.Interno.tasa !== ms.Externo.tasa) {
+      pe = ms.Interno.tasa > ms.Externo.tasa ? 'Interno' : 'Externo';
+    }
+    return { seg: seg, m: ms, peor: pe };
+  }).filter(function (x) { return x.m.Interno.ton || x.m.Externo.ton || x.m.Interno.n || x.m.Externo.n; });
   if (t) {
     t.innerHTML = '<thead><tr><th>Medida</th><th>Interno</th><th>Externo</th></tr></thead><tbody>' +
       filas.map(function (f) {
@@ -1337,7 +1356,16 @@ function inPintarServicio(anios) {
           var cls = f[2] && peor[f[2]] === s ? 'peor' : (f[2] && peor[f[2]] && peor[f[2]] !== s ? 'mejor' : '');
           return '<td class="' + cls + '">' + f[1](m[s]) + '</td>';
         }).join('') + '</tr>';
-      }).join('') + '</tbody>';
+      }).join('') +
+      (porSeg.length ? '<tr class="rhsubfila"><td colspan="3">Reclamos por 1.000 ton, por segmento</td></tr>' +
+        porSeg.map(function (x) {
+          return '<tr><td>Segmento ' + rhEsc(x.seg) + '</td>' + ['Interno', 'Externo'].map(function (s) {
+            var o = x.m[s];
+            var cls = x.peor === s ? 'peor' : (x.peor && x.peor !== s ? 'mejor' : '');
+            return '<td class="' + cls + '" title="' + inNum(o.n) + ' reclamos sobre ' + inNum(o.ton) + ' ton">' +
+              inNum(o.tasa, 1) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') : '') + '</tbody>';
   }
 
   // LA CONCLUSIÓN EN UNA LÍNEA. Cuenta en cuántas de las cuatro medidas sale peor cada
@@ -1353,6 +1381,15 @@ function inPintarServicio(anios) {
     else if (cuenta.Interno === total) el.innerHTML = 'El servicio <b>interno sale peor en las ' + total + ' medidas</b>.';
     else el.innerHTML = 'No es parejo: el externo sale peor en <b>' + cuenta.Externo + '</b> medida' +
       (cuenta.Externo === 1 ? '' : 's') + ' y el interno en <b>' + cuenta.Interno + '</b>.';
+    // Y por segmento, en una frase: dónde sale peor cada uno (sólo donde se puede comparar).
+    var peorExt = porSeg.filter(function (x) { return x.peor === 'Externo'; }).map(function (x) { return x.seg; });
+    var peorInt = porSeg.filter(function (x) { return x.peor === 'Interno'; }).map(function (x) { return x.seg; });
+    if (peorExt.length || peorInt.length) {
+      var partes = [];
+      if (peorExt.length) partes.push('el externo sale peor en <b>' + peorExt.map(rhEsc).join('</b> y <b>') + '</b>');
+      if (peorInt.length) partes.push('el interno sale peor en <b>' + peorInt.map(rhEsc).join('</b> y <b>') + '</b>');
+      el.innerHTML += ' Por segmento, ' + partes.join('; ') + '.';
+    }
   }
 }
 

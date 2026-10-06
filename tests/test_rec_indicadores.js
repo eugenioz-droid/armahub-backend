@@ -153,6 +153,27 @@ check('está registrado con su panel', sandbox.DASH_SUBTABS && sandbox.DASH_SUBT
   check('la lectura no fuerza una conclusión cuando las medidas no van parejas',
     nodo('inServicioLectura').innerHTML.indexOf('No es parejo') >= 0
     && nodo('inServicioLectura').innerHTML.indexOf('<b>2</b>') >= 0);
+  // POR SEGMENTO (6-oct). En la fixture: 4 y 5 tiene interno 20 / 10.000 ton = 2,0 y
+  // externo 0 / 50 ton (Oortega) = 0,0 → el interno sale peor ahí; 1 y 2 sólo tiene base
+  // externa (Mario, 5,0): sin interno no hay con qué comparar y no se marca nada; YPS no
+  // tiene nada y no aparece.
+  check('debajo de las cuatro medidas va la tasa por segmento, con su subtítulo',
+    ts.indexOf('Reclamos por 1.000 ton, por segmento') > 0 && ts.indexOf('Segmento 1 y 2') > 0 && ts.indexOf('Segmento 4 y 5') > 0);
+  check('4 y 5: interno 2,0 (peor) contra externo 0,0',
+    /Segmento 4 y 5<\/td><td class="peor"[^>]*>2,0<\/td><td class="mejor"[^>]*>0,0<\/td>/.test(ts));
+  check('1 y 2: sólo hay base externa (5,0); sin con qué comparar no se marca peor ni mejor',
+    /Segmento 1 y 2<\/td><td class=""[^>]*>·<\/td><td class=""[^>]*>5,0<\/td>/.test(ts));
+  check('...cada celda dice sobre cuántos reclamos y toneladas se calculó',
+    ts.indexOf('title="5 reclamos sobre 1.000 ton"') > 0);
+  check('un segmento sin datos (YPS) no aparece', ts.indexOf('YPS') < 0);
+  check('y la lectura lo dice por segmento', nodo('inServicioLectura').innerHTML.indexOf('Por segmento, el interno sale peor en <b>4 y 5</b>') > 0);
+  // Las filas por segmento no se vacían si arriba se filtró otro segmento: son un desglose fijo.
+  sandbox.IN_F.segmento = ['1 y 2'];
+  sandbox.inPintarTodo();
+  check('filtrar por un segmento arriba no borra las filas por segmento',
+    nodo('inServicioTabla').innerHTML.indexOf('Segmento 4 y 5') > 0);
+  sandbox.IN_F.segmento = [];
+  sandbox.inPintarTodo();
   // El filtro de servicio no se aplica a este cuadro: existe para comparar los dos.
   sandbox.IN_F.servicio = ['Interno'];
   sandbox.inPintarTodo();

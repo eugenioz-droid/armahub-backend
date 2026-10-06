@@ -31,6 +31,9 @@
         .rht td.peor{color:#c62828; font-weight:700;}
         .rht td.mejor{color:#2e7d32;}
         .rht td.sinbase{color:#b0bec5; font-style:italic;}
+        /* El subtítulo dentro de la tabla de servicio: las filas por segmento. */
+        .rht tr.rhsubfila td{text-align:left; font-size:10px; font-weight:700; color:#607d8b; padding-top:8px;
+                             border-top:2px solid #e3e8ef; text-transform:uppercase; letter-spacing:.3px;}
         .inbar{display:inline-block; height:7px; background:#00897b; border-radius:3px; vertical-align:middle;}
       </style>
 
@@ -63,7 +66,7 @@
         </div>
         <div class="rhcaja">
           <div class="rhtit">Las cuatro medidas, lado a lado</div>
-          <div class="rhsub">En rojo el servicio que sale peor en cada medida. Las toneladas dicen sobre cuánto se calcula.</div>
+          <div class="rhsub">En rojo el servicio que sale peor en cada medida. Las toneladas dicen sobre cuánto se calcula. Abajo, la tasa por segmento.</div>
           <div style="overflow-x:auto;"><table class="rht" id="inServicioTabla"></table></div>
           <div class="inlect" id="inServicioLectura" style="margin:10px 0 0;"></div>
         </div>
