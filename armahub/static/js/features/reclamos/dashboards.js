@@ -490,9 +490,11 @@ function rhBarras(canvas, etiquetas, series, opciones) {
 // aplica al area: el usuario lo pidio asi, «los no aplica debieran visibilizarse pero
 // salir de la data». Visible como boton, fuera de los numeros mientras no se encienda.
 var RH = { datos: [], anio_en_curso: null, internos: [] };
-var RH_F = { anio: [], cubicador: [], servicio: [], segmento: [], tipo: [], aplica: ['si', 'pendiente'] };
+var RH_F = { anio: [], cubicador: [], servicio: [], segmento: [], aplica: ['si', 'pendiente'] };
 var RH_APLICA_TXT = { si: 'Aplica', no: 'No aplica', pendiente: 'Por revisar' };
-var RH_SERV_TXT = { Interno: 'Interno', Externo: 'Externo', '(sin cubicador)': 'Sin cubicador' };
+// Sólo dos. Un reclamo sin cubicador no tiene servicio, y eso se ve en el filtro de
+// cubicador, que para eso tiene su chip «Sin asignar».
+var RH_SERV_TXT = { Interno: 'Interno', Externo: 'Externo' };
 
 // Elegir como en los dashboards de programacion: clic deja SOLO ese, Ctrl+clic suma, y
 // volver a tocar el unico encendido lo suelta y se ven todos. Es lo que el usuario ya
@@ -513,7 +515,6 @@ function rhPasa(f) {
     && (!RH_F.cubicador.length || RH_F.cubicador.indexOf(f.cubicador) >= 0)
     && (!RH_F.servicio.length || RH_F.servicio.indexOf(f.servicio) >= 0)
     && (!RH_F.segmento.length || RH_F.segmento.indexOf(f.segmento) >= 0)
-    && (!RH_F.tipo.length || RH_F.tipo.indexOf(f.tipo) >= 0)
     && (!RH_F.aplica.length || RH_F.aplica.indexOf(f.aplica) >= 0);
 }
 
@@ -572,9 +573,11 @@ function rhPintarFiltros() {
       rhGrupoF('Segmento', 'segmento', rhValores('segmento')) +
       '<span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>' +
     '</div>' +
+    // Cubicador va solo en su barra: es la lista larga. El filtro por tipo se saco a
+    // pedido del usuario: lo que importa catalogar es la causa Ishikawa, y para eso hay
+    // otro panel.
     '<div class="dshbarra">' +
-      rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) + '<span class="dshsep"></span>' +
-      rhGrupoF('Tipo', 'tipo', rhValores('tipo'), function (v) { return TIPO_TXT[v] || v; }) +
+      rhGrupoF('Cubicador', 'cubicador', rhValores('cubicador')) +
     '</div>';
   cont.querySelectorAll('.dshchips button').forEach(function (b) {
     b.addEventListener('click', function (ev) {
@@ -582,6 +585,9 @@ function rhPintarFiltros() {
       // Los anos viajan como numero y el resto como texto: sin esto '2024' no casaria
       // nunca con 2024 y el filtro de ano no haria nada.
       rhMarcar(RH_F[g], g === 'anio' ? Number(b.dataset.v) : b.dataset.v, ev);
+      // La barra TAMBIEN se repinta: el filtro ya se aplicaba, pero el boton no se
+      // encendia ni se apagaba, y parecia que el clic no habia hecho nada.
+      rhPintarFiltros();
       rhPintarTodo();
     });
   });
@@ -616,7 +622,6 @@ function rhPintarTodo() {
     if (RH_F.cubicador.length && RH_F.cubicador.indexOf(f.cubicador) < 0) return;
     if (RH_F.servicio.length && RH_F.servicio.indexOf(f.servicio) < 0) return;
     if (RH_F.segmento.length && RH_F.segmento.indexOf(f.segmento) < 0) return;
-    if (RH_F.tipo.length && RH_F.tipo.indexOf(f.tipo) < 0) return;
     noAplican[f.anio] = (noAplican[f.anio] || 0) + f.n;
   });
   // LA ETIQUETA DICE DE QUÉ ES EL NÚMERO. Un total suelto no deja saber si incluye o no
