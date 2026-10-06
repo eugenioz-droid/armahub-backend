@@ -114,8 +114,12 @@ check('hay un tercer sub-tab y apunta a su panel',
   sandbox.rhPintarTodo();
   check('se redibujan los dos gráficos', graficos.length === 2);
   var g = graficos[0].cfg;
-  check('...y sólo queda el año en que ese cubicador tuvo algo',
-    g.data.labels.length === 2 && String(g.data.labels[1][1]) === '7');
+  // Los años se quedan TODOS aunque el cubicador no tenga nada en alguno: ver un cero
+  // es el dato. Quitando el año, no se sabría si no tuvo reclamos o si falta la columna.
+  check('...los años se mantienen, con cero donde no tuvo nada',
+    g.data.labels.length === 2 && String(g.data.labels[0][1]) === '0');
+  check('...y el año con datos dice cuánto se dibuja de cuánto hubo',
+    String(g.data.labels[1][1]) === '7 de 11');
   check('la matriz por cubicador queda con una sola fila',
     (nodo('rhMatrizCub').innerHTML.match(/<tr><td title=/g) || []).length === 1);
   sandbox.RH_F.cubicador = [];
