@@ -22,23 +22,23 @@
 //   C. EL DOBLEZ NO CAMBIA DE ÁNGULO. Una 102B es 135° antes y después del codo: el
 //      redondeo es cómo se dibuja el doblez, no cuánto dobla.
 //
-//   D. EL RADIO. R = 2.5 × el trazo (2φ interno + φ/2, la norma de motor_geom para
-//      φ ≤ 16 mm) y 4 × el trazo sobre φ16, y SOLO cuando el llamador declaró `metrico`.
-//      20-ago: el trazo se fue a la mitad (nominal 5.5 → 2.75, ver test_grosor_figura) y
-//      el codo lo siguió SOLO, sin tocar una constante de acá: R = k × sw, así que el
-//      nominal pasó de 13.75 a 6.875 px. Eso es exactamente lo que la regla promete —
-//      el codo mide siempre lo mismo respecto del fierro que dobla— y es la razón de que
-//      este test compare contra el sw que emite el motor y no contra un número clavado
-//      — la misma puerta que usa el grosor. Sin φ (catálogo, galería, previews) el codo
-//      igual existe, con el trazo nominal. Es lo que hace que el codo salga EXACTO al de
-//      norma cuando el motor dibuja el φ real, sin cablear centímetros en ningún lado.
+//   D. EL RADIO. En una barra REAL (puntos en cm + φ, como dibujan Bar Manager, el
+//      creador de despieces y Auditorías) el codo es el de NORMA en centímetros, escalado
+//      como la figura: 2.5φ del eje hasta φ16 y 4φ sobre φ16 (figura_puntos.radioEjeCm,
+//      la receta con que el Modelador 3D arregló el estribo). 6-oct: hasta acá R = k × el
+//      TRAZO, y como el trazo tiene piso (2.5–4.5 px en cualquier tamaño) el codo no se
+//      achicaba con la figura: en Bar Manager M el estribo 25×45 φ8 llevaba un codo de
+//      6.25 px donde el real mide 2.4, y el tope del 20% dejaba cada lado al 60% recto —
+//      «la esquina no queda como esquina, cada lado se recoge» (el usuario). Sin φ o sin
+//      cm (catálogo, galería, previews, lienzo) sigue R = k × trazo: ahí no hay escala
+//      real que seguir, y el codo del trazo es coherente con lo que se ve.
 //
-//   E. EL CAPEO EN LADOS CORTOS. La tangencia no puede pasar del 20% del lado más corto
-//      que llega al vértice. Dos cosas a la vez: dos codos del mismo lado no se pisan
-//      (40% entre los dos) y la figura sigue siendo esa figura en la miniatura de 90×72,
-//      donde el trazo NO se achica (piso de 5 px en cualquier tamaño) y un codo de norma
-//      se comería el 29% de cada lado. Cuando no cabe se BAJA EL RADIO manteniendo la
-//      tangencia: el fierro nunca pierde un tramo.
+//   E. EL CAPEO EN LADOS CORTOS. La tangencia no puede pasar de una fracción del lado más
+//      corto que llega al vértice: 20% con el codo del trazo (dos codos del mismo lado no
+//      se pisan —40% entre los dos— y la figura sigue siendo esa figura en la miniatura de
+//      90×72, donde un codo de norma se comería el 29% de cada lado) y 49% con el radio
+//      real, el tope del motor 3D (con el radio en cm el codo cabe casi siempre). Cuando
+//      no cabe se BAJA EL RADIO manteniendo la tangencia: el fierro nunca pierde un tramo.
 //
 //   F. LOS ÁNGULOS AGUDOS NO DEGENERAN. En un vértice de 45° la tangencia vale 2.41·R
 //      (contra 1.00·R en uno de 90°): es donde el codo se sale de madre. Y en la vuelta
@@ -88,7 +88,7 @@ vm.runInContext(fs.readFileSync(SRC_MOTOR, 'utf8'), sandbox, { filename: 'disena
 const MOTOR = sandbox.window.disenadorMotor;
 
 // ── Constantes de calibración (las mismas del fuente; el bloque J las verifica) ──
-const K_CHICO = 2.5, K_GRANDE = 4, TMAX = 0.20, NOMINAL = 2.75;
+const K_CHICO = 2.5, K_GRANDE = 4, TMAX = 0.20, TMAX_REAL = 0.49, NOMINAL = 2.75;
 const PISO = (mm) => 2.5 + (mm - 8) * 0.0715;
 const LADOS = 'ABCDEFGHI'.split('');
 const PREV = { width: 210, height: 140, pad: 18 };   // preview del Diseñador / del 3D
@@ -185,7 +185,7 @@ const G45 = figura([[100, 0], [-70.7107, 70.7107]]);
 ok(casi(codos(pathDe(G45))[0].giro, 135, 0.2), 'vértice de 45° (punta aguda) → giro de 135°');
 
 // ── D · el radio ─────────────────────────────────────────────────────────────
-console.log('D · R = k × el TRAZO (k de norma), y el φ entra por la misma puerta que el grosor:');
+console.log('D · barra real: R = k × φ en cm, escalado (la norma); sin φ: R = k × el trazo:');
 ok(casi(codos(pathDe(L90))[0].R, K_CHICO * NOMINAL),
   'sin φ (catálogo/galería/previews): R = 2.5 × 2.75 = ' + (K_CHICO * NOMINAL) + ' px');
 // Con φ: se dibuja como Bar Manager (puntos ya en cm + metrico). Lados largos para que
@@ -194,20 +194,36 @@ function conPhi(diamMM, metrico, geo, opts) {
   return RE_PATH.exec(MOTOR.dibujarFigura(geo || L90, null,
     Object.assign({ diam_mm: diamMM, metrico: metrico }, opts || PREV)));
 }
+// La escala (px/cm) se lee del propio path: la L90 tiene 100 cm hasta el vértice que
+// reconstruye `codos`, así que |M − V| / 100 es la escala, sin asumir el encuadre.
+function escalaDe(d, cm) { var n = nodos(d), k = codos(d)[0]; return dist(n[0], k.V) / cm; }
 [8, 12, 16].forEach(function (mm) {
-  var m = conPhi(mm, true);
-  ok(casi(codos(m[1])[0].R, K_CHICO * Number(m[2]), 0.03),
-    'φ' + mm + ' ≤ 16 mm: R = 2.5 × trazo = 2φ interno + φ/2 (la norma de motor_geom)');
+  var m = conPhi(mm, true), k = codos(m[1])[0];
+  ok(casi(k.R, K_CHICO * (mm / 10) * escalaDe(m[1], 100), 0.03),
+    'φ' + mm + ' ≤ 16 mm: R = 2.5φ en cm × escala = 2φ interno + φ/2 (la norma de motor_geom), ' + k.R.toFixed(2) + ' px');
+  ok(k.R < K_CHICO * Number(m[2]),
+    '...y es MENOR que el codo del trazo que se dibujaba antes (' + (K_CHICO * Number(m[2])).toFixed(2) + ' px)');
 });
-// Los φ gruesos piden 4 × el trazo, o sea 26–52 px: en los tamaños de pantalla ese codo
-// no cabe y manda el tope (bloque E). Para leer el factor pelado hace falta un lienzo
-// donde SÍ quepa — el motor está expuesto y acepta cualquier tamaño.
 const GRANDE = { width: 600, height: 400, pad: 20 };
 [18, 25, 36].forEach(function (mm) {
-  var m = conPhi(mm, true, L90, GRANDE);
-  ok(casi(codos(m[1])[0].R, K_GRANDE * Number(m[2]), 0.03),
-    'φ' + mm + ' > 16 mm: R = 4 × trazo = 3.5φ interno + φ/2');
+  var m = conPhi(mm, true, L90, GRANDE), k = codos(m[1])[0];
+  ok(casi(k.R, K_GRANDE * (mm / 10) * escalaDe(m[1], 100), 0.03),
+    'φ' + mm + ' > 16 mm: R = 4φ en cm × escala = 3.5φ interno + φ/2');
 });
+// EL ESTRIBO QUE MOTIVÓ EL CAMBIO: 25×45 φ8 en Bar Manager M (110×80, pad 20).
+const BM_M = { width: 110, height: 80, pad: 20 };
+const ESTRIBO_25x45 = figura([[45, 0], [0, 25], [-45, 0], [0, -25]]);
+var mE = conPhi(8, true, ESTRIBO_25x45, BM_M), cE = codos(mE[1]);
+var nE = nodos(mE[1]);
+// El lado de 45 cm es la recta entre dos codos: su largo + 2 tangencias = 45 × escala.
+var ladoLargo = 0; for (var ei = 1; ei < nE.length; ei++) if (nE[ei].cmd === 'L') ladoLargo = Math.max(ladoLargo, dist(nE[ei - 1], nE[ei]));
+var escalaE = (ladoLargo + 2 * cE[0].t1) / 45;
+// (El codo del cierre es el último comando del path y `codos` no lo reconstruye: quedan 3.)
+ok(cE.length >= 3 && cE.every(function (k) { return casi(k.R, K_CHICO * 0.8 * escalaE, 0.03); }),
+  'estribo 25×45 φ8 @ BM M: las 4 esquinas llevan el codo de norma, 2.00 cm = ' + cE[0].R.toFixed(2) + ' px (antes 6.25)');
+var ladoCorto25 = Infinity; for (var ej = 1; ej < nE.length; ej++) if (nE[ej].cmd === 'L') ladoCorto25 = Math.min(ladoCorto25, dist(nE[ej - 1], nE[ej]));
+ok(ladoCorto25 / (25 * escalaE) > 0.80,
+  '...y el lado de 25 cm queda recto en un ' + Math.round(100 * ladoCorto25 / (25 * escalaE)) + '% (antes 60%: «cada lado se recoge»)');
 ok(casi(codos(conPhi(36, false)[1])[0].R, K_CHICO * NOMINAL, 0.03),
   'metrico=false (los puntos NO están en cm): el φ no se usa, ni para el trazo ni para el codo');
 ok(casi(codos(conPhi(null, true)[1])[0].R, K_CHICO * NOMINAL, 0.03),
@@ -359,11 +375,11 @@ console.log('J · el fuente (que nadie vuelva a la polilínea en punta):');
 var src = fs.readFileSync(SRC_MOTOR, 'utf8');
 ok(/function _codoVertice\(/.test(src), 'el codo lo construye _codoVertice (un solo sitio)');
 ok(/function _radioDoblado\(/.test(src), 'y el radio lo decide _radioDoblado (un solo sitio)');
-ok(/var FIL_K = 2.5;/.test(src) && /var FIL_K_GRANDE = 4;/.test(src) && /var FIL_TMAX = 0.20;/.test(src),
-  'la calibración vive en constantes con nombre (FIL_K ' + K_CHICO + ' / FIL_K_GRANDE ' + K_GRANDE + ' / FIL_TMAX ' + TMAX + ')');
+ok(/var FIL_K = 2.5;/.test(src) && /var FIL_K_GRANDE = 4;/.test(src) && /var FIL_TMAX = 0.20;/.test(src) && /var FIL_TMAX_REAL = 0.49;/.test(src),
+  'la calibración vive en constantes con nombre (FIL_K ' + K_CHICO + ' / FIL_K_GRANDE ' + K_GRANDE + ' / FIL_TMAX ' + TMAX + ' / FIL_TMAX_REAL ' + TMAX_REAL + ')');
 ok((src.match(/_pathDesdePuntos\(/g) || []).length === 3,
   'sigue habiendo UNA sola función de path y sus 2 llamadores (render + lienzo del Diseñador)');
-ok(/_pathDesdePuntos\(tpts[^)]*rFillet\)/.test(src), 'el render le pasa el radio del codo');
+ok(/_pathDesdePuntos\(tpts[^)]*rFillet, filTmax\)/.test(src), 'el render le pasa el radio del codo y su tope');
 ok(/_pathDesdePuntos\(_puntos[^)]*_radioDoblado\(SW_NOMINAL\)\)/.test(src),
   'y el lienzo del Diseñador dibuja los MISMOS codos (si no, la figura cambia de forma al pasar al preview)');
 

@@ -287,7 +287,8 @@
     var tpts = pts.map(tx);
     // Radio del codo de doblado, en px del render (mismas unidades que tpts). Sale del
     // trazo, así que ya viene escalado — no se multiplica por `scale` (ver _radioDoblado).
-    var rFillet = _radioDoblado(swTrazo, opts.diam_mm, opts.metrico);
+    var rFillet = _radioDoblado(swTrazo, opts.diam_mm, opts.metrico, scale);
+    var filTmax = _topeTangencia(opts.diam_mm, opts.metrico);
 
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
     svg += '<defs>' +
@@ -338,7 +339,7 @@
     // puntas. Con el codo tangente ya casi no se ve, pero sigue haciendo falta donde el
     // codo no se dibuja —vuelta en U, codo sub-píxel, vértice contra un arco declarado—
     // y ahí `miter` sacaría el pico de flecha que el codo vino justamente a matar.
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet) + '" fill="none" stroke="' + tinta + '" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="butt" />';
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet, filTmax) + '" fill="none" stroke="' + tinta + '" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="butt" />';
     // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
     //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas
     //    (cotas_arco_iso, en coords de la proyección) → se mapean con tx().
@@ -552,7 +553,21 @@
   // sección del Template Editor, que dibuja el SÓLIDO 3D con toros tangentes en los
   // dobleces (motor_geom.analizarBarra). Acá se hace la MISMA construcción en 2D.
   //
-  // EL RADIO SALE DEL TRAZO, NO DEL φ — y no es un atajo, es la única lectura correcta:
+  // EL RADIO (6-oct): EN UNA BARRA REAL ES EL DE NORMA, EN CENTÍMETROS, ESCALADO COMO LA
+  // FIGURA. Es la receta con que el Modelador 3D arregló el estribo (figura_puntos
+  // ::radioEjeCm, motor_geom::radioDobladoNorma): 2φ interno + φ/2 hasta φ16, 3.5φ + φ/2
+  // sobre φ16, en cm, y el codo se achica con la figura como en el fierro de verdad. Hasta
+  // acá el radio salía del TRAZO (R = k·sw, lo que sigue abajo), y como el trazo tiene
+  // PISO (2.5–4.5 px en cualquier tamaño), el codo NO se achicaba con la figura: en Bar
+  // Manager M un estribo 25×45 φ8 se dibuja a ~1.2 px/cm, su codo de norma mide 2.4 px y
+  // el del trazo medía 6.25 —casi tres veces el real—, con el tope del 20% mordiendo cada
+  // lado por los dos extremos (60% recto). El usuario lo vio en el estribo: «la esquina no
+  // queda como esquina, cada lado se recoge». Con el radio real el codo cabe casi siempre y
+  // el tope pasa al 0.49 del motor 3D (el límite duro de que dos codos no se pisen). Y si
+  // el radio real no llega al píxel, no hay codo: queda el vértice con su linejoin redondo,
+  // que es lo que se ve en un estribo chico de verdad.
+  //
+  // SIN φ O SIN CENTÍMETROS (catálogo, galería, previews, lienzo) sigue R = k·TRAZO:
   //   · La norma (NCh 204 / ACI 318, ver motor_geom.radioDobladoNorma) dice radio INTERNO
   //     2φ hasta φ16 y 3.5φ sobre φ16; el radio del EJE —que es lo que dibuja una línea
   //     de un solo trazo— suma medio diámetro: 2.5φ y 4φ.
@@ -595,13 +610,22 @@
   // cabe, y cuando entra se BAJA EL RADIO manteniendo la tangencia (ver _codoVertice),
   // que es lo que hace la máquina cuando le piden doblar un lado corto.
   var FIL_TMAX = 0.20;
+  // El tope cuando el radio es el REAL: el del motor 3D (motor_geom.analizarBarra). Con el
+  // radio de norma en cm el codo cabe casi siempre; el 0.20 estaba calibrado para el codo
+  // del trazo, que no se achica con la figura.
+  var FIL_TMAX_REAL = 0.49;
 
-  function _radioDoblado(sw, diamMM, metrico) {
-    // El φ sólo entra por la MISMA puerta que el grosor (ver _grosorTrazo): sin `metrico`
-    // el trazo es el nominal y aplicar el factor de las φ gruesas sería inventar.
+  // ¿La barra es REAL? Puntos en cm (`metrico`) y φ conocido: la misma puerta que el grosor.
+  function _esReal(diamMM, metrico) { return !!metrico && Number(diamMM) > 0; }
+
+  // `scale` = px por cm del encuadre. Con barra real, R = k·φ·scale (el radio de norma
+  // escalado); si no, R = k·sw (el codo del trazo, ver arriba).
+  function _radioDoblado(sw, diamMM, metrico, scale) {
     var k = (metrico && Number(diamMM) > FIL_UMBRAL_MM) ? FIL_K_GRANDE : FIL_K;
+    if (_esReal(diamMM, metrico) && scale > 0) return k * (Number(diamMM) / 10) * scale;
     return k * sw;
   }
+  function _topeTangencia(diamMM, metrico) { return _esReal(diamMM, metrico) ? FIL_TMAX_REAL : FIL_TMAX; }
 
   // Codo tangente en el vértice p1 entre p0→p1 y p1→p2. Devuelve {T1,T2,R,sweep} o null.
   // MISMA construcción que motor_geom.analizarBarra (el 3D que dibuja la vista de sección
@@ -610,7 +634,7 @@
   // Cuando no cabe se BAJA EL RADIO manteniendo la tangencia (t = tMax → R = t/tan(ang/2)):
   // el codo queda más cerrado —que es justo lo que pasa en la máquina cuando le piden doblar
   // un lado corto— y NUNCA se recorta la pata, así que la figura no pierde largo de fierro.
-  function _codoVertice(p0, p1, p2, R) {
+  function _codoVertice(p0, p1, p2, R, tmaxFrac) {
     var d1x = p1.x - p0.x, d1y = p1.y - p0.y, l1 = Math.sqrt(d1x * d1x + d1y * d1y);
     var d2x = p2.x - p1.x, d2y = p2.y - p1.y, l2 = Math.sqrt(d2x * d2x + d2y * d2y);
     if (!(R > 0) || !(l1 > 0) || !(l2 > 0)) return null;
@@ -623,7 +647,7 @@
     // el linejoin redondo lo cierra— en vez de inventar una curva que no cabe.
     if (ang < 0.02 || ang > Math.PI - 0.02) return null;
     var t = R * Math.tan(ang / 2);
-    var tMax = FIL_TMAX * Math.min(l1, l2);
+    var tMax = (tmaxFrac || FIL_TMAX) * Math.min(l1, l2);
     if (t > tMax) { t = tMax; R = t / Math.tan(ang / 2); }
     // Sub-píxel: un codo de menos de 0.4 px no se distingue de la punta ni del redondeo
     // que el propio stroke-linejoin ya hace, y sólo alarga el `d`. Se deja el vértice.
@@ -646,10 +670,11 @@
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
   // segmentos (índice = i-1 para el segmento entre punto i-1 e i).
   // `rFil` = radio del codo de doblado (mismas unidades que pts). 0 / ausente = vértices
-  // en punta, como antes. Los codos SÓLO se meten entre dos tramos RECTOS: donde ya hay
+  // en punta, como antes. `tmaxFrac` = tope de la tangencia como fracción del lado más
+  // corto (sin él, FIL_TMAX). Los codos SÓLO se meten entre dos tramos RECTOS: donde ya hay
   // un arco declarado, la curva ES el doblez (mismo criterio que `sinFilletEnArcos` del
   // motor 3D, que tampoco le mete un toro a un vértice que ya viene de un arco).
-  function _pathDesdePuntos(pts, tipos, radios, sweeps, arcosTx, rFil) {
+  function _pathDesdePuntos(pts, tipos, radios, sweeps, arcosTx, rFil, tmaxFrac) {
     if (!pts || pts.length < 1) return '';
     var n = pts.length, i;
     function _recto(s) { return (((tipos && tipos[s]) || 'recto') !== 'arco'); }
@@ -657,7 +682,7 @@
     for (i = 0; i < n; i++) codos.push(null);
     if (rFil > 0) {
       for (i = 1; i < n - 1; i++) {
-        if (_recto(i - 1) && _recto(i)) codos[i] = _codoVertice(pts[i - 1], pts[i], pts[i + 1], rFil);
+        if (_recto(i - 1) && _recto(i)) codos[i] = _codoVertice(pts[i - 1], pts[i], pts[i + 1], rFil, tmaxFrac);
       }
     }
     // FIGURA CERRADA (estribo, marco): el punto final vuelve al inicial, así que ese
@@ -666,7 +691,7 @@
     var cierre = null;
     if (rFil > 0 && n >= 4 && _recto(n - 2) && _recto(0) &&
         Math.abs(pts[0].x - pts[n - 1].x) < 0.01 && Math.abs(pts[0].y - pts[n - 1].y) < 0.01) {
-      cierre = _codoVertice(pts[n - 2], pts[0], pts[1], rFil);
+      cierre = _codoVertice(pts[n - 2], pts[0], pts[1], rFil, tmaxFrac);
     }
     var ini = cierre ? cierre.T2 : pts[0];
     var d = 'M ' + (cierre ? _n2(ini.x) + ' ' + _n2(ini.y) : pts[0].x + ' ' + pts[0].y);
