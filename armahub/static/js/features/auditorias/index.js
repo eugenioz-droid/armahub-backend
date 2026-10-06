@@ -718,20 +718,33 @@
       '<span class="audfigav" title="' + esc(f.eje.motivo || 'La envolvente no cuadra con la que declara aSa') + '">⚠</span>');
   }
 
-  // El eje reconstruido de aSa (puntos en mm, Y hacia arriba como en el motor), dibujado
-  // con el motor y con un rótulo por tramo: la medida del lado en cm, como en el Bar
-  // Manager. Si hay un arco, sus puntitos no son lados y va sin rótulos.
+  // LA FIGURA CONSTRUIDA DESDE aSa, como POLICURVA: puntos en mm (Y hacia arriba, como en
+  // el motor) y un tramo por segmento, recto o arco. Los arcos —los ganchos de 135° y
+  // 180°, los tramos curvos— van con su radio y su sentido al motor, que los dibuja con
+  // el comando A de SVG y no les mete codo encima; los rectos llevan de rótulo la medida
+  // del lado en cm, como el Bar Manager. Las cotas automáticas de arco del motor (radio,
+  // desarrollo) se apagan: en una miniatura de auditoría son ruido.
   function svgEje(f) {
     var eje = f.eje, M = global.disenadorMotor;
     if (!eje || !(eje.puntos || []).length || !M || !M.svgDesdePuntos || !global._bmTam) return '';
     var t = global._bmTam(FIG_TAM);
     var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
-    var lados = eje.lados || [];
-    var rectos = lados.length === pts.length - 1 && !lados.some(function (l) { return l.arco; });
-    var labels = rectos ? lados.map(function (l) { return String(Math.round(l.largo / 10)); }) : [];
+    var tramos = eje.tramos || [];
+    var completo = tramos.length === pts.length - 1;
+    var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
+    var radios = tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; });
+    // El backend dice el sentido en geometría (sweep 1 = antihorario con la Y hacia
+    // arriba); el motor toma `sweeps_seg` en la convención del lienzo del Diseñador, que
+    // es la contraria. Medido con el motor de verdad (tangencia del arco con sus dos
+    // tramos): sin invertirlo, el codo del gancho caía al otro lado de la cuerda.
+    var sweeps = tramos.map(function (s) { return s.sweep == null ? 1 : 1 - s.sweep; });
+    var labels = tramos.map(function (s) { return (s.tipo === 'recto' && s.largo) ? String(Math.round(s.largo / 10)) : ''; });
     try {
-      return M.svgDesdePuntos(pts, { width: t.w, height: t.h, pad: 20, labels: labels,
-                                     labels_auto: rectos, angulos: rectos, diam_mm: f.diam, metrico: true });
+      return M.svgDesdePuntos(pts, { width: t.w, height: t.h, pad: 20,
+                                     tipos_seg: completo ? tipos : null, radios_seg: completo ? radios : null,
+                                     sweeps_seg: completo ? sweeps : null, labels: completo ? labels : [],
+                                     labels_auto: completo, angulos: completo, cotas_arco_iso: [],
+                                     diam_mm: f.diam, metrico: true });
     } catch (e) { return ''; }
   }
 

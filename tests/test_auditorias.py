@@ -382,6 +382,19 @@ check("se aplica al armar la muestra de aSa, y en pantalla lo leído se ve como 
       'e.update(_ubicacion_desde_nombre(descr, e["estructura"]))' in SRC
       and "function celdasUbicacionTexto(" in JS and 'class="audderiv"' in JS and ".audt td.audderiv{" in HTM)
 
+print("\n7b3. La línea del elemento no es una barra")
+# aSa manda dentro del CC una línea por elemento (sin marca, sin φ, cantidad 1, el peso del
+# conjunto). Contaba doble los kilos y salía como fila vacía en la grilla (6-oct).
+LINEA = {"CtrlCode": "SUP8", "ElementID": "Eje K2 P1", "ElementDesc": "PIEZA 1 EJE K2", "TotalQty": 1.0, "LineWeight": 581.0,
+         "LegAngle": "<la><st>LN</st><bc>1</bc><mbr><x>null</x><y>0</y><z>0</z></mbr><cp><t>STD</t><l>null</l><n>1</n></cp></la>"}
+BARRA = {"CtrlCode": "SUP8", "ElementID": "Eje K2 P1", "ElementDesc": "PIEZA 1 EJE K2", "BarMark": "12mmA1",
+         "BarSizeDescr": "12mm", "TotalQty": 4.0, "LineWeight": 290.5}
+check("se reconoce: sin marca y sin diámetro", not A._es_barra(LINEA) and A._es_barra(BARRA))
+els = A._elementos_de_items([LINEA, BARRA, dict(BARRA, BarMark="12mmA2")], "SUP8", "PR - EJE K2", None)
+check("...no cuenta como barra ni suma sus kilos al elemento (2 barras, 581 kg y no 1162)",
+      len(els) == 1 and els[0]["barras"] == 2 and round(els[0]["kg"]) == 581)
+check("...y al pedir las barras del elemento tampoco viaja", "if _es_barra(it)" in SRC)
+
 print("\n7c. La ubicación se escribe en la fila del elemento abierto")
 # 6-oct: la barra «Dónde está» sobre la grilla de barras estaba fuera de lugar («son para
 # completar, debieran ir en el listado de elementos y no en la grilla»). Los cuatro campos

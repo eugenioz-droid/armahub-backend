@@ -76,21 +76,28 @@ const celda = T.celdaFigura(T.normalizarBarra({ figura: '104B', diam: '10mm', di
 check('con la figura en el catálogo dibuja el Bar Manager, al tamaño M, con las medidas en cm',
       celda === '<svg class="bm"></svg>' && llamadasBm.length === 1 && llamadasBm[0].tam === 'm' && llamadasBm[0].b.dim_a === 120);
 llamadasMotor.length = 0;
-const nativa = T.normalizarBarra({ figura: 'T12', diam: '16mm', dims: { A: 1200 },
-  eje: { ok: true, puntos: [[0, 0], [1200, 0]], lados: [{ nombre: 'A', largo: 1200, arco: false }] } }, 'asa');
+// Una traba T12 real como la construye el backend: gancho · arco · barra · arco · gancho.
+const T12 = { ok: true, puntos: [[0, 0], [-89.1, -94.7], [-67.3, -145.2], [832.7, -145.2], [854.6, -94.7], [765.5, 0]],
+  tramos: [{ tipo: 'recto', lado: 'A', largo: 130 }, { tipo: 'arco', lado: '', largo: null, radio: 30, sweep: 1 },
+           { tipo: 'recto', lado: 'B', largo: 900 }, { tipo: 'arco', lado: '', largo: null, radio: 30, sweep: 1 },
+           { tipo: 'recto', lado: 'G', largo: 130 }] };
+const nativa = T.normalizarBarra({ figura: 'T12', diam: '12mm', dims: { A: 130, B: 900, G: 130 }, eje: T12 }, 'asa');
 const celdaEje = T.celdaFigura(nativa);
-check('sin la figura en el catálogo, el eje de aSa se dibuja con el motor: en cm, grosor por φ y el lado rotulado',
+const o = llamadasMotor[0].o;
+check('sin la figura en el catálogo, la policurva de aSa se dibuja con el motor: en cm, con grosor por φ',
       celdaEje === '<svg class="eje"></svg>' && llamadasMotor.length === 1 &&
-      llamadasMotor[0].pts[1].x === 120 && llamadasMotor[0].o.metrico === true &&
-      llamadasMotor[0].o.diam_mm === 16 && llamadasMotor[0].o.labels.join() === '120' && llamadasMotor[0].o.labels_auto === true);
-const arco = T.normalizarBarra({ figura: 'RB1', diam: '16mm', dims: {},
-  eje: { ok: true, puntos: [[0, 0], [10, 1], [20, 3]], lados: [{ nombre: 'B', largo: 20, arco: true }] } }, 'asa');
-T.celdaFigura(arco);
-check('...y si hay un arco, sus puntitos no se rotulan', llamadasMotor[1].o.labels.length === 0 && llamadasMotor[1].o.labels_auto === false);
+      Math.abs(llamadasMotor[0].pts[3].x - 83.27) < 0.01 && o.metrico === true && o.diam_mm === 12);
+check('...los ganchos van como ARCOS con su radio (3 cm) y su sentido traducido al del motor (1 → 0), y el motor no les mete codo encima',
+      o.tipos_seg.join() === 'recto,arco,recto,arco,recto' && o.radios_seg[1] === 3 && o.sweeps_seg[1] === 0);
+check('...cada tramo recto lleva de rótulo la medida del lado en cm; los arcos, nada',
+      o.labels.join('|') === '13||90||13' && o.labels_auto === true && o.angulos === true);
+check('...y las cotas automáticas de arco del motor van apagadas (ruido en una miniatura)',
+      Array.isArray(o.cotas_arco_iso) && o.cotas_arco_iso.length === 0);
 const dudosa = T.celdaFigura(T.normalizarBarra({ figura: 'ZZZ', diam: '16mm', dims: { A: 1200 },
-  eje: { ok: false, motivo: 'la envolvente no cuadra: alto dibujado 189, aSa dice 114', puntos: [[0, 0], [1200, 0]], lados: [] } }, 'asa'));
+  eje: { ok: false, motivo: 'la envolvente no cuadra: construida 2070 × 600, aSa dice 2135 × 297', puntos: [[0, 0], [1200, 0]],
+         tramos: [{ tipo: 'recto', lado: 'A', largo: 1200 }] } }, 'asa'));
 check('si la envolvente no cuadra se dibuja igual, con el aviso y su porqué al lado',
-      dudosa.indexOf('<svg class="eje"></svg>') === 0 && dudosa.indexOf('class="audfigav"') !== -1 && dudosa.indexOf('aSa dice 114') !== -1);
+      dudosa.indexOf('<svg class="eje"></svg>') === 0 && dudosa.indexOf('class="audfigav"') !== -1 && dudosa.indexOf('aSa dice 2135') !== -1);
 check('sin figura ni eje, un guion', T.celdaFigura(T.normalizarBarra({ figura: 'ZZZ', diam: '16mm' }, 'asa')).indexOf('—') !== -1);
 check('ya no hay un dibujante propio ni la frase de lados: el formato es el de la plataforma',
       fuente.indexOf('function svgBarra') === -1 && fuente.indexOf('Lados / dimensiones') === -1);

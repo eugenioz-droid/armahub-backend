@@ -526,8 +526,17 @@ def _ubicacion_desde_nombre(descr: Optional[str], estructura: Optional[str]) -> 
     return {"sector": sector, "piso": piso, "ciclo": ciclo}
 
 
+def _es_barra(it) -> bool:
+    """aSa manda, dentro del código, una LÍNEA POR ELEMENTO además de sus barras: sin marca,
+    sin φ, sin figura, cantidad 1 y de peso el del conjunto (medido: 581 kg = la suma de sus
+    barras). No es una barra: contaba doble el kilaje de la muestra y salía en la grilla como
+    una fila vacía (el usuario la vio, 6-oct). Barra es lo que tiene marca o diámetro."""
+    return bool((it.get("BarMark") or "").strip() or (it.get("BarSizeDescr") or "").strip())
+
+
 def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
-    """Agrupa los ítems de un CC por elemento. Un CC puede traer uno o veintidós."""
+    """Agrupa los ítems de un CC por elemento. Un CC puede traer uno o veintidós. La línea
+    del elemento (ver _es_barra) sólo aporta el nombre si ninguna barra lo trae."""
     por: dict = {}
     for it in items:
         eid = (it.get("ElementID") or "").strip()
@@ -539,6 +548,8 @@ def _elementos_de_items(items, cc: str, descr: str, cubico: Optional[str]):
                                    "estructura": (it.get("ElementDesc") or "").strip() or None,
                                    "barras": 0, "kg": 0.0, "cubicado_por": cubico,
                                    "tipo": None, "descr_cc": descr})
+        if not _es_barra(it):
+            continue
         e["barras"] += 1
         e["kg"] += float(it.get("LineWeight") or 0)
     for clave, e in por.items():
@@ -654,8 +665,9 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
     # elemento)` no es un ElementID: significa «los ítems a los que aSa no les puso
     # ninguno», y filtrar por ese texto devolvía cero ítems y un 404 sin explicación.
     items = [it for it in _items_de(cc)
-             if not element
-             or (it.get("ElementID") or "").strip() == ("" if element == SIN_ELEMENTO else element)]
+             if _es_barra(it)
+             and (not element
+                  or (it.get("ElementID") or "").strip() == ("" if element == SIN_ELEMENTO else element))]
     if not items:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene ítems en aSa.")
     from .figura_asa import figura_de
@@ -668,10 +680,12 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
             # la grilla los pone en columnas, en cm, igual que el Bar Manager.
             "dims": lados["dims"], "angulos": lados["angulos"], "ganchos": lados["ganchos"],
             "largo": it.get("LengthCut"),
-            # EL DIBUJO. Se reconstruye del eje que manda aSa y se comprueba contra la
+            # EL DIBUJO. La figura se construye con lo que manda aSa (lados, ángulos,
+            # mandril, φ) como una policurva —ver figura_asa.py— y se comprueba contra la
             # envolvente que ella misma declara: si no cuadra viaja `ok: false` y la
             # pantalla dibuja igual, con el aviso y el porqué al lado.
-            "eje": figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam")),
+            "eje": figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam"),
+                             _mm(it.get("BarSizeDescr"))),
             "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
             "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
             "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
@@ -687,6 +701,13 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
             "kg": sum(float(b["peso_total"] or 0) for b in barras),
             "planos": sorted({b["plano"] for b in barras if b["plano"]}),
             "cubicaron": [], "descr": (items[0].get("OrderDescr") or "")}
+
+
+def _mm(descr) -> float:
+    """El φ en mm desde el texto de aSa («10mm», «12 mm»)."""
+    import re as _re
+    m = _re.search(r"([\d.]+)", str(descr or ""))
+    return float(m.group(1)) if m else 0.0
 
 
 def _lados(xml: Optional[str]) -> dict:
