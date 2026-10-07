@@ -1107,7 +1107,7 @@ class HallazgoBody(BaseModel):
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}")
 def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
-                       user=Depends(get_current_user)):
+                       request: Request, user=Depends(get_current_user)):
     """Registra el hallazgo de UN elemento. Si no es conforme exige decir qué se encontró
     —un hallazgo sin texto no sirve de evidencia— y abre la acción para quien cubicó.
     Después recalcula el estado y las fechas de la auditoría: nadie las escribe."""
@@ -1141,13 +1141,18 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
                     WHERE id = %s""",
                 (body.hallazgo, texto or None, (body.causa or None) if body.hallazgo != "conforme" else None,
                  email, accion, elemento_id))
-            _recalcular(cur, auditoria_id)
+            cerro = _recalcular(cur, auditoria_id)
             audit(email, "auditoria_hallazgo", f"{codigo} · {nombre}: {body.hallazgo}", "auditoria", str(auditoria_id))
     # La acción le llega a quien cubicó. Fuera de la transacción: que falle el aviso no
     # puede deshacer el hallazgo.
     if es_nc and cubico and accion_previa != "verificada":
         _avisar(cubico, f"Auditoría {codigo} · {obra}: {_NOMBRE[body.hallazgo]} en {nombre}. {texto[:120]}")
-    return detalle(auditoria_id, user)
+    aud = detalle(auditoria_id, user)
+    # EL RESULTADO, al cerrar: el último hallazgo es el que cierra la auditoría, y es el
+    # único momento en que hay algo que contarle a los tres.
+    if cerro:
+        aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)
+    return aud
 
 
 _NOMBRE = {"conforme": "Conforme", "observacion": "Observación",
@@ -1243,6 +1248,59 @@ def ubicar_elemento(auditoria_id: int, elemento_id: int, body: UbicacionBody,
     return detalle(auditoria_id, user)
 
 
+# CÓMO SE NOMBRA A LA GENTE Y A LAS COSAS EN LOS CORREOS (7-oct). Tres reglas del
+# usuario: el elemento se identifica entero —código, elemento y la descripción del código,
+# que es la que dice piso, ciclo y si es elevación o losa—, las personas van por su nombre
+# y no por su correo, y el texto va en tercera persona y formal.
+def _nombres(correos) -> dict:
+    """email -> «Nombre Apellido». Lo que no esté en la tabla queda con la parte de antes
+    del arroba, que es mejor que un correo entero en medio de una frase."""
+    correos = sorted({(c or "").strip() for c in (correos or []) if c and "@" in c})
+    salida = {c: c.split("@")[0] for c in correos}
+    if not correos:
+        return salida
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT email, TRIM(COALESCE(nombre,'') || ' ' || COALESCE(apellido,''))
+                         FROM users WHERE email = ANY(%s)""", (correos,))
+                for email, nombre in cur.fetchall():
+                    if (nombre or "").strip():
+                        salida[email] = nombre.strip()
+    except Exception:
+        pass
+    return salida
+
+
+def _quien(correo, nombres) -> str:
+    return (nombres or {}).get((correo or "").strip(), (correo or "").split("@")[0] or "—")
+
+
+def _fecha_larga(iso) -> str:
+    """dd/mm/aaaa. Un 2026-10-21 en medio de una frase se lee como un número de serie."""
+    s = str(iso or "")[:10]
+    p = s.split("-")
+    return "%s/%s/%s" % (p[2], p[1], p[0]) if len(p) == 3 else (s or "sin plazo")
+
+
+def _elemento_txt(e) -> str:
+    """El elemento, identificado entero: «SUQC · L101 · LC S1 C5 Lourdes». El código solo
+    no le dice nada a nadie; la descripción es la que trae piso, ciclo y de qué es."""
+    partes = [x for x in ((e.get("cc") or "").strip(),
+                          (e.get("nombre") or e.get("eje") or "").strip(),
+                          (e.get("descr_cc") or "").strip()) if x]
+    return " · ".join(partes) or "(sin identificar)"
+
+
+def _lista_elementos(elementos) -> str:
+    """Los elementos como lista HTML, para que se lean uno por línea y no en un párrafo."""
+    if not elementos:
+        return ""
+    filas = "".join("<li style='margin:2px 0'>%s</li>" % _elemento_txt(e) for e in elementos)
+    return "<ul style='margin:4px 0 0;padding-left:20px'>%s</ul>" % filas
+
+
 def _html_correo(titulo: str, lineas: list, pie: str = "", enlace: str = "",
                  texto_enlace: str = "Abrir la auditoría") -> str:
     """El correo de una auditoría. Sobrio y corto: lo que hay que hacer, para cuándo y un
@@ -1332,54 +1390,130 @@ def _correo_administracion() -> list:
 
 
 def _avisar_auditoria_nueva(aud: dict, request=None) -> dict:
-    """Los correos al lanzar una auditoría:
+    """Los correos al asignar una auditoría. Tres destinatarios y un mismo hecho contado
+    desde donde le toca a cada uno:
 
-      · al AUDITOR, con qué le tocó y hasta cuándo;
-      · al AUDITADO (quien cubicó los elementos sorteados), para que lo sepa y pueda
-        hacerle llegar los antecedentes al auditor. No es un reproche: es que sin los
-        planos y los acuerdos con el cliente, el auditor revisa a ciegas;
-      · a ADMINISTRACIÓN, en copia, que es lo que pidió el usuario («a mí también»).
+      · al AUDITOR, lo que tiene que revisar y hasta cuándo;
+      · al AUDITADO, UNO POR PERSONA y sólo con SUS elementos —antes iban todos en el
+        mismo `to:` y cada uno veía a quién más estaban auditando—, con lo que se le pide:
+        entregar los planos al auditor y verificar en BShark que sean la versión vigente;
+      · a ADMINISTRACIÓN, la copia.
 
-    Todos llevan un botón que abre ESA auditoría, no la pantalla de auditorías.
+    Todos llevan un botón que abre ESA auditoría. El texto va en tercera persona: es un
+    registro de calidad, no un mensaje entre dos personas.
     """
-    cuantos = len(aud.get("elementos") or [])
+    elementos = aud.get("elementos") or []
+    auditados = sorted({(e.get("cubicado_por") or "").strip()
+                        for e in elementos if (e.get("cubicado_por") or "").strip()})
+    nombres = _nombres([aud.get("auditor")] + auditados)
+    audita = _quien(aud.get("auditor"), nombres)
+    plazo = _fecha_larga(aud.get("plazo"))
+    asignada = _fecha_larga(aud.get("creada"))
     cab = "%s · %s" % (aud["codigo"], aud["obra"])
     enlace = _enlace_auditoria(aud["id"], request)
+    # Las tres líneas que comparten los tres correos: de qué auditoría se habla y quiénes
+    # son las partes. Repetirlas es a propósito — cada correo tiene que poder leerse solo.
+    comunes = [
+        "Obra: <b>%s</b>" % aud["obra"],
+        "Auditoría: <b>%s</b>" % aud["codigo"],
+        "Audita: <b>%s</b>" % audita,
+        "Auditado: <b>%s</b>" % (", ".join(_quien(x, nombres) for x in auditados) or "—"),
+        "Fecha de asignación: <b>%s</b> · Plazo de cierre: <b>%s</b>" % (asignada, plazo),
+    ]
+
     r1 = _avisar_correo(
-        [aud["auditor"]], "Auditoría asignada: %s" % cab,
-        "Te asignaron una auditoría de cubicación",
-        ["Obra: <b>%s</b>" % aud["obra"],
-         "Auditoría <b>%s</b> · %d elemento(s) sorteados de %d del alcance."
-         % (aud["codigo"], cuantos, aud.get("total_rango") or 0),
-         "Plazo para cerrarla: <b>%s</b>." % (aud.get("plazo") or "sin plazo")],
+        [aud["auditor"]], "Auditoría %s asignada · %s" % (aud["codigo"], aud["obra"]),
+        "Auditoría de cubicación asignada",
+        comunes + ["Elementos a revisar (%d de %d del alcance):%s"
+                   % (len(elementos), aud.get("total_rango") or 0, _lista_elementos(elementos))],
         enlace=enlace)
-    auditados = sorted({(e.get("cubicado_por") or "").strip()
-                        for e in (aud.get("elementos") or []) if e.get("cubicado_por")})
-    r2 = _avisar_correo(
-        auditados, "Se está auditando tu cubicación: %s" % cab,
-        "Tu cubicación entró en una auditoría",
-        ["Obra: <b>%s</b>" % aud["obra"],
-         "Auditoría <b>%s</b>, a cargo de <b>%s</b>." % (aud["codigo"], aud["auditor"]),
-         "Se revisarán %d elemento(s). Si tienes planos, correos o acuerdos con el cliente "
-         "que expliquen cómo se cubicó, hazlos llegar al auditor." % cuantos,
-         "Plazo de la auditoría: <b>%s</b>." % (aud.get("plazo") or "sin plazo"),
-         "Si sale alguna no conformidad te va a llegar como acción, y la corriges en tu cubicación."],
-        enlace=enlace)
+
+    # UNO POR AUDITADO: cada uno recibe el suyo, con sus elementos y sin ver los ajenos.
+    envios = {}
+    for cub in auditados:
+        mios = [e for e in elementos if (e.get("cubicado_por") or "").strip() == cub]
+        envios[cub] = _avisar_correo(
+            [cub], "Auditoría %s · cubicación auditada · %s" % (aud["codigo"], aud["obra"]),
+            "Cubicación incluida en una auditoría",
+            ["Obra: <b>%s</b>" % aud["obra"],
+             "Auditoría: <b>%s</b>" % aud["codigo"],
+             "Audita: <b>%s</b>" % audita,
+             "Auditado: <b>%s</b>" % _quien(cub, nombres),
+             "Fecha de asignación: <b>%s</b> · Plazo de cierre: <b>%s</b>" % (asignada, plazo),
+             "Elementos de su cubicación incluidos en la muestra (%d):%s"
+             % (len(mios), _lista_elementos(mios)),
+             "Debe entregar al auditor los planos de los elementos indicados y verificar en "
+             "la plataforma <b>BShark</b> que correspondan a las versiones vigentes.",
+             "Las no conformidades que se detecten se asignarán como acción a quien cubicó, "
+             "y la corrección se realiza en la cubicación."],
+            enlace=enlace)
+
     # La copia NO repite a quien ya recibió el suyo: dos correos del mismo hecho en la
     # misma bandeja es ruido, y el del auditor dice más.
     ya = set([aud["auditor"]] + auditados)
     copia = [c for c in _correo_administracion() if c not in ya]
     r3 = _avisar_correo(
-        copia, "Auditoría lanzada: %s" % cab,
-        "Se lanzó una auditoría de cubicación",
-        ["Obra: <b>%s</b>" % aud["obra"],
-         "Auditoría <b>%s</b>, a cargo de <b>%s</b>." % (aud["codigo"], aud["auditor"]),
-         "%d elemento(s) sorteados de %d del alcance · %s kg."
-         % (cuantos, aud.get("total_rango") or 0, format(int(aud.get("kg") or 0), ",d").replace(",", ".")),
-         "Auditados: <b>%s</b>." % (", ".join(x.split("@")[0] for x in auditados) or "—"),
-         "Plazo: <b>%s</b>." % (aud.get("plazo") or "sin plazo")],
+        copia, "Auditoría %s asignada · %s" % (aud["codigo"], aud["obra"]),
+        "Auditoría de cubicación asignada",
+        comunes + ["Alcance: <b>%d</b> elementos sorteados de %d · <b>%s</b> kg.%s"
+                   % (len(elementos), aud.get("total_rango") or 0,
+                      _kg(aud.get("kg")), _lista_elementos(elementos))],
         enlace=enlace)
-    return {"auditor": r1, "auditados": r2, "administracion": r3}
+    return {"auditor": r1, "auditados": envios, "administracion": r3}
+
+
+def _kg(v) -> str:
+    try:
+        return format(int(round(float(v or 0))), ",d").replace(",", ".")
+    except (TypeError, ValueError):
+        return "0"
+
+
+def _avisar_auditoria_cerrada(aud: dict, request=None) -> dict:
+    """EL RESULTADO, cuando la auditoría se cierra. A los tres (pedido del usuario, 7-oct):
+    una auditoría que nadie lee no corrige nada, y el cierre es el único momento en que
+    hay algo que contar. Un solo correo con el mismo contenido para todos: el resultado es
+    el mismo para quien audita, para quien fue auditado y para administración."""
+    elementos = aud.get("elementos") or []
+    revisados = [e for e in elementos if e.get("hallazgo")]
+    res = aud.get("resultado") or {}
+    conformes = int(res.get("conforme") or 0)
+    pct = round(conformes * 100.0 / len(revisados)) if revisados else 0
+    auditados = sorted({(e.get("cubicado_por") or "").strip()
+                        for e in elementos if (e.get("cubicado_por") or "").strip()})
+    nombres = _nombres([aud.get("auditor")] + auditados)
+    no_conformes = [e for e in revisados if e.get("hallazgo") != "conforme"]
+    detalle_nc = ""
+    if no_conformes:
+        filas = "".join(
+            "<li style='margin:2px 0'>%s — <b>%s</b>%s</li>"
+            % (_elemento_txt(e), _NOMBRE.get(e.get("hallazgo"), e.get("hallazgo") or ""),
+               (": " + str(e.get("texto"))[:160]) if e.get("texto") else "")
+            for e in no_conformes)
+        detalle_nc = "<ul style='margin:4px 0 0;padding-left:20px'>%s</ul>" % filas
+    lineas = [
+        "Obra: <b>%s</b>" % aud["obra"],
+        "Auditoría: <b>%s</b>" % aud["codigo"],
+        "Audita: <b>%s</b>" % _quien(aud.get("auditor"), nombres),
+        "Auditado: <b>%s</b>" % (", ".join(_quien(x, nombres) for x in auditados) or "—"),
+        "Fecha de cierre: <b>%s</b>" % _fecha_larga(aud.get("cierre")),
+        "Resultado: <b>%d</b> elemento(s) revisados · <b>%d%%</b> de conformidad." % (len(revisados), pct),
+        "Conformes: <b>%d</b> · Observaciones: <b>%d</b> · No conformidades menores: <b>%d</b> · "
+        "mayores: <b>%d</b>." % (conformes, int(res.get("observacion") or 0),
+                                 int(res.get("nc_menor") or 0), int(res.get("nc_mayor") or 0)),
+    ]
+    if no_conformes:
+        lineas.append("Elementos con hallazgo:%s" % detalle_nc)
+        lineas.append("Acciones abiertas: <b>%d</b>. La corrección la realiza quien cubicó, en su "
+                      "cubicación, y el auditor la verifica." % int(aud.get("acciones_abiertas") or 0))
+    else:
+        lineas.append("No se detectaron no conformidades.")
+    ya = set([aud.get("auditor")] + auditados)
+    destinatarios = sorted({x for x in ya if x} | {c for c in _correo_administracion() if c})
+    return _avisar_correo(
+        destinatarios, "Auditoría %s cerrada · %s" % (aud["codigo"], aud["obra"]),
+        "Resultado de la auditoría de cubicación", lineas,
+        enlace=_enlace_auditoria(aud["id"], request))
 
 
 def _avisar(destinatario: str, mensaje: str):
@@ -1396,8 +1530,16 @@ def _avisar(destinatario: str, mensaje: str):
         pass
 
 
-def _recalcular(cur, auditoria_id: int):
-    """El estado y las fechas se DERIVAN de los hallazgos, en la base y no en el front."""
+def _recalcular(cur, auditoria_id: int) -> bool:
+    """El estado y las fechas se DERIVAN de los hallazgos, en la base y no en el front.
+
+    Devuelve True si la auditoría ACABA de cerrarse, para que quien llama mande el correo
+    del resultado una sola vez. Se mira el estado anterior en vez de confiar en el nuevo:
+    revisar de nuevo el último elemento de una auditoría ya cerrada la deja cerrada igual,
+    y no es un cierre."""
+    cur.execute("SELECT estado FROM auditorias WHERE id = %s", (auditoria_id,))
+    fila = cur.fetchone()
+    antes = fila[0] if fila else None
     cur.execute(
         """SELECT COUNT(*), COUNT(*) FILTER (WHERE hallazgo IS NOT NULL)
              FROM auditoria_elementos WHERE auditoria_id = %s""", (auditoria_id,))
@@ -1409,6 +1551,7 @@ def _recalcular(cur, auditoria_id: int):
                   inicio_fecha = CASE WHEN %s > 0 THEN COALESCE(inicio_fecha, CURRENT_DATE) ELSE NULL END,
                   cierre_fecha = CASE WHEN %s = 'cerrada' THEN COALESCE(cierre_fecha, CURRENT_DATE) ELSE NULL END
             WHERE id = %s""", (estado, revisados, estado, auditoria_id))
+    return estado == "cerrada" and antes != "cerrada"
 
 
 class AccionBody(BaseModel):
@@ -1447,7 +1590,7 @@ def severidad_derivada(items, severidad: Optional[str]) -> str:
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")
 def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
-                     user=Depends(get_current_user)):
+                     request: Request, user=Depends(get_current_user)):
     """Guarda la revisión completa de un elemento: cada barra con su veredicto y, si hay
     alguna no conforme, la severidad y la causa del conjunto.
 
@@ -1504,14 +1647,17 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
                     WHERE id = %s""",
                 (hallazgo, texto or None, (body.causa or None) if hallazgo != "conforme" else None,
                  email, accion, elemento_id))
-            _recalcular(cur, auditoria_id)
+            cerro = _recalcular(cur, auditoria_id)
             audit(email, "auditoria_revision",
                   "%s · %s: %s (%d barras, %d no conformes)" % (codigo, nombre, hallazgo,
                                                                 len(body.items), len(malas)),
                   "auditoria", str(auditoria_id))
     if es_nc and cubico and accion_previa != "verificada":
         _avisar(cubico, "Auditoría %s · %s: %s en %s. %s" % (codigo, obra, _NOMBRE[hallazgo], nombre, texto[:120]))
-    return detalle(auditoria_id, user)
+    aud = detalle(auditoria_id, user)
+    if cerro:
+        aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)
+    return aud
 
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/accion")

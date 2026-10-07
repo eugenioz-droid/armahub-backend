@@ -277,11 +277,12 @@ check("sólo administración y cubicadores entran al módulo",
 check("...y el tab se esconde para el resto (el backend igual valida)",
       "switchTab('auditorias')" in SHELL and "puedeAuditar" in SHELL)
 check("al crear se avisa por correo al auditor y al auditado",
-      "def _avisar_auditoria_nueva(" in SRC and "Auditoría asignada" in SRC
-      and "Se está auditando tu cubicación" in SRC
+      "def _avisar_auditoria_nueva(" in SRC and "asignada · %s" in SRC
+      and "Cubicación incluida en una auditoría" in SRC
       and 'aud["correo"] = _avisar_auditoria_nueva(aud, request)' in SRC)
-check("...el auditor recibe su plazo y el auditado sabe a quién mandarle los antecedentes",
-      "Plazo para cerrarla" in SRC and "hazlos llegar al auditor" in SRC)
+check("...los dos ven quién audita, quién es auditado y el plazo",
+      '"Audita: <b>%s</b>" % audita' in SRC and "Auditado: <b>%s</b>" in SRC
+      and "Fecha de asignación: <b>%s</b> · Plazo de cierre: <b>%s</b>" in SRC)
 check("...y si el correo falla, la auditoría igual queda creada",
       "el correo avisa, no decide" in SRC and "def _avisar_correo(" in SRC
       and 'return {"enviado": False, "motivo": str(e)[:120]}' in SRC)
@@ -484,6 +485,49 @@ check("el primero del año es el 001", A._codigo(c) == "A-%d-001" % A._hoy().yea
 check("...y el correlativo se pide para ESTE año", c.params == (A._hoy().year,))
 check("el octavo es el 008", A._codigo(_CurFalso(8)) == "A-%d-008" % A._hoy().year)
 check("...y pasado el 999 no se trunca", A._codigo(_CurFalso(1004)) == "A-%d-1004" % A._hoy().year)
+
+print("\n12b. Cómo están escritos los correos (7-oct)")
+# «No me sirve el código: debe ser código más elemento más la descripción del código, que
+# dice piso, ciclo y si es elevación o qué. Lenguaje formal, tercera persona. Debe decir
+# quién audita. Y al auditado, que entregue los planos y verifique versiones en BShark.»
+E = {"cc": "SUQC", "nombre": "L101", "descr_cc": "LC S1 C5 Lourdes", "eje": "L101"}
+check("el elemento se identifica entero: código · elemento · descripción del código",
+      A._elemento_txt(E) == "SUQC · L101 · LC S1 C5 Lourdes")
+check("...y si falta algo, no deja basura ni un separador suelto",
+      A._elemento_txt({"cc": "SUQC", "eje": "L101"}) == "SUQC · L101"
+      and A._elemento_txt({}) == "(sin identificar)")
+check("las fechas van en dd/mm/aaaa, no en formato de base de datos",
+      A._fecha_larga("2026-10-21") == "21/10/2026" and A._fecha_larga(None) == "sin plazo")
+check("las personas van por su nombre, no por su correo",
+      "def _nombres(" in SRC and "def _quien(" in SRC
+      and "TRIM(COALESCE(nombre,\'\') || \' \' || COALESCE(apellido,\'\'))" in SRC)
+check("al auditado se le pide entregar los planos y verificar versiones en BShark",
+      "Debe entregar al auditor los planos" in SRC and "plataforma <b>BShark</b>" in SRC
+      and "versiones vigentes" in SRC)
+check("...y recibe UN correo por persona, con sólo SUS elementos",
+      "for cub in auditados:" in SRC and "mios = [e for e in elementos" in SRC
+      and "Elementos de su cubicación incluidos en la muestra" in SRC)
+check("no quedan tratos informales ni segunda persona en los correos",
+      "Te asignaron" not in SRC and "La lanzó" not in SRC and "hazlos llegar" not in SRC
+      and "Entra a ArmaHub" not in SRC)
+
+print("\n12c. El correo del resultado, al cerrar la auditoría")
+# «Al terminar la auditoría debe enviarse también un correo a los 3 con un resumen del
+# resultado.»
+check("existe y va a los tres de una vez",
+      "def _avisar_auditoria_cerrada(" in SRC
+      and "destinatarios = sorted({x for x in ya if x} | {c for c in _correo_administracion() if c})" in SRC)
+check("...lleva el resultado contado: revisados, conformidad y los cuatro niveles",
+      "de conformidad." in SRC and "Conformes: <b>%d</b> · Observaciones:" in SRC
+      and "No conformidades menores" in SRC)
+check("...y el detalle de lo que salió mal, con su hallazgo",
+      "Elementos con hallazgo:" in SRC and "_NOMBRE.get(e.get(\"hallazgo\")" in SRC)
+check("...o dice que no hubo nada, en vez de dejar un hueco",
+      "No se detectaron no conformidades." in SRC)
+check("lo dispara el cierre, una sola vez: revisar de nuevo algo ya cerrado no reenvía",
+      "return estado == \"cerrada\" and antes != \"cerrada\"" in SRC
+      and SRC.count("cerro = _recalcular(cur, auditoria_id)") == 2
+      and SRC.count('aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)') == 2)
 
 print("\n12. El correo de la auditoría nueva: a quién y con qué enlace")
 # «Quiero que se envíe un correo a los cubicadores cuando se asigne una auditoría. Debe
