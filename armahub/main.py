@@ -129,9 +129,9 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=static_path), name="static")
 
     # Reloj de sincronización con aSa (29-sep): refresca el espejo a las 06:00, 11:00 y
-    # 14:00 de Chile, sin que nadie apriete nada. Apagado salvo que ASA_SYNC_ACTIVO=1,
-    # porque en el plan gratuito de Render el proceso se suspende por inactividad y el
-    # hilo moriría con él. Nunca puede impedir que el server arranque.
+    # 14:00 de Chile, sin que nadie apriete nada. Viene ENCENDIDO desde el 7-oct —antes
+    # había que poner ASA_SYNC_ACTIVO=1 y nadie la puso, así que estuvo nueve días sin
+    # correr—; ASA_SYNC_ACTIVO=0 lo apaga. Nunca puede impedir que el server arranque.
     try:
         from . import asa_scheduler
         asa_scheduler.iniciar()

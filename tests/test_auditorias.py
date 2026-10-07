@@ -499,6 +499,13 @@ check("...y si no hay ninguna de las dos, el correo va sin botón en vez de con 
 check("administración va en copia, que es lo que pidió el usuario",
       "def _correo_administracion()" in SRC and "role = ANY(%s)" in SRC
       and '"administracion": r3' in SRC)
+# «Por ahora que no copie a Constanza» (7-oct): ella es admin_calidad, así que la copia
+# por defecto va sólo a los admin. Y se cambia por variable, sin desplegar.
+check("...sólo a los admin, no a todo el que administra calidad",
+      'ROLES_COPIA_AUDITORIA = ("admin",)' in SRC
+      and "ROLES_COPIA_AUDITORIA" in SRC.split("def _correo_administracion")[1])
+check("...y se puede cambiar por variable, sin tocar código",
+      'os.getenv("AUDITORIA_COPIA", "")' in SRC and "if fijos:" in SRC)
 check("...sin repetirle el correo a quien ya recibió el suyo",
       "ya = set([aud[\"auditor\"]] + auditados)" in SRC and "if c not in ya" in SRC)
 check("el correo sigue sin poder tumbar la auditoría", "aud[\"correo\"] = _avisar_auditoria_nueva(aud, request)" in SRC

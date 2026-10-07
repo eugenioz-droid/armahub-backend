@@ -216,8 +216,8 @@
     if (reloj.activo === false) {
       elAviso.className = 'prgaviso';
       elAviso.innerHTML = '<b>El refresco automático está apagado.</b> El espejo sólo se ' +
-        'actualiza cuando alguien pulsa ↻ Traer de aSa. Para que corra solo hay que poner ' +
-        '<code>ASA_SYNC_ACTIVO=1</code> en Render.';
+        'actualiza cuando alguien pulsa ↻ Traer de aSa. Viene encendido de fábrica: está ' +
+        'así porque alguien puso <code>ASA_SYNC_ACTIVO=0</code> en Render.';
     } else if (reloj.horarios && reloj.horarios.length) {
       elAviso.className = 'prgaviso';
       elAviso.innerHTML = 'Se refresca solo a las <b>' + esc(reloj.horarios.join(', ')) + '</b>' +

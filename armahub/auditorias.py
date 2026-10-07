@@ -1305,16 +1305,27 @@ def _enlace_auditoria(aud_id, request=None) -> str:
     return "%s/#mod=reclamos&tab=auditorias&aud=%s" % (base, aud_id) if base else ""
 
 
+# A QUIÉN SE LE MANDA LA COPIA del correo de una auditoría nueva. Por defecto a los `admin`
+# y no a todo `ROLES_ADMINISTRAN`: el usuario la pidió para sí mismo y dijo «por ahora que
+# no copie a Constanza», que es `admin_calidad`. Con `AUDITORIA_COPIA` (correos separados
+# por coma) se cambia sin tocar código — sumar a alguien no debería ser un despliegue.
+ROLES_COPIA_AUDITORIA = ("admin",)
+
+
 def _correo_administracion() -> list:
-    """La copia para administración. El usuario la pidió para sí mismo; se manda a los dos
-    roles que administran calidad para que no dependa de un correo escrito a mano."""
+    """La copia para administración: lo que diga AUDITORIA_COPIA o, si no está, los
+    usuarios con rol admin."""
+    import os
+    fijos = [x.strip() for x in (os.getenv("AUDITORIA_COPIA", "") or "").split(",") if x.strip()]
+    if fijos:
+        return fijos
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT email FROM users
                         WHERE role = ANY(%s) AND COALESCE(activo, TRUE) AND email IS NOT NULL""",
-                    (list(ROLES_ADMINISTRAN),))
+                    (list(ROLES_COPIA_AUDITORIA),))
                 return [r[0] for r in cur.fetchall()]
     except Exception:
         return []

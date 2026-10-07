@@ -8,8 +8,13 @@ puesta (incluidos los turnos de noche), y la reunión de la tarde ve lo de la ma
 POR QUÉ UN HILO Y NO UN CRON DE RENDER. Render cobra el cron como un servicio aparte, y
 este trabajo dura segundos. Un hilo dentro del proceso web no cuesta nada más... siempre
 que el proceso esté despierto, que es exactamente lo que se compra con el plan de pago.
-En el plan gratuito el servicio se suspende por inactividad y el hilo muere con él: por
-eso esto NO se enciende solo. Hay que poner `ASA_SYNC_ACTIVO=1`.
+
+VIENE ENCENDIDO (7-oct). Nació apagado —había que poner `ASA_SYNC_ACTIVO=1`— por el plan
+gratuito de Render, donde el proceso se suspende y el hilo muere con él. Con el plan de
+pago esa razón no existe, y la variable nunca se puso: el reloj estuvo nueve días sin
+correr ni una vez mientras el usuario esperaba que la data se refrescara sola en la
+mañana. Un interruptor que hay que acordarse de encender para que algo funcione es un
+interruptor mal puesto. Ahora corre solo, y `ASA_SYNC_ACTIVO=0` lo apaga.
 
 QUÉ TRAE. Lo INCREMENTAL, no todo: sólo los pedidos cuyo `LastModified` cambió desde la
 última corrida buena. En un día normal son decenas de filas y tarda segundos. La carga
@@ -44,8 +49,13 @@ LATIDO_SEGUNDOS = 60
 _hilo = None
 
 
+# Lo que se lee como «apagado». Cualquier otra cosa —incluida la variable sin poner— deja
+# el reloj encendido: ver «VIENE ENCENDIDO» arriba.
+APAGADO = ("0", "false", "no", "off")
+
+
 def activo() -> bool:
-    return (os.getenv("ASA_SYNC_ACTIVO", "") or "").strip().lower() in ("1", "true", "si", "sí", "on")
+    return (os.getenv("ASA_SYNC_ACTIVO", "") or "").strip().lower() not in APAGADO
 
 
 def _zona():
@@ -167,7 +177,7 @@ def iniciar():
     hilos (Render puede importar el módulo más de una vez)."""
     global _hilo
     if not activo():
-        log.info("Reloj de aSa apagado (ASA_SYNC_ACTIVO no está en 1).")
+        log.info("Reloj de aSa apagado a propósito (ASA_SYNC_ACTIVO=0).")
         return None
     if _hilo and _hilo.is_alive():
         return _hilo

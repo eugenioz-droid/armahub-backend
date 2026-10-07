@@ -45,7 +45,6 @@ from armahub import asa  # noqa: E402
 
 SRC = open(os.path.join(ROOT, "armahub", "asa.py"), encoding="utf-8").read()
 PROG = open(os.path.join(ROOT, "armahub", "programacion.py"), encoding="utf-8").read()
-SYNC = open(os.path.join(ROOT, "armahub", "asa_sync.py"), encoding="utf-8").read()
 MIG128 = open(os.path.join(ROOT, "armahub", "migrations", "128_asa_pedidos_ultima_mod.sql"), encoding="utf-8").read()
 MIG = open(os.path.join(ROOT, "armahub", "migrations", "112_asa.sql"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion", "index.js"),
@@ -56,6 +55,16 @@ JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacio
 SYNC = open(os.path.join(ROOT, "armahub", "asa_sync.py"), encoding="utf-8").read()
 RELOJ = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
 BACK = PROG + SYNC
+
+def _con_env(valor):
+    """¿El reloj queda encendido con ASA_SYNC_ACTIVO en ese valor?"""
+    from armahub import asa_scheduler
+    os.environ["ASA_SYNC_ACTIVO"] = valor
+    try:
+        return asa_scheduler.activo()
+    finally:
+        os.environ.pop("ASA_SYNC_ACTIVO", None)
+
 
 print("TEST: cliente de aSa + tab de Obras")
 
@@ -1047,8 +1056,22 @@ print("\n32. El reloj se ve: si está apagado, la pantalla lo dice")
 check("el reporte manda el estado del reloj, sin poder reventar por eso",
       '"reloj": _estado_reloj(),' in PROG and "def _estado_reloj()" in PROG
       and "except Exception:" in PROG)
-check("apagado se avisa y se dice cómo encenderlo",
-      "El refresco automático está apagado." in DSH and "ASA_SYNC_ACTIVO=1" in DSH)
+check("apagado se avisa y se dice por qué",
+      "El refresco automático está apagado." in DSH and "ASA_SYNC_ACTIVO=0" in DSH)
+# EL RELOJ VIENE ENCENDIDO (7-oct). Nació apagado por el plan gratuito de Render; la
+# variable nunca se puso y estuvo nueve días sin correr ni una vez, mientras el usuario
+# esperaba que la data se refrescara sola. Ahora la variable sirve para APAGARLO.
+from armahub import asa_scheduler as SCHED  # noqa: E402
+os.environ.pop("ASA_SYNC_ACTIVO", None)
+check("sin la variable puesta, el reloj corre", SCHED.activo() is True)
+APAGAN = ("0", "false", "no", "off", "OFF", " 0 ")
+check("se apaga con 0 / false / no / off, en cualquier caja y con espacios",
+      all(not _con_env(v) for v in APAGAN))
+check("...y el 1 que había que poner antes lo sigue dejando encendido", _con_env("1") is True)
+os.environ.pop("ASA_SYNC_ACTIVO", None)
+check("el porqué queda escrito donde se decidió",
+      "VIENE ENCENDIDO (7-oct)" in RELOJ and "`ASA_SYNC_ACTIVO=0` lo apaga" in RELOJ
+      and "Viene ENCENDIDO desde el 7-oct" in open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read())
 check("encendido se dice a qué hora toca",
       "Se refresca solo a las" in DSH and "la próxima, " in DSH)
 check("...y si está encendido pero el hilo se cayó, también",
