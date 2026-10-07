@@ -887,32 +887,50 @@ def listar_tipologias(user=Depends(get_current_user)):
 # figuras que fallan sólo se descubren una por una, cuando a alguien le toca auditarlas.
 @router.get("/catalogo-asa/figuras")
 def catalogo_asa_figuras(user=Depends(get_current_user)):
-    """Las figuras de aSa, cada una con su dibujo reconstruido y si cuadra o no."""
-    from .figura_asa import figura_de
+    """EL CATÁLOGO DE aSa: sus 531 figuras, cada una con el trazo que ella misma exportó.
+
+    La lista sale de `asa_figuras_catalogo` (el RDX), no de las barras: es el catálogo
+    completo, incluidas las que nunca se han usado acá. A cada figura se le pega lo que
+    sabemos de ella:
+      · `barras` — cuántas veces la vimos en barras reales (de `asa_figuras`), o 0. Eso
+        separa las 126 que de verdad se usan de las 400 que están por si acaso.
+      · `en_catalogo` — si existe en el catálogo de ArmaHub, o sea si ya sabemos dibujarla
+        desde nuestra propia geometría.
+      · `cadena_rota` — el trazo no quedó encadenado (tres figuras del RDX vienen en dos
+        pedazos sueltos). Se dibuja igual y se avisa: no es lo mismo no saber dibujar algo
+        que dibujarlo mal en silencio.
+    """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT codigo, barras, ejemplo_cc, ejemplo_marca, ejemplo_obra,
-                                  diam_mm, pin_diam, largo_mm, legangle, shapedims, visto_el
-                             FROM asa_figuras ORDER BY barras DESC, codigo""")
+            cur.execute("""SELECT codigo, tipo, generica, descripcion, puntos, lados,
+                                  tridimensional, importado_el, fuente
+                             FROM asa_figuras_catalogo ORDER BY codigo""")
             filas = cur.fetchall()
-            # Cuáles tienen hermana en el catálogo de la plataforma: el ShpNameID de aSa y
-            # el código de `figuras_catalogo` son el mismo código (101A, 104B, 305A…), así
-            # que se puede decir cuál ya sabemos dibujar desde el catálogo propio.
+            cur.execute("""SELECT codigo, barras, ejemplo_cc, ejemplo_marca, ejemplo_obra, diam_mm
+                             FROM asa_figuras""")
+            vistas = {r[0]: {"barras": r[1], "cc": r[2], "marca": r[3], "obra": r[4],
+                             "diam": float(r[5] or 0)} for r in cur.fetchall()}
             cur.execute("SELECT codigo FROM figuras_catalogo WHERE geometria IS NOT NULL")
             propias = {r[0] for r in cur.fetchall()}
     figuras = []
-    for (codigo, barras, cc, marca, obra, diam, pin, largo, legangle, shapedims, visto) in filas:
-        eje = figura_de(shapedims, legangle, float(pin or 0), float(diam or 0))
+    for (codigo, tipo, generica, descr, puntos, lados, td, importado, fuente) in filas:
+        puntos = puntos or []
+        lados = lados or []
+        v = vistas.get(codigo) or {}
         figuras.append({
-            "codigo": codigo, "barras": barras, "cc": cc, "marca": marca, "obra": obra,
-            "diam": float(diam or 0), "pin": float(pin or 0),
-            "largo": float(largo or 0), "visto": visto.isoformat() if visto else None,
+            "codigo": codigo, "tipo": tipo, "generica": bool(generica),
+            "descripcion": descr, "puntos": puntos, "lados": lados,
+            "tridimensional": bool(td), "cadena_rota": len(puntos) != len(lados) + 1,
+            "barras": v.get("barras") or 0, "cc": v.get("cc"), "marca": v.get("marca"),
+            "obra": v.get("obra"), "diam": v.get("diam") or 0,
             "en_catalogo": codigo in propias,
-            "ok": bool(eje.get("ok")), "motivo": eje.get("motivo") or "",
-            "tridimensional": bool(eje.get("tridimensional")),
-            "puntos": eje.get("puntos") or [], "tramos": eje.get("tramos") or [],
-            "ancho": eje.get("ancho"), "alto": eje.get("alto"), "mbr": eje.get("mbr"),
+            "importado": importado.isoformat() if importado else None, "fuente": fuente,
         })
+    # Las que vimos en barras y NO están en el catálogo exportado: casi siempre figuras
+    # creadas dentro de una obra. No se esconden — son justo las que nadie más conoce.
+    sueltas = sorted(set(vistas) - {f["codigo"] for f in figuras})
     return {"figuras": figuras, "total": len(figuras),
-            "con_problema": sum(1 for f in figuras if not f["ok"]),
-            "en_catalogo": sum(1 for f in figuras if f["en_catalogo"])}
+            "usadas": sum(1 for f in figuras if f["barras"]),
+            "en_catalogo": sum(1 for f in figuras if f["en_catalogo"]),
+            "con_problema": sum(1 for f in figuras if f["cadena_rota"]),
+            "fuera_del_catalogo": sueltas}

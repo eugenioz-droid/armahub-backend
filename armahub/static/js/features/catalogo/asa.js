@@ -1,21 +1,18 @@
-// CATÁLOGO aSa (7-oct) — todas las figuras que usa aSa, dibujadas con NUESTRO motor.
+// CATÁLOGO aSa (7-oct) — las figuras de aSa, con el trazo que exportó ella misma.
 //
-// PARA QUÉ EXISTE. Para ver de un vistazo con qué figuras tenemos problemas, en vez de
-// descubrirlo una por una cuando a alguien le toca auditarlas. Cada figura se reconstruye
-// desde lo que manda aSa (los lados de `LegAngle`, los vectores de `ShapeDims`, el
-// mandril) y se compara contra la envolvente que aSa declara: lo que no cuadra sale
-// marcado, con el motivo.
+// DE DÓNDE SALE. aSa no entrega las figuras por la API (ocho endpoints probados, los ocho
+// 401), pero sí las EXPORTA: el archivo RDX trae, por figura, las coordenadas con que
+// dibuja cada lado. Eso se carga con scripts/importar_rdx_figuras.py y es lo que se ve
+// acá: el dibujo de aSa, no nuestra reconstrucción.
 //
-// aSa NO tiene un catálogo de formas —se probaron ocho endpoints y todos dan 401—, así que
-// la lista sale de recorrer barras reales (scripts/escanear_figuras_asa.py). Por eso cada
-// tarjeta muestra de qué barra concreta salió: si una figura se ve rara, ahí está el
-// código de control y la marca para ir a mirarla en aSa.
+// PARA QUÉ. Para tener el catálogo completo a la vista —531 figuras, no sólo las que
+// alcanzamos a ver en barras— y para saber de cada una si la usamos y si la tenemos.
 (function (global) {
   'use strict';
 
-  var CAS = { figuras: [], cargado: false };
-  var CAS_F = { estado: 'todas' };   // todas | problema | nativas
-  var CAS_TAM = { w: 160, h: 96 };   // el dibujo: más grande que una miniatura, se mira
+  var CAS = { figuras: [], fuera: [], cargado: false };
+  var CAS_F = { estado: 'todas' };
+  var CAS_TAM = { w: 160, h: 104 };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -23,33 +20,31 @@
   }
   function num(n) { return Math.round(Number(n) || 0).toLocaleString('es-CL'); }
 
-  // EL DIBUJO. La misma policurva que usan las auditorías: puntos en mm (se pasan a cm,
-  // que es lo que entiende el motor) y un tramo por segmento, recto o arco. Los arcos van
-  // con su radio y su sentido —traducido a la convención del lienzo— para que el motor no
-  // les meta un codo encima.
+  // EL DIBUJO. Los puntos vienen en las unidades del dibujo de aSa —no son milímetros ni
+  // centímetros: son el esquema con el que ella representa la figura— así que se dibujan
+  // sin grosor real: `metrico` apagado y el trazo nominal. Pedirle al motor que aplique un
+  // φ sobre coordenadas que no son centímetros daría un grosor inventado.
   function dibujo(f) {
     var M = global.disenadorMotor;
-    if (!M || !M.svgDesdePuntos || !(f.puntos || []).length) return '';
-    var pts = f.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
-    var tramos = f.tramos || [];
-    var completo = tramos.length === pts.length - 1;
+    if (!M || !M.svgDesdePuntos || (f.puntos || []).length < 2) return '';
+    var pts = f.puntos.map(function (p) { return { x: p[0], y: p[1] }; });
+    var lados = f.lados || [];
+    var completo = lados.length === pts.length - 1;
     try {
       return M.svgDesdePuntos(pts, {
-        width: CAS_TAM.w, height: CAS_TAM.h, pad: 18,
-        tipos_seg: completo ? tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; }) : null,
-        radios_seg: completo ? tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; }) : null,
-        sweeps_seg: completo ? tramos.map(function (s) { return s.sweep == null ? 1 : 1 - s.sweep; }) : null,
-        labels: completo ? tramos.map(function (s) { return (s.tipo === 'recto' && s.largo) ? String(Math.round(s.largo / 10)) : ''; }) : [],
-        labels_auto: completo, angulos: completo, cotas_arco_iso: [],
-        diam_mm: f.diam, metrico: true
+        width: CAS_TAM.w, height: CAS_TAM.h, pad: 16,
+        labels: completo ? lados.map(function (l) { return l.nombre || ''; }) : [],
+        labels_auto: completo, angulos: false, cotas_arco_iso: []
       });
     } catch (e) { return ''; }
   }
 
   function visibles() {
     return CAS.figuras.filter(function (f) {
-      if (CAS_F.estado === 'problema') return !f.ok;
-      if (CAS_F.estado === 'nativas') return !f.en_catalogo;
+      if (CAS_F.estado === 'usadas') return f.barras > 0;
+      if (CAS_F.estado === 'sin_catalogo') return !f.en_catalogo;
+      if (CAS_F.estado === 'problema') return f.cadena_rota;
+      if (CAS_F.estado === 'td') return f.tridimensional;
       return true;
     });
   }
@@ -58,31 +53,34 @@
     var el = document.getElementById('casKpis');
     if (!el) return;
     var n = CAS.figuras.length;
-    var mal = CAS.figuras.filter(function (f) { return !f.ok; }).length;
-    var nativas = CAS.figuras.filter(function (f) { return !f.en_catalogo; }).length;
-    var barras = CAS.figuras.reduce(function (a, f) { return a + (f.barras || 0); }, 0);
+    var usadas = CAS.figuras.filter(function (f) { return f.barras > 0; }).length;
+    var propias = CAS.figuras.filter(function (f) { return f.en_catalogo; }).length;
+    var rotas = CAS.figuras.filter(function (f) { return f.cadena_rota; }).length;
     el.innerHTML =
-      '<div class="caskpi"><b>' + n + '</b>figuras distintas</div>' +
-      '<div class="caskpi"><b>' + (n - mal) + '</b>se dibujan bien</div>' +
-      '<div class="caskpi"><b>' + mal + '</b>con problema</div>' +
-      '<div class="caskpi"><b>' + nativas + '</b>no están en nuestro catálogo</div>' +
-      '<div class="caskpi"><b>' + num(barras) + '</b>barras vistas</div>';
+      '<div class="caskpi"><b>' + n + '</b>figuras en aSa</div>' +
+      '<div class="caskpi"><b>' + usadas + '</b>usadas en barras reales</div>' +
+      '<div class="caskpi"><b>' + propias + '</b>también en el catálogo ArmaHub</div>' +
+      '<div class="caskpi"><b>' + rotas + '</b>con el trazo partido</div>' +
+      (CAS.fuera.length
+        ? '<div class="caskpi" title="' + esc(CAS.fuera.join(', ')) +
+          '"><b>' + CAS.fuera.length + '</b>usadas y NO están en el catálogo</div>' : '');
   }
 
   function pintarFiltros() {
     var el = document.getElementById('casFiltros');
     if (!el) return;
-    var ops = [['todas', 'Todas'], ['problema', 'Con problema'], ['nativas', 'Sólo nativas de aSa']];
+    var ops = [['todas', 'Todas'], ['usadas', 'Usadas en barras'],
+               ['sin_catalogo', 'No están en ArmaHub'], ['td', 'En 3D'],
+               ['problema', 'Trazo partido']];
     el.innerHTML = '<span class="dshbl">Ver</span><div class="dshchips" id="casChips">' +
       ops.map(function (o) {
         return '<button data-v="' + o[0] + '" class="' + (CAS_F.estado === o[0] ? 'on' : '') + '">' +
                esc(o[1]) + '</button>';
       }).join('') + '</div>' +
-      '<span class="muted" style="font-size:11px">Salen de barras reales; la tarjeta dice de cuál.</span>';
+      '<span class="muted" style="font-size:11px">El trazo es el que exportó aSa.</span>';
     el.querySelectorAll('#casChips button').forEach(function (b) {
       b.addEventListener('click', function () {
-        CAS_F.estado = b.dataset.v;
-        pintarFiltros(); pintarLista();
+        CAS_F.estado = b.dataset.v; pintarFiltros(); pintarLista();
       });
     });
   }
@@ -95,26 +93,27 @@
       el.innerHTML = '<div class="muted" style="padding:22px; text-align:center; font-size:12px">' +
         (CAS.figuras.length
           ? 'Ninguna figura con ese filtro.'
-          : 'Todavía no se ha barrido aSa. Se llena con <code>scripts/escanear_figuras_asa.py</code>.') +
-        '</div>';
+          : 'Todavía no se ha cargado el catálogo. Se llena con el export RDX de aSa y ' +
+            '<code>scripts/importar_rdx_figuras.py</code>.') + '</div>';
       return;
     }
     el.innerHTML = '<div class="casgrid">' + figs.map(function (f) {
       var svg = dibujo(f);
-      var clases = 'cascard' + (f.ok ? '' : ' mal') + (f.en_catalogo ? '' : ' nocat');
-      // El aviso dice POR QUÉ no cuadra, no sólo que no cuadra: «la envolvente no cuadra:
-      // construida 2070 × 600, aSa dice 2135 × 297» es una pista; «error» no es nada.
-      var aviso = f.ok ? '' : '<div class="casaviso">⚠ ' + esc(f.motivo || 'no se pudo reconstruir') + '</div>';
+      var clases = 'cascard' + (f.cadena_rota ? ' mal' : '') + (f.en_catalogo ? '' : ' nocat');
+      var etq = f.en_catalogo
+        ? '<span class="casetq propia">en ArmaHub</span>'
+        : '<span class="casetq nativa">sólo aSa</span>';
+      var uso = f.barras
+        ? num(f.barras) + ' barra(s)' + (f.cc ? ' · ' + esc(f.cc) : '')
+        : '<span style="color:#b0bec5">sin uso registrado</span>';
       return '<div class="' + clases + '">' +
-        '<div class="cascod">' + esc(f.codigo) +
-          '<span class="casetq ' + (f.en_catalogo ? 'propia' : 'nativa') + '">' +
-          (f.en_catalogo ? 'en catálogo' : 'sólo aSa') + '</span></div>' +
-        '<div class="casdib">' + (svg || '<span class="muted" style="font-size:11px">sin dibujo</span>') + '</div>' +
-        '<div class="casinfo">' + num(f.barras) + ' barra(s) · φ' + num(f.diam) + 'mm' +
-          (f.tridimensional ? ' · 3D' : '') + '</div>' +
-        '<div class="casinfo" title="' + esc((f.obra || '') + ' · ' + (f.cc || '') + ' · ' + (f.marca || '')) + '">' +
-          esc(f.cc || '') + ' · ' + esc(f.marca || '') + '</div>' +
-        aviso + '</div>';
+        '<div class="cascod">' + esc(f.codigo) + etq + '</div>' +
+        '<div class="casdib">' + (svg || '<span class="muted" style="font-size:11px">sin trazo</span>') + '</div>' +
+        '<div class="casinfo">' + (f.lados || []).length + ' lado(s)' +
+          (f.tridimensional ? ' · 3D' : '') + (f.generica ? '' : ' · de obra') + '</div>' +
+        '<div class="casinfo">' + uso + '</div>' +
+        (f.cadena_rota ? '<div class="casaviso">⚠ el trazo viene en pedazos sueltos</div>' : '') +
+        '</div>';
     }).join('') + '</div>';
   }
 
@@ -126,6 +125,7 @@
     try {
       var d = await global.apiGet('/catalogo-asa/figuras');
       CAS.figuras = (d && d.figuras) || [];
+      CAS.fuera = (d && d.fuera_del_catalogo) || [];
       CAS.cargado = true;
     } catch (e) {
       if (lista) lista.innerHTML = '<div class="muted" style="padding:22px; text-align:center">' +

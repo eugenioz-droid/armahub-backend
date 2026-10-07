@@ -1,11 +1,11 @@
 // CATÁLOGO aSa — test del front (Node).
 //
-// Qué cuida. Esta pantalla existe para UNA cosa: ver de un vistazo con qué figuras de aSa
-// tenemos problemas. Si el dibujo saliera mal y la pantalla no lo dijera, sería peor que
-// no tenerla — el usuario miraría figuras equivocadas creyendo que están bien. Así que lo
-// que se congela es: que la figura se le pase al motor como corresponde (cm, arcos con su
-// radio y su sentido), que lo que no cuadra salga marcado con su motivo, y que los filtros
-// filtren lo que dicen.
+// Qué cuida. La pantalla muestra EL TRAZO QUE EXPORTÓ aSa, no nuestra reconstrucción: ése
+// es todo su valor. Si dibujáramos otra cosa y la pantalla no lo dijera, sería peor que no
+// tenerla — el usuario compararía contra una figura equivocada creyendo que es la de aSa.
+// Así que lo que se congela es: que los puntos lleguen al motor tal cual (son el esquema
+// de aSa, no centímetros, así que no se les aplica grosor por φ), que lo que viene partido
+// se vea partido, y que los filtros filtren lo que dicen.
 //
 // Correr con: node tests/test_catalogo_asa.js
 'use strict';
@@ -38,25 +38,28 @@ const sandbox = {
   console, setTimeout, clearTimeout,
   document: { getElementById: nodo, querySelectorAll: () => [] },
   disenadorMotor: { svgDesdePuntos: (pts, o) => { llamadas.push({ pts, o }); return '<svg class="fig"></svg>'; } },
-  apiGet: async () => ({ figuras: FIGURAS }),
+  apiGet: async () => ({ figuras: FIGURAS, fuera_del_catalogo: ['26', 'T12'] }),
 };
 sandbox.window = sandbox;
 
-// Una traba T12 real (gancho · arco · barra · arco · gancho), una recta del catálogo
-// propio y una que no cuadra con la envolvente que declara aSa.
+// Tres figuras reales del RDX: una recta que usamos y tenemos, un estribo con ganchos que
+// nunca se ha usado, y una con el trazo en dos pedazos.
 const FIGURAS = [
-  { codigo: 'T12', barras: 27, cc: 'SUP4', marca: '12mmA27', obra: 'EURO', diam: 12, en_catalogo: false,
-    ok: true, motivo: '', tridimensional: false,
-    puntos: [[0, 0], [-89.1, -94.7], [-67.3, -145.2], [832.7, -145.2], [854.6, -94.7], [765.5, 0]],
-    tramos: [{ tipo: 'recto', lado: 'A', largo: 130 }, { tipo: 'arco', lado: '', largo: null, radio: 30, sweep: 1 },
-             { tipo: 'recto', lado: 'B', largo: 900 }, { tipo: 'arco', lado: '', largo: null, radio: 30, sweep: 1 },
-             { tipo: 'recto', lado: 'G', largo: 130 }] },
-  { codigo: '101A', barras: 151, cc: 'SUQH', marca: '10mmA1', obra: 'EURO', diam: 10, en_catalogo: true,
-    ok: true, motivo: '', tridimensional: false,
-    puntos: [[0, 0], [4250, 0]], tramos: [{ tipo: 'recto', lado: 'A', largo: 4250 }] },
-  { codigo: '103G', barras: 7, cc: 'SSKY', marca: '18mmA45', obra: 'CRCC', diam: 18, en_catalogo: true,
-    ok: false, motivo: 'la envolvente no cuadra: construida 2070 × 600, aSa dice 2135 × 297',
-    tridimensional: false, puntos: [[0, 0], [300, 0]], tramos: [{ tipo: 'recto', lado: 'C', largo: 300 }] },
+  { codigo: '101A', tipo: 'B', generica: true, descripcion: null,
+    puntos: [[-250, 0], [250, 0]], lados: [{ nombre: 'A', tipo: 'B' }],
+    tridimensional: false, cadena_rota: false,
+    barras: 151, cc: 'SUQH', marca: '10mmA1', obra: 'EURO', diam: 10, en_catalogo: true },
+  { codigo: '104E1', tipo: 'B', generica: true, descripcion: null,
+    puntos: [[-204, 64], [-217, 47], [-150, -64], [209, -64], [217, -44]],
+    lados: [{ nombre: 'A', tipo: 'H3' }, { nombre: 'B', tipo: 'SB' },
+            { nombre: 'C', tipo: 'B' }, { nombre: 'G', tipo: 'H3' }],
+    tridimensional: false, cadena_rota: false,
+    barras: 0, cc: null, marca: null, obra: null, diam: 0, en_catalogo: false },
+  { codigo: '203D', tipo: 'B', generica: false, descripcion: null,
+    puntos: [[0, 0], [100, 0], [200, 50], [300, 50]],
+    lados: [{ nombre: 'A', tipo: 'B' }, { nombre: 'B', tipo: 'B' }],
+    tridimensional: true, cadena_rota: true,
+    barras: 3, cc: 'SUP4', marca: '12mmA1', obra: 'EURO', diam: 12, en_catalogo: false },
 ];
 
 vm.createContext(sandbox);
@@ -65,58 +68,66 @@ vm.runInContext(fs.readFileSync(RUTA, 'utf8'), sandbox, { filename: 'asa.js' });
 console.log('TEST: Catálogo aSa');
 
 (async function () {
-  console.log('\n1. Carga y pide lo suyo');
+  console.log('\n1. Carga el catálogo, no las barras');
   check('expone el loader del sub-tab', typeof sandbox.loadCatalogoAsa === 'function');
   await sandbox.loadCatalogoAsa();
   const T = sandbox.__catalogoAsaTest;
-  check('quedaron las tres figuras', T.CAS.figuras.length === 3 && T.CAS.cargado === true);
+  check('quedaron las figuras del catálogo', T.CAS.figuras.length === 3 && T.CAS.cargado === true);
+  check('...y las que se usan pero NO están en el catálogo se guardan aparte',
+    T.CAS.fuera.join() === '26,T12');
 
-  console.log('\n2. La figura se le pasa al motor como corresponde');
-  const t12 = llamadas.find(l => l.pts.length === 6);
-  check('los puntos van en cm, no en los mm que manda aSa',
-    !!t12 && Math.abs(t12.pts[3].x - 83.27) < 0.01);
-  check('los arcos van como arco, con su radio en cm',
-    !!t12 && t12.o.tipos_seg.join() === 'recto,arco,recto,arco,recto' && t12.o.radios_seg[1] === 3);
-  check('...y con el sentido traducido a la convención del lienzo (1 → 0)',
-    !!t12 && t12.o.sweeps_seg[1] === 0);
-  check('cada tramo recto lleva su medida en cm; los arcos, nada',
-    !!t12 && t12.o.labels.join('|') === '13||90||13');
-  check('el grosor sale del φ de la barra', !!t12 && t12.o.diam_mm === 12 && t12.o.metrico === true);
-  check('las cotas automáticas de arco van apagadas: en una miniatura son ruido',
-    !!t12 && Array.isArray(t12.o.cotas_arco_iso) && t12.o.cotas_arco_iso.length === 0);
+  console.log('\n2. El trazo llega al motor tal cual lo exportó aSa');
+  const recta = llamadas.find(l => l.pts.length === 2);
+  check('los puntos van sin convertir: son el esquema de aSa, no milímetros',
+    !!recta && recta.pts[0].x === -250 && recta.pts[1].x === 250);
+  check('no se le inventa un grosor por φ sobre coordenadas que no son centímetros',
+    !!recta && recta.o.metrico === undefined && recta.o.diam_mm === undefined);
+  const estribo = llamadas.find(l => l.pts.length === 5);
+  check('cada tramo se rotula con la letra del lado que le puso aSa',
+    !!estribo && estribo.o.labels.join('|') === 'A|B|C|G' && estribo.o.labels_auto === true);
+  check('los ángulos automáticos van apagados: el esquema de aSa ya trae los suyos',
+    !!estribo && estribo.o.angulos === false);
 
-  console.log('\n3. Lo que no cuadra se ve, y se ve POR QUÉ');
+  console.log('\n3. Lo que viene partido se ve partido');
   const html = nodo('casLista').innerHTML;
-  check('la tarjeta de la que falla queda marcada', html.indexOf('cascard mal') > 0);
-  check('...con el motivo completo, no un «error» pelado',
-    html.indexOf('aSa dice 2135 × 297') > 0 && html.indexOf('⚠') > 0);
-  check('se distingue la que está en nuestro catálogo de la que es sólo de aSa',
-    html.indexOf('en catálogo') > 0 && html.indexOf('sólo aSa') > 0);
-  check('y cada tarjeta dice de qué barra real salió, para ir a mirarla en aSa',
-    html.indexOf('SUP4') > 0 && html.indexOf('12mmA27') > 0);
+  check('la tarjeta queda marcada y lo dice', html.indexOf('cascard mal') > 0
+    && html.indexOf('el trazo viene en pedazos sueltos') > 0);
+  check('...y una figura partida no se rotula como si encadenara',
+    llamadas.filter(l => l.pts.length === 4).every(l => l.o.labels.length === 0));
 
-  console.log('\n4. Los contadores y los filtros');
+  console.log('\n4. De cada figura: si la usamos y si la tenemos');
+  check('se distingue la que está en ArmaHub de la que es sólo de aSa',
+    html.indexOf('en ArmaHub') > 0 && html.indexOf('sólo aSa') > 0);
+  check('las usadas dicen cuántas barras y de qué código salió el ejemplo',
+    html.indexOf('151 barra(s)') > 0 && html.indexOf('SUQH') > 0);
+  check('...y las que nunca se usaron lo dicen en vez de mostrar un cero mudo',
+    html.indexOf('sin uso registrado') > 0);
+  check('se marca la que es de obra y la que va en 3D',
+    html.indexOf('de obra') > 0 && html.indexOf('3D') > 0);
+
+  console.log('\n5. Los contadores y los filtros');
   const kpis = nodo('casKpis').innerHTML;
-  check('cuenta figuras, las que se dibujan bien y las que no',
-    kpis.indexOf('<b>3</b>figuras') > 0 && kpis.indexOf('<b>2</b>se dibujan bien') > 0
-    && kpis.indexOf('<b>1</b>con problema') > 0);
-  check('...y cuántas no están en nuestro catálogo', kpis.indexOf('<b>1</b>no están') > 0);
+  check('cuenta el catálogo entero, las usadas y las que también tenemos',
+    kpis.indexOf('<b>3</b>figuras en aSa') > 0 && kpis.indexOf('<b>2</b>usadas') > 0
+    && kpis.indexOf('<b>1</b>también en el catálogo ArmaHub') > 0);
+  check('...y avisa de las usadas que el catálogo no trae', kpis.indexOf('<b>2</b>usadas y NO') > 0);
+  T.CAS_F.estado = 'usadas';
+  check('«usadas en barras» deja fuera las que nunca se ocuparon',
+    T.visibles().map(f => f.codigo).join() === '101A,203D');
+  T.CAS_F.estado = 'sin_catalogo';
+  check('«no están en ArmaHub» deja las que nos faltan',
+    T.visibles().map(f => f.codigo).join() === '104E1,203D');
   T.CAS_F.estado = 'problema';
-  check('el filtro «con problema» deja sólo las que fallan',
-    T.visibles().length === 1 && T.visibles()[0].codigo === '103G');
-  T.CAS_F.estado = 'nativas';
-  check('«sólo nativas de aSa» deja las que no tenemos', T.visibles().map(f => f.codigo).join() === 'T12');
+  check('«trazo partido» deja sólo la rota', T.visibles().map(f => f.codigo).join() === '203D');
+  T.CAS_F.estado = 'td';
+  check('«en 3D» deja las que salen del plano', T.visibles().map(f => f.codigo).join() === '203D');
   T.CAS_F.estado = 'todas';
   check('«todas» no esconde nada', T.visibles().length === 3);
 
-  console.log('\n5. Sin datos no se finge una pantalla vacía');
-  T.CAS.figuras = [];
-  sandbox.loadCatalogoAsa.toString();   // (la función ya está cargada; se repinta a mano)
-  T.CAS_F.estado = 'todas';
-  check('se dice que falta barrer aSa y con qué script',
-    typeof T.visibles === 'function' && T.visibles().length === 0);
+  console.log('\n6. Sin catálogo cargado se dice cómo se carga');
   const src = fs.readFileSync(RUTA, 'utf8');
-  check('...y el texto lo nombra', src.indexOf('escanear_figuras_asa.py') > 0);
+  check('se nombra el script que lo llena', src.indexOf('importar_rdx_figuras.py') > 0);
+  check('...y se explica de dónde sale el trazo', src.indexOf('el dibujo de aSa, no nuestra reconstrucción') > 0);
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
   process.exit(fallos ? 1 : 0);
