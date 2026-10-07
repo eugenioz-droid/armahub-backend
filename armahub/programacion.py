@@ -762,6 +762,16 @@ EXPLICA_ESTADO = {
 }
 
 
+def _estado_reloj() -> dict:
+    """Si el refresco automático está encendido y cuándo toca. Nunca revienta el reporte:
+    es información de apoyo, no el dato."""
+    try:
+        from . import asa_scheduler
+        return asa_scheduler.estado()
+    except Exception:
+        return {"activo": False, "corriendo": False, "horarios": [], "proxima": None}
+
+
 @router.post("/programacion/asa/sincronizar-pedidos")
 def asa_sincronizar_pedidos(anio: Optional[int] = None, user=Depends(get_current_user)):
     """Trae un AÑO completo de pedidos. Es la carga inicial, que se hace una vez por año;
@@ -937,6 +947,10 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "anulados": anulados,
         "estado_nunca": ESTADO_NUNCA,
         "filas": filas,
+        # EL RELOJ, en la misma respuesta: sin esto la pantalla no puede explicar por qué
+        # el espejo tiene la edad que tiene. El reloj vive en el proceso web y sólo se
+        # enciende con ASA_SYNC_ACTIVO=1; apagado, el espejo sólo se mueve con el botón.
+        "reloj": _estado_reloj(),
         "espejo": {"filas_anio": n_anio or 0,
                    "ultima_sync": ultimo.isoformat() if ultimo else None,
                    "ultimo_intento": ({"fin": intento[1].isoformat() if intento[1] else None,

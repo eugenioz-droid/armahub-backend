@@ -206,6 +206,24 @@
         (DATA.anulados ? ' · ' + DATA.anulados + ' anulados (sólo en la barra por estado de Obras aSa)' : '') +
         (esp.ultima_sync ? ' · traído de aSa el ' + fechaHora(esp.ultima_sync) : '')
       : '';
+    // EL REFRESCO AUTOMÁTICO, dicho en la pantalla. El reloj existe desde el 29-sep y
+    // nunca corrió: vive dentro del proceso web y sólo se enciende con ASA_SYNC_ACTIVO=1
+    // en Render, que no está puesto. Nada lo decía, así que el usuario esperaba que la
+    // data se actualizara sola en la mañana y no pasaba. Apagado se avisa; encendido se
+    // dice a qué hora toca, que es lo que uno quiere saber cuando el dato se ve viejo.
+    var reloj = DATA.reloj || {};
+    var elAviso = $('dshAviso');
+    if (reloj.activo === false) {
+      elAviso.className = 'prgaviso';
+      elAviso.innerHTML = '<b>El refresco automático está apagado.</b> El espejo sólo se ' +
+        'actualiza cuando alguien pulsa ↻ Traer de aSa. Para que corra solo hay que poner ' +
+        '<code>ASA_SYNC_ACTIVO=1</code> en Render.';
+    } else if (reloj.horarios && reloj.horarios.length) {
+      elAviso.className = 'prgaviso';
+      elAviso.innerHTML = 'Se refresca solo a las <b>' + esc(reloj.horarios.join(', ')) + '</b>' +
+        (reloj.proxima ? ' · la próxima, ' + esc(fechaHora(reloj.proxima)) : '') +
+        (reloj.corriendo === false ? ' — <b>pero el reloj no está corriendo</b>: se reinició el servicio.' : '.');
+    }
     if (intento && intento.ok === false) {
       $('dshAviso').className = 'prgaviso mal';
       $('dshAviso').innerHTML = '<b>Lo último que se trajo de ' + esc(String(DATA.anio || '')) +

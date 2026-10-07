@@ -1039,5 +1039,20 @@ check("...y si vienen algunos, se guardan pero el año queda marcado INCOMPLETO"
 check("la bitácora deja dicho cuándo hubo que partirlo",
       'detalle="Pedido por trimestres: aSa no pudo con el año entero."' in SYNC)
 
+# ── 32. El refresco automático se ve en la pantalla ───────────────────────
+# El reloj existe desde el 29-sep y NUNCA corrió —cero filas con lanzado_por='reloj'—
+# porque ASA_SYNC_ACTIVO no está en Render. Nada en la interfaz lo decía, así que el
+# usuario esperaba que la data se actualizara sola en la mañana.
+print("\n32. El reloj se ve: si está apagado, la pantalla lo dice")
+check("el reporte manda el estado del reloj, sin poder reventar por eso",
+      '"reloj": _estado_reloj(),' in PROG and "def _estado_reloj()" in PROG
+      and "except Exception:" in PROG)
+check("apagado se avisa y se dice cómo encenderlo",
+      "El refresco automático está apagado." in DSH and "ASA_SYNC_ACTIVO=1" in DSH)
+check("encendido se dice a qué hora toca",
+      "Se refresca solo a las" in DSH and "la próxima, " in DSH)
+check("...y si está encendido pero el hilo se cayó, también",
+      "pero el reloj no está corriendo" in DSH)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
