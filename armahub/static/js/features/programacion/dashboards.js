@@ -474,16 +474,23 @@
     var TIT_MOD = 'Última vez que aSa tocó el pedido. aSa no guarda cuándo se terminó de ' +
                   'cubicar: mientras el código está por programar suele ser el cubicador, ' +
                   'pero fabricar o despachar también la mueven.';
+    // «Creado» y no «Pedido»: es el día en que nació el código. Es el `OrderDate` de aSa,
+    // que es una fecha escrita y no una marca del sistema, pero en los hechos son lo
+    // mismo — medido sobre 26.000 códigos: sólo 2 tienen el pedido fechado después de su
+    // última modificación, o sea sólo 2 se escribieron con fecha posterior.
+    var TIT_CREADO = 'Fecha del pedido en aSa (OrderDate): el día en que nació el código.';
     var html = llevaFecha
       ? '<thead><tr><th style="width:20%">Obra</th><th style="width:6%">Job</th>' +
         '<th style="width:26%">Descr</th><th style="width:10%">Cubicó</th>' +
-        '<th style="width:6%">Código</th><th style="width:7%">Pedido</th>' +
+        '<th style="width:6%">Código</th>' +
+        '<th style="width:7%" title="' + esc(TIT_CREADO) + '">Creado</th>' +
         '<th style="width:7%" title="' + esc(TIT_MOD) + '">Últ. cambio</th>' +
         '<th style="width:7%">Despacho</th>' +
         '<th class="num" style="width:11%">Kilos</th></tr></thead><tbody>'
       : '<thead><tr><th style="width:23%">Obra</th><th style="width:6%">Job</th>' +
         '<th style="width:30%">Descr</th><th style="width:10%">Cubicó</th>' +
-        '<th style="width:6%">Código</th><th style="width:7%">Pedido</th>' +
+        '<th style="width:6%">Código</th>' +
+        '<th style="width:7%" title="' + esc(TIT_CREADO) + '">Creado</th>' +
         '<th style="width:7%" title="' + esc(TIT_MOD) + '">Últ. cambio</th>' +
         '<th class="num" style="width:11%">Kilos</th></tr></thead><tbody>';
     // TOPE DE FILAS, igual que en el detalle de códigos: con los despachados encendidos
@@ -497,7 +504,7 @@
               '<td title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
               '<td title="' + esc(f.persona || '') + '">' + esc(f.persona || '') + '</td>' +
               '<td class="cc">' + esc(f.cc) + '</td>' +
-              '<td>' + ddmm(f.pedido) + '</td>' +
+              '<td title="' + esc(TIT_CREADO) + '">' + ddmm(f.pedido) + '</td>' +
               '<td title="' + esc(TIT_MOD) + '">' + ddmm(f.ultima_mod) + '</td>' +
               (llevaFecha ? '<td>' + ddmm(f.promesa) + '</td>' : '') +
               '<td class="num">' + kg(f.kg) + '</td></tr>';

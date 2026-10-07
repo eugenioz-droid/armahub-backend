@@ -1011,7 +1011,11 @@ check("...y se dice por qué: agregarlo no parte los códigos",
 check("el reporte manda la fecha del pedido y la última modificación",
       "p.order_date, p.ultima_mod" in PROG and '"pedido": r[15]' in PROG and '"ultima_mod": r[16]' in PROG)
 check("la tabla tiene columna de cubicador y las dos fechas",
-      "<th style=\"width:10%\">Cubicó</th>" in DSH and ">Pedido</th>" in DSH and ">Últ. cambio</th>" in DSH)
+      "<th style=\"width:10%\">Cubicó</th>" in DSH and ">Creado</th>" in DSH and ">Últ. cambio</th>" in DSH)
+# «Creado» y no «Pedido»: es el día en que nació el código, y es lo mismo — medido sobre
+# 26.000 códigos, sólo 2 tienen el pedido fechado después de su última modificación.
+check("...y la de creación dice de dónde sale",
+      "el día en que nació el código" in DSH and "OrderDate" in DSH)
 check("...cada fila las pinta", "ddmm(f.pedido)" in DSH and "ddmm(f.ultima_mod)" in DSH
       and "esc(f.persona || '')" in DSH)
 check("...y el encabezado avisa que la última modificación no es «cubicación terminada»",
