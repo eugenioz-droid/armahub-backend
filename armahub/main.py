@@ -166,6 +166,7 @@ def create_app() -> FastAPI:
         # que «mail: ok» no alcanza para saber si un aviso va a llegarle a un cubicador.
         # No es un secreto: es la dirección que aparece en el correo que se manda.
         result["mail_from"] = mh.get("from") or "?"
+        result["mail_via"] = mh.get("via") or "?"
         if "resend.dev" in str(result["mail_from"]):
             result["mail"] = "remitente-de-pruebas"
         # EL RELOJ DE aSa. Sin esto no hay manera de saber desde afuera si el espejo se
