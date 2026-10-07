@@ -1069,8 +1069,17 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           (SELECT COUNT(*) FROM auditoria_items i WHERE i.elemento_id = e.id),
                           (SELECT COUNT(*) FROM auditoria_items i
                             WHERE i.elemento_id = e.id AND i.conforme IS FALSE),
-                          e.ref_origen, e.ubicado_por, e.ubicado_el, e.descr_cc
-                     FROM auditoria_elementos e WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
+                          e.ref_origen, e.ubicado_por, e.ubicado_el, e.descr_cc,
+                          -- EL ESTADO DEL CÓDIGO, HOY. La muestra se sortea entre los que
+                          -- NO están despachados, pero el estado cambia después: un
+                          -- código Open el lunes sale el jueves y la auditoría ya estaba
+                          -- creada. Auditar algo despachado llega tarde —lo que vale es
+                          -- revisar antes de que salga— así que el auditor tiene que
+                          -- verlo en la lista, no descubrirlo al abrir el elemento.
+                          p.estado, p.proj_ship_date
+                     FROM auditoria_elementos e
+                     LEFT JOIN asa_pedidos p ON p.control_code = e.cc
+                    WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
             aud["elementos"] = [
                 {"id": e[0], "cc": e[19], "sector": e[1], "piso": e[2], "ciclo": e[3], "eje": e[4], "nombre": e[5],
                  "estructura": e[6], "barras": e[7], "kg": float(e[8] or 0), "cubicado_por": e[9],
@@ -1086,6 +1095,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "ubicado_el": e[24].isoformat() if e[24] else None,
                  # El código de control y su descripción son columnas, no parte del nombre.
                  "descr_cc": e[25],
+                 "estado_cc": e[26],
+                 "despacho_cc": e[27].isoformat() if e[27] else None,
+                 "despachado": (e[26] or "") == ESTADO_DESPACHADO,
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}

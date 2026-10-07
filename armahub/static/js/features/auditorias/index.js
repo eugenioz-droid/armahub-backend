@@ -517,14 +517,21 @@
     // elemento va ANTES que la descripción del código (6-oct, a pedido del usuario): es
     // lo que se revisa; la descripción es el contexto.
     var esAsa = AUD.origen === 'asa';
+    // EN ArmaHub NO HAY CÓDIGO DE CONTROL. La columna «Código» sale sólo en las
+    // auditorías de aSa, que es donde el elemento vive dentro de un CC; en las de ArmaHub
+    // el elemento ES la clave (sector·piso·ciclo·eje) y no hay nada que mostrar ahí. Por
+    // eso una auditoría muestra la columna y la otra no — no es que se haya perdido.
     var html = '<thead><tr>' +
-      (esAsa ? '<th>Código</th>' : '') + '<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '') +
+      (esAsa ? '<th>Código</th><th title="Estado del código en aSa. La muestra se sortea entre ' +
+               'los que no están despachados, pero el estado cambia después: auditar algo que ' +
+               'ya salió llega tarde.">Estado</th>' : '') +
+      '<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '') +
       '<th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
       '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th><th>Acción</th></tr></thead><tbody>';
     (AUD.elementos || []).forEach(function (e) {
       var abierto = ELEM && ELEM.id === e.id;
       html += '<tr class="fila' + (abierto ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
-        (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' : '') +
+        (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' + celdaEstadoCc(e) : '') +
         // Lo que ancla la fila va en negrita: en aSa es el código, en ArmaHub el elemento.
         '<td title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
         (esAsa ? '<td class="auddcc" title="' + esc(e.descr_cc || '') + '">' + esc(e.descr_cc || '') + '</td>' : '') +
@@ -782,6 +789,19 @@
   // grilla de barras; el usuario la vio fuera de lugar (6-oct): son datos del elemento,
   // van en su fila. En ArmaHub salen de la cubicación —son la clave del elemento— y no se
   // editan acá; si están mal se arreglan allá.
+  // EL ESTADO DEL CÓDIGO en la lista. Despachado va en rojo con su fecha: es la única
+  // condición que cambia lo que el auditor debería hacer con ese elemento.
+  function celdaEstadoCc(e) {
+    if (!e.estado_cc) return '<td class="muted">—</td>';
+    var clase = e.despachado ? ' class="audesc desp"' : ' class="audesc"';
+    var tit = e.despachado
+      ? 'Ya se despachó' + (e.despacho_cc ? ' el ' + ddmm(e.despacho_cc) : '') +
+        ': auditarlo llega tarde, lo que vale es revisar antes de que salga.'
+      : 'Estado del código en aSa';
+    return '<td' + clase + ' title="' + esc(tit) + '">' + esc(e.estado_cc) +
+           (e.despachado && e.despacho_cc ? ' ' + ddmm(e.despacho_cc) : '') + '</td>';
+  }
+
   // Las mismas cuatro celdas en texto. En aSa, lo que se LEYÓ del nombre y nadie confirmó
   // va en gris cursiva: se ve que es una lectura, no un dato.
   function celdasUbicacionTexto(e, esAsa) {

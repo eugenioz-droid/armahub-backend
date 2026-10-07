@@ -428,8 +428,23 @@ check("la descripción del código se guarda en su propia columna",
       "descr_cc" in SRC and "ADD COLUMN descr_cc" in MIG122)
 check("...en foto, porque en aSa la pueden renombrar",
       "puede cambiar, y el informe tiene que seguir diciendo" in SRC)
+print("\n7d2. El estado del código de control, en la muestra")
+# «En el resumen de elementos a auditar sería ideal que aparezca el estado del CC» (7-oct).
+# La muestra se sortea entre los NO despachados, pero el estado cambia después: un código
+# Open el lunes sale el jueves y la auditoría ya estaba creada.
+check("el detalle trae el estado del código y su fecha de despacho",
+      "p.estado, p.proj_ship_date" in SRC and "LEFT JOIN asa_pedidos p ON p.control_code = e.cc" in SRC
+      and '"estado_cc": e[26]' in SRC and '"despachado": (e[26] or "") == ESTADO_DESPACHADO' in SRC)
+check("...la lista lo muestra como columna, sólo en las auditorías de aSa",
+      "function celdaEstadoCc(" in JS and "celdaEstadoCc(e) : ''" in JS)
+check("...y el despachado va en rojo, con la fecha y el porqué",
+      "Ya se despachó" in JS and "auditarlo llega tarde" in JS and ".audt td.audesc.desp" in HTM)
+check("queda dicho por qué una auditoría de ArmaHub NO muestra código",
+      "EN ArmaHub NO HAY CÓDIGO DE CONTROL" in JS)
+
 check("la tabla tiene encabezado para el código y para su descripción, con el elemento entre medio",
-      "(esAsa ? '<th>Código</th>' : '') + '<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '')" in JS)
+      "'<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '')" in JS
+      and "(esAsa ? '<th>Código</th><th title=" in JS)
 check("...y sólo en las auditorías de aSa, que es donde existe el código",
       "var esAsa = AUD.origen === 'asa';" in JS and "(esAsa ? '<th>Código</th>" in JS)
 check("la descripción larga se corta y queda entera en el title",
