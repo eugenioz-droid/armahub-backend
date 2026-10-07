@@ -91,7 +91,18 @@ const celdaEje = T.celdaFigura(nativa);
 const o = llamadasMotor[0].o;
 check('sin la figura en el catálogo, la policurva de aSa se dibuja con el motor: en cm, con grosor por φ',
       celdaEje === '<svg class="eje"></svg>' && llamadasMotor.length === 1 &&
-      Math.abs(llamadasMotor[0].pts[3].x - 83.27) < 0.01 && o.metrico === true && o.diam_mm === 12);
+      o.metrico === true && o.diam_mm === 12);
+// NINGÚN LADO DESAPARECE. Un gancho de 13 cm junto a una barra de 90 mide medio píxel en
+// la miniatura, y una figura sin su gancho no es esa figura. El dibujo deja de ser
+// proporcional ahí a propósito: las medidas están en sus columnas, al lado.
+var largos = o && llamadasMotor[0].pts.slice(1).map(function (p, i) {
+  var a = llamadasMotor[0].pts[i];
+  return Math.hypot(p.x - a.x, p.y - a.y);
+});
+check('...y ningún lado se dibuja por debajo del 18% del mayor',
+      largos && Math.min.apply(null, largos) >= Math.max.apply(null, largos) * 0.18 - 0.01);
+check('...pero el lado largo NO se achica: sólo se estiran los chicos',
+      largos && Math.abs(Math.max.apply(null, largos) - 90) < 0.01);
 check('...los ganchos van como ARCOS con su radio (3 cm) y su sentido traducido al del motor (1 → 0), y el motor no les mete codo encima',
       o.tipos_seg.join() === 'recto,arco,recto,arco,recto' && o.radios_seg[1] === 3 && o.sweeps_seg[1] === 0);
 check('...cada tramo recto lleva de rótulo la medida del lado en cm; los arcos, nada',

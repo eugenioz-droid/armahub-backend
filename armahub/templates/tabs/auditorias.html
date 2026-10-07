@@ -264,9 +264,19 @@
   .audori.asa{background:#e3f2fd; color:#1565C0;}
   .audbd{max-height:40vh; overflow:auto;}
   .audt{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
-  .audt th{position:sticky; top:0; background:#fafbfc; text-align:left; color:#546e7a; font-weight:600; padding:4px 6px;
+  /* EL ENCABEZADO QUEDA FIJO al bajar. Ya era `sticky`, pero sin `z-index` las celdas se
+     dibujan POR ENCIMA al desplazar y parece que no estuviera anclado: el apilado por
+     defecto deja ganar a lo que viene después en el documento. */
+  .audt th{position:sticky; top:0; z-index:3; background:#fafbfc; text-align:left; color:#546e7a;
+           font-weight:600; padding:4px 6px; box-shadow:0 1px 0 #e3e8ef;
            border-bottom:1px solid #e3e8ef; white-space:nowrap; font-size:10.5px;}
-  .audt td{padding:4px 6px; border-top:1px solid #edf0f3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11px;}
+  /* CUADRÍCULA. Con doce columnas de números pegadas, la vista se pierde de fila: la línea
+     vertical es lo que deja seguir una columna hacia abajo sin contar con el dedo. */
+  .audt td{padding:4px 6px; border-top:1px solid #edf0f3; border-right:1px solid #f2f4f7;
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:11px;}
+  .audt th{border-right:1px solid #e8ebef;}
+  .audt td:last-child, .audt th:last-child{border-right:0;}
+  .audt tbody tr:nth-child(even) td{background:#fcfdfe;}
   .audt .num{text-align:right;}
   .audt tbody tr.fila{cursor:pointer;} .audt tbody tr.fila:hover td{background:#f3f7fc;}
   .audt tbody tr.sel td{background:#e8f1fb;}

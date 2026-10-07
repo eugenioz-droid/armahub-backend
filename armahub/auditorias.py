@@ -37,6 +37,7 @@ from psycopg.errors import UniqueViolation
 from pydantic import BaseModel
 
 from .auth import get_current_user
+from .orden import sql_tipologia_order
 from .db import get_conn, audit
 
 router = APIRouter()
@@ -269,7 +270,11 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
                      FROM barras
                     WHERE id_proyecto = %s AND COALESCE(sector,'') = %s AND COALESCE(piso,'') = %s
                       AND COALESCE(ciclo,'') = %s AND COALESCE(eje,'') = %s
-                    ORDER BY marca, diam, bar_id""",
+                    -- EL MISMO ORDEN QUE EL RESTO DE LA PLATAFORMA. Las tipologías tienen
+                    -- una secuencia constructiva (MH, MV, TR, …, CB) que vive en orden.py y
+                    -- la usan el despiece y el export; ordenar alfabético acá dejaba la
+                    -- lista en otro orden que el que el cubicador tiene en pantalla.
+                    ORDER BY """ + sql_tipologia_order("marca") + """, marca, diam, bar_id""",
                 (id_proyecto, sector, piso, ciclo, eje))
             dims = "abcdefghi"
             barras = []
@@ -400,8 +405,15 @@ def _sortear(cur, id_proyecto: str, n, sectores: str, pisos: str, ciclos: str, s
 # mismas columnas que el de ArmaHub: `eje` lleva el ElementID —que en muros ES el eje, con
 # la misma nomenclatura— y `estructura` el ElementDesc. Así la revisión, los hallazgos y
 # las acciones son UN solo camino y no dos.
+# `LengthTheor` y `LengthCut` NO son lo mismo y la diferencia importa (7-oct, lo cazó el
+# cubicador que hizo la primera auditoría): el TEÓRICO es la suma de los largos parciales
+# —medidos al vértice, que es como se cubica y como los suma ArmaHub— y el de CORTE
+# descuenta lo que se come cada doblez. Medido sobre 318 barras: `LengthTheor` coincide
+# EXACTO con la suma de los lados en las 318, y `LengthCut` difiere en 35 de 50 en un solo
+# código. Mostrábamos el de corte, así que el auditor veía 2.576 donde su cubicación dice
+# 2.640 y parecía un error que no existía.
 CAMPOS_ITEM = ["CtrlCode", "ElementID", "ElementDesc", "BarMark", "BarSizeDescr", "ShpNameID",
-               "ShapeDims", "LegAngle", "LengthCut", "TotalQty", "LineWeight", "PinDiam",
+               "ShapeDims", "LegAngle", "LengthCut", "LengthTheor", "TotalQty", "LineWeight", "PinDiam",
                "Notes", "ShopMessage", "OrderDescr"]
 
 
@@ -715,7 +727,10 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
             # Los lados en mm con su letra, los ángulos entre lados y qué lados son gancho:
             # la grilla los pone en columnas, en cm, igual que el Bar Manager.
             "dims": lados["dims"], "angulos": lados["angulos"], "ganchos": lados["ganchos"],
-            "largo": it.get("LengthCut"),
+            # El largo que se audita es la SUMA DE LOS PARCIALES (ver CAMPOS_ITEM); el de
+            # corte viaja al lado porque es el que aSa manda a fabricar, y que los dos no
+            # coincidan es normal: la diferencia es el doblez.
+            "largo": it.get("LengthTheor"), "largo_corte": it.get("LengthCut"),
             # EL DIBUJO. La figura se construye con lo que manda aSa (lados, ángulos,
             # mandril, φ) como una policurva —ver figura_asa.py— y se comprueba contra la
             # envolvente que ella misma declara: si no cuadra viaja `ok: false` y la

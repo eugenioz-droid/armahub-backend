@@ -441,6 +441,28 @@ check("la descripción del código se guarda en su propia columna",
       "descr_cc" in SRC and "ADD COLUMN descr_cc" in MIG122)
 check("...en foto, porque en aSa la pueden renombrar",
       "puede cambiar, y el informe tiene que seguir diciendo" in SRC)
+print("\n7c2. El largo que se audita es la SUMA DE LOS PARCIALES")
+# Lo cazó el cubicador que hizo la primera auditoría: el formulario mostraba 2.576 donde su
+# cubicación dice 2.640. aSa manda dos largos y no son lo mismo — el teórico es la suma de
+# los lados (medidos al vértice, como cubica ArmaHub) y el de corte descuenta el doblez.
+# Medido sobre 318 barras: LengthTheor == suma de lados en las 318.
+check("se piden los dos largos a aSa", '"LengthCut", "LengthTheor"' in SRC)
+check("...y el que se audita es el teórico, que es la suma de los parciales",
+      '"largo": it.get("LengthTheor"), "largo_corte": it.get("LengthCut")' in SRC)
+check("...el de corte viaja igual, para poder explicar la diferencia",
+      "la diferencia es lo que se come el doblez" in JS and "f.corte" in JS)
+check("...y queda escrito por qué no son lo mismo", "descuenta lo que se come cada doblez" in SRC)
+
+print("\n7c3. El formulario se puede leer")
+check("las barras se ordenan como en el resto de la plataforma (MH, MV, TR, …)",
+      "sql_tipologia_order(\"marca\")" in SRC and "from .orden import sql_tipologia_order" in SRC)
+check("el encabezado queda anclado de verdad (sin z-index las celdas lo tapaban)",
+      "z-index:3" in HTM and "position:sticky; top:0" in HTM)
+check("la grilla separa las columnas", "border-right:1px solid #f2f4f7" in HTM
+      and "nth-child(even)" in HTM)
+check("un lado chico no desaparece del dibujo", "MIN_LADO_REL = 0.18" in JS
+      and "function _conMinimo(" in JS and "no para medirla" in JS)
+
 print("\n7d1. Elegir el alcance: los despachados también se ofrecen")
 # «Debiéramos considerar también los despachados, pero que el cubicador elija; el sistema
 # debiera ordenar por fechas, del CC más nuevo al más antiguo, así queda a criterio del

@@ -652,7 +652,9 @@
       letras.map(function (L) { return '<th class="num g">' + esc(L) + '</th>'; }).join('') +
       rango(nAng).map(function (i) { return '<th class="num g">α' + (i + 1) + '</th>'; }).join('') +
       (conRadio ? '<th class="num g">R</th>' : '') +
-      '<th class="num">Largo</th><th class="num">Cant</th><th class="num">Peso</th>' +
+      '<th class="num" title="Suma de los largos parciales, como los suma la plataforma. ' +
+      'No es el largo de corte de aSa, que descuenta el doblez.">Largo</th>' +
+      '<th class="num">Cant</th><th class="num">Peso</th>' +
       '<th>' + (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') + '</th></tr></thead><tbody>';
     BARRAS.forEach(function (b, i) {
       var f = filas[i], v = VERED[b.ref];
@@ -669,7 +671,9 @@
         letras.map(function (L) { return '<td class="num g">' + num(f.dims[L]) + '</td>'; }).join('') +
         rango(nAng).map(function (k) { return '<td class="num g">' + num(f.angulos[k]) + '</td>'; }).join('') +
         (conRadio ? '<td class="num g">' + num(f.radio, 1) + '</td>' : '') +
-        '<td class="num">' + num(f.largo) + '</td>' +
+        '<td class="num"' + (f.corte != null && Math.abs(f.corte - f.largo) > 0.5
+            ? ' title="Suma de los largos parciales. aSa corta ' + num(f.corte) +
+              ' cm: la diferencia es lo que se come el doblez."' : '') + '>' + num(f.largo) + '</td>' +
         '<td class="num">' + (b.cant_total != null ? b.cant_total : (b.cant || '')) + '</td>' +
         '<td class="num">' + kg0(b.peso_total) + '</td>' +
         '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
@@ -720,7 +724,10 @@
     var f = { figura: b.figura, diam: parseFloat(b.diam), dims: {}, eje: b.eje || null,
               angulos: (b.angulos || []).map(Number).filter(function (x) { return !isNaN(x); }),
               radio: origen === 'asa' ? 0 : (Number(b.radio) || 0),
-              largo: (b.largo != null && b.largo !== '') ? Number(b.largo) * k : null };
+              // `largo` es la SUMA DE LOS PARCIALES; `corte` es lo que aSa manda a cortar,
+              // que descuenta el doblez. Son distintos a propósito.
+              largo: (b.largo != null && b.largo !== '') ? Number(b.largo) * k : null,
+              corte: (b.largo_corte != null && b.largo_corte !== '') ? Number(b.largo_corte) * k : null };
     Object.keys(b.dims || {}).forEach(function (key) {
       var v = Number(b.dims[key]);
       if (!(v > 0)) return;
@@ -758,11 +765,40 @@
   // el comando A de SVG y no les mete codo encima; los rectos llevan de rótulo la medida
   // del lado en cm, como el Bar Manager. Las cotas automáticas de arco del motor (radio,
   // desarrollo) se apagan: en una miniatura de auditoría son ruido.
+  // Ningún lado se dibuja más corto que este % del mayor. Es el mismo criterio del Bar
+  // Manager (BM_MIN_LADO_REL): un gancho de 10 cm junto a una barra de 12 m mide medio
+  // píxel y desaparece, y una figura a la que le falta el gancho no es esa figura. El
+  // dibujo deja de ser proporcional ahí, y es a propósito: está para reconocer la barra,
+  // no para medirla — las medidas están en sus columnas, al lado.
+  var MIN_LADO_REL = 0.18;
+
+  function _conMinimo(pts) {
+    if (pts.length < 3) return pts;
+    // Una figura CERRADA no se toca: estirar un lado la dejaría abierta, y un estribo con
+    // una esquina suelta se lee como un error de la barra y no del dibujo.
+    var p0 = pts[0], pn = pts[pts.length - 1];
+    if (Math.hypot(pn.x - p0.x, pn.y - p0.y) < 0.01) return pts;
+    var largos = [], i;
+    for (i = 1; i < pts.length; i++) {
+      largos.push(Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    }
+    var minimo = Math.max.apply(null, largos) * MIN_LADO_REL;
+    if (!(minimo > 0) || largos.every(function (L) { return L >= minimo; })) return pts;
+    var out = [pts[0]];
+    for (i = 1; i < pts.length; i++) {
+      var L = largos[i - 1] || 1;
+      var k = Math.max(1, minimo / L);
+      out.push({ x: out[i - 1].x + (pts[i].x - pts[i - 1].x) * k,
+                 y: out[i - 1].y + (pts[i].y - pts[i - 1].y) * k });
+    }
+    return out;
+  }
+
   function svgEje(f) {
     var eje = f.eje, M = global.disenadorMotor;
     if (!eje || !(eje.puntos || []).length || !M || !M.svgDesdePuntos || !global._bmTam) return '';
     var t = global._bmTam(FIG_TAM);
-    var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
+    var pts = _conMinimo(eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; }));
     var tramos = eje.tramos || [];
     var completo = tramos.length === pts.length - 1;
     var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
