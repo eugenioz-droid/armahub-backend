@@ -29,6 +29,11 @@
   // viven en render.js / disenador.js y consultan estas banderas.
   var TIPOS = {
     cota:     { forma: 'linea', arrastrable: true,  parametro: null,     clicks: 2, color: '#888'    },
+    // LA PATITA DE LA COTA: la línea fina que va del vértice hasta la línea de cota, para
+    // que se vea QUÉ está midiendo. No se dibuja a mano —no es arrastrable y no está en
+    // ninguna barra de herramientas—: la trae el dibujo de aSa, que las declara (`St2`,
+    // `En2`). Sin ellas la cota flota al lado de la figura sin decir de dónde a dónde va.
+    auxiliar: { forma: 'linea', arrastrable: false, parametro: null,     clicks: 0, color: '#bbb'    },
     radio:    { forma: 'linea', arrastrable: true,  parametro: null,     clicks: 2, color: '#1565c0' },
     diametro: { forma: 'linea', arrastrable: true,  parametro: null,     clicks: 2, color: '#1565c0' },
     arco:     { forma: 'arco',  arrastrable: false, parametro: null,     clicks: 1, color: '#888'    },
@@ -108,6 +113,13 @@
       '<line x1="'+(p1.x+nx)+'" y1="'+(p1.y+ny)+'" x2="'+(p1.x-nx)+'" y2="'+(p1.y-ny)+'" stroke="#888" stroke-width="'+sw+'"/>' +
       '<line x1="'+(p2.x+nx)+'" y1="'+(p2.y+ny)+'" x2="'+(p2.x-nx)+'" y2="'+(p2.y-ny)+'" stroke="#888" stroke-width="'+sw+'"/>';
   }
+  // Patita de cota: línea fina y clara, sin topes ni flechas. Va del vértice a la línea
+  // de cota y no debe competir con el fierro: por eso más delgada que todo lo demás.
+  function dibujarAuxiliar(p1, p2, opt) {
+    opt = opt || {}; var sw = Math.max(0.5, (opt.sw || 1.5) * 0.6);
+    return '<line x1="'+p1.x+'" y1="'+p1.y+'" x2="'+p2.x+'" y2="'+p2.y+'" stroke="'+color('auxiliar')+
+           '" stroke-width="'+sw+'"/>';
+  }
   // Radio (flecha →) / Diámetro (flecha ↔). Usa los markers del SVG contenedor.
   // opt.mkEnd/mkStart permiten IDs personalizados (overlays con IDs únicos, para
   // evitar colisión de <marker id> entre varios SVGs en la página); si no se pasan,
@@ -168,7 +180,7 @@
     clicks: clicks, color: color,
     normalizar: normalizar, desnormalizar: desnormalizar,
     parametros: parametros, tieneParametros: tieneParametros,
-    dibujarCota: dibujarCota, dibujarRadioDiam: dibujarRadioDiam,
+    dibujarCota: dibujarCota, dibujarAuxiliar: dibujarAuxiliar, dibujarRadioDiam: dibujarRadioDiam,
     dibujarArco: dibujarArco, dibujarTexto: dibujarTexto
   };
 })(window);

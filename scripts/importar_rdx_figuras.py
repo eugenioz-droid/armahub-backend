@@ -37,7 +37,8 @@ import re
 import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MIGRACION = os.path.join(RAIZ, "armahub", "migrations", "131_asa_figuras_catalogo.sql")
+MIGRACIONES = [os.path.join(RAIZ, "armahub", "migrations", n) for n in
+               ("131_asa_figuras_catalogo.sql", "132_asa_figuras_cotas.sql")]
 
 # Los componentes que SON fierro. El resto (`WS`, `AN`, `WR`, `WD`, `WN`, `FS`) son cotas,
 # ángulos y auxiliares de dibujo: anotaciones sobre la figura, no parte de la barra.
@@ -119,6 +120,61 @@ def encadenar(tramos):
     return cadena + quedan
 
 
+# Las anotaciones que SÍ se dibujan, y qué es cada una:
+#   WS  cota entre dos vértices (la altura, el ancho, el largo proyectado)
+#   WD  auxiliar de dibujo, misma forma que la WS
+#   AN  ángulo entre dos lados: sólo marca el vértice
+#   WR  radio de un lado curvo: una línea desde el centro
+# Quedan fuera WN, FS, FT y compañía: traen `Stt` igual a `End`, no dibujan nada.
+COTAS_LINEA = ("WS", "WD", "WA", "T3")
+COTAS_ANGULO = ("AN",)
+COTAS_RADIO = ("WR",)
+
+
+def cotas_de(comps, coords):
+    """Las cotas con que aSa dibuja la figura (ver la migración 132).
+
+    LA LÍNEA DE COTA VA DE `Stt` A `St2`, y los dos vértices que mide son `End` y `En2`.
+    No es una interpretación: medido sobre las 1.713 cotas del catálogo, `End` y `En2`
+    caen sobre un vértice del trazo en el 94 por ciento, y el largo de `Stt`→`St2` coincide
+    con lo que separa a esos vértices en el 98. Las `patitas` (del vértice a la línea) son
+    `End`→`Stt` y `En2`→`St2`.
+
+    El punto `Dim` NO se usa para las cotas: en varias figuras aSa lo manda muy fuera del
+    dibujo (en la 104E1, a y=265 cuando la figura llega a y=64), porque allá las apila en
+    una lista aparte. El texto va al medio de su propia línea, que siempre está bien.
+    """
+    salida = []
+    for c in comps:
+        tipo = c["tipo"]
+        if tipo in TIPOS_FIERRO:
+            continue
+        p = coords.get(c["nombre"], {})
+
+        def xy(k):
+            v = p.get(k)
+            return [round(v[0], 1), round(v[1], 1)] if v else None
+
+        if tipo in COTAS_ANGULO:
+            cen, dim = xy("Cen"), xy("Dim")
+            if cen:
+                salida.append({"nombre": c["nombre"], "tipo": tipo,
+                               "centro": cen, "texto": dim or cen})
+            continue
+        ini, fin = xy("Stt"), xy("St2") if tipo in COTAS_LINEA else xy("End")
+        if not ini or not fin or _cerca(ini + [0], fin + [0]):
+            continue
+        cota = {"nombre": c["nombre"], "tipo": tipo, "linea": [ini, fin],
+                "texto": [round((ini[0] + fin[0]) / 2.0, 1), round((ini[1] + fin[1]) / 2.0, 1)]}
+        if tipo in COTAS_LINEA:
+            # Las patitas, sólo si aSa mandó los dos vértices que la cota mide.
+            a, b = xy("End"), xy("En2")
+            if a and b:
+                cota["ref"] = [[a, ini], [b, fin]]
+        salida.append(cota)
+    return salida
+
+
 def polilinea(comps, coords):
     """La polilínea de la figura y los tramos que la componen. Devuelve (puntos, lados, 3d)."""
     tramos, tridimensional = [], False
@@ -157,12 +213,14 @@ def figuras_del_rdx(ruta: str):
         if not codigo:
             continue
         comps = componentes_de(cuerpo)
-        puntos, lados, td = polilinea(comps, coordenadas_de(cuerpo))
+        coords = coordenadas_de(cuerpo)
+        puntos, lados, td = polilinea(comps, coords)
         salida.append({
             "codigo": codigo, "tipo": _txt(cuerpo, "ShapeTypeID"),
             "generica": _txt(cuerpo, "Generic") != "0",
             "descripcion": _txt(cuerpo, "ShapeDesc") or None,
             "puntos": puntos, "lados": lados, "tridimensional": td,
+            "cotas": cotas_de(comps, coords),
         })
     return salida
 
@@ -196,18 +254,22 @@ def main():
     import psycopg
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         with conn.cursor() as cur:
-            cur.execute(io.open(MIGRACION, encoding="utf-8").read())
+            for mig in MIGRACIONES:
+                cur.execute(io.open(mig, encoding="utf-8").read())
             cur.executemany(
                 """INSERT INTO asa_figuras_catalogo
-                       (codigo, tipo, generica, descripcion, puntos, lados, tridimensional, fuente, importado_el)
+                       (codigo, tipo, generica, descripcion, puntos, lados, cotas,
+                        tridimensional, fuente, importado_el)
                    VALUES (%(codigo)s, %(tipo)s, %(generica)s, %(descripcion)s, %(puntos)s, %(lados)s,
-                           %(tridimensional)s, %(fuente)s, now())
+                           %(cotas)s, %(tridimensional)s, %(fuente)s, now())
                    ON CONFLICT (codigo) DO UPDATE
                       SET tipo = EXCLUDED.tipo, generica = EXCLUDED.generica,
                           descripcion = EXCLUDED.descripcion, puntos = EXCLUDED.puntos,
-                          lados = EXCLUDED.lados, tridimensional = EXCLUDED.tridimensional,
+                          lados = EXCLUDED.lados, cotas = EXCLUDED.cotas,
+                          tridimensional = EXCLUDED.tridimensional,
                           fuente = EXCLUDED.fuente, importado_el = now()""",
                 [dict(f, puntos=json.dumps(f["puntos"]), lados=json.dumps(f["lados"]),
+                      cotas=json.dumps(f["cotas"]),
                       fuente=os.path.basename(ruta)) for f in figuras])
             cur.execute("SELECT COUNT(*) FROM asa_figuras_catalogo")
             total = cur.fetchone()[0]

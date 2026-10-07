@@ -903,7 +903,7 @@ def catalogo_asa_figuras(user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT codigo, tipo, generica, descripcion, puntos, lados,
-                                  tridimensional, importado_el, fuente
+                                  tridimensional, importado_el, fuente, cotas
                              FROM asa_figuras_catalogo ORDER BY codigo""")
             filas = cur.fetchall()
             cur.execute("""SELECT codigo, barras, ejemplo_cc, ejemplo_marca, ejemplo_obra, diam_mm
@@ -913,13 +913,17 @@ def catalogo_asa_figuras(user=Depends(get_current_user)):
             cur.execute("SELECT codigo FROM figuras_catalogo WHERE geometria IS NOT NULL")
             propias = {r[0] for r in cur.fetchall()}
     figuras = []
-    for (codigo, tipo, generica, descr, puntos, lados, td, importado, fuente) in filas:
+    for (codigo, tipo, generica, descr, puntos, lados, td, importado, fuente, cotas) in filas:
         puntos = puntos or []
         lados = lados or []
         v = vistas.get(codigo) or {}
         figuras.append({
             "codigo": codigo, "tipo": tipo, "generica": bool(generica),
             "descripcion": descr, "puntos": puntos, "lados": lados,
+            # LAS COTAS CON QUE aSa DIBUJA LA FIGURA (altura, ancho, angulos). Viajan
+            # aparte del trazo porque son otra cosa: el trazo es la barra, la cota es lo
+            # que aSa escribe encima. La pantalla las puede apagar.
+            "cotas": cotas or [],
             "tridimensional": bool(td), "cadena_rota": len(puntos) != len(lados) + 1,
             "barras": v.get("barras") or 0, "cc": v.get("cc"), "marca": v.get("marca"),
             "obra": v.get("obra"), "diam": v.get("diam") or 0,

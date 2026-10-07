@@ -11,7 +11,7 @@
   'use strict';
 
   var CAS = { figuras: [], fuera: [], cargado: false };
-  var CAS_F = { estado: 'todas' };
+  var CAS_F = { estado: 'todas', texto: '', cotas: true };
   var CAS_TAM = { w: 160, h: 104 };
 
   function esc(s) {
@@ -24,6 +24,31 @@
   // centímetros: son el esquema con el que ella representa la figura— así que se dibujan
   // sin grosor real: `metrico` apagado y el trazo nominal. Pedirle al motor que aplique un
   // φ sobre coordenadas que no son centímetros daría un grosor inventado.
+  // LAS COTAS DE aSa. El trazo dice por dónde va el fierro; las cotas son lo que aSa
+  // escribe encima —la altura, el ancho, el ángulo entre dos lados— y son la mitad de lo
+  // que se lee en una figura. Vienen del mismo RDX (ver la migración 132) y se dibujan con
+  // las mismas piezas que el editor: la línea de cota, sus dos patitas hasta los vértices
+  // que mide, y la letra con que aSa la llama.
+  //
+  // El ángulo (`AN`) sólo trae el vértice: no hay arco que dibujar, así que va su letra en
+  // el punto donde aSa la pone. Dibujar un arco inventado sería agregar información que
+  // aSa no dio.
+  function etiquetasDe(f) {
+    var out = [];
+    (f.cotas || []).forEach(function (c) {
+      if (c.linea && c.linea.length === 2) {
+        out.push({ tipo: c.tipo === 'WR' ? 'radio' : 'cota',
+                   x1: c.linea[0][0], y1: c.linea[0][1], x2: c.linea[1][0], y2: c.linea[1][1] });
+        (c.ref || []).forEach(function (r) {
+          out.push({ tipo: 'auxiliar', x1: r[0][0], y1: r[0][1], x2: r[1][0], y2: r[1][1] });
+        });
+      }
+      var t = c.texto || c.centro;
+      if (t) out.push({ tipo: c.tipo === 'AN' ? 'angulo' : 'letra', texto: c.nombre || '', x: t[0], y: t[1] });
+    });
+    return out;
+  }
+
   function dibujo(f) {
     var M = global.disenadorMotor;
     if (!M || !M.svgDesdePuntos || (f.puntos || []).length < 2) return '';
@@ -34,13 +59,28 @@
       return M.svgDesdePuntos(pts, {
         width: CAS_TAM.w, height: CAS_TAM.h, pad: 16,
         labels: completo ? lados.map(function (l) { return l.nombre || ''; }) : [],
-        labels_auto: completo, angulos: false, cotas_arco_iso: []
+        labels_auto: completo, angulos: false, cotas_arco_iso: [],
+        etiquetas: CAS_F.cotas ? etiquetasDe(f) : []
       });
     } catch (e) { return ''; }
   }
 
+  // BUSCAR UNA FIGURA POR SU NOMBRE. Con 531 tarjetas, encontrar la T12 a ojo es
+  // desplazarse veinte pantallas. Busca en el código y en el CC de ejemplo, que son los dos
+  // datos por los que uno llega a una figura: o sabe cómo se llama, o la vio en un pedido.
+  // Varias palabras separadas por espacio tienen que estar TODAS (no es «o»), así se puede
+  // afinar escribiendo más en vez de empezar de nuevo.
+  function pasaTexto(f) {
+    var q = (CAS_F.texto || '').trim().toLowerCase();
+    if (!q) return true;
+    var heno = [f.codigo, f.cc, f.marca, f.obra, f.descripcion]
+      .filter(Boolean).join(' ').toLowerCase();
+    return q.split(/\s+/).every(function (p) { return heno.indexOf(p) >= 0; });
+  }
+
   function visibles() {
     return CAS.figuras.filter(function (f) {
+      if (!pasaTexto(f)) return false;
       if (CAS_F.estado === 'usadas') return f.barras > 0;
       if (CAS_F.estado === 'sin_catalogo') return !f.en_catalogo;
       if (CAS_F.estado === 'problema') return f.cadena_rota;
@@ -77,12 +117,30 @@
         return '<button data-v="' + o[0] + '" class="' + (CAS_F.estado === o[0] ? 'on' : '') + '">' +
                esc(o[1]) + '</button>';
       }).join('') + '</div>' +
-      '<span class="muted" style="font-size:11px">El trazo es el que exportó aSa.</span>';
+      '<input id="casBuscar" class="casbuscar" type="search" placeholder="Buscar figura (T12, 104E1, un CC…)" ' +
+      'value="' + esc(CAS_F.texto || '') + '" autocomplete="off">' +
+      '<div class="dshchips"><button id="casCotas" class="' + (CAS_F.cotas ? 'on' : '') + '" ' +
+      'title="Las cotas que dibuja aSa: altura, ancho y los ángulos entre lados.">Cotas</button></div>' +
+      '<span class="muted" style="font-size:11px">El trazo y las cotas son los que exportó aSa.</span>';
     el.querySelectorAll('#casChips button').forEach(function (b) {
       b.addEventListener('click', function () {
         CAS_F.estado = b.dataset.v; pintarFiltros(); pintarLista();
       });
     });
+    var tog = document.getElementById('casCotas');
+    if (tog) {
+      tog.addEventListener('click', function () {
+        CAS_F.cotas = !CAS_F.cotas; pintarFiltros(); pintarLista();
+      });
+    }
+    var caja = document.getElementById('casBuscar');
+    if (caja) {
+      // SÓLO SE REPINTA LA LISTA, no los filtros: volver a dibujar el input mientras se
+      // escribe le quita el foco al campo y la segunda letra se pierde.
+      caja.addEventListener('input', function () {
+        CAS_F.texto = caja.value; pintarLista();
+      });
+    }
   }
 
   function pintarLista() {
@@ -91,13 +149,21 @@
     var figs = visibles();
     if (!figs.length) {
       el.innerHTML = '<div class="muted" style="padding:22px; text-align:center; font-size:12px">' +
-        (CAS.figuras.length
-          ? 'Ninguna figura con ese filtro.'
-          : 'Todavía no se ha cargado el catálogo. Se llena con el export RDX de aSa y ' +
-            '<code>scripts/importar_rdx_figuras.py</code>.') + '</div>';
+        (!CAS.figuras.length
+          ? 'Todavía no se ha cargado el catálogo. Se llena con el export RDX de aSa y ' +
+            '<code>scripts/importar_rdx_figuras.py</code>.'
+          : (CAS_F.texto || '').trim()
+            ? 'Ninguna figura dice «' + esc(CAS_F.texto.trim()) + '».'
+            : 'Ninguna figura con ese filtro.') + '</div>';
       return;
     }
-    el.innerHTML = '<div class="casgrid">' + figs.map(function (f) {
+    // CUÁNTAS SE ESTÁN VIENDO. Con 531 figuras y un buscador, no saber si quedaron 3 o 300
+    // obliga a contarlas a ojo o a bajar hasta el final.
+    el.innerHTML = '<div class="muted" style="font-size:11px; margin-bottom:6px">' +
+      (figs.length === CAS.figuras.length
+        ? figs.length + ' figuras'
+        : figs.length + ' de ' + CAS.figuras.length + ' figuras') + '</div>' +
+      '<div class="casgrid">' + figs.map(function (f) {
       var svg = dibujo(f);
       var clases = 'cascard' + (f.cadena_rota ? ' mal' : '') + (f.en_catalogo ? '' : ' nocat');
       var etq = f.en_catalogo

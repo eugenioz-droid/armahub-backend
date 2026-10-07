@@ -438,9 +438,9 @@
       }
       if (REG().esLinea(e.tipo)) {
         var p1 = tx({x:e.x1, y:e.y1}), p2 = tx({x:e.x2, y:e.y2});
-        svg += (e.tipo === 'cota')
-          ? REG().dibujarCota(p1, p2, oR)
-          : REG().dibujarRadioDiam(e.tipo, p1, p2, oR);
+        svg += (e.tipo === 'cota') ? REG().dibujarCota(p1, p2, oR)
+             : (e.tipo === 'auxiliar') ? REG().dibujarAuxiliar(p1, p2, oR)
+             : REG().dibujarRadioDiam(e.tipo, p1, p2, oR);
         return;
       }
       // Texto (letra/ángulo).

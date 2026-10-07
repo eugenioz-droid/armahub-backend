@@ -53,6 +53,13 @@ const FIGURAS = [
     puntos: [[-204, 64], [-217, 47], [-150, -64], [209, -64], [217, -44]],
     lados: [{ nombre: 'A', tipo: 'H3' }, { nombre: 'B', tipo: 'SB' },
             { nombre: 'C', tipo: 'B' }, { nombre: 'G', tipo: 'H3' }],
+    // Las cotas REALES de la 104E1 en el RDX: la altura H, el ancho K y el ángulo V.
+    cotas: [
+      { nombre: 'H', tipo: 'WS', linea: [[-120, -64], [-120, 47]], texto: [-120, -8.5],
+        ref: [[[-150, -64], [-120, -64]], [[-217, 47], [-120, 47]]] },
+      { nombre: 'K', tipo: 'WS', linea: [[-217, 17], [-150, 17]], texto: [-183.5, 17],
+        ref: [[[-217, 47], [-217, 17]], [[-150, -64], [-150, 17]]] },
+      { nombre: 'V', tipo: 'AN', centro: [-150, -64], texto: [-146, -52] }],
     tridimensional: false, cadena_rota: false,
     barras: 0, cc: null, marca: null, obra: null, diam: 0, en_catalogo: false },
   { codigo: '203D', tipo: 'B', generica: false, descripcion: null,
@@ -128,6 +135,51 @@ console.log('TEST: Catálogo aSa');
   const src = fs.readFileSync(RUTA, 'utf8');
   check('se nombra el script que lo llena', src.indexOf('importar_rdx_figuras.py') > 0);
   check('...y se explica de dónde sale el trazo', src.indexOf('el dibujo de aSa, no nuestra reconstrucción') > 0);
+
+  // LAS COTAS SON LA MITAD DEL DIBUJO (7-oct). El trazo dice por dónde va el fierro; la
+  // cota dice cuánto mide y entre qué puntos. aSa las exporta en el mismo RDX y el usuario
+  // las echó de menos: sin ellas la figura es un contorno, no un plano.
+  console.log('\n7. Las cotas que dibuja aSa');
+  const et = (llamadas.find(l => l.pts.length === 5) || {}).o.etiquetas || [];
+  check('la línea de cota va de punta a punta, como la declaró aSa',
+    et.filter(e => e.tipo === 'cota').length === 2 &&
+    et.some(e => e.tipo === 'cota' && e.x1 === -120 && e.y1 === -64 && e.x2 === -120 && e.y2 === 47));
+  check('...con sus dos patitas hasta los vértices que mide, para saber QUÉ está midiendo',
+    et.filter(e => e.tipo === 'auxiliar').length === 4 &&
+    et.some(e => e.tipo === 'auxiliar' && e.x1 === -150 && e.y1 === -64 && e.x2 === -120));
+  check('...rotulada con la letra que le puso aSa',
+    et.some(e => e.tipo === 'letra' && e.texto === 'H' && e.x === -120));
+  check('el ángulo va donde aSa lo pone, y como ángulo: no se le inventa un arco',
+    et.filter(e => e.tipo === 'angulo').length === 1 &&
+    et.some(e => e.tipo === 'angulo' && e.texto === 'V' && e.x === -146 && e.y === -52) &&
+    !et.some(e => e.tipo === 'arco'));
+  check('una figura sin cotas en el RDX no inventa ninguna',
+    ((llamadas.find(l => l.pts.length === 2) || {}).o.etiquetas || []).length === 0);
+  llamadas.length = 0;
+  T.CAS_F.cotas = false;
+  T.dibujo(FIGURAS[1]);
+  check('se pueden apagar: el trazo sigue, las cotas no',
+    llamadas.length === 1 && (llamadas[0].o.etiquetas || []).length === 0 &&
+    llamadas[0].o.labels.join('') === 'ABCG');
+  T.CAS_F.cotas = true;
+
+  // BUSCAR UNA FIGURA ENTRE 531. Encontrar la T12 a ojo es bajar veinte pantallas.
+  console.log('\n8. El buscador');
+  T.CAS_F.estado = 'todas';
+  T.CAS_F.texto = '104e1';
+  check('busca por código sin importar mayúsculas',
+    T.visibles().map(f => f.codigo).join() === '104E1');
+  T.CAS_F.texto = 'suqh';
+  check('...y también por el CC donde se vio la figura',
+    T.visibles().map(f => f.codigo).join() === '101A');
+  T.CAS_F.texto = 'euro 12mm';
+  check('varias palabras tienen que estar TODAS, para poder afinar escribiendo más',
+    T.visibles().map(f => f.codigo).join() === '203D');
+  T.CAS_F.texto = 'nada de nada';
+  check('lo que no existe no devuelve nada', T.visibles().length === 0);
+  T.CAS_F.texto = '  ';
+  check('...y el buscador vacío no filtra', T.visibles().length === 3);
+  T.CAS_F.texto = '';
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
   process.exit(fallos ? 1 : 0);
