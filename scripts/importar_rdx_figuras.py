@@ -32,6 +32,7 @@ cerradas (estribos) toda punta es final de otro lado, y entonces se parte por el
 """
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -68,12 +69,13 @@ def componentes_de(cuerpo: str):
             "tipo": _txt(sc, "ElementType"),
             "arco": _num(_txt(sc, "DrawingArcAngle")),
             "radio": _num(_txt(sc, "DrawingArcRadius")),
+            "sentido": _txt(sc, "ArcDirection"),
         })
     return salida
 
 
 def coordenadas_de(cuerpo: str):
-    """{lado: {tipo_de_punto: (x, y, z)}}. Interesan `Stt` y `End`."""
+    """{lado: {tipo_de_punto: (x, y, z)}}. Interesan `Stt`, `End` y, en los curvos, `Cen`."""
     salida = {}
     for sc in re.findall(r"<SHAPE_COORDINATE>(.*?)</SHAPE_COORDINATE>", cuerpo, re.S):
         lado = _txt(sc, "LegName")
@@ -86,8 +88,73 @@ def _cerca(a, b) -> bool:
     return abs(a[0] - b[0]) <= MINIMO and abs(a[1] - b[1]) <= MINIMO
 
 
+# Cuánto puede diferir el barrido medido desde el centro del que declara el RDX, en grados.
+TOL_ANGULO = 4.0
+# Más de esto no lo dibuja el motor de una sola vez: el comando A de SVG necesita el
+# `large-arc-flag` y el motor lo deja en 0, así que un arco de 301° saldría como uno de 59.
+# Se parte en dos pedazos iguales, igual que hace figura_asa.py con las barras de aSa.
+ARCO_MAXIMO = 180.0
+
+
+def curvatura(comp, pts):
+    """¿Este lado es un ARCO? Y si lo es, con qué radio y hacia qué lado.
+
+    EL CENTRO MANDA, no el `ArcDirection`. aSa declara el ángulo del arco, su radio y un
+    sentido, y además da el centro (`Cen`). Con el centro, el sentido se MIDE: el barrido
+    antihorario de `Stt` a `End` o es el ángulo declarado, o lo es el horario. Medido sobre
+    los 332 lados curvos del catálogo, eso resuelve 321; el `ArcDirection` solo habría
+    acertado en 112 de 124 de los `RB` (dice 0 para horario y 1 para antihorario, pero se
+    equivoca en 12). Cuando el arco es de 180° justos los dos sentidos calzan y ahí sí
+    desempata el `ArcDirection`.
+
+    Devuelve `None` si el lado es recto, o `{radio, barrido, sweep}` con `sweep` 1 =
+    antihorario con la Y hacia arriba, que es la convención de la geometría (el lienzo usa
+    la contraria y la invierte al dibujar).
+    """
+    if not comp.get("arco") or not comp.get("radio"):
+        return None
+    cen, a, b = pts.get("Cen"), pts.get("Stt"), pts.get("End")
+    if not cen or not a or not b:
+        return None
+    radio = float(comp["radio"])
+    ra = math.hypot(a[0] - cen[0], a[1] - cen[1])
+    rb = math.hypot(b[0] - cen[0], b[1] - cen[1])
+    tol = max(2.0, radio * 0.06)
+    if abs(ra - radio) > tol or abs(rb - radio) > tol:
+        return None          # el `Cen` no es el centro de este arco: se deja recto
+    ang = float(comp["arco"])
+    aa = math.atan2(a[1] - cen[1], a[0] - cen[0])
+    bb = math.atan2(b[1] - cen[1], b[0] - cen[0])
+    ccw = math.degrees((bb - aa) % (2 * math.pi))
+    calza_ccw = abs(ccw - ang) <= TOL_ANGULO
+    calza_cw = abs(360.0 - ccw - ang) <= TOL_ANGULO
+    if calza_ccw and calza_cw:                       # 180° justos: desempata aSa
+        sweep = 1 if str(comp.get("sentido") or "") == "1" else 0
+    elif calza_ccw:
+        sweep = 1
+    elif calza_cw:
+        sweep = 0
+    else:
+        return None          # ni el centro ni el ángulo cuadran: no se inventa una curva
+    return {"radio": radio, "barrido": ang, "sweep": sweep,
+            "centro": (cen[0], cen[1])}
+
+
+def _punto_en_arco(centro, desde, barrido_grados, sweep):
+    """El punto del arco a `barrido_grados` de `desde`, girando hacia donde dice `sweep`."""
+    r = math.hypot(desde[0] - centro[0], desde[1] - centro[1])
+    a0 = math.atan2(desde[1] - centro[1], desde[0] - centro[0])
+    paso = math.radians(barrido_grados) * (1 if sweep else -1)
+    return (centro[0] + r * math.cos(a0 + paso), centro[1] + r * math.sin(a0 + paso), 0.0)
+
+
 def _voltear(t):
-    return dict(t, ini=t["fin"], fin=t["ini"], invertido=True)
+    # EL ARCO TAMBIÉN SE DA VUELTA. Recorrer el mismo arco de B a A en vez de A a B es
+    # girar hacia el otro lado; sin invertir el sweep, el gancho sale curvado al revés.
+    curva = t.get("curva")
+    if curva:
+        curva = dict(curva, sweep=1 - curva["sweep"])
+    return dict(t, ini=t["fin"], fin=t["ini"], curva=curva, invertido=True)
 
 
 def encadenar(tramos):
@@ -190,17 +257,36 @@ def polilinea(comps, coords):
         if abs(ini[2]) > MINIMO or abs(fin[2]) > MINIMO:
             tridimensional = True
         tramos.append({"nombre": c["nombre"], "tipo": c["tipo"],
-                       "arco": c["arco"], "radio": c["radio"], "ini": ini, "fin": fin})
+                       "arco": c["arco"], "radio": c["radio"], "ini": ini, "fin": fin,
+                       "curva": curvatura(c, pts)})
 
     puntos, lados = [], []
     for t in encadenar(tramos):
         if not puntos or not _cerca(t["ini"], puntos[-1]):
             puntos.append([round(t["ini"][0], 1), round(t["ini"][1], 1)])
-        desde = len(puntos) - 1
-        puntos.append([round(t["fin"][0], 1), round(t["fin"][1], 1)])
-        lados.append({"nombre": t["nombre"], "tipo": t["tipo"],
-                      "arco": t["arco"], "radio": t["radio"],
-                      "desde": desde, "hasta": len(puntos) - 1})
+        curva = t.get("curva")
+        # UN ARCO DE MÁS DE MEDIA VUELTA SE PARTE. El motor dibuja cada tramo con un solo
+        # comando A de SVG y el `large-arc-flag` en 0: pedirle un arco de 301° le saldría
+        # uno de 59, o sea la figura al revés. Dos mitades de 150° se dibujan bien.
+        pedazos = 1
+        if curva and curva["barrido"] > ARCO_MAXIMO:
+            pedazos = int(math.ceil(curva["barrido"] / ARCO_MAXIMO))
+        for k in range(pedazos):
+            desde = len(puntos) - 1
+            if k == pedazos - 1:
+                fin = t["fin"]
+            else:
+                fin = _punto_en_arco(curva["centro"], t["ini"],
+                                     curva["barrido"] * (k + 1) / pedazos, curva["sweep"])
+            puntos.append([round(fin[0], 1), round(fin[1], 1)])
+            lados.append({
+                # El lado se rotula UNA sola vez: el segundo pedazo es el mismo lado.
+                "nombre": t["nombre"] if k == 0 else "",
+                "tipo": t["tipo"], "arco": t["arco"], "radio": t["radio"],
+                "curvo": bool(curva),
+                "radio_arco": curva["radio"] if curva else 0,
+                "sweep": curva["sweep"] if curva else None,
+                "desde": desde, "hasta": len(puntos) - 1})
     return puntos, lados, tridimensional
 
 

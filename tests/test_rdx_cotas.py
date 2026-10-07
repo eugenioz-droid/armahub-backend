@@ -31,7 +31,8 @@ def check(nombre, cond):
         fallos += 1
 
 
-from importar_rdx_figuras import cotas_de, componentes_de, coordenadas_de  # noqa: E402
+from importar_rdx_figuras import (cotas_de, componentes_de, coordenadas_de,  # noqa: E402
+                                 curvatura, polilinea)
 
 # LA 104E1 ENTERA, copiada del RDX. Cuatro lados de fierro (A, B, C, G) y tres anotaciones:
 # la altura H y el ancho K —que miden la proyección del lado inclinado B— y el ángulo V en
@@ -147,6 +148,61 @@ NULA = ("<SHAPE_COMPONENTS><SHAPE_COMPONENT><ElementType>WN</ElementType><LegNam
         "<X>233</X><Y>-41</Y><Z>0</Z></SHAPE_COORDINATE></SHAPE_COORDINATES>")
 check("una cota de largo cero no entra",
       cotas_de(componentes_de(NULA), coordenadas_de(NULA)) == [])
+
+# ── Los lados CURVOS ──────────────────────────────────────────────────────────────────
+# Las coordenadas del RDX son sólo las PUNTAS de cada lado. Unirlas con rectas convierte
+# una barra en arco en una barra recta: la 201A, que es un arco de 60°, salía como una
+# línea y el usuario lo cazó mirando el catálogo. Son 300 lados curvos en 189 figuras.
+print("\n7. Un lado curvo se reconoce por su centro, no por su tipo")
+# La 201A entera: un solo lado, `RB`, arco de 60° y radio 240, con el centro ABAJO de la
+# cuerda — así que la barra bombea hacia arriba.
+C201A = {"nombre": "B", "tipo": "RB", "arco": 60.0, "radio": 240.0, "sentido": "0"}
+P201A = {"Stt": (-129.0, 2.0, 0.0), "End": (111.0, 2.0, 0.0), "Cen": (-9.0, -206.0, 0.0)}
+c = curvatura(C201A, P201A)
+check("se reconoce como arco, con su radio", c and c["radio"] == 240.0 and c["barrido"] == 60.0)
+# EL CENTRO MANDA, NO EL ArcDirection. Acá los dos dicen lo mismo, pero medido sobre los
+# 332 lados curvos el centro resuelve 321 y el ArcDirection se equivoca en 12 de 124 RB.
+check("el sentido se MIDE desde el centro: de Stt a End, a 60°, va en horario",
+      c["sweep"] == 0)
+check("...y si el ArcDirection dijera lo contrario, igual manda el centro",
+      curvatura(dict(C201A, sentido="1"), P201A)["sweep"] == 0)
+
+print("\n7b. Lo que no es un arco no se curva")
+check("sin ángulo de arco no hay curva",
+      curvatura(dict(C201A, arco=0.0), P201A) is None)
+check("sin centro tampoco: no se inventa uno",
+      curvatura(C201A, {"Stt": P201A["Stt"], "End": P201A["End"]}) is None)
+# UN `Cen` QUE NO ES EL CENTRO DE ESTE ARCO. Pasa cuando el radio declarado no cuadra con
+# la distancia a las puntas: dibujar esa curva daría una figura distinta de la de aSa.
+check("un centro que no está a un radio de las puntas se descarta",
+      curvatura(dict(C201A, radio=50.0), P201A) is None)
+check("y un ángulo que no cuadra con el barrido medido, tampoco",
+      curvatura(dict(C201A, arco=120.0), P201A) is None)
+
+print("\n7c. Un arco de más de media vuelta se parte en dos")
+# El motor dibuja cada tramo con un solo comando A de SVG y el `large-arc-flag` en 0: un
+# arco de 270° saldría como uno de 90°, o sea la figura al revés.
+VUELTA = ("<SHAPE_COMPONENTS><SHAPE_COMPONENT><ElementType>RB</ElementType><LegName>C</LegName>"
+          "<DrawingArcAngle>270</DrawingArcAngle><DrawingArcRadius>100</DrawingArcRadius>"
+          "<ArcDirection>1</ArcDirection></SHAPE_COMPONENT></SHAPE_COMPONENTS>"
+          "<SHAPE_COORDINATES>"
+          "<SHAPE_COORDINATE><LegName>C</LegName><CoordinateType>Stt</CoordinateType>"
+          "<X>100</X><Y>0</Y><Z>0</Z></SHAPE_COORDINATE>"
+          "<SHAPE_COORDINATE><LegName>C</LegName><CoordinateType>End</CoordinateType>"
+          "<X>0</X><Y>-100</Y><Z>0</Z></SHAPE_COORDINATE>"
+          "<SHAPE_COORDINATE><LegName>C</LegName><CoordinateType>Cen</CoordinateType>"
+          "<X>0</X><Y>0</Y><Z>0</Z></SHAPE_COORDINATE></SHAPE_COORDINATES>")
+pts, lados, _ = polilinea(componentes_de(VUELTA), coordenadas_de(VUELTA))
+check("el arco de 270° entra como DOS tramos, no uno",
+      len(lados) == 2 and len(pts) == 3 and all(l["curvo"] for l in lados))
+check("...los dos del mismo radio y el mismo sentido",
+      lados[0]["radio_arco"] == 100.0 and lados[1]["radio_arco"] == 100.0
+      and lados[0]["sweep"] == lados[1]["sweep"] == 1)
+check("...el lado se rotula UNA vez: el segundo pedazo es el mismo lado",
+      lados[0]["nombre"] == "C" and lados[1]["nombre"] == "")
+# El corte va a 135° de la partida, girando antihorario desde (100, 0): (-70.7, 70.7).
+check("...y el corte cae SOBRE el arco, a mitad de camino",
+      abs(pts[1][0] + 70.7) < 1 and abs(pts[1][1] - 70.7) < 1)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

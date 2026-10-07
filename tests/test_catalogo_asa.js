@@ -46,7 +46,7 @@ sandbox.window = sandbox;
 // nunca se ha usado, y una con el trazo en dos pedazos.
 const FIGURAS = [
   { codigo: '101A', tipo: 'B', generica: true, descripcion: null,
-    puntos: [[-250, 0], [250, 0]], lados: [{ nombre: 'A', tipo: 'B' }],
+    puntos: [[-250, 0], [250, 0]], lados: [{ nombre: 'A', tipo: 'B', curvo: false }],
     tridimensional: false, cadena_rota: false,
     barras: 151, cc: 'SUQH', marca: '10mmA1', obra: 'EURO', diam: 10, en_catalogo: true },
   { codigo: '104E1', tipo: 'B', generica: true, descripcion: null,
@@ -62,6 +62,12 @@ const FIGURAS = [
       { nombre: 'V', tipo: 'AN', centro: [-150, -64], texto: [-146, -52] }],
     tridimensional: false, cadena_rota: false,
     barras: 0, cc: null, marca: null, obra: null, diam: 0, en_catalogo: false },
+  // La 201A: UN SOLO LADO Y ES UN ARCO. El usuario la vio dibujada como una linea recta.
+  { codigo: '201A', tipo: 'R', generica: true, descripcion: null,
+    puntos: [[-129, 2], [111, 2]],
+    lados: [{ nombre: 'B', tipo: 'RB', curvo: true, radio_arco: 240, sweep: 0 }],
+    cotas: [], tridimensional: false, cadena_rota: false,
+    barras: 4, cc: 'SUZZ', marca: '16mmA1', obra: 'EURO', diam: 16, en_catalogo: true },
   { codigo: '203D', tipo: 'B', generica: false, descripcion: null,
     puntos: [[0, 0], [100, 0], [200, 50], [300, 50]],
     lados: [{ nombre: 'A', tipo: 'B' }, { nombre: 'B', tipo: 'B' }],
@@ -79,7 +85,7 @@ console.log('TEST: Catálogo aSa');
   check('expone el loader del sub-tab', typeof sandbox.loadCatalogoAsa === 'function');
   await sandbox.loadCatalogoAsa();
   const T = sandbox.__catalogoAsaTest;
-  check('quedaron las figuras del catálogo', T.CAS.figuras.length === 3 && T.CAS.cargado === true);
+  check('quedaron las figuras del catálogo', T.CAS.figuras.length === 4 && T.CAS.cargado === true);
   check('...y las que se usan pero NO están en el catálogo se guardan aparte',
     T.CAS.fuera.join() === '26,T12');
 
@@ -115,12 +121,12 @@ console.log('TEST: Catálogo aSa');
   console.log('\n5. Los contadores y los filtros');
   const kpis = nodo('casKpis').innerHTML;
   check('cuenta el catálogo entero, las usadas y las que también tenemos',
-    kpis.indexOf('<b>3</b>figuras en aSa') > 0 && kpis.indexOf('<b>2</b>usadas') > 0
-    && kpis.indexOf('<b>1</b>también en el catálogo ArmaHub') > 0);
+    kpis.indexOf('<b>4</b>figuras en aSa') > 0 && kpis.indexOf('<b>3</b>usadas') > 0
+    && kpis.indexOf('<b>2</b>también en el catálogo ArmaHub') > 0);
   check('...y avisa de las usadas que el catálogo no trae', kpis.indexOf('<b>2</b>usadas y NO') > 0);
   T.CAS_F.estado = 'usadas';
   check('«usadas en barras» deja fuera las que nunca se ocuparon',
-    T.visibles().map(f => f.codigo).join() === '101A,203D');
+    T.visibles().map(f => f.codigo).join() === '101A,201A,203D');
   T.CAS_F.estado = 'sin_catalogo';
   check('«no están en ArmaHub» deja las que nos faltan',
     T.visibles().map(f => f.codigo).join() === '104E1,203D');
@@ -129,7 +135,7 @@ console.log('TEST: Catálogo aSa');
   T.CAS_F.estado = 'td';
   check('«en 3D» deja las que salen del plano', T.visibles().map(f => f.codigo).join() === '203D');
   T.CAS_F.estado = 'todas';
-  check('«todas» no esconde nada', T.visibles().length === 3);
+  check('«todas» no esconde nada', T.visibles().length === 4);
 
   console.log('\n6. Sin catálogo cargado se dice cómo se carga');
   const src = fs.readFileSync(RUTA, 'utf8');
@@ -178,8 +184,27 @@ console.log('TEST: Catálogo aSa');
   T.CAS_F.texto = 'nada de nada';
   check('lo que no existe no devuelve nada', T.visibles().length === 0);
   T.CAS_F.texto = '  ';
-  check('...y el buscador vacío no filtra', T.visibles().length === 3);
+  check('...y el buscador vacío no filtra', T.visibles().length === 4);
   T.CAS_F.texto = '';
+
+  // UNA BARRA EN ARCO SE DIBUJA EN ARCO (7-oct). El RDX da solo las puntas de cada lado,
+  // asi que unirlas con rectas convertia la 201A —un arco de 60°— en una linea. El RDX si
+  // dice cuales son curvos, y el importador lo deja resuelto en cada lado.
+  console.log('\n9. Los lados curvos se dibujan curvos');
+  llamadas.length = 0;
+  T.dibujo(FIGURAS.find(f => f.codigo === '201A'));
+  const arco = llamadas[0] && llamadas[0].o;
+  check('el lado curvo llega al motor como ARCO, no como recta',
+    !!arco && arco.tipos_seg && arco.tipos_seg.join() === 'arco' && arco.radios_seg[0] === 240);
+  // EL SENTIDO VA TAL CUAL. El sweep del importador es 1 = antihorario con la Y hacia
+  // arriba; el motor lo entrega directo como sweep-flag de SVG, que usa la Y hacia abajo.
+  // Las dos vueltas se cancelan. Medido sobre 72 arcos: tal cual calza con el centro que
+  // declara aSa en 54, invertido en 6.
+  check('...y el sentido va tal cual, sin invertir', arco.sweeps_seg.join() === '0');
+  llamadas.length = 0;
+  T.dibujo(FIGURAS.find(f => f.codigo === '101A'));
+  check('una figura sin ningun lado curvo no pide arcos',
+    llamadas[0].o.tipos_seg === null && llamadas[0].o.radios_seg === null);
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
   process.exit(fallos ? 1 : 0);

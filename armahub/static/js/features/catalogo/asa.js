@@ -55,11 +55,28 @@
     var pts = f.puntos.map(function (p) { return { x: p[0], y: p[1] }; });
     var lados = f.lados || [];
     var completo = lados.length === pts.length - 1;
+    // LOS LADOS CURVOS SE DIBUJAN CURVOS. Las coordenadas del RDX son sólo las puntas de
+    // cada lado, así que unirlas con rectas convierte una barra en arco en una barra
+    // recta: la 201A, que es un arco de 60°, salía como una línea. El RDX sí dice cuáles
+    // son curvos (`DrawingArcAngle`, `DrawingArcRadius` y el centro `Cen`), y el
+    // importador deja eso resuelto en cada lado. Son 300 lados en 189 figuras.
+    //
+    // EL SENTIDO VA TAL CUAL, y esto está medido, no deducido. El `sweep` del importador
+    // es 1 = antihorario con la Y hacia arriba; el motor lo entrega directo como el
+    // sweep-flag del comando A de SVG, que trabaja con la Y hacia abajo. Las dos vueltas
+    // se cancelan. Comprobado con la 201A, un arco de 60° cuyo centro aSa pone BAJO la
+    // cuerda —así que la barra bombea hacia arriba—: con el sweep tal cual sale arriba,
+    // invertido sale abajo. (En el formulario de auditoría sí se invierte, pero porque
+    // allá el sweep lo arma figura_asa.py con otra convención.)
+    var curvos = completo && lados.some(function (l) { return l.curvo; });
     try {
       return M.svgDesdePuntos(pts, {
         width: CAS_TAM.w, height: CAS_TAM.h, pad: 16,
         labels: completo ? lados.map(function (l) { return l.nombre || ''; }) : [],
         labels_auto: completo, angulos: false, cotas_arco_iso: [],
+        tipos_seg: curvos ? lados.map(function (l) { return l.curvo ? 'arco' : 'recto'; }) : null,
+        radios_seg: curvos ? lados.map(function (l) { return l.radio_arco || 0; }) : null,
+        sweeps_seg: curvos ? lados.map(function (l) { return l.sweep == null ? 1 : l.sweep; }) : null,
         etiquetas: CAS_F.cotas ? etiquetasDe(f) : []
       });
     } catch (e) { return ''; }
