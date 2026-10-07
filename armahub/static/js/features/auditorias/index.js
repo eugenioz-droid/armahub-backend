@@ -176,6 +176,20 @@
   }
 
   var _bound = false;
+  // LA AUDITORÍA DEL ENLACE. El correo trae un botón con `#...&aud=<id>`: se abre ésa y
+  // no la lista, que es lo que uno espera al pulsar «Abrir la auditoría». Se consume una
+  // sola vez —si no, volver a la lista y recargar reabriría siempre la misma— y se saca
+  // del hash para que el F5 siguiente respete dónde quedó el usuario.
+  function auditoriaDelEnlace() {
+    var m = /(?:^|[#&])aud=(\d+)/.exec(global.location ? global.location.hash || '' : '');
+    if (!m) return null;
+    try {
+      var limpio = global.location.hash.replace(/(^|&)aud=\d+/, '').replace(/^#&/, '#');
+      if (global.history && global.history.replaceState) global.history.replaceState(null, '', limpio || '#');
+    } catch (e) {}
+    return Number(m[1]);
+  }
+
   global.loadAuditorias = async function () {
     if (!$('tab-auditorias')) return;
     try {
@@ -187,6 +201,8 @@
       await cargarLista();
       await cargarMisAcciones();
       await cargarIndicadores();
+      var delEnlace = auditoriaDelEnlace();
+      if (delEnlace) await abrir(delEnlace);
     } catch (e) { aviso(e.message); }
   };
 

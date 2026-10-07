@@ -279,7 +279,7 @@ check("...y el tab se esconde para el resto (el backend igual valida)",
 check("al crear se avisa por correo al auditor y al auditado",
       "def _avisar_auditoria_nueva(" in SRC and "Auditoría asignada" in SRC
       and "Se está auditando tu cubicación" in SRC
-      and 'aud["correo"] = _avisar_auditoria_nueva(aud)' in SRC)
+      and 'aud["correo"] = _avisar_auditoria_nueva(aud, request)' in SRC)
 check("...el auditor recibe su plazo y el auditado sabe a quién mandarle los antecedentes",
       "Plazo para cerrarla" in SRC and "hazlos llegar al auditor" in SRC)
 check("...y si el correo falla, la auditoría igual queda creada",
@@ -484,6 +484,28 @@ check("el primero del año es el 001", A._codigo(c) == "A-%d-001" % A._hoy().yea
 check("...y el correlativo se pide para ESTE año", c.params == (A._hoy().year,))
 check("el octavo es el 008", A._codigo(_CurFalso(8)) == "A-%d-008" % A._hoy().year)
 check("...y pasado el 999 no se trunca", A._codigo(_CurFalso(1004)) == "A-%d-1004" % A._hoy().year)
+
+print("\n12. El correo de la auditoría nueva: a quién y con qué enlace")
+# «Quiero que se envíe un correo a los cubicadores cuando se asigne una auditoría. Debe
+# ser a los involucrados. A mí también. Ideal un link para que acceda directo.» (7-oct)
+check("el botón del correo lleva a ESA auditoría, no a la pantalla",
+      'return "%s/#mod=reclamos&tab=auditorias&aud=%s"' in SRC and "def _enlace_auditoria(" in SRC)
+check("...la base sale de APP_URL y, si no está, de la propia petición",
+      'os.getenv("APP_URL", "")' in SRC and "str(request.base_url)" in SRC
+      and "def crear(body: CrearBody, request: Request" in SRC)
+check("...y si no hay ninguna de las dos, el correo va sin botón en vez de con un enlace roto",
+      'return "%s/#mod=reclamos&tab=auditorias&aud=%s" % (base, aud_id) if base else ""' in SRC
+      and 'if enlace else ""' in SRC)
+check("administración va en copia, que es lo que pidió el usuario",
+      "def _correo_administracion()" in SRC and "role = ANY(%s)" in SRC
+      and '"administracion": r3' in SRC)
+check("...sin repetirle el correo a quien ya recibió el suyo",
+      "ya = set([aud[\"auditor\"]] + auditados)" in SRC and "if c not in ya" in SRC)
+check("el correo sigue sin poder tumbar la auditoría", "aud[\"correo\"] = _avisar_auditoria_nueva(aud, request)" in SRC
+      and "except Exception as e:\n        return {\"enviado\": False" in SRC)
+check("el front abre la auditoría del enlace, una sola vez y limpiando el hash",
+      "function auditoriaDelEnlace()" in JS and "aud=(\\d+)" in JS
+      and "if (delEnlace) await abrir(delEnlace);" in JS and "replaceState(null, '', limpio" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

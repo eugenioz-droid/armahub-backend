@@ -32,7 +32,7 @@ import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from psycopg.errors import UniqueViolation
 from pydantic import BaseModel
 
@@ -772,7 +772,7 @@ def _codigo(cur) -> str:
 
 
 @router.post("/auditorias")
-def crear(body: CrearBody, user=Depends(get_current_user)):
+def crear(body: CrearBody, request: Request, user=Depends(get_current_user)):
     """Crea la auditoría y GUARDA la muestra sorteada. A partir de acá la lista de
     elementos no cambia: es contra ésa que se audita."""
     _puede_auditar(user)
@@ -833,7 +833,7 @@ def crear(body: CrearBody, user=Depends(get_current_user)):
                   f"{body.origen} · {obra}: {len(elementos)} de {total}", "auditoria", str(aud_id))
     aud = detalle(aud_id, user)
     # Fuera de la transacción: el correo avisa, no decide. Si falla, la auditoría ya está.
-    aud["correo"] = _avisar_auditoria_nueva(aud)
+    aud["correo"] = _avisar_auditoria_nueva(aud, request)
     return aud
 
 
@@ -1243,20 +1243,29 @@ def ubicar_elemento(auditoria_id: int, elemento_id: int, body: UbicacionBody,
     return detalle(auditoria_id, user)
 
 
-def _html_correo(titulo: str, lineas: list, pie: str = "") -> str:
-    """El correo de una auditoría. Sobrio y corto: lo que hay que hacer y para cuándo."""
+def _html_correo(titulo: str, lineas: list, pie: str = "", enlace: str = "",
+                 texto_enlace: str = "Abrir la auditoría") -> str:
+    """El correo de una auditoría. Sobrio y corto: lo que hay que hacer, para cuándo y un
+    botón que lleva DERECHO a ella (sin el botón, «entra a ArmaHub y búscala» es trabajo
+    que se le pasa al que recibe el correo)."""
     cuerpo = "".join("<p style='margin:0 0 8px'>%s</p>" % x for x in lineas)
+    boton = ("<p style='margin:18px 0 4px'>"
+             "<a href='%s' style=\"display:inline-block;background:#1565C0;color:#fff;"
+             "text-decoration:none;font-weight:700;font-size:14px;padding:10px 20px;"
+             "border-radius:6px\">%s</a></p>"
+             "<p style='margin:0;font-size:11px;color:#90a4ae'>Si el botón no funciona, "
+             "copia esta dirección: %s</p>") % (enlace, texto_enlace, enlace) if enlace else ""
     return (
         "<div style=\"font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;"
         "font-size:14px;color:#263238;max-width:620px\">"
         "<h2 style='color:#1565C0;margin:0 0 4px;font-size:18px'>%s</h2>"
         "<hr style='border:0;border-top:2px solid #1565C0;margin:6px 0 14px'>"
-        "%s"
+        "%s%s"
         "<p style='margin-top:18px;font-size:12px;color:#78909c'>%s</p></div>"
-    ) % (titulo, cuerpo, pie or "ArmaHub · Auditorías de cubicación")
+    ) % (titulo, cuerpo, boton, pie or "ArmaHub · Auditorías de cubicación")
 
 
-def _avisar_correo(destinatarios, asunto: str, titulo: str, lineas: list):
+def _avisar_correo(destinatarios, asunto: str, titulo: str, lineas: list, enlace: str = ""):
     """Manda el correo si Resend está configurado. NUNCA tumba lo que se estaba haciendo:
     una auditoría creada no se deshace porque el correo falle."""
     destinatarios = sorted({d for d in (destinatarios or []) if d and "@" in d})
@@ -1266,30 +1275,73 @@ def _avisar_correo(destinatarios, asunto: str, titulo: str, lineas: list):
         from . import mailer
         if not mailer.is_configured():
             return {"enviado": False, "motivo": "falta RESEND_API_KEY"}
-        mailer.send_email(to=destinatarios, subject=asunto, html=_html_correo(titulo, lineas))
+        mailer.send_email(to=destinatarios, subject=asunto,
+                          html=_html_correo(titulo, lineas, enlace=enlace))
         return {"enviado": True, "a": destinatarios}
     except Exception as e:
         return {"enviado": False, "motivo": str(e)[:120]}
 
 
-def _avisar_auditoria_nueva(aud: dict) -> dict:
-    """Los dos correos que pidió el usuario al lanzar una auditoría:
+# A DÓNDE LLEVA EL BOTÓN DEL CORREO. El front guarda su posición en el hash
+# (#mod=...&tab=...), así que un enlace con ese hash abre la pantalla correcta; `aud` lo
+# lee el tab de Auditorías y abre ESA auditoría. La base sale de APP_URL si está puesta y,
+# si no, de la propia petición: así el enlace sirve igual en Render y en local sin tener
+# que acordarse de configurar nada.
+def _url_app(request=None) -> str:
+    import os
+    base = (os.getenv("APP_URL", "") or "").strip().rstrip("/")
+    if base:
+        return base
+    if request is not None:
+        try:
+            return str(request.base_url).rstrip("/")
+        except Exception:
+            pass
+    return ""
+
+
+def _enlace_auditoria(aud_id, request=None) -> str:
+    base = _url_app(request)
+    return "%s/#mod=reclamos&tab=auditorias&aud=%s" % (base, aud_id) if base else ""
+
+
+def _correo_administracion() -> list:
+    """La copia para administración. El usuario la pidió para sí mismo; se manda a los dos
+    roles que administran calidad para que no dependa de un correo escrito a mano."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT email FROM users
+                        WHERE role = ANY(%s) AND COALESCE(activo, TRUE) AND email IS NOT NULL""",
+                    (list(ROLES_ADMINISTRAN),))
+                return [r[0] for r in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def _avisar_auditoria_nueva(aud: dict, request=None) -> dict:
+    """Los correos al lanzar una auditoría:
 
       · al AUDITOR, con qué le tocó y hasta cuándo;
       · al AUDITADO (quien cubicó los elementos sorteados), para que lo sepa y pueda
         hacerle llegar los antecedentes al auditor. No es un reproche: es que sin los
-        planos y los acuerdos con el cliente, el auditor revisa a ciegas.
+        planos y los acuerdos con el cliente, el auditor revisa a ciegas;
+      · a ADMINISTRACIÓN, en copia, que es lo que pidió el usuario («a mí también»).
+
+    Todos llevan un botón que abre ESA auditoría, no la pantalla de auditorías.
     """
     cuantos = len(aud.get("elementos") or [])
     cab = "%s · %s" % (aud["codigo"], aud["obra"])
+    enlace = _enlace_auditoria(aud["id"], request)
     r1 = _avisar_correo(
         [aud["auditor"]], "Auditoría asignada: %s" % cab,
         "Te asignaron una auditoría de cubicación",
         ["Obra: <b>%s</b>" % aud["obra"],
          "Auditoría <b>%s</b> · %d elemento(s) sorteados de %d del alcance."
          % (aud["codigo"], cuantos, aud.get("total_rango") or 0),
-         "Plazo para cerrarla: <b>%s</b>." % (aud.get("plazo") or "sin plazo"),
-         "Entra a ArmaHub → Calidad → Auditorías para revisarla."])
+         "Plazo para cerrarla: <b>%s</b>." % (aud.get("plazo") or "sin plazo")],
+        enlace=enlace)
     auditados = sorted({(e.get("cubicado_por") or "").strip()
                         for e in (aud.get("elementos") or []) if e.get("cubicado_por")})
     r2 = _avisar_correo(
@@ -1300,8 +1352,23 @@ def _avisar_auditoria_nueva(aud: dict) -> dict:
          "Se revisarán %d elemento(s). Si tienes planos, correos o acuerdos con el cliente "
          "que expliquen cómo se cubicó, hazlos llegar al auditor." % cuantos,
          "Plazo de la auditoría: <b>%s</b>." % (aud.get("plazo") or "sin plazo"),
-         "Si sale alguna no conformidad te va a llegar como acción, y la corriges en tu cubicación."])
-    return {"auditor": r1, "auditados": r2}
+         "Si sale alguna no conformidad te va a llegar como acción, y la corriges en tu cubicación."],
+        enlace=enlace)
+    # La copia NO repite a quien ya recibió el suyo: dos correos del mismo hecho en la
+    # misma bandeja es ruido, y el del auditor dice más.
+    ya = set([aud["auditor"]] + auditados)
+    copia = [c for c in _correo_administracion() if c not in ya]
+    r3 = _avisar_correo(
+        copia, "Auditoría lanzada: %s" % cab,
+        "Se lanzó una auditoría de cubicación",
+        ["Obra: <b>%s</b>" % aud["obra"],
+         "Auditoría <b>%s</b>, a cargo de <b>%s</b>." % (aud["codigo"], aud["auditor"]),
+         "%d elemento(s) sorteados de %d del alcance · %s kg."
+         % (cuantos, aud.get("total_rango") or 0, format(int(aud.get("kg") or 0), ",d").replace(",", ".")),
+         "Auditados: <b>%s</b>." % (", ".join(x.split("@")[0] for x in auditados) or "—"),
+         "Plazo: <b>%s</b>." % (aud.get("plazo") or "sin plazo")],
+        enlace=enlace)
+    return {"auditor": r1, "auditados": r2, "administracion": r3}
 
 
 def _avisar(destinatario: str, mensaje: str):
