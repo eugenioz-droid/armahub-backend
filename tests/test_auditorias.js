@@ -44,10 +44,15 @@ check('el clic simple SUMA: se eligen varios pisos sin Ctrl',
 check('...volver a tocarlo lo quita', JSON.stringify(T.marcar(['P1', 'P2'], 'P1')) === '["P2"]');
 check('...y vacío significa todos', JSON.stringify(T.marcar(['P1'], 'P1')) === '[]');
 
-console.log('\n2. El vocabulario de la pantalla es el de la ISO');
-check('los cuatro niveles del hallazgo, con su nombre en castellano',
+// EL AUDITOR DECLARA UN HECHO, NO UNA NOTA (7-oct). Eran cuatro niveles y dos pedían
+// graduar —«NC menor» y «NC mayor»—: dos auditores gradúan distinto el mismo defecto. La
+// gravedad la calcula el backend con el estado del código (ver gravedad_de).
+console.log('\n2. El vocabulario de la pantalla');
+check('tres niveles, y ninguno le pide graduar al auditor',
+      Object.keys(T.HALLAZGO_TXT).length === 3 &&
       T.HALLAZGO_TXT.conforme === 'Conforme' && T.HALLAZGO_TXT.observacion === 'Observación' &&
-      T.HALLAZGO_TXT.nc_menor === 'NC menor' && T.HALLAZGO_TXT.nc_mayor === 'NC mayor');
+      T.HALLAZGO_TXT.hallazgo === 'Hallazgo' &&
+      T.HALLAZGO_TXT.nc_menor === undefined && T.HALLAZGO_TXT.nc_mayor === undefined);
 check('los tres estados de la acción: corregir es del cubicador, verificar del auditor',
       T.ACCION_TXT.pendiente === 'Pendiente' && T.ACCION_TXT.corregida === 'Corregida' &&
       T.ACCION_TXT.verificada === 'Verificada');

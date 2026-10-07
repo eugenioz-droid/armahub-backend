@@ -323,9 +323,9 @@ if s == 200 and d.get("obras"):
         if rr.status_code == 200:
             check("...y la auditoria pasa a EN CURSO con fecha de inicio",
                   rr.json()["estado"] == "en_curso" and rr.json()["inicio"])
-        rr = hallazgo(e2["id"], {"hallazgo": "nc_mayor", "texto": "   "})
+        rr = hallazgo(e2["id"], {"hallazgo": "hallazgo", "texto": "   "})
         check("una NC sin texto rebota con 400 (no es evidencia)", rr.status_code == 400, rr.text[:160])
-        rr = hallazgo(e2["id"], {"hallazgo": "nc_mayor", "texto": "largo 4.25 debia ser 4.85", "causa": causa})
+        rr = hallazgo(e2["id"], {"hallazgo": "hallazgo", "texto": "largo 4.25 debia ser 4.85", "causa": causa})
         check("una NC con texto -> 200 y abre la accion pendiente", rr.status_code == 200, rr.text[:160])
         if rr.status_code == 200:
             el2 = [x for x in rr.json()["elementos"] if x["id"] == e2["id"]][0]
@@ -352,7 +352,7 @@ if s == 200 and d.get("obras"):
         if rr.status_code == 200:
             res = rr.json()["resultado"]
             check("...y el resultado cuadra con la muestra (1 conforme, 1 observacion, 1 NC mayor)",
-                  res["conforme"] == 1 and res["observacion"] == 1 and res["nc_mayor"] == 1
+                  res["conforme"] == 1 and res["observacion"] == 1 and res["hallazgo"] == 1
                   and sum(res.values()) == 3)
         s9, lst = get("/auditorias", id_proyecto=ob["id_proyecto"])
         check("aparece en la lista de su obra", s9 == 200 and any(x["id"] == aid for x in lst["auditorias"]))
@@ -383,7 +383,7 @@ if s == 200 and d.get("obras"):
         if s9 == 200:
             print("      %d auditorias · %d elementos revisados · conformidad %s%% · %d NC"
                   % (k["auditorias"], k["total"]["revisados"], k["total"]["conformidad"],
-                     k["total"]["nc_menor"] + k["total"]["nc_mayor"]))
+                     k["total"]["hallazgo"] + k["total"]["hallazgo"]))
             check("...la conformidad es conformes sobre REVISADOS",
                   k["total"]["revisados"] > 0 and k["total"]["conformidad"] ==
                   round(k["total"]["conforme"] / k["total"]["revisados"] * 100))
@@ -419,8 +419,12 @@ if s == 200 and d.get("obras"):
             print("      %d codigos elegibles · %d despachados fuera" % (len(u["ccs"]), u["despachados"]))
             check("...el alcance de aSa son los codigos, con su nombre, kilos y quien cubico",
                   len(u["ccs"]) > 0 and all(set(("cc", "descr", "kg", "estado", "persona")) <= set(c) for c in u["ccs"]))
-            check("...y NINGUNO esta despachado (auditarlo llegaria tarde)",
-                  all(c["estado"] != "Shipped" for c in u["ccs"]))
+            # 7-oct: los despachados YA SE OFRECEN, marcados y ordenados por fecha. La
+            # decision de hasta donde revisar es del usuario, no del filtro.
+            check("...vienen ordenados del mas nuevo al mas antiguo, con su fecha y si salio hace rato",
+                  all(set(("fecha_ref", "despachado", "dias", "antiguo")) <= set(c) for c in u["ccs"])
+                  and [c["fecha_ref"] or "" for c in u["ccs"]] == sorted(
+                      [c["fecha_ref"] or "" for c in u["ccs"]], reverse=True))
             # Sin codigos elegidos no hay muestra posible.
             r = cli.post("/api/v1/auditorias", headers=H, json={
                 "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 2, "ccs": []})
@@ -477,14 +481,14 @@ if s == 200 and d.get("obras"):
                     cuerpo = {"items": [{"ref": r, "marca": r, "conforme": (i > 0),
                                          "observacion": "" if i > 0 else "gancho corto, 8 cm en vez de 12"}
                                         for i, r in enumerate(refs[:3])],
-                              "hallazgo": "nc_menor", "causa": causa}
+                              "hallazgo": "hallazgo", "causa": causa}
                     rr = cli.put("/api/v1/auditorias/%d/elementos/%d/revision" % (a["id"], e0["id"]),
                                  headers=H, json=cuerpo)
                     check("se registra la revision barra por barra -> 200", rr.status_code == 200, rr.text[:200])
                     if rr.status_code == 200:
                         ee = [x for x in rr.json()["elementos"] if x["id"] == e0["id"]][0]
                         check("...el elemento queda con la severidad y su accion",
-                              ee["hallazgo"] == "nc_menor" and ee["accion_estado"] == "pendiente")
+                              ee["hallazgo"] == "hallazgo" and ee["accion_estado"] == "pendiente")
                         check("...cuenta cuantas barras se revisaron y cuantas fallaron",
                               ee["items"] == min(3, len(refs)) and ee["items_malos"] == 1)
                         check("...y el texto del elemento se arma solo con lo de las barras",

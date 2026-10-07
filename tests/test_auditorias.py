@@ -85,9 +85,23 @@ check("los pisos y ciclos salen en orden natural (P1, P2, …, P12)",
 
 print("\n4. El vocabulario es el de la ISO 19011 / 9001")
 check("estados: planificada · en curso · cerrada", A.ESTADOS == ("planificada", "en_curso", "cerrada"))
-check("hallazgos: conforme · observación · NC menor · NC mayor",
-      A.HALLAZGOS == ("conforme", "observacion", "nc_menor", "nc_mayor"))
-check("...y la pantalla usa esas palabras", all(w in HTM for w in ("conforme", "observación", "NC menor", "NC mayor", "acción", "verifica")))
+# LA GRAVEDAD NO SE OPINA (7-oct). Eran cuatro niveles y dos pedían GRADUAR: «NC menor»
+# y «NC mayor». Dos auditores gradúan distinto el mismo defecto, así que el indicador
+# quedaba a merced de quién miró. Ahora el auditor declara un hecho y la gravedad la
+# calcula el sistema con el estado del código.
+check("hallazgos: conforme · observación · hallazgo",
+      A.HALLAZGOS == ("conforme", "observacion", "hallazgo"))
+check("...y la pantalla usa esas palabras", all(w in HTM for w in ("conforme", "observación", "hallazgo", "acción", "verifica")))
+check("ya no se le pide graduar al auditor", "NC menor" not in HTM and "nc_mayor" not in JS)
+check("la gravedad se calcula del estado del código, no se pregunta",
+      A.gravedad_de("hallazgo", "Shipped") == "despachado"
+      and A.gravedad_de("hallazgo", "Open") == "antes"
+      and A.gravedad_de("hallazgo", None) == "sin_dato"
+      and A.gravedad_de("conforme", "Shipped") is None
+      and A.gravedad_de("observacion", "Shipped") is None)
+check("...y se dice en palabras", A.GRAVEDAD["despachado"] == "Detectado después del despacho"
+      and A.GRAVEDAD["antes"] == "Detectado antes del despacho")
+check("...y viaja en cada elemento", '"gravedad": gravedad_de(e[10], e[26])' in SRC)
 check("acciones: pendiente · corregida · verificada", A.ACCIONES == ("pendiente", "corregida", "verificada"))
 check("las fechas las pone el SISTEMA: creación hoy, plazo en días hábiles",
       "(automáticas)" in HTM and "DIAS_PLAZO = 10" in SRC and "def _habiles(" in SRC
@@ -114,7 +128,7 @@ check("la causa sale del Ishikawa de Cubicaciones que Calidad ya tiene",
       'AREA_CUBICACIONES = "Cubicaciones"' in SRC and "FROM area_rca_subcausas s" in SRC
       and "BASE.causas" in JS)
 check("el resultado se cuenta en la BASE y el front sólo lo pinta",
-      "COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_mayor')" in SRC
+      "COUNT(e.id) FILTER (WHERE e.hallazgo = 'hallazgo')" in SRC
       and "resultadoDe" not in JS and "var r = a.resultado || {};" in JS)
 
 print("\n5a. El veredicto se registra POR BARRA, no por elemento entero")
@@ -133,11 +147,11 @@ check("una barra no conforme EXIGE decir qué tiene",
 check("la severidad es del ELEMENTO y se deriva de sus barras",
       "def severidad_derivada(" in SRC
       and A.severidad_derivada([{"conforme": True}, {"conforme": True}], None) == "conforme"
-      and A.severidad_derivada([{"conforme": True}, {"conforme": False}], None) == "nc_menor"
-      and A.severidad_derivada([{"conforme": False}], "nc_mayor") == "nc_mayor"
+      and A.severidad_derivada([{"conforme": True}, {"conforme": False}], None) == "hallazgo"
+      and A.severidad_derivada([{"conforme": False}], "observacion") == "observacion"
       and A.severidad_derivada([], "conforme") == "conforme")
-check("...y nunca se suaviza sola a «observación»: por omisión es NC menor",
-      "nunca se suaviza a" in SRC and A.severidad_derivada([{"conforme": False}], None) == "nc_menor")
+check("...y nunca se suaviza sola a «observación»: por omisión es hallazgo",
+      "nunca se suaviza a" in SRC and A.severidad_derivada([{"conforme": False}], None) == "hallazgo")
 check("el texto del elemento se arma de las observaciones de las barras",
       'texto = (body.texto or "").strip() or " · ".join(' in SRC)
 check("el front marca barra por barra y el campo de texto aparece al marcar NC",
@@ -150,8 +164,8 @@ check("al reabrir el elemento vuelve lo ya marcado",
       and "Object.keys(d.revisados || {})" in JS)
 
 print("\n5b. La acción que nace de la no conformidad")
-check("sólo las NC abren acción, y arranca pendiente",
-      'es_nc = body.hallazgo in ("nc_menor", "nc_mayor")' in SRC and 'accion = "pendiente"' in SRC.replace(
+check("sólo el hallazgo abre acción, y arranca pendiente",
+      'es_nc = body.hallazgo in ("hallazgo",)' in SRC and 'accion = "pendiente"' in SRC.replace(
           'accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"',
           'accion = "pendiente"'))
 check("...y lo ya verificado no se pisa al reeditar el hallazgo",
@@ -189,7 +203,7 @@ check("el alcance de aSa son los CÓDIGOS DE CONTROL que se eligen a mano",
       and all(('id="%s"' % x) in HTM for x in ("audCcLista", "audCcBusca", "audCcTodos")))
 check("...y NO se adivinan piso ni ciclo del texto: eso se sacó",
       "def piso_de(" not in SRC and "def ciclo_de(" not in SRC and "universo-asa" not in SRC)
-check("...no entran los códigos ya despachados: auditarlos llega tarde",
+check("los despachados se ofrecen, marcados: la decisión es del usuario",
       "NOT IN (%s, %s)" in SRC and "ESTADO_NUNCA, ESTADO_DESPACHADO" in SRC
       and "No aparecen los despachados" in HTM)
 check("...sin códigos marcados no se puede crear",
@@ -199,8 +213,8 @@ check("una obra necesita varias auditorías: el sorteo NO repite elementos ya au
       and "ya fueron auditados" in SRC and "def _clave_elemento(e)" in SRC)
 check("...y la caja de códigos muestra cuáles ya tienen elementos auditados",
       '"auditados"' in SRC and '"con_auditoria"' in SRC and "auditado(s)" in JS)
-check("la caja de códigos: estado pegado al código y un solo check general",
-      JS.index("'<span class=\"cod\">'") < JS.index("'<span class=\"e\">'") < JS.index("'<span class=\"d\">'")
+check("la caja de códigos: estado y fecha pegados al código, y un solo check general",
+      JS.index("'<span class=\"cod\">'") < JS.index("'<span class=\"f\">'") < JS.index("'<span class=\"d\">'")
       and 'id="audCcTodos"' in HTM and "todos.indeterminate = marcados > 0" in JS)
 check("el alcance elegido se guarda, para poder decir de qué códigos salió la muestra",
       "ADD COLUMN ccs TEXT[]" in open(os.path.join(ROOT, "armahub", "migrations",
@@ -233,8 +247,7 @@ check("hay informe PDF, con el mismo motor que el de reclamos",
 check("...y sigue el orden de la ISO: alcance · resultado · hallazgos · acciones · conclusión",
       all(s in SRC for s in ('"1. Alcance y muestra"', '"2. Resultado"', '"3. Hallazgos"',
                              '"4. Acciones"', '"5. Cobertura de la obra"', '"6. Conclusion"')))
-check("...las no conformidades van primero en el informe",
-      'orden = {"nc_mayor": 0, "nc_menor": 1' in SRC)
+check("...los hallazgos van primero en el informe", 'orden = {"hallazgo": 0' in SRC)
 check("...y se baja con fetch, no con un <a href> (el token va en la cabecera)",
       "'/auditorias/' + AUD.id + '/pdf'" in JS and "URL.createObjectURL(await res.blob())" in JS)
 check("los indicadores se cuentan en la base, sólo sobre lo REVISADO",
@@ -263,7 +276,7 @@ check("la unidad se dice, porque las dos fuentes no se miden igual",
       'unidad = "código de control"' in SRC and 'unidad = "elemento"' in SRC
       and "auditar un elemento no agota el código" in JS)
 check("la pantalla la pinta como grilla, un cuadrito por elemento",
-      'id="audCobertura"' in HTM and ".audgrid span.nc_mayor" in HTM and "function pintarCobertura()" in JS
+      'id="audCobertura"' in HTM and ".audgrid span.hallazgo" in HTM and "function pintarCobertura()" in JS
       and "sin auditar</span>" in JS)
 check("...y entra al informe como su propia sección",
       "def _cobertura(self)" in SRC and '"5. Cobertura de la obra"' in SRC
@@ -428,6 +441,24 @@ check("la descripción del código se guarda en su propia columna",
       "descr_cc" in SRC and "ADD COLUMN descr_cc" in MIG122)
 check("...en foto, porque en aSa la pueden renombrar",
       "puede cambiar, y el informe tiene que seguir diciendo" in SRC)
+print("\n7d1. Elegir el alcance: los despachados también se ofrecen")
+# «Debiéramos considerar también los despachados, pero que el cubicador elija; el sistema
+# debiera ordenar por fechas, del CC más nuevo al más antiguo, así queda a criterio del
+# usuario hasta dónde revisamos» (7-oct).
+check("ya no se esconden los despachados: sólo quedan fuera los anulados",
+      "AND COALESCE(estado,'') <> %s" in SRC and "LOS DESPACHADOS TAMBIÉN SE OFRECEN" in SRC)
+check("la lista va del más nuevo al más antiguo, por la fecha que describe a cada código",
+      "ORDER BY fecha_ref DESC NULLS LAST" in SRC
+      and "CASE WHEN COALESCE(estado,'') = %s THEN proj_ship_date END" in SRC)
+check("...o sea: la de despacho si salió, la del pedido si no", "order_date) AS fecha_ref" in SRC)
+check("cada código dice cuántos días lleva y si salió hace rato",
+      '"dias": dias' in SRC and '"antiguo": bool(despachado and dias is not None' in SRC
+      and "DIAS_DESPACHO_ANTIGUO = 30" in SRC)
+check("...y la pantalla lo pinta, sin prohibirlo", "c.antiguo ? ' viejo' : ''" in JS
+      and ".audcc.viejo{" in HTM and "se pueden elegir igual" in JS)
+check("el total ya cuenta a los despachados, que ahora se pueden elegir",
+      "vivos = (vivos or 0) + (despachados or 0)" in SRC)
+
 print("\n7d2. El estado del código de control, en la muestra")
 # «En el resumen de elementos a auditar sería ideal que aparezca el estado del CC» (7-oct).
 # La muestra se sortea entre los NO despachados, pero el estado cambia después: un código

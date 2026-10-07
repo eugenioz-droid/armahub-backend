@@ -6,7 +6,7 @@
 //      GUARDA: de ahí en adelante se audita contra esa lista, que ya no cambia.
 //   2. REVISAR: la muestra, y al abrir un elemento sus barras enteras. Por elemento, un
 //      hallazgo en los cuatro niveles de la ISO, con qué se encontró y la causa.
-//   3. ACCIONES: cada no conformidad le queda al que cubicó. Él la marca corregida —en
+//   3. ACCIONES: cada hallazgo le queda al que cubicó. Él la marca corregida —en
 //      su cubicación, no acá— y el auditor la verifica.
 //
 // El estado y las fechas NO se eligen: los deriva el backend de los hallazgos. El front
@@ -45,8 +45,10 @@
     return lista;
   }
 
-  var COLOR = { conforme: '#8BC34A', observacion: '#ffb74d', nc_menor: '#ef9a9a', nc_mayor: '#c62828' };
-  var HALLAZGO_TXT = { conforme: 'Conforme', observacion: 'Observación', nc_menor: 'NC menor', nc_mayor: 'NC mayor' };
+  var COLOR = { conforme: '#8BC34A', observacion: '#ffb74d', hallazgo: '#c62828' };
+  // Lo que el auditor declara: un hecho, no una graduación. La gravedad la calcula el
+  // backend mirando si el código ya se había despachado (ver `gravedad_de`).
+  var HALLAZGO_TXT = { conforme: 'Conforme', observacion: 'Observación', hallazgo: 'Hallazgo' };
   var ESTADO_TXT = { planificada: 'Planificada', en_curso: 'En curso', cerrada: 'Cerrada' };
   var ACCION_TXT = { pendiente: 'Pendiente', corregida: 'Corregida', verificada: 'Verificada' };
 
@@ -126,22 +128,31 @@
     $('audCcN').innerHTML = CCS.length
       ? '<b style="color:#1565C0">' + CCS.length + ' elegidos</b> · ' + kg0(kg) + ' kg · ' + vis.length + ' a la vista'
       : vis.length + ' de ' + CC_LISTA.length + ' códigos' +
-        ((UNIV && UNIV.despachados) ? ' · ' + UNIV.despachados + ' despachados no entran' : '') +
+        ((UNIV && UNIV.despachados) ? ' · ' + UNIV.despachados + ' ya despachados (se pueden elegir igual)' : '') +
         ((UNIV && UNIV.con_auditoria) ? ' · ' + UNIV.con_auditoria + ' ya tienen elementos auditados' : '');
     if (!vis.length) {
       $('audCcLista').innerHTML = '<div class="audvacio">' +
         (CC_LISTA.length ? 'Ningún código coincide con la búsqueda.'
-                         : 'Esta obra no tiene códigos sin despachar.') + '</div>';
+                         : 'Esta obra no tiene códigos en el espejo de aSa.') + '</div>';
       return;
     }
     $('audCcLista').innerHTML = vis.map(function (c) {
       var on = CCS.indexOf(c.cc) !== -1;
       // El estado va PEGADO al código: es lo que se mira junto, no al final de la línea.
-      return '<label class="audcc' + (on ? ' on' : '') + '" title="' + esc(c.descr) +
-        (c.auditados ? ' · ' + c.auditados + ' elemento(s) ya auditados' : '') + '">' +
+      // LA FECHA QUE DESCRIBE AL CÓDIGO: la de despacho si ya salió, la del pedido si no.
+      // La lista viene ordenada por ella, del más nuevo al más antiguo, así que bajando se
+      // va hacia atrás en el tiempo y el usuario corta donde quiera. Los despachados hace
+      // más de un mes van pintados: no están prohibidos, pero se ven.
+      var tit = esc(c.descr) +
+        (c.despachado ? ' · despachado hace ' + (c.dias == null ? '?' : c.dias) + ' días'
+                      : ' · pedido' + (c.dias == null ? '' : ' hace ' + c.dias + ' días')) +
+        (c.auditados ? ' · ' + c.auditados + ' elemento(s) ya auditados' : '');
+      return '<label class="audcc' + (on ? ' on' : '') + (c.antiguo ? ' viejo' : '') +
+        '" title="' + tit + '">' +
         '<input type="checkbox" data-cc="' + esc(c.cc) + '"' + (on ? ' checked' : '') + '>' +
         '<span class="cod">' + esc(c.cc) + '</span>' +
-        '<span class="e">' + esc(c.estado) + '</span>' +
+        '<span class="e' + (c.despachado ? ' desp' : '') + '">' + esc(c.estado) + '</span>' +
+        '<span class="f">' + ddmm(c.fecha_ref) + '</span>' +
         '<span class="d">' + esc(c.descr || '(sin nombre)') + '</span>' +
         (c.auditados ? '<span class="ya">' + c.auditados + ' auditado(s)</span>' : '') +
         '<span class="k">' + kg0(c.kg) + ' kg</span>' +
@@ -261,12 +272,12 @@
       var k = await req('GET', '/auditorias/indicadores');
       if (!k || !k.total || !k.total.revisados) { caja.style.display = 'none'; return; }
       caja.style.display = '';
-      var t = k.total, nc = (t.nc_menor || 0) + (t.nc_mayor || 0);
+      var t = k.total, nc = (t.hallazgo || 0);
       $('audKpiN').textContent = '· ' + k.auditorias + ' auditorías · ' + k.cerradas + ' cerradas';
       $('audKpiCajas').innerHTML =
         caj(t.conformidad + '%', 'conformidad sobre ' + t.revisados + ' elementos revisados',
             t.conformidad >= 90 ? 'bien' : (t.conformidad < 70 ? 'mal' : '')) +
-        caj(nc, 'no conformidades (' + (t.nc_mayor || 0) + ' mayores)', nc ? 'mal' : 'bien') +
+        caj(nc, 'hallazgos', nc ? 'mal' : 'bien') +
         caj(t.observacion || 0, 'observaciones') +
         caj(k.acciones.pendiente || 0, 'acciones sin corregir',
             (k.acciones.pendiente || 0) ? 'mal' : 'bien');
@@ -281,7 +292,7 @@
               '<td><div class="audbar"><i style="width:' + (c.n / tope * 100).toFixed(0) +
               '%; background:#ef9a9a"></i></div></td></tr>';
           }).join('') + '</tbody>'
-        : '<tbody><tr><td class="audvacio">Sin no conformidades todavía.</td></tr></tbody>';
+        : '<tbody><tr><td class="audvacio">Sin hallazgos todavía.</td></tr></tbody>';
     } catch (e) { caja.style.display = 'none'; }
   }
 
@@ -418,7 +429,7 @@
             (a.pisos || []).length ? a.pisos.join(', ') : 'todos los pisos',
             (a.ciclos || []).length ? a.ciclos.join(', ') : 'todos los ciclos'].join(' · ');
   }
-  // La barrita del resultado: conforme / observación / NC menor / NC mayor de la muestra.
+  // La barrita del resultado: conforme / observación / hallazgo de la muestra.
   function barraResultado(a) {
     var r = a.resultado || {};
     if (!a.revisados) return '<div class="audres" title="Sin revisar"></div>';
@@ -851,10 +862,10 @@
     // Sin barras malas no hay severidad que elegir: el elemento es conforme y punto.
     $('audRevSev').style.display = c.malas ? 'flex' : 'none';
     if (c.malas) {
-      var sel = (ELEM.hallazgo && ELEM.hallazgo !== 'conforme') ? ELEM.hallazgo : 'nc_menor';
+      var sel = (ELEM.hallazgo && ELEM.hallazgo !== 'conforme') ? ELEM.hallazgo : 'hallazgo';
       var previos = $('audRevChips').querySelector('button.on');
       if (previos) sel = previos.dataset.h;
-      $('audRevChips').innerHTML = ['observacion', 'nc_menor', 'nc_mayor'].map(function (k) {
+      $('audRevChips').innerHTML = ['observacion', 'hallazgo'].map(function (k) {
         return '<button data-h="' + k + '" class="hz ' + k + (sel === k ? ' on' : '') + '">' + HALLAZGO_TXT[k] + '</button>';
       }).join('');
       $('audRevChips').querySelectorAll('button').forEach(function (b) {
@@ -910,7 +921,7 @@
     if (!acc.length) { caja.style.display = 'none'; return; }
     caja.style.display = '';
     caja.innerHTML = '<div class="audh">Acciones <span class="muted">' + acc.length +
-      ' · una por cada no conformidad. La corrección la hace quien cubicó, en su cubicación; el auditor verifica.</span></div>' +
+      ' · una por cada hallazgo. La corrección la hace quien cubicó, en su cubicación; el auditor verifica.</span></div>' +
       '<table class="audt"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th><th>Qué se encontró</th>' +
       '<th>Causa</th><th>Estado</th><th></th></tr></thead><tbody>' +
       acc.map(function (e) {
@@ -971,7 +982,7 @@
       }).join('') + '</div>' +
       '<div class="audleyc">' +
         '<span><i class="g"></i>sin auditar</span><span><i class="a"></i>auditado</span>' +
-        '<span><i class="r"></i>con no conformidad</span><span><i class="f"></i>despachado</span>' +
+        '<span><i class="r"></i>con hallazgo</span><span><i class="f"></i>despachado</span>' +
         (c.origen === 'asa' ? '<span class="muted">· en aSa la unidad es el código: auditar un elemento no agota el código</span>' : '') +
       '</div>';
   }

@@ -5,7 +5,7 @@
      ciclos) y tamaño de la muestra; las fechas las pone el sistema. Al crear, el servidor
      sortea los elementos al azar dentro del alcance y los GUARDA: se audita contra esa
      lista, que ya no cambia. Abajo la lista de auditorías, la muestra de la que esté
-     abierta, el formulario de hallazgo y las acciones que salen de cada no conformidad.
+     abierta, el formulario de hallazgo y las acciones que salen de cada hallazgo.
 
      El estado y las fechas se DERIVAN de los hallazgos (backend): nadie los elige. -->
 <div id="tab-auditorias" class="tab-content">
@@ -13,7 +13,7 @@
 
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
       <h3 style="margin:0; color:#1565C0;">🔎 Auditorías de cubicación</h3>
-      <span class="muted" style="font-size:11px;">Se revisa una muestra al azar de elementos constructivos; cada no conformidad le queda como acción a quien cubicó.</span>
+      <span class="muted" style="font-size:11px;">Se revisa una muestra al azar de elementos constructivos; cada hallazgo le queda como acción a quien cubicó.</span>
     </div>
 
     <!-- DOS VISTAS. Acá se CREA y se elige; para revisar se ENTRA a la auditoría, que
@@ -137,7 +137,7 @@
       <div class="audres2">
         <div><div class="audlbl" style="margin-bottom:4px;">Por cubicador</div>
           <table class="audt" id="audKpiCub"></table></div>
-        <div><div class="audlbl" style="margin-bottom:4px;">Causas de las no conformidades</div>
+        <div><div class="audlbl" style="margin-bottom:4px;">Causas de los hallazgos</div>
           <table class="audt" id="audKpiCausa"></table></div>
       </div>
     </div>
@@ -149,8 +149,7 @@
         <span class="audley">
           <i style="background:#8BC34A"></i>conforme
           <i style="background:#ffb74d"></i>observación
-          <i style="background:#ef9a9a"></i>NC menor
-          <i style="background:#c62828"></i>NC mayor
+          <i style="background:#c62828"></i>hallazgo
         </span>
       </div>
       <div class="audbd" style="max-height:none;"><table class="audt" id="audLista"></table></div>
@@ -176,7 +175,7 @@
       <div class="audbd"><table class="audt" id="audDetElems"></table></div>
 
       <!-- LA REVISIÓN de un elemento: sus barras enteras y el hallazgo. Cuatro niveles
-           (ISO): conforme · observación · no conformidad menor · mayor; qué encontró
+           conforme · observación · hallazgo (la gravedad la calcula el sistema); qué encontró
            (obligatorio si no es conforme) y la causa del Ishikawa de Cubicaciones. -->
       <div id="audRev" class="audrev" style="display:none;">
         <div class="audh"><span id="audRevTitulo"></span>
@@ -200,7 +199,7 @@
       </div>
       </div><!-- fin .audcols -->
 
-      <!-- Las acciones que nacen de cada no conformidad: para quien cubicó. -->
+      <!-- Las acciones que nacen de cada hallazgo: para quien cubicó. -->
       <div id="audAcciones" class="audacc" style="display:none;"></div>
 
       <!-- CUÁNTO DE LA OBRA SE HA MIRADO, contando todas sus auditorías. Responde la
@@ -276,7 +275,7 @@
   .audest.planificada{background:#e3f2fd; color:#1565C0;}
   .audest.en_curso{background:#fff8e1; color:#8d6e00;}
   .audest.cerrada{background:#e8f5e9; color:#2e7d32;}
-  /* Resultado: una barrita conforme / observación / NC menor / NC mayor; vacía si no empezó. */
+  /* Resultado: una barrita conforme / observación / hallazgo; vacía si no empezó. */
   .audres{display:flex; height:10px; width:120px; border-radius:2px; overflow:hidden; background:#eceff1;}
   .audres i{display:block; height:100%;}
   .audley{display:inline-flex; gap:8px; font-weight:400; font-size:10px; color:#546e7a; align-items:center;}
@@ -298,6 +297,12 @@
   .audt td.audderiv{color:#78909c; font-style:italic;}
   /* El estado del código en aSa. Despachado en rojo: es el único que cambia qué hacer. */
   .audt td.audesc{font-size:10px; color:#607d8b;}
+  /* En el selector de códigos: la fecha que describe al código y el aviso de los que
+     salieron hace rato. No se prohíben — se ven. */
+  .audcc span.f{font-size:10px; color:#78909c; font-variant-numeric:tabular-nums; min-width:42px;}
+  .audcc span.e.desp{color:#c62828; font-weight:700;}
+  .audcc.viejo{background:#fff8f6;}
+  .audcc.viejo span.f{color:#c62828; font-weight:700;}
   .audt td.audesc.desp{color:#c62828; font-weight:700;}
   .audub{width:100%; min-width:46px; box-sizing:border-box; font-size:11px; padding:2px 5px;
          border:1px solid #90caf9; border-radius:4px; background:#fff; color:#263238;}
@@ -316,11 +321,10 @@
   .audchips button.hz.on{border-color:transparent; color:#fff;}
   .audchips button.hz.conforme.on{background:#8BC34A;}
   .audchips button.hz.observacion.on{background:#ffb74d;}
-  .audchips button.hz.nc_menor.on{background:#ef9a9a; color:#5d1a1a;}
-  .audchips button.hz.nc_mayor.on{background:#c62828;}
+  .audchips button.hz.hallazgo.on{background:#c62828;}
   .audhz{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap; color:#fff;}
   .audhz.conforme{background:#8BC34A;} .audhz.observacion{background:#ffb74d;}
-  .audhz.nc_menor{background:#ef9a9a; color:#5d1a1a;} .audhz.nc_mayor{background:#c62828;}
+  .audhz.hallazgo{background:#c62828;}
   /* El veredicto de cada barra: dos botones chicos y, si es NC, su campo de texto. */
   .audvb{display:inline-flex; gap:2px;}
   .audvb button{font-size:9.5px; font-weight:700; padding:1px 7px; border:1px solid #dfe5ea;
@@ -346,7 +350,7 @@
   .audgrid{display:flex; flex-wrap:wrap; gap:3px; max-height:26vh; overflow:auto;}
   .audgrid span{width:13px; height:13px; border-radius:2px; background:#e3e8ef; display:block; cursor:default;}
   .audgrid span.conforme{background:#8BC34A;} .audgrid span.observacion{background:#ffb74d;}
-  .audgrid span.nc_menor{background:#ef9a9a;} .audgrid span.nc_mayor{background:#c62828;}
+  .audgrid span.hallazgo{background:#c62828;}
   .audgrid span.pendiente{background:#90caf9;}
   /* Despachado: ya no se puede auditar. Se muestra rayado para que no se confunda con
      «falta por mirar», que es lo único exigible. */

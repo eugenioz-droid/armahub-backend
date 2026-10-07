@@ -61,7 +61,14 @@ ROLES_AUDITAN = ("admin", "admin_calidad", "miembro", "externo")
 # Estados de la auditoría (los usa el front; se congelan acá para que haya UNA lista).
 ESTADOS = ("planificada", "en_curso", "cerrada")
 # Hallazgos posibles sobre un elemento, en el idioma de la ISO.
-HALLAZGOS = ("conforme", "observacion", "nc_menor", "nc_mayor")
+# LO QUE EL AUDITOR DECLARA, y nada más que eso (7-oct). Antes eran cuatro y dos de ellas
+# —«NC menor» y «NC mayor»— le pedían GRADUAR: dos auditores gradúan distinto el mismo
+# defecto y el indicador queda a merced de quién miró. Ahora declara un hecho verificable
+# —está conforme, hay algo que observar, o hay un hallazgo— y LA GRAVEDAD LA CALCULA EL
+# SISTEMA con un dato que ya tiene: si el código alcanzó a despacharse (ver `gravedad_de`).
+HALLAZGOS = ("conforme", "observacion", "hallazgo")
+# El que abre una acción para quien cubicó. Los otros dos no.
+HALLAZGO_ABRE_ACCION = "hallazgo"
 # El área cuyo Ishikawa da las causas de una no conformidad (tabla `areas`).
 AREA_CUBICACIONES = "Cubicaciones"
 # De dónde sale la muestra. 'armahub' = las barras de acá; 'asa' = los ítems de aSa, para
@@ -76,6 +83,10 @@ PATRON_OBRAS_FUERA = r"\m(prueba|no usar)\M"
 # importar ese módulo entero sólo por dos textos.
 ESTADO_NUNCA = "Cancelled"
 ESTADO_DESPACHADO = "Shipped"
+# Desde cuántos días un código despachado se marca como «salió hace rato». No cambia
+# ninguna regla: sólo pinta, para que al elegir el alcance se vea de un vistazo hasta
+# dónde se está yendo hacia atrás.
+DIAS_DESPACHO_ANTIGUO = 30
 # Una auditoría sobre aSa pide los ítems CC a CC (la vista entera se atora), y cada
 # consulta tarda entre 1 y 11 segundos. Con más de esto la creación se haría eterna.
 MUESTRA_MAXIMA_ASA = 20
@@ -569,9 +580,13 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
     _puede_ver(user)
     """LOS CÓDIGOS DE CONTROL de una obra de aSa, para elegir de cuáles sacar la muestra.
 
-    SÓLO LOS NO DESPACHADOS. Un código `Shipped` ya se fabricó y se fue a la obra:
-    auditarlo llega tarde, y lo que vale es revisar antes de que salga. Se informa
-    cuántos quedaron fuera por eso, para que no parezca que falta data.
+    LOS DESPACHADOS TAMBIÉN SE OFRECEN (7-oct). Antes se escondían: auditar algo que ya
+    salió llega tarde, y ése seguía siendo el criterio. Pero esconderlos le quitaba al
+    cubicador una decisión que es suya —a veces hay que revisar lo que ya se fue, porque
+    es justo donde puede haber un error que ya costó plata—. Ahora se ofrecen todos,
+    ordenados DEL MÁS NUEVO AL MÁS ANTIGUO, y cada uno con la fecha que lo describe: la
+    de despacho si salió, la del pedido si todavía no. El que elige hasta dónde revisar
+    es el usuario, no el filtro.
 
     En aSa no hay piso ni ciclo: lo que hay es `Descr`, el nombre que el usuario le
     puso al código —en edificación suele llevar ELEV, FUND, LC o VC, pero no siempre—.
@@ -580,16 +595,35 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT control_code, COALESCE(descr,''), kg, order_date, COALESCE(estado,''),
-                          COALESCE(detail_person,''), sched_estado
+                          COALESCE(detail_person,''), sched_estado, proj_ship_date,
+                          -- LA FECHA QUE DESCRIBE AL CÓDIGO: la de despacho si ya salió,
+                          -- la del pedido si no. Es la que ordena la lista y la que se
+                          -- muestra, porque preguntarse «¿hasta dónde reviso?» es
+                          -- preguntarse por fechas y no por estados.
+                          COALESCE(CASE WHEN COALESCE(estado,'') = %s THEN proj_ship_date END,
+                                   order_date) AS fecha_ref
                      FROM asa_pedidos
                     WHERE asa_job_id = %s
-                      AND COALESCE(estado,'') NOT IN (%s, %s)
+                      AND COALESCE(estado,'') <> %s
                       AND job_name !~* %s
-                    ORDER BY order_date DESC NULLS LAST, control_code""",
-                (job, ESTADO_NUNCA, ESTADO_DESPACHADO, PATRON_OBRAS_FUERA))
-            ccs = [{"cc": r[0], "descr": r[1], "kg": float(r[2] or 0),
-                    "fecha": r[3].isoformat() if r[3] else None, "estado": r[4],
-                    "persona": r[5], "planta": r[6]} for r in cur.fetchall()]
+                    ORDER BY fecha_ref DESC NULLS LAST, control_code""",
+                (ESTADO_DESPACHADO, job, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+            hoy = date.today()
+            ccs = []
+            for r in cur.fetchall():
+                despachado = r[4] == ESTADO_DESPACHADO
+                ref = r[8]
+                # Cuántos días lleva. Con eso el front pinta los que salieron hace rato
+                # sin tener que calcular fechas en el navegador.
+                dias = (hoy - ref).days if ref else None
+                ccs.append({"cc": r[0], "descr": r[1], "kg": float(r[2] or 0),
+                            "fecha": r[3].isoformat() if r[3] else None, "estado": r[4],
+                            "persona": r[5], "planta": r[6],
+                            "despacho": r[7].isoformat() if r[7] else None,
+                            "despachado": despachado,
+                            "fecha_ref": ref.isoformat() if ref else None,
+                            "dias": dias,
+                            "antiguo": bool(despachado and dias is not None and dias > DIAS_DESPACHO_ANTIGUO)})
             cur.execute(
                 """SELECT MAX(job_name),
                           COUNT(*) FILTER (WHERE COALESCE(estado,'') = %s),
@@ -597,6 +631,7 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
                      FROM asa_pedidos WHERE asa_job_id = %s AND job_name !~* %s""",
                 (ESTADO_DESPACHADO, ESTADO_NUNCA, ESTADO_DESPACHADO, job, PATRON_OBRAS_FUERA))
             obra, despachados, vivos = cur.fetchone()
+            vivos = (vivos or 0) + (despachados or 0)   # ahora se ofrecen los dos
             # Cuántos elementos de cada código ya salieron en otra auditoría: así se ve
             # qué códigos conviene elegir y cuáles ya se miraron.
             cur.execute(
@@ -608,6 +643,7 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
         c["auditados"] = ya.get(c["cc"], 0)
     return {"job": job, "obra": obra, "ccs": ccs, "total": vivos or 0,
             "despachados": despachados or 0, "maximo": MUESTRA_MAXIMA_ASA,
+            "dias_antiguo": DIAS_DESPACHO_ANTIGUO,
             "con_auditoria": sum(1 for c in ccs if c["auditados"])}
 
 
@@ -857,8 +893,7 @@ def listar(id_proyecto: str = "", auditor: str = "", estado: str = "", limite: i
                            COUNT(e.id) FILTER (WHERE e.hallazgo IS NOT NULL) AS revisados,
                            COUNT(e.id) FILTER (WHERE e.hallazgo = 'conforme')    AS conforme,
                            COUNT(e.id) FILTER (WHERE e.hallazgo = 'observacion') AS observacion,
-                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_menor')    AS nc_menor,
-                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_mayor')    AS nc_mayor,
+                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'hallazgo')    AS hallazgo,
                            COUNT(e.id) FILTER (WHERE e.accion_estado = 'pendiente') AS acciones_abiertas,
                            COALESCE(SUM(e.kg), 0)
                       FROM auditorias a
@@ -879,8 +914,8 @@ def _fila_lista(r):
             "inicio": r[13].isoformat() if r[13] else None,
             "cierre": r[14].isoformat() if r[14] else None,
             "semilla": r[15], "origen": r[16], "ccs": r[17] or [], "revisados": r[18],
-            "resultado": {"conforme": r[19], "observacion": r[20], "nc_menor": r[21], "nc_mayor": r[22]},
-            "acciones_abiertas": r[23], "kg": float(r[24] or 0)}
+            "resultado": {"conforme": r[19], "observacion": r[20], "hallazgo": r[21]},
+            "acciones_abiertas": r[22], "kg": float(r[23] or 0)}
 
 
 @router.get("/auditorias/indicadores")
@@ -904,8 +939,7 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
     campos = ("COUNT(*) AS revisados,"
               " COUNT(*) FILTER (WHERE e.hallazgo = 'conforme')    AS conforme,"
               " COUNT(*) FILTER (WHERE e.hallazgo = 'observacion') AS observacion,"
-              " COUNT(*) FILTER (WHERE e.hallazgo = 'nc_menor')    AS nc_menor,"
-              " COUNT(*) FILTER (WHERE e.hallazgo = 'nc_mayor')    AS nc_mayor,"
+              " COUNT(*) FILTER (WHERE e.hallazgo = 'hallazgo')    AS hallazgo,"
               " COALESCE(SUM(e.kg), 0) AS kg")
 
     def arma(filas, clave):
@@ -913,8 +947,10 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
         for r in filas:
             rev = r[1] or 0
             salida.append({clave: r[0], "revisados": rev, "conforme": r[2], "observacion": r[3],
-                           "nc_menor": r[4], "nc_mayor": r[5], "kg": float(r[6] or 0),
-                           "nc": (r[4] or 0) + (r[5] or 0),
+                           "hallazgo": r[4], "kg": float(r[5] or 0),
+                           # `nc` se mantiene con ese nombre: lo lee el front y lo que
+                           # cuenta es lo mismo de siempre, lo que abre una acción.
+                           "nc": r[4] or 0,
                            "conformidad": round((r[2] or 0) / rev * 100) if rev else None})
         return salida
 
@@ -931,7 +967,7 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
             # El Pareto de causas: sólo las no conformidades, que son las que piden acción.
             cur.execute(
                 f"""SELECT COALESCE(e.causa,'(sin causa)'), COUNT(*), COALESCE(SUM(e.kg),0)
-                      {base} AND e.hallazgo IN ('nc_menor','nc_mayor')
+                      {base} AND e.hallazgo IN ('hallazgo','hallazgo')
                      GROUP BY 1 ORDER BY 2 DESC""", params)
             causas = [{"causa": r[0], "n": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
             cur.execute(f"SELECT 'total', {campos} {base}", params)
@@ -1049,8 +1085,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           COUNT(e.id) FILTER (WHERE e.hallazgo IS NOT NULL),
                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'conforme'),
                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'observacion'),
-                          COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_menor'),
-                          COUNT(e.id) FILTER (WHERE e.hallazgo = 'nc_mayor'),
+                          COUNT(e.id) FILTER (WHERE e.hallazgo = 'hallazgo'),
                           COUNT(e.id) FILTER (WHERE e.accion_estado = 'pendiente'),
                           COALESCE(SUM(e.kg), 0), a.notas, a.creada_por
                      FROM auditorias a
@@ -1060,8 +1095,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             if not r:
                 raise HTTPException(status_code=404, detail="Auditoría no encontrada.")
             aud = _fila_lista(r)
-            aud["notas"] = r[25]
-            aud["creada_por"] = r[26]
+            aud["notas"] = r[24]
+            aud["creada_por"] = r[25]
             cur.execute(
                 """SELECT e.id, e.sector, e.piso, e.ciclo, e.eje, e.nombre, e.estructura, e.barras,
                           e.kg, e.cubicado_por, e.hallazgo, e.texto, e.causa, e.revisado_por,
@@ -1098,6 +1133,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "estado_cc": e[26],
                  "despacho_cc": e[27].isoformat() if e[27] else None,
                  "despachado": (e[26] or "") == ESTADO_DESPACHADO,
+                 # La gravedad del hallazgo, calculada: no se le pregunta a nadie.
+                 "gravedad": gravedad_de(e[10], e[26]),
+                 "gravedad_txt": GRAVEDAD.get(gravedad_de(e[10], e[26]) or "", ""),
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
@@ -1130,7 +1168,7 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
     texto = (body.texto or "").strip()
     if body.hallazgo != "conforme" and not texto:
         raise HTTPException(status_code=400, detail="Di qué encontraste: un hallazgo sin texto no es evidencia.")
-    es_nc = body.hallazgo in ("nc_menor", "nc_mayor")
+    es_nc = body.hallazgo in ("hallazgo",)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1167,8 +1205,27 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
     return aud
 
 
-_NOMBRE = {"conforme": "Conforme", "observacion": "Observación",
-           "nc_menor": "No conformidad menor", "nc_mayor": "No conformidad mayor"}
+_NOMBRE = {"conforme": "Conforme", "observacion": "Observación", "hallazgo": "Hallazgo"}
+
+# LA GRAVEDAD NO SE OPINA, SE MIRA. Un hallazgo atajado antes de que el código saliera no
+# es lo mismo que uno que llegó a la obra: el primero se corrige y no le cuesta nada a
+# nadie; el segundo obliga a refabricar y ÉSE es el que después pesa en los indicadores.
+# El dato que lo decide —el estado del código en aSa— ya está en el espejo.
+GRAVEDAD = {
+    "antes": "Detectado antes del despacho",
+    "despachado": "Detectado después del despacho",
+    "sin_dato": "Sin estado del código",
+}
+
+
+def gravedad_de(hallazgo: Optional[str], estado_cc: Optional[str]) -> Optional[str]:
+    """La gravedad de un hallazgo, calculada. None cuando no hay hallazgo que graduar.
+    Función pura, para poder probarla."""
+    if hallazgo != HALLAZGO_ABRE_ACCION:
+        return None
+    if not estado_cc:
+        return "sin_dato"
+    return "despachado" if estado_cc == ESTADO_DESPACHADO else "antes"
 
 # Cuánto se acepta escribir en cada campo de ubicación. Son etiquetas de plano («P3»,
 # «Ciclo 2», «Eje K2»), no descripciones.
@@ -1512,7 +1569,7 @@ def _avisar_auditoria_cerrada(aud: dict, request=None) -> dict:
         "Resultado: <b>%d</b> elemento(s) revisados · <b>%d%%</b> de conformidad." % (len(revisados), pct),
         "Conformes: <b>%d</b> · Observaciones: <b>%d</b> · No conformidades menores: <b>%d</b> · "
         "mayores: <b>%d</b>." % (conformes, int(res.get("observacion") or 0),
-                                 int(res.get("nc_menor") or 0), int(res.get("nc_mayor") or 0)),
+                                 int(res.get("hallazgo") or 0), int(res.get("hallazgo") or 0)),
     ]
     if no_conformes:
         lineas.append("Elementos con hallazgo:%s" % detalle_nc)
@@ -1588,16 +1645,16 @@ class RevisionBody(BaseModel):
 
 def severidad_derivada(items, severidad: Optional[str]) -> str:
     """El hallazgo DEL ELEMENTO a partir de sus barras. Si todas están conformes es
-    conforme y no hay severidad que elegir; si alguna no lo está, manda lo que dijo el
-    auditor y, si no dijo nada, se asume la no conformidad menor —nunca se suaviza a
-    «observación» por omisión, porque eso borraría la acción—. Función pura."""
+    conforme y no hay nada que elegir; si alguna no lo está, manda lo que dijo el auditor
+    y, si no dijo nada, se asume HALLAZGO —nunca se suaviza a «observación» por omisión,
+    porque eso borraría la acción—. Función pura."""
     if not items:
         return severidad or "conforme"
     if all(getattr(i, "conforme", None) if not isinstance(i, dict) else i.get("conforme") for i in items):
         return "conforme"
-    if severidad in ("observacion", "nc_menor", "nc_mayor"):
+    if severidad in ("observacion", "hallazgo", "hallazgo"):
         return severidad
-    return "nc_menor"
+    return "hallazgo"
 
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")
@@ -1624,7 +1681,7 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
         "%s: %s" % (it.ref, (it.observacion or "").strip()) for it in malas)[:1000]
     if hallazgo != "conforme" and not texto:
         raise HTTPException(status_code=400, detail="Di qué encontraste: un hallazgo sin texto no es evidencia.")
-    es_nc = hallazgo in ("nc_menor", "nc_mayor")
+    es_nc = hallazgo in ("hallazgo",)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -1747,9 +1804,9 @@ class _InformePDF:
     Mismo motor que el informe de reclamos (fpdf2, fuentes integradas)."""
 
     COLOR = {"conforme": (139, 195, 74), "observacion": (255, 183, 77),
-             "nc_menor": (239, 154, 154), "nc_mayor": (198, 40, 40)}
+             "hallazgo": (239, 154, 154), "hallazgo": (198, 40, 40)}
     NOMBRE = {"conforme": "Conforme", "observacion": "Observacion",
-              "nc_menor": "No conformidad menor", "nc_mayor": "No conformidad mayor"}
+              "hallazgo": "No conformidad menor", "hallazgo": "No conformidad mayor"}
 
     def __init__(self, aud):
         from fpdf import FPDF
@@ -1848,7 +1905,7 @@ class _InformePDF:
         if not rev:
             p.cell(0, 5, self._s("Sin elementos revisados todavia."), new_x="LMARGIN", new_y="NEXT")
             return
-        for k in ("conforme", "observacion", "nc_menor", "nc_mayor"):
+        for k in ("conforme", "observacion", "hallazgo", "hallazgo"):
             n = r.get(k) or 0
             p.set_fill_color(*self.COLOR[k])
             p.cell(4, 5, "", fill=True, border=0)
@@ -1872,7 +1929,7 @@ class _InformePDF:
     def _hallazgos(self):
         p, a = self.pdf, self.a
         # Primero lo que importa: las no conformidades, después las observaciones.
-        orden = {"nc_mayor": 0, "nc_menor": 1, "observacion": 2, "conforme": 3, None: 4}
+        orden = {"hallazgo": 0, "observacion": 1, "conforme": 2, None: 3}
         els = sorted(a.get("elementos") or [], key=lambda e: (orden.get(e.get("hallazgo"), 4), e["nombre"]))
         con = [e for e in els if e.get("hallazgo") and e["hallazgo"] != "conforme"]
         self._titulo("3. Hallazgos")
@@ -1967,7 +2024,7 @@ class _InformePDF:
         if not rev:
             texto = "La auditoria esta planificada y todavia no se revisa ningun elemento."
         else:
-            nc = (r.get("nc_menor") or 0) + (r.get("nc_mayor") or 0)
+            nc = (r.get("hallazgo") or 0) + (r.get("hallazgo") or 0)
             conf = round((r.get("conforme") or 0) / rev * 100)
             texto = ("Se revisaron %d elementos de la muestra. Conformidad %d%%. "
                      "%s" % (rev, conf,
