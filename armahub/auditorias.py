@@ -718,7 +718,29 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
                   or (it.get("ElementID") or "").strip() == ("" if element == SIN_ELEMENTO else element))]
     if not items:
         raise HTTPException(status_code=404, detail="Ese elemento no tiene ítems en aSa.")
-    from .figura_asa import figura_de
+    from .figura_asa import figura_de, trazo_de_catalogo
+    # EL TRAZO QUE EXPORTÓ aSa, para las figuras que estén en su catálogo (el RDX). Se usa de
+    # RESPALDO cuando nuestra reconstrucción no cuadra con la envolvente que aSa declara: ahí
+    # la topología que trae el trazo —declarada por aSa, no deducida por nosotros— es la
+    # mejor fuente que queda. El porqué de no usarlo siempre, con los números medidos, está
+    # en trazo_de_catalogo().
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT codigo, puntos, lados FROM asa_figuras_catalogo WHERE codigo = ANY(%s)",
+                        ([(it.get("ShpNameID") or "").strip() for it in items],))
+            trazos = {r[0]: {"puntos": r[1] or [], "lados": r[2] or []} for r in cur.fetchall()}
+
+    def mejor_eje(it, dims):
+        """La figura que se dibuja: la reconstrucción si cuadra, y si no el trazo de aSa.
+        Una figura TRIDIMENSIONAL se deja como está aunque no cuadre: el trazo del RDX es
+        plano y taparía justamente el aviso de que la barra se dobla en dos planos."""
+        eje = figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam"),
+                        _mm(it.get("BarSizeDescr")))
+        if eje.get("ok") or eje.get("tridimensional"):
+            return eje
+        alterna = trazo_de_catalogo(trazos.get((it.get("ShpNameID") or "").strip()), dims,
+                                    it.get("LegAngle"), it.get("PinDiam") or 0)
+        return alterna if (alterna and alterna.get("ok")) else eje
     barras = []
     for it in items:
         lados = _lados(it.get("LegAngle"))
@@ -733,10 +755,10 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
             "largo": it.get("LengthTheor"), "largo_corte": it.get("LengthCut"),
             # EL DIBUJO. La figura se construye con lo que manda aSa (lados, ángulos,
             # mandril, φ) como una policurva —ver figura_asa.py— y se comprueba contra la
-            # envolvente que ella misma declara: si no cuadra viaja `ok: false` y la
-            # pantalla dibuja igual, con el aviso y el porqué al lado.
-            "eje": figura_de(it.get("ShapeDims"), it.get("LegAngle"), it.get("PinDiam"),
-                             _mm(it.get("BarSizeDescr"))),
+            # envolvente que ella misma declara: si no cuadra se intenta con el trazo que
+            # exportó aSa, y si tampoco, se dibuja igual con el aviso y el porqué al lado.
+            # `eje.fuente` dice de dónde salió, porque el auditor merece saberlo.
+            "eje": mejor_eje(it, lados["dims"]),
             "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
             "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
             "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),

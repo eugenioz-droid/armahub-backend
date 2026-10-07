@@ -441,6 +441,27 @@ check("la descripción del código se guarda en su propia columna",
       "descr_cc" in SRC and "ADD COLUMN descr_cc" in MIG122)
 check("...en foto, porque en aSa la pueden renombrar",
       "puede cambiar, y el informe tiene que seguir diciendo" in SRC)
+print("\n7c1. Cuando la reconstrucción no cuadra, se usa EL TRAZO QUE EXPORTÓ aSa")
+# El export RDX del catálogo de aSa trae la polilínea de cada figura con sus lados
+# nombrados; las medidas de la barra llegan con las mismas letras, así que el trazo se
+# estira a la medida real. La topología la declara aSa, que es la parte que la
+# reconstrucción tiene que deducir de los vectores. De respaldo y no al revés porque,
+# medido sobre las 83 figuras del muestreo que están en el RDX, la reconstrucción cuadra en
+# 58 y el trazo en 36: el trazo endereza los lados curvos y no trae los arcos del gancho.
+check("el elemento pide a la base el trazo de las figuras que trae, no el catálogo entero",
+      "SELECT codigo, puntos, lados FROM asa_figuras_catalogo WHERE codigo = ANY(%s)" in SRC)
+check("...y la elección la hace el backend, en un solo lugar",
+      "def mejor_eje(" in SRC and '"eje": mejor_eje(it, lados["dims"])' in SRC
+      and "from .figura_asa import figura_de, trazo_de_catalogo" in SRC)
+check("...primero la reconstrucción; el trazo sólo si aquélla no cuadra",
+      'if eje.get("ok") or eje.get("tridimensional"):' in SRC
+      and 'return alterna if (alterna and alterna.get("ok")) else eje' in SRC)
+check("una figura TRIDIMENSIONAL se deja como está: el trazo plano taparía ese aviso",
+      "taparía justamente el aviso" in SRC)
+check("la pantalla dice de dónde salió el dibujo, sin repetir la decisión",
+      "f.eje.fuente === 'catalogo_asa'" in JS and "audfigfte" in JS and "audfigfte" in HTM
+      and "svgTrazoAsa" not in JS)
+
 print("\n7c2. El largo que se audita es la SUMA DE LOS PARCIALES")
 # Lo cazó el cubicador que hizo la primera auditoría: el formulario mostraba 2.576 donde su
 # cubicación dice 2.640. aSa manda dos largos y no son lo mismo — el teórico es la suma de

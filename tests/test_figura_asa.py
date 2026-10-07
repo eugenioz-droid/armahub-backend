@@ -24,7 +24,8 @@ def check(nombre, cond):
         fallos += 1
 
 
-from armahub.figura_asa import figura_de, envolvente_declarada, TOLERANCIA  # noqa: E402
+from armahub.figura_asa import (figura_de, envolvente_declarada, trazo_de_catalogo,  # noqa: E402
+                                TOLERANCIA)
 
 
 def tipos(r):
@@ -205,6 +206,63 @@ check("dos tramos en arco del mismo radio, cada uno de a lo más 180°",
 check("...el lado se rotula una sola vez", [t["lado"] for t in r["tramos"]] == ["A", ""])
 check("...y la figura mide lo que un arco de 300° de radio 500 mide: 1.000 de ancho",
       abs(r["ancho"] - 1000) < 2)
+
+# ── Caso 12: el trazo que exportó aSa, estirado a las medidas de la barra ──
+# 104X ES REAL y es de las que la reconstrucción NO resuelve: cuatro lados rectos con un
+# tramo inclinado (SB) de 35°, y lo construido no cuadra con la envolvente que aSa declara
+# (783 × 348). El catálogo RDX sí trae su trazo, con los lados B·C·D·E — las mismas letras
+# con que la barra manda sus medidas— así que estirarlo da la figura de aSa a esta medida.
+print("\n12. El trazo del catálogo de aSa: 104X, que la reconstrucción no resuelve")
+X104 = ("<la><st>B</st><bc>3</bc><mbr><X>783</X><Y>348</Y><Z>0</Z></mbr><lt>1220</lt><v>4.0</v>"
+        "<cp><t>STD</t><l>370</l><n>1</n><ln>B</ln></cp>"
+        "<cp><t>STD</t><a>90</a><l>270</l><n>2</n><ln>C</ln></cp>"
+        "<cp><t>STD</t><a>35</a><l>380</l><n>3</n><ln>D</ln></cp>"
+        "<cp><t>STD</t><a>-35</a><l>200</l><n>4</n><ln>E</ln></cp></la>")
+TRAZO_X104 = {
+    "puntos": [[-223.0, 76.0], [-223.0, -46.0], [-56.0, -46.0], [71.0, 75.0], [223.0, 75.0]],
+    "lados": [{"nombre": "B", "tipo": "B"}, {"nombre": "C", "tipo": "B"},
+              {"nombre": "D", "tipo": "SB"}, {"nombre": "E", "tipo": "B"}],
+}
+DIMS_X104 = {"B": 370.0, "C": 270.0, "D": 380.0, "E": 200.0}
+r = trazo_de_catalogo(TRAZO_X104, DIMS_X104, X104, pin_diam=72.0)
+check("un tramo por lado nombrado, cada uno a SU medida real",
+      [t["lado"] for t in r["tramos"]] == ["B", "C", "D", "E"]
+      and [t["largo"] for t in r["tramos"]] == [370, 270, 380, 200])
+check("...y la envolvente cuadra con la que declara aSa (783 × 348), que es la prueba",
+      r["ok"] and r["ancho"] == 745 and r["alto"] == 370)
+# LA ENVOLVENTE SE MIDE SIN GIRAR LA FIGURA. aSa declara su caja en la orientación en que
+# ella la tiene; el giro de `_orientar` es para que se vea derecha en la pantalla, y acá el
+# lado más largo es el inclinado de 35°, así que girarlo movía la caja a 695 × 592 y la
+# comprobación reprobaba una figura buena. Lo que admite los 38 mm de diferencia que quedan
+# es el mandril: con pin 72 la tolerancia son 144 mm, no el 3%.
+check("...y se mide sin girarla: girada daba 695 × 592 y reprobaba sola",
+      r["ancho"] != 695 and r["alto"] != 592)
+check("...dice de dónde salió, para que la pantalla lo pueda mostrar",
+      r["fuente"] == "catalogo_asa")
+check("mientras la reconstrucción de la MISMA barra no cuadra: por eso existe el respaldo",
+      not figura_de(None, X104, 72.0, 12.0)["ok"])
+
+# SIN LA MEDIDA DE UN LADO NO SE DIBUJA NADA. Media figura a escala y media en proporción
+# de esquema no es ninguna de las dos, y el que la mira no tendría cómo notarlo.
+check("si falta la medida de un lado se devuelve nada, no media figura",
+      trazo_de_catalogo(TRAZO_X104, {"B": 370.0, "C": 270.0, "D": 380.0}, X104, 72.0) is None)
+check("...y un trazo con más tramos que lados nombrados tampoco se usa",
+      trazo_de_catalogo({"puntos": TRAZO_X104["puntos"], "lados": TRAZO_X104["lados"][:2]},
+                        DIMS_X104, X104, 72.0) is None)
+check("sin trazo no hay nada que estirar", trazo_de_catalogo(None, DIMS_X104, X104, 72.0) is None)
+
+# POR QUÉ ES RESPALDO Y NO LO PRIMERO. `ARC` es un caso real con un lado curvo: el RDX
+# guarda el arco como su cuerda, y estirar la cuerda al largo del arco endereza la curva.
+# El trazo da 7.450 × 30 donde aSa declara 4.743 × 2.362, así que se marca `ok: False` y el
+# llamador se queda con la reconstrucción. Que esta prueba falle significa que el trazo
+# empezó a pasar por bueno algo que no lo es.
+print("\n12b. El trazo que endereza un lado curvo se reprueba solo")
+ARC = ("<la><st>R</st><bc>2</bc><mbr><X>4743</X><Y>2362</Y><Z>0</Z></mbr><lt>7450</lt>"
+       "<cp><t>RB</t><l>7450</l><n>1</n><s>180</s><r>2371</r><ln>A</ln></cp></la>")
+r = trazo_de_catalogo({"puntos": [[-250.0, 0.0], [250.0, 0.0]], "lados": [{"nombre": "A"}]},
+                      {"A": 7450.0}, ARC, pin_diam=0.0)
+check("estirar la cuerda de un arco da una recta, y la envolvente lo delata",
+      r is not None and not r["ok"] and "no cuadra" in r["motivo"])
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

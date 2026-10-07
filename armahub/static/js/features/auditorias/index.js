@@ -755,6 +755,16 @@
     if (svg) return svg;
     svg = svgEje(f);
     if (!svg) return '<span class="muted">—</span>';
+    // DE DÓNDE SALIÓ EL DIBUJO, cuando no salió de donde sale siempre. El backend intenta
+    // primero su reconstrucción y, si no cuadra con la envolvente que aSa declara, usa el
+    // trazo que aSa misma exportó en su catálogo (ver trazo_de_catalogo). Que una figura se
+    // esté dibujando por la segunda vía no es un problema —al contrario, es la topología de
+    // aSa— pero el auditor tiene derecho a saber qué está mirando.
+    if (f.eje.fuente === 'catalogo_asa') {
+      return svg + '<span class="audfigfte" title="Esta figura se dibuja con el trazo que ' +
+        'exportó aSa en su catálogo, a las medidas de esta barra. La reconstrucción desde ' +
+        'los vectores no cuadraba con la envolvente que aSa declara.">aSa</span>';
+    }
     return svg + (f.eje.ok ? '' :
       '<span class="audfigav" title="' + esc(f.eje.motivo || 'La envolvente no cuadra con la que declara aSa') + '">⚠</span>');
   }

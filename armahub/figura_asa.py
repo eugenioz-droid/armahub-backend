@@ -403,7 +403,86 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
         # es lo que se ve, y el auditor tiene que saberlo.
         ok, motivo = False, "figura tridimensional (aSa la dobla en dos planos): se muestra su proyección en planta"
 
-    return {"ok": ok, "motivo": motivo, "tridimensional": tridimensional,
+    return {"ok": ok, "motivo": motivo, "tridimensional": tridimensional, "fuente": "reconstruida",
             "puntos": [[round(p[0], 1), round(p[1], 1)] for p in puntos],
             "tramos": tramos, "ancho": round(ancho), "alto": round(alto), "mbr": mbr,
             "radio": round(radio_curvo) if radio_curvo else None}
+
+
+def trazo_de_catalogo(trazo, dims, legangle: Optional[str] = None,
+                      pin_diam: float = 0.0) -> Optional[dict]:
+    """EL TRAZO QUE EXPORTÓ aSa, estirado a las medidas de ESTA barra (7-oct).
+
+    El export RDX del catálogo de aSa trae, por figura, la polilínea con que ella la dibuja
+    y la letra de cada lado. Eso es un ESQUEMA: las proporciones son de dibujo, no las
+    medidas de ninguna barra. Pero la topología —qué lado va dónde, en qué orden y con qué
+    ángulo— la declara aSa, y ésa es justamente la parte que `figura_de` tiene que deducir
+    de los vectores. Así que donde la reconstrucción no cuadra, el trazo es la mejor fuente
+    que queda: se le ponen las medidas de la barra (los lados se llaman igual) y listo.
+
+    POR QUÉ NO SE USA SIEMPRE. Medido sobre las 83 figuras del muestreo que están en el
+    RDX: el trazo cuadra con la envolvente en 36 y la reconstrucción en 58. El trazo pierde
+    en las figuras con lados curvos, porque la polilínea del RDX guarda el arco como una
+    cuerda y estirarla a su largo de arco endereza la curva —`ARC` daba 7.450 × 30 donde
+    aSa declara 4.743 × 2.362—; y además no trae los arcos de los ganchos, que la
+    reconstrucción sí emite con su radio. Por eso el llamador lo usa de RESPALDO.
+
+    Devuelve `None` si no se puede estirar (falta la medida de algún lado, o el trazo tiene
+    más tramos que lados nombrados), y si no, lo mismo que `figura_de` — incluido `ok`
+    contra la envolvente declarada, con la misma vara.
+    """
+    puntos_esquema = (trazo or {}).get("puntos") or []
+    lados = (trazo or {}).get("lados") or []
+    if len(puntos_esquema) < 2 or len(lados) != len(puntos_esquema) - 1:
+        return None
+    reales = []
+    for lado in lados:
+        nombre = str((lado or {}).get("nombre") or "").upper()
+        medida = _num((dims or {}).get(nombre))
+        # MEDIA FIGURA A ESCALA Y MEDIA EN PROPORCIÓN DE ESQUEMA NO ES NINGUNA DE LAS DOS.
+        if medida <= 0:
+            return None
+        reales.append((nombre, medida, str((lado or {}).get("tipo") or "")))
+    puntos = [(0.0, 0.0)]
+    tramos = []
+    for i, (nombre, medida, _tipo) in enumerate(reales):
+        dx = _num(puntos_esquema[i + 1][0]) - _num(puntos_esquema[i][0])
+        dy = _num(puntos_esquema[i + 1][1]) - _num(puntos_esquema[i][1])
+        d = math.hypot(dx, dy)
+        if d <= 0:
+            return None
+        x, y = puntos[i]
+        puntos.append((x + dx / d * medida, y + dy / d * medida))
+        tramos.append({"tipo": "recto", "radio": 0, "sweep": None, "lado": nombre,
+                       "largo": round(medida), "gancho": False,
+                       "desde": i, "hasta": i + 1})
+
+    # LA ENVOLVENTE SE MIDE ANTES DE GIRAR. aSa declara su `mbr` en la orientación en que
+    # ella tiene la figura; `_orientar` la gira para que se vea derecha en la pantalla, y si
+    # el lado más largo es uno inclinado ese giro es de un ángulo cualquiera, que cambia la
+    # caja. Medido en 104X: sin girar da 745 × 370 contra los 783 × 348 que declara aSa
+    # —cuadra—, y girada da 695 × 592, que no cuadra con nada.
+    pin = _num(pin_diam)
+    mbr = envolvente_declarada(legangle)
+    medido = _recortar_por_doblado(puntos, pin / 2.0)
+    xs = [p[0] for p in medido]
+    ys = [p[1] for p in medido]
+    ancho, alto = max(xs) - min(xs), max(ys) - min(ys)
+    ok, motivo = True, ""
+    if mbr and (mbr[0] or mbr[1]):
+        def cuadra(a, b):
+            for dibujado, declarado in ((a, mbr[0]), (b, mbr[1])):
+                if abs(dibujado - declarado) > max(max(declarado, 1.0) * TOLERANCIA, 2 * pin):
+                    return False
+            return True
+        if not (cuadra(ancho, alto) or cuadra(alto, ancho)):
+            ok = False
+            motivo = ("el trazo de aSa estirado no cuadra: %d × %d, aSa dice %d × %d"
+                      % (round(ancho), round(alto), round(mbr[0]), round(mbr[1])))
+    else:
+        ok, motivo = (ancho > 0 or alto > 0), "sin envolvente para comprobar"
+    puntos, tramos, _ = _orientar(puntos, tramos, list(puntos))
+    return {"ok": ok, "motivo": motivo, "tridimensional": False, "fuente": "catalogo_asa",
+            "puntos": [[round(p[0], 1), round(p[1], 1)] for p in puntos],
+            "tramos": tramos, "ancho": round(ancho), "alto": round(alto), "mbr": mbr,
+            "radio": None}

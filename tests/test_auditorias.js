@@ -118,5 +118,28 @@ check('sin figura ni eje, un guion', T.celdaFigura(T.normalizarBarra({ figura: '
 check('ya no hay un dibujante propio ni la frase de lados: el formato es el de la plataforma',
       fuente.indexOf('function svgBarra') === -1 && fuente.indexOf('Lados / dimensiones') === -1);
 
+// DE DÓNDE SALIÓ LA FIGURA (7-oct). El backend elige: su reconstrucción si cuadra con la
+// envolvente que aSa declara, y si no, el trazo que aSa misma exportó en su catálogo (el
+// RDX), estirado a las medidas de esta barra. La pantalla no repite esa decisión —sería
+// tenerla en dos partes— pero sí la DICE: una figura dibujada con el trazo de aSa se marca,
+// porque el auditor tiene derecho a saber qué está mirando.
+console.log('\n6. La pantalla dice con qué trazo se dibujó');
+const delTrazo = T.normalizarBarra({ figura: 'ZZZ', diam: '12mm', dims: { A: 200 },
+  eje: { ok: true, fuente: 'catalogo_asa', puntos: [[0, 0], [2000, 0]],
+         tramos: [{ tipo: 'recto', lado: 'A', largo: 2000 }] } }, 'asa');
+const celdaFte = T.celdaFigura(delTrazo);
+check('la figura que viene del catálogo de aSa queda marcada, y la marca explica por qué',
+      celdaFte.indexOf('class="audfigfte"') !== -1 && celdaFte.indexOf('>aSa<') !== -1
+      && celdaFte.indexOf('exportó aSa en su catálogo') !== -1);
+check('...y NO lleva el ⚠: el trazo de aSa es mejor fuente, no peor',
+      celdaFte.indexOf('audfigav') === -1);
+const propiaOk = T.celdaFigura(T.normalizarBarra({ figura: 'ZZZ', diam: '12mm', dims: { A: 200 },
+  eje: { ok: true, fuente: 'reconstruida', puntos: [[0, 0], [2000, 0]],
+         tramos: [{ tipo: 'recto', lado: 'A', largo: 2000 }] } }, 'asa'));
+check('la reconstruccion que cuadra no lleva marca ninguna',
+      propiaOk === '<svg class="eje"></svg>');
+check('la pantalla no vuelve a escalar el trazo: esa decision vive en el backend',
+      fuente.indexOf('svgTrazoAsa') === -1 && fuente.indexOf('asa_figuras_catalogo') === -1);
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);
