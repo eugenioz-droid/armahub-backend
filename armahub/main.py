@@ -161,6 +161,13 @@ def create_app() -> FastAPI:
             _hlog.error("health storage error: %s", sh.get("detail"))
         mh = mailer.health()
         result["mail"] = mh.get("mail", "?")
+        # El REMITENTE, no sólo si hay clave. Con el remitente de pruebas de Resend
+        # (onboarding@resend.dev) los correos sólo le llegan al dueño de la cuenta, así
+        # que «mail: ok» no alcanza para saber si un aviso va a llegarle a un cubicador.
+        # No es un secreto: es la dirección que aparece en el correo que se manda.
+        result["mail_from"] = mh.get("from") or "?"
+        if "resend.dev" in str(result["mail_from"]):
+            result["mail"] = "remitente-de-pruebas"
         # EL RELOJ DE aSa. Sin esto no hay manera de saber desde afuera si el espejo se
         # refresca solo: el hilo vive dentro del proceso web y no deja rastro hasta que
         # dispara. Es un on/off —igual que `mail`—, no lleva horarios ni datos de obras.
