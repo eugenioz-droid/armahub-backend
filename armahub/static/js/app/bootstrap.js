@@ -334,6 +334,13 @@
         '[ArmaHub] No se pudo cargar catalogo/disenador3d.js'
       ),
       loadScript(
+        'script[data-armahub-feature="catalogo-asa"]',
+        '/static/js/features/catalogo/asa.js' + suffix,
+        'armahubFeature',
+        'catalogo-asa',
+        '[ArmaHub] No se pudo cargar catalogo/asa.js'
+      ),
+      loadScript(
         'script[data-armahub-feature="catalogo"]',
         '/static/js/features/catalogo/index.js' + suffix,
         'armahubFeature',

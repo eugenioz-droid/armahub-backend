@@ -32,9 +32,9 @@
 
   function switchCatSubTab(sub) {
     _catSubActual = sub;
-    var panels = { figuras: 'catSubFiguras', tipologias: 'catSubTipologias', disenador: 'catSubDisenador', templates: 'catSubTemplates' };
-    var btns = { figuras: 'catSubBtnFiguras', tipologias: 'catSubBtnTipologias', disenador: 'catSubBtnDisenador', templates: 'catSubBtnTemplates' };
-    var colors = { figuras: '#5d4037', tipologias: '#6d4c41', disenador: '#00695c', templates: '#558B2F' };
+    var panels = { figuras: 'catSubFiguras', asa: 'catSubAsa', tipologias: 'catSubTipologias', disenador: 'catSubDisenador', templates: 'catSubTemplates' };
+    var btns = { figuras: 'catSubBtnFiguras', asa: 'catSubBtnAsa', tipologias: 'catSubBtnTipologias', disenador: 'catSubBtnDisenador', templates: 'catSubBtnTemplates' };
+    var colors = { figuras: '#5d4037', asa: '#1565C0', tipologias: '#6d4c41', disenador: '#00695c', templates: '#558B2F' };
     Object.keys(panels).forEach(function(k) {
       var p = document.getElementById(panels[k]);
       if (p) p.style.display = (k === sub) ? '' : 'none';
@@ -45,6 +45,7 @@
       }
     });
     if (sub === 'figuras') renderFigurasLista();
+    else if (sub === 'asa' && typeof global.loadCatalogoAsa === 'function') global.loadCatalogoAsa();
     else if (sub === 'tipologias') renderTipologiasLista();
     else if (sub === 'disenador' && typeof disenadorInit === 'function') disenadorInit(_figurasData);
     // Pantalla previa de Templates (template_editor.js): carga la lista de guardados

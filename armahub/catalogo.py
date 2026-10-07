@@ -869,3 +869,50 @@ def listar_tipologias(user=Depends(get_current_user)):
             for r in rows
         ]
     }
+
+
+# ============================================================================
+# CATÁLOGO DE FIGURAS DE aSa (7-oct)
+# ============================================================================
+# aSa NO expone un catálogo de formas: se probaron getShapes, getShapeLibrary,
+# getBarShapes, getShapeView, getShapeMaster, getPatterns, getLegAngles y getShape, y los
+# ocho dan 401 — no existen para esta credencial. Lo único que hay son las barras, y cada
+# barra SÍ trae la definición de su figura (`LegAngle` con los lados y `ShapeDims` con los
+# vectores). Así que el catálogo se junta recorriendo barras: lo hace
+# scripts/escanear_figuras_asa.py y lo guarda en `asa_figuras`.
+#
+# PARA QUÉ. Para ver de un vistazo con qué figuras tenemos problemas. Cada una se
+# reconstruye con el mismo motor que dibuja las auditorías y se compara contra la
+# envolvente que declara aSa: lo que no cuadra sale marcado. Sin esta pantalla, las
+# figuras que fallan sólo se descubren una por una, cuando a alguien le toca auditarlas.
+@router.get("/catalogo-asa/figuras")
+def catalogo_asa_figuras(user=Depends(get_current_user)):
+    """Las figuras de aSa, cada una con su dibujo reconstruido y si cuadra o no."""
+    from .figura_asa import figura_de
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT codigo, barras, ejemplo_cc, ejemplo_marca, ejemplo_obra,
+                                  diam_mm, pin_diam, largo_mm, legangle, shapedims, visto_el
+                             FROM asa_figuras ORDER BY barras DESC, codigo""")
+            filas = cur.fetchall()
+            # Cuáles tienen hermana en el catálogo de la plataforma: el ShpNameID de aSa y
+            # el código de `figuras_catalogo` son el mismo código (101A, 104B, 305A…), así
+            # que se puede decir cuál ya sabemos dibujar desde el catálogo propio.
+            cur.execute("SELECT codigo FROM figuras_catalogo WHERE geometria IS NOT NULL")
+            propias = {r[0] for r in cur.fetchall()}
+    figuras = []
+    for (codigo, barras, cc, marca, obra, diam, pin, largo, legangle, shapedims, visto) in filas:
+        eje = figura_de(shapedims, legangle, float(pin or 0), float(diam or 0))
+        figuras.append({
+            "codigo": codigo, "barras": barras, "cc": cc, "marca": marca, "obra": obra,
+            "diam": float(diam or 0), "pin": float(pin or 0),
+            "largo": float(largo or 0), "visto": visto.isoformat() if visto else None,
+            "en_catalogo": codigo in propias,
+            "ok": bool(eje.get("ok")), "motivo": eje.get("motivo") or "",
+            "tridimensional": bool(eje.get("tridimensional")),
+            "puntos": eje.get("puntos") or [], "tramos": eje.get("tramos") or [],
+            "ancho": eje.get("ancho"), "alto": eje.get("alto"), "mbr": eje.get("mbr"),
+        })
+    return {"figuras": figuras, "total": len(figuras),
+            "con_problema": sum(1 for f in figuras if not f["ok"]),
+            "en_catalogo": sum(1 for f in figuras if f["en_catalogo"])}
