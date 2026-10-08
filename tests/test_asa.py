@@ -924,7 +924,7 @@ check("segmento y tipo van en el orden del backend con «(sin)» al final; cubic
 check("la lista de obras por estado vive en «Obras aSa» y ahí se esconde la columna fija",
       HTM.index('id="asaPanelObras"') < HTM.index('id="dshResObras"') < HTM.index('id="dshCc"')
       and 'id="dshColObras"' in HTM
-      and "col.style.display = (v === 'obras' || v === 'atr' || v === 'mes') ? 'none' : ''" in DSH
+      and "col.style.display = (v === 'obras' || v === 'atr' || v === 'mes' || v === 'mens') ? 'none' : ''" in DSH
       and "pintarListaObras();" in DSH)
 check("...de mayor a menor, barra relativa a la más grande, partida por estado con el nombre real",
       "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH
@@ -943,9 +943,9 @@ check("los títulos dicen que es lo CUBICADO (por fecha de pedido)",
       and "CUBICADO POR MES · TIPO" in HTM and "OBRAS · CUBICADO" in HTM)
 check("cada mes lleva su total como segunda línea de la etiqueta del eje",
       "return [l, kg0(datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0))];" in DSH)
-check("las obras de prueba y «NO USAR» quedan fuera de TODOS los endpoints (reporte, cubicador, atributos, semana ×2)",
+check("las obras de prueba y «NO USAR» quedan fuera de TODOS los endpoints (reporte, cubicador, atributos, semana ×2, mensual ×2)",
       'PATRON_OBRAS_FUERA = r"\\m(prueba|no usar)\\M"' in PROG
-      and PROG.count("job_name !~* %s") == 7 and PROG.count("PATRON_OBRAS_FUERA") == 8)
+      and PROG.count("job_name !~* %s") == 9 and PROG.count("PATRON_OBRAS_FUERA") == 10)
 # Los filtros se sentían lentos: repintar miles de filas en el mismo clic, y el chip no se
 # pintaba hasta terminar. Ahora el chip va primero y lo pesado después; y las cajas de
 # Stock Cubicaciones tienen el mismo tope de filas que el detalle de códigos.

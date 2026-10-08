@@ -109,6 +109,7 @@
                  ['mes',    'asaSubMes',    'asaPanelMes'],
                  ['seg',    'asaSubSeg',    'asaPanelSeg'],
                  ['tipo',   'asaSubTipo',   'asaPanelTipo'],
+                 ['mens',   'asaSubMens',   'asaPanelMens'],
                  ['atr',    'asaSubAtr',    'asaPanelAtr']];
   var SUB = 'planta';
   global.asaSubTab = function (v) {
@@ -127,9 +128,13 @@
     // el panel se lleva ese ancho.
     // ...y en «Por cubicador» también, para que el gráfico se lleve todo el ancho.
     var col = $('dshColObras');
-    if (col) col.style.display = (v === 'obras' || v === 'atr' || v === 'mes') ? 'none' : '';
+    if (col) col.style.display = (v === 'obras' || v === 'atr' || v === 'mes' || v === 'mens') ? 'none' : '';
     // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
     // pide la primera vez que se abre y no en cada cambio de pestaña.
+    // El resumen mensual trae su PROPIA data (los dos años completos, agregados) y tiene
+    // su propio chip de año: no usa el período compartido, porque comparar años es
+    // justamente mirar los doce meses.
+    if (v === 'mens') { if (global.loadResumenMensual) global.loadResumenMensual(); return; }
     if (v === 'cub' && !CUB) { cargarCub().then(pintarTablas); return; }
     if (v === 'atr' && !ATR) { cargarAtr().then(pintarTablas); return; }
     // Se repinta sólo el panel que se abre. Los filtros son compartidos y NO se tocan:

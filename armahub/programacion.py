@@ -974,6 +974,9 @@ VENTANA_TODO = 1200
 TIPOS_OBRA = ("Cubicación", "Digitación")
 # «Otros» volvió a pedido del usuario: el retail (Sodimac) no es 1&2 ni 4&5 ni YPS.
 SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS", "Otros")
+# Lo que no tiene segmento cargado se muestra como tal y no se esconde: si se dejara
+# fuera, los porcentajes del resumen mensual no sumarian cien y nadie sabria por que.
+SIN_SEGMENTO = "(sin segmento)"
 
 # OBRAS QUE NO SON OBRAS: en aSa hay jobs de prueba («Obra de Prueba», «OBRA DE PRUEBA -
 # COTIZACIONES», «Prueba Moldajes IB») y uno que se llama «NO USAR». El usuario pidió
@@ -1095,6 +1098,104 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
             personas = [r[0] for r in cur.fetchall()]
     return {"meses": meses, "meses_anejo": MESES_STOCK_ANEJO,
             "filas": filas, "personas": personas}
+
+
+@router.get("/programacion/asa/mensual")
+def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
+    """EL RESUMEN DEL AÑO, MES A MES, Y CONTRA EL AÑO ANTERIOR.
+
+    Los tres cuadros que ya existen —por cubicador, por segmento, por tipo— parten los
+    kilos del año elegido. Éste responde otras preguntas, y por eso vive aparte:
+
+      · ¿vamos mejor o peor que el año pasado? Hoy hay que cambiar el chip de año y
+        acordarse del número. Acá los dos años van en el mismo gráfico.
+      · ¿cuántas OBRAS se cubicaron cada mes? Los kilos no lo dicen: 2026 lleva unos 95
+        frentes abiertos por mes, y eso es otra cosa que el tonelaje.
+      · ¿el trabajo se está partiendo en códigos más chicos? Los kilos por código lo
+        muestran y no se ve en ningún otro cuadro.
+      · ¿cómo se mueve la MEZCLA por segmento? El cuadro por segmento muestra kilos
+        absolutos, donde un mes flojo baja todas las barras; la participación en por
+        ciento muestra si uno está comiéndose al otro.
+
+    SE AGREGA EN LA BASE y no en el navegador: son 5.350 códigos de un año y mandar el
+    detalle para que el front los sume es trabajo que la base hace mejor.
+
+    El año de las obras que ya no se mueven no se excluye acá: esto cuenta lo CUBICADO en
+    su momento, que pasó igual aunque la obra hoy esté cerrada.
+    """
+    _exigir_lectura(user)
+    hoy = date.today()
+    anio = int(anio or hoy.year)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Los dos años de una vez: comparar es el punto de este cuadro.
+            cur.execute(
+                """SELECT EXTRACT(YEAR FROM p.order_date)::int,
+                          EXTRACT(MONTH FROM p.order_date)::int,
+                          COALESCE(SUM(p.kg), 0), COUNT(*), COUNT(DISTINCT p.asa_job_id),
+                          COUNT(DISTINCT NULLIF(TRIM(p.detail_person), ''))
+                     FROM asa_pedidos p
+                    WHERE p.order_date IS NOT NULL
+                      AND EXTRACT(YEAR FROM p.order_date)::int IN (%s, %s)
+                      AND p.job_name !~* %s
+                    GROUP BY 1, 2 ORDER BY 1, 2""",
+                (anio, anio - 1, PATRON_OBRAS_FUERA))
+            meses = {}
+            for a, m, kg, cod, obras, gente in cur.fetchall():
+                meses.setdefault(a, {})[m] = {"kg": float(kg or 0), "codigos": cod,
+                                              "obras": obras, "gente": gente}
+            # La mezcla por segmento. El segmento no está en aSa: lo cargan los cubicadores
+            # en el tab de Atributos, así que lo que no tiene va a «(sin segmento)» y se
+            # muestra — esconderlo haría que los porcentajes no sumen cien y nadie sepa por qué.
+            cur.execute(
+                """SELECT EXTRACT(MONTH FROM p.order_date)::int,
+                          COALESCE(NULLIF(TRIM(at.segmento), ''), %s),
+                          COALESCE(SUM(p.kg), 0)
+                     FROM asa_pedidos p
+                     LEFT JOIN asa_obra_atributos at ON at.asa_job_id = p.asa_job_id
+                    WHERE EXTRACT(YEAR FROM p.order_date)::int = %s
+                      AND p.job_name !~* %s
+                    GROUP BY 1, 2 ORDER BY 1, 2""",
+                (SIN_SEGMENTO, anio, PATRON_OBRAS_FUERA))
+            segmentos = {}
+            for m, seg, kg in cur.fetchall():
+                segmentos.setdefault(m, {})[seg] = float(kg or 0)
+            cur.execute(
+                """SELECT DISTINCT EXTRACT(YEAR FROM order_date)::int
+                     FROM asa_pedidos WHERE order_date IS NOT NULL ORDER BY 1 DESC""")
+            anios = [r[0] for r in cur.fetchall()]
+
+    def fila(a, m):
+        d = (meses.get(a) or {}).get(m) or {}
+        return {"kg": d.get("kg", 0.0), "codigos": d.get("codigos", 0),
+                "obras": d.get("obras", 0), "gente": d.get("gente", 0)}
+
+    # HASTA QUÉ MES SE COMPARA: el último mes CERRADO. Dos recortes, y los dos hacen falta.
+    # Comparar doce meses contra nueve diría que vamos peor cuando lo único que pasa es que
+    # el año no terminó. Y meter el mes en curso es el mismo error en chico: hoy es 8 de
+    # octubre, y octubre lleva 762.883 kg contra los 3.724.953 de octubre del año pasado —
+    # no es una caída del 80%, es que faltan tres semanas. El mes en curso se dibuja igual,
+    # marcado, pero fuera del acumulado que se compara.
+    en_curso = hoy.month if anio == hoy.year else 0
+    hasta = (hoy.month - 1) if anio == hoy.year else 12
+    datos = [{"mes": m, "actual": fila(anio, m), "previo": fila(anio - 1, m),
+              "segmentos": segmentos.get(m) or {}} for m in range(1, 13)]
+    def suma(a, campo, tope):
+        return sum((meses.get(a) or {}).get(m, {}).get(campo, 0) for m in range(1, tope + 1))
+    return {
+        "anio": anio, "anios": anios, "hasta": hasta, "en_curso": en_curso,
+        "meses": datos,
+        "segmentos": sorted({s for v in segmentos.values() for s in v}),
+        # El acumulado a la misma altura del año, que es la comparación que de verdad se usa.
+        "acumulado": {
+            "kg": suma(anio, "kg", hasta), "kg_previo": suma(anio - 1, "kg", hasta),
+            "codigos": suma(anio, "codigos", hasta),
+            "codigos_previo": suma(anio - 1, "codigos", hasta),
+            # Las obras NO se suman por mes: una obra que trabajó en marzo y en abril es
+            # una obra, no dos. Se cuenta aparte, sobre el año entero.
+            "obras": 0, "obras_previo": 0,
+        },
+    }
 
 
 @router.get("/programacion/asa/atributos")

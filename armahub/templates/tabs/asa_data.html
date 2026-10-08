@@ -31,6 +31,10 @@
       <button id="asaSubMes" onclick="asaSubTab('mes')" class="asasub">Por cubicador</button>
       <button id="asaSubSeg" onclick="asaSubTab('seg')" class="asasub">Por segmento</button>
       <button id="asaSubTipo" onclick="asaSubTab('tipo')" class="asasub">Por tipo</button>
+      <!-- Los tres de arriba parten los kilos del año elegido. Éste contesta otras cosas:
+           cómo vamos contra el año pasado, cuántas obras hubo abiertas, y si el trabajo se
+           está partiendo en códigos más chicos. -->
+      <button id="asaSubMens" onclick="asaSubTab('mens')" class="asasub">Resumen mensual</button>
       <!-- El único sub-tab donde se ESCRIBE. Va de otro color para que se note que acá
            no se mira: se cataloga. -->
       <button id="asaSubAtr" onclick="asaSubTab('atr')" class="asasub atr">✎ Atributos de obra</button>
@@ -206,6 +210,43 @@
             <div style="position:relative; height:270px; flex:none;"><canvas id="dshTipoChart"></canvas></div>
             <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
               <table class="dsht dshpiv" id="dshTipoPiv"></table></div>
+          </div>
+        </div>
+
+        <!-- ══════ RESUMEN MENSUAL ══════
+             CUATRO PREGUNTAS QUE LOS OTROS CUADROS NO CONTESTAN:
+               1. ¿vamos mejor o peor que el año pasado? Los dos años en el mismo gráfico,
+                  en vez de cambiar el chip de año y acordarse del número.
+               2. ¿cuántas OBRAS hubo cubicándose cada mes? Los kilos no lo dicen.
+               3. ¿el trabajo se está partiendo en códigos más chicos? Kilos por código.
+               4. ¿cómo se mueve la MEZCLA por segmento? En por ciento, no en kilos: en
+                  kilos un mes flojo baja todas las barras y no se ve quién gana terreno.
+             Este panel tiene su propio año y NO usa el filtro de mes de arriba: comparar
+             años es justamente mirar los doce meses. -->
+        <div id="asaPanelMens" class="dshpanel" style="display:none;">
+          <div class="dshbarra" style="margin-bottom:8px;">
+            <span class="dshbl">Año</span>
+            <div id="mensAnios" class="dshchips"></div>
+            <span class="muted" style="font-size:11px" id="mensNota"></span>
+          </div>
+          <div class="dshkpis" id="mensKpis"></div>
+          <div class="mensgrid">
+            <div class="card dshcard dshcod">
+              <div class="dshth">KILOS CUBICADOS POR MES <span class="muted" id="mensKgN"></span></div>
+              <div style="position:relative; height:260px;"><canvas id="mensKgChart"></canvas></div>
+            </div>
+            <div class="card dshcard dshcod">
+              <div class="dshth" title="Obras distintas con al menos un código pedido en el mes. Una obra que trabajó marzo y abril cuenta una vez en cada mes.">OBRAS CUBICÁNDOSE POR MES <span class="muted" id="mensObrasN"></span></div>
+              <div style="position:relative; height:260px;"><canvas id="mensObrasChart"></canvas></div>
+            </div>
+            <div class="card dshcard dshcod">
+              <div class="dshth" title="Kilos del mes divididos por la cantidad de códigos de control. Dice si el trabajo viene en pedidos grandes o se está partiendo en muchos chicos.">TAMAÑO DEL CÓDIGO · KILOS POR CC <span class="muted" id="mensTamN"></span></div>
+              <div style="position:relative; height:260px;"><canvas id="mensTamChart"></canvas></div>
+            </div>
+            <div class="card dshcard dshcod">
+              <div class="dshth" title="Participación de cada segmento en los kilos del mes. En por ciento: en kilos absolutos, un mes flojo baja todas las barras y no se ve quién gana terreno.">MEZCLA POR SEGMENTO <span class="muted" id="mensSegN"></span></div>
+              <div style="position:relative; height:260px;"><canvas id="mensSegChart"></canvas></div>
+            </div>
           </div>
         </div>
 
@@ -401,6 +442,17 @@
 
   /* ATRIBUTOS DE OBRA: el único sub-tab donde se escribe, y se nota. Pestaña y panel en
      azul, distinto del verde de los reportes. */
+  /* Los cuatro gráficos del resumen, dos y dos; en pantalla angosta, uno bajo otro. */
+  .mensgrid{display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:10px;}
+  .dshkpis{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+  .menskpi{flex:1; min-width:150px; background:#fff; border:1px solid #e3e8ef; border-radius:7px;
+           padding:8px 12px;}
+  .menskpi b{display:block; font-size:19px; color:#263238; line-height:1.2;
+             font-variant-numeric:tabular-nums;}
+  .menskpi span{font-size:10.5px; color:#78909c;}
+  .menskpi i{font-style:normal; font-size:11px; font-weight:700;}
+  .menskpi i.sube{color:#2e7d32;}
+  .menskpi i.baja{color:#c62828;}
   .asasub.atr{color:#7986cb;}
   .asasub.atr.on{color:#283593; border-bottom-color:#5c6bc0;}
   .dshatr{background:#f3f5fb; border-color:#c5cae9;}
