@@ -239,12 +239,17 @@
 
           <div class="card dshcard dshcod" style="margin-bottom:10px;">
             <div class="dshth">KILOS POR MES · CUBICADOR <span class="muted" id="mensCubN"></span></div>
-            <!-- Quién entra al gráfico. Vienen marcados los vigentes —los que cubicaron
-                 hace poco y pesan en el año—; el resto está en la lista con su tonelaje,
-                 a un clic. -->
-            <div class="dshbarra" style="margin:0 0 6px;">
-              <span class="dshbl">Cubicadores</span>
-              <div id="mensCubChips" class="dshchips"></div>
+            <!-- QUIÉN ENTRA AL GRÁFICO, con un control que se lee como control. Antes
+                 eran chips de filtro y no quedaba claro que se podían sacar: ahora cada
+                 uno va en SU color, con una × para quitarlo, y los que están fuera se
+                 agregan desde el botón. Vienen puestos los vigentes. -->
+            <div class="menscub">
+              <span class="dshbl">En el gráfico</span>
+              <div id="mensCubSel" class="menssel"></div>
+              <div class="mensadd">
+                <button id="mensCubAdd" class="mensaddb" type="button">+ Agregar</button>
+                <div id="mensCubMenu" class="mensmenu" style="display:none;"></div>
+              </div>
             </div>
             <div style="position:relative; height:320px;"><canvas id="mensCubChart"></canvas></div>
           </div>
@@ -472,6 +477,30 @@
   .menskpi i{font-style:normal; font-size:11px; font-weight:700;}
   .menskpi i.sube{color:#2e7d32;}
   .menskpi i.baja{color:#c62828;}
+  /* El selector de cubicadores. Cada uno con SU color —el mismo de su barra— para que la
+     lista y el gráfico se lean juntos sin buscar en la leyenda. */
+  .menscub{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px;}
+  .menssel{display:flex; gap:5px; flex-wrap:wrap;}
+  .mensq{display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:600;
+         padding:3px 5px 3px 9px; border-radius:99px; color:#fff; border:none;}
+  .mensq b{font-weight:700; opacity:.85; font-variant-numeric:tabular-nums;}
+  .mensq i{font-style:normal; cursor:pointer; opacity:.75; font-size:13px; line-height:1;
+           padding:0 2px; border-radius:50%;}
+  .mensq i:hover{opacity:1; background:rgba(255,255,255,.25);}
+  .mensadd{position:relative;}
+  .mensaddb{font-size:10.5px; font-weight:600; padding:3px 11px; border-radius:99px;
+            border:1px dashed #b0bec5; background:#fff; color:#607d8b; cursor:pointer;}
+  .mensaddb:hover{border-color:#1565C0; color:#1565C0;}
+  .mensmenu{position:absolute; top:26px; left:0; z-index:20; background:#fff; min-width:200px;
+            border:1px solid #cfd8dc; border-radius:7px; box-shadow:0 4px 14px rgba(0,0,0,.14);
+            padding:4px; max-height:240px; overflow:auto;}
+  .mensmenu button{display:flex; width:100%; align-items:center; gap:8px; border:none;
+                   background:none; text-align:left; font-size:11px; padding:5px 8px;
+                   border-radius:5px; cursor:pointer; color:#37474f;}
+  .mensmenu button:hover{background:#f1f5f9;}
+  .mensmenu button span{margin-left:auto; color:#90a4ae; font-size:10px;
+                        font-variant-numeric:tabular-nums;}
+  .mensmenu .vacio{font-size:10.5px; color:#90a4ae; padding:8px 10px;}
   .asasub.atr{color:#7986cb;}
   .asasub.atr.on{color:#283593; border-bottom-color:#5c6bc0;}
   .dshatr{background:#f3f5fb; border-color:#c5cae9;}

@@ -60,6 +60,7 @@
     var curso = MENS.en_curso;
     CH[canvas] = global.replaceChart(CH[canvas], $(canvas), {
       type: 'bar',
+      plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
       data: {
         labels: MESN,
         datasets: [
@@ -75,9 +76,16 @@
       },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
+        layout: { padding: { top: 24 } },
         plugins: {
           legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-          datalabels: { display: false },
+          // ACÁ EL NÚMERO VA SÓLO SOBRE LA BARRA, y no como total del mes bajo el eje: la
+          // otra serie es una LÍNEA del año anterior, así que sumar las dos daría un
+          // total que no existe. En la barra, el valor YA es el total del mes.
+          datalabels: { display: function (c) { return c.datasetIndex === 0; },
+                        anchor: 'end', align: 'end', rotation: -90, offset: 2, clamp: true,
+                        color: '#546e7a', font: { size: 8.5 },
+                        formatter: function (v) { return v ? fmt(v) : ''; } },
           tooltip: { callbacks: { label: function (t) {
             return ' ' + t.dataset.label + ': ' + fmt(t.raw) +
                    ((curso && t.dataIndex + 1 === curso && t.datasetIndex === 0)
@@ -130,6 +138,26 @@
     });
   }
 
+  // LOS TOTALES, COMO EN EL RESTO DE aSa DATA. El número real sobre cada barra, girado
+  // noventa grados —derechos, seis cifras por mes se pisan— y el TOTAL DEL MES como
+  // segunda línea de la etiqueta del eje. No es un invento de esta pantalla: es el mismo
+  // patrón de los cuadros «Por cubicador / segmento / tipo», y usarlo distinto acá sería
+  // que la misma aplicación se lea de dos maneras.
+  function etiquetasConTotal(labels, datasets) {
+    return labels.map(function (l, i) {
+      var tot = datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0);
+      return tot ? [l, ton(tot) + ' t'] : [l, ''];
+    });
+  }
+
+  function datalabelsBarra() {
+    return { display: function (c) { return (c.dataset.type || 'bar') === 'bar'; },
+             anchor: 'end', align: 'end', rotation: -90, offset: 2, clamp: true,
+             color: '#546e7a', font: { size: 8.5 },
+             // Lo que no se ve no se rotula: un cero o una barra de nada sólo agrega ruido.
+             formatter: function (v) { return v >= 1000 ? ton(v) : ''; } };
+  }
+
   // TODOS LOS AÑOS ENCIMA. El gráfico de dos años contesta «cómo vamos»; éste contesta
   // «cómo se mueve el año», que es otra cosa: la estacionalidad —el bajón de junio, el
   // repunte de octubre— sólo se ve cuando están los cinco años juntos.
@@ -139,8 +167,9 @@
     $('mensAniosN').textContent = '· ' + series.length + ' años';
     CH.mensAniosChart = global.replaceChart(CH.mensAniosChart, $('mensAniosChart'), {
       type: 'bar',
+      plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
       data: {
-        labels: MESN,
+        labels: etiquetasConTotal(MESN, series.map(function (s) { return { data: s.meses }; })),
         datasets: series.map(function (s, i) {
           // El año elegido, lleno; los otros, más suaves. El que se está mirando tiene
           // que destacarse sin que los demás desaparezcan.
@@ -155,9 +184,10 @@
       },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
+        layout: { padding: { top: 26 } },
         plugins: {
           legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-          datalabels: { display: false },
+          datalabels: datalabelsBarra(),
           tooltip: { callbacks: { label: function (c) {
             return ' ' + c.dataset.label + ': ' + ton(c.raw) + ' t'; } } }
         },
@@ -179,8 +209,9 @@
       ' · ' + ton(elegidos.reduce(function (s, c) { return s + c.total; }, 0)) + ' t';
     CH.mensCubChart = global.replaceChart(CH.mensCubChart, $('mensCubChart'), {
       type: 'bar',
+      plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
       data: {
-        labels: MESN,
+        labels: etiquetasConTotal(MESN, elegidos.map(function (c) { return { data: c.meses }; })),
         datasets: elegidos.map(function (c) {
           // El color sale de la posición en la lista COMPLETA, no en la elegida: así
           // desmarcar a alguien no le cambia el color a todos los demás.
@@ -191,9 +222,10 @@
       },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
+        layout: { padding: { top: 26 } },
         plugins: {
           legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-          datalabels: { display: false },
+          datalabels: datalabelsBarra(),
           tooltip: { callbacks: { label: function (c) {
             return ' ' + c.dataset.label + ': ' + ton(c.raw) + ' t'; } } }
         },
@@ -205,22 +237,53 @@
     });
   }
 
+  function colorDe(nombre) {
+    // El color sale de la posición en la lista COMPLETA, no en la elegida: así sacar a
+    // uno no le cambia el color a todos los demás.
+    var i = (MENS.cubicadores || []).findIndex(function (c) { return c.nombre === nombre; });
+    return PALETA[(i < 0 ? 0 : i) % PALETA.length];
+  }
+
+  // EL SELECTOR, QUE TIENE QUE LEERSE COMO UN SELECTOR. Antes eran chips de filtro, todos
+  // iguales, y no quedaba claro que se podían sacar ni agregar: el usuario lo probó y no
+  // pudo. Ahora lo que está en el gráfico se ve como está en el gráfico —cada uno en SU
+  // color, con su tonelaje— y lleva una × para quitarlo; lo que está afuera se agrega
+  // desde un botón que sólo ofrece a los que faltan.
   function pintarCubChips() {
-    var el = $('mensCubChips');
-    if (!el || !MENS) return;
+    var sel = $('mensCubSel'), menu = $('mensCubMenu');
+    if (!sel || !MENS) return;
     var todos = MENS.cubicadores || [];
-    el.innerHTML = todos.map(function (c, i) {
-      var on = CUBS.indexOf(c.nombre) !== -1;
-      return '<button data-c="' + esc(c.nombre) + '" class="' + (on ? 'on' : '') +
-             '" title="' + n0(c.total) + ' kg en el año' +
-             (c.vigente ? '' : ' · no cubicó en los últimos ' + MENS.meses_vigente + ' meses') +
-             '"' + (on ? ' style="border-color:' + PALETA[i % PALETA.length] + '"' : '') + '>' +
-             esc(c.nombre) + ' <span class="muted">' + ton(c.total) + ' t</span></button>';
-    }).join('');
-    el.querySelectorAll('button[data-c]').forEach(function (b) {
+    var puestos = todos.filter(function (c) { return CUBS.indexOf(c.nombre) !== -1; });
+    sel.innerHTML = puestos.length
+      ? puestos.map(function (c) {
+          return '<span class="mensq" style="background:' + colorDe(c.nombre) + '">' +
+                 esc(c.nombre) + ' <b>' + ton(c.total) + ' t</b>' +
+                 '<i data-quitar="' + esc(c.nombre) + '" title="Sacarlo del gráfico">×</i></span>';
+        }).join('')
+      : '<span class="muted" style="font-size:11px">Nadie en el gráfico. Agrega con el botón.</span>';
+    sel.querySelectorAll('i[data-quitar]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var i = CUBS.indexOf(b.dataset.c);
-        if (i === -1) CUBS.push(b.dataset.c); else CUBS.splice(i, 1);
+        var i = CUBS.indexOf(b.dataset.quitar);
+        if (i !== -1) CUBS.splice(i, 1);
+        pintarCubChips(); porCubicador();
+      });
+    });
+    var faltan = todos.filter(function (c) { return CUBS.indexOf(c.nombre) === -1; });
+    $('mensCubAdd').textContent = faltan.length ? '+ Agregar (' + faltan.length + ')' : '+ Agregar';
+    $('mensCubAdd').disabled = !faltan.length;
+    menu.innerHTML = faltan.length
+      ? faltan.map(function (c) {
+          return '<button type="button" data-poner="' + esc(c.nombre) + '">' +
+                 '<span style="width:9px;height:9px;border-radius:2px;flex:none;background:' +
+                 colorDe(c.nombre) + '"></span>' + esc(c.nombre) +
+                 '<span>' + ton(c.total) + ' t' +
+                 (c.vigente ? '' : ' · inactivo') + '</span></button>';
+        }).join('')
+      : '<div class="vacio">Ya están todos en el gráfico.</div>';
+    menu.querySelectorAll('button[data-poner]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (CUBS.indexOf(b.dataset.poner) === -1) CUBS.push(b.dataset.poner);
+        menu.style.display = 'none';
         pintarCubChips(); porCubicador();
       });
     });
@@ -296,6 +359,21 @@
     });
   }
 
+  // El menú de agregar se abre con el botón y se cierra al tocar fuera: dejarlo abierto
+  // tapa el gráfico, que es justo lo que uno quiere mirar después de agregar a alguien.
+  function montarMenu() {
+    var btn = $('mensCubAdd'), menu = $('mensCubMenu');
+    if (!btn || !menu) return;
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      menu.style.display = (menu.style.display === 'none') ? '' : 'none';
+    });
+    menu.addEventListener('click', function (ev) { ev.stopPropagation(); });
+    document.addEventListener('click', function () { menu.style.display = 'none'; });
+  }
+
+  var _montado = false;
+
   global.loadResumenMensual = async function (anio) {
     if (!$('asaPanelMens')) return;
     if (MENS && anio === ANIO) { pintar(); return; }
@@ -303,6 +381,7 @@
       MENS = await cargar(anio);
       if (!MENS) return;
       ANIO = MENS.anio;
+      if (!_montado) { _montado = true; montarMenu(); }
       // Los vigentes vienen marcados. Se decide ACÁ, al cargar el año, y no en cada
       // pintado: si se recalculara al dibujar, desmarcar a alguien se desharía solo.
       CUBS = (MENS.cubicadores || []).filter(function (c) { return c.vigente; })

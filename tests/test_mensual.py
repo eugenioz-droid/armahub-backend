@@ -106,7 +106,7 @@ check("cada cubicador una barra por mes, agrupadas y no apiladas",
       "function porCubicador(" in JS and 'id="mensCubChart"' in HTM
       and "CADA CUBICADOR, UNA BARRA POR MES. Agrupadas y no apiladas" in JS)
 check("se puede elegir quién entra al gráfico",
-      'id="mensCubChips"' in HTM and "function pintarCubChips(" in JS and "CUBS" in JS)
+      'id="mensCubSel"' in HTM and "function pintarCubChips(" in JS and "CUBS" in JS)
 # QUIÉN VIENE PRESELECCIONADO NO SE ESCRIBE A MANO: una lista de nombres se desactualiza
 # sola en cuanto alguien entra o sale del equipo.
 check("los vigentes vienen marcados, y «vigente» sale de la ACTIVIDAD, no de una lista",
@@ -118,6 +118,37 @@ check("...y queda escrito por qué hacen falta las dos",
       "entran once de doce" in SRC and "son exactamente las siete" in SRC)
 check("el color de un cubicador no cambia al desmarcar a otro",
       "no en la elegida" in JS and "todos.indexOf(c)" in JS)
+
+print("\n7. El selector de cubicadores se lee como un selector")
+# Primero eran chips de filtro, todos iguales, y el usuario no pudo sacar ni agregar a
+# nadie. Lo que está en el gráfico tiene que verse como está en el gráfico.
+check("lo puesto va en SU color, el mismo de su barra",
+      "function colorDe(" in JS and "mensq" in JS and ".mensq{" in HTM)
+check("...con una × para sacarlo, no un clic que no se sabe qué hace",
+      "data-quitar=" in JS and "Sacarlo del gráfico" in JS)
+check("y un botón que SÓLO ofrece a los que faltan, con cuántos son",
+      "data-poner=" in JS and "'+ Agregar (' + faltan.length" in JS
+      and 'id="mensCubAdd"' in HTM and 'id="mensCubMenu"' in HTM)
+check("...el menú se cierra al tocar fuera: abierto tapa el gráfico",
+      "function montarMenu(" in JS and "menu.style.display = 'none'" in JS)
+check("si no queda nadie, se dice en vez de mostrar un gráfico vacío sin explicación",
+      "Nadie en el gráfico" in JS)
+
+print("\n8. Los totales a la vista")
+# El patrón es el de los otros cuadros de aSa Data: el numero sobre cada barra, girado, y
+# el total del mes como segunda linea de la etiqueta del eje. No se inventa uno nuevo.
+check("el total del mes va bajo el eje, como en los otros cuadros",
+      "function etiquetasConTotal(" in JS and "el mismo\n  // patrón de los cuadros" in JS)
+check("...y el valor sobre cada barra, girado para que no se pisen",
+      "function datalabelsBarra(" in JS and "rotation: -90" in JS)
+check("el plugin de etiquetas se enciende explícitamente (viene apagado en la app)",
+      JS.count("typeof ChartDataLabels !== 'undefined'") == 3)
+# EN EL GRÁFICO DE DOS AÑOS NO HAY TOTAL DEL MES, y es a propósito.
+check("donde la otra serie es una LÍNEA no se suma un total que no existe",
+      "sumar las dos daría un\n          // total que no existe" in JS
+      and "c.datasetIndex === 0" in JS)
+check("...y lo que no se ve no se rotula: un cero sólo agrega ruido",
+      "Lo que no se ve no se rotula" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
