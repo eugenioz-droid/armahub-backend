@@ -484,19 +484,37 @@ check("la grilla separa las columnas", "border-right:1px solid #f2f4f7" in HTM
 check("un lado chico no desaparece del dibujo", "MIN_LADO_REL = 0.18" in JS
       and "function _conMinimo(" in JS and "no para medirla" in JS)
 
+print("\n7d0. La lista de códigos se ordena por UNA sola fecha: la del pedido")
+# Lo cazó el usuario mirando la pantalla (8-oct): el SUBM se pidió el 26 de agosto y
+# despachó el 2 de octubre, y aparecía tercero en la lista, sobre códigos pedidos un mes
+# después. Un código despachado se cubicó ANTES que uno que sigue abierto —tuvo tiempo de
+# fabricarse y salir—, así que va más abajo, no más arriba.
+check("ordena por la fecha del pedido, sin mezclarla con la de despacho",
+      "ORDER BY order_date DESC NULLS LAST, control_code" in SRC
+      and "CASE WHEN COALESCE(estado,'') = %s THEN proj_ship_date END" not in SRC)
+check("...y queda escrito por qué, que es lo que se vuelve a equivocar",
+      "ORDENADOS POR LA FECHA DEL PEDIDO, UNA SOLA PARA TODOS" in SRC
+      and "tuvo tiempo de fabricarse y despacharse" in SRC)
+check("la fecha de despacho no se pierde: viaja aparte con sus propios días",
+      '"dias_despacho": dias_desp' in SRC and "dias_desp = (hoy - despacho).days" in SRC)
+check("...y es ESA la que decide si el código se pinta por viejo, no la del pedido",
+      "bool(dias_desp is not None" in SRC)
+check("la pantalla muestra la fecha que ordena, no otra",
+      "ddmm(c.fecha)" in JS and "fecha_ref" not in JS)
+
 print("\n7d1. Elegir el alcance: los despachados también se ofrecen")
 # «Debiéramos considerar también los despachados, pero que el cubicador elija; el sistema
 # debiera ordenar por fechas, del CC más nuevo al más antiguo, así queda a criterio del
 # usuario hasta dónde revisamos» (7-oct).
 check("ya no se esconden los despachados: sólo quedan fuera los anulados",
       "AND COALESCE(estado,'') <> %s" in SRC and "LOS DESPACHADOS TAMBIÉN SE OFRECEN" in SRC)
-check("la lista va del más nuevo al más antiguo, por la fecha que describe a cada código",
-      "ORDER BY fecha_ref DESC NULLS LAST" in SRC
-      and "CASE WHEN COALESCE(estado,'') = %s THEN proj_ship_date END" in SRC)
-check("...o sea: la de despacho si salió, la del pedido si no", "order_date) AS fecha_ref" in SRC)
-check("cada código dice cuántos días lleva y si salió hace rato",
-      '"dias": dias' in SRC and '"antiguo": bool(despachado and dias is not None' in SRC
-      and "DIAS_DESPACHO_ANTIGUO = 30" in SRC)
+check("la lista va del más nuevo al más antiguo (el orden, en el bloque 7d0)",
+      "ORDER BY order_date DESC NULLS LAST" in SRC)
+check("cada código dice cuántos días lleva desde que se pidió",
+      '"dias": dias' in SRC and "dias = (hoy - pedido).days" in SRC)
+check("...y los despachados, cuántos desde que salieron, que es lo que los pinta",
+      '"dias_despacho": dias_desp' in SRC and "DIAS_DESPACHO_ANTIGUO = 30" in SRC
+      and "bool(dias_desp is not None" in SRC)
 check("...y la pantalla lo pinta, sin prohibirlo", "c.antiguo ? ' viejo' : ''" in JS
       and ".audcc.viejo{" in HTM and "se pueden elegir igual" in JS)
 check("el total ya cuenta a los despachados, que ahora se pueden elegir",

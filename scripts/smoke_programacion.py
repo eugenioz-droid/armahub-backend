@@ -421,10 +421,20 @@ if s == 200 and d.get("obras"):
                   len(u["ccs"]) > 0 and all(set(("cc", "descr", "kg", "estado", "persona")) <= set(c) for c in u["ccs"]))
             # 7-oct: los despachados YA SE OFRECEN, marcados y ordenados por fecha. La
             # decision de hasta donde revisar es del usuario, no del filtro.
-            check("...vienen ordenados del mas nuevo al mas antiguo, con su fecha y si salio hace rato",
-                  all(set(("fecha_ref", "despachado", "dias", "antiguo")) <= set(c) for c in u["ccs"])
-                  and [c["fecha_ref"] or "" for c in u["ccs"]] == sorted(
-                      [c["fecha_ref"] or "" for c in u["ccs"]], reverse=True))
+            # 8-oct: y la fecha que ordena es UNA SOLA, la del pedido. Antes se mezclaba
+            # con la de despacho para los despachados, y eso los subia a la cabeza de la
+            # lista siendo justo lo que se cubico hace mas tiempo.
+            check("...vienen ordenados del mas nuevo al mas antiguo por la fecha del PEDIDO",
+                  all(set(("fecha", "despachado", "dias", "dias_despacho", "antiguo")) <= set(c)
+                      for c in u["ccs"])
+                  and [c["fecha"] or "" for c in u["ccs"]] == sorted(
+                      [c["fecha"] or "" for c in u["ccs"]], reverse=True))
+            desp = [c for c in u["ccs"] if c["despachado"]]
+            check("...y un despachado NO sube por haber salido despues de lo que se pidio",
+                  all(not c["fecha"] or not c["despacho"] or c["despacho"] >= c["fecha"]
+                      for c in desp)
+                  and all(c["dias_despacho"] is None or c["dias_despacho"] <= c["dias"]
+                          for c in desp if c["dias"] is not None))
             # Sin codigos elegidos no hay muestra posible.
             r = cli.post("/api/v1/auditorias", headers=H, json={
                 "id_proyecto": oa["job"], "auditor": ADMIN, "origen": "asa", "n": 2, "ccs": []})

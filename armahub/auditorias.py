@@ -596,9 +596,19 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
     salió llega tarde, y ése seguía siendo el criterio. Pero esconderlos le quitaba al
     cubicador una decisión que es suya —a veces hay que revisar lo que ya se fue, porque
     es justo donde puede haber un error que ya costó plata—. Ahora se ofrecen todos,
-    ordenados DEL MÁS NUEVO AL MÁS ANTIGUO, y cada uno con la fecha que lo describe: la
-    de despacho si salió, la del pedido si todavía no. El que elige hasta dónde revisar
-    es el usuario, no el filtro.
+    del más nuevo al más antiguo, y el que elige hasta dónde revisar es el usuario.
+
+    ORDENADOS POR LA FECHA DEL PEDIDO, UNA SOLA PARA TODOS (8-oct). Antes se ordenaba por
+    una fecha mezclada: la de despacho para los despachados y la del pedido para el resto.
+    Eso ponía los despachados arriba, y es justo al revés: un código que ya salió se
+    cubicó ANTES que uno que sigue abierto —tuvo tiempo de fabricarse y despacharse—, así
+    que tiene que ir más abajo. Lo cazó el usuario mirando la pantalla: el SUBM se pidió
+    el 26 de agosto y despachó el 2 de octubre, y aparecía tercero, sobre códigos pedidos
+    un mes después. Con `order_date` para todos, los Open quedan arriba, los Processed al
+    medio y los Shipped al final, que es el orden en que se cubicaron.
+
+    La fecha de despacho no se pierde: viaja aparte y es la que cuenta los días para
+    pintar lo que salió hace más de un mes.
 
     En aSa no hay piso ni ciclo: lo que hay es `Descr`, el nombre que el usuario le
     puso al código —en edificación suele llevar ELEV, FUND, LC o VC, pero no siempre—.
@@ -607,35 +617,36 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT control_code, COALESCE(descr,''), kg, order_date, COALESCE(estado,''),
-                          COALESCE(detail_person,''), sched_estado, proj_ship_date,
-                          -- LA FECHA QUE DESCRIBE AL CÓDIGO: la de despacho si ya salió,
-                          -- la del pedido si no. Es la que ordena la lista y la que se
-                          -- muestra, porque preguntarse «¿hasta dónde reviso?» es
-                          -- preguntarse por fechas y no por estados.
-                          COALESCE(CASE WHEN COALESCE(estado,'') = %s THEN proj_ship_date END,
-                                   order_date) AS fecha_ref
+                          COALESCE(detail_person,''), sched_estado, proj_ship_date
                      FROM asa_pedidos
                     WHERE asa_job_id = %s
                       AND COALESCE(estado,'') <> %s
                       AND job_name !~* %s
-                    ORDER BY fecha_ref DESC NULLS LAST, control_code""",
-                (ESTADO_DESPACHADO, job, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+                    -- UNA SOLA FECHA ORDENA, y es la del pedido (ver el docstring). Mezclar
+                    -- la de despacho para unos y la del pedido para otros ordena por dos
+                    -- varas distintas y deja arriba justo lo que se cubicó hace más tiempo.
+                    ORDER BY order_date DESC NULLS LAST, control_code""",
+                (job, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
             hoy = date.today()
             ccs = []
             for r in cur.fetchall():
                 despachado = r[4] == ESTADO_DESPACHADO
-                ref = r[8]
-                # Cuántos días lleva. Con eso el front pinta los que salieron hace rato
-                # sin tener que calcular fechas en el navegador.
-                dias = (hoy - ref).days if ref else None
+                pedido, despacho = r[3], r[7]
+                # DOS CUENTAS DE DÍAS, porque son dos preguntas distintas:
+                #  · `dias` — desde que se pidió. Es la que ordena y la que dice hace
+                #    cuánto se cubicó eso.
+                #  · `dias_despacho` — desde que salió, sólo si salió. Es la que decide si
+                #    el código se pinta por despachado hace rato.
+                dias = (hoy - pedido).days if pedido else None
+                dias_desp = (hoy - despacho).days if (despachado and despacho) else None
                 ccs.append({"cc": r[0], "descr": r[1], "kg": float(r[2] or 0),
-                            "fecha": r[3].isoformat() if r[3] else None, "estado": r[4],
+                            "fecha": pedido.isoformat() if pedido else None, "estado": r[4],
                             "persona": r[5], "planta": r[6],
-                            "despacho": r[7].isoformat() if r[7] else None,
+                            "despacho": despacho.isoformat() if despacho else None,
                             "despachado": despachado,
-                            "fecha_ref": ref.isoformat() if ref else None,
-                            "dias": dias,
-                            "antiguo": bool(despachado and dias is not None and dias > DIAS_DESPACHO_ANTIGUO)})
+                            "dias": dias, "dias_despacho": dias_desp,
+                            "antiguo": bool(dias_desp is not None
+                                            and dias_desp > DIAS_DESPACHO_ANTIGUO)})
             cur.execute(
                 """SELECT MAX(job_name),
                           COUNT(*) FILTER (WHERE COALESCE(estado,'') = %s),

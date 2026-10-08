@@ -139,20 +139,25 @@
     $('audCcLista').innerHTML = vis.map(function (c) {
       var on = CCS.indexOf(c.cc) !== -1;
       // El estado va PEGADO al código: es lo que se mira junto, no al final de la línea.
-      // LA FECHA QUE DESCRIBE AL CÓDIGO: la de despacho si ya salió, la del pedido si no.
-      // La lista viene ordenada por ella, del más nuevo al más antiguo, así que bajando se
-      // va hacia atrás en el tiempo y el usuario corta donde quiera. Los despachados hace
-      // más de un mes van pintados: no están prohibidos, pero se ven.
+      // LA FECHA ES LA DEL PEDIDO, PARA TODOS. Es la que ordena la lista, del más nuevo
+      // al más antiguo, así que bajando se va hacia atrás en el tiempo y el usuario corta
+      // donde quiera. Antes los despachados mostraban su fecha de DESPACHO, que es
+      // posterior, y por eso subían a la cabeza de la lista siendo lo más viejo que hay.
+      // La fecha de despacho sigue estando: va en el título, y es la que decide si el
+      // código se pinta por haber salido hace más de un mes.
       var tit = esc(c.descr) +
-        (c.despachado ? ' · despachado hace ' + (c.dias == null ? '?' : c.dias) + ' días'
-                      : ' · pedido' + (c.dias == null ? '' : ' hace ' + c.dias + ' días')) +
+        (c.dias == null ? '' : ' · pedido hace ' + c.dias + ' días') +
+        (c.despachado
+          ? ' · despachado' + (c.despacho ? ' el ' + ddmm(c.despacho) : '') +
+            (c.dias_despacho == null ? '' : ', hace ' + c.dias_despacho + ' días')
+          : '') +
         (c.auditados ? ' · ' + c.auditados + ' elemento(s) ya auditados' : '');
       return '<label class="audcc' + (on ? ' on' : '') + (c.antiguo ? ' viejo' : '') +
         '" title="' + tit + '">' +
         '<input type="checkbox" data-cc="' + esc(c.cc) + '"' + (on ? ' checked' : '') + '>' +
         '<span class="cod">' + esc(c.cc) + '</span>' +
         '<span class="e' + (c.despachado ? ' desp' : '') + '">' + esc(c.estado) + '</span>' +
-        '<span class="f">' + ddmm(c.fecha_ref) + '</span>' +
+        '<span class="f">' + ddmm(c.fecha) + '</span>' +
         '<span class="d">' + esc(c.descr || '(sin nombre)') + '</span>' +
         (c.auditados ? '<span class="ya">' + c.auditados + ' auditado(s)</span>' : '') +
         '<span class="k">' + kg0(c.kg) + ' kg</span>' +
