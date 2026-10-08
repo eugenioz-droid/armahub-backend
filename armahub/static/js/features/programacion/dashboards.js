@@ -99,7 +99,23 @@
     var raf = global.requestAnimationFrame || function (f) { return setTimeout(f, 16); };
     raf(function () { setTimeout(fn, 0); });
   }
-  function repintarTodo() { pintarChips(); diferir(function () { pintarObras(); pintarTablas(); }); }
+  function repintarTodo() {
+    pintarChips();
+    diferir(function () { pintarObras(); pintarTablas(); avisarFiltros(); });
+  }
+
+  // LOS FILTROS DEL TAB, PARA QUIEN LOS NECESITE. El «Resumen mensual» trae su propia data
+  // del servidor —no filtra las filas que ya están acá— así que necesita saber qué hay
+  // marcado para pedirla filtrada. Se expone el estado en vez de que el otro módulo meta
+  // la mano en estas variables: así sigue habiendo un solo dueño de los filtros.
+  global.asaFiltros = function () {
+    return { obras: OBRAS.slice(), personas: PERSONAS.slice(),
+             segmentos: SEGS.slice(), tipos: TIPOS.slice() };
+  };
+
+  function avisarFiltros() {
+    if (SUB === 'mens' && global.loadResumenMensual) global.loadResumenMensual(null, true);
+  }
 
   // Sub-tabs de aSa Data. Hoy hay uno solo; la función existe desde ya para que agregar
   // el siguiente reporte sea añadir una línea a la lista y su panel al HTML.

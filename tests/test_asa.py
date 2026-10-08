@@ -953,7 +953,8 @@ check("las obras de prueba, «NO USAR» y las «- BARRAS» quedan fuera de TODOS
 # pintaba hasta terminar. Ahora el chip va primero y lo pesado después; y las cajas de
 # Stock Cubicaciones tienen el mismo tope de filas que el detalle de códigos.
 check("el chip se pinta primero y el repintado pesado va en el cuadro siguiente",
-      "function diferir(fn)" in DSH and "function repintarTodo() { pintarChips(); diferir(" in DSH
+      "function diferir(fn)" in DSH
+      and "function repintarTodo() {\n    pintarChips();\n    diferir(" in DSH
       and DSH.count("repintarTodo();") >= 2 and "var repintar = repintarTodo;" in DSH)
 check("año y mes encienden el chip antes de descargar, y avisan «Cargando…»",
       DSH.count("pintarChips(); cargar();") == 2 and "$('dshEspejo').textContent = 'Cargando…';" in DSH)

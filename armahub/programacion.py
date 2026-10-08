@@ -993,6 +993,14 @@ SIN_SEGMENTO = "(sin segmento)"
 # tonelaje a la vista, a un clic de entrar.
 MESES_VIGENTE = 3
 MINIMO_VIGENTE = 0.01
+# Lo que el tab manda cuando se filtra por «(sin)» segmento o «(sin)» tipo.
+SIN_FILTRO = "(sin)"
+
+
+def _csv(valor: str) -> list:
+    """Un parámetro «a,b,c» como lista. Vacío = sin filtro, que es lo que manda el tab
+    cuando no hay nada marcado."""
+    return [v for v in (valor or "").split(",") if v.strip()]
 
 # OBRAS QUE NO SON OBRAS. Tres grupos, y los tres quedan fuera de todo reporte:
 #   · las de PRUEBA de aSa («Obra de Prueba», «Prueba Moldajes IB») y la que se llama
@@ -1135,7 +1143,8 @@ def _cubicadores(porcub: dict, vigentes: set) -> list:
 
 
 @router.get("/programacion/asa/mensual")
-def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
+def asa_mensual(anio: Optional[int] = None, obras: str = "", personas: str = "",
+                segmentos: str = "", tipos: str = "", user=Depends(get_current_user)):
     """EL RESUMEN DEL AÑO, MES A MES, Y CONTRA EL AÑO ANTERIOR.
 
     Los tres cuadros que ya existen —por cubicador, por segmento, por tipo— parten los
@@ -1160,6 +1169,30 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
     _exigir_lectura(user)
     hoy = date.today()
     anio = int(anio or hoy.year)
+    # LOS FILTROS DEL TAB APLICAN ACÁ TAMBIÉN. El usuario preguntó si estaban activos y no
+    # lo estaban: este panel traía su propia data sin mirarlos, así que marcar una obra
+    # arriba no cambiaba nada abajo y los números de dos cuadros vecinos no cuadraban.
+    #
+    # EL AÑO Y EL MES SON LA EXCEPCIÓN, a propósito. El año lo elige este panel —comparar
+    # años es justamente lo que hace— y el mes NO se aplica: con un mes marcado quedaría
+    # una sola barra y los doce meses son el eje del gráfico. Eso se dice en pantalla.
+    cond, args = [], []
+    for valores, sql in ((_csv(obras), "p.job_name = ANY(%s)"),
+                         (_csv(personas), "NULLIF(TRIM(p.detail_person),'') = ANY(%s)"),
+                         (_csv(segmentos), "COALESCE(NULLIF(TRIM(at.segmento,''),''), %s) = ANY(%s)"),
+                         (_csv(tipos), "COALESCE(NULLIF(TRIM(at.tipo), ''), %s) = ANY(%s)")):
+        if not valores:
+            continue
+        if "%s) = ANY" in sql:          # los que caen a «(sin)» cuando están vacíos
+            cond.append(sql.replace("TRIM(at.segmento,'')", "TRIM(at.segmento)"))
+            args.extend([SIN_FILTRO, valores])
+        else:
+            cond.append(sql)
+            args.append(valores)
+    filtro = (" AND " + " AND ".join(cond)) if cond else ""
+    # El JOIN con los atributos hace falta sólo si se filtra por segmento o tipo, pero
+    # ponerlo siempre no cuesta nada y evita armar dos consultas distintas.
+    unir = " LEFT JOIN asa_obra_atributos at ON at.asa_job_id = p.asa_job_id"
     with get_conn() as conn:
         with conn.cursor() as cur:
             # Los dos años de una vez: comparar es el punto de este cuadro.
@@ -1168,12 +1201,12 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
                           EXTRACT(MONTH FROM p.order_date)::int,
                           COALESCE(SUM(p.kg), 0), COUNT(*), COUNT(DISTINCT p.asa_job_id),
                           COUNT(DISTINCT NULLIF(TRIM(p.detail_person), ''))
-                     FROM asa_pedidos p
+                     FROM asa_pedidos p""" + unir + """
                     WHERE p.order_date IS NOT NULL
                       AND EXTRACT(YEAR FROM p.order_date)::int IN (%s, %s)
-                      AND p.job_name !~* %s
+                      AND p.job_name !~* %s""" + filtro + """
                     GROUP BY 1, 2 ORDER BY 1, 2""",
-                (anio, anio - 1, PATRON_OBRAS_FUERA))
+                tuple([anio, anio - 1, PATRON_OBRAS_FUERA] + args))
             meses = {}
             for a, m, kg, cod, obras, gente in cur.fetchall():
                 meses.setdefault(a, {})[m] = {"kg": float(kg or 0), "codigos": cod,
@@ -1185,12 +1218,11 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
                 """SELECT EXTRACT(MONTH FROM p.order_date)::int,
                           COALESCE(NULLIF(TRIM(at.segmento), ''), %s),
                           COALESCE(SUM(p.kg), 0)
-                     FROM asa_pedidos p
-                     LEFT JOIN asa_obra_atributos at ON at.asa_job_id = p.asa_job_id
+                     FROM asa_pedidos p""" + unir + """
                     WHERE EXTRACT(YEAR FROM p.order_date)::int = %s
-                      AND p.job_name !~* %s
+                      AND p.job_name !~* %s""" + filtro + """
                     GROUP BY 1, 2 ORDER BY 1, 2""",
-                (SIN_SEGMENTO, anio, PATRON_OBRAS_FUERA))
+                tuple([SIN_SEGMENTO, anio, PATRON_OBRAS_FUERA] + args))
             segmentos = {}
             for m, seg, kg in cur.fetchall():
                 segmentos.setdefault(m, {})[seg] = float(kg or 0)
@@ -1202,11 +1234,11 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
             # éste contesta «cómo se mueve el año», que es otra cosa: la estacionalidad se
             # ve cuando están los cinco años encima, no dos.
             cur.execute(
-                """SELECT EXTRACT(YEAR FROM order_date)::int,
-                          EXTRACT(MONTH FROM order_date)::int, COALESCE(SUM(kg), 0)
-                     FROM asa_pedidos
-                    WHERE order_date IS NOT NULL AND job_name !~* %s
-                    GROUP BY 1, 2 ORDER BY 1, 2""", (PATRON_OBRAS_FUERA,))
+                """SELECT EXTRACT(YEAR FROM p.order_date)::int,
+                          EXTRACT(MONTH FROM p.order_date)::int, COALESCE(SUM(p.kg), 0)
+                     FROM asa_pedidos p""" + unir + """
+                    WHERE p.order_date IS NOT NULL AND p.job_name !~* %s""" + filtro + """
+                    GROUP BY 1, 2 ORDER BY 1, 2""", tuple([PATRON_OBRAS_FUERA] + args))
             por_anio = {}
             for a, m, kg in cur.fetchall():
                 por_anio.setdefault(a, [0.0] * 12)[m - 1] = float(kg or 0)
@@ -1214,12 +1246,13 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
             # escribe a mano una lista de nombres —se desactualiza sola en cuanto alguien
             # entra o sale— sino que se mira quién cubicó en los últimos meses.
             cur.execute(
-                """SELECT NULLIF(TRIM(detail_person), ''),
-                          EXTRACT(MONTH FROM order_date)::int, COALESCE(SUM(kg), 0)
-                     FROM asa_pedidos
-                    WHERE EXTRACT(YEAR FROM order_date)::int = %s
-                      AND job_name !~* %s AND NULLIF(TRIM(detail_person), '') IS NOT NULL
-                    GROUP BY 1, 2""", (anio, PATRON_OBRAS_FUERA))
+                """SELECT NULLIF(TRIM(p.detail_person), ''),
+                          EXTRACT(MONTH FROM p.order_date)::int, COALESCE(SUM(p.kg), 0)
+                     FROM asa_pedidos p""" + unir + """
+                    WHERE EXTRACT(YEAR FROM p.order_date)::int = %s
+                      AND p.job_name !~* %s
+                      AND NULLIF(TRIM(p.detail_person), '') IS NOT NULL""" + filtro + """
+                    GROUP BY 1, 2""", tuple([anio, PATRON_OBRAS_FUERA] + args))
             porcub = {}
             for p, m, kg in cur.fetchall():
                 porcub.setdefault(p, [0.0] * 12)[m - 1] = float(kg or 0)

@@ -157,5 +157,41 @@ check("donde la otra serie es una LÍNEA no se suma un total que no existe",
 check("...y lo que no se ve no se rotula: un cero sólo agrega ruido",
       "Lo que no se ve no se rotula" in JS)
 
+print("\n9. Los filtros del tab aplican acá también")
+# El usuario preguntó si estaban activos y NO lo estaban: este panel traía su propia data
+# sin mirarlos, así que marcar una obra arriba no cambiaba nada abajo y dos cuadros vecinos
+# mostraban números distintos del mismo mes.
+check("el endpoint acepta obra, cubicador, segmento y tipo",
+      "obras: str = \"\", personas: str = \"\"" in SRC and "def _csv(" in SRC)
+check("...y los aplica a TODAS las series, no sólo a una",
+      SRC.count("+ filtro +") == 4)
+check("el tab expone sus filtros en vez de que el otro módulo meta la mano",
+      "global.asaFiltros = function" in DSH and "function filtrosQs(" in JS)
+check("...y el panel se recarga solo cuando cambian",
+      "function avisarFiltros(" in DSH and "loadResumenMensual(null, true)" in DSH
+      and "forzar" in JS)
+# EL MES NO SE APLICA, Y ESO SE DICE. Con un mes marcado quedaría una sola barra.
+check("el filtro de MES no aplica, y la pantalla lo dice en vez de callarlo",
+      "El filtro de MES no aplica" in JS and "los doce meses son el eje" in JS)
+check("...y se avisa cuando el cuadro ESTÁ filtrado",
+      "function hayFiltros(" in JS and "Con los filtros del tab puestos" in JS)
+
+print("\n10. El total de cada serie")
+check("cada año lleva su total en la leyenda",
+      "ton(sumar(s.meses)) + ' t'" in JS and "function sumar(" in JS)
+check("cada cubicador también",
+      "c.nombre + ' · ' + ton(c.total)" in JS)
+check("y el encabezado trae el total de todos los años",
+      "t en total" in JS)
+
+print("\n11. La migración se puede volver a correr")
+MIG = open(os.path.join(ROOT, "armahub", "migrations",
+                        "136_auditoria_correccion_item.sql"), encoding="utf-8").read()
+# `ADD CONSTRAINT` no tiene IF NOT EXISTS y la migración corre en cada arranque: sin el
+# DROP previo falla desde la segunda vez y deja un error en el log que nadie sabe si importa.
+check("las restricciones se sueltan antes de ponerlas",
+      "DROP CONSTRAINT IF EXISTS ck_aud_item_tipo" in MIG
+      and "DROP CONSTRAINT IF EXISTS ck_aud_item_verif" in MIG)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -42,10 +42,27 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
   }
   function n0(v) { return Math.round(Number(v) || 0).toLocaleString('es-CL'); }
+  function sumar(a) { return (a || []).reduce(function (s, v) { return s + (v || 0); }, 0); }
   function ton(v) { return n0((Number(v) || 0) / 1000); }
 
+  // Los filtros del tab viajan al servidor: este panel no filtra en el navegador porque
+  // su data viene ya agregada (son 5.350 códigos de un año; agregarlos acá sería traerlos
+  // todos para sumarlos de nuevo).
+  function filtrosQs() {
+    var f = global.asaFiltros ? global.asaFiltros() : null;
+    if (!f) return '';
+    return ['obras', 'personas', 'segmentos', 'tipos'].map(function (k) {
+      return (f[k] && f[k].length) ? '&' + k + '=' + encodeURIComponent(f[k].join(',')) : '';
+    }).join('');
+  }
+
+  function hayFiltros() {
+    var f = global.asaFiltros ? global.asaFiltros() : null;
+    return !!(f && (f.obras.length || f.personas.length || f.segmentos.length || f.tipos.length));
+  }
+
   async function cargar(anio) {
-    var url = '/programacion/asa/mensual' + (anio ? '?anio=' + anio : '');
+    var url = '/programacion/asa/mensual?anio=' + (anio || '') + filtrosQs();
     var r = await fetch(global.apiUrl(url), { headers: global.authHeaders() });
     if (r.status === 401) { global.logout(); return null; }
     var d = await r.json();
@@ -164,7 +181,8 @@
   function todosLosAnios() {
     if (typeof Chart === 'undefined' || !global.replaceChart) return;
     var series = MENS.por_anio || [];
-    $('mensAniosN').textContent = '· ' + series.length + ' años';
+    $('mensAniosN').textContent = '· ' + series.length + ' años · ' +
+      ton(series.reduce(function (s, x) { return s + sumar(x.meses); }, 0)) + ' t en total';
     CH.mensAniosChart = global.replaceChart(CH.mensAniosChart, $('mensAniosChart'), {
       type: 'bar',
       plugins: (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [],
@@ -181,7 +199,10 @@
           // cada mes y la serie dejaba de ir en orden; además quedaba un hueco donde
           // debería haber estado. Lo vio el usuario. El énfasis se hace SÓLO con el color,
           // que no mueve nada: el año elegido lleno y los demás translúcidos.
-          return { label: String(s.anio), data: s.meses, borderRadius: 2,
+          // EL TOTAL VA EN LA LEYENDA. Los chips de cubicador ya lo hacen y el usuario lo
+          // pidió para éste: sin el total, comparar dos años es sumar doce barras a ojo.
+          return { label: String(s.anio) + ' · ' + ton(sumar(s.meses)) + ' t',
+                   data: s.meses, borderRadius: 2,
                    backgroundColor: actual ? color : color + '66' };
         })
       },
@@ -219,8 +240,8 @@
           // El color sale de la posición en la lista COMPLETA, no en la elegida: así
           // desmarcar a alguien no le cambia el color a todos los demás.
           var i = todos.indexOf(c);
-          return { label: c.nombre, data: c.meses, borderRadius: 2,
-                   backgroundColor: PALETA[i % PALETA.length] };
+          return { label: c.nombre + ' · ' + ton(c.total) + ' t', data: c.meses,
+                   borderRadius: 2, backgroundColor: PALETA[i % PALETA.length] };
         })
       },
       options: {
@@ -308,6 +329,14 @@
           ? MESN[MENS.en_curso - 1] + ' va en curso: se dibuja más claro y no entra en el acumulado.'
           : '')
       : 'El año recién empieza: todavía no hay un mes cerrado que comparar.';
+    // QUÉ FILTROS MANDAN ACÁ. El del mes no se aplica —dejaría una sola barra y los doce
+    // meses son el eje— y el año lo elige este panel. Los demás sí, y hay que decirlo:
+    // un cuadro filtrado que no avisa que lo está es la forma más fácil de leer mal un
+    // número.
+    $('mensNota').innerHTML += hayFiltros()
+      ? ' <b style="color:#1565C0">Con los filtros del tab puestos</b> (obra, cubicador, ' +
+        'segmento, tipo). El filtro de MES no aplica acá: los doce meses son el eje.'
+      : '';
     // Las obras del mes NO se suman: una obra que trabajó en marzo y en abril es una obra,
     // no dos. Se muestra el promedio de frentes abiertos, que sí se puede leer.
     var meses = MENS.meses.slice(0, hasta || 12);
@@ -377,9 +406,10 @@
 
   var _montado = false;
 
-  global.loadResumenMensual = async function (anio) {
+  global.loadResumenMensual = async function (anio, forzar) {
     if (!$('asaPanelMens')) return;
-    if (MENS && anio === ANIO) { pintar(); return; }
+    if (!forzar && MENS && anio === ANIO) { pintar(); return; }
+    if (forzar && anio == null) anio = ANIO;
     try {
       MENS = await cargar(anio);
       if (!MENS) return;
