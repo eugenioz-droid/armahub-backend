@@ -61,13 +61,17 @@
     // son curvos (`DrawingArcAngle`, `DrawingArcRadius` y el centro `Cen`), y el
     // importador deja eso resuelto en cada lado. Son 300 lados en 189 figuras.
     //
-    // EL SENTIDO VA TAL CUAL, y esto está medido, no deducido. El `sweep` del importador
-    // es 1 = antihorario con la Y hacia arriba; el motor lo entrega directo como el
-    // sweep-flag del comando A de SVG, que trabaja con la Y hacia abajo. Las dos vueltas
-    // se cancelan. Comprobado con la 201A, un arco de 60° cuyo centro aSa pone BAJO la
-    // cuerda —así que la barra bombea hacia arriba—: con el sweep tal cual sale arriba,
-    // invertido sale abajo. (En el formulario de auditoría sí se invierte, pero porque
-    // allá el sweep lo arma figura_asa.py con otra convención.)
+    // EL SENTIDO SE INVIERTE, igual que en el formulario de auditoría. El `sweep` del
+    // importador es 1 = antihorario con la Y hacia ARRIBA, que es como vienen las
+    // coordenadas de aSa; el motor voltea la Y para dibujar (comprobado: el punto (0,100)
+    // sale arriba en pantalla) y entrega el número como sweep-flag del comando A de SVG,
+    // que mide ángulos con la Y hacia ABAJO. Voltear la Y invierte el sentido de giro, así
+    // que lo que era antihorario pasa a horario y el flag tiene que ir al revés.
+    //
+    // Caso de control, la 201A: un arco de 60° cuyo centro aSa pone BAJO la cuerda, así
+    // que la barra bombea hacia ARRIBA. Su sweep geométrico es 0, y en SVG el flag que
+    // bombea hacia arriba es el 1. O sea 1 − s. (Primero lo puse tal cual, mirando el
+    // path a ojo en vez de calcularlo; salieron todas espejadas y el usuario lo vio.)
     var curvos = completo && lados.some(function (l) { return l.curvo; });
     try {
       return M.svgDesdePuntos(pts, {
@@ -76,7 +80,7 @@
         labels_auto: completo, angulos: false, cotas_arco_iso: [],
         tipos_seg: curvos ? lados.map(function (l) { return l.curvo ? 'arco' : 'recto'; }) : null,
         radios_seg: curvos ? lados.map(function (l) { return l.radio_arco || 0; }) : null,
-        sweeps_seg: curvos ? lados.map(function (l) { return l.sweep == null ? 1 : l.sweep; }) : null,
+        sweeps_seg: curvos ? lados.map(function (l) { return l.sweep == null ? 1 : 1 - l.sweep; }) : null,
         etiquetas: CAS_F.cotas ? etiquetasDe(f) : []
       });
     } catch (e) { return ''; }

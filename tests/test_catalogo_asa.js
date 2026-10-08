@@ -196,11 +196,18 @@ console.log('TEST: Catálogo aSa');
   const arco = llamadas[0] && llamadas[0].o;
   check('el lado curvo llega al motor como ARCO, no como recta',
     !!arco && arco.tipos_seg && arco.tipos_seg.join() === 'arco' && arco.radios_seg[0] === 240);
-  // EL SENTIDO VA TAL CUAL. El sweep del importador es 1 = antihorario con la Y hacia
-  // arriba; el motor lo entrega directo como sweep-flag de SVG, que usa la Y hacia abajo.
-  // Las dos vueltas se cancelan. Medido sobre 72 arcos: tal cual calza con el centro que
-  // declara aSa en 54, invertido en 6.
-  check('...y el sentido va tal cual, sin invertir', arco.sweeps_seg.join() === '0');
+  // EL SENTIDO SE INVIERTE. El sweep del importador es 1 = antihorario con la Y hacia
+  // ARRIBA, que es como vienen las coordenadas de aSa; el motor voltea la Y para dibujar y
+  // entrega el numero como sweep-flag de SVG, que mide angulos con la Y hacia ABAJO.
+  // Voltear la Y invierte el sentido de giro, asi que el flag va al reves.
+  //
+  // Medido sobre 72 arcos, comparando el centro del arco dibujado contra el que declara
+  // aSa: invertido calza en 56, tal cual en 8. La 201A es el caso de control: su centro
+  // esta BAJO la cuerda, asi que la barra bombea hacia arriba, y en SVG eso es el flag 1.
+  // (Primero quedo sin invertir, por mirar el path a ojo en vez de calcularlo, y salieron
+  // todas espejadas.)
+  check('...y el sentido va INVERTIDO: 0 geometrico es 1 en el lienzo',
+    arco.sweeps_seg.join() === '1');
   llamadas.length = 0;
   T.dibujo(FIGURAS.find(f => f.codigo === '101A'));
   check('una figura sin ningun lado curvo no pide arcos',
