@@ -12,10 +12,24 @@
   <div style="padding:4px 2px 12px;">
 
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
-      <h3 style="margin:0; color:#1565C0;">🔎 Auditorías de cubicación</h3>
-      <span class="muted" style="font-size:11px;">Se revisa una muestra al azar de elementos constructivos; cada hallazgo le queda como acción a quien cubicó.</span>
+      <h3 style="margin:0; color:#1565C0;" id="audTitulo">🔎 Auditorías de cubicación</h3>
+      <span class="muted" style="font-size:11px;" id="audBajada">Se revisa una muestra al azar de elementos constructivos; cada hallazgo le queda como acción a quien cubicó.</span>
     </div>
 
+    <!-- DOS COSAS DISTINTAS, UNA AL LADO DE LA OTRA.
+         · AUDITORÍA: una muestra al azar que revisa una PERSONA, con su nombre, el
+           vocabulario de la ISO y una acción para quien cubicó.
+         · REVISIÓN: la MÁQUINA lee todas las barras de un código y levanta la mano donde
+           algo no calza. No deja hallazgos ni toca los indicadores de conformidad: la
+           señal sugiere, la persona decide.
+         Viven en el mismo tab porque se usan juntas —lo que la máquina marca ayuda a
+         elegir qué auditar— pero no se mezclan. -->
+    <div class="audsubs">
+      <button id="audSubBtnAud" class="audsub on" onclick="switchAudSub('auditorias')">Auditorías</button>
+      <button id="audSubBtnRev" class="audsub" onclick="switchAudSub('revision')">Revisión de barras</button>
+    </div>
+
+    <div id="audSubAuditorias">
     <!-- DOS VISTAS. Acá se CREA y se elige; para revisar se ENTRA a la auditoría, que
          ocupa la pantalla entera. Nada de revisar con la lista encima. -->
     <div id="audVistaLista">
@@ -218,11 +232,100 @@
       </div>
       </div>
     </div>
+    </div><!-- /audSubAuditorias -->
+
+    <!-- ══════ REVISIÓN AUTOMÁTICA DE BARRAS ══════
+         El flujo, y por qué es así:
+           1. se elige UNA obra. No hay «revisar todo»: pedirle a aSa los ítems de un
+              código cuesta segundos y hay miles de códigos vivos;
+           2. la pantalla recorre sus códigos UNO POR UNO y se ve avanzar. Si uno se va,
+              la revisión se detiene donde iba y lo revisado queda guardado;
+           3. cada señal espera a una persona: «está bien» o «hay que corregirla»;
+           4. lo corregido lo comprueba el sistema solo: si al volver a revisar el código
+              la señal ya no está, se cierra sola. -->
+    <div id="audSubRevision" style="display:none;">
+
+      <div class="card audc">
+        <div class="audh">Qué se revisa <span class="muted" id="revReglasN"></span></div>
+        <div id="revReglas" class="revreglas"></div>
+      </div>
+
+      <div class="card audc">
+        <div class="audh">Obras con códigos abiertos o en proceso
+          <span class="muted">lo despachado no se revisa: llega tarde, igual que en la auditoría.</span>
+          <div style="flex:1"></div>
+          <input type="text" id="revBuscaObra" class="audccb" style="max-width:260px"
+                 placeholder="🔍 buscar obra…" autocomplete="off">
+        </div>
+        <div id="revObras" class="revobras"></div>
+      </div>
+
+      <div class="card audc" id="revPanel" style="display:none;">
+        <div class="audh"><span id="revObraNom"></span>
+          <span class="muted" id="revObraInfo"></span>
+          <div style="flex:1"></div>
+          <button id="revCorrer" class="audbtn">Revisar los códigos</button>
+          <button id="revParar" class="audmini" style="display:none;">Detener</button>
+        </div>
+        <div id="revProgreso" class="revprog" style="display:none;">
+          <div class="revbar"><i id="revBarra"></i></div>
+          <div class="muted" id="revProgTxt" style="font-size:11px; margin-top:4px;"></div>
+        </div>
+        <div id="revSenales"></div>
+      </div>
+
+      <div class="card audc" id="revHistorial" style="display:none;">
+        <div class="audh">Revisiones hechas <span class="muted">se registra solo: quién la lanzó, cuándo y qué salió.</span></div>
+        <div id="revHist"></div>
+      </div>
+
+    </div>
 
   </div>
 </div>
 
 <style>
+  /* La segunda línea de tabs, dentro del tab. Mismo patrón que el Catálogo. */
+  .audsubs{display:flex; gap:2px; border-bottom:1px solid #e3e8ef; margin-bottom:12px;}
+  .audsub{padding:5px 16px; font-size:12px; font-weight:600; border:none; background:none;
+          border-bottom:2px solid transparent; color:#aaa; cursor:pointer;}
+  .audsub.on{border-bottom-color:#1565C0; color:#1565C0;}
+  /* Las reglas, a la vista: una regla que nadie entiende es una regla que se ignora. */
+  .revreglas{display:flex; gap:10px; flex-wrap:wrap;}
+  .revregla{flex:1; min-width:280px; background:#f7f9fb; border:1px solid #e3e8ef;
+            border-radius:6px; padding:8px 10px;}
+  .revregla b{font-size:11.5px; color:#263238;}
+  .revregla div{font-size:10.5px; color:#78909c; margin-top:3px; line-height:1.45;}
+  .revobras{max-height:34vh; overflow:auto; border:1px solid #e3e8ef; border-radius:5px; background:#fff;}
+  .revobra{display:flex; align-items:center; gap:10px; padding:5px 9px; font-size:11.5px;
+           border-bottom:1px solid #f2f4f7; cursor:pointer;}
+  .revobra:hover{background:#f3f7fc;}
+  .revobra.on{background:#e8f1fb;}
+  .revobra .n{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; color:#263238;}
+  .revobra .c{flex:none; width:96px; color:#78909c; font-variant-numeric:tabular-nums;}
+  .revobra .u{flex:none; width:150px; color:#90a4ae; font-size:10.5px;}
+  .revobra .s{flex:none; font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px;}
+  .revobra .s.hay{background:#fff3e0; color:#e65100;}
+  .revobra .s.cero{background:#f1f8e9; color:#558b2f;}
+  .revprog{margin:6px 0 10px;}
+  .revbar{height:8px; background:#eceff1; border-radius:3px; overflow:hidden;}
+  .revbar i{display:block; height:100%; width:0; background:#1565C0; transition:width .2s;}
+  /* Una señal: lo que encontró la máquina, esperando que alguien decida. */
+  .revgrupo{margin-top:10px;}
+  .revgrupo h4{margin:0 0 5px; font-size:11.5px; color:#37474f;}
+  .revsen{display:flex; align-items:center; gap:9px; padding:5px 8px; font-size:11.5px;
+          border:1px solid #e3e8ef; border-radius:5px; background:#fff; margin-bottom:4px;}
+  .revsen.corregir{border-color:#ef9a9a; background:#fffafa;}
+  .revsen.aceptada{opacity:.6;}
+  .revsen .cc{font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:#1565C0; flex:none; width:58px;}
+  .revsen .ref{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#37474f;
+               background:#eceff1; border-radius:3px; padding:0 5px; flex:none;}
+  .revsen .tx{flex:1; min-width:0; color:#455a64;}
+  .revsen .ve{flex:none; font-size:9.5px; color:#90a4ae;}
+  .revsen .est{flex:none; font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px;}
+  .revsen .est.corregir{background:#ffebee; color:#c62828;}
+  .revsen .est.aceptada{background:#eceff1; color:#607d8b;}
+  .revvacio{color:#90a4ae; font-size:11.5px; padding:14px 6px; text-align:center;}
   .audc{padding:10px 12px; margin:0 0 12px;}
   .audh{font-size:12px; font-weight:700; color:#263238; margin-bottom:8px; display:flex; align-items:center; gap:8px;}
   .audh .muted{font-weight:400; font-size:10.5px;}

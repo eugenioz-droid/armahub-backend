@@ -39,6 +39,7 @@ from .obra_config import router as obra_config_router
 from .programacion import router as programacion_router
 from .asistente import router as asistente_router
 from .auditorias import router as auditorias_router
+from .chequeos_api import router as chequeos_router
 
 
 def create_app() -> FastAPI:
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(asistente_router)
     # Auditorías de cubicación (Calidad): hoy maqueta, sólo lecturas sobre las barras.
     app.include_router(auditorias_router)
+    app.include_router(chequeos_router)
 
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
@@ -119,6 +121,7 @@ def create_app() -> FastAPI:
         # de Programación estuvo así desde que nació.
         programacion_router,
         auditorias_router,
+        chequeos_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")
