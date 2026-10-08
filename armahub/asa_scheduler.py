@@ -135,6 +135,41 @@ def _una_corrida():
         log.info("aSa reloj: %d obras (%d nuevas)", r["filas"], r["nuevas"])
     except Exception as e:
         log.error("aSa reloj: falló la sincronización de obras: %s", e)
+    _revisar_barras()
+
+
+# LA REVISIÓN DE BARRAS, UNA VEZ AL DÍA (8-oct). Va DESPUÉS de sincronizar, porque lo que
+# decide qué revisar es el `LastModified` que acaba de traer el espejo.
+#
+# UNA VEZ AL DÍA Y NO EN LOS TRES TURNOS: sincronizar tarda segundos; revisar barras le
+# pide a aSa los ítems de cada código y tarda minutos. En el turno que no toca, el reloj
+# sigue haciendo lo de siempre y no revisa.
+HORA_REVISION = int(os.getenv("CHEQUEO_HORA", "6") or 6)
+
+
+def _revisar_barras():
+    from .db import get_conn
+    try:
+        ahora = datetime.now(_zona())
+        if ahora.hour != HORA_REVISION:
+            return
+        # Una sola por día, aunque haya dos instancias de Render o el turno se repita.
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT 1 FROM chequeo_revisiones
+                        WHERE lanzada_por = 'reloj' AND arrancada > now() - interval '20 hours'
+                        LIMIT 1""")
+                if cur.fetchone():
+                    log.info("Revisión de barras: ya corrió hoy; se salta.")
+                    return
+        from .chequeos_api import barrido_automatico
+        r = barrido_automatico()
+        log.info("Revisión de barras: %d códigos, %d señales nuevas (%s)",
+                 r["ccs"], r["senales"], r["motivo"])
+    except Exception as e:
+        # Igual que todo lo demás acá: que falle la revisión no puede tumbar el reloj.
+        log.error("Revisión de barras: falló (%s)", e)
 
 
 def proxima(desde: datetime, turnos: list) -> datetime:

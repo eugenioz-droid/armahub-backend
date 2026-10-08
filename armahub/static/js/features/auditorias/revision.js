@@ -123,51 +123,116 @@
       var sinRevisar = REV.ccs.filter(function (c) { return !c.revisado; }).length;
       $('revObraInfo').textContent = REV.ccs.length + ' código(s) abiertos o en proceso · ' +
         (sinRevisar ? sinRevisar + ' sin revisar' : 'todos revisados alguna vez');
+      pintarCodigos();
       await cargarSenales();
       await cargarHistorial();
     } catch (e) { aviso(e.message); $('revObraInfo').textContent = e.message; }
   }
 
   // ── Correr la revisión, código por código ─────────────────────────────────────────
+  // UNA SOLA FUNCIÓN PARA LOS DOS BOTONES. Revisar una obra y revisar lo pendiente de
+  // todas son el mismo recorrido con otra cola: lo que cambia es de dónde sale la lista.
+  // Escribirlo dos veces sería tener dos formas de contar el progreso que algún día dirían
+  // cosas distintas.
+  async function recorrer(cola, revision, ui) {
+    var hechos = 0, barras = 0, nuevas = 0, errores = 0;
+    for (var i = 0; i < cola.length; i++) {
+      if (REV.parar) break;
+      var c = cola[i];
+      ui.txt.textContent = 'Revisando ' + c.cc + (c.obra ? ' · ' + c.obra : '') +
+        ' · ' + (i + 1) + ' de ' + cola.length +
+        (nuevas ? ' · ' + nuevas + ' señal(es) nueva(s)' : '');
+      ui.barra.style.width = Math.round((i / cola.length) * 100) + '%';
+      try {
+        var r = await req('POST', '/chequeos/revisar',
+                          { job: c.job, cc: c.cc, revision: revision });
+        hechos++; barras += r.barras || 0; nuevas += r.nuevas || 0;
+        if (r.error) errores++;
+      } catch (e) { errores++; }
+    }
+    ui.barra.style.width = '100%';
+    ui.txt.textContent = hechos + ' código(s) · ' + num(barras) + ' barras · ' +
+      nuevas + ' señal(es) nueva(s)' + (errores ? ' · ' + errores + ' con error' : '') +
+      (REV.parar ? ' · detenida' : '');
+    if (revision) { try { await req('PUT', '/chequeos/revision/' + revision + '/cerrar'); } catch (e) {} }
+    return { hechos: hechos, nuevas: nuevas };
+  }
+
+  function _arranca(btnId, pararId, progId) {
+    REV.corriendo = true; REV.parar = false;
+    $(btnId).disabled = true;
+    $(pararId).style.display = '';
+    $(progId).style.display = '';
+  }
+
+  function _termina(btnId, pararId) {
+    REV.corriendo = false;
+    $(btnId).disabled = false;
+    $(pararId).style.display = 'none';
+  }
+
   async function correr() {
     if (!REV.job || REV.corriendo) return;
-    REV.corriendo = true; REV.parar = false;
-    $('revCorrer').disabled = true;
-    $('revParar').style.display = '';
-    $('revProgreso').style.display = '';
-    var hechos = 0, barras = 0, nuevas = 0, errores = 0, revision = null;
+    _arranca('revCorrer', 'revParar', 'revProgreso');
     try {
       var ini = await req('POST', '/chequeos/revision', { job: REV.job });
-      revision = ini.revision;
-      var lista = ini.ccs || [];
-      for (var i = 0; i < lista.length; i++) {
-        if (REV.parar) break;
-        $('revProgTxt').textContent = 'Revisando ' + lista[i] + ' · ' + (i + 1) + ' de ' + lista.length +
-          (nuevas ? ' · ' + nuevas + ' señal(es) nueva(s)' : '');
-        $('revBarra').style.width = Math.round((i / lista.length) * 100) + '%';
-        try {
-          var r = await req('POST', '/chequeos/revisar',
-                            { job: REV.job, cc: lista[i], revision: revision });
-          hechos++; barras += r.barras || 0; nuevas += r.nuevas || 0;
-          if (r.error) errores++;
-        } catch (e) { errores++; }
-      }
-      $('revBarra').style.width = '100%';
-      $('revProgTxt').textContent = hechos + ' código(s) · ' + num(barras) + ' barras · ' +
-        nuevas + ' señal(es) nueva(s)' + (errores ? ' · ' + errores + ' con error' : '') +
-        (REV.parar ? ' · detenida' : '');
+      await recorrer((ini.ccs || []).map(function (cc) { return { job: REV.job, cc: cc }; }),
+                     ini.revision, { txt: $('revProgTxt'), barra: $('revBarra') });
       ok(REV.parar ? 'Revisión detenida; lo revisado quedó guardado' : 'Revisión terminada');
-    } catch (e) {
-      aviso(e.message);
-      $('revProgTxt').textContent = e.message;
-    }
-    if (revision) { try { await req('PUT', '/chequeos/revision/' + revision + '/cerrar'); } catch (e) {} }
-    REV.corriendo = false;
-    $('revCorrer').disabled = false;
-    $('revParar').style.display = 'none';
-    await cargarSenales();
-    await cargarHistorial();
-    await cargarObras();
+    } catch (e) { aviso(e.message); $('revProgTxt').textContent = e.message; }
+    _termina('revCorrer', 'revParar');
+    await cargarSenales(); await cargarHistorial(); await cargarObras(); await cargarPendientes();
+  }
+
+  // LO PENDIENTE DE TODAS LAS OBRAS. Es el mismo trabajo que hace el reloj una vez al día,
+  // disponible cuando uno quiera: así no hay que esperar a la hora para ver lo de recién.
+  async function correrPendientes() {
+    if (REV.corriendo) return;
+    _arranca('revPendCorrer', 'revPendParar', 'revPendProg');
+    try {
+      var ini = await req('POST', '/chequeos/revision-pendientes', {});
+      await recorrer(ini.ccs || [], ini.revision,
+                     { txt: $('revPendProgTxt'), barra: $('revPendBarra') });
+      ok(REV.parar ? 'Detenida; lo revisado quedó guardado' : 'Pendientes revisados');
+    } catch (e) { aviso(e.message); $('revPendProgTxt').textContent = e.message; }
+    _termina('revPendCorrer', 'revPendParar');
+    await cargarPendientes(); await cargarObras();
+    if (REV.job) { await cargarSenales(); await cargarHistorial(); }
+  }
+
+  async function cargarPendientes() {
+    try {
+      var d = await req('GET', '/chequeos/pendientes');
+      var n = d.pendientes || 0;
+      $('revPendTxt').textContent = n
+        ? n + ' código(s) en ' + (d.obras || 0) + ' obra(s): nunca revisados, o cambiados en aSa ' +
+          'desde la última vez. La revisión corre sola una vez al día; este botón no espera a la hora. ' +
+          'Va de a ' + d.tope + ' por vez.'
+        : 'Nada pendiente: todo lo abierto está revisado y nada cambió desde entonces.';
+      $('revPendCorrer').disabled = !n;
+    } catch (e) { $('revPendTxt').textContent = e.message; }
+  }
+
+  // CÓDIGO POR CÓDIGO: cuándo se revisó, quién, y si cambió en aSa desde entonces. Un
+  // código limpio también deja constancia, si no no se podría distinguir «lo miramos y
+  // está bien» de «nunca lo miramos».
+  function pintarCodigos() {
+    var el = $('revCodigos');
+    if (!el) return;
+    el.innerHTML = (REV.ccs || []).map(function (c) {
+      var m = !c.revisado ? '<span class="m no">sin revisar</span>'
+            : c.cambio ? '<span class="m cambio">cambió en aSa</span>'
+            : c.abiertas ? '<span class="m hay">' + c.abiertas + ' por mirar</span>'
+            : '<span class="m ok">limpio</span>';
+      return '<div class="revcc"><span class="k">' + esc(c.cc) + '</span>' +
+        '<span class="d">' + esc(c.descr || '') + '</span>' +
+        '<span class="r">' + (c.revisado
+            ? 'revisado ' + ddmm(c.revisado) + ' · ' +
+              esc((c.revisado_por === 'reloj' ? 'automática' : (c.revisado_por || '').split('@')[0])) +
+              (c.barras_vistas ? ' · ' + c.barras_vistas + ' barras' : '')
+            : '') + '</span>' +
+        (c.error ? '<span class="m hay" title="' + esc(c.error) + '">error</span>' : '') + m + '</div>';
+    }).join('');
   }
 
   // ── Las señales ───────────────────────────────────────────────────────────────────
@@ -256,15 +321,18 @@
       $('revHist').innerHTML = hs.length
         ? '<table class="audt"><thead><tr><th>Cuándo</th><th>Quién</th><th class="num">Códigos</th>' +
           '<th class="num">Barras</th><th class="num">Nuevas</th><th class="num">Ya vistas</th>' +
-          '<th class="num">Corregidas</th></tr></thead><tbody>' +
+          '<th class="num">Corregidas</th><th></th></tr></thead><tbody>' +
           hs.map(function (h) {
             return '<tr><td>' + ddmm(h.arrancada) + '</td>' +
-              '<td>' + esc((h.por || '').split('@')[0]) + '</td>' +
+              '<td>' + (h.por === 'reloj'
+                  ? '<span class="audori asa">automática</span>'
+                  : esc((h.por || '').split('@')[0])) + '</td>' +
               '<td class="num">' + h.ccs + (h.ccs_error ? ' <span class="muted">(' + h.ccs_error + ' con error)</span>' : '') + '</td>' +
               '<td class="num">' + num(h.barras) + '</td>' +
               '<td class="num">' + h.nuevas + '</td>' +
               '<td class="num">' + h.vistas + '</td>' +
-              '<td class="num">' + h.corregidas + '</td></tr>';
+              '<td class="num">' + h.corregidas + '</td>' +
+              '<td class="muted" style="font-size:10px">' + esc(h.nota || '') + '</td></tr>';
           }).join('') + '</tbody></table>'
         : '';
     } catch (e) { /* el historial es un extra: que falle no rompe la pantalla */ }
@@ -285,6 +353,8 @@
       _listo = true;
       $('revCorrer').addEventListener('click', correr);
       $('revParar').addEventListener('click', function () { REV.parar = true; });
+      $('revPendCorrer').addEventListener('click', correrPendientes);
+      $('revPendParar').addEventListener('click', function () { REV.parar = true; });
       $('revBuscaObra').addEventListener('input', function () {
         REV.busca = this.value; pintarObras();
       });
@@ -295,6 +365,7 @@
       pintarReglas();
     }
     await cargarObras();
+    await cargarPendientes();
   };
 
   // Las dos líneas del tab. La revisión se carga la primera vez que se entra, no al abrir

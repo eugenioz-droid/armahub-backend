@@ -21,6 +21,9 @@ y barras miró y qué encontró — sin que nadie llene un formulario. La única
 está en resolver una señal: «está bien» o «hay que corregirla». Un clic, y queda con
 nombre y fecha. Lo demás sería burocracia.
 """
+import logging
+import os
+import time
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -32,6 +35,8 @@ from .auditorias import (PATRON_OBRAS_FUERA, _es_barra, _items_de, _puede_audita
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
 from .db import audit, get_conn
+
+log = logging.getLogger("armahub.chequeos")
 
 router = APIRouter(prefix="/api/v1", tags=["chequeos"])
 
@@ -107,17 +112,27 @@ def codigos(job: str, user=Depends(get_current_user)):
                     "fecha": r[3].isoformat() if r[3] else None,
                     "estado": r[4], "persona": r[5]} for r in cur.fetchall()]
             cur.execute(
-                """SELECT cc, COUNT(*) FILTER (WHERE estado = ANY(%s)),
-                          COUNT(*), MAX(visto_ultimo)
+                """SELECT cc, COUNT(*) FILTER (WHERE estado = ANY(%s)), COUNT(*)
                      FROM chequeo_senales WHERE id_proyecto = %s GROUP BY cc""",
                 (list(ABIERTAS), job))
-            vis = {r[0]: {"abiertas": r[1], "total": r[2],
-                          "revisado": r[3].isoformat() if r[3] else None}
+            vis = {r[0]: {"abiertas": r[1], "total": r[2]} for r in cur.fetchall()}
+            # Cuándo se revisó cada código, y si lo que hay en aSa cambió desde entonces.
+            cur.execute(
+                """SELECT c.cc, c.revisado_el, c.revisado_por, c.barras, c.error,
+                          (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
+                           AND p.ultima_mod > c.ultima_mod) AS cambio
+                     FROM chequeo_codigos c
+                     LEFT JOIN asa_pedidos p ON p.control_code = c.cc
+                    WHERE c.id_proyecto = %s""", (job,))
+            rev = {r[0]: {"revisado": r[1].isoformat(), "revisado_por": r[2],
+                          "barras_vistas": r[3], "error": r[4], "cambio": bool(r[5])}
                    for r in cur.fetchall()}
             cur.execute("SELECT MAX(job_name) FROM asa_pedidos WHERE asa_job_id = %s", (job,))
             obra = (cur.fetchone() or [None])[0]
     for c in ccs:
-        c.update(vis.get(c["cc"]) or {"abiertas": 0, "total": 0, "revisado": None})
+        c.update(vis.get(c["cc"]) or {"abiertas": 0, "total": 0})
+        c.update(rev.get(c["cc"]) or {"revisado": None, "revisado_por": None,
+                                      "barras_vistas": 0, "error": None, "cambio": False})
     return {"job": job, "obra": obra, "ccs": ccs, "total": len(ccs)}
 
 
@@ -162,13 +177,18 @@ class RevisarCc(BaseModel):
 def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
     """REVISA UN CÓDIGO. Es el paso que la pantalla repite: un código por llamada, para que
     se vea avanzar y para que ninguna petición dure minutos."""
-    _puede_auditar(user)
+    # El reloj llama a esta misma función sin pasar por la API. No se le inventa un permiso:
+    # se reconoce que no viene de una petición y se salta el control, que es lo único que
+    # sobra ahí (no hay nadie a quien negarle nada).
+    if user.get("rol_interno") != "reloj":
+        _puede_auditar(user)
     email = user.get("email", "?")
     try:
         items = [it for it in _items_de(body.cc) if _es_barra(it)]
     except AsaError as e:
         # Un código que falla no bota la revisión: se cuenta y se sigue con el siguiente.
         _sumar_revision(body.revision, ccs=1, errores=1)
+        _marcar_codigo(body.job, body.cc, email, 0, 0, str(e))
         return {"cc": body.cc, "error": str(e), "barras": 0,
                 "nuevas": 0, "vistas": 0, "corregidas": 0, "senales": []}
     # LA MISMA REFERENCIA QUE USA LA AUDITORÍA, con la misma función: así una señal y un
@@ -234,12 +254,36 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
                 (body.job, body.cc, list(ABIERTAS), vivas))
             corregidas = len(cur.fetchall())
 
+    # QUE UN CÓDIGO ESTÉ LIMPIO TAMBIÉN ES UN RESULTADO. Si sólo se guardaran las señales,
+    # un código sin problemas se vería igual que uno que nadie miró nunca.
+    _marcar_codigo(body.job, body.cc, email, len(barras), len(senales), None)
     _sumar_revision(body.revision, ccs=1, barras=len(barras), nuevas=nuevas,
                     vistas=vistas, corregidas=corregidas)
     return {"cc": body.cc, "barras": len(barras), "nuevas": nuevas, "vistas": vistas,
             "corregidas": corregidas,
             "senales": [{"regla": s["regla"], "ref": s["ref"], "texto": s["detalle"]["texto"]}
                         for s in senales]}
+
+
+def _marcar_codigo(job: str, cc: str, por: str, barras: int, senales: int,
+                   error) -> None:
+    """Deja escrito que este código se revisó, con la marca de tiempo que tenía en aSa.
+
+    Esa marca es lo que después deja al reloj saltarse lo que no cambió: si el código no se
+    tocó desde la última revisión, volver a pedirle los ítems a aSa son segundos tirados."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO chequeo_codigos
+                       (id_proyecto, cc, revisado_el, revisado_por, barras, senales,
+                        ultima_mod, error)
+                   SELECT %s, %s, now(), %s, %s, %s, p.ultima_mod, %s
+                     FROM asa_pedidos p WHERE p.control_code = %s LIMIT 1
+                   ON CONFLICT (id_proyecto, cc) DO UPDATE
+                      SET revisado_el = now(), revisado_por = EXCLUDED.revisado_por,
+                          barras = EXCLUDED.barras, senales = EXCLUDED.senales,
+                          ultima_mod = EXCLUDED.ultima_mod, error = EXCLUDED.error""",
+                (job, cc, por, barras, senales, error, cc))
 
 
 def _json(d):
@@ -371,6 +415,123 @@ def resolver(senal_id: int, body: ResolverBody, user=Depends(get_current_user)):
                                                             " (patrón, %d)" % n if body.patron else ""),
           "chequeo", str(senal_id))
     return {"ok": True, "afectadas": n}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LA REVISIÓN QUE CORRE SOLA
+# ─────────────────────────────────────────────────────────────────────────────
+# Cuelga del reloj de aSa (ver asa_scheduler), una vez al día después de sincronizar. Lo
+# que la hace viable es que NO barre todo: mira sólo los códigos que nunca se revisaron y
+# los que CAMBIARON en aSa desde la última revisión. La primera pasada es larga; después,
+# un día normal son decenas de códigos.
+#
+# Y TIENE PRESUPUESTO. Corre dentro del proceso web, así que no puede quedarse horas: se
+# detiene al llegar al tope de códigos o al de minutos, lo que pase primero, y deja escrito
+# que se cortó y cuántos quedaban. Una revisión a medias que se ve completa es peor que no
+# tenerla.
+TOPE_AUTO = int(os.getenv("CHEQUEO_TOPE_CODIGOS", "300") or 300)
+MINUTOS_AUTO = float(os.getenv("CHEQUEO_MINUTOS", "15") or 15)
+
+
+def pendientes(limite: int = 0) -> list:
+    """Los códigos que vale la pena revisar, los más nuevos primero. Función aparte para
+    poder preguntarle a la pantalla «cuánto falta» sin revisar nada."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT p.asa_job_id, p.control_code, MAX(p.job_name)
+                     FROM asa_pedidos p
+                     LEFT JOIN chequeo_codigos c
+                            ON c.id_proyecto = p.asa_job_id AND c.cc = p.control_code
+                    WHERE COALESCE(p.estado,'') = ANY(%s)
+                      AND p.job_name !~* %s
+                      AND (c.cc IS NULL
+                           OR (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
+                               AND p.ultima_mod > c.ultima_mod))
+                    GROUP BY p.asa_job_id, p.control_code
+                    ORDER BY MAX(p.order_date) DESC NULLS LAST
+                    """ + ("LIMIT %s" if limite else ""),
+                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + ((limite,) if limite else ()))
+            return [{"job": r[0], "cc": r[1], "obra": r[2]} for r in cur.fetchall()]
+
+
+def barrido_automatico(lanzado_por: str = "reloj") -> dict:
+    """Revisa lo que haya cambiado, con tope de códigos y de minutos. La llama el reloj."""
+    inicio = time.time()
+    cola = pendientes(TOPE_AUTO)
+    if not cola:
+        return {"ccs": 0, "senales": 0, "motivo": "nada pendiente"}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO chequeo_revisiones (id_proyecto, obra, lanzada_por)
+                   VALUES (%s,%s,%s) RETURNING id""",
+                ("(varias)" if len({c["job"] for c in cola}) > 1 else cola[0]["job"],
+                 "Revisión automática", lanzado_por))
+            rid = cur.fetchone()[0]
+    hechos = nuevas = 0
+    cortada = None
+    for i, c in enumerate(cola):
+        if (time.time() - inicio) / 60.0 >= MINUTOS_AUTO:
+            cortada = "Se cortó por el tope de %g minutos: quedaban %d códigos." % (
+                MINUTOS_AUTO, len(cola) - i)
+            break
+        try:
+            r = revisar_cc(RevisarCc(job=c["job"], cc=c["cc"], revision=rid),
+                           {"email": lanzado_por, "rol_interno": "reloj"})
+            hechos += 1
+            nuevas += r.get("nuevas", 0)
+        except Exception as e:          # noqa: BLE001 — un código no puede botar el barrido
+            log.warning("Revisión automática: %s falló (%s)", c["cc"], e)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE chequeo_revisiones SET terminada = now(), nota = %s WHERE id = %s",
+                        (cortada, rid))
+    return {"revision": rid, "ccs": hechos, "senales": nuevas,
+            "motivo": cortada or "terminó la cola"}
+
+
+@router.get("/chequeos/pendientes")
+def cuantos_pendientes(limite: int = 0, user=Depends(get_current_user)):
+    """Qué códigos esperan revisión: los que nunca se miraron y los que cambiaron en aSa.
+
+    Devuelve la CUENTA y, si se pide un límite, la cola. Con eso la pantalla puede ofrecer
+    «revisar lo pendiente» y recorrerlo de a uno, igual que cuando se elige una obra. NO
+    hay un endpoint que haga el barrido entero de una: serían quince minutos colgado de un
+    request, y el navegador —o Render— lo cortan antes. El barrido largo corre en el reloj,
+    que no tiene a nadie esperando del otro lado."""
+    _puede_ver(user)
+    cola = pendientes(limite or 0)
+    total = len(cola) if not limite else len(pendientes(0))
+    return {"pendientes": total, "obras": len({c["job"] for c in cola}),
+            "cola": cola if limite else [], "tope": TOPE_AUTO, "minutos": MINUTOS_AUTO}
+
+
+class RevisionPendientes(BaseModel):
+    limite: int = TOPE_AUTO
+
+
+@router.post("/chequeos/revision-pendientes")
+def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current_user)):
+    """Abre el registro de una revisión de lo pendiente, y devuelve la cola. La pantalla la
+    recorre de a uno, como la de una obra."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    cola = pendientes(max(1, min(body.limite or TOPE_AUTO, 2000)))
+    if not cola:
+        raise HTTPException(status_code=400, detail="No hay códigos pendientes de revisar.")
+    jobs = {c["job"] for c in cola}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO chequeo_revisiones (id_proyecto, obra, lanzada_por)
+                   VALUES (%s,%s,%s) RETURNING id""",
+                ("(varias)" if len(jobs) > 1 else cola[0]["job"],
+                 "Pendientes · %d obra(s)" % len(jobs), email))
+            rid = cur.fetchone()[0]
+    audit(email, "chequeo_revision", "pendientes · %d codigos · %d obras" % (len(cola), len(jobs)),
+          "chequeo", str(rid))
+    return {"revision": rid, "ccs": cola, "obras": len(jobs)}
 
 
 @router.get("/chequeos/revisiones")

@@ -35,6 +35,8 @@ from armahub import chequeos as C  # noqa: E402
 SRC = open(os.path.join(ROOT, "armahub", "chequeos.py"), encoding="utf-8").read()
 API = open(os.path.join(ROOT, "armahub", "chequeos_api.py"), encoding="utf-8").read()
 MIG = open(os.path.join(ROOT, "armahub", "migrations", "133_chequeos.sql"), encoding="utf-8").read()
+MIG2 = open(os.path.join(ROOT, "armahub", "migrations", "134_chequeo_codigos.sql"), encoding="utf-8").read()
+SCH = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "revision.js"),
           encoding="utf-8").read()
 HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html"),
@@ -145,7 +147,9 @@ print("\n5. El flujo: la señal sugiere, la persona decide")
 check("sólo se revisan los códigos vivos: lo despachado llega tarde",
       'ESTADOS_VIVOS = ("Open", "Processed")' in API)
 check("la pantalla recorre los códigos DE A UNO, para que no haya un request de minutos",
-      '@router.post("/chequeos/revisar")' in API and "for (var i = 0; i < lista.length; i++)" in JS)
+      '@router.post("/chequeos/revisar")' in API
+      and "for (var i = 0; i < cola.length; i++)" in JS
+      and "UNA SOLA FUNCIÓN PARA LOS DOS BOTONES" in JS)
 check("...y se puede detener sin perder lo ya revisado",
       "REV.parar" in JS and 'id="revParar"' in HTM)
 check("aceptar una señal EXIGE el motivo: sin él, nadie puede revisarlo después",
@@ -176,6 +180,47 @@ check("el tab tiene dos líneas y la revisión es la segunda",
       and "global.switchAudSub" in JS)
 check("el router está montado y el script cargado",
       "chequeos_router" in MAIN and "auditorias/revision.js" in APP)
+
+# ── 7. Corre sola, y también cuando uno quiera ───────────────────────────────────────
+print("\n7. La revisión corre sola, y también a pedido")
+check("cuelga del reloj de aSa, DESPUÉS de sincronizar",
+      "_revisar_barras()" in SCH and "def _revisar_barras(" in SCH
+      and SCH.index("sincronizar_obras") < SCH.index("_revisar_barras()"))
+check("...una vez al día, no en los tres turnos: sincronizar tarda segundos y esto, minutos",
+      "HORA_REVISION" in SCH and "ahora.hour != HORA_REVISION" in SCH
+      and "interval '20 hours'" in SCH)
+check("...y si falla no tumba el reloj, igual que todo lo demás de ese hilo",
+      "Revisión de barras: falló" in SCH)
+# LO QUE LA HACE VIABLE: no barre todo. 2.992 códigos vivos a segundos cada uno son horas.
+check("no barre todo: sólo lo nunca revisado y lo que CAMBIÓ en aSa desde la última vez",
+      "def pendientes(" in API and "p.ultima_mod > c.ultima_mod" in API
+      and "c.cc IS NULL" in API)
+check("...y tiene presupuesto de códigos y de minutos, con lo que quedó escrito",
+      "TOPE_AUTO" in API and "MINUTOS_AUTO" in API
+      and "Se cortó por el tope de %g minutos" in API)
+check("a pedido es el MISMO recorrido, conducido por la pantalla",
+      '@router.post("/chequeos/revision-pendientes")' in API
+      and "async function correrPendientes(" in JS and "function recorrer(" in JS)
+check("...y no hay un endpoint que barra todo de una: serían 15 minutos colgado de un request",
+      "/chequeos/automatica" not in API
+      and "hay un endpoint que haga el barrido entero de una" in API
+      and "El barrido largo corre en el reloj" in API)
+
+# ── 8. La trazabilidad ───────────────────────────────────────────────────────────────
+print("\n8. Trazabilidad: qué se revisó, cuándo y quién lo pidió")
+check("cada código revisado deja constancia, aunque esté LIMPIO",
+      "CREATE TABLE IF NOT EXISTS chequeo_codigos" in MIG2 and "def _marcar_codigo(" in API
+      and "QUE UN CÓDIGO ESTÉ LIMPIO TAMBIÉN ES UN RESULTADO" in API)
+check("...con quién lo revisó y la marca de tiempo que tenía en aSa",
+      "revisado_por" in MIG2 and "ultima_mod" in MIG2 and "p.ultima_mod" in API)
+check("...y eso es lo mismo que deja al reloj saltarse lo que no cambió",
+      "volver a pedirle los ítems a aSa son segundos tirados" in API)
+check("la pantalla muestra, por código, cuándo se revisó y si cambió desde entonces",
+      "function pintarCodigos(" in JS and "cambió en aSa" in JS and "sin revisar" in JS)
+check("...y distingue la revisión automática de la que pidió una persona",
+      "'reloj' ? 'automática'" in JS or "=== 'reloj'" in JS)
+check("el registro de cada revisión dice cómo terminó, no sólo que corrió",
+      "ADD COLUMN IF NOT EXISTS nota" in MIG2 and "nota = %s WHERE id = %s" in API)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
