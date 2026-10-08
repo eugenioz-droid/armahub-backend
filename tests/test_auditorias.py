@@ -496,6 +496,51 @@ check("la pantalla dice de dónde salió el dibujo, sin repetir la decisión",
       "f.eje.fuente === 'catalogo_asa'" in JS and "audfigfte" in JS and "audfigfte" in HTM
       and "svgTrazoAsa" not in JS)
 
+print("\n7c0. El flujo: el auditado corrige, el sistema comprueba")
+# EL AUDITOR YA NO VERIFICA (8-oct). Lo sacó el usuario: «el auditor no debe verificar la
+# corrección, es responsabilidad del auditado». Y lo que comprueba que se hizo no es una
+# persona: es el sistema, volviendo a pedirle la barra a aSa.
+check("la corrección es por ITEM, igual que el hallazgo",
+      '@router.put("/auditorias/{auditoria_id}/items/{item_id}/correccion")' in SRC
+      and '@router.get("/auditorias/mias/items")' in SRC)
+check("...la declara quien cubicó, y nadie más",
+      "Esta corrección es de quien cubicó el elemento." in SRC)
+check("...con un comentario para cuando lo hecho no calza exacto con lo observado",
+      "consideración mixta entre lo" in SRC and "nota_correccion" in SRC)
+check("decir «hice uno nuevo» obliga a decir CUÁL",
+      "Si se hizo un código nuevo, hay que decir cuál" in SRC)
+check("...porque ése es el único caso que el sistema NO puede comprobar solo",
+      "la barra vieja va" in SRC and "NO puede" in SRC)
+check("el estado del elemento se DERIVA de sus barras, no se elige",
+      "def _accion_de_items(" in SRC
+      and 'return "corregida" if corregidas >= malas else "pendiente"' in SRC)
+check("y «verificada» la pone la comprobación, no una persona",
+      "verificadas >= malas" in SRC and "comprobar es del sistema" in SRC)
+
+print("\n7c0b. Quien cubicó en aSa no se llama como su correo")
+# Las 47 barras por corregir que hay hoy están todas a nombre de «Nlopez»: con el correo
+# no le llegaban a nadie. El login de aSa es la inicial del nombre pegada al apellido.
+check("se deriva el login de aSa desde el nombre y el apellido",
+      "def alias_de(" in SRC and "def alias_cubicador(" in SRC)
+check("...y está medido: calza con los 7 cubicadores y no se equivoca con ninguno",
+      "calza con los 7 cubicadores que están en la plataforma" in SRC)
+check("...lo usan las dos listas, no sólo la nueva",
+      SRC.count("alias_cubicador(cur, email)") >= 3)
+check("el valor esperado viaja con la revisión, estructurado y no como texto",
+      "esperado: Optional[dict] = None" in SRC and "esperado = EXCLUDED.esperado" in SRC)
+check("...y vuelve al reabrir el elemento, junto con en qué va la corrección",
+      '"esperado": r[5] or {}' in SRC and '"corregido": bool(r[6])' in SRC)
+
+print("\n7c0c. El panel del auditado")
+check("una fila por BARRA, no un botón por elemento",
+      "function filaMia(" in JS and "MIS CORRECCIONES, BARRA POR BARRA" in JS)
+check("...dice qué encontró el auditor y qué DEBERÍA decir",
+      "function _esperadoTxt(" in JS and "Debería decir" in JS)
+check("...y el plazo vencido se ve, aunque todavía no dispare nada",
+      "audvenc" in JS and ".audt tr.audvenc td{" in HTM)
+check("la comprobación del sistema se muestra aparte de lo que declaró la persona",
+      "Sigue igual en aSa" in JS and "Comprobada" in JS)
+
 print("\n7c2. El largo que se audita es la SUMA DE LOS PARCIALES")
 # Lo cazó el cubicador que hizo la primera auditoría: el formulario mostraba 2.576 donde su
 # cubicación dice 2.640. aSa manda dos largos y no son lo mismo — el teórico es la suma de

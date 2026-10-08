@@ -456,13 +456,69 @@ def _poner_refs(barras):
     return barras
 
 
+def _sin_tildes(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return "".join(c for c in s if c.isalnum())
+
+
+def alias_de(nombre: str, apellido: str, login_asa: str) -> bool:
+    """¿`login_asa` es el nombre de esta persona en aSa? Función pura, para probarla sola.
+
+    En las auditorías de aSa, `cubicado_por` NO es un correo: es el login de aSa, que se
+    arma con la inicial del nombre pegada al apellido — `Nlopez`, `HMONDACA`, `Dvenegas`—
+    y a veces con dos iniciales (`JHvelasquez`). El correo nunca va a calzar con eso.
+
+    LA REGLA: termina en el apellido y empieza con la inicial del nombre. Medido sobre los
+    18 nombres que aSa trae en el último año y los usuarios del área de Cubicaciones:
+    calza con los 7 cubicadores que están en la plataforma y NO se equivoca con ninguno.
+    Los once que quedan fuera son gente que simplemente no es usuario acá.
+    """
+    a, n, l = _sin_tildes(apellido), _sin_tildes(nombre), _sin_tildes(login_asa)
+    return bool(a and n and l and l.endswith(a) and l[:1] == n[:1])
+
+
+def alias_cubicador(cur, email: str) -> list:
+    """Con qué nombres aparece esta persona en `cubicado_por`: su correo —así es en las
+    auditorías de ArmaHub— y su login de aSa. Sin esto, las 47 barras por corregir que hay
+    hoy no le llegan a nadie: están todas a nombre de «Nlopez»."""
+    nombres = [email]
+    cur.execute("SELECT nombre, apellido FROM users WHERE email = %s", (email,))
+    fila = cur.fetchone()
+    if not fila:
+        return nombres
+    nombre, apellido = fila
+    cur.execute("""SELECT DISTINCT NULLIF(TRIM(cubicado_por), '')
+                     FROM auditoria_elementos WHERE cubicado_por IS NOT NULL""")
+    for (login,) in cur.fetchall():
+        if login and alias_de(nombre, apellido, login):
+            nombres.append(login)
+    return nombres
+
+
+def _json(d):
+    """Un dict a JSONB. Se escribe acá y no se importa `json` en cada sitio."""
+    import json
+    return json.dumps(d, ensure_ascii=False)
+
+
 def _hallazgos_de_items(cur, elemento_id: int) -> dict:
-    """Lo ya registrado barra por barra, para repintarlo al reabrir el elemento."""
+    """Lo ya registrado barra por barra, para repintarlo al reabrir el elemento: el
+    veredicto, lo que debería decir, y en qué va la corrección."""
     cur.execute(
-        """SELECT ref, conforme, observacion, revisado_por, revisado_el
+        """SELECT ref, conforme, observacion, revisado_por, revisado_el, esperado,
+                  corregido, corregido_por, corregido_el, nota_correccion,
+                  tipo_correccion, cc_nuevo, verificado, verificado_el, verificado_dato
              FROM auditoria_items WHERE elemento_id = %s""", (elemento_id,))
     return {r[0]: {"conforme": r[1], "observacion": r[2], "revisado_por": r[3],
-                   "revisado_el": r[4].isoformat() if r[4] else None} for r in cur.fetchall()}
+                   "revisado_el": r[4].isoformat() if r[4] else None,
+                   "esperado": r[5] or {},
+                   "corregido": bool(r[6]), "corregido_por": r[7],
+                   "corregido_el": r[8].isoformat() if r[8] else None,
+                   "nota_correccion": r[9], "tipo_correccion": r[10], "cc_nuevo": r[11],
+                   "verificado": r[12],
+                   "verificado_el": r[13].isoformat() if r[13] else None,
+                   "verificado_dato": r[14]} for r in cur.fetchall()}
 
 
 def _clave_elemento(e) -> tuple:
@@ -1689,6 +1745,33 @@ def _avisar(destinatario: str, mensaje: str):
         pass
 
 
+def _accion_de_items(cur, elemento_id: int) -> Optional[str]:
+    """EN QUÉ VA LA CORRECCIÓN DEL ELEMENTO, mirando sus barras. No se elige: se deriva,
+    igual que el estado de la auditoría.
+
+    El usuario lo fijó así: «el hallazgo es por ITEM siempre; la corrección también». El
+    elemento ya no es la unidad de trabajo —lo es la barra— pero su estado sigue haciendo
+    falta para la lista y para el informe, donde una fila por barra no cabe.
+
+      pendiente   queda alguna barra mala sin corregir
+      corregida   el auditado las declaró todas corregidas
+      verificada  el SISTEMA comprobó contra aSa que ya no están mal. Nadie la pone a
+                  mano: antes la ponía el auditor y el usuario lo sacó, porque corregir
+                  es responsabilidad del auditado y comprobar es del sistema.
+    """
+    cur.execute(
+        """SELECT COUNT(*), COUNT(*) FILTER (WHERE corregido),
+                  COUNT(*) FILTER (WHERE verificado = 'ok')
+             FROM auditoria_items WHERE elemento_id = %s AND conforme IS FALSE""",
+        (elemento_id,))
+    malas, corregidas, verificadas = cur.fetchone()
+    if not malas:
+        return None
+    if verificadas >= malas:
+        return "verificada"
+    return "corregida" if corregidas >= malas else "pendiente"
+
+
 def _recalcular(cur, auditoria_id: int) -> bool:
     """El estado y las fechas se DERIVAN de los hallazgos, en la base y no en el front.
 
@@ -1723,6 +1806,11 @@ class ItemBody(BaseModel):
     marca: Optional[str] = None
     conforme: bool
     observacion: Optional[str] = None
+    # LO QUE DEBERÍA DECIR LA BARRA: {"A": 120, "cant": 103}. Las llaves son las columnas
+    # de la grilla. Un texto libre —«la cantidad debe ser 103»— no se puede comparar con
+    # nada; esto sí, y es lo que después deja que el sistema compruebe la corrección sin
+    # que nadie tenga que mirar.
+    esperado: Optional[dict] = None
 
 
 class RevisionBody(BaseModel):
@@ -1797,14 +1885,16 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
             if body.items:
                 cur.executemany(
                     """INSERT INTO auditoria_items (elemento_id, ref, marca, conforme, observacion,
-                                                    revisado_por, revisado_el)
-                       VALUES (%s,%s,%s,%s,%s,%s, now())
+                                                    esperado, revisado_por, revisado_el)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s, now())
                        ON CONFLICT (elemento_id, ref) DO UPDATE SET
                            marca = EXCLUDED.marca, conforme = EXCLUDED.conforme,
-                           observacion = EXCLUDED.observacion, revisado_por = EXCLUDED.revisado_por,
-                           revisado_el = now()""",
+                           observacion = EXCLUDED.observacion, esperado = EXCLUDED.esperado,
+                           revisado_por = EXCLUDED.revisado_por, revisado_el = now()""",
                     [(elemento_id, it.ref, it.marca, it.conforme,
-                      (it.observacion or "").strip() or None, email) for it in body.items])
+                      (it.observacion or "").strip() or None,
+                      _json(it.esperado) if it.esperado else None, email)
+                     for it in body.items])
             accion = None
             if es_nc:
                 accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"
@@ -1861,6 +1951,126 @@ def mover_accion(auditoria_id: int, elemento_id: int, body: AccionBody, user=Dep
     return detalle(auditoria_id, user)
 
 
+class CorreccionBody(BaseModel):
+    """Lo que declara el AUDITADO sobre una barra que le marcaron."""
+    corregido: bool = True
+    # Para cuando lo hecho no calza exacto con lo observado. Lo pidió el usuario: «un
+    # posible comentario en caso de que haya alguna consideración mixta entre lo
+    # observado y lo correcto».
+    nota: Optional[str] = None
+    # `item` = se corrigió la misma barra, y entonces el sistema puede ir a mirarla.
+    # `nuevo` = se hizo un ítem o un código nuevo, y entonces NO puede: la barra vieja va
+    # a seguir diciendo lo mismo para siempre y comprobarla diría que no se corrigió.
+    tipo: str = "item"
+    cc_nuevo: Optional[str] = None
+
+
+@router.put("/auditorias/{auditoria_id}/items/{item_id}/correccion")
+def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
+                  user=Depends(get_current_user)):
+    """EL AUDITADO DECLARA QUE CORRIGIÓ UNA BARRA.
+
+    Es suyo y de nadie más: el auditor declara el hallazgo y ahí termina su trabajo. Y lo
+    que declara acá es un DICHO, no una comprobación — eso lo hace el sistema aparte, y
+    por eso se guardan en campos distintos."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    if body.tipo not in ("item", "nuevo"):
+        raise HTTPException(status_code=422, detail="Tipo no válido: item / nuevo.")
+    if body.tipo == "nuevo" and not (body.cc_nuevo or "").strip():
+        raise HTTPException(status_code=400,
+                            detail="Si se hizo un código nuevo, hay que decir cuál: sin eso "
+                                   "nadie puede ir a buscarlo después.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT i.elemento_id, i.conforme, i.ref, e.cubicado_por, e.nombre,
+                          a.codigo, a.auditor
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                     JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE i.id = %s AND e.auditoria_id = %s""", (item_id, auditoria_id))
+            fila = cur.fetchone()
+            if not fila:
+                raise HTTPException(status_code=404, detail="Esa barra no es de esta auditoría.")
+            elemento_id, conforme, ref, cubico, nombre, codigo, auditor = fila
+            if conforme is not False:
+                raise HTTPException(status_code=400,
+                                    detail="Esa barra no tiene nada que corregir.")
+            # QUIÉN PUEDE: quien cubicó, o administración. El auditor no corrige lo que él
+            # mismo marcó, y el resto no tiene nada que hacer acá.
+            es_admin = user.get("role") in ROLES_ADMINISTRAN
+            if not es_admin and cubico and (cubico or "").strip() not in alias_cubicador(cur, email):
+                raise HTTPException(status_code=403,
+                                    detail="Esta corrección es de quien cubicó el elemento.")
+            cur.execute(
+                """UPDATE auditoria_items
+                      SET corregido = %s, corregido_por = %s,
+                          corregido_el = CASE WHEN %s THEN now() END,
+                          nota_correccion = %s, tipo_correccion = %s, cc_nuevo = %s,
+                          -- Volver a abrirla borra lo que el sistema había comprobado:
+                          -- esa medición era de la corrección anterior.
+                          verificado = CASE WHEN %s THEN verificado END,
+                          verificado_el = CASE WHEN %s THEN verificado_el END
+                    WHERE id = %s""",
+                (body.corregido, email if body.corregido else None, body.corregido,
+                 (body.nota or "").strip() or None,
+                 body.tipo if body.corregido else None,
+                 (body.cc_nuevo or "").strip() or None if body.corregido else None,
+                 body.corregido, body.corregido, item_id))
+            accion = _accion_de_items(cur, elemento_id)
+            cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                        (accion, elemento_id))
+            audit(email, "auditoria_correccion",
+                  "%s · %s · %s: %s" % (codigo, nombre, ref,
+                                        "corregida" if body.corregido else "reabierta"),
+                  "auditoria", str(auditoria_id))
+    if body.corregido and auditor:
+        _avisar(auditor, "Auditoría %s: %s · %s quedó corregida." % (codigo, nombre, ref))
+    return detalle(auditoria_id, user)
+
+
+@router.get("/auditorias/mias/items")
+def mis_items(user=Depends(get_current_user)):
+    """LO QUE LE TOCA CORREGIR A QUIEN PREGUNTA, barra por barra.
+
+    Reemplaza a la lista por elemento: un elemento son cuatro o ciento cincuenta barras, y
+    «este eje tiene un hallazgo» no dice cuál hay que ir a arreglar."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            quien = alias_cubicador(cur, email)
+            cur.execute(
+                """SELECT a.id, a.codigo, a.obra, e.id, e.cc,
+                          CONCAT_WS(' · ', NULLIF(e.cc, ''), e.nombre),
+                          i.id, i.ref, i.marca, i.observacion, i.esperado,
+                          i.corregido, i.nota_correccion, i.tipo_correccion, i.cc_nuevo,
+                          i.verificado, a.plazo_fecha, a.auditor, e.hallazgo, e.causa
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                     JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE i.conforme IS FALSE AND TRIM(e.cubicado_por) = ANY(%s)
+                    ORDER BY i.corregido, a.plazo_fecha, a.codigo, e.id, i.ref""",
+                (quien,))
+            filas = [{"auditoria_id": r[0], "codigo": r[1], "obra": r[2], "elemento_id": r[3],
+                      "cc": r[4], "elemento": r[5], "item_id": r[6], "ref": r[7],
+                      "marca": r[8], "observacion": r[9], "esperado": r[10] or {},
+                      "corregido": bool(r[11]), "nota_correccion": r[12],
+                      "tipo_correccion": r[13], "cc_nuevo": r[14], "verificado": r[15],
+                      "plazo": r[16].isoformat() if r[16] else None, "auditor": r[17],
+                      "hallazgo": r[18], "causa": r[19]} for r in cur.fetchall()]
+    hoy = date.today()
+    for f in filas:
+        # EL PLAZO, REGISTRADO. Todavía no dispara nada —el correo no está— pero el dato
+        # viaja desde ya, para que cuando se habilite no haya que reconstruirlo.
+        f["vencido"] = bool(f["plazo"] and not f["corregido"]
+                            and date.fromisoformat(f["plazo"]) < hoy)
+    return {"items": filas,
+            "pendientes": sum(1 for f in filas if not f["corregido"]),
+            "vencidas": sum(1 for f in filas if f["vencido"])}
+
+
 @router.get("/auditorias/mias/acciones")
 def mis_acciones(user=Depends(get_current_user)):
     """Lo que le toca corregir a quien pregunta: sus no conformidades abiertas."""
@@ -1876,8 +2086,9 @@ def mis_acciones(user=Depends(get_current_user)):
                           e.hallazgo, e.texto, e.causa,
                           e.accion_estado, a.plazo_fecha, a.auditor
                      FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
-                    WHERE e.cubicado_por ILIKE %s AND e.accion_estado IS NOT NULL
-                    ORDER BY (e.accion_estado = 'verificada'), a.plazo_fecha""", ("%" + email + "%",))
+                    WHERE TRIM(e.cubicado_por) = ANY(%s) AND e.accion_estado IS NOT NULL
+                    ORDER BY (e.accion_estado = 'verificada'), a.plazo_fecha""",
+                (alias_cubicador(cur, email),))
             filas = [{"auditoria_id": r[0], "codigo": r[1], "obra": r[2], "elemento_id": r[3],
                       "elemento": r[4], "hallazgo": r[5], "texto": r[6], "causa": r[7],
                       "accion_estado": r[8], "plazo": r[9].isoformat() if r[9] else None,

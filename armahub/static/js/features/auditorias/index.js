@@ -62,6 +62,9 @@
   // Alcance de aSa: los CÓDIGOS elegidos. Allá no hay piso ni ciclo —se intentó
   // reconocerlos del texto del código y era adivinar—, así que se eligen a mano.
   var CCS = [], CC_LISTA = [], CC_BUSCA = '';
+  // Las barras que le toca corregir a quien está mirando. Se guardan para que el botón
+  // sepa de cuál habla sin volver a pedirlas.
+  var MIS = [];
   // El estado del código en aSa que significa «ya salió a la obra». Es el único que cambia
   // qué conviene hacer con el código, así que es el único que la pantalla trata distinto.
   var ESTADO_DESPACHADO = 'Shipped';
@@ -1161,42 +1164,104 @@
   }
 
   // MIS ACCIONES: lo que a mí me toca corregir, sin tener que buscar en qué auditoría salió.
+  // MIS CORRECCIONES, BARRA POR BARRA (8-oct).
+  //
+  // Antes era una fila por ELEMENTO con un botón «Ya la corregí». Un elemento son cuatro,
+  // trece o ciento cincuenta barras: si dos salían mal y se arreglaba una, no había forma
+  // de decirlo, y el botón era una declaración sin respaldo —no decía qué se hizo ni
+  // dónde—. El usuario lo fijó: «el hallazgo es por ITEM siempre; la corrección también».
+  //
+  // QUÉ CAMBIA DE RESPONSABLE. El auditor ya no verifica: declara el hallazgo y ahí
+  // termina. El auditado declara que corrigió, y lo COMPRUEBA EL SISTEMA volviendo a
+  // pedirle la barra a aSa. Por eso acá no hay ningún botón de «verificar».
+  function _esperadoTxt(esp) {
+    var k = Object.keys(esp || {});
+    if (!k.length) return '';
+    return k.map(function (x) { return x + ' = ' + esp[x]; }).join(' · ');
+  }
+
   async function cargarMisAcciones() {
     var caja = $('audMias');
     if (!caja) return;
     try {
-      var d = await req('GET', '/auditorias/mias/acciones');
-      var abiertas = ((d && d.acciones) || []).filter(function (a) { return a.accion_estado !== 'verificada'; });
-      if (!abiertas.length) { caja.style.display = 'none'; return; }
+      var d = await req('GET', '/auditorias/mias/items');
+      MIS = (d && d.items) || [];
+      if (!MIS.length) { caja.style.display = 'none'; return; }
       caja.style.display = '';
-      caja.innerHTML = '<div class="audh">Mis correcciones pendientes <span class="muted">' + abiertas.length +
-        ' · salieron de una auditoría de tu cubicación</span></div>' +
-        '<table class="audt"><thead><tr><th>Auditoría</th><th>Obra</th><th>Elemento</th><th>Hallazgo</th>' +
-        '<th>Qué encontró el auditor</th><th>Plazo</th><th>Estado</th><th></th></tr></thead><tbody>' +
-        abiertas.map(function (a) {
-          return '<tr><td class="cc">' + esc(a.codigo) + '</td><td>' + esc(a.obra) + '</td>' +
-            '<td>' + esc(a.elemento) + '</td>' +
-            '<td><span class="audhz ' + esc(a.hallazgo) + '">' + esc(HALLAZGO_TXT[a.hallazgo]) + '</span></td>' +
-            '<td title="' + esc(a.texto || '') + '">' + esc(a.texto || '') + '</td>' +
-            '<td>' + ddmm(a.plazo) + '</td>' +
-            '<td><span class="audacc1 ' + esc(a.accion_estado) + '">' + esc(ACCION_TXT[a.accion_estado]) + '</span></td>' +
-            '<td>' + (a.accion_estado === 'pendiente'
-              ? '<button class="audmini" data-mia="' + a.elemento_id + '" data-aud="' + a.auditoria_id + '">Ya la corregí</button>'
-              : '<span class="muted" style="font-size:9.5px">esperando al auditor</span>') + '</td></tr>';
-        }).join('') + '</tbody></table>';
-      caja.querySelectorAll('button[data-mia]').forEach(function (b) {
-        b.addEventListener('click', async function () {
-          b.disabled = true;
-          try {
-            await req('PUT', '/auditorias/' + b.dataset.aud + '/elementos/' + b.dataset.mia + '/accion',
-                      { estado: 'corregida' });
-            ok('Avisado al auditor');
-            await cargarMisAcciones(); await cargarLista();
-            if (AUD && AUD.id === Number(b.dataset.aud)) { AUD = await req('GET', '/auditorias/' + AUD.id); pintarDetalle(); }
-          } catch (e) { aviso(e.message); b.disabled = false; }
-        });
+      var pend = d.pendientes || 0, venc = d.vencidas || 0;
+      caja.innerHTML = '<div class="audh">Mis correcciones <span class="muted">' +
+        (pend ? pend + ' barra(s) por corregir' : 'todas corregidas') +
+        (venc ? ' · <b style="color:#c62828">' + venc + ' fuera de plazo</b>' : '') +
+        ' · salieron de una auditoría de tu cubicación. Lo que corrijas lo comprueba el ' +
+        'sistema contra aSa: nadie tiene que verificarlo a mano.</span></div>' +
+        '<table class="audt audacct"><thead><tr><th>Auditoría</th><th>Código</th><th>Elemento</th>' +
+        '<th>Barra</th><th>Qué encontró el auditor</th><th>Debería decir</th><th>Plazo</th>' +
+        '<th>Estado</th><th></th></tr></thead><tbody>' +
+        MIS.map(filaMia).join('') + '</tbody></table>';
+      caja.querySelectorAll('button[data-item]').forEach(function (b) {
+        b.addEventListener('click', function () { resolverMia(b.dataset.item, b.dataset.accion); });
       });
     } catch (e) { caja.style.display = 'none'; }
+  }
+
+  function filaMia(a) {
+    var est = a.corregido
+      ? (a.verificado === 'ok'
+          ? '<span class="audacc1 verificada" title="El sistema volvió a mirar la barra en aSa y ya no está mal.">Comprobada</span>'
+          : a.verificado === 'sigue_igual'
+            ? '<span class="audacc1 pendiente" title="El sistema miró la barra en aSa y sigue igual. Puede que falte sincronizar, o que el cambio no se haya guardado.">Sigue igual en aSa</span>'
+            : '<span class="audacc1 corregida">Corregida</span>')
+      : '<span class="audacc1 pendiente">Pendiente</span>';
+    return '<tr' + (a.vencido ? ' class="audvenc"' : '') + '>' +
+      '<td class="cc">' + esc(a.codigo) + '</td>' +
+      '<td class="cc">' + esc(a.cc || '') + '</td>' +
+      '<td class="audnom" title="' + esc(a.elemento) + '">' + esc(a.elemento) + '</td>' +
+      '<td><span class="audref">' + esc(a.ref) + '</span></td>' +
+      '<td>' + esc(a.observacion || '') + '</td>' +
+      '<td class="audesp">' + esc(_esperadoTxt(a.esperado)) + '</td>' +
+      '<td' + (a.vencido ? ' style="color:#c62828;font-weight:700"' : '') + '>' + ddmm(a.plazo) + '</td>' +
+      '<td>' + est + (a.nota_correccion
+          ? ' <span class="muted" title="' + esc(a.nota_correccion) + '">✎</span>' : '') +
+        (a.tipo_correccion === 'nuevo'
+          ? ' <span class="muted" style="font-size:9px">CC ' + esc(a.cc_nuevo || 'nuevo') + '</span>' : '') +
+        '</td>' +
+      '<td>' + (a.corregido
+          ? '<button class="audmini" data-item="' + a.item_id + '" data-accion="abrir">Deshacer</button>'
+          : '<button class="audmini ver" data-item="' + a.item_id + '" data-accion="corregir">La corregí</button>')
+      + '</td></tr>';
+  }
+
+  // AL DECLARAR LA CORRECCIÓN SE PREGUNTA CÓMO SE HIZO, y no es burocracia: si se corrigió
+  // la misma barra el sistema puede ir a mirarla, y si se hizo un código nuevo NO puede —la
+  // barra vieja va a seguir diciendo lo mismo para siempre y comprobarla diría que no se
+  // corrigió—. Es el único caso que el usuario dijo que no iba a ser automático.
+  async function resolverMia(itemId, accion) {
+    var a = MIS.filter(function (x) { return String(x.item_id) === String(itemId); })[0];
+    if (!a) return;
+    var cuerpo = { corregido: accion === 'corregir' };
+    if (cuerpo.corregido) {
+      var nuevo = global.confirm(
+        'Barra ' + a.ref + '\n\n' +
+        'Aceptar = se hizo un CÓDIGO o ÍTEM NUEVO.\n' +
+        'Cancelar = se corrigió esta misma barra (el sistema lo va a comprobar en aSa).');
+      cuerpo.tipo = nuevo ? 'nuevo' : 'item';
+      if (nuevo) {
+        var cc = global.prompt('¿Cuál es el código nuevo?');
+        if (cc === null) return;
+        if (!cc.trim()) { aviso('Hace falta el código nuevo.'); return; }
+        cuerpo.cc_nuevo = cc.trim();
+      }
+      var nota = global.prompt(
+        'Comentario, si lo que hiciste no calza exacto con lo observado (opcional):');
+      if (nota === null) return;
+      cuerpo.nota = nota;
+    }
+    try {
+      await req('PUT', '/auditorias/' + a.auditoria_id + '/items/' + itemId + '/correccion', cuerpo);
+      ok(cuerpo.corregido ? 'Corrección registrada' : 'Vuelta a abrir');
+      await cargarMisAcciones(); await cargarLista();
+      if (AUD && AUD.id === a.auditoria_id) { AUD = await req('GET', '/auditorias/' + AUD.id); pintarDetalle(); }
+    } catch (e) { aviso(e.message); }
   }
 
   // Expuesto para los tests: lo puro.

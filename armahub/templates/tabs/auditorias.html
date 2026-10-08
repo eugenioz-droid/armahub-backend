@@ -479,6 +479,13 @@
   .audobsb li{color:#546e7a; font-size:10.5px; line-height:1.5;}
   .audobsb li b{font-family:ui-monospace,Consolas,monospace; color:#37474f; font-size:10px;
                 background:#eceff1; border-radius:3px; padding:0 4px; margin-right:4px;}
+  /* La barra, en el panel del auditado: lo primero que busca para ir a arreglarla. */
+  .audref{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#37474f;
+          background:#eceff1; border-radius:3px; padding:1px 5px;}
+  /* Lo que DEBERÍA decir. Va en verde porque es el destino, no el problema. */
+  .audt td.audesp{color:#2e7d32; font-weight:600; font-size:10.5px;}
+  /* Fuera de plazo. No bloquea nada —todavía no hay correo— pero se ve. */
+  .audt tr.audvenc td{background:#fff8f7;}
   /* La revisión de un elemento: panel propio, bajo la muestra. */
   .audrev{margin-top:10px; padding:10px 12px; background:#f7f9fb; border:1px solid #cfd8dc; border-radius:6px;}
   .audhall{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 6px;}
