@@ -147,8 +147,18 @@ check("el motor es una función pura: no toca la base ni la red",
 
 # ── 5. El flujo ──────────────────────────────────────────────────────────────────────
 print("\n5. El flujo: la señal sugiere, la persona decide")
-check("sólo se revisan los códigos vivos: lo despachado llega tarde",
-      'ESTADOS_VIVOS = ("Open", "Processed")' in API)
+# LOS PROCESSED TAMBIEN LLEGAN TARDE (8-oct, lo aviso el usuario y el dato le dio la
+# razon): de 186 codigos Processed en obras con movimiento, 86 YA PASARON su fecha de
+# despacho, 88 salen dentro de siete dias y solo 7 tienen mas de una semana. 165 estan
+# confirmados en planta y 77 ya tienen guia. Donde hay margen es en los Open: de 785, 657
+# no tienen ni fecha de despacho.
+check("por defecto solo los Open: son los unicos con margen para corregir",
+      'ESTADOS_CON_MARGEN = ("Open",)' in API and 'ESTADOS_TARDE = ("Processed",)' in API
+      and "def _estados(incluir_tarde: bool)" in API)
+check("...con el numero que lo justifica escrito al lado",
+      "86 YA PASARON su fecha" in API and "el fierro ya esta en el camion" in API.replace("á","a").replace("ó","o"))
+check("...y los Processed se pueden pedir igual, con un chip que lo dice",
+      'id="revTarde"' in HTM and "REV.tarde" in JS)
 check("la pantalla recorre los códigos DE A UNO, para que no haya un request de minutos",
       '@router.post("/chequeos/revisar")' in API
       and "for (var i = 0; i < cola.length; i++)" in JS
@@ -235,7 +245,7 @@ check("el criterio es el MISMO que el de Stock Cubicaciones: movimiento en N mes
 check("...y se puede soltar: 0 es «todas», no un valor que se ignora",
       "if not meses:" in API and 'VENTANA_TODO' in API)
 check("el reloj tampoco barre obras muertas: la cola usa la misma ventana",
-      "def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO)" in API)
+      "def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = False)" in API)
 check("la pantalla lo muestra como chips, no escondido",
       "var MESES = [[3," in JS and 'id="revMeses"' in HTM and "function pintarMeses(" in JS)
 
@@ -252,6 +262,13 @@ check("...porque si la obra pasa de manos, un reporte viejo no puede reescribirs
 check("y queda dicho que NO es un ranking de personas",
       "NO ES UN RANKING DE PERSONAS" in API and "sería medir las reglas, no a la gente" in API)
 # EL ERROR QUE UN REPORTE ASÍ NO PUEDE COMETER.
+# UN ROTULO QUE MENTIA: «Barras» parecia «barras malas» y eran las MIRADAS. Y el nombre de
+# la regla lo recortaba la tabla por las dos primeras palabras: «Lado mas», que no dice nada.
+check("la columna de barras dice que son las MIRADAS, no las malas",
+      "Barras miradas" in JS and "no cuántas están malas" in JS)
+check("el nombre corto de la regla lo declara la REGLA, no lo recorta la tabla",
+      '"corto": "Lado corto"' in SRC and '"corto": "Estribo cuadrado"' in SRC
+      and "split(' ').slice(0, 2)" not in JS)
 check("una obra sin revisar NO se lee como limpia: se dice que está sin revisar",
       "no está limpia, está sin revisar" in API and "sin revisar</span>" in JS)
 check("...y la columna de revisados va antes que la de señales, por lo mismo",

@@ -266,8 +266,9 @@
       </div>
 
       <div class="card audc">
-        <div class="audh">Obras con códigos abiertos o en proceso
-          <span class="muted">lo despachado no se revisa: llega tarde, igual que en la auditoría.</span>
+        <div class="audh">Obras con códigos por cubicar
+          <span class="muted">sólo los <b>Open</b>: un Processed ya está confirmado en planta y
+          casi siempre despacha dentro de la semana, así que corregirlo llega tarde.</span>
           <div style="flex:1"></div>
           <input type="text" id="revBuscaObra" class="audccb" style="max-width:260px"
                  placeholder="🔍 buscar obra…" autocomplete="off">
@@ -279,6 +280,9 @@
         <div class="audccbar" style="margin-bottom:8px;">
           <span class="dshbl">Con movimiento en</span>
           <div class="dshchips" id="revMeses"></div>
+          <div class="dshchips"><button id="revTarde" title="Un código Processed ya está confirmado
+            en planta: de los 186 que hay, 86 ya pasaron su fecha de despacho y 88 salen dentro de
+            la semana. Revisarlos llega tarde, pero a veces hay que mirarlos igual.">Incluir Processed</button></div>
           <span class="muted" style="font-size:11px" id="revMesesTxt"></span>
         </div>
         <div id="revObras" class="revobras"></div>

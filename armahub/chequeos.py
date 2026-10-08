@@ -191,12 +191,17 @@ def r_estribo_cuadrado(barra, hermanas) -> list:
 
 REGLAS = [
     {"codigo": "lado_corto",
+     # El nombre corto es para los encabezados de tabla. Lo declara la regla y no lo recorta
+     # la pantalla: cortar «Lado más corto que 10 diámetros» por las dos primeras palabras
+     # daba «Lado más», que no quiere decir nada.
+     "corto": "Lado corto",
      "nombre": "Lado más corto que 10 diámetros",
      "porque": "La planta dobla a 10 veces el diámetro. Menos que eso no se puede fabricar "
                "ni anclar. Los ganchos no cuentan: son cortos por norma.",
      "necesita": ("lados", "diam"),
      "fn": r_lado_corto},
     {"codigo": "estribo_cuadrado",
+     "corto": "Estribo cuadrado",
      "nombre": "Estribo cuadrado entre hermanos que no lo son",
      "porque": "Un estribo cuadrado suele ser la misma medida tipeada dos veces. A veces es "
                "correcto —un pilar cuadrado existe—, por eso se compara con los otros "

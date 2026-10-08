@@ -21,7 +21,7 @@
   'use strict';
 
   var REV = { obras: [], job: null, obra: null, ccs: [], senales: [], reglas: {},
-              corriendo: false, parar: false, busca: '', meses: 3 };
+              corriendo: false, parar: false, busca: '', meses: 3, tarde: false };
   // Las ventanas que se ofrecen. 0 = todas. Las mismas que el tab de Stock Cubicaciones.
   var MESES = [[3, '3 meses'], [6, '6 meses'], [12, '1 año'], [0, 'Todas']];
 
@@ -136,7 +136,8 @@
     $('revObraInfo').textContent = 'cargando…';
     $('revSenales').innerHTML = '';
     try {
-      var d = await req('GET', '/chequeos/codigos?job=' + encodeURIComponent(job));
+      var d = await req('GET', '/chequeos/codigos?job=' + encodeURIComponent(job) +
+                        '&tarde=' + REV.tarde);
       REV.ccs = d.ccs || [];
       var sinRevisar = REV.ccs.filter(function (c) { return !c.revisado; }).length;
       $('revObraInfo').textContent = REV.ccs.length + ' código(s) abiertos o en proceso · ' +
@@ -193,7 +194,7 @@
     if (!REV.job || REV.corriendo) return;
     _arranca('revCorrer', 'revParar', 'revProgreso');
     try {
-      var ini = await req('POST', '/chequeos/revision', { job: REV.job });
+      var ini = await req('POST', '/chequeos/revision', { job: REV.job, tarde: REV.tarde });
       await recorrer((ini.ccs || []).map(function (cc) { return { job: REV.job, cc: cc }; }),
                      ini.revision, { txt: $('revProgTxt'), barra: $('revBarra') });
       ok(REV.parar ? 'Revisión detenida; lo revisado quedó guardado' : 'Revisión terminada');
@@ -209,7 +210,7 @@
     if (REV.corriendo) return;
     _arranca('revPendCorrer', 'revPendParar', 'revPendProg');
     try {
-      var ini = await req('POST', '/chequeos/revision-pendientes', {});
+      var ini = await req('POST', '/chequeos/revision-pendientes', { tarde: REV.tarde });
       await recorrer(ini.ccs || [], ini.revision,
                      { txt: $('revPendProgTxt'), barra: $('revPendBarra') });
       ok(REV.parar ? 'Detenida; lo revisado quedó guardado' : 'Pendientes revisados');
@@ -221,7 +222,7 @@
 
   async function cargarPendientes() {
     try {
-      var d = await req('GET', '/chequeos/pendientes');
+      var d = await req('GET', '/chequeos/pendientes?tarde=' + REV.tarde);
       var n = d.pendientes || 0;
       $('revPendTxt').textContent = n
         ? n + ' código(s) en ' + (d.obras || 0) + ' obra(s): nunca revisados, o cambiados en aSa ' +
@@ -359,7 +360,7 @@
 
   async function cargarObras() {
     try {
-      var d = await req('GET', '/chequeos/obras?meses=' + REV.meses);
+      var d = await req('GET', '/chequeos/obras?meses=' + REV.meses + '&tarde=' + REV.tarde);
       REV.obras = d.obras || [];
       pintarObras();
       var n = REV.obras.length;
@@ -375,16 +376,17 @@
   // «revisados» va antes que la de señales y el cero se dice con palabras.
   async function cargarReporte() {
     try {
-      var d = await req('GET', '/chequeos/reporte?meses=' + REV.meses);
+      var d = await req('GET', '/chequeos/reporte?meses=' + REV.meses + '&tarde=' + REV.tarde);
       var t = d.total || {}, obras = d.obras || [];
       $('revRepTxt').textContent = t.obras + ' obra(s) · ' + t.revisados + ' de ' + t.ccs +
         ' código(s) revisados · ' + num(t.barras) + ' barras miradas · ' +
         t.abiertas + ' señal(es) esperando · ' + t.corregidas + ' ya corregida(s)';
       var reglas = Object.keys(d.reglas || {});
       $('revRep').innerHTML = '<table class="audt"><thead><tr><th>Obra</th><th>Cubicó</th>' +
-        '<th class="num">Códigos</th><th class="num">Revisados</th><th class="num">Barras</th>' +
-        reglas.map(function (k) { return '<th class="num" title="' + esc(d.reglas[k]) + '">' +
-          esc(d.reglas[k].split(' ').slice(0, 2).join(' ')) + '</th>'; }).join('') +
+        '<th class="num">Códigos</th><th class="num">Revisados</th>' +
+        '<th class="num" title="Cuántas barras se MIRARON, no cuántas están malas.">Barras miradas</th>' +
+        reglas.map(function (k) { return '<th class="num" title="Señales de la regla: ' +
+          esc(d.reglas[k]) + '">' + esc(d.reglas[k]) + '</th>'; }).join('') +
         '<th class="num">Por corregir</th><th class="num">Corregidas</th></tr></thead><tbody>' +
         obras.map(function (o) {
           var falta = o.ccs - o.revisados;
@@ -416,6 +418,12 @@
       $('revParar').addEventListener('click', function () { REV.parar = true; });
       $('revPendCorrer').addEventListener('click', correrPendientes);
       $('revRepImprimir').addEventListener('click', function () { global.print(); });
+      $('revTarde').addEventListener('click', async function () {
+        REV.tarde = !REV.tarde;
+        this.classList.toggle('on', REV.tarde);
+        await cargarObras(); await cargarPendientes(); await cargarReporte();
+        if (REV.job) await abrirObra(REV.job);
+      });
       pintarMeses();
       $('revPendParar').addEventListener('click', function () { REV.parar = true; });
       $('revBuscaObra').addEventListener('input', function () {

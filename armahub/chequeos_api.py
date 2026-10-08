@@ -40,9 +40,27 @@ log = logging.getLogger("armahub.chequeos")
 
 router = APIRouter(prefix="/api/v1", tags=["chequeos"])
 
-# Los estados de un código que se revisan. Lo despachado queda fuera: revisar algo que ya
-# salió a la obra llega tarde, que es la misma razón por la que la auditoría no lo sortea.
-ESTADOS_VIVOS = ("Open", "Processed")
+# QUÉ CÓDIGOS SE REVISAN, Y POR QUÉ SÓLO LOS `Open` (8-oct).
+#
+# Lo despachado nunca entró: revisar lo que ya salió a la obra llega tarde, igual que en la
+# auditoría. Los `Processed` entraban, y el usuario avisó que ésos también llegan tarde.
+# Medido sobre las obras con movimiento: de 186 códigos Processed, 86 YA PASARON su fecha
+# de despacho proyectada, 88 despachan dentro de siete días y sólo 7 tienen más de una
+# semana por delante. Además 165 están confirmados en planta y 77 ya tienen guía, o sea que
+# salieron. Revisar eso es encontrar un error cuando el fierro ya está en el camión.
+#
+# Donde sí hay margen es en los `Open`: de 785, 657 no tienen siquiera fecha de despacho y
+# 644 están sin programar en planta.
+#
+# Se pueden pedir igual —a veces hay que mirar lo que ya se fue, porque es justo donde el
+# error costó plata— pero hay que pedirlo, con el chip de la pantalla.
+ESTADOS_CON_MARGEN = ("Open",)
+ESTADOS_TARDE = ("Processed",)
+ESTADOS_VIVOS = ESTADOS_CON_MARGEN + ESTADOS_TARDE
+
+
+def _estados(incluir_tarde: bool) -> list:
+    return list(ESTADOS_VIVOS if incluir_tarde else ESTADOS_CON_MARGEN)
 # Los estados en que una señal está esperando a alguien.
 ABIERTAS = ("abierta", "corregir")
 # OBRA EN PRODUCCIÓN = TUVO MOVIMIENTO EN LOS ÚLTIMOS N MESES. Es el mismo criterio que usa
@@ -72,12 +90,14 @@ def listar_reglas(user=Depends(get_current_user)):
     """Qué se revisa y por qué. La pantalla lo muestra tal cual: una regla que nadie
     entiende es una regla que se ignora."""
     _puede_ver(user)
-    return {"reglas": [{"codigo": r["codigo"], "nombre": r["nombre"], "porque": r["porque"]}
+    return {"reglas": [{"codigo": r["codigo"], "nombre": r["nombre"],
+                        "corto": r.get("corto") or r["nombre"], "porque": r["porque"]}
                        for r in REGLAS]}
 
 
 @router.get("/chequeos/obras")
-def obras(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
+def obras(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
+          user=Depends(get_current_user)):
     """Las obras con códigos vivos, con lo que ya se sabe de cada una: cuántos códigos
     tiene, cuántos se revisaron, cuándo fue la última revisión y cuántas señales esperan.
 
@@ -96,7 +116,7 @@ def obras(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
                       AND p.job_name !~* %s""" + mov + """
                     GROUP BY p.asa_job_id
                     ORDER BY MAX(p.order_date) DESC NULLS LAST""",
-                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + arg)
+                (_estados(tarde), PATRON_OBRAS_FUERA) + arg)
             filas = cur.fetchall()
             cur.execute(
                 """SELECT id_proyecto,
@@ -118,12 +138,14 @@ def obras(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
          "senales": senales.get(r[0]) or {"abiertas": 0, "corregir": 0, "ccs": 0},
          "ultima_revision": ultima.get(r[0])}
         for r in filas],
-        "meses": meses}
+        "meses": meses, "tarde": tarde}
 
 
 @router.get("/chequeos/codigos")
-def codigos(job: str, user=Depends(get_current_user)):
-    """Los códigos vivos de una obra, con si ya se revisaron y qué salió."""
+def codigos(job: str, tarde: bool = False, user=Depends(get_current_user)):
+    """Los códigos de una obra que vale la pena revisar, con si ya se revisaron y qué salió.
+
+    Por defecto sólo los `Open`, que son los que tienen margen. Ver ESTADOS_CON_MARGEN."""
     _puede_ver(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -134,7 +156,7 @@ def codigos(job: str, user=Depends(get_current_user)):
                     WHERE asa_job_id = %s AND COALESCE(estado,'') = ANY(%s)
                       AND job_name !~* %s
                     ORDER BY order_date DESC NULLS LAST, control_code""",
-                (job, list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA))
+                (job, _estados(tarde), PATRON_OBRAS_FUERA))
             ccs = [{"cc": r[0], "descr": r[1], "kg": float(r[2] or 0),
                     "fecha": r[3].isoformat() if r[3] else None,
                     "estado": r[4], "persona": r[5]} for r in cur.fetchall()]
@@ -166,6 +188,7 @@ def codigos(job: str, user=Depends(get_current_user)):
 class RevisionNueva(BaseModel):
     job: str
     ccs: Optional[List[str]] = None
+    tarde: bool = False
 
 
 @router.post("/chequeos/revision")
@@ -174,7 +197,7 @@ def abrir_revision(body: RevisionNueva, user=Depends(get_current_user)):
     pide uno por uno: acá no se revisa nada todavía."""
     _puede_auditar(user)
     email = user.get("email", "?")
-    datos = codigos(body.job, user)
+    datos = codigos(body.job, body.tarde, user)
     pedidos = [c["cc"] for c in datos["ccs"]]
     if body.ccs:
         elegidos = [c for c in pedidos if c in set(body.ccs)]
@@ -467,7 +490,7 @@ TOPE_AUTO = int(os.getenv("CHEQUEO_TOPE_CODIGOS", "300") or 300)
 MINUTOS_AUTO = float(os.getenv("CHEQUEO_MINUTOS", "15") or 15)
 
 
-def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO) -> list:
+def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = False) -> list:
     """Los códigos que vale la pena revisar, los más nuevos primero. Función aparte para
     poder preguntarle a la pantalla «cuánto falta» sin revisar nada.
 
@@ -490,7 +513,7 @@ def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO) -> list:
                     GROUP BY p.asa_job_id, p.control_code
                     ORDER BY MAX(p.order_date) DESC NULLS LAST
                     """ + ("LIMIT %s" if limite else ""),
-                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + arg + ((limite,) if limite else ()))
+                (_estados(tarde), PATRON_OBRAS_FUERA) + arg + ((limite,) if limite else ()))
             return [{"job": r[0], "cc": r[1], "obra": r[2]} for r in cur.fetchall()]
 
 
@@ -531,7 +554,8 @@ def barrido_automatico(lanzado_por: str = "reloj") -> dict:
 
 
 @router.get("/chequeos/pendientes")
-def cuantos_pendientes(limite: int = 0, user=Depends(get_current_user)):
+def cuantos_pendientes(limite: int = 0, tarde: bool = False,
+                       user=Depends(get_current_user)):
     """Qué códigos esperan revisión: los que nunca se miraron y los que cambiaron en aSa.
 
     Devuelve la CUENTA y, si se pide un límite, la cola. Con eso la pantalla puede ofrecer
@@ -540,14 +564,15 @@ def cuantos_pendientes(limite: int = 0, user=Depends(get_current_user)):
     request, y el navegador —o Render— lo cortan antes. El barrido largo corre en el reloj,
     que no tiene a nadie esperando del otro lado."""
     _puede_ver(user)
-    cola = pendientes(limite or 0)
-    total = len(cola) if not limite else len(pendientes(0))
+    cola = pendientes(limite or 0, tarde=tarde)
+    total = len(cola) if not limite else len(pendientes(0, tarde=tarde))
     return {"pendientes": total, "obras": len({c["job"] for c in cola}),
             "cola": cola if limite else [], "tope": TOPE_AUTO, "minutos": MINUTOS_AUTO}
 
 
 class RevisionPendientes(BaseModel):
     limite: int = TOPE_AUTO
+    tarde: bool = False
 
 
 @router.post("/chequeos/revision-pendientes")
@@ -556,7 +581,7 @@ def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current
     recorre de a uno, como la de una obra."""
     _puede_auditar(user)
     email = user.get("email", "?")
-    cola = pendientes(max(1, min(body.limite or TOPE_AUTO, 2000)))
+    cola = pendientes(max(1, min(body.limite or TOPE_AUTO, 2000)), tarde=body.tarde)
     if not cola:
         raise HTTPException(status_code=400, detail="No hay códigos pendientes de revisar.")
     jobs = {c["job"] for c in cola}
@@ -574,7 +599,8 @@ def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current
 
 
 @router.get("/chequeos/reporte")
-def reporte(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
+def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
+            user=Depends(get_current_user)):
     """EL REPORTE MASIVO, UNA FILA POR OBRA.
 
     La pantalla de una obra responde «qué arreglo acá». Esto responde otra cosa: dónde está
@@ -599,7 +625,7 @@ def reporte(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
                     WHERE COALESCE(p.estado,'') = ANY(%s)
                       AND p.job_name !~* %s""" + mov + """
                     GROUP BY p.asa_job_id""",
-                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + arg)
+                (_estados(tarde), PATRON_OBRAS_FUERA) + arg)
             base = {r[0]: {"job": r[0], "obra": r[1], "ccs": r[2], "kg": float(r[3] or 0),
                            "cubico": r[4], "ultimo_pedido": r[5].isoformat() if r[5] else None,
                            "revisados": 0, "barras": 0, "abiertas": 0, "corregir": 0,
@@ -634,8 +660,8 @@ def reporte(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
                 if estado == "corregida":
                     o["corregidas"] += n
     filas = sorted(base.values(), key=lambda o: (-o["abiertas"], -(o["ccs"] - o["revisados"])))
-    return {"obras": filas, "meses": meses,
-            "reglas": {r["codigo"]: r["nombre"] for r in REGLAS},
+    return {"obras": filas, "meses": meses, "tarde": tarde,
+            "reglas": {r["codigo"]: r.get("corto") or r["nombre"] for r in REGLAS},
             "total": {"obras": len(filas),
                       "ccs": sum(o["ccs"] for o in filas),
                       "revisados": sum(o["revisados"] for o in filas),
