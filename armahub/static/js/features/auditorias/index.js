@@ -62,6 +62,11 @@
   // Alcance de aSa: los CÓDIGOS elegidos. Allá no hay piso ni ciclo —se intentó
   // reconocerlos del texto del código y era adivinar—, así que se eligen a mano.
   var CCS = [], CC_LISTA = [], CC_BUSCA = '';
+  // El estado del código en aSa que significa «ya salió a la obra». Es el único que cambia
+  // qué conviene hacer con el código, así que es el único que la pantalla trata distinto.
+  var ESTADO_DESPACHADO = 'Shipped';
+  // Qué estados se están viendo. Se llena al cargar la obra con todos MENOS el despachado.
+  var CC_EST = [];
   var LISTA = [], ABIERTA = null, AUD = null, ELEM = null, CB_OBRA = null;
   // El veredicto de cada barra del elemento abierto: {ref: {conforme, observacion}}.
   // Vive acá mientras se revisa y se guarda todo junto.
@@ -115,14 +120,53 @@
   function ccVisibles() {
     if (!CC_BUSCA) return CC_LISTA;
     return CC_LISTA.filter(function (c) {
+      if (CC_EST.length && CC_EST.indexOf(c.estado || '') === -1) return false;
       return (c.descr || '').toLowerCase().indexOf(CC_BUSCA) !== -1 ||
              (c.cc || '').toLowerCase().indexOf(CC_BUSCA) !== -1 ||
              (c.persona || '').toLowerCase().indexOf(CC_BUSCA) !== -1;
     });
   }
 
+  // ELEGIR POR ESTADO Y NO CÓDIGO POR CÓDIGO (8-oct). Una obra trae cuarenta y cinco
+  // códigos y lo que se revisa casi siempre es lo mismo: lo que todavía no salió. Marcar
+  // eso a mano, uno por uno, es trabajo que la pantalla puede hacer sola.
+  //
+  // Los chips FILTRAN, no seleccionan: así el check «todos» —que marca lo que se ve— sigue
+  // siendo el único que elige, y no hay dos formas distintas de seleccionar conviviendo.
+  // Arrancan con los despachados apagados, que es el caso normal; el chip queda a la vista
+  // con su cuenta, así que no es que se escondan, es que no vienen marcados.
+  function estadosDisponibles() {
+    var vistos = [];
+    CC_LISTA.forEach(function (c) {
+      if (vistos.indexOf(c.estado || '') === -1) vistos.push(c.estado || '');
+    });
+    return vistos.sort();
+  }
+
+  function pintarCcEstados() {
+    var el = $('audCcEstados');
+    if (!el) return;
+    var ests = estadosDisponibles();
+    if (ests.length < 2) { el.innerHTML = ''; return; }
+    el.innerHTML = ests.map(function (e) {
+      var n = CC_LISTA.filter(function (c) { return (c.estado || '') === e; }).length;
+      var on = CC_EST.indexOf(e) !== -1;
+      return '<button type="button" data-e="' + esc(e) + '" class="audcce' + (on ? ' on' : '') +
+             (e === ESTADO_DESPACHADO ? ' desp' : '') + '">' +
+             esc(e || 'sin estado') + ' <i>' + n + '</i></button>';
+    }).join('');
+    el.querySelectorAll('button[data-e]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var e = b.dataset.e, i = CC_EST.indexOf(e);
+        if (i === -1) CC_EST.push(e); else CC_EST.splice(i, 1);
+        pintarCcEstados(); pintarCC();
+      });
+    });
+  }
+
   function pintarCC() {
     var vis = ccVisibles();
+    pintarCcEstados();
     var kg = CC_LISTA.filter(function (c) { return CCS.indexOf(c.cc) !== -1; })
                      .reduce(function (a, c) { return a + c.kg; }, 0);
     $('audCcN').innerHTML = CCS.length
@@ -132,7 +176,7 @@
         ((UNIV && UNIV.con_auditoria) ? ' · ' + UNIV.con_auditoria + ' ya tienen elementos auditados' : '');
     if (!vis.length) {
       $('audCcLista').innerHTML = '<div class="audvacio">' +
-        (CC_LISTA.length ? 'Ningún código coincide con la búsqueda.'
+        (CC_LISTA.length ? 'Ningún código coincide con el filtro.'
                          : 'Esta obra no tiene códigos en el espejo de aSa.') + '</div>';
       return;
     }
@@ -185,7 +229,18 @@
         UNIV = ORIGEN === 'asa'
           ? await req('GET', '/auditorias/cc?job=' + encodeURIComponent(OBRA))
           : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
-        if (ORIGEN === 'asa') CC_LISTA = (UNIV && UNIV.ccs) || [];
+        if (ORIGEN === 'asa') {
+          CC_LISTA = (UNIV && UNIV.ccs) || [];
+          // LOS DESPACHADOS NO VIENEN MARCADOS. Lo normal es revisar lo que todavía se
+          // puede atajar; los que ya salieron están ahí, con su cuenta a la vista, a un
+          // clic. Esto se decide ACÁ y no dentro del pintado: si se recalculara en cada
+          // repintado, apagar un estado a mano se desharía solo al siguiente dibujo.
+          CC_EST = [];
+          CC_LISTA.forEach(function (c) {
+            var e = c.estado || '';
+            if (e !== ESTADO_DESPACHADO && CC_EST.indexOf(e) === -1) CC_EST.push(e);
+          });
+        }
       } catch (e) { aviso(e.message); }
     }
     pintarAlcance(); pintarEstado();
@@ -549,7 +604,7 @@
       html += '<tr class="fila' + (abierto ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
         (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' + celdaEstadoCc(e) : '') +
         // Lo que ancla la fila va en negrita: en aSa es el código, en ArmaHub el elemento.
-        '<td title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
+        '<td class="audnom" title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
         (esAsa ? '<td class="auddcc" title="' + esc(e.descr_cc || '') + '">' + esc(e.descr_cc || '') + '</td>' : '') +
         // En la fila ABIERTA de una auditoría de aSa la ubicación se escribe acá mismo.
         (esAsa && abierto ? celdasUbicacion(e) : celdasUbicacionTexto(e, esAsa)) +
@@ -558,9 +613,12 @@
         '<td class="num">' + kg0(e.kg) + '</td>' +
         '<td' + (e.conflicto ? ' class="indep" title="Lo cubicó quien audita: habría que cambiar este elemento"' : '') + '>' +
           esc((e.cubicado_por || '').split('@')[0]) + (e.conflicto ? ' ⚠' : '') + '</td>' +
-        '<td>' + (e.hallazgo
-          ? '<span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span>' +
-            (e.texto ? ' <span class="muted" title="' + esc(e.texto) + '">' + esc(e.texto.slice(0, 36)) + (e.texto.length > 36 ? '…' : '') + '</span>' : '')
+        // EL VEREDICTO, SIN EL TEXTO AL LADO. Arrastrar acá 36 caracteres de lo que se
+        // encontró empujaba la tabla fuera del ancho y la columna de la acción —la última—
+        // quedaba cortada contra el borde. Lo que se encontró se lee entero más abajo, en
+        // la tabla de acciones, que es donde se trabaja; acá va en el title.
+        '<td title="' + esc(queSeEncontro(e)) + '">' + (e.hallazgo
+          ? '<span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span>'
           : '<span class="muted">pendiente</span>') + '</td>' +
         '<td>' + (e.accion_estado ? '<span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' : '') + '</td></tr>';
     });
@@ -965,6 +1023,37 @@
     $('audRevGuardar').disabled = false;
   }
 
+  // LO QUE SE ENCONTRÓ, EN UNA LÍNEA, para los lugares donde no cabe más que eso (el
+  // `title` de una celda). Son DOS campos distintos y se juntan acá, al escribir: la
+  // observación del elemento entero y lo que se anotó en cada barra. El backend los guarda
+  // separados a propósito — antes concatenaba las barras dentro del campo general y en el
+  // resumen no había forma de saber si una frase era del elemento o de una barra.
+  function queSeEncontro(e) {
+    var p = [];
+    if ((e.texto || '').trim()) p.push(e.texto.trim());
+    (e.barras_malas || []).forEach(function (b) {
+      if ((b.observacion || '').trim()) p.push((b.ref || b.marca || 'barra') + ': ' + b.observacion.trim());
+    });
+    return p.join(' · ');
+  }
+
+  // Y ACÁ CON SU FORMA, que es como se lee de verdad: la observación general como frase, y
+  // lo de cada barra como lista, cada una con el nombre de SU barra adelante. Una lista de
+  // ocho barras metida en un párrafo no se lee; en ocho renglones, sí.
+  function celdaQueSeEncontro(e) {
+    var html = '';
+    if ((e.texto || '').trim()) {
+      html += '<div class="audobsgen">' + esc(e.texto.trim()) + '</div>';
+    }
+    var malas = (e.barras_malas || []).filter(function (b) { return (b.observacion || '').trim(); });
+    if (malas.length) {
+      html += '<ul class="audobsb">' + malas.map(function (b) {
+        return '<li><b>' + esc(b.ref || b.marca || 'barra') + '</b> ' + esc(b.observacion.trim()) + '</li>';
+      }).join('') + '</ul>';
+    }
+    return html || '<span class="muted">—</span>';
+  }
+
   // Las acciones que salen de las NC: para quien cubicó. Él marca corregida; el auditor verifica.
   function pintarAcciones() {
     var caja = $('audAcciones');
@@ -973,13 +1062,15 @@
     caja.style.display = '';
     caja.innerHTML = '<div class="audh">Acciones <span class="muted">' + acc.length +
       ' · una por cada hallazgo. La corrección la hace quien cubicó, en su cubicación; el auditor verifica.</span></div>' +
-      '<table class="audt"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th><th>Qué se encontró</th>' +
+      '<table class="audt audacct"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th>' +
+      '<th title="La observación del elemento entero, si el auditor escribió una, y debajo ' +
+      'lo que se anotó en cada barra. Son campos distintos.">Qué se encontró</th>' +
       '<th>Causa</th><th>Estado</th><th></th></tr></thead><tbody>' +
       acc.map(function (e) {
         return '<tr><td title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
           '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
           '<td><span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span></td>' +
-          '<td title="' + esc(e.texto || '') + '">' + esc(e.texto || '') + '</td>' +
+          '<td class="audqse">' + celdaQueSeEncontro(e) + '</td>' +
           '<td class="cc" title="' + esc(e.causa || '') + '">' + esc(e.causa || '') + '</td>' +
           '<td><span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' +
             (e.accion_por ? ' <span class="muted" style="font-size:9px">' + esc(e.accion_por.split('@')[0]) + '</span>' : '') + '</td>' +

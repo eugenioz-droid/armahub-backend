@@ -152,8 +152,41 @@ check("la severidad es del ELEMENTO y se deriva de sus barras",
       and A.severidad_derivada([], "conforme") == "conforme")
 check("...y nunca se suaviza sola a «observación»: por omisión es hallazgo",
       "nunca se suaviza a" in SRC and A.severidad_derivada([{"conforme": False}], None) == "hallazgo")
-check("el texto del elemento se arma de las observaciones de las barras",
-      'texto = (body.texto or "").strip() or " · ".join(' in SRC)
+# CADA COSA EN SU CAMPO (8-oct). Antes, si el auditor no escribía una observación general,
+# acá se le metía la concatenación de lo dicho barra por barra, y en el informe no se podía
+# distinguir un comentario del elemento de uno de una barra. Lo cazó el usuario leyéndolo.
+check("el texto del elemento es SOLO lo que escribió el auditor, sin las barras pegadas",
+      'texto = (body.texto or "").strip()\n' in SRC
+      and 'texto = (body.texto or "").strip() or " · ".join(' not in SRC)
+check("...lo de cada barra viaja aparte, con el nombre de SU barra",
+      '"barras_malas"' in SRC and "WHERE e.auditoria_id = %s AND i.conforme IS FALSE" in SRC)
+check("...y se juntan al ESCRIBIR el informe, no al guardar",
+      "def que_se_encontro(" in SRC and "Esto se arma AL ESCRIBIR y no al guardar" in SRC)
+check("la evidencia no se pierde: toda barra no conforme sigue obligada a decir qué tiene",
+      "está marcada no conforme: di qué tiene." in SRC
+      and 'if hallazgo != "conforme" and not texto and not malas:' in SRC)
+check("...y el correo y el informe muestran las dos cosas, no sólo el campo general",
+      "que_se_encontro(e, 200)" in SRC and "que_se_encontro(e)), new_x" in SRC)
+# CADA UNA CON SU FORMA. La observación del elemento es una frase; lo de las barras es una
+# lista, una por barra y con el nombre de la barra adelante. Ocho observaciones metidas en
+# un párrafo no se leen, que es justo lo que el usuario vio en el resumen.
+check("la pantalla las muestra separadas: la general como frase, las barras como lista",
+      "function celdaQueSeEncontro(" in JS and "audobsgen" in JS and "audobsb" in JS
+      and ".audobsb li b{" in HTM)
+check("...y en la tabla de acciones el texto NO se corta: ahí es donde se trabaja",
+      ".audt.audacct td{white-space:normal" in HTM and "audacct" in JS)
+
+# LA TABLA DE LA MUESTRA SE SALÍA DEL ANCHO y la última columna quedaba cortada contra el
+# borde. Lo que la empujaba era el texto del hallazgo arrastrado dentro de su celda.
+print("\n7c4. La tabla de la muestra cabe en la pantalla")
+check("el veredicto va solo, sin arrastrar el texto al lado",
+      "EL VEREDICTO, SIN EL TEXTO AL LADO" in JS
+      and "esc(e.texto.slice(0, 36))" not in JS)
+check("...y el texto completo sigue a mano, en el title de la celda",
+      'esc(queSeEncontro(e)) + \'">\'' in JS and "function queSeEncontro(" in JS)
+check("las dos columnas de texto largo tienen techo y se cortan con puntos suspensivos",
+      ".audt td.audnom{max-width:150px" in HTM and 'class="audnom"' in JS
+      and ".audt td.auddcc{max-width:190px" in HTM)
 check("el front marca barra por barra y el campo de texto aparece al marcar NC",
       "function pintarBarras()" in JS and "var BARRAS = [], VERED = {};" in JS
       and "class=\"audobs\"" in JS and 'id="audRevSev"' in HTM)
@@ -205,7 +238,8 @@ check("...y NO se adivinan piso ni ciclo del texto: eso se sacó",
       "def piso_de(" not in SRC and "def ciclo_de(" not in SRC and "universo-asa" not in SRC)
 check("los despachados se ofrecen, marcados: la decisión es del usuario",
       "NOT IN (%s, %s)" in SRC and "ESTADO_NUNCA, ESTADO_DESPACHADO" in SRC
-      and "No aparecen los despachados" in HTM)
+      and "No aparecen los despachados" not in HTM
+      and "van al final y vienen sin marcar" in HTM)
 check("...sin códigos marcados no se puede crear",
       "Elige al menos un código de control." in SRC and "listo = listo && CCS.length > 0;" in JS)
 check("una obra necesita varias auditorías: el sorteo NO repite elementos ya auditados",
@@ -490,8 +524,22 @@ print("\n7d0. La lista de códigos se ordena por UNA sola fecha: la del pedido")
 # después. Un código despachado se cubicó ANTES que uno que sigue abierto —tuvo tiempo de
 # fabricarse y salir—, así que va más abajo, no más arriba.
 check("ordena por la fecha del pedido, sin mezclarla con la de despacho",
-      "ORDER BY order_date DESC NULLS LAST, control_code" in SRC
+      "order_date DESC NULLS LAST" in SRC
       and "CASE WHEN COALESCE(estado,'') = %s THEN proj_ship_date END" not in SRC)
+# Y DESPUÉS DE ARREGLAR LA FECHA SEGUÍA MAL (8-oct). Con una sola fecha la columna ya bajaba
+# derecho, pero los despachados quedaban intercalados entre los vivos y en la práctica no se
+# eligen juntos: lo que se revisa es lo que todavía se puede atajar. Van en bloque al final.
+check("y los despachados van en bloque AL FINAL, no intercalados",
+      "ORDER BY (COALESCE(estado,'') = %s), order_date DESC NULLS LAST" in SRC
+      and "PRIMERO LO QUE NO SALIÓ, DESPUÉS LO DESPACHADO" in SRC)
+# ELEGIR POR ESTADO Y NO CÓDIGO POR CÓDIGO. Con cuarenta y cinco códigos, marcar a mano lo
+# que casi siempre es lo mismo es trabajo que la pantalla puede hacer sola.
+check("la pantalla deja filtrar por estado, y el check «todos» marca lo que quedó a la vista",
+      'id="audCcEstados"' in HTM and "function pintarCcEstados(" in JS
+      and "CC_EST.indexOf(c.estado || '') === -1" in JS)
+check("...y los despachados arrancan apagados, pero con su cuenta a la vista",
+      "e !== ESTADO_DESPACHADO && CC_EST.indexOf(e) === -1" in JS
+      and "<i>' + n + '</i>" in JS)
 check("...y queda escrito por qué, que es lo que se vuelve a equivocar",
       "ORDENADOS POR LA FECHA DEL PEDIDO, UNA SOLA PARA TODOS" in SRC
       and "tuvo tiempo de fabricarse y despacharse" in SRC)

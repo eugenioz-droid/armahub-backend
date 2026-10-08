@@ -424,11 +424,17 @@ if s == 200 and d.get("obras"):
             # 8-oct: y la fecha que ordena es UNA SOLA, la del pedido. Antes se mezclaba
             # con la de despacho para los despachados, y eso los subia a la cabeza de la
             # lista siendo justo lo que se cubico hace mas tiempo.
-            check("...vienen ordenados del mas nuevo al mas antiguo por la fecha del PEDIDO",
+            # 8-oct, segunda pasada: con una sola fecha la columna ya bajaba derecho, pero
+            # los despachados quedaban intercalados entre los vivos y en la practica no se
+            # eligen juntos. Van en BLOQUE AL FINAL, y por fecha dentro de cada grupo.
+            orden = [(bool(c["despachado"]), "" if not c["fecha"] else c["fecha"]) for c in u["ccs"]]
+            check("...vienen agrupados: primero lo que no salio, despues lo despachado",
                   all(set(("fecha", "despachado", "dias", "dias_despacho", "antiguo")) <= set(c)
                       for c in u["ccs"])
-                  and [c["fecha"] or "" for c in u["ccs"]] == sorted(
-                      [c["fecha"] or "" for c in u["ccs"]], reverse=True))
+                  and [d for d, _ in orden] == sorted(d for d, _ in orden))
+            check("...y dentro de cada grupo, del mas nuevo al mas antiguo por la fecha del PEDIDO",
+                  all(orden[i][1] >= orden[i + 1][1]
+                      for i in range(len(orden) - 1) if orden[i][0] == orden[i + 1][0]))
             desp = [c for c in u["ccs"] if c["despachado"]]
             check("...y un despachado NO sube por haber salido despues de lo que se pidio",
                   all(not c["fecha"] or not c["despacho"] or c["despacho"] >= c["fecha"]
@@ -501,8 +507,15 @@ if s == 200 and d.get("obras"):
                               ee["hallazgo"] == "hallazgo" and ee["accion_estado"] == "pendiente")
                         check("...cuenta cuantas barras se revisaron y cuantas fallaron",
                               ee["items"] == min(3, len(refs)) and ee["items_malos"] == 1)
-                        check("...y el texto del elemento se arma solo con lo de las barras",
-                              "gancho corto" in (ee["texto"] or ""))
+                        # CADA COSA EN SU CAMPO (8-oct). Antes, sin observacion general,
+                        # el backend metia ahi la concatenacion de las barras y en el
+                        # informe no se distinguia una de otra. Ahora lo de cada barra
+                        # viaja en `barras_malas`, con el nombre de SU barra.
+                        check("...lo que se encontro en cada barra viaja aparte, con su barra",
+                              any("gancho corto" in (b.get("observacion") or "")
+                                  for b in (ee.get("barras_malas") or [])))
+                        check("...y NO se le mete al campo de la observacion general",
+                              "gancho corto" not in (ee["texto"] or ""))
                         s9b, el2 = get("/auditorias/elemento-asa", cc=e0["cc"], element=e0["eje"],
                                        elemento_id=e0["id"])
                         check("...al reabrir el elemento vuelve lo ya marcado",

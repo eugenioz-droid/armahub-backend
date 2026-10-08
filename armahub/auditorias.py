@@ -622,11 +622,18 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
                     WHERE asa_job_id = %s
                       AND COALESCE(estado,'') <> %s
                       AND job_name !~* %s
-                    -- UNA SOLA FECHA ORDENA, y es la del pedido (ver el docstring). Mezclar
-                    -- la de despacho para unos y la del pedido para otros ordena por dos
-                    -- varas distintas y deja arriba justo lo que se cubicó hace más tiempo.
-                    ORDER BY order_date DESC NULLS LAST, control_code""",
-                (job, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
+                    -- PRIMERO LO QUE NO SALIÓ, DESPUÉS LO DESPACHADO, y dentro de cada
+                    -- grupo del más nuevo al más antiguo. Ordenar sólo por fecha dejaba
+                    -- los despachados intercalados entre los vivos, y en la práctica no
+                    -- se eligen juntos: lo normal es revisar lo que todavía se puede
+                    -- atajar. Siguen estando y se pueden elegir igual, pero abajo.
+                    --
+                    -- Una sola fecha ordena, y es la del pedido. Mezclar la de despacho
+                    -- para unos y la del pedido para otros ordena por dos varas distintas
+                    -- y sube justo lo que se cubicó hace más tiempo.
+                    ORDER BY (COALESCE(estado,'') = %s), order_date DESC NULLS LAST,
+                             control_code""",
+                (job, ESTADO_NUNCA, PATRON_OBRAS_FUERA, ESTADO_DESPACHADO))
             hoy = date.today()
             ccs = []
             for r in cur.fetchall():
@@ -1188,6 +1195,22 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
                 for e in cur.fetchall()]
+            # LO QUE SE ENCONTRÓ EN CADA BARRA, por su nombre. Va aparte de `texto` —que es
+            # la observación del elemento entero— porque son dos cosas distintas y
+            # mezclarlas dejaba el informe ilegible. Sólo las no conformes: las conformes
+            # no tienen nada que contar.
+            cur.execute(
+                """SELECT i.elemento_id, i.ref, i.marca, i.observacion
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+                    ORDER BY i.elemento_id, i.ref""", (auditoria_id,))
+            por_elemento = {}
+            for eid, ref, marca, obs in cur.fetchall():
+                por_elemento.setdefault(eid, []).append(
+                    {"ref": ref, "marca": marca, "observacion": obs})
+            for e in aud["elementos"]:
+                e["barras_malas"] = por_elemento.get(e["id"], [])
     # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
     # responde «qué falta por mirar».
     try:
@@ -1254,6 +1277,25 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
 
 
 _NOMBRE = {"conforme": "Conforme", "observacion": "Observación", "hallazgo": "Hallazgo"}
+
+
+def que_se_encontro(elemento, tope: int = 0) -> str:
+    """Lo que se encontró en un elemento, en una línea: primero la observación general, si
+    el auditor escribió una, y después lo de cada barra con el nombre de la barra adelante.
+
+    Esto se arma AL ESCRIBIR y no al guardar (8-oct). Antes la concatenación se guardaba en
+    `texto` y pisaba el campo de la observación general, así que en el informe no se podía
+    saber si una frase era del elemento o de una barra. Función pura."""
+    partes = []
+    general = (elemento.get("texto") or "").strip()
+    if general:
+        partes.append(general)
+    for b in (elemento.get("barras_malas") or []):
+        obs = (b.get("observacion") or "").strip()
+        if obs:
+            partes.append("%s: %s" % (b.get("ref") or b.get("marca") or "barra", obs))
+    txt = " · ".join(partes)
+    return (txt[:tope - 1] + "…") if (tope and len(txt) > tope) else txt
 
 # LA GRAVEDAD NO SE OPINA, SE MIRA. Un hallazgo atajado antes de que el código saliera no
 # es lo mismo que uno que llegó a la obra: el primero se corrige y no le cuesta nada a
@@ -1605,7 +1647,7 @@ def _avisar_auditoria_cerrada(aud: dict, request=None) -> dict:
         filas = "".join(
             "<li style='margin:2px 0'>%s — <b>%s</b>%s</li>"
             % (_elemento_txt(e), _NOMBRE.get(e.get("hallazgo"), e.get("hallazgo") or ""),
-               (": " + str(e.get("texto"))[:160]) if e.get("texto") else "")
+               (": " + que_se_encontro(e, 200)) if que_se_encontro(e) else "")
             for e in no_conformes)
         detalle_nc = "<ul style='margin:4px 0 0;padding-left:20px'>%s</ul>" % filas
     lineas = [
@@ -1723,11 +1765,20 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
     if hallazgo not in HALLAZGOS:
         raise HTTPException(status_code=422, detail="Hallazgo no válido: " + " / ".join(HALLAZGOS))
     malas = [it for it in body.items if not it.conforme]
-    # El texto del elemento se arma de las barras si el auditor no escribió uno: el
-    # informe necesita una línea que se entienda sin abrir el detalle.
-    texto = (body.texto or "").strip() or " · ".join(
-        "%s: %s" % (it.ref, (it.observacion or "").strip()) for it in malas)[:1000]
-    if hallazgo != "conforme" and not texto:
+    # CADA COSA EN SU CAMPO (8-oct). Antes, si el auditor no escribía una observación
+    # general, acá se le metía la concatenación de lo que había dicho barra por barra. El
+    # resultado era que en el informe «10mmA34: cantidad debe ser 103 · 10mmA5: cantidad
+    # debe ser 103» aparecía en la misma columna que un comentario del elemento entero, y
+    # no había forma de distinguir uno de otro. Lo cazó el usuario leyendo el resumen.
+    #
+    # Son dos cosas distintas y se guardan distinto: lo de cada barra vive en su fila de
+    # `auditoria_items` —que es donde dice a qué barra le pasa—, y `texto` es sólo lo que
+    # el auditor escribió del elemento. Quien arma el informe las junta al mostrarlas.
+    texto = (body.texto or "").strip()
+    # La evidencia no se pierde por esto: toda barra no conforme está obligada a decir qué
+    # tiene (se valida arriba). Sólo hace falta pedir un texto cuando no hay barra alguna
+    # que lo explique, que es el caso de un elemento marcado sin revisar sus barras.
+    if hallazgo != "conforme" and not texto and not malas:
         raise HTTPException(status_code=400, detail="Di qué encontraste: un hallazgo sin texto no es evidencia.")
     es_nc = hallazgo in ("hallazgo",)
     with get_conn() as conn:
@@ -1994,7 +2045,9 @@ class _InformePDF:
                    new_x="LMARGIN", new_y="NEXT")
             p.set_font("Helvetica", "", 9)
             p.set_x(18)
-            p.multi_cell(self.w - 3, 4.5, self._s(e.get("texto") or ""), new_x="LMARGIN", new_y="NEXT")
+            # Lo que se encontró, junto: la observación del elemento y lo de cada
+            # barra. Se arma acá y no se guarda armado (ver que_se_encontro).
+            p.multi_cell(self.w - 3, 4.5, self._s(que_se_encontro(e)), new_x="LMARGIN", new_y="NEXT")
             pie = []
             # Dónde está, primero: es lo que el auditado necesita para ir a buscarlo.
             if _ubicacion_txt(e):

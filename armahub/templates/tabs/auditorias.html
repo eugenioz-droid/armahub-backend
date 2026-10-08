@@ -109,7 +109,8 @@
       <div id="audAlcanceAsa" class="audalcance" style="display:none;">
         <div class="audlbl" style="margin-bottom:6px;">Códigos de control <span class="muted" style="font-weight:400;">
           elige de cuáles sacar la muestra. En aSa no hay piso ni ciclo: lo que hay es el nombre que
-          se le puso al código. <b>No aparecen los despachados</b>: auditarlos llega tarde.</span></div>
+          se le puso al código. Los <b>despachados</b> van al final y vienen sin marcar: auditarlos
+          llega tarde, pero a veces hay que mirarlos igual.</span></div>
         <div class="audccbar">
           <label class="audcctodo" title="Marca o desmarca todos los que se ven">
             <input type="checkbox" id="audCcTodos"> todos
@@ -117,6 +118,9 @@
           <input type="text" id="audCcBusca" placeholder="🔍 filtrar por nombre, código o quién cubicó…" class="audccb">
           <span class="muted" id="audCcN"></span>
         </div>
+        <!-- Qué estados se ven. Marcar «todos» elige lo que quedó a la vista, así que con
+             esto se arma la selección de una vez en vez de código por código. -->
+        <div class="audccbar" id="audCcEstados"></div>
         <div class="audcclista" id="audCcLista"></div>
       </div>
 
@@ -297,6 +301,24 @@
      corta con puntos suspensivos para que no empuje al resto de la fila. Completa queda
      en el title. */
   .audt td.auddcc{max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#546e7a;}
+  /* QUE LA TABLA QUEPA. Con trece columnas, la última —la acción— quedaba cortada contra
+     el borde y había que arrastrar una barra horizontal para ver el veredicto, que es
+     justamente lo que uno viene a mirar. Las dos columnas de texto largo son las que
+     mandan el ancho, así que se les pone techo y se cortan con puntos suspensivos; el
+     texto completo queda en el title. El resto son números y ya son angostas. */
+  .audt td.audnom{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  /* EN LA TABLA DE ACCIONES el texto NO se corta: ahí es donde se trabaja la corrección y
+     hay que poder leerlo entero, así que esa fila crece hacia abajo en vez de a lo ancho. */
+  .audt.audacct td{white-space:normal; overflow:visible;}
+  .audt td.audqse{min-width:260px; max-width:520px;}
+  /* La observación del elemento entero: una frase. */
+  .audobsgen{color:#37474f;}
+  /* Lo que se encontró en cada barra: una línea por barra, con su nombre adelante. Metido
+     todo en un párrafo no se lee; en renglones, sí. */
+  .audobsb{margin:2px 0 0; padding-left:0; list-style:none;}
+  .audobsb li{color:#546e7a; font-size:10.5px; line-height:1.5;}
+  .audobsb li b{font-family:ui-monospace,Consolas,monospace; color:#37474f; font-size:10px;
+                background:#eceff1; border-radius:3px; padding:0 4px; margin-right:4px;}
   /* La revisión de un elemento: panel propio, bajo la muestra. */
   .audrev{margin-top:10px; padding:10px 12px; background:#f7f9fb; border:1px solid #cfd8dc; border-radius:6px;}
   .audhall{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 6px;}
@@ -406,6 +428,13 @@
   /* La caja de códigos de control: es el alcance de una auditoría de aSa. */
   .audccbar{display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;}
   .audccb{flex:1; min-width:220px; font-size:11px; padding:4px 8px; border:1px solid #cfd8dc; border-radius:4px;}
+  /* Los estados del código: filtran la lista. Apagado = gris y no se ve; encendido = azul.
+     El despachado encendido va en rojo, que es como se ve en la lista. */
+  .audcce{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; border-radius:99px;
+          background:#fff; color:#90a4ae; cursor:pointer;}
+  .audcce i{font-style:normal; font-weight:700; opacity:.75;}
+  .audcce.on{background:#e3f2fd; border-color:#90caf9; color:#1565C0; font-weight:600;}
+  .audcce.desp.on{background:#ffebee; border-color:#ef9a9a; color:#c62828;}
   .audcclista{max-height:30vh; overflow:auto; border:1px solid #e3e8ef; border-radius:5px; background:#fff;}
   .audcc{display:flex; align-items:center; gap:7px; padding:3px 7px; font-size:10.5px; cursor:pointer;
          border-top:1px solid #f4f6f8; white-space:nowrap;}
