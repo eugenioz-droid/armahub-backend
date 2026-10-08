@@ -21,7 +21,9 @@
   'use strict';
 
   var REV = { obras: [], job: null, obra: null, ccs: [], senales: [], reglas: {},
-              corriendo: false, parar: false, busca: '' };
+              corriendo: false, parar: false, busca: '', meses: 3 };
+  // Las ventanas que se ofrecen. 0 = todas. Las mismas que el tab de Stock Cubicaciones.
+  var MESES = [[3, '3 meses'], [6, '6 meses'], [12, '1 año'], [0, 'Todas']];
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -67,6 +69,22 @@
       var r = REV.reglas[k];
       return '<div class="revregla"><b>' + esc(r.nombre) + '</b><div>' + esc(r.porque) + '</div></div>';
     }).join('');
+  }
+
+  function pintarMeses() {
+    var el = $('revMeses');
+    if (!el) return;
+    el.innerHTML = MESES.map(function (m) {
+      return '<button data-m="' + m[0] + '" class="' + (REV.meses === m[0] ? 'on' : '') + '">' +
+             esc(m[1]) + '</button>';
+    }).join('');
+    el.querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        REV.meses = Number(b.dataset.m);
+        pintarMeses();
+        await cargarObras(); await cargarPendientes(); await cargarReporte();
+      });
+    });
   }
 
   // ── Las obras ─────────────────────────────────────────────────────────────────────
@@ -181,7 +199,8 @@
       ok(REV.parar ? 'Revisión detenida; lo revisado quedó guardado' : 'Revisión terminada');
     } catch (e) { aviso(e.message); $('revProgTxt').textContent = e.message; }
     _termina('revCorrer', 'revParar');
-    await cargarSenales(); await cargarHistorial(); await cargarObras(); await cargarPendientes();
+    await cargarSenales(); await cargarHistorial(); await cargarObras();
+    await cargarPendientes(); await cargarReporte();
   }
 
   // LO PENDIENTE DE TODAS LAS OBRAS. Es el mismo trabajo que hace el reloj una vez al día,
@@ -196,7 +215,7 @@
       ok(REV.parar ? 'Detenida; lo revisado quedó guardado' : 'Pendientes revisados');
     } catch (e) { aviso(e.message); $('revPendProgTxt').textContent = e.message; }
     _termina('revPendCorrer', 'revPendParar');
-    await cargarPendientes(); await cargarObras();
+    await cargarPendientes(); await cargarObras(); await cargarReporte();
     if (REV.job) { await cargarSenales(); await cargarHistorial(); }
   }
 
@@ -340,10 +359,52 @@
 
   async function cargarObras() {
     try {
-      var d = await req('GET', '/chequeos/obras');
+      var d = await req('GET', '/chequeos/obras?meses=' + REV.meses);
       REV.obras = d.obras || [];
       pintarObras();
+      var n = REV.obras.length;
+      $('revMesesTxt').textContent = n + ' obra(s)' +
+        (REV.meses ? ' con pedidos en los últimos ' + REV.meses + ' meses.'
+                   : ' — todas, incluidas las que no se mueven hace años.');
     } catch (e) { aviso(e.message); }
+  }
+
+  // ── El reporte por obra ───────────────────────────────────────────────────────────
+  // UNA OBRA CON CERO SEÑALES Y CERO CÓDIGOS REVISADOS NO ESTÁ LIMPIA, ESTÁ SIN REVISAR.
+  // Leerlas igual sería el peor error que puede cometer un reporte así, por eso la columna
+  // «revisados» va antes que la de señales y el cero se dice con palabras.
+  async function cargarReporte() {
+    try {
+      var d = await req('GET', '/chequeos/reporte?meses=' + REV.meses);
+      var t = d.total || {}, obras = d.obras || [];
+      $('revRepTxt').textContent = t.obras + ' obra(s) · ' + t.revisados + ' de ' + t.ccs +
+        ' código(s) revisados · ' + num(t.barras) + ' barras miradas · ' +
+        t.abiertas + ' señal(es) esperando · ' + t.corregidas + ' ya corregida(s)';
+      var reglas = Object.keys(d.reglas || {});
+      $('revRep').innerHTML = '<table class="audt"><thead><tr><th>Obra</th><th>Cubicó</th>' +
+        '<th class="num">Códigos</th><th class="num">Revisados</th><th class="num">Barras</th>' +
+        reglas.map(function (k) { return '<th class="num" title="' + esc(d.reglas[k]) + '">' +
+          esc(d.reglas[k].split(' ').slice(0, 2).join(' ')) + '</th>'; }).join('') +
+        '<th class="num">Por corregir</th><th class="num">Corregidas</th></tr></thead><tbody>' +
+        obras.map(function (o) {
+          var falta = o.ccs - o.revisados;
+          return '<tr><td class="audnom" title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
+            '<td class="audnom" title="' + esc(o.cubico || '') + '">' +
+              esc((o.quienes && o.quienes.length ? o.quienes : (o.cubico || '').split(', '))
+                  .filter(Boolean).join(', ')) + '</td>' +
+            '<td class="num">' + o.ccs + '</td>' +
+            '<td class="num">' + (o.revisados
+                ? o.revisados + (falta ? ' <span class="muted">(faltan ' + falta + ')</span>' : '')
+                : '<span class="muted">sin revisar</span>') + '</td>' +
+            '<td class="num">' + num(o.barras) + '</td>' +
+            reglas.map(function (k) {
+              var n = (o.por_regla || {})[k] || 0;
+              return '<td class="num">' + (n || '<span class="muted">·</span>') + '</td>';
+            }).join('') +
+            '<td class="num">' + (o.corregir || '<span class="muted">·</span>') + '</td>' +
+            '<td class="num">' + (o.corregidas || '<span class="muted">·</span>') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    } catch (e) { $('revRep').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
   var _listo = false;
@@ -354,6 +415,8 @@
       $('revCorrer').addEventListener('click', correr);
       $('revParar').addEventListener('click', function () { REV.parar = true; });
       $('revPendCorrer').addEventListener('click', correrPendientes);
+      $('revRepImprimir').addEventListener('click', function () { global.print(); });
+      pintarMeses();
       $('revPendParar').addEventListener('click', function () { REV.parar = true; });
       $('revBuscaObra').addEventListener('input', function () {
         REV.busca = this.value; pintarObras();
@@ -366,6 +429,7 @@
     }
     await cargarObras();
     await cargarPendientes();
+    await cargarReporte();
   };
 
   // Las dos líneas del tab. La revisión se carga la primera vez que se entra, no al abrir

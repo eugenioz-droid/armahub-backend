@@ -37,6 +37,9 @@ API = open(os.path.join(ROOT, "armahub", "chequeos_api.py"), encoding="utf-8").r
 MIG = open(os.path.join(ROOT, "armahub", "migrations", "133_chequeos.sql"), encoding="utf-8").read()
 MIG2 = open(os.path.join(ROOT, "armahub", "migrations", "134_chequeo_codigos.sql"), encoding="utf-8").read()
 SCH = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
+MIG3 = open(os.path.join(ROOT, "armahub", "migrations", "135_chequeo_cubico.sql"),
+            encoding="utf-8").read()
+AUD = open(os.path.join(ROOT, "armahub", "auditorias.py"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "revision.js"),
           encoding="utf-8").read()
 HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html"),
@@ -221,6 +224,48 @@ check("...y distingue la revisión automática de la que pidió una persona",
       "'reloj' ? 'automática'" in JS or "=== 'reloj'" in JS)
 check("el registro de cada revisión dice cómo terminó, no sólo que corrió",
       "ADD COLUMN IF NOT EXISTS nota" in MIG2 and "nota = %s WHERE id = %s" in API)
+
+# ── 9. Sólo las obras que están en producción ────────────────────────────────────────
+print("\n9. Sólo las obras que están en producción")
+# Sin esto la lista trae 296 obras y 2.992 códigos, y adentro hay obras cuyo último pedido
+# es de 2021: códigos que nadie cerró en aSa, no trabajo vivo. Con tres meses quedan 80.
+check("el criterio es el MISMO que el de Stock Cubicaciones: movimiento en N meses",
+      "MESES_MOVIMIENTO = 3" in API and "def _filtro_movimiento(" in API
+      and "programacion" in API.lower())
+check("...y se puede soltar: 0 es «todas», no un valor que se ignora",
+      "if not meses:" in API and 'VENTANA_TODO' in API)
+check("el reloj tampoco barre obras muertas: la cola usa la misma ventana",
+      "def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO)" in API)
+check("la pantalla lo muestra como chips, no escondido",
+      "var MESES = [[3," in JS and 'id="revMeses"' in HTM and "function pintarMeses(" in JS)
+
+# ── 10. El reporte masivo ────────────────────────────────────────────────────────────
+print("\n10. El reporte: por obra, con quién cubicó")
+check("una fila por obra, ordenada por lo que más espera",
+      '@router.get("/chequeos/reporte")' in API
+      and 'key=lambda o: (-o["abiertas"]' in API)
+check("trae quién cubicó, y es un dato guardado en la señal, no un join de hoy",
+      "ADD COLUMN IF NOT EXISTS cubico" in MIG3 and '"cubico": f[19]' in API
+      and "cubico = EXCLUDED.cubico" in API)
+check("...porque si la obra pasa de manos, un reporte viejo no puede reescribirse solo",
+      "le atribuiría a otro algo que no hizo" in MIG3)
+check("y queda dicho que NO es un ranking de personas",
+      "NO ES UN RANKING DE PERSONAS" in API and "sería medir las reglas, no a la gente" in API)
+# EL ERROR QUE UN REPORTE ASÍ NO PUEDE COMETER.
+check("una obra sin revisar NO se lee como limpia: se dice que está sin revisar",
+      "no está limpia, está sin revisar" in API and "sin revisar</span>" in JS)
+check("...y la columna de revisados va antes que la de señales, por lo mismo",
+      JS.index("<th class=\"num\">Revisados</th>") < JS.index("<th class=\"num\">Por corregir</th>"))
+check("se puede imprimir", 'id="revRepImprimir"' in HTM)
+
+# ── 11. Quién puede usarlo ───────────────────────────────────────────────────────────
+print("\n11. Los cubicadores pueden revisar, no sólo administración")
+check("usa el mismo permiso que la auditoría, que ya incluye al área de Cubicaciones",
+      "_puede_ver" in API and "_puede_auditar" in API
+      and 'ROLES_AUDITAN = ("admin", "admin_calidad", "miembro", "externo")' in AUD
+      and 'AREA_AUDITA = "Cubicaciones"' in AUD)
+check("...o sea que no hay una lista de roles propia que se desincronice",
+      "ROLES_" not in API)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

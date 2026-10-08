@@ -45,6 +45,26 @@ router = APIRouter(prefix="/api/v1", tags=["chequeos"])
 ESTADOS_VIVOS = ("Open", "Processed")
 # Los estados en que una señal está esperando a alguien.
 ABIERTAS = ("abierta", "corregir")
+# OBRA EN PRODUCCIÓN = TUVO MOVIMIENTO EN LOS ÚLTIMOS N MESES. Es el mismo criterio que usa
+# el tab de Stock Cubicaciones (`programacion.asa_cubicador`), y se reusa a propósito: dos
+# definiciones distintas de «obra activa» conviviendo terminan diciendo cosas distintas.
+#
+# HACE FALTA. Sin él la lista trae 296 obras y 2.992 códigos, y adentro hay obras cuyo
+# último pedido es de 2021 —códigos que nadie cerró en aSa, no trabajo vivo—. Con tres
+# meses quedan 62 obras y 917 códigos, que es lo que de verdad se está cubicando. El filtro
+# se ve y se puede soltar: una obra se mira igual aunque esté quieta, pero que uno lo pida.
+MESES_MOVIMIENTO = 3
+# «Todo»: cien años, o sea la historia completa del espejo. Mismo truco que en programación.
+VENTANA_TODO = 1200
+
+
+def _filtro_movimiento(meses: int):
+    """El trozo de SQL y su argumento. `meses = 0` es «todas»."""
+    if not meses:
+        return "", ()
+    return (""" AND p.asa_job_id IN (SELECT asa_job_id FROM asa_pedidos
+                                      WHERE order_date >= CURRENT_DATE - make_interval(months => %s)
+                                      GROUP BY asa_job_id)""", (meses,))
 
 
 @router.get("/chequeos/reglas")
@@ -57,21 +77,26 @@ def listar_reglas(user=Depends(get_current_user)):
 
 
 @router.get("/chequeos/obras")
-def obras(user=Depends(get_current_user)):
+def obras(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
     """Las obras con códigos vivos, con lo que ya se sabe de cada una: cuántos códigos
-    tiene, cuántos se revisaron, cuándo fue la última revisión y cuántas señales esperan."""
+    tiene, cuántos se revisaron, cuándo fue la última revisión y cuántas señales esperan.
+
+    `meses` es la ventana de movimiento (0 = todas). Ver MESES_MOVIMIENTO."""
     _puede_ver(user)
+    meses = max(0, min(int(MESES_MOVIMIENTO if meses is None else meses), 120))
+    mov, arg = _filtro_movimiento(meses)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT p.asa_job_id, MAX(p.job_name), COUNT(*),
-                          MAX(p.order_date), SUM(p.kg)
+                          MAX(p.order_date), SUM(p.kg),
+                          STRING_AGG(DISTINCT NULLIF(TRIM(p.detail_person),''), ', ')
                      FROM asa_pedidos p
                     WHERE COALESCE(p.estado,'') = ANY(%s)
-                      AND p.job_name !~* %s
+                      AND p.job_name !~* %s""" + mov + """
                     GROUP BY p.asa_job_id
                     ORDER BY MAX(p.order_date) DESC NULLS LAST""",
-                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA))
+                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + arg)
             filas = cur.fetchall()
             cur.execute(
                 """SELECT id_proyecto,
@@ -89,9 +114,11 @@ def obras(user=Depends(get_current_user)):
     return {"obras": [
         {"job": r[0], "obra": r[1], "ccs": r[2],
          "ultimo_pedido": r[3].isoformat() if r[3] else None, "kg": float(r[4] or 0),
+         "cubico": r[5],
          "senales": senales.get(r[0]) or {"abiertas": 0, "corregir": 0, "ccs": 0},
          "ultima_revision": ultima.get(r[0])}
-        for r in filas]}
+        for r in filas],
+        "meses": meses}
 
 
 @router.get("/chequeos/codigos")
@@ -205,6 +232,12 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             cur.execute("SELECT MAX(job_name) FROM asa_pedidos WHERE asa_job_id = %s", (body.job,))
             obra = (cur.fetchone() or [None])[0]
+            # QUIÉN CUBICÓ ESTE CÓDIGO. Se guarda EN la señal y no se resuelve por join al
+            # mirarla: si la obra pasa de manos, un reporte viejo se reescribiría solo y le
+            # atribuiría a otro algo que no hizo. Es para saber a quién preguntarle.
+            cur.execute("""SELECT NULLIF(TRIM(detail_person),'') FROM asa_pedidos
+                            WHERE control_code = %s LIMIT 1""", (body.cc,))
+            cubico = (cur.fetchone() or [None])[0]
             # LO QUE YA SE ACEPTÓ NO VUELVE A MOLESTAR. Si alguien dijo que ese patrón está
             # bien en esta obra, la señal nueva nace aceptada con el mismo motivo: queda el
             # registro de que se vio, pero no vuelve a la lista de pendientes.
@@ -221,16 +254,17 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
                 cur.execute(
                     """INSERT INTO chequeo_senales
                            (regla, origen, id_proyecto, obra, cc, elemento, ref, marca, figura,
-                            diam_mm, detalle, firma, firma_patron, estado, resuelto_por, nota,
-                            resuelto_el)
-                       VALUES (%s,'asa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                            diam_mm, cubico, detalle, firma, firma_patron, estado, resuelto_por,
+                            nota, resuelto_el)
+                       VALUES (%s,'asa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                                CASE WHEN %s THEN now() END)
                        ON CONFLICT (firma) DO UPDATE
                           SET veces = chequeo_senales.veces + 1, visto_ultimo = now(),
-                              detalle = EXCLUDED.detalle
+                              detalle = EXCLUDED.detalle, cubico = EXCLUDED.cubico
                        RETURNING (xmax = 0) AS insertada""",
                     (s["regla"], body.job, obra, s["cc"], s["elemento"], s["ref"], s["marca"],
-                     s["figura"], s["diam"], _json(s["detalle"]), s["firma"], s["firma_patron"],
+                     s["figura"], s["diam"], cubico, _json(s["detalle"]), s["firma"],
+                     s["firma_patron"],
                      "aceptada" if acep else "abierta",
                      acep[0] if acep else None,
                      ("Aceptado antes en esta obra: " + (acep[1] or "sin motivo")) if acep else None,
@@ -342,7 +376,7 @@ def senales(job: str = "", estado: str = "", regla: str = "",
             cur.execute(
                 "SELECT id, regla, id_proyecto, obra, cc, elemento, ref, marca, figura, diam_mm,"
                 " detalle, veces, visto_primero, visto_ultimo, estado, resuelto_por, resuelto_el,"
-                " nota, firma_patron"
+                " nota, firma_patron, cubico"
                 " FROM chequeo_senales WHERE " + " AND ".join(where) +
                 " ORDER BY regla, cc, ref LIMIT 2000", tuple(args))
             filas = cur.fetchall()
@@ -360,7 +394,7 @@ def senales(job: str = "", estado: str = "", regla: str = "",
          "visto_ultimo": f[13].isoformat() if f[13] else None,
          "estado": f[14], "resuelto_por": f[15],
          "resuelto_el": f[16].isoformat() if f[16] else None,
-         "nota": f[17], "patron": f[18]} for f in filas],
+         "nota": f[17], "patron": f[18], "cubico": f[19]} for f in filas],
         "resumen": resumen,
         "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}
 
@@ -433,9 +467,14 @@ TOPE_AUTO = int(os.getenv("CHEQUEO_TOPE_CODIGOS", "300") or 300)
 MINUTOS_AUTO = float(os.getenv("CHEQUEO_MINUTOS", "15") or 15)
 
 
-def pendientes(limite: int = 0) -> list:
+def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO) -> list:
     """Los códigos que vale la pena revisar, los más nuevos primero. Función aparte para
-    poder preguntarle a la pantalla «cuánto falta» sin revisar nada."""
+    poder preguntarle a la pantalla «cuánto falta» sin revisar nada.
+
+    EL RELOJ TAMPOCO BARRE OBRAS MUERTAS. Sin la ventana de movimiento la cola son 2.992
+    códigos, y más de la mitad son de obras cuyo último pedido es de hace años: gastar
+    segundos de aSa en cada uno para marcar barras que nadie va a corregir."""
+    mov, arg = _filtro_movimiento(meses)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -447,11 +486,11 @@ def pendientes(limite: int = 0) -> list:
                       AND p.job_name !~* %s
                       AND (c.cc IS NULL
                            OR (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
-                               AND p.ultima_mod > c.ultima_mod))
+                               AND p.ultima_mod > c.ultima_mod))""" + mov + """
                     GROUP BY p.asa_job_id, p.control_code
                     ORDER BY MAX(p.order_date) DESC NULLS LAST
                     """ + ("LIMIT %s" if limite else ""),
-                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + ((limite,) if limite else ()))
+                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + arg + ((limite,) if limite else ()))
             return [{"job": r[0], "cc": r[1], "obra": r[2]} for r in cur.fetchall()]
 
 
@@ -532,6 +571,78 @@ def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current
     audit(email, "chequeo_revision", "pendientes · %d codigos · %d obras" % (len(cola), len(jobs)),
           "chequeo", str(rid))
     return {"revision": rid, "ccs": cola, "obras": len(jobs)}
+
+
+@router.get("/chequeos/reporte")
+def reporte(meses: int = MESES_MOVIMIENTO, user=Depends(get_current_user)):
+    """EL REPORTE MASIVO, UNA FILA POR OBRA.
+
+    La pantalla de una obra responde «qué arreglo acá». Esto responde otra cosa: dónde está
+    concentrado el problema y a quién hay que preguntarle. Por eso va por obra y no por
+    barra, trae quién cubicó, y separa lo revisado de lo que falta mirar — una obra con
+    cero señales y cero códigos revisados no está limpia, está sin revisar, y leerlas igual
+    sería el peor error que puede cometer un reporte así.
+
+    NO ES UN RANKING DE PERSONAS. Las señales las levanta una máquina y buena parte van a
+    ser correctas; sumarlas por cubicador sería medir las reglas, no a la gente. El nombre
+    está para saber a quién preguntarle."""
+    _puede_ver(user)
+    meses = max(0, min(int(MESES_MOVIMIENTO if meses is None else meses), 120))
+    mov, arg = _filtro_movimiento(meses)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT p.asa_job_id, MAX(p.job_name), COUNT(*), SUM(p.kg),
+                          STRING_AGG(DISTINCT NULLIF(TRIM(p.detail_person),''), ', '),
+                          MAX(p.order_date)
+                     FROM asa_pedidos p
+                    WHERE COALESCE(p.estado,'') = ANY(%s)
+                      AND p.job_name !~* %s""" + mov + """
+                    GROUP BY p.asa_job_id""",
+                (list(ESTADOS_VIVOS), PATRON_OBRAS_FUERA) + arg)
+            base = {r[0]: {"job": r[0], "obra": r[1], "ccs": r[2], "kg": float(r[3] or 0),
+                           "cubico": r[4], "ultimo_pedido": r[5].isoformat() if r[5] else None,
+                           "revisados": 0, "barras": 0, "abiertas": 0, "corregir": 0,
+                           "aceptadas": 0, "corregidas": 0, "por_regla": {}, "quienes": [],
+                           "ultima_revision": None}
+                    for r in cur.fetchall()}
+            cur.execute(
+                """SELECT id_proyecto, COUNT(*), SUM(barras), MAX(revisado_el)
+                     FROM chequeo_codigos GROUP BY id_proyecto""")
+            for job, n, barras, ult in cur.fetchall():
+                if job in base:
+                    base[job].update({"revisados": n, "barras": int(barras or 0),
+                                      "ultima_revision": ult.isoformat() if ult else None})
+            cur.execute(
+                """SELECT id_proyecto, regla, estado, COUNT(*),
+                          STRING_AGG(DISTINCT cubico, ', ')
+                     FROM chequeo_senales GROUP BY id_proyecto, regla, estado""")
+            for job, regla, estado, n, quienes in cur.fetchall():
+                o = base.get(job)
+                if not o:
+                    continue
+                if estado in ABIERTAS:
+                    o["abiertas"] += n
+                    o["por_regla"][regla] = o["por_regla"].get(regla, 0) + n
+                    for q in (quienes or "").split(", "):
+                        if q and q not in o["quienes"]:
+                            o["quienes"].append(q)
+                if estado == "corregir":
+                    o["corregir"] += n
+                if estado == "aceptada":
+                    o["aceptadas"] += n
+                if estado == "corregida":
+                    o["corregidas"] += n
+    filas = sorted(base.values(), key=lambda o: (-o["abiertas"], -(o["ccs"] - o["revisados"])))
+    return {"obras": filas, "meses": meses,
+            "reglas": {r["codigo"]: r["nombre"] for r in REGLAS},
+            "total": {"obras": len(filas),
+                      "ccs": sum(o["ccs"] for o in filas),
+                      "revisados": sum(o["revisados"] for o in filas),
+                      "barras": sum(o["barras"] for o in filas),
+                      "abiertas": sum(o["abiertas"] for o in filas),
+                      "corregir": sum(o["corregir"] for o in filas),
+                      "corregidas": sum(o["corregidas"] for o in filas)}}
 
 
 @router.get("/chequeos/revisiones")

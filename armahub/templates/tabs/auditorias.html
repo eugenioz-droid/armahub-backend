@@ -272,6 +272,15 @@
           <input type="text" id="revBuscaObra" class="audccb" style="max-width:260px"
                  placeholder="🔍 buscar obra…" autocomplete="off">
         </div>
+        <!-- LA VENTANA DE MOVIMIENTO, el mismo criterio que Stock Cubicaciones: una obra
+             está en producción si tuvo pedidos hace poco. Sin esto entran obras cuyo
+             último pedido es de 2021, que son códigos que nadie cerró en aSa. Se ve y se
+             puede soltar: una obra quieta se mira igual, pero que uno lo pida. -->
+        <div class="audccbar" style="margin-bottom:8px;">
+          <span class="dshbl">Con movimiento en</span>
+          <div class="dshchips" id="revMeses"></div>
+          <span class="muted" style="font-size:11px" id="revMesesTxt"></span>
+        </div>
         <div id="revObras" class="revobras"></div>
       </div>
 
@@ -289,6 +298,18 @@
         <!-- Los códigos de la obra, con su propio estado de revisión. -->
         <div id="revCodigos" class="revccs"></div>
         <div id="revSenales"></div>
+      </div>
+
+      <!-- EL REPORTE MASIVO: una fila por obra. La pantalla de arriba responde «qué
+           arreglo en esta obra»; esto responde «dónde está el problema y a quién le
+           pregunto». Se imprime. -->
+      <div class="card audc" id="revReporte">
+        <div class="audh">Reporte por obra
+          <span class="muted" id="revRepTxt"></span>
+          <div style="flex:1"></div>
+          <button id="revRepImprimir" class="audmini">Imprimir</button>
+        </div>
+        <div id="revRep"></div>
       </div>
 
       <div class="card audc" id="revHistorial" style="display:none;">
