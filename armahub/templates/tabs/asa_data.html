@@ -230,6 +230,25 @@
             <span class="muted" style="font-size:11px" id="mensNota"></span>
           </div>
           <div class="dshkpis" id="mensKpis"></div>
+          <!-- A LO ANCHO, los dos que necesitan espacio: doce meses por varias series no
+               caben en media pantalla. -->
+          <div class="card dshcard dshcod" style="margin-bottom:10px;">
+            <div class="dshth" title="Todos los años encima, de más viejo a más nuevo. La estacionalidad se ve cuando están todos, no cuando están dos.">KILOS POR MES · TODOS LOS AÑOS <span class="muted" id="mensAniosN"></span></div>
+            <div style="position:relative; height:300px;"><canvas id="mensAniosChart"></canvas></div>
+          </div>
+
+          <div class="card dshcard dshcod" style="margin-bottom:10px;">
+            <div class="dshth">KILOS POR MES · CUBICADOR <span class="muted" id="mensCubN"></span></div>
+            <!-- Quién entra al gráfico. Vienen marcados los vigentes —los que cubicaron
+                 hace poco y pesan en el año—; el resto está en la lista con su tonelaje,
+                 a un clic. -->
+            <div class="dshbarra" style="margin:0 0 6px;">
+              <span class="dshbl">Cubicadores</span>
+              <div id="mensCubChips" class="dshchips"></div>
+            </div>
+            <div style="position:relative; height:320px;"><canvas id="mensCubChart"></canvas></div>
+          </div>
+
           <div class="mensgrid">
             <div class="card dshcard dshcod">
               <div class="dshth">KILOS CUBICADOS POR MES <span class="muted" id="mensKgN"></span></div>

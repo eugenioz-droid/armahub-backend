@@ -917,9 +917,14 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
             cur.execute("SELECT DISTINCT detail_person FROM asa_pedidos "
                         " WHERE detail_person IS NOT NULL AND detail_person <> '' ORDER BY 1")
             personas = [r[0] for r in cur.fetchall()]
+            # EL MISMO FILTRO DE OBRAS QUE LAS FILAS. Este contador se compara contra las
+            # filas que viajan marcadas como anuladas, así que si cuenta sobre un universo
+            # distinto los dos números no cuadran. Se notó al sacar las obras «- BARRAS»:
+            # la lista dejó de traerlas y el contador las seguía sumando.
             cur.execute("SELECT COUNT(*) FROM asa_pedidos" + cond_periodo +
-                        (" AND " if cond_periodo else " WHERE ") + "estado = %s",
-                        params + [ESTADO_NUNCA])
+                        (" AND " if cond_periodo else " WHERE ") +
+                        "estado = %s AND job_name !~* %s",
+                        params + [ESTADO_NUNCA, PATRON_OBRAS_FUERA])
             anulados = cur.fetchone()[0]
             if todos:
                 cur.execute("SELECT COUNT(*), MAX(visto_el) FROM asa_pedidos")
@@ -977,12 +982,30 @@ SEGMENTOS_OBRA = ("1 y 2", "4 y 5", "YPS", "Otros")
 # Lo que no tiene segmento cargado se muestra como tal y no se esconde: si se dejara
 # fuera, los porcentajes del resumen mensual no sumarian cien y nadie sabria por que.
 SIN_SEGMENTO = "(sin segmento)"
+# QUIÉN ESTÁ VIGENTE. Se mira la actividad y no una lista de nombres: una lista escrita a
+# mano se desactualiza sola en cuanto alguien entra o sale, y nadie se acuerda de editarla.
+#
+# DOS CONDICIONES, y la segunda hace falta. Sólo con «cubicó hace poco» entran once de doce
+# personas, incluidas las que hicieron ocho toneladas en el año —un apoyo puntual, no un
+# cubicador del equipo— y el gráfico queda con once barras por mes, ilegible. Pidiendo
+# además que aporte al menos el 1% del año quedan siete, y son exactamente las siete que
+# están en el área de Cubicaciones en la plataforma. El resto sigue en la lista, con su
+# tonelaje a la vista, a un clic de entrar.
+MESES_VIGENTE = 3
+MINIMO_VIGENTE = 0.01
 
-# OBRAS QUE NO SON OBRAS: en aSa hay jobs de prueba («Obra de Prueba», «OBRA DE PRUEBA -
-# COTIZACIONES», «Prueba Moldajes IB») y uno que se llama «NO USAR». El usuario pidió
-# sacarlas «lisa y llanamente»: no entran a ningún reporte. Regex de Postgres con bordes
-# de palabra (\m \M), sin distinguir mayúsculas.
-PATRON_OBRAS_FUERA = r"\m(prueba|no usar)\M"
+# OBRAS QUE NO SON OBRAS. Tres grupos, y los tres quedan fuera de todo reporte:
+#   · las de PRUEBA de aSa («Obra de Prueba», «Prueba Moldajes IB») y la que se llama
+#     «NO USAR». El usuario pidió sacarlas «lisa y llanamente»;
+#   · las «- BARRAS» (8-oct). Son 260 obras y 15,8 millones de kilos: barra dimensionada
+#     que se corta y se despacha, sin despiece ni cubicación detrás. Mezcladas con el
+#     resto distorsionan todo lo que se mida — en 2025 eran el 20% del tonelaje y en 2026
+#     el 17%— y el usuario ya lo había dicho de los reclamos: «las obras de barras no
+#     aplican a la data».
+# Regex de Postgres con bordes de palabra (\m \M), sin distinguir mayúsculas. El borde
+# importa: así entra «SACK - BARRAS DIMENSIONADAS» y no entraría una obra que dijera
+# «BARRASCO».
+PATRON_OBRAS_FUERA = r"\m(prueba|no usar|barras)\M"
 
 
 @router.get("/programacion/asa/cubicador")
@@ -1100,6 +1123,17 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
             "filas": filas, "personas": personas}
 
 
+def _cubicadores(porcub: dict, vigentes: set) -> list:
+    """Cada cubicador con su serie mensual, de mayor a menor, y si está vigente.
+    Función aparte y pura: la regla de quién entra preseleccionado se prueba sin base."""
+    total = sum(sum(v) for v in porcub.values()) or 1.0
+    return sorted(
+        [{"nombre": p, "meses": v, "total": sum(v),
+          "vigente": bool(p in vigentes and sum(v) / total >= MINIMO_VIGENTE)}
+         for p, v in porcub.items()],
+        key=lambda c: -c["total"])
+
+
 @router.get("/programacion/asa/mensual")
 def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
     """EL RESUMEN DEL AÑO, MES A MES, Y CONTRA EL AÑO ANTERIOR.
@@ -1164,6 +1198,38 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
                 """SELECT DISTINCT EXTRACT(YEAR FROM order_date)::int
                      FROM asa_pedidos WHERE order_date IS NOT NULL ORDER BY 1 DESC""")
             anios = [r[0] for r in cur.fetchall()]
+            # TODOS LOS AÑOS, MES A MES. El gráfico de dos años contesta «cómo vamos»;
+            # éste contesta «cómo se mueve el año», que es otra cosa: la estacionalidad se
+            # ve cuando están los cinco años encima, no dos.
+            cur.execute(
+                """SELECT EXTRACT(YEAR FROM order_date)::int,
+                          EXTRACT(MONTH FROM order_date)::int, COALESCE(SUM(kg), 0)
+                     FROM asa_pedidos
+                    WHERE order_date IS NOT NULL AND job_name !~* %s
+                    GROUP BY 1, 2 ORDER BY 1, 2""", (PATRON_OBRAS_FUERA,))
+            por_anio = {}
+            for a, m, kg in cur.fetchall():
+                por_anio.setdefault(a, [0.0] * 12)[m - 1] = float(kg or 0)
+            # CADA CUBICADOR, MES A MES, en el año elegido. Y quién sigue VIGENTE: no se
+            # escribe a mano una lista de nombres —se desactualiza sola en cuanto alguien
+            # entra o sale— sino que se mira quién cubicó en los últimos meses.
+            cur.execute(
+                """SELECT NULLIF(TRIM(detail_person), ''),
+                          EXTRACT(MONTH FROM order_date)::int, COALESCE(SUM(kg), 0)
+                     FROM asa_pedidos
+                    WHERE EXTRACT(YEAR FROM order_date)::int = %s
+                      AND job_name !~* %s AND NULLIF(TRIM(detail_person), '') IS NOT NULL
+                    GROUP BY 1, 2""", (anio, PATRON_OBRAS_FUERA))
+            porcub = {}
+            for p, m, kg in cur.fetchall():
+                porcub.setdefault(p, [0.0] * 12)[m - 1] = float(kg or 0)
+            cur.execute(
+                """SELECT DISTINCT NULLIF(TRIM(detail_person), '')
+                     FROM asa_pedidos
+                    WHERE order_date >= CURRENT_DATE - make_interval(months => %s)
+                      AND job_name !~* %s AND NULLIF(TRIM(detail_person), '') IS NOT NULL""",
+                (MESES_VIGENTE, PATRON_OBRAS_FUERA))
+            vigentes = {r[0] for r in cur.fetchall()}
 
     def fila(a, m):
         d = (meses.get(a) or {}).get(m) or {}
@@ -1184,6 +1250,13 @@ def asa_mensual(anio: Optional[int] = None, user=Depends(get_current_user)):
         return sum((meses.get(a) or {}).get(m, {}).get(campo, 0) for m in range(1, tope + 1))
     return {
         "anio": anio, "anios": anios, "hasta": hasta, "en_curso": en_curso,
+        # Para el gráfico de todos los años, de más viejo a más nuevo: una serie temporal
+        # al revés se lee mal aunque la leyenda lo diga.
+        "por_anio": [{"anio": a, "meses": por_anio[a]} for a in sorted(por_anio)],
+        # Los cubicadores, de mayor a menor en el año. `vigente` lo decide la actividad
+        # reciente y no una lista escrita a mano.
+        "cubicadores": _cubicadores(porcub, vigentes),
+        "meses_vigente": MESES_VIGENTE,
         "meses": datos,
         "segmentos": sorted({s for v in segmentos.values() for s in v}),
         # El acumulado a la misma altura del año, que es la comparación que de verdad se usa.

@@ -83,5 +83,41 @@ check("los colores del segmento son los MISMOS que en el cuadro por segmento",
 check("se agrega en la base, no se manda el detalle para que el navegador sume",
       "GROUP BY 1, 2" in SRC and "SE AGREGA EN LA BASE" in SRC)
 
+print("\n5. Las obras «- BARRAS» quedan fuera de TODO")
+# 260 obras y 15,8 millones de kilos: barra dimensionada que se corta y se despacha, sin
+# despiece detrás. En 2025 eran el 20 por ciento del tonelaje. El usuario ya lo había dicho
+# de los reclamos: «las obras de barras no aplican a la data».
+AUD = open(os.path.join(ROOT, "armahub", "auditorias.py"), encoding="utf-8").read()
+PAT = 'PATRON_OBRAS_FUERA = r"\\m(prueba|no usar|barras)\\M"'
+check("entran al patrón global, no a un filtro suelto de un reporte",
+      PAT in SRC and PAT in AUD)
+check("...con borde de palabra, para que entre «SACK - BARRAS DIMENSIONADAS»",
+      "no entraría una obra que dijera" in SRC)
+check("...y queda el número que lo justifica",
+      "260 obras y 15,8 millones de kilos" in SRC)
+
+print("\n6. Los dos gráficos nuevos")
+check("todos los años por mes, de más viejo a más nuevo",
+      '"por_anio": [{"anio": a, "meses": por_anio[a]} for a in sorted(por_anio)]' in SRC
+      and "function todosLosAnios(" in JS and 'id="mensAniosChart"' in HTM)
+check("...y el año elegido se destaca sin tapar a los otros",
+      "actual ? color : color + '66'" in JS)
+check("cada cubicador una barra por mes, agrupadas y no apiladas",
+      "function porCubicador(" in JS and 'id="mensCubChart"' in HTM
+      and "CADA CUBICADOR, UNA BARRA POR MES. Agrupadas y no apiladas" in JS)
+check("se puede elegir quién entra al gráfico",
+      'id="mensCubChips"' in HTM and "function pintarCubChips(" in JS and "CUBS" in JS)
+# QUIÉN VIENE PRESELECCIONADO NO SE ESCRIBE A MANO: una lista de nombres se desactualiza
+# sola en cuanto alguien entra o sale del equipo.
+check("los vigentes vienen marcados, y «vigente» sale de la ACTIVIDAD, no de una lista",
+      "def _cubicadores(" in SRC and "MESES_VIGENTE = 3" in SRC
+      and "MINIMO_VIGENTE = 0.01" in SRC)
+check("...con las dos condiciones: cubicó hace poco Y pesa en el año",
+      "p in vigentes and sum(v) / total >= MINIMO_VIGENTE" in SRC)
+check("...y queda escrito por qué hacen falta las dos",
+      "entran once de doce" in SRC and "son exactamente las siete" in SRC)
+check("el color de un cubicador no cambia al desmarcar a otro",
+      "no en la elegida" in JS and "todos.indexOf(c)" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

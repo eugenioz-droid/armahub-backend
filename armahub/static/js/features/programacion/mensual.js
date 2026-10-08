@@ -22,6 +22,14 @@
   'use strict';
 
   var MENS = null, ANIO = null, CH = {};
+  // Qué cubicadores están en el gráfico. Se llena con los vigentes al cargar el año y
+  // después manda lo que el usuario toque: si se recalculara en cada pintado, desmarcar
+  // a alguien se desharía solo al siguiente dibujo.
+  var CUBS = null;
+  // Una paleta fija y en orden: el mismo cubicador tiene que ser del mismo color cada vez
+  // que se abre la pantalla, o comparar dos días seguidos es imposible.
+  var PALETA = ['#1565C0', '#43a047', '#fb8c00', '#8e24aa', '#00897b', '#e53935',
+                '#3949ab', '#c0ca33', '#6d4c41', '#00acc1', '#f4511e', '#5e35b1'];
   var MESN = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   // Los mismos colores del cuadro por segmento: el mismo segmento no puede ser de dos
   // colores distintos en dos pantallas de la misma aplicación.
@@ -122,6 +130,102 @@
     });
   }
 
+  // TODOS LOS AÑOS ENCIMA. El gráfico de dos años contesta «cómo vamos»; éste contesta
+  // «cómo se mueve el año», que es otra cosa: la estacionalidad —el bajón de junio, el
+  // repunte de octubre— sólo se ve cuando están los cinco años juntos.
+  function todosLosAnios() {
+    if (typeof Chart === 'undefined' || !global.replaceChart) return;
+    var series = MENS.por_anio || [];
+    $('mensAniosN').textContent = '· ' + series.length + ' años';
+    CH.mensAniosChart = global.replaceChart(CH.mensAniosChart, $('mensAniosChart'), {
+      type: 'bar',
+      data: {
+        labels: MESN,
+        datasets: series.map(function (s, i) {
+          // El año elegido, lleno; los otros, más suaves. El que se está mirando tiene
+          // que destacarse sin que los demás desaparezcan.
+          var color = PALETA[i % PALETA.length];
+          var actual = s.anio === MENS.anio;
+          return { label: String(s.anio), data: s.meses, borderRadius: 2,
+                   order: actual ? 0 : 1,
+                   // El año que se está mirando va lleno; los otros translúcidos. Así
+                   // destaca sin que los demás desaparezcan, que es para lo que están.
+                   backgroundColor: actual ? color : color + '66' };
+        })
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+          datalabels: { display: false },
+          tooltip: { callbacks: { label: function (c) {
+            return ' ' + c.dataset.label + ': ' + ton(c.raw) + ' t'; } } }
+        },
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                  y: { beginAtZero: true, grid: { color: '#f0f2f5' },
+                       ticks: { font: { size: 10 },
+                                callback: function (v) { return ton(v) + ' t'; } } } }
+      }
+    });
+  }
+
+  // CADA CUBICADOR, UNA BARRA POR MES. Agrupadas y no apiladas: la pregunta es comparar
+  // entre personas dentro del mes, y apiladas eso no se puede leer.
+  function porCubicador() {
+    if (typeof Chart === 'undefined' || !global.replaceChart) return;
+    var todos = MENS.cubicadores || [];
+    var elegidos = todos.filter(function (c) { return CUBS.indexOf(c.nombre) !== -1; });
+    $('mensCubN').textContent = '· ' + elegidos.length + ' de ' + todos.length +
+      ' · ' + ton(elegidos.reduce(function (s, c) { return s + c.total; }, 0)) + ' t';
+    CH.mensCubChart = global.replaceChart(CH.mensCubChart, $('mensCubChart'), {
+      type: 'bar',
+      data: {
+        labels: MESN,
+        datasets: elegidos.map(function (c) {
+          // El color sale de la posición en la lista COMPLETA, no en la elegida: así
+          // desmarcar a alguien no le cambia el color a todos los demás.
+          var i = todos.indexOf(c);
+          return { label: c.nombre, data: c.meses, borderRadius: 2,
+                   backgroundColor: PALETA[i % PALETA.length] };
+        })
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+          datalabels: { display: false },
+          tooltip: { callbacks: { label: function (c) {
+            return ' ' + c.dataset.label + ': ' + ton(c.raw) + ' t'; } } }
+        },
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                  y: { beginAtZero: true, grid: { color: '#f0f2f5' },
+                       ticks: { font: { size: 10 },
+                                callback: function (v) { return ton(v) + ' t'; } } } }
+      }
+    });
+  }
+
+  function pintarCubChips() {
+    var el = $('mensCubChips');
+    if (!el || !MENS) return;
+    var todos = MENS.cubicadores || [];
+    el.innerHTML = todos.map(function (c, i) {
+      var on = CUBS.indexOf(c.nombre) !== -1;
+      return '<button data-c="' + esc(c.nombre) + '" class="' + (on ? 'on' : '') +
+             '" title="' + n0(c.total) + ' kg en el año' +
+             (c.vigente ? '' : ' · no cubicó en los últimos ' + MENS.meses_vigente + ' meses') +
+             '"' + (on ? ' style="border-color:' + PALETA[i % PALETA.length] + '"' : '') + '>' +
+             esc(c.nombre) + ' <span class="muted">' + ton(c.total) + ' t</span></button>';
+    }).join('');
+    el.querySelectorAll('button[data-c]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = CUBS.indexOf(b.dataset.c);
+        if (i === -1) CUBS.push(b.dataset.c); else CUBS.splice(i, 1);
+        pintarCubChips(); porCubicador();
+      });
+    });
+  }
+
   function variacion(a, b) {
     if (!b) return '';
     var p = (a / b - 1) * 100;
@@ -171,6 +275,9 @@
              MENS.meses.map(function (m) { return m.previo.codigos ? m.previo.kg / m.previo.codigos : 0; }),
              function (v) { return n0(v) + ' kg'; });
     mezcla();
+    todosLosAnios();
+    pintarCubChips();
+    porCubicador();
   }
 
   function caja(valor, texto, extra) {
@@ -196,6 +303,10 @@
       MENS = await cargar(anio);
       if (!MENS) return;
       ANIO = MENS.anio;
+      // Los vigentes vienen marcados. Se decide ACÁ, al cargar el año, y no en cada
+      // pintado: si se recalculara al dibujar, desmarcar a alguien se desharía solo.
+      CUBS = (MENS.cubicadores || []).filter(function (c) { return c.vigente; })
+                                     .map(function (c) { return c.nombre; });
       pintarAnios();
       pintar();
     } catch (e) {

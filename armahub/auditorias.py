@@ -76,7 +76,7 @@ AREA_CUBICACIONES = "Cubicaciones"
 # las obras que no están en ArmaHub (319 contra 18).
 ORIGENES = ("armahub", "asa")
 # Las obras de prueba de aSa no se auditan. Mismo patrón que usa Programación.
-PATRON_OBRAS_FUERA = r"\m(prueba|no usar)\M"
+PATRON_OBRAS_FUERA = r"\m(prueba|no usar|barras)\M"
 # Los dos estados de aSa que dejan un código FUERA de una auditoría, y por razones
 # distintas: el anulado no es trabajo, y el despachado ya se fabricó y se fue a la obra
 # —auditarlo llega tarde, y lo que vale es revisar antes de que salga—. Son los mismos

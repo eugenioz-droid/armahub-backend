@@ -943,9 +943,12 @@ check("los títulos dicen que es lo CUBICADO (por fecha de pedido)",
       and "CUBICADO POR MES · TIPO" in HTM and "OBRAS · CUBICADO" in HTM)
 check("cada mes lleva su total como segunda línea de la etiqueta del eje",
       "return [l, kg0(datasets.reduce(function (a, d) { return a + (d.data[i] || 0); }, 0))];" in DSH)
-check("las obras de prueba y «NO USAR» quedan fuera de TODOS los endpoints (reporte, cubicador, atributos, semana ×2, mensual ×2)",
-      'PATRON_OBRAS_FUERA = r"\\m(prueba|no usar)\\M"' in PROG
-      and PROG.count("job_name !~* %s") == 9 and PROG.count("PATRON_OBRAS_FUERA") == 10)
+# Y LAS «- BARRAS» TAMBIÉN (8-oct): 260 obras y 15,8 millones de kilos de barra
+# dimensionada, sin despiece detrás. En 2025 eran el 20% del tonelaje y distorsionaban
+# todo lo que se midiera. El usuario ya lo había dicho de los reclamos.
+check("las obras de prueba, «NO USAR» y las «- BARRAS» quedan fuera de TODOS los endpoints",
+      'PATRON_OBRAS_FUERA = r"\\m(prueba|no usar|barras)\\M"' in PROG
+      and PROG.count("job_name !~* %s") == 13 and PROG.count("PATRON_OBRAS_FUERA") == 14)
 # Los filtros se sentían lentos: repintar miles de filas en el mismo clic, y el chip no se
 # pintaba hasta terminar. Ahora el chip va primero y lo pesado después; y las cajas de
 # Stock Cubicaciones tienen el mismo tope de filas que el detalle de códigos.
