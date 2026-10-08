@@ -62,12 +62,31 @@
   }
 
   async function cargar(anio) {
-    var url = '/programacion/asa/mensual?anio=' + (anio || '') + filtrosQs();
+    // EL AÑO VA SÓLO SI LO HAY. Mandar `anio=` vacío no es «sin año»: el endpoint lo
+    // declara como entero opcional y una cadena vacía NO es un entero, así que contesta
+    // 422 y la pantalla queda en blanco. Pasó al primer intento.
+    var url = '/programacion/asa/mensual?' +
+              (anio ? 'anio=' + anio : '') + filtrosQs();
     var r = await fetch(global.apiUrl(url), { headers: global.authHeaders() });
     if (r.status === 401) { global.logout(); return null; }
-    var d = await r.json();
-    if (!r.ok) throw new Error((d && d.detail) || ('Error ' + r.status));
+    var d = null;
+    try { d = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error(detalleDe(d) || ('Error ' + r.status));
     return d;
+  }
+
+  // EL ERROR DE FastAPI, LEGIBLE. Cuando valida mal, `detail` es una LISTA de objetos:
+  // metida tal cual en un Error, el mensaje que ve el usuario es «[object Object]» —que
+  // es exactamente lo que apareció en pantalla— y no dice nada de lo que pasó.
+  function detalleDe(d) {
+    var det = d && d.detail;
+    if (!det) return '';
+    if (Array.isArray(det)) {
+      return det.map(function (x) {
+        return (x.loc || []).slice(-1) + ': ' + (x.msg || '');
+      }).join(' · ');
+    }
+    return det.msg || det;
   }
 
   // UN GRÁFICO, DOS AÑOS. El año elegido va en barras —es el que se mira— y el anterior
