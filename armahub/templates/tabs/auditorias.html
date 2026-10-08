@@ -132,8 +132,10 @@
           <input type="text" id="audCcBusca" placeholder="🔍 filtrar por nombre, código o quién cubicó…" class="audccb">
           <span class="muted" id="audCcN"></span>
         </div>
-        <!-- Qué estados se ven. Marcar «todos» elige lo que quedó a la vista, así que con
-             esto se arma la selección de una vez en vez de código por código. -->
+        <!-- Un chip por estado: MARCA o desmarca todos los códigos de ese estado. Es la
+             forma de armar la selección de una vez en vez de código por código. Filtrar lo
+             hace el buscador de arriba; mezclar las dos cosas en el mismo control dejaba
+             un flujo raro (lo probó el usuario el 8-oct). -->
         <div class="audccbar" id="audCcEstados"></div>
         <div class="audcclista" id="audCcLista"></div>
       </div>
@@ -586,13 +588,18 @@
   /* La caja de códigos de control: es el alcance de una auditoría de aSa. */
   .audccbar{display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;}
   .audccb{flex:1; min-width:220px; font-size:11px; padding:4px 8px; border:1px solid #cfd8dc; border-radius:4px;}
-  /* Los estados del código: filtran la lista. Apagado = gris y no se ve; encendido = azul.
-     El despachado encendido va en rojo, que es como se ve en la lista. */
-  .audcce{font-size:10.5px; padding:3px 9px; border:1px solid #cfd8dc; border-radius:99px;
-          background:#fff; color:#90a4ae; cursor:pointer;}
-  .audcce i{font-style:normal; font-weight:700; opacity:.75;}
-  .audcce.on{background:#e3f2fd; border-color:#90caf9; color:#1565C0; font-weight:600;}
-  .audcce.desp.on{background:#ffebee; border-color:#ef9a9a; color:#c62828;}
+  /* Los chips de estado MARCAN los códigos de ese estado. Tres pintas, porque son tres
+     cosas distintas: ninguno marcado (gris), algunos (borde azul, fondo claro) y todos
+     (azul lleno). Con dos, «algunos» se veía igual que «ninguno» y el botón mentía. */
+  .audcce{font-size:10.5px; padding:3px 10px; border:1px solid #cfd8dc; border-radius:99px;
+          background:#fff; color:#607d8b; cursor:pointer; font-weight:600;}
+  .audcce:hover{border-color:#90caf9; color:#1565C0;}
+  .audcce i{font-style:normal; font-weight:700; opacity:.7; margin-left:3px;}
+  .audcce.algunos{background:#f3f8fd; border-color:#90caf9; color:#1565C0;}
+  .audcce.on{background:#1565C0; border-color:#1565C0; color:#fff;}
+  .audcce.on i{opacity:.85;}
+  .audcce.desp.algunos{background:#fff5f5; border-color:#ef9a9a; color:#c62828;}
+  .audcce.desp.on{background:#c62828; border-color:#c62828; color:#fff;}
   .audcclista{max-height:30vh; overflow:auto; border:1px solid #e3e8ef; border-radius:5px; background:#fff;}
   .audcc{display:flex; align-items:center; gap:7px; padding:3px 7px; font-size:10.5px; cursor:pointer;
          border-top:1px solid #f4f6f8; white-space:nowrap;}

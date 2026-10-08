@@ -65,8 +65,6 @@
   // El estado del código en aSa que significa «ya salió a la obra». Es el único que cambia
   // qué conviene hacer con el código, así que es el único que la pantalla trata distinto.
   var ESTADO_DESPACHADO = 'Shipped';
-  // Qué estados se están viendo. Se llena al cargar la obra con todos MENOS el despachado.
-  var CC_EST = [];
   var LISTA = [], ABIERTA = null, AUD = null, ELEM = null, CB_OBRA = null;
   // El veredicto de cada barra del elemento abierto: {ref: {conforme, observacion}}.
   // Vive acá mientras se revisa y se guarda todo junto.
@@ -120,7 +118,6 @@
   function ccVisibles() {
     if (!CC_BUSCA) return CC_LISTA;
     return CC_LISTA.filter(function (c) {
-      if (CC_EST.length && CC_EST.indexOf(c.estado || '') === -1) return false;
       return (c.descr || '').toLowerCase().indexOf(CC_BUSCA) !== -1 ||
              (c.cc || '').toLowerCase().indexOf(CC_BUSCA) !== -1 ||
              (c.persona || '').toLowerCase().indexOf(CC_BUSCA) !== -1;
@@ -131,10 +128,15 @@
   // códigos y lo que se revisa casi siempre es lo mismo: lo que todavía no salió. Marcar
   // eso a mano, uno por uno, es trabajo que la pantalla puede hacer sola.
   //
-  // Los chips FILTRAN, no seleccionan: así el check «todos» —que marca lo que se ve— sigue
-  // siendo el único que elige, y no hay dos formas distintas de seleccionar conviviendo.
-  // Arrancan con los despachados apagados, que es el caso normal; el chip queda a la vista
-  // con su cuenta, así que no es que se escondan, es que no vienen marcados.
+  // EL CHIP ELIGE, NO FILTRA (corregido el 8-oct). Primero los puse a filtrar, dejando que
+  // el check «todos» fuera el único que elegía. El usuario lo probó y el flujo le quedó
+  // raro, con razón: en una barra de selección, apretar «Open 40» tiene que marcar esos
+  // cuarenta, no esconder los demás. Filtrar ya lo hace el buscador de al lado, que es
+  // donde uno lo busca.
+  //
+  // El chip está ENCENDIDO cuando TODOS los códigos de ese estado están marcados, y el
+  // clic alterna entre marcarlos todos y desmarcarlos todos. Así el color dice la verdad
+  // en vez de guardar un estado propio que se desincroniza con lo que hay marcado.
   function estadosDisponibles() {
     var vistos = [];
     CC_LISTA.forEach(function (c) {
@@ -143,23 +145,38 @@
     return vistos.sort();
   }
 
+  function deEstado(e) {
+    return CC_LISTA.filter(function (c) { return (c.estado || '') === e; });
+  }
+
   function pintarCcEstados() {
     var el = $('audCcEstados');
     if (!el) return;
     var ests = estadosDisponibles();
     if (ests.length < 2) { el.innerHTML = ''; return; }
     el.innerHTML = ests.map(function (e) {
-      var n = CC_LISTA.filter(function (c) { return (c.estado || '') === e; }).length;
-      var on = CC_EST.indexOf(e) !== -1;
-      return '<button type="button" data-e="' + esc(e) + '" class="audcce' + (on ? ' on' : '') +
-             (e === ESTADO_DESPACHADO ? ' desp' : '') + '">' +
-             esc(e || 'sin estado') + ' <i>' + n + '</i></button>';
+      var ccs = deEstado(e);
+      var marcados = ccs.filter(function (c) { return CCS.indexOf(c.cc) !== -1; }).length;
+      // Tres estados visibles, porque son tres cosas distintas: ninguno marcado, algunos,
+      // o todos. Con dos colores, «algunos» se veía igual que «ninguno».
+      var clase = marcados === 0 ? '' : (marcados === ccs.length ? ' on' : ' algunos');
+      return '<button type="button" data-e="' + esc(e) + '" class="audcce' + clase +
+             (e === ESTADO_DESPACHADO ? ' desp' : '') +
+             '" title="Marca o desmarca los ' + ccs.length + ' códigos ' + esc(e) + '.">' +
+             esc(e || 'sin estado') + ' <i>' +
+             (marcados && marcados < ccs.length ? marcados + '/' + ccs.length : ccs.length) +
+             '</i></button>';
     }).join('');
     el.querySelectorAll('button[data-e]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var e = b.dataset.e, i = CC_EST.indexOf(e);
-        if (i === -1) CC_EST.push(e); else CC_EST.splice(i, 1);
-        pintarCcEstados(); pintarCC();
+        var ccs = deEstado(b.dataset.e);
+        var todos = ccs.every(function (c) { return CCS.indexOf(c.cc) !== -1; });
+        ccs.forEach(function (c) {
+          var i = CCS.indexOf(c.cc);
+          if (todos && i !== -1) CCS.splice(i, 1);
+          else if (!todos && i === -1) CCS.push(c.cc);
+        });
+        pintarCC(); pintarEstado();
       });
     });
   }
@@ -229,18 +246,10 @@
         UNIV = ORIGEN === 'asa'
           ? await req('GET', '/auditorias/cc?job=' + encodeURIComponent(OBRA))
           : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
-        if (ORIGEN === 'asa') {
-          CC_LISTA = (UNIV && UNIV.ccs) || [];
-          // LOS DESPACHADOS NO VIENEN MARCADOS. Lo normal es revisar lo que todavía se
-          // puede atajar; los que ya salieron están ahí, con su cuenta a la vista, a un
-          // clic. Esto se decide ACÁ y no dentro del pintado: si se recalculara en cada
-          // repintado, apagar un estado a mano se desharía solo al siguiente dibujo.
-          CC_EST = [];
-          CC_LISTA.forEach(function (c) {
-            var e = c.estado || '';
-            if (e !== ESTADO_DESPACHADO && CC_EST.indexOf(e) === -1) CC_EST.push(e);
-          });
-        }
+        // LOS DESPACHADOS SIGUEN APARECIENDO, abajo de todo y sin marcar: lo normal es
+        // revisar lo que todavía se puede atajar, pero esconderlos le quitaría al usuario
+        // una decisión que es suya. El chip queda a la vista con su cuenta, a un clic.
+        if (ORIGEN === 'asa') CC_LISTA = (UNIV && UNIV.ccs) || [];
       } catch (e) { aviso(e.message); }
     }
     pintarAlcance(); pintarEstado();
@@ -845,22 +854,43 @@
   // no para medirla — las medidas están en sus columnas, al lado.
   var MIN_LADO_REL = 0.18;
 
-  function _conMinimo(pts) {
+  // LOS ARCOS NO SE ESTIRAN, Y ESTO NO ES UN DETALLE (corregido el 8-oct). El gancho de un
+  // estribo viaja como un arco: su CUERDA mide poco —veintitantos milímetros— mientras el
+  // cuerpo de la barra mide novecientos, así que caía siempre bajo el mínimo y se estiraba.
+  // Pero el radio del arco NO se estiraba con ella, y un arco al que le alargan la cuerda
+  // sin tocarle el radio ya no se puede dibujar: SVG agranda el radio solo para que llegue,
+  // y la curva sale abierta y despegada del fierro. Es el margen que el usuario veía en los
+  // estribos («esa curva debiera coincidir»).
+  //
+  // Un arco, además, nunca necesita el mínimo: es una curva, se ve aunque sea chica. Lo que
+  // desaparece en una miniatura es un tramo RECTO corto, y ésos son los que se estiran.
+  function _conMinimo(pts, tipos) {
     if (pts.length < 3) return pts;
     // Una figura CERRADA no se toca: estirar un lado la dejaría abierta, y un estribo con
     // una esquina suelta se lee como un error de la barra y no del dibujo.
     var p0 = pts[0], pn = pts[pts.length - 1];
     if (Math.hypot(pn.x - p0.x, pn.y - p0.y) < 0.01) return pts;
+    var esArco = function (i) { return !!(tipos && tipos[i] === 'arco'); };
     var largos = [], i;
     for (i = 1; i < pts.length; i++) {
       largos.push(Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
     }
-    var minimo = Math.max.apply(null, largos) * MIN_LADO_REL;
-    if (!(minimo > 0) || largos.every(function (L) { return L >= minimo; })) return pts;
+    // El mayor se mide sobre los RECTOS: si mandara la cuerda de un arco, el umbral
+    // cambiaría según la curvatura y no según el tamaño de la barra.
+    var mayor = 0;
+    for (i = 0; i < largos.length; i++) {
+      if (!esArco(i) && largos[i] > mayor) mayor = largos[i];
+    }
+    var minimo = (mayor || Math.max.apply(null, largos)) * MIN_LADO_REL;
+    var hayCorto = false;
+    for (i = 0; i < largos.length; i++) {
+      if (!esArco(i) && largos[i] < minimo) { hayCorto = true; break; }
+    }
+    if (!(minimo > 0) || !hayCorto) return pts;
     var out = [pts[0]];
     for (i = 1; i < pts.length; i++) {
       var L = largos[i - 1] || 1;
-      var k = Math.max(1, minimo / L);
+      var k = esArco(i - 1) ? 1 : Math.max(1, minimo / L);
       out.push({ x: out[i - 1].x + (pts[i].x - pts[i - 1].x) * k,
                  y: out[i - 1].y + (pts[i].y - pts[i - 1].y) * k });
     }
@@ -871,10 +901,11 @@
     var eje = f.eje, M = global.disenadorMotor;
     if (!eje || !(eje.puntos || []).length || !M || !M.svgDesdePuntos || !global._bmTam) return '';
     var t = global._bmTam(FIG_TAM);
-    var pts = _conMinimo(eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; }));
     var tramos = eje.tramos || [];
-    var completo = tramos.length === pts.length - 1;
     var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
+    // Los tipos van ANTES del mínimo: es lo que le dice cuáles no debe tocar.
+    var pts = _conMinimo(eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; }), tipos);
+    var completo = tramos.length === pts.length - 1;
     var radios = tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; });
     // El backend dice el sentido en geometría (sweep 1 = antihorario con la Y hacia
     // arriba); el motor toma `sweeps_seg` en la convención del lienzo del Diseñador, que

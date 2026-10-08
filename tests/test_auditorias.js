@@ -99,8 +99,17 @@ var largos = o && llamadasMotor[0].pts.slice(1).map(function (p, i) {
   var a = llamadasMotor[0].pts[i];
   return Math.hypot(p.x - a.x, p.y - a.y);
 });
-check('...y ningún lado se dibuja por debajo del 18% del mayor',
-      largos && Math.min.apply(null, largos) >= Math.max.apply(null, largos) * 0.18 - 0.01);
+// Los RECTOS no bajan del 18% del recto mayor. LOS ARCOS NO SE TOCAN: su cuerda mide
+// veintitantos milímetros contra los 900 del cuerpo, así que caía siempre bajo el mínimo y
+// se estiraba — pero el radio no se estiraba con ella, y un arco con la cuerda alargada y
+// el radio igual ya no se puede dibujar: SVG agranda el radio solo para que llegue y la
+// curva sale despegada del fierro. Es el margen que el usuario vio en los estribos (8-oct).
+var rectos = largos.filter(function (_, i) { return o.tipos_seg[i] === 'recto'; });
+var arcos = largos.filter(function (_, i) { return o.tipos_seg[i] === 'arco'; });
+check('...ningún tramo RECTO se dibuja por debajo del 18% del mayor',
+      rectos.length === 3 && Math.min.apply(null, rectos) >= Math.max.apply(null, rectos) * 0.18 - 0.01);
+check('...y los ARCOS no se estiran: la cuerda del gancho queda como vino',
+      arcos.length === 2 && arcos.every(function (L) { return L < 30; }));
 check('...pero el lado largo NO se achica: sólo se estiran los chicos',
       largos && Math.abs(Math.max.apply(null, largos) - 90) < 0.01);
 check('...los ganchos van como ARCOS con su radio (3 cm) y su sentido traducido al del motor (1 → 0), y el motor no les mete codo encima',

@@ -534,12 +534,16 @@ check("y los despachados van en bloque AL FINAL, no intercalados",
       and "PRIMERO LO QUE NO SALIÓ, DESPUÉS LO DESPACHADO" in SRC)
 # ELEGIR POR ESTADO Y NO CÓDIGO POR CÓDIGO. Con cuarenta y cinco códigos, marcar a mano lo
 # que casi siempre es lo mismo es trabajo que la pantalla puede hacer sola.
-check("la pantalla deja filtrar por estado, y el check «todos» marca lo que quedó a la vista",
+# EL CHIP ELIGE, NO FILTRA (corregido el 8-oct). Primero lo puse a filtrar y el usuario lo
+# probo: en una barra de seleccion, apretar «Open 40» tiene que MARCAR esos cuarenta, no
+# esconder los demas. Filtrar lo hace el buscador de al lado. Peor: el filtro solo se
+# aplicaba si ademas habia texto en el buscador, asi que los chips parecian no hacer nada.
+check("el chip de estado MARCA los codigos de ese estado, no los filtra",
       'id="audCcEstados"' in HTM and "function pintarCcEstados(" in JS
-      and "CC_EST.indexOf(c.estado || '') === -1" in JS)
-check("...y los despachados arrancan apagados, pero con su cuenta a la vista",
-      "e !== ESTADO_DESPACHADO && CC_EST.indexOf(e) === -1" in JS
-      and "<i>' + n + '</i>" in JS)
+      and "function deEstado(" in JS and "CC_EST" not in JS)
+check("...y su color dice la verdad: ninguno, algunos o todos marcados",
+      "marcados === ccs.length ? ' on' : ' algunos'" in JS
+      and ".audcce.algunos{" in HTM and ".audcce.on{" in HTM)
 check("...y queda escrito por qué, que es lo que se vuelve a equivocar",
       "ORDENADOS POR LA FECHA DEL PEDIDO, UNA SOLA PARA TODOS" in SRC
       and "tuvo tiempo de fabricarse y despacharse" in SRC)
