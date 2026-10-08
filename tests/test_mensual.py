@@ -102,6 +102,13 @@ check("todos los años por mes, de más viejo a más nuevo",
       and "function todosLosAnios(" in JS and 'id="mensAniosChart"' in HTM)
 check("...y el año elegido se destaca sin tapar a los otros",
       "actual ? color : color + '66'" in JS)
+# EL ENFASIS NO PUEDE MOVER LAS BARRAS. En Chart.js `order` no solo decide que se dibuja
+# encima: en barras agrupadas cambia la POSICION dentro del grupo. Poniendole 0 al ano en
+# curso, 2026 saltaba al primer lugar de cada mes, la serie dejaba de ir en orden y quedaba
+# un hueco donde deberia haber estado. Lo vio el usuario.
+check("las barras van en orden de ano, sin que el enfasis las mueva de lugar",
+      "SIN `order`, Y ESO IMPORTA" in JS
+      and "CAMBIA LA POSICION dentro del grupo" in JS.replace("Ó", "O"))
 check("cada cubicador una barra por mes, agrupadas y no apiladas",
       "function porCubicador(" in JS and 'id="mensCubChart"' in HTM
       and "CADA CUBICADOR, UNA BARRA POR MES. Agrupadas y no apiladas" in JS)

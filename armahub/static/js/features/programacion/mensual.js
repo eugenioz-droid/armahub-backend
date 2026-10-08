@@ -175,10 +175,13 @@
           // que destacarse sin que los demás desaparezcan.
           var color = PALETA[i % PALETA.length];
           var actual = s.anio === MENS.anio;
+          // SIN `order`, Y ESO IMPORTA. En Chart.js `order` no sólo decide qué se dibuja
+          // encima: en un gráfico de barras agrupadas CAMBIA LA POSICIÓN dentro del grupo.
+          // Poniéndole 0 al año en curso para destacarlo, 2026 saltaba al primer lugar de
+          // cada mes y la serie dejaba de ir en orden; además quedaba un hueco donde
+          // debería haber estado. Lo vio el usuario. El énfasis se hace SÓLO con el color,
+          // que no mueve nada: el año elegido lleno y los demás translúcidos.
           return { label: String(s.anio), data: s.meses, borderRadius: 2,
-                   order: actual ? 0 : 1,
-                   // El año que se está mirando va lleno; los otros translúcidos. Así
-                   // destaca sin que los demás desaparezcan, que es para lo que están.
                    backgroundColor: actual ? color : color + '66' };
         })
       },
