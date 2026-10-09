@@ -192,18 +192,38 @@ def _puede_ver(user):
     _puede_auditar(user)
 
 
-def vence_en(desde: datetime, horas: int) -> datetime:
+def vence_en(desde: datetime, horas: int, feriados=frozenset()) -> datetime:
     """Cuándo vence un plazo de `horas` contado desde `desde`. Función pura, para probarla.
 
-    24 horas corridas, PERO SIN CONTAR EL FIN DE SEMANA: si el vencimiento cae sábado o
-    domingo se corre al lunes a la misma hora. Enviar algo un viernes a las cinco y darlo
-    por vencido el sábado a las cinco sería inventar un incumplimiento, porque no hay nadie
-    cubicando. Los feriados no se consideran: habría que mantener un calendario, y el plazo
-    es una referencia para la trazabilidad, no algo que bloquee."""
+    Las horas son corridas, PERO EL VENCIMIENTO NO CAE EN DÍA NO HÁBIL: si cae sábado,
+    domingo o feriado, se corre al siguiente día hábil a la misma hora. Dar por vencido un
+    sábado algo que se envió el viernes sería inventar un incumplimiento, porque no hay
+    nadie cubicando. Lo pidió así el usuario: «son días hábiles. Si hay un feriado no
+    debería correr».
+
+    `feriados` es un conjunto de `date`. Se recibe en vez de consultarlo acá adentro para
+    que la función siga siendo pura y se pueda probar sin base: quien la llama lo trae con
+    `feriados_de()`."""
     cuando = desde + timedelta(hours=horas)
-    while cuando.weekday() >= 5:            # 5 = sábado, 6 = domingo
+    # El tope evita un bucle infinito si alguien cargara un año entero como feriado.
+    for _ in range(400):
+        if cuando.weekday() < 5 and cuando.date() not in feriados:
+            return cuando
         cuando += timedelta(days=1)
     return cuando
+
+
+def feriados_de(cur) -> frozenset:
+    """Los feriados cargados, como un conjunto de fechas. Se lee cada vez: son treinta
+    filas y el plazo se calcula dos veces por auditoría —al crearla y al enviarla—, así que
+    no vale la pena una caché que después haya que invalidar a mano cuando se corrija uno."""
+    try:
+        cur.execute("SELECT fecha FROM feriados")
+        return frozenset(r[0] for r in cur.fetchall())
+    except Exception:
+        # Si la tabla todavía no existe, el plazo igual se calcula saltando el fin de
+        # semana. Un feriado de más no puede tumbar la creación de una auditoría.
+        return frozenset()
 
 
 def estado_de(revisados: int, total: int, enviada: bool = False,
@@ -1010,8 +1030,10 @@ def crear(body: CrearBody, request: Request, user=Depends(get_current_user)):
                     ",".join(body.ciclos), "")
                 alcance = (body.sectores, body.pisos, body.ciclos)
             hoy = _hoy()
-            # EL PLAZO DEL AUDITOR: 24 horas desde ahora, sin contar el fin de semana.
-            vence_auditoria = vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA)
+            # EL PLAZO DEL AUDITOR: 24 horas desde ahora, sin contar fines de semana ni
+            # feriados.
+            vence_auditoria = vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA,
+                                       feriados_de(cur))
             cur.execute(
                 """INSERT INTO auditorias (codigo, id_proyecto, obra, auditor, origen, sectores, pisos, ciclos,
                                            n, total_rango, semilla, estado, creada_fecha, plazo_fecha,
@@ -2009,7 +2031,7 @@ def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(ge
                            "terminada." % (total - revisados, total))
             # EL PLAZO DE CORRECCIÓN ARRANCA ACÁ, no cuando se creó la auditoría: hasta
             # este segundo el auditado no podía hacer nada.
-            vence = vence_en(datetime.now(timezone.utc), HORAS_CORRECCION)
+            vence = vence_en(datetime.now(timezone.utc), HORAS_CORRECCION, feriados_de(cur))
             cur.execute(
                 """UPDATE auditorias SET enviada_el = now(), enviada_por = %s,
                           correccion_vence = %s WHERE id = %s""",

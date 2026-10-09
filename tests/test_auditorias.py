@@ -31,6 +31,11 @@ from datetime import datetime as _DT, timezone as _TZ  # noqa: E402
 def _dt(a, m, d, h, mi):
     return _DT(a, m, d, h, mi, tzinfo=_TZ.utc)
 
+
+def _d(a, m, d):
+    from datetime import date as _DATE
+    return _DATE(a, m, d)
+
 SRC = open(os.path.join(ROOT, "armahub", "auditorias.py"), encoding="utf-8").read()
 MAIN = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
 APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf-8").read()
@@ -42,6 +47,8 @@ SCHED = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8"
 MIG138 = open(os.path.join(ROOT, "armahub", "migrations", "138_auditoria_envio_cierre.sql"),
               encoding="utf-8").read()
 MIG139 = open(os.path.join(ROOT, "armahub", "migrations", "139_auditoria_aviso_fabrica.sql"),
+              encoding="utf-8").read()
+MIG142 = open(os.path.join(ROOT, "armahub", "migrations", "142_feriados.sql"),
               encoding="utf-8").read()
 MIG122 = open(os.path.join(ROOT, "armahub", "migrations", "122_auditoria_descr_cc.sql"),
               encoding="utf-8").read()
@@ -120,7 +127,7 @@ check("...y viaja en cada elemento", '"gravedad": gravedad_de(e[10], e[26])' in 
 check("acciones: pendiente · corregida · verificada", A.ACCIONES == ("pendiente", "corregida", "verificada"))
 check("las fechas las pone el SISTEMA: creación hoy, plazo automático",
       "(automáticas)" in HTM and "HORAS_AUDITORIA = 24" in SRC
-      and "vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA)" in SRC)
+      and "vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA," in SRC)
 # EL ESTADO SE SIGUE DERIVANDO, pero de más cosas: revisar todo ya no cierra —sólo
 # habilita el envío— y cerrar pasó a significar RESUELTA. Lo que se congela acá es que
 # nadie lo elige a mano; el detalle de los cuatro estados está en 8a.
@@ -139,6 +146,16 @@ check("dos plazos de 24 horas, de dos personas y con dos arranques",
 check("...y el fin de semana no cuenta: un viernes a las 16:30 vence el lunes a las 16:30",
       A.vence_en(_dt(2026, 10, 9, 16, 30), 24) == _dt(2026, 10, 12, 16, 30)
       and A.vence_en(_dt(2026, 10, 6, 9, 0), 24) == _dt(2026, 10, 7, 9, 0))
+# «Son días hábiles. Si hay un feriado no debería correr» (usuario, 9-oct). El lunes
+# 12-10-2026 es feriado: lo enviado el viernes vence el martes, no el lunes.
+check("...ni los feriados, que viven en una tabla y no en el código",
+      A.vence_en(_dt(2026, 10, 9, 16, 30), 24, frozenset([_d(2026, 10, 12)]))
+      == _dt(2026, 10, 13, 16, 30)
+      and "def feriados_de(" in SRC and "CREATE TABLE IF NOT EXISTS feriados" in MIG142)
+check("...y si la tabla no estuviera, el plazo igual se calcula en vez de caerse",
+      "Un feriado de más no puede tumbar" in SRC)
+check("la Semana Santa va calculada, no escrita de memoria",
+      "Pascua 2026 = 5 de abril" in MIG142 and "2026-04-03" in MIG142)
 check("...el del auditado no corre si la auditoría se reabre: él deja de verla",
       "correccion_vence = NULL" in SRC)
 check("...y se mide con la HORA, no con el día",
