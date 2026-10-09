@@ -657,8 +657,18 @@
     var yo = global.currentUserEmail || '';
     var puedo = esAdmin() || (yo && AUD.auditor === yo);
     var falta = (AUD.n || 0) - (AUD.revisados || 0);
+    // CERRADA SIN HABER SIDO ENVIADA = las de antes del 9-oct, que se cerraron con la regla
+    // vieja («se revisó el último elemento»). No hay nada que enviar ahí: ofrecer el botón
+    // haría que una auditoría del archivo le apareciera de golpe al auditado.
+    if (AUD.estado === 'cerrada' && !AUD.enviada) {
+      return '<span class="muted" style="font-size:10px">cerrada antes de que existiera el ' +
+             'envío' + (AUD.cerrada_motivo ? ': ' + esc(AUD.cerrada_motivo) : '') + '</span>';
+    }
     if (!AUD.enviada) {
-      if (!puedo) return '<span class="muted" style="font-size:10px">la envía su auditor</span>';
+      if (!puedo) {
+        return '<span class="muted" style="font-size:10px">la envía ' +
+               esc((AUD.auditor || 'su auditor').split('@')[0]) + ', que es quien la audita</span>';
+      }
       return '<button class="audenviar" id="audBtnEnviar"' + (falta > 0 ? ' disabled' : '') +
              '>Enviar al auditado</button>' +
              '<span class="audborrador" title="Mientras no se envíe, el auditado no ve nada.">borrador</span>';
