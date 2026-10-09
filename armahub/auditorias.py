@@ -1949,9 +1949,14 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/accion")
 def mover_accion(auditoria_id: int, elemento_id: int, body: AccionBody, user=Depends(get_current_user)):
-    """Mueve la acción: el cubicador la marca CORREGIDA (en su cubicación, no acá) y el
-    auditor la da por VERIFICADA. Verificar es del auditor: si pudiera hacerlo el mismo
-    que corrigió, la verificación no verificaría nada."""
+    """Mueve a mano el estado de la acción de un elemento.
+
+    PUERTA DE ADMINISTRACIÓN, no el flujo (8-oct). El flujo es por barra: el auditado
+    declara la corrección en /items/{id}/correccion y el estado del elemento se DERIVA de
+    sus barras (`_accion_de_items`). Esto queda para desatascar un caso suelto —una barra
+    que ya no existe en aSa, un elemento que nació mal— y por eso no lo llama ninguna
+    pantalla. Verificar sigue pidiendo ser el auditor o administración: si lo pudiera hacer
+    el mismo que corrigió, la verificación no verificaría nada."""
     email = user.get("email", "?")
     if body.estado not in ACCIONES:
         raise HTTPException(status_code=422, detail="Estado no válido: " + " / ".join(ACCIONES))
