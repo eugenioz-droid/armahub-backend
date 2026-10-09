@@ -88,6 +88,15 @@
       }
       hubGrid.appendChild(createHubCard(moduleDefinition));
     });
+    // Un rol sin módulos (hoy, el cliente) veía la grilla en blanco y parecía que la
+    // página no cargó. Se dice lo que pasa.
+    if (!hubGrid.children.length) {
+      var aviso = document.createElement('div');
+      aviso.style.cssText = 'padding:28px 20px; color:#607d8b; font-size:13px; text-align:center;';
+      aviso.textContent = 'Tu acceso está en preparación: todavía no tienes módulos habilitados. ' +
+                          'Cuando esté lista la pantalla de tu obra, la vas a ver acá.';
+      hubGrid.appendChild(aviso);
+    }
   }
 
   window.renderHubModules = renderHubModules;

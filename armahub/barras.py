@@ -16,10 +16,25 @@ router = APIRouter()
 _log = logging.getLogger("armahub.barras")
 
 def _get_allowed_project_ids(cur, user: dict):
-    """Returns None (unrestricted) for all roles.
-    All users with cubicación module access see all projects.
-    Module-level access is controlled at the hub/frontend layer."""
-    return None
+    """Las obras que este usuario puede ver. `None` = todas.
+
+    Devolvía `None` para TODOS los roles con el comentario «el acceso se controla en el
+    front», y por eso /proyectos le daba las 37 obras a un cliente. Los 34 sitios de este
+    archivo que preguntan acá ya estaban cableados: sólo que la respuesta era siempre
+    «todo».
+
+    Para el rol cliente la respuesta sale de `proyecto_usuarios`, que es la tabla que ya
+    existe para «este usuario ve esta obra». Un cliente sin obra asignada obtiene el
+    conjunto vacío, que `_project_filter_sql` convierte en `AND FALSE`: no ve nada, en vez
+    de verlo todo. Esto es defensa en profundidad —el cerrojo de `get_current_user` ya no
+    lo deja llegar a estos endpoints— para el día en que la caluga del cliente los abra."""
+    if user.get("role") != "cliente":
+        return None
+    cur.execute(
+        """SELECT pu.id_proyecto FROM proyecto_usuarios pu
+             JOIN users u ON u.id = pu.user_id
+            WHERE u.email = %s""", (user.get("email", ""),))
+    return {r[0] for r in cur.fetchall()}
 
 def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
     """Build a WHERE/AND fragment + params for project filtering.

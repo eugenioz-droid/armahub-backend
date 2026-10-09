@@ -19,7 +19,9 @@ Bootstrap:
 """
 
 import os
+import re
 import time
+import logging
 import jwt
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -27,6 +29,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 
 from .db import get_conn, users_count, audit
+
+logger = logging.getLogger("armahub.auth")
 
 router = APIRouter()
 
@@ -53,7 +57,59 @@ def create_token(email: str, role: str) -> str:
     )
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+# ══════ LO QUE UN CLIENTE PUEDE TOCAR, Y NADA MÁS (9-oct) ══════
+#
+# Medido antes de escribir esto: con un token de rol `cliente`, la API respondía 200 en
+# /reclamos (130 reclamos de TODAS las obras y todos los clientes), /proyectos (las 37
+# obras), /programacion/asa/reporte (la producción de 45 personas) y /programacion/asa/
+# mensual (kilos por cubicador). El front le escondía los módulos; los endpoints no
+# preguntaban. Con el token bastaba.
+#
+# La regla la fijó el usuario: el cliente «debe ver sólo lo que queremos que vea». Eso es
+# una LISTA BLANCA, no una lista negra: lo que no está acá se niega. Así, el día que se
+# agregue un router nuevo, el cliente no lo ve por accidente —antes pasaba exactamente lo
+# contrario: cada router nuevo nacía abierto—.
+#
+# Va ACÁ y no en un middleware porque `get_current_user` es el único sitio que decodifica
+# el token (está medido: un solo `jwt.decode` en todo el backend) y todas las guardas
+# —require_admin, require_role, _puede_ver…— lo componen. No hay por dónde rodearlo. Y
+# usa el rol LEÍDO DE LA BASE, no el del token: si a alguien lo bajan a cliente, su token
+# viejo no le sirve para seguir viendo lo de antes.
+#
+# Cuando exista la caluga del cliente, sus endpoints se agregan a esta lista y a ninguna
+# otra parte.
+ROL_CLIENTE = "cliente"
+# (método, ruta sin el prefijo /api/v1). Las rutas de login no están porque corren antes
+# del token y no pasan por acá.
+CLIENTE_PUEDE = (
+    ("GET", r"/me"),
+    ("POST", r"/me/password"),
+    ("POST", r"/auth/renew"),
+    # La campana. Es por usuario (`WHERE destinatario = email`), así que no filtra nada
+    # de nadie: sólo le muestra lo que le mandaron a él.
+    ("GET", r"/notificaciones"),
+    ("GET", r"/notificaciones/count"),
+    ("GET", r"/notificaciones/config"),
+    ("POST", r"/notificaciones/config"),
+    ("POST", r"/notificaciones/leer-todas"),
+    ("POST", r"/notificaciones/\d+/leer"),
+)
+_CLIENTE_PUEDE_RE = tuple((m, re.compile("^" + p + "/?$")) for m, p in CLIENTE_PUEDE)
+_PREFIJO_API = "/api/v1"
+
+
+def cliente_puede(metodo: str, ruta: str) -> bool:
+    """Si un cliente puede pedir esa ruta. Función pura, para probarla sin servidor.
+    Los routers están montados dos veces —con y sin /api/v1— así que se compara sin el
+    prefijo: una lista que sólo mirara una de las dos dejaría la otra abierta."""
+    if ruta.startswith(_PREFIJO_API):
+        ruta = ruta[len(_PREFIJO_API):] or "/"
+    metodo = (metodo or "").upper()
+    return any(m == metodo and rx.match(ruta) for m, rx in _CLIENTE_PUEDE_RE)
+
+
+def get_current_user(request: Request,
+                     credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
     token = credentials.credentials
     try:
         # require exp: tokens antiguos (sin expiración) dejan de valer → re-login único
@@ -71,6 +127,12 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
                 row = cur.fetchone()
                 if row:
                     payload["role"] = row[0]
+    # EL CERROJO DEL CLIENTE: después de leer el rol real, antes de devolver nada.
+    if payload.get("role") == ROL_CLIENTE and not cliente_puede(request.method, request.url.path):
+        logger.warning("cliente %s intentó %s %s: negado", email, request.method, request.url.path)
+        raise HTTPException(
+            status_code=403,
+            detail="Tu usuario sólo tiene acceso a lo de tu obra. Esta pantalla no es parte de eso.")
     return payload
 
 

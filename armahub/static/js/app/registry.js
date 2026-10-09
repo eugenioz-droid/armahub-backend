@@ -72,7 +72,11 @@
     title: 'Cubicacion',
     css: 'mod-cubicacion',
     defaultTab: 'obras',
-    allowedRoles: ['admin', 'admin_calidad', 'miembro', 'cliente'],
+    // 'cliente' salió de acá (9-oct). El usuario lo fijó: la caluga del cliente «debe ser
+    // lo único que pueda ver el cliente». Mientras no exista, no ve ningún módulo. El
+    // backend niega igual (ver CLIENTE_PUEDE en auth.py): esto sólo evita ofrecerle
+    // botones que devuelven 403.
+    allowedRoles: ['admin', 'admin_calidad', 'miembro'],
     loaderFunction: 'loadCubicacionModule',
     hubCardId: 'hubCardCubicacion',
     hubOrder: 10,
