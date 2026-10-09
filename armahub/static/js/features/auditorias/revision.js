@@ -174,6 +174,16 @@
       nuevas + ' señal(es) nueva(s)' + (errores ? ' · ' + errores + ' con error' : '') +
       (REV.parar ? ' · detenida' : '');
     if (revision) { try { await req('PUT', '/chequeos/revision/' + revision + '/cerrar'); } catch (e) {} }
+    // QUÉ HACER AHORA. Antes la corrida terminaba en «15 señales nuevas» y ahí quedaba
+    // uno: la bandeja se abre en lo de ESTA revisión, para resolverlo de inmediato.
+    BAN.revision = revision || 0;
+    if (nuevas > 0) {
+      BAN.ultima = true; BAN.estado = ''; BAN.sel = {};
+      ui.txt.innerHTML += ' · <b>resuélvelas en la bandeja de abajo ↓</b>';
+      await cargarBandeja();
+      var ban = $('revBandeja');
+      if (ban && ban.scrollIntoView) ban.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     return { hechos: hechos, nuevas: nuevas };
   }
 
@@ -255,6 +265,168 @@
     }).join('');
   }
 
+  // ══════ LA BANDEJA DE HALLAZGOS ══════
+  // Todas las señales, sin obra abierta. Antes para ver una señal había que clickear su
+  // obra —32 obras—, y después de «revisar lo pendiente» la pantalla decía «15 señales
+  // nuevas» y nada más. Medido el 9-oct: 540 señales, todas abiertas, ninguna resuelta.
+  var BAN = { estado: '', regla: '', cubico: '', job: '', ultima: false, busca: '',
+              sel: {}, datos: null, revision: 0 };
+  var ESTADO_TXT = { abierta: 'Abierta', corregir: 'Por corregir', aceptada: 'Está bien',
+                     corregida: 'Corregida' };
+
+  function _qs() {
+    var p = [];
+    if (BAN.estado) p.push('estado=' + BAN.estado);
+    if (BAN.regla) p.push('regla=' + encodeURIComponent(BAN.regla));
+    if (BAN.cubico) p.push('cubico=' + encodeURIComponent(BAN.cubico));
+    if (BAN.job) p.push('job=' + encodeURIComponent(BAN.job));
+    if (BAN.ultima && BAN.revision) p.push('revision=' + BAN.revision);
+    if (BAN.busca) p.push('busca=' + encodeURIComponent(BAN.busca));
+    return p.length ? '?' + p.join('&') : '';
+  }
+
+  async function cargarBandeja() {
+    try {
+      BAN.datos = await req('GET', '/chequeos' + _qs());
+      REV.reglas = BAN.datos.reglas || REV.reglas;
+      pintarBandeja();
+    } catch (e) { aviso(e.message); }
+  }
+
+  function _chips(id, lista, actual, al) {
+    var el = $(id);
+    if (!el) return;
+    el.innerHTML = lista.map(function (x) {
+      return '<button data-v="' + esc(x[0]) + '" class="' + (actual === x[0] ? 'on' : '') + '">' +
+             esc(x[1]) + '</button>';
+    }).join('');
+    el.querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () { al(b.dataset.v); });
+    });
+  }
+
+  function _select(id, lista, actual, al) {
+    var el = $(id);
+    if (!el) return;
+    el.innerHTML = '<option value="">' + (id === 'revBanCub' ? 'todos' : 'todas') + '</option>' +
+      lista.map(function (x) {
+        return '<option value="' + esc(x[0]) + '"' + (actual === x[0] ? ' selected' : '') + '>' +
+               esc(x[1]) + '</option>';
+      }).join('');
+    el.onchange = function () { al(el.value); };
+  }
+
+  function pintarBandeja() {
+    var d = BAN.datos || {}, tot = d.totales || {};
+    $('revBanTot').innerHTML = ['abierta', 'corregir', 'aceptada', 'corregida'].map(function (k) {
+      return '<span class="' + k + '" title="' + esc(ESTADO_TXT[k]) + '">' + (tot[k] || 0) + ' ' +
+             esc(ESTADO_TXT[k].toLowerCase()) + '</span>';
+    }).join('');
+    _chips('revBanEstado', [['', 'Esperan'], ['abierta', 'Abiertas'], ['corregir', 'Por corregir'],
+                            ['aceptada', 'Están bien'], ['corregida', 'Corregidas'], ['todas', 'Todas']],
+           BAN.estado, function (v) { BAN.estado = v; BAN.sel = {}; cargarBandeja(); });
+    _chips('revBanRegla', [['', 'Todas']].concat(Object.keys(REV.reglas || {}).map(function (k) {
+             return [k, REV.reglas[k].nombre]; })),
+           BAN.regla, function (v) { BAN.regla = v; BAN.sel = {}; cargarBandeja(); });
+    _select('revBanCub', (d.por_cubicador || []).map(function (c) { return [c.cubico, c.cubico + ' · ' + c.n]; }),
+            BAN.cubico, function (v) { BAN.cubico = v; BAN.sel = {}; cargarBandeja(); });
+    _select('revBanObra', (d.por_obra || []).map(function (o) { return [o.job, (o.obra || o.job) + ' · ' + o.n]; }),
+            BAN.job, function (v) { BAN.job = v; BAN.sel = {}; cargarBandeja(); });
+    var ult = $('revBanUltima');
+    if (ult) { ult.checked = BAN.ultima; ult.disabled = !BAN.revision; }
+    var filas = d.senales || [];
+    $('revBanQue').textContent = filas.length
+      ? filas.length + ' señal(es)' + (filas.length >= 2000 ? ' (tope: afina el filtro)' : '') +
+        ' · ' + (d.por_cubicador || []).length + ' cubicador(es) · ' + (d.por_obra || []).length + ' obra(s)'
+      : 'Nada con ese filtro.';
+    var tabla = $('revBanTabla');
+    if (!filas.length) {
+      tabla.innerHTML = '<tbody><tr><td class="audvacio">' +
+        (BAN.ultima ? 'La última revisión no dejó señales nuevas.' : 'No hay señales con ese filtro.') +
+        '</td></tr></tbody>';
+      pintarLote();
+      return;
+    }
+    var tope = Math.min(filas.length, 400);
+    tabla.innerHTML = '<thead><tr><th><input type="checkbox" id="revBanTodos" title="Marcar las visibles"></th>' +
+      '<th>Obra</th><th>Código</th><th>Barra</th><th>Regla</th><th>Qué tiene</th><th>Cubicó</th>' +
+      '<th class="num" title="Cuántas revisiones la vieron">Vista</th><th>Estado</th><th></th></tr></thead><tbody>' +
+      filas.slice(0, tope).map(filaBandeja).join('') +
+      (filas.length > tope ? '<tr><td colspan="10" class="muted" style="font-size:10.5px">Se muestran ' + tope +
+        ' de ' + filas.length + ': afina el filtro para ver el resto.</td></tr>' : '') +
+      '</tbody>';
+    tabla.querySelectorAll('input[data-sel]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        if (c.checked) BAN.sel[c.dataset.sel] = true; else delete BAN.sel[c.dataset.sel];
+        pintarLote();
+      });
+    });
+    $('revBanTodos').addEventListener('change', function () {
+      var on = $('revBanTodos').checked;
+      tabla.querySelectorAll('input[data-sel]').forEach(function (c) {
+        c.checked = on;
+        if (on) BAN.sel[c.dataset.sel] = true; else delete BAN.sel[c.dataset.sel];
+      });
+      pintarLote();
+    });
+    tabla.querySelectorAll('button[data-sen]').forEach(function (b) {
+      b.addEventListener('click', function () { resolver(b.dataset.sen, b.dataset.est, b.dataset.pat === '1'); });
+    });
+    pintarLote();
+  }
+
+  function filaBandeja(s) {
+    var d = s.detalle || {}, r = (REV.reglas || {})[s.regla] || { nombre: s.regla };
+    var espera = s.estado === 'abierta' || s.estado === 'corregir';
+    return '<tr class="' + esc(s.estado) + '">' +
+      '<td>' + (espera ? '<input type="checkbox" data-sel="' + s.id + '"' + (BAN.sel[s.id] ? ' checked' : '') + '>' : '') + '</td>' +
+      '<td class="audnom" title="' + esc(s.obra || s.job) + '">' + esc(s.obra || s.job) + '</td>' +
+      '<td class="cc">' + esc(s.cc || '') + '</td>' +
+      '<td><span class="audref">' + esc(s.ref) + '</span></td>' +
+      '<td>' + esc(r.nombre) + '</td>' +
+      '<td class="revbtx">' + esc(d.texto || '') + '</td>' +
+      '<td>' + esc(s.cubico || '') + '</td>' +
+      '<td class="num">' + (s.veces || 1) + '</td>' +
+      '<td><span class="audacc1 ' + (s.estado === 'corregir' ? 'pendiente' : s.estado === 'aceptada' ? 'verificada' : s.estado === 'corregida' ? 'corregida' : '') + '" title="' +
+        esc(s.nota ? s.nota + (s.resuelto_por ? ' (' + s.resuelto_por.split('@')[0] + ')' : '') : '') + '">' +
+        esc(ESTADO_TXT[s.estado] || s.estado) + '</span></td>' +
+      '<td>' + (s.estado === 'abierta'
+          ? '<button class="audmini" data-sen="' + s.id + '" data-est="corregir">Hay que corregirla</button>' +
+            '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada">Está bien</button>' +
+            '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada" data-pat="1" title="Ésta y todas las iguales de la obra">+iguales</button>'
+          : s.estado === 'corregida' ? ''
+          : '<button class="audmini" data-sen="' + s.id + '" data-est="abierta">Deshacer</button>') + '</td></tr>';
+  }
+
+  function pintarLote() {
+    var n = Object.keys(BAN.sel).length, el = $('revLote');
+    if (!el) return;
+    el.style.display = n ? 'flex' : 'none';
+    if (n) $('revLoteN').textContent = n + ' seleccionada(s) →';
+  }
+
+  // EN LOTE. Con 540 abiertas, de a una no se avanza. «Están bien» pide UN motivo para
+  // todas; «hay que corregirlas» le avisa a cada cubicador con la lista de sus códigos.
+  async function resolverLote(estado) {
+    var ids = Object.keys(BAN.sel).map(Number);
+    if (!ids.length) return;
+    var nota = null;
+    if (estado === 'aceptada') {
+      nota = global.prompt('¿Por qué están bien estas ' + ids.length + ' señales? (queda en cada una)');
+      if (nota === null) return;
+      if (!nota.trim()) { aviso('Hace falta el motivo.'); return; }
+    }
+    try {
+      var r = await req('PUT', '/chequeos/senales', { ids: ids, estado: estado, nota: nota });
+      ok(r.afectadas + ' señal(es) ' + (estado === 'aceptada' ? 'aceptadas' : 'marcadas para corregir') +
+         (r.avisados ? ' · avisado a ' + r.avisados + ' cubicador(es)' : ''));
+      BAN.sel = {};
+      await cargarBandeja();
+      if (REV.job) await cargarSenales();
+      await cargarObras();
+    } catch (e) { aviso(e.message); }
+  }
+
   // ── Las señales ───────────────────────────────────────────────────────────────────
   async function cargarSenales() {
     if (!REV.job) return;
@@ -325,8 +497,10 @@
       var r = await req('PUT', '/chequeos/senal/' + id, { estado: estado, nota: nota, patron: !!patron });
       ok(estado === 'aceptada'
         ? 'Aceptada' + (r.afectadas > 1 ? ' (' + r.afectadas + ' señales)' : '')
-        : estado === 'corregir' ? 'Marcada para corregir' : 'Vuelta a abrir');
-      await cargarSenales();
+        : estado === 'corregir' ? 'Marcada para corregir' + (r.avisados ? ' · avisado al cubicador' : '')
+        : 'Vuelta a abrir');
+      await cargarBandeja();
+      if (REV.job) await cargarSenales();
       await cargarObras();
     } catch (e) { aviso(e.message); }
   }
@@ -415,6 +589,15 @@
     if (!_listo) {
       _listo = true;
       $('revCorrer').addEventListener('click', correr);
+      // La bandeja.
+      $('revBanBusca').addEventListener('input', function () {
+        BAN.busca = this.value.trim();
+        clearTimeout(BAN._t); BAN._t = setTimeout(cargarBandeja, 300);
+      });
+      $('revBanUltima').addEventListener('change', function () { BAN.ultima = this.checked; cargarBandeja(); });
+      $('revLoteOk').addEventListener('click', function () { resolverLote('aceptada'); });
+      $('revLoteCorr').addEventListener('click', function () { resolverLote('corregir'); });
+      $('revLoteNo').addEventListener('click', function () { BAN.sel = {}; pintarBandeja(); });
       $('revParar').addEventListener('click', function () { REV.parar = true; });
       $('revPendCorrer').addEventListener('click', correrPendientes);
       $('revRepImprimir').addEventListener('click', function () { global.print(); });

@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .asa import AsaError
-from .auditorias import (PATRON_OBRAS_FUERA, _es_barra, _items_de, _puede_auditar,
+from .auditorias import (PATRON_OBRAS_FUERA, _avisar, alias_de, _es_barra, _items_de, _puede_auditar,
                          _puede_ver, refs_de_barras)
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
@@ -379,29 +379,47 @@ def cerrar_revision(revision_id: int, user=Depends(get_current_user)):
 
 
 @router.get("/chequeos")
-def senales(job: str = "", estado: str = "", regla: str = "",
+def senales(job: str = "", estado: str = "", regla: str = "", cubico: str = "",
+            revision: int = 0, busca: str = "",
             user=Depends(get_current_user)):
-    """Las señales de una obra. Por defecto, las que esperan a alguien."""
+    """Las señales, con o sin obra. Por defecto, las que esperan a alguien.
+
+    SIRVE A LA BANDEJA (9-oct). Hasta acá sólo se podía mirar por obra, y el usuario lo
+    dijo con todas sus letras: «luego de revisar no entiendo cómo avanzo, debiera tener un
+    menú para administrar los hallazgos». Medido ese día: 540 señales en 32 obras, TODAS
+    abiertas, ninguna resuelta — porque para verlas había que clickear obra por obra.
+
+    `revision` filtra las que APARECIERON en esa corrida (visto_primero desde que arrancó):
+    es lo que responde «¿y las 15 nuevas de recién, dónde están?»."""
     _puede_ver(user)
-    where, args = ["TRUE"], []
+    where, args = ["s.estado IS NOT NULL"], []
     if job:
-        where.append("id_proyecto = %s"); args.append(job)
+        where.append("s.id_proyecto = %s"); args.append(job)
     if regla:
-        where.append("regla = %s"); args.append(regla)
+        where.append("s.regla = %s"); args.append(regla)
+    if cubico:
+        where.append("s.cubico = %s"); args.append(cubico)
+    if revision:
+        where.append("s.visto_primero >= (SELECT arrancada FROM chequeo_revisiones WHERE id = %s)")
+        args.append(revision)
+    if busca:
+        where.append("(s.cc ILIKE %s OR s.ref ILIKE %s OR s.obra ILIKE %s)")
+        args += ["%" + busca + "%"] * 3
     if estado == "todas":
         pass
     elif estado:
-        where.append("estado = %s"); args.append(estado)
+        where.append("s.estado = %s"); args.append(estado)
     else:
-        where.append("estado = ANY(%s)"); args.append(list(ABIERTAS))
+        where.append("s.estado = ANY(%s)"); args.append(list(ABIERTAS))
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cond = " AND ".join(where)
             cur.execute(
-                "SELECT id, regla, id_proyecto, obra, cc, elemento, ref, marca, figura, diam_mm,"
-                " detalle, veces, visto_primero, visto_ultimo, estado, resuelto_por, resuelto_el,"
-                " nota, firma_patron, cubico"
-                " FROM chequeo_senales WHERE " + " AND ".join(where) +
-                " ORDER BY regla, cc, ref LIMIT 2000", tuple(args))
+                "SELECT s.id, s.regla, s.id_proyecto, s.obra, s.cc, s.elemento, s.ref, s.marca,"
+                " s.figura, s.diam_mm, s.detalle, s.veces, s.visto_primero, s.visto_ultimo,"
+                " s.estado, s.resuelto_por, s.resuelto_el, s.nota, s.firma_patron, s.cubico"
+                " FROM chequeo_senales s WHERE " + cond +
+                " ORDER BY s.visto_primero DESC, s.obra, s.cc, s.ref LIMIT 2000", tuple(args))
             filas = cur.fetchall()
             cur.execute(
                 """SELECT regla, estado, COUNT(*) FROM chequeo_senales
@@ -409,6 +427,17 @@ def senales(job: str = "", estado: str = "", regla: str = "",
             resumen = {}
             for r, e, n in cur.fetchall():
                 resumen.setdefault(r, {})[e] = n
+            # LOS CONTEOS DE LA BANDEJA, sobre el MISMO filtro que la lista: cuántas por
+            # cubicador y por obra. Es lo que responde «a quién le pido qué».
+            cur.execute("SELECT s.cubico, COUNT(*) FROM chequeo_senales s WHERE " + cond +
+                        " GROUP BY 1 ORDER BY 2 DESC", tuple(args))
+            por_cubicador = [{"cubico": r[0] or "(sin dato)", "n": r[1]} for r in cur.fetchall()]
+            cur.execute("SELECT s.id_proyecto, MAX(s.obra), COUNT(*) FROM chequeo_senales s WHERE " +
+                        cond + " GROUP BY 1 ORDER BY 3 DESC", tuple(args))
+            por_obra = [{"job": r[0], "obra": r[1], "n": r[2]} for r in cur.fetchall()]
+            # Y los totales por estado sin filtro, para las pastillas de arriba.
+            cur.execute("SELECT estado, COUNT(*) FROM chequeo_senales GROUP BY 1")
+            totales = {r[0]: r[1] for r in cur.fetchall()}
     return {"senales": [
         {"id": f[0], "regla": f[1], "job": f[2], "obra": f[3], "cc": f[4], "elemento": f[5],
          "ref": f[6], "marca": f[7], "figura": f[8], "diam": float(f[9] or 0),
@@ -418,7 +447,8 @@ def senales(job: str = "", estado: str = "", regla: str = "",
          "estado": f[14], "resuelto_por": f[15],
          "resuelto_el": f[16].isoformat() if f[16] else None,
          "nota": f[17], "patron": f[18], "cubico": f[19]} for f in filas],
-        "resumen": resumen,
+        "resumen": resumen, "por_cubicador": por_cubicador, "por_obra": por_obra,
+        "totales": totales, "total": len(filas),
         "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}
 
 
@@ -426,6 +456,78 @@ class ResolverBody(BaseModel):
     estado: str
     nota: Optional[str] = None
     patron: bool = False
+
+
+class ResolverVariasBody(BaseModel):
+    """Varias señales de un golpe, elegidas a mano en la bandeja."""
+    ids: List[int]
+    estado: str
+    nota: Optional[str] = None
+
+
+def _email_de_login(cur, login: str) -> Optional[str]:
+    """El correo del cubicador que en aSa se llama `login`. La misma regla que usan las
+    auditorías (`alias_de`): el login es la inicial del nombre pegada al apellido."""
+    if not login:
+        return None
+    cur.execute("SELECT email, nombre, apellido FROM users WHERE COALESCE(activo, TRUE)")
+    for email, nombre, apellido in cur.fetchall():
+        if alias_de(nombre or "", apellido or "", login):
+            return email
+    return None
+
+
+def _avisar_por_corregir(cur, ids: list) -> int:
+    """Le avisa a cada cubicador cuántas barras suyas quedaron POR CORREGIR, y dónde.
+
+    ERA EL HUECO DEL FLUJO: marcar «hay que corregirla» no le llegaba a nadie. La señal
+    quedaba en `corregir` esperando a que el cubicador la arreglara en aSa, y el cubicador
+    no tenía cómo saberlo. Un aviso por persona, con la lista de códigos, no uno por barra."""
+    if not ids:
+        return 0
+    cur.execute(
+        """SELECT cubico, MAX(obra), STRING_AGG(DISTINCT cc, ', '), COUNT(*)
+             FROM chequeo_senales WHERE id = ANY(%s) AND estado = 'corregir'
+            GROUP BY cubico""", (ids,))
+    avisados = 0
+    for login, obra, ccs, n in cur.fetchall():
+        email = _email_de_login(cur, login)
+        if not email:
+            continue
+        _avisar(email, "Chequeo · %s: %d barra(s) tuyas por corregir en %s. Se comprueba solo "
+                       "al volver a revisar el código." % (obra or "?", n, ccs[:120]))
+        avisados += 1
+    return avisados
+
+
+def _resolver_ids(cur, ids: list, estado: str, nota, email: str) -> list:
+    """La escritura, una sola para los tres caminos (una, patrón, varias). Lo ya corregido
+    por el sistema no se pisa: eso lo comprobó aSa, no una persona."""
+    cur.execute(
+        """UPDATE chequeo_senales
+              SET estado = %s, resuelto_por = %s, resuelto_el = now(), nota = %s
+            WHERE id = ANY(%s) AND estado <> 'corregida' RETURNING id""",
+        (estado, email, (nota or "").strip() or None, ids))
+    return [r[0] for r in cur.fetchall()]
+
+
+@router.put("/chequeos/senales")
+def resolver_varias(body: ResolverVariasBody, user=Depends(get_current_user)):
+    """Varias señales elegidas a mano, de un golpe. Con 540 abiertas, de a una no se avanza."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    if body.estado not in ("aceptada", "corregir", "abierta"):
+        raise HTTPException(status_code=422, detail="Estado no válido: aceptada / corregir / abierta.")
+    if body.estado == "aceptada" and not (body.nota or "").strip():
+        raise HTTPException(status_code=400, detail="Di por qué están bien: queda en cada señal.")
+    if not body.ids:
+        raise HTTPException(status_code=400, detail="No elegiste ninguna señal.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            hechas = _resolver_ids(cur, list(body.ids), body.estado, body.nota, email)
+            avisados = _avisar_por_corregir(cur, hechas) if body.estado == "corregir" else 0
+    audit(email, "chequeo_senales", "%d señal(es) -> %s" % (len(hechas), body.estado), "chequeo", "varias")
+    return {"ok": True, "afectadas": len(hechas), "avisados": avisados}
 
 
 @router.put("/chequeos/senal/{senal_id}")
@@ -455,23 +557,19 @@ def resolver(senal_id: int, body: ResolverBody, user=Depends(get_current_user)):
             job, regla, patron, cc, ref = fila
             if body.patron:
                 cur.execute(
-                    """UPDATE chequeo_senales
-                          SET estado = %s, resuelto_por = %s, resuelto_el = now(), nota = %s
-                        WHERE id_proyecto = %s AND regla = %s AND firma_patron = %s
-                          AND estado <> 'corregida'
-                    RETURNING id""",
-                    (body.estado, email, (body.nota or "").strip() or None, job, regla, patron))
+                    """SELECT id FROM chequeo_senales
+                        WHERE id_proyecto = %s AND regla = %s AND firma_patron = %s""",
+                    (job, regla, patron))
+                ids = [r[0] for r in cur.fetchall()]
             else:
-                cur.execute(
-                    """UPDATE chequeo_senales
-                          SET estado = %s, resuelto_por = %s, resuelto_el = now(), nota = %s
-                        WHERE id = %s RETURNING id""",
-                    (body.estado, email, (body.nota or "").strip() or None, senal_id))
-            n = len(cur.fetchall())
+                ids = [senal_id]
+            hechas = _resolver_ids(cur, ids, body.estado, body.nota, email)
+            n = len(hechas)
+            avisados = _avisar_por_corregir(cur, hechas) if body.estado == "corregir" else 0
     audit(email, "chequeo_senal", "%s · %s · %s -> %s%s" % (cc, ref, regla, body.estado,
                                                             " (patrón, %d)" % n if body.patron else ""),
           "chequeo", str(senal_id))
-    return {"ok": True, "afectadas": n}
+    return {"ok": True, "afectadas": n, "avisados": avisados}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

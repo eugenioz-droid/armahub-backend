@@ -284,6 +284,36 @@
         </div>
       </div>
 
+      <!-- ══════ LA BANDEJA DE HALLAZGOS ══════
+           Todas las señales en un solo lugar, sin tener que entrar obra por obra. Lo
+           pidió el usuario: «luego de revisar no entiendo cómo avanzo, debiera tener un
+           menú para administrar los hallazgos». Filtros arriba, acciones en lote abajo. -->
+      <div class="card audc" id="revBandeja">
+        <div class="audh">Hallazgos
+          <span class="revtot" id="revBanTot"></span>
+          <div style="flex:1"></div>
+          <input type="text" id="revBanBusca" class="audccb" style="max-width:220px"
+                 placeholder="🔍 código, barra u obra…" autocomplete="off">
+        </div>
+        <div class="audccbar" style="margin-bottom:6px; gap:14px;">
+          <span class="dshbl">Estado</span><div class="dshchips" id="revBanEstado"></div>
+          <span class="dshbl">Regla</span><div class="dshchips" id="revBanRegla"></div>
+          <label class="revbanchk"><input type="checkbox" id="revBanUltima"> sólo de la última revisión</label>
+        </div>
+        <div class="audccbar" style="margin-bottom:8px; gap:14px;">
+          <span class="dshbl">Cubicó</span><select id="revBanCub" class="revbansel"><option value="">todos</option></select>
+          <span class="dshbl">Obra</span><select id="revBanObra" class="revbansel"><option value="">todas</option></select>
+          <span class="muted" id="revBanQue" style="font-size:11px;"></span>
+        </div>
+        <div class="revlote" id="revLote" style="display:none;">
+          <b id="revLoteN"></b>
+          <button class="audmini ver" id="revLoteOk">Están bien</button>
+          <button class="audmini" id="revLoteCorr">Hay que corregirlas</button>
+          <button class="audmini" id="revLoteNo">Soltar</button>
+        </div>
+        <div class="audbd" style="max-height:60vh;"><table class="audt" id="revBanTabla"></table></div>
+      </div>
+
       <div class="card audc">
         <div class="audh">Qué se revisa <span class="muted" id="revReglasN"></span></div>
         <div id="revReglas" class="revreglas"></div>
@@ -509,6 +539,18 @@
   .audt td.audesp{color:#2e7d32; font-weight:600; font-size:10.5px;}
   /* Fuera de plazo. No bloquea nada —todavía no hay correo— pero se ve. */
   .audt tr.audvenc td{background:#fff8f7;}
+  /* ══════ LA BANDEJA DE HALLAZGOS (chequeos) ══════ */
+  .revtot{display:inline-flex; gap:6px; margin-left:8px;}
+  .revtot span{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
+  .revtot .abierta{background:#fff8e1; color:#8d6e00;} .revtot .corregir{background:#ffebee; color:#c62828;}
+  .revtot .aceptada{background:#e8f5e9; color:#2e7d32;} .revtot .corregida{background:#e3f2fd; color:#1565C0;}
+  .revbansel{font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px; max-width:240px;}
+  .revbanchk{font-size:11px; color:#546e7a; display:flex; align-items:center; gap:4px;}
+  .revlote{display:flex; align-items:center; gap:8px; padding:6px 10px; margin-bottom:6px;
+           background:#e8eaf6; border:1px solid #c5cae9; border-radius:5px; font-size:11px;}
+  .audt td.revbtx{white-space:normal; max-width:360px;}
+  .audt tr.corregir td{background:#fff6f6;} .audt tr.aceptada td{color:#78909c;}
+  .audt tr.corregida td{color:#78909c; background:#f4f8fc;}
   /* ══════ EL FLUJO DE LA AUDITORÍA ══════
      Cuatro pasos en una franja. El paso en que va se pinta; los anteriores quedan
      apagados pero visibles, porque saber de dónde viene es parte de entender dónde está. */

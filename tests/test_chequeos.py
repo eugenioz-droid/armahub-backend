@@ -284,5 +284,33 @@ check("usa el mismo permiso que la auditoría, que ya incluye al área de Cubica
 check("...o sea que no hay una lista de roles propia que se desincronice",
       "ROLES_" not in API)
 
+print("\n12. La bandeja: todos los hallazgos en un lugar, y el cubicador se entera")
+# El usuario, 9-oct: «luego de revisar no entiendo cómo avanzo, debiera tener un menú para
+# administrar los hallazgos». Medido ese día: 540 señales en 32 obras, TODAS abiertas y
+# ninguna resuelta, porque sólo se veían obra por obra. Y marcar «hay que corregirla» no le
+# llegaba a nadie.
+check("las señales se listan SIN obra, con filtros de estado, regla, cubicador, obra y texto",
+      'cubico: str = ""' in API and "revision: int = 0" in API and 'busca: str = ""' in API
+      and "s.cc ILIKE %s OR s.ref ILIKE %s OR s.obra ILIKE %s" in API)
+check("...y «las de la última revisión» responde dónde están las nuevas de recién",
+      "s.visto_primero >= (SELECT arrancada FROM chequeo_revisiones WHERE id = %s)" in API)
+check("...con los conteos por cubicador y por obra sobre el MISMO filtro",
+      '"por_cubicador": por_cubicador, "por_obra": por_obra' in API)
+check("se resuelven VARIAS de un golpe, por la misma escritura que una sola",
+      '@router.put("/chequeos/senales")' in API and "def _resolver_ids(" in API
+      and API.count("_resolver_ids(cur,") >= 2)
+check("...y lo ya corregido por el sistema no se pisa a mano",
+      "AND estado <> 'corregida' RETURNING id" in API)
+check("marcar «corregir» le AVISA al cubicador, uno por persona, con sus códigos",
+      "def _avisar_por_corregir(" in API and "def _email_de_login(" in API
+      and API.count("_avisar_por_corregir(cur, hechas)") == 2)
+check("...resolviendo el login de aSa con la misma regla que las auditorías", "alias_de(" in API)
+check("la bandeja existe en la pantalla, con lote y filtros",
+      'id="revBandeja"' in HTM and 'id="revLote"' in HTM and 'id="revBanUltima"' in HTM
+      and "function cargarBandeja(" in JS and "function resolverLote(" in JS)
+check("al terminar una corrida, la bandeja se abre en lo de ESA revisión y dice qué hacer",
+      "resuélvelas en la bandeja de abajo" in JS and "BAN.ultima = true" in JS)
+check("una señal resuelta desde cualquier lado refresca la bandeja", JS.count("await cargarBandeja()") >= 3)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
