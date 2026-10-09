@@ -25,6 +25,12 @@ def check(nombre, cond):
 
 from armahub import auditorias as A  # noqa: E402
 
+from datetime import datetime as _DT, timezone as _TZ  # noqa: E402
+
+
+def _dt(a, m, d, h, mi):
+    return _DT(a, m, d, h, mi, tzinfo=_TZ.utc)
+
 SRC = open(os.path.join(ROOT, "armahub", "auditorias.py"), encoding="utf-8").read()
 MAIN = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
 APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf-8").read()
@@ -112,9 +118,9 @@ check("...y se dice en palabras", A.GRAVEDAD["despachado"] == "Detectado despué
       and A.GRAVEDAD["antes"] == "Detectado antes del despacho")
 check("...y viaja en cada elemento", '"gravedad": gravedad_de(e[10], e[26])' in SRC)
 check("acciones: pendiente · corregida · verificada", A.ACCIONES == ("pendiente", "corregida", "verificada"))
-check("las fechas las pone el SISTEMA: creación hoy, plazo en días hábiles",
-      "(automáticas)" in HTM and "DIAS_PLAZO = 10" in SRC and "def _habiles(" in SRC
-      and "_habiles(hoy, DIAS_PLAZO)" in SRC)
+check("las fechas las pone el SISTEMA: creación hoy, plazo automático",
+      "(automáticas)" in HTM and "HORAS_AUDITORIA = 24" in SRC
+      and "vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA)" in SRC)
 # EL ESTADO SE SIGUE DERIVANDO, pero de más cosas: revisar todo ya no cierra —sólo
 # habilita el envío— y cerrar pasó a significar RESUELTA. Lo que se congela acá es que
 # nadie lo elige a mano; el detalle de los cuatro estados está en 8a.
@@ -122,8 +128,21 @@ check("...y el estado se DERIVA, en la base y no en el navegador",
       "def estado_de(revisados: int, total: int" in SRC and "def _recalcular(cur" in SRC
       and A.estado_de(0, 5) == "planificada" and A.estado_de(1, 5) == "en_curso"
       and A.estado_de(5, 5) == "en_curso" and A.estado_de(6, 5) == "en_curso")
-check("...el plazo cuenta hábiles: 10 desde un viernes caen dos viernes después",
-      A._habiles(__import__("datetime").date(2026, 10, 2), 10) == __import__("datetime").date(2026, 10, 16))
+# LOS DOS PLAZOS SON DE 24 HORAS y son DOS, lo fijó el usuario: «el plazo de corrección
+# son 24 hrs» y «la auditoría tiene 24 hrs para hacerse también». Uno corre desde que se
+# CREA (el del auditor) y el otro desde que se ENVÍA (el del auditado), que es cuando
+# recién puede hacer algo. Antes el panel del auditado mostraba el del auditor.
+check("dos plazos de 24 horas, de dos personas y con dos arranques",
+      A.HORAS_AUDITORIA == 24 and A.HORAS_CORRECCION == 24
+      and "correccion_vence = %s WHERE id = %s" in SRC
+      and "a.correccion_vence, a.auditor" in SRC)
+check("...y el fin de semana no cuenta: un viernes a las 16:30 vence el lunes a las 16:30",
+      A.vence_en(_dt(2026, 10, 9, 16, 30), 24) == _dt(2026, 10, 12, 16, 30)
+      and A.vence_en(_dt(2026, 10, 6, 9, 0), 24) == _dt(2026, 10, 7, 9, 0))
+check("...el del auditado no corre si la auditoría se reabre: él deja de verla",
+      "correccion_vence = NULL" in SRC)
+check("...y se mide con la HORA, no con el día",
+      "datetime.fromisoformat(f[\"vence\"]) < ahora" in SRC)
 check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
       "AS reclamos" in SRC and "reclamo(s) abierto(s)" in JS)
 
@@ -613,8 +632,14 @@ check("...ni dos veces", "Esta auditoría ya fue enviada." in SRC)
 check("enviar, reabrir y cerrar son del auditor, en un solo lugar",
       "def _solo_el_auditor(" in SRC
       and SRC.count("_solo_el_auditor(cur, auditoria_id, user)") >= 3)
-check("el plazo se ajusta AL ENVIAR, que es cuando empieza a correr",
-      "class EnvioBody" in SRC and "audEnvioPlazo" in JS)
+# El plazo de corrección NO se negocia auditoría por auditoría: es una regla de 24 horas
+# que arranca al enviar. El panel lo informa —quien envía tiene que saber a qué está
+# comprometiendo a la otra persona— pero no lo pregunta.
+check("el plazo del auditado arranca AL ENVIAR y no se negocia",
+      "class EnvioBody" in SRC and "audEnvioPlazo" not in JS
+      and "tendrá 24 horas para corregir" in JS)
+check("...y se muestra cuánto falta, no sólo la fecha: con 24 h el día no dice nada",
+      "function _cuantoFalta(" in JS and "vencido" in JS)
 check("un aviso por persona al enviar, no uno por elemento mientras se revisa",
       "A QUIÉN LE TOCA QUÉ, para avisar UNA vez" in SRC)
 check("antes del envío el auditado no puede accionar, y se valida en el BACKEND",

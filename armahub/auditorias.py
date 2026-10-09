@@ -99,8 +99,21 @@ MUESTRA_MAXIMA_ASA = 20
 # Estados de la acción que nace de una no conformidad. La CORRECCIÓN la hace quien
 # cubicó, en su cubicación; el auditor sólo VERIFICA. Por eso son tres y no dos.
 ACCIONES = ("pendiente", "corregida", "verificada")
-# Días hábiles que tiene el auditor para cerrar. Si algún día hay que configurarlo, se
-# mueve de acá y no de la pantalla.
+# LOS DOS PLAZOS, que el usuario fijó en 24 horas cada uno. Son dos y no uno: cada uno es
+# de una persona distinta y arranca en un momento distinto.
+#
+# HORAS_AUDITORIA corre desde que se CREA la auditoría: lo que tiene el auditor para
+# revisarla. HORAS_CORRECCION corre desde que se ENVÍA, porque hasta ese segundo el
+# auditado no podía hacer nada —su panel ni siquiera le mostraba las barras—.
+HORAS_AUDITORIA = 24
+# HORAS QUE TIENE EL AUDITADO PARA CORREGIR, desde que se le ENVÍA la auditoría. Es OTRO
+# plazo que el de arriba y lo fijó el usuario: 24 horas. Antes el panel del auditado
+# mostraba `plazo_fecha` —el del auditor, diez días hábiles desde que se creó la
+# auditoría— y eso daba las dos lecturas equivocadas: una barra enviada hoy aparecía con
+# una semana de holgura, y una de una auditoría vieja nacía vencida.
+HORAS_CORRECCION = 24
+# Se conserva porque lo leen el informe y los tests de la numeración: `plazo_fecha` sigue
+# existiendo y ahora es, simplemente, la FECHA en que vence la auditoría.
 DIAS_PLAZO = 10
 
 _CLAVE = "(sector, piso, ciclo, eje)"
@@ -177,6 +190,20 @@ def _puede_ver(user):
     """Ver una auditoría es lo mismo que poder hacerla: administración y cubicadores. El
     módulo entero queda cerrado para el resto, no sólo los botones."""
     _puede_auditar(user)
+
+
+def vence_en(desde: datetime, horas: int) -> datetime:
+    """Cuándo vence un plazo de `horas` contado desde `desde`. Función pura, para probarla.
+
+    24 horas corridas, PERO SIN CONTAR EL FIN DE SEMANA: si el vencimiento cae sábado o
+    domingo se corre al lunes a la misma hora. Enviar algo un viernes a las cinco y darlo
+    por vencido el sábado a las cinco sería inventar un incumplimiento, porque no hay nadie
+    cubicando. Los feriados no se consideran: habría que mantener un calendario, y el plazo
+    es una referencia para la trazabilidad, no algo que bloquee."""
+    cuando = desde + timedelta(hours=horas)
+    while cuando.weekday() >= 5:            # 5 = sábado, 6 = domingo
+        cuando += timedelta(days=1)
+    return cuando
 
 
 def estado_de(revisados: int, total: int, enviada: bool = False,
@@ -983,14 +1010,19 @@ def crear(body: CrearBody, request: Request, user=Depends(get_current_user)):
                     ",".join(body.ciclos), "")
                 alcance = (body.sectores, body.pisos, body.ciclos)
             hoy = _hoy()
+            # EL PLAZO DEL AUDITOR: 24 horas desde ahora, sin contar el fin de semana.
+            vence_auditoria = vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA)
             cur.execute(
                 """INSERT INTO auditorias (codigo, id_proyecto, obra, auditor, origen, sectores, pisos, ciclos,
                                            n, total_rango, semilla, estado, creada_fecha, plazo_fecha,
-                                           creada_por, notas, ccs)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planificada',%s,%s,%s,%s,%s) RETURNING id""",
+                                           creada_por, notas, ccs, auditoria_vence)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'planificada',%s,%s,%s,%s,%s,%s) RETURNING id""",
                 (_codigo(cur), body.id_proyecto, obra, body.auditor, body.origen,
                  alcance[0], alcance[1], alcance[2], len(elementos), total, semilla, hoy,
-                 _habiles(hoy, DIAS_PLAZO), email, body.notas, body.ccs if es_asa else []))
+                 # `plazo_fecha` es la FECHA de ese vencimiento: la leen el informe, la
+                 # lista y los correos, y así no hay que tocar ninguno de los tres.
+                 vence_auditoria.date(), email, body.notas, body.ccs if es_asa else [],
+                 vence_auditoria))
             aud_id = cur.fetchone()[0]
             cur.executemany(
                 """INSERT INTO auditoria_elementos
@@ -1924,9 +1956,8 @@ def _recalcular(cur, auditoria_id: int) -> bool:
 
 
 class EnvioBody(BaseModel):
-    """El envío. El plazo se puede ajustar acá y no antes: es el momento en que empieza a
-    correr de verdad, y hasta que no se vio el resultado no se sabe si 15 días sobran."""
-    plazo: Optional[str] = None     # YYYY-MM-DD
+    """El envío no lleva nada: el plazo de corrección es una REGLA (24 horas desde este
+    momento), no algo que se negocie auditoría por auditoría."""
 
 
 def _solo_el_auditor(cur, auditoria_id: int, user) -> tuple:
@@ -1976,12 +2007,13 @@ def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(ge
                     status_code=400,
                     detail="Faltan %d de %d elementos por revisar: una auditoría se envía "
                            "terminada." % (total - revisados, total))
-            if body.plazo:
-                cur.execute("UPDATE auditorias SET plazo_fecha = %s WHERE id = %s",
-                            (body.plazo, auditoria_id))
+            # EL PLAZO DE CORRECCIÓN ARRANCA ACÁ, no cuando se creó la auditoría: hasta
+            # este segundo el auditado no podía hacer nada.
+            vence = vence_en(datetime.now(timezone.utc), HORAS_CORRECCION)
             cur.execute(
-                """UPDATE auditorias SET enviada_el = now(), enviada_por = %s WHERE id = %s""",
-                (email, auditoria_id))
+                """UPDATE auditorias SET enviada_el = now(), enviada_por = %s,
+                          correccion_vence = %s WHERE id = %s""",
+                (email, vence, auditoria_id))
             _recalcular(cur, auditoria_id)
             # A QUIÉN LE TOCA QUÉ, para avisar UNA vez a cada uno. Antes salía un aviso por
             # cada elemento no conforme, a medida que el auditor revisaba: siete avisos
@@ -1994,15 +2026,13 @@ def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(ge
                       AND COALESCE(TRIM(e.cubicado_por), '') <> ''
                     GROUP BY 1""", (auditoria_id,))
             porcub = cur.fetchall()
-            cur.execute("SELECT plazo_fecha FROM auditorias WHERE id = %s", (auditoria_id,))
-            plazo = cur.fetchone()[0]
             audit(email, "auditoria_enviada",
                   "%s · %s: %d elementos, %d persona(s) con barras por corregir"
                   % (codigo, obra, total, len(porcub)), "auditoria", str(auditoria_id))
-    fecha = plazo.strftime("%d-%m") if plazo else "sin plazo"
+    fecha = vence.strftime("%d-%m a las %H:%M")
     for quien, n in porcub:
-        _avisar(quien, "Auditoría %s · %s: %d barra(s) tuyas por corregir. Plazo %s."
-                       % (codigo, obra, n, fecha))
+        _avisar(quien, "Auditoría %s · %s: %d barra(s) tuyas por corregir. Tienes %d horas: "
+                       "vence el %s." % (codigo, obra, n, HORAS_CORRECCION, fecha))
     return detalle(auditoria_id, user)
 
 
@@ -2033,7 +2063,10 @@ def reabrir(auditoria_id: int, body: ReaperturaBody, user=Depends(get_current_us
             cur.execute(
                 """UPDATE auditorias
                       SET enviada_el = NULL, enviada_por = NULL, cerrada_a_mano = FALSE,
-                          cerrada_motivo = NULL, cerrada_por = NULL, cierre_fecha = NULL
+                          cerrada_motivo = NULL, cerrada_por = NULL, cierre_fecha = NULL,
+                          -- El plazo no corre mientras la auditoría está reabierta: el
+                          -- auditado dejó de verla. Al reenviarla se cuentan 24 h de nuevo.
+                          correccion_vence = NULL
                     WHERE id = %s""", (auditoria_id,))
             _recalcular(cur, auditoria_id)
             audit(email, "auditoria_reabierta", "%s: %s" % (codigo, motivo),
@@ -2839,7 +2872,7 @@ def mis_items(user=Depends(get_current_user)):
                           CONCAT_WS(' · ', NULLIF(e.cc, ''), e.nombre),
                           i.id, i.ref, i.marca, i.observacion, i.esperado,
                           i.corregido, i.nota_correccion, i.tipo_correccion, i.cc_nuevo,
-                          i.verificado, a.plazo_fecha, a.auditor, e.hallazgo,
+                          i.verificado, a.correccion_vence, a.auditor, e.hallazgo,
                           i.causa, i.causa_categoria, i.causa_texto,
                           i.desestimado, i.desestimado_motivo, i.item_nuevo,
                           i.esperado IS NOT NULL OR i.dato_original IS NOT NULL,
@@ -2858,7 +2891,7 @@ def mis_items(user=Depends(get_current_user)):
                       -- resultado que todavía podía cambiar, y lo dejaba corriendo detrás
                       -- de correcciones sobre información incompleta.
                       AND a.enviada_el IS NOT NULL
-                    ORDER BY (i.corregido OR i.desestimado), a.plazo_fecha, a.codigo,
+                    ORDER BY (i.corregido OR i.desestimado), a.correccion_vence, a.codigo,
                              e.id, i.ref""",
                 (quien,))
             filas = [{"auditoria_id": r[0], "codigo": r[1], "obra": r[2], "elemento_id": r[3],
@@ -2866,7 +2899,7 @@ def mis_items(user=Depends(get_current_user)):
                       "marca": r[8], "observacion": r[9], "esperado": r[10] or {},
                       "corregido": bool(r[11]), "nota_correccion": r[12],
                       "tipo_correccion": r[13], "cc_nuevo": r[14], "verificado": r[15],
-                      "plazo": r[16].isoformat() if r[16] else None, "auditor": r[17],
+                      "vence": r[16].isoformat() if r[16] else None, "auditor": r[17],
                       "hallazgo": r[18], "causa": r[19], "causa_categoria": r[20],
                       "causa_texto": r[21], "desestimado": bool(r[22]),
                       "desestimado_motivo": r[23], "item_nuevo": r[24],
@@ -2884,12 +2917,13 @@ def mis_items(user=Depends(get_current_user)):
                       "fabricando": (r[30] or "") == ESTADO_FABRICANDO,
                       "despachado": (r[30] or "") == ESTADO_DESPACHADO}
                      for r in cur.fetchall()]
-    hoy = date.today()
+    ahora = datetime.now(timezone.utc)
     for f in filas:
         # EL PLAZO, REGISTRADO. Todavía no dispara nada —el correo no está— pero el dato
-        # viaja desde ya, para que cuando se habilite no haya que reconstruirlo.
-        f["vencido"] = bool(f["plazo"] and not f["corregido"] and not f["desestimado"]
-                            and date.fromisoformat(f["plazo"]) < hoy)
+        # viaja desde ya, para que cuando se habilite no haya que reconstruirlo. Se compara
+        # con la HORA y no con el día: 24 horas desde las 16:30 vencen a las 16:30.
+        f["vencido"] = bool(f["vence"] and not f["corregido"] and not f["desestimado"]
+                            and datetime.fromisoformat(f["vence"]) < ahora)
     return {"items": filas,
             "pendientes": sum(1 for f in filas
                               if not f["corregido"] and not f["desestimado"]),

@@ -721,10 +721,13 @@
                    porcub[q] + ' barra(s)</td></tr>'; }).join('')
         : '<tr><td colspan="2" class="muted">Sin barras por corregir: no le llega a nadie.</td></tr>') +
       '</tbody></table>' +
-      '<div class="audenviop"><label style="font-size:11px;">Plazo para corregir</label>' +
-      '<input type="date" id="audEnvioPlazo" value="' + esc(AUD.plazo || '') + '">' +
-      '<span class="muted" style="font-size:10px;">se registra para la trazabilidad; ' +
-      'todavía no dispara correos</span>' +
+      // EL PLAZO NO SE PREGUNTA: son 24 horas desde este momento, y es una regla, no algo
+      // que se negocie auditoría por auditoría. Se muestra para que quien envía sepa a qué
+      // está comprometiendo a la otra persona.
+      '<div class="audenviop"><b style="font-size:11px; color:#33691e;">' +
+      'Quien cubicó tendrá 24 horas para corregir</b>' +
+      '<span class="muted" style="font-size:10px;">el plazo arranca al enviar y se registra ' +
+      'para la trazabilidad; todavía no dispara correos</span>' +
       '<div style="flex:1"></div>' +
       '<button class="audenviar" id="audEnvioOk">Enviar</button>' +
       '<button class="audmini" id="audEnvioNo">Cancelar</button></div>';
@@ -733,8 +736,7 @@
       var b = $('audEnvioOk');
       b.disabled = true;
       try {
-        AUD = await req('POST', '/auditorias/' + AUD.id + '/enviar',
-                        { plazo: $('audEnvioPlazo').value || null });
+        AUD = await req('POST', '/auditorias/' + AUD.id + '/enviar', {});
         caja.style.display = 'none';
         ok('Auditoría enviada');
         await cargarLista(); await cargarMisAcciones(); pintarDetalle();
@@ -1638,6 +1640,20 @@
            'con qué comparar, así que la comprobación no va a poder decir nada.') + '">Corregida</span>';
   }
 
+  // CUÁNTO FALTA, no sólo cuándo vence. Con un plazo de 24 horas, «10-10» no dice nada:
+  // lo que la persona necesita saber es si le quedan seis horas o si ya se le pasó.
+  function _cuantoFalta(vence, vencido) {
+    if (!vence) return '<span class="muted">—</span>';
+    var d = new Date(vence);
+    var cuando = ('0' + d.getDate()).slice(-2) + '-' + ('0' + (d.getMonth() + 1)).slice(-2) +
+                 ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    var horas = Math.round((d - new Date()) / 3600000);
+    if (vencido) return cuando + ' <b>vencido</b>';
+    if (horas <= 0) return cuando;
+    return cuando + ' <span class="muted">(' +
+           (horas < 24 ? horas + ' h' : Math.round(horas / 24) + ' d') + ')</span>';
+  }
+
   function filaMia(a) {
     var est = _estadoMia(a);
     return '<tr' + (a.desestimado ? ' class="audeses"' : (a.vencido ? ' class="audvenc"' : '')) + '>' +
@@ -1660,7 +1676,8 @@
             esc(a.causa) + ' ✎</button>'
           : '<button class="audmini sinc" data-causa="' + a.item_id +
             '" title="Elige en la matriz Ishikawa por qué pasó.">Clasificar</button>') + '</td>' +
-      '<td' + (a.vencido ? ' style="color:#c62828;font-weight:700"' : '') + '>' + ddmm(a.plazo) + '</td>' +
+      '<td' + (a.vencido ? ' style="color:#c62828;font-weight:700"' : '') + '>' +
+        _cuantoFalta(a.vence, a.vencido) + '</td>' +
       '<td>' + est + (a.nota_correccion
           ? ' <span class="muted" title="' + esc(a.nota_correccion) + '">✎</span>' : '') +
         (a.tipo_correccion === 'nuevo'
