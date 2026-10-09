@@ -204,10 +204,13 @@
         <!-- La SEVERIDAD es del elemento —se decide mirando el conjunto— y sólo aparece
              cuando hay alguna barra no conforme. El QUÉ se encontró va barra por barra,
              arriba. -->
+        <!-- LA CAUSA NO VA ACÁ (8-oct). El auditor declara QUÉ está mal; el POR QUÉ lo
+             clasifica quien respondió, barra por barra, desde «Mis correcciones». -->
         <div class="audhall" id="audRevSev" style="display:none;">
           <span class="audlbl">Severidad del elemento</span>
           <div class="audchips" id="audRevChips"></div>
-          <select id="audRevCausa"></select>
+          <span class="muted" style="font-size:10px;">la causa raíz la clasifica quien respondió,
+            barra por barra: él sabe por qué pasó.</span>
         </div>
         <textarea id="audRevTexto" rows="2" placeholder="Nota general del elemento (opcional: lo que encontraste ya va en cada barra)."></textarea>
         <div style="display:flex; gap:10px; align-items:center;">
@@ -486,6 +489,10 @@
   .audt td.audesp{color:#2e7d32; font-weight:600; font-size:10.5px;}
   /* Fuera de plazo. No bloquea nada —todavía no hay correo— pero se ve. */
   .audt tr.audvenc td{background:#fff8f7;}
+  /* La causa de una barra: botón, porque abre la matriz. Sin clasificar se ve que falta. */
+  .audt td.audcausa{white-space:nowrap;}
+  .audt td.audcausa .audmini{font-family:ui-monospace,Consolas,monospace;}
+  .audt td.audcausa .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
   /* La revisión de un elemento: panel propio, bajo la muestra. */
   .audrev{margin-top:10px; padding:10px 12px; background:#f7f9fb; border:1px solid #cfd8dc; border-radius:6px;}
   .audhall{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0 6px;}

@@ -356,7 +356,8 @@
       $('audKpiCub').innerHTML = tabla(k.por_cubicador, 'cubicador', function (x) {
         return esc((x.cubicador || '').split('@')[0]); });
       $('audKpiCausa').innerHTML = k.causas.length
-        ? '<thead><tr><th>Causa</th><th class="num">NC</th><th></th></tr></thead><tbody>' +
+        ? '<thead><tr><th>Causa</th><th class="num" title="Barras no conformes con esa causa. ' +
+          'La clasifica quien respondió, barra por barra.">Barras</th><th></th></tr></thead><tbody>' +
           k.causas.map(function (c) {
             var tope = k.causas[0].n || 1;
             return '<tr><td title="' + esc(c.causa) + '">' + esc(c.causa) + '</td>' +
@@ -722,7 +723,7 @@
     var nAng = filas.reduce(function (m, f) { return Math.max(m, f.angulos.length); }, 0);
     var conRadio = filas.some(function (f) { return f.radio > 0; });
     var nCols = 9 + letras.length + nAng + (conRadio ? 1 : 0);
-    var html = '<thead><tr><th style="width:92px">Veredicto</th><th>Marca</th><th class="num">φ</th>' +
+    var html = '<thead><tr><th style="width:124px">Veredicto</th><th>Marca</th><th class="num">φ</th>' +
       '<th>Figura</th><th>Render</th>' +
       letras.map(function (L) { return '<th class="num g">' + esc(L) + '</th>'; }).join('') +
       rango(nAng).map(function (i) { return '<th class="num g">α' + (i + 1) + '</th>'; }).join('') +
@@ -737,7 +738,7 @@
       html += '<tr' + clase + ' data-ref="' + esc(b.ref) + '">' +
         '<td><span class="audvb">' +
           '<button class="si' + (v && v.conforme ? ' on' : '') + '" data-v="1" data-ref="' + esc(b.ref) + '" title="Conforme">OK</button>' +
-          '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="No conforme">NC</button>' +
+          '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="Hay algo que corregir en esta barra">Hallazgo</button>' +
         '</span></td>' +
         '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
         '<td class="num">' + num(f.diam) + '</td>' +
@@ -1017,13 +1018,6 @@
           b.classList.add('on');
         });
       });
-      var sc = $('audRevCausa');
-      if (!sc.options.length) {
-        sc.innerHTML = '<option value="">causa (Ishikawa Cubicaciones, opcional)</option>' + (BASE.causas || []).map(function (x) {
-          return '<option value="' + esc(x.codigo) + '">' + esc(x.codigo) + ' · ' + esc(x.categoria_nombre) + ' · ' + esc(x.descripcion) + '</option>';
-        }).join('');
-        sc.value = ELEM.causa || '';
-      }
     }
     if ($('audRevTexto').value === '' && ELEM.texto) $('audRevTexto').value = ELEM.texto;
     $('audRevMsg').textContent = ELEM.revisado_el
@@ -1048,7 +1042,7 @@
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/revision', {
         items: items, hallazgo: (c.malas && on) ? on.dataset.h : null,
-        texto: $('audRevTexto').value, causa: c.malas ? $('audRevCausa').value : null });
+        texto: $('audRevTexto').value });
       ok('Revisión guardada');
       await cargarLista();
       await cargarIndicadores();
@@ -1088,43 +1082,58 @@
     return html || '<span class="muted">—</span>';
   }
 
-  // Las acciones que salen de las NC: para quien cubicó. Él marca corregida; el auditor verifica.
+  // LO QUE SALIÓ DE LA AUDITORÍA: para mirar, no para tocar (8-oct).
+  //
+  // Antes esta tabla tenía dos botones —«Marcar corregida» y «Verificar»— y los dos se
+  // cayeron por lo mismo que dijo el usuario: «el auditor no debe verificar la corrección,
+  // es responsabilidad del auditado». Corregir se declara barra por barra en «Mis
+  // correcciones», y comprobar que se hizo es del sistema, que vuelve a pedirle la barra a
+  // aSa. Lo que al auditor le sirve acá es ver EN QUÉ VA, y eso se cuenta, no se elige.
   function pintarAcciones() {
     var caja = $('audAcciones');
     var acc = (AUD.elementos || []).filter(function (e) { return e.accion_estado; });
     if (!acc.length) { caja.style.display = 'none'; return; }
     caja.style.display = '';
-    caja.innerHTML = '<div class="audh">Acciones <span class="muted">' + acc.length +
-      ' · una por cada hallazgo. La corrección la hace quien cubicó, en su cubicación; el auditor verifica.</span></div>' +
+    caja.innerHTML = '<div class="audh">Qué salió de esta auditoría <span class="muted">' + acc.length +
+      ' · la corrección la declara quien cubicó, barra por barra, y el sistema la comprueba ' +
+      'contra aSa. Acá no hay nada que marcar.</span></div>' +
       '<table class="audt audacct"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th>' +
       '<th title="La observación del elemento entero, si el auditor escribió una, y debajo ' +
       'lo que se anotó en cada barra. Son campos distintos.">Qué se encontró</th>' +
-      '<th>Causa</th><th>Estado</th><th></th></tr></thead><tbody>' +
+      '<th title="Por qué pasó. La clasifica quien respondió, barra por barra.">Causa</th>' +
+      '<th>En qué va</th></tr></thead><tbody>' +
       acc.map(function (e) {
+        var malas = (e.barras_malas || []);
+        var hechas = malas.filter(function (b) { return b.corregido; }).length;
         return '<tr><td title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
           '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
           '<td><span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span></td>' +
           '<td class="audqse">' + celdaQueSeEncontro(e) + '</td>' +
-          '<td class="cc" title="' + esc(e.causa || '') + '">' + esc(e.causa || '') + '</td>' +
+          '<td class="audqse">' + celdaCausas(e) + '</td>' +
           '<td><span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' +
-            (e.accion_por ? ' <span class="muted" style="font-size:9px">' + esc(e.accion_por.split('@')[0]) + '</span>' : '') + '</td>' +
-          '<td>' + (e.accion_estado === 'pendiente'
-              ? '<button class="audmini" data-acc="corregida" data-el="' + e.id + '">Marcar corregida</button>'
-              : e.accion_estado === 'corregida'
-                ? '<button class="audmini ver" data-acc="verificada" data-el="' + e.id + '">Verificar</button>'
-                : '') + '</td></tr>';
+            (malas.length ? ' <span class="muted" style="font-size:9px">' + hechas + ' de ' +
+                            malas.length + ' barra(s)</span>' : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
-    caja.querySelectorAll('button[data-acc]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        b.disabled = true;
-        try {
-          AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + b.dataset.el + '/accion',
-                          { estado: b.dataset.acc });
-          ok('Acción ' + ACCION_TXT[b.dataset.acc].toLowerCase());
-          await cargarLista(); await cargarMisAcciones(); pintarDetalle();
-        } catch (e) { aviso(e.message); b.disabled = false; }
-      });
-    });
+  }
+
+  // LAS CAUSAS DE UN ELEMENTO SON LAS DE SUS BARRAS, y pueden ser varias: dos barras del
+  // mismo eje pueden estar mal por razones distintas —una por un plano viejo y otra por una
+  // digitación— y meterlas en la misma casilla hace que el Pareto mienta. Las auditorías
+  // de antes del 8-oct tienen UNA causa en el elemento, puesta por el auditor: se muestra
+  // como lo que es, para no perderla ni confundirla con las nuevas.
+  function celdaCausas(e) {
+    var malas = (e.barras_malas || []).filter(function (b) { return b.causa; });
+    if (malas.length) {
+      return '<ul class="audobsb">' + malas.map(function (b) {
+        return '<li><b>' + esc(b.ref || b.marca || 'barra') + '</b> ' +
+               esc(b.causa) + (b.causa_texto ? ' · ' + esc(b.causa_texto) : '') + '</li>';
+      }).join('') + '</ul>';
+    }
+    if (e.causa) {
+      return '<span class="cc" title="Causa del elemento, de antes de que la causa fuera por barra.">' +
+             esc(e.causa) + '</span>';
+    }
+    return '<span class="muted">sin clasificar</span>';
   }
 
   // CUÁNTO DE LA OBRA SE HA MIRADO, contando TODAS sus auditorías. Un cuadrito por
@@ -1163,7 +1172,6 @@
       '</div>';
   }
 
-  // MIS ACCIONES: lo que a mí me toca corregir, sin tener que buscar en qué auditoría salió.
   // MIS CORRECCIONES, BARRA POR BARRA (8-oct).
   //
   // Antes era una fila por ELEMENTO con un botón «Ya la corregí». Un elemento son cuatro,
@@ -1188,18 +1196,24 @@
       MIS = (d && d.items) || [];
       if (!MIS.length) { caja.style.display = 'none'; return; }
       caja.style.display = '';
-      var pend = d.pendientes || 0, venc = d.vencidas || 0;
+      var pend = d.pendientes || 0, venc = d.vencidas || 0, sinc = d.sin_causa || 0;
       caja.innerHTML = '<div class="audh">Mis correcciones <span class="muted">' +
         (pend ? pend + ' barra(s) por corregir' : 'todas corregidas') +
+        (sinc ? ' · ' + sinc + ' sin clasificar' : '') +
         (venc ? ' · <b style="color:#c62828">' + venc + ' fuera de plazo</b>' : '') +
         ' · salieron de una auditoría de tu cubicación. Lo que corrijas lo comprueba el ' +
         'sistema contra aSa: nadie tiene que verificarlo a mano.</span></div>' +
         '<table class="audt audacct"><thead><tr><th>Auditoría</th><th>Código</th><th>Elemento</th>' +
-        '<th>Barra</th><th>Qué encontró el auditor</th><th>Debería decir</th><th>Plazo</th>' +
+        '<th>Barra</th><th>Qué encontró el auditor</th><th>Debería decir</th>' +
+        '<th title="Por qué pasó. La clasificas tú, que es quien sabe: el auditor sólo vio ' +
+        'el síntoma.">Por qué pasó</th><th>Plazo</th>' +
         '<th>Estado</th><th></th></tr></thead><tbody>' +
         MIS.map(filaMia).join('') + '</tbody></table>';
       caja.querySelectorAll('button[data-item]').forEach(function (b) {
         b.addEventListener('click', function () { resolverMia(b.dataset.item, b.dataset.accion); });
+      });
+      caja.querySelectorAll('button[data-causa]').forEach(function (b) {
+        b.addEventListener('click', function () { clasificarMia(b.dataset.causa); });
       });
     } catch (e) { caja.style.display = 'none'; }
   }
@@ -1219,6 +1233,12 @@
       '<td><span class="audref">' + esc(a.ref) + '</span></td>' +
       '<td>' + esc(a.observacion || '') + '</td>' +
       '<td class="audesp">' + esc(_esperadoTxt(a.esperado)) + '</td>' +
+      '<td class="audcausa">' + (a.causa
+          ? '<button class="audmini" data-causa="' + a.item_id + '" title="' +
+            esc(a.causa + (a.causa_texto ? ' · ' + a.causa_texto : '')) + '">' +
+            esc(a.causa) + ' ✎</button>'
+          : '<button class="audmini sinc" data-causa="' + a.item_id +
+            '" title="Elige en la matriz Ishikawa por qué pasó.">Clasificar</button>') + '</td>' +
       '<td' + (a.vencido ? ' style="color:#c62828;font-weight:700"' : '') + '>' + ddmm(a.plazo) + '</td>' +
       '<td>' + est + (a.nota_correccion
           ? ' <span class="muted" title="' + esc(a.nota_correccion) + '">✎</span>' : '') +
@@ -1230,6 +1250,50 @@
           : '<button class="audmini ver" data-item="' + a.item_id + '" data-accion="corregir">La corregí</button>')
       + '</td></tr>';
   }
+
+  // EL ISHIKAWA, EN EL MODAL CON LA MATRIZ. El usuario lo cazó: «volviste al desplegable y
+  // no al modal con la matriz bonita». Es el MISMO modal que usan los reclamos y el
+  // análisis histórico —vive en reclamos/detail-edit.js y su HTML está en la página—, y se
+  // habla con él por estas dos funciones: una le dice qué hay elegido y de qué área es la
+  // matriz, la otra recibe lo que se eligió. Una matriz de 19 sub-causas repartidas en
+  // cuatro M no se lee en un <select>: eso era lo que había y por eso nadie clasificaba.
+  //
+  // LA CAUSA DE LA AUDITORÍA NO ES LA DEL RECLAMO. Comparten el catálogo —el Ishikawa del
+  // área Cubicaciones, que es el único cargado— pero se guardan en tablas distintas y
+  // ningún reporte de reclamos lee las de acá. Un hallazgo que encontramos nosotros antes
+  // de fabricar y un reclamo que encontró el cliente después no se suman en el mismo Pareto.
+  var CAUSA_DE = null;   // la barra que se está clasificando
+
+  function clasificarMia(itemId) {
+    var a = MIS.filter(function (x) { return String(x.item_id) === String(itemId); })[0];
+    if (!a) return;
+    if (typeof global.abrirIshikawaModal !== 'function') {
+      aviso('No se pudo abrir la matriz de causas. Recarga la página.');
+      return;
+    }
+    CAUSA_DE = a;
+    global.abrirIshikawaModal('auditoria');
+  }
+
+  global.audIshikawa = function () {
+    return { categoria: CAUSA_DE && CAUSA_DE.causa_categoria,
+             cod_causa: CAUSA_DE && CAUSA_DE.causa,
+             sub_causa: CAUSA_DE && CAUSA_DE.causa_texto,
+             area_id: BASE.causas_area };
+  };
+
+  global.audCausaElegida = async function (sel) {
+    var a = CAUSA_DE;
+    if (!a || !sel || !sel.cod_causa) return;
+    try {
+      await req('PUT', '/auditorias/' + a.auditoria_id + '/items/' + a.item_id + '/causa',
+                { causa: sel.cod_causa, causa_categoria: sel.categoria, causa_texto: sel.sub_causa });
+      ok('Causa registrada');
+      await cargarMisAcciones();
+      await cargarIndicadores();
+      if (AUD && AUD.id === a.auditoria_id) { AUD = await req('GET', '/auditorias/' + AUD.id); pintarDetalle(); }
+    } catch (e) { aviso(e.message); }
+  };
 
   // AL DECLARAR LA CORRECCIÓN SE PREGUNTA CÓMO SE HIZO, y no es burocracia: si se corrigió
   // la misma barra el sistema puede ir a mirarla, y si se hizo un código nuevo NO puede —la

@@ -31,6 +31,7 @@ APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf
 HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html"), encoding="utf-8").read()
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
 SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"), encoding="utf-8").read()
+DEJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "reclamos", "detail-edit.js"), encoding="utf-8").read()
 MIG122 = open(os.path.join(ROOT, "armahub", "migrations", "122_auditoria_descr_cc.sql"),
               encoding="utf-8").read()
 MIG123 = open(os.path.join(ROOT, "armahub", "migrations", "123_auditoria_correlativo.sql"),
@@ -540,6 +541,49 @@ check("...y el plazo vencido se ve, aunque todavía no dispare nada",
       "audvenc" in JS and ".audt tr.audvenc td{" in HTM)
 check("la comprobación del sistema se muestra aparte de lo que declaró la persona",
       "Sigue igual en aSa" in JS and "Comprobada" in JS)
+
+print("\n7c0d. El POR QUÉ es del auditado, por ITEM, y se elige en la matriz")
+# LO PIDIÓ EL USUARIO (8-oct): «lo del ishikawa sería bueno sacarlo de la auditoría y
+# dejarlo para que el cubicador que responde clasifique... como es por ITEM creo debiera ser
+# un ishikawa por item y NO DEBIERA MEZCLARSE con el ishikawa de los reclamos».
+check("el auditor ya no elige la causa en su formulario",
+      "LA CAUSA YA NO VIENE ACÁ" in SRC
+      and "SET hallazgo = %s, texto = %s, causa = %s" not in SRC
+      and "audRevCausa" not in JS and "audRevCausa" not in HTM)
+check("la clasifica el auditado, por barra, por su propio verbo",
+      '@router.put("/auditorias/{auditoria_id}/items/{item_id}/causa")' in SRC
+      and "def clasificar_item(" in SRC)
+check("...y clasificar no es declarar que se corrigió: son dos momentos distintos",
+      "se puede clasificar antes de corregir" in SRC)
+check("quién puede tocar una barra se decide en UN solo lugar",
+      "def _barra_del_auditado(" in SRC
+      and SRC.count("_barra_del_auditado(cur, auditoria_id, item_id, user)") >= 2)
+check("no se mezcla con el Ishikawa de los reclamos, y está dicho por qué",
+      "ningún reporte de reclamos lee esta tabla" in SRC)
+check("el Pareto cuenta BARRAS, que es donde vive la causa",
+      "EL PARETO SE CUENTA SOBRE BARRAS" in SRC and "FROM auditoria_items i" in SRC)
+check("...y lo que falta clasificar se ve en vez de esconderse",
+      "(sin clasificar)" in SRC and '"sin_causa"' in SRC)
+
+print("\n7c0e. La matriz bonita, no un desplegable")
+# El usuario: «volviste al desplegable y no al modal con la matriz bonita». Son 35
+# sub-causas en seis M: en un <select> no se leen, y por eso nadie clasificaba.
+check("se abre el MISMO modal de los reclamos, no otro",
+      "abrirIshikawaModal('auditoria')" in JS
+      and "_desdeLaPantalla" in DEJS and "_haciaLaPantalla" in DEJS)
+check("...hablándole por las dos funciones de siempre",
+      "global.audIshikawa" in JS and "global.audCausaElegida" in JS)
+check("el id del área de la matriz viaja con el catálogo (si no, sale vacía)",
+      '"causas_area": causas_area' in SRC and "BASE.causas_area" in JS)
+check("la causa se ve en la fila de la barra, y se puede cambiar",
+      "audcausa" in JS and "td.audcausa" in HTM and "Clasificar" in JS)
+
+print("\n7c0f. El botón dice Hallazgo, no «NC»")
+check("en el veredicto de cada barra",
+      ">Hallazgo</button>' +" in JS and 'title="No conforme">NC<' not in JS)
+check("el auditor ya no tiene botones de corregir ni de verificar",
+      'data-acc="corregida"' not in JS and 'data-acc="verificada"' not in JS
+      and "Qué salió de esta auditoría" in JS)
 
 print("\n7c2. El largo que se audita es la SUMA DE LOS PARCIALES")
 # Lo cazó el cubicador que hizo la primera auditoría: el formulario mostraba 2.576 donde su

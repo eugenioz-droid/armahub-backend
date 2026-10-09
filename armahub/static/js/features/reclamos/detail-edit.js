@@ -1116,11 +1116,14 @@ async function _initRcaMetodoParaReclamo(data) {
 async function abrirIshikawaModal(target) {
   _ishikawaTarget = target || 'create';
 
-  // Preserve existing selection if it exists. Con destino 'analisis' (la pantalla de
-  // análisis histórico) la selección actual y el área no salen del formulario del
-  // reclamo sino de esa pantalla, que las expone en window.ahIshikawa. Así el mismo
-  // modal sirve para las dos sin duplicarlo.
-  var ext = (_ishikawaTarget === 'analisis' && window.ahIshikawa) ? window.ahIshikawa() : null;
+  // Preserve existing selection if it exists. Las pantallas que NO son el formulario del
+  // reclamo —'analisis' (análisis histórico) y 'auditoria' (la causa de una barra
+  // auditada)— no tienen esos campos: exponen su selección y su área en una función
+  // global, y reciben la elegida por otra. Así el mismo modal con la misma matriz sirve
+  // para las tres, que es como se evita tener tres matrices desincronizadas.
+  var _desdeLaPantalla = { analisis: window.ahIshikawa, auditoria: window.audIshikawa };
+  var _lector = _desdeLaPantalla[_ishikawaTarget];
+  var ext = _lector ? _lector() : null;
   var existingCat = ext ? (ext.categoria || '') : document.getElementById('recDetailCategoria').value;
   var existingSub = ext ? (ext.sub_causa || '') : document.getElementById('recDetailSubCausa').value;
   var existingCod = ext ? (ext.cod_causa || '') : document.getElementById('recDetailCodCausa').value;
@@ -1175,8 +1178,10 @@ function seleccionarIshikawa(radio) {
 
 function confirmarIshikawa() {
   if (!_ishikawaSelection.categoria) { alert('Selecciona una causa primero'); return; }
-  if (_ishikawaTarget === 'analisis' && window.ahCausaElegida) {
-    window.ahCausaElegida(_ishikawaSelection);
+  var _haciaLaPantalla = { analisis: window.ahCausaElegida, auditoria: window.audCausaElegida };
+  var _escritor = _haciaLaPantalla[_ishikawaTarget];
+  if (_escritor) {
+    _escritor(_ishikawaSelection);
     cerrarIshikawaModal();
     return;
   }

@@ -219,14 +219,19 @@ def obras(user=Depends(get_current_user)):
             # que Calidad ya tiene cargado. Así las auditorías alimentan el mismo Pareto
             # que los reclamos, en vez de inventar otra lista.
             cur.execute(
-                """SELECT c.slug, c.nombre, s.codigo, s.descripcion
+                """SELECT c.slug, c.nombre, s.codigo, s.descripcion, c.area_id
                      FROM area_rca_subcausas s
                      JOIN area_rca_categorias c ON c.id = s.categoria_id
                      JOIN areas a ON a.id = c.area_id
                     WHERE a.nombre = %s AND COALESCE(s.activo, TRUE)
                     ORDER BY c.orden, s.orden""", (AREA_CUBICACIONES,))
+            filas_causa = cur.fetchall()
             causas = [{"categoria": r[0], "categoria_nombre": r[1], "codigo": r[2], "descripcion": r[3]}
-                      for r in cur.fetchall()]
+                      for r in filas_causa]
+            # EL ID DEL ÁREA VIAJA CON EL CATÁLOGO. La causa se elige en el MISMO modal con
+            # la matriz que usan los reclamos, y ese modal pide las categorías por área. Sin
+            # este id habría que adivinar cuál es, o duplicar la matriz acá.
+            causas_area = filas_causa[0][4] if filas_causa else None
             # LAS OBRAS DE aSa: 319 activas contra 18 con barras en ArmaHub. Se auditan
             # igual —el elemento vive en getOrderItemView—, sólo cambia de dónde sale la
             # muestra. Las que YA están en ArmaHub no se repiten acá: ahí la auditoría es
@@ -251,7 +256,8 @@ def obras(user=Depends(get_current_user)):
                           "ultimo": r[4].isoformat() if r[4] else None} for r in cur.fetchall()]
     return {"obras": lista, "obras_asa": asa_obras, "auditores": auditores, "sectores": SECTORES,
             "estados": list(ESTADOS), "hallazgos": list(HALLAZGOS), "acciones": list(ACCIONES),
-            "causas": causas, "muestra_por_defecto": MUESTRA_POR_DEFECTO, "dias_plazo": DIAS_PLAZO}
+            "causas": causas, "causas_area": causas_area,
+            "muestra_por_defecto": MUESTRA_POR_DEFECTO, "dias_plazo": DIAS_PLAZO}
 
 
 @router.get("/auditorias/elemento")
@@ -508,7 +514,8 @@ def _hallazgos_de_items(cur, elemento_id: int) -> dict:
     cur.execute(
         """SELECT ref, conforme, observacion, revisado_por, revisado_el, esperado,
                   corregido, corregido_por, corregido_el, nota_correccion,
-                  tipo_correccion, cc_nuevo, verificado, verificado_el, verificado_dato
+                  tipo_correccion, cc_nuevo, verificado, verificado_el, verificado_dato,
+                  causa, causa_categoria, causa_texto, causa_por
              FROM auditoria_items WHERE elemento_id = %s""", (elemento_id,))
     return {r[0]: {"conforme": r[1], "observacion": r[2], "revisado_por": r[3],
                    "revisado_el": r[4].isoformat() if r[4] else None,
@@ -518,7 +525,9 @@ def _hallazgos_de_items(cur, elemento_id: int) -> dict:
                    "nota_correccion": r[9], "tipo_correccion": r[10], "cc_nuevo": r[11],
                    "verificado": r[12],
                    "verificado_el": r[13].isoformat() if r[13] else None,
-                   "verificado_dato": r[14]} for r in cur.fetchall()}
+                   "verificado_dato": r[14],
+                   "causa": r[15], "causa_categoria": r[16], "causa_texto": r[17],
+                   "causa_por": r[18]} for r in cur.fetchall()}
 
 
 def _clave_elemento(e) -> tuple:
@@ -1075,12 +1084,25 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
             cur.execute(
                 f"""SELECT TO_CHAR(a.creada_fecha, 'YYYY-MM'), {campos} {base} GROUP BY 1 ORDER BY 1""", params)
             por_mes = arma(cur.fetchall(), "mes")
-            # El Pareto de causas: sólo las no conformidades, que son las que piden acción.
+            # EL PARETO SE CUENTA SOBRE BARRAS (8-oct), porque ahí vive la causa desde que
+            # la clasifica quien responde. Antes era una línea por ELEMENTO: un eje con tres
+            # barras mal por tres razones distintas aportaba una sola, y la razón que
+            # quedaba era la que el auditor hubiera elegido para el conjunto.
+            #
+            # «Sin clasificar» se cuenta y no se esconde: es la medida de cuánto del Pareto
+            # todavía no sirve para decidir nada.
             cur.execute(
-                f"""SELECT COALESCE(e.causa,'(sin causa)'), COUNT(*), COALESCE(SUM(e.kg),0)
-                      {base} AND e.hallazgo IN ('hallazgo','hallazgo')
+                f"""SELECT COALESCE(NULLIF(CONCAT_WS(' · ', i.causa, i.causa_texto), ''),
+                                    '(sin clasificar)'),
+                           COUNT(*)
+                      FROM auditoria_items i
+                      JOIN auditoria_elementos e ON e.id = i.elemento_id
+                      JOIN auditorias a ON a.id = e.auditoria_id
+                     WHERE {cond} AND i.conforme IS FALSE
                      GROUP BY 1 ORDER BY 2 DESC""", params)
-            causas = [{"causa": r[0], "n": r[1], "kg": float(r[2] or 0)} for r in cur.fetchall()]
+            # `kg` se mantiene en cero y no se quita: lo lee el front y los kilos son del
+            # elemento, no de la barra — repartirlos sería inventar un número.
+            causas = [{"causa": r[0], "n": r[1], "kg": 0.0} for r in cur.fetchall()]
             cur.execute(f"SELECT 'total', {campos} {base}", params)
             total = (arma(cur.fetchall(), "x") or [{}])[0]
             cur.execute(
@@ -1256,15 +1278,18 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # mezclarlas dejaba el informe ilegible. Sólo las no conformes: las conformes
             # no tienen nada que contar.
             cur.execute(
-                """SELECT i.elemento_id, i.ref, i.marca, i.observacion
+                """SELECT i.elemento_id, i.ref, i.marca, i.observacion, i.corregido,
+                          i.causa, i.causa_texto, i.esperado, i.verificado
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE
                     ORDER BY i.elemento_id, i.ref""", (auditoria_id,))
             por_elemento = {}
-            for eid, ref, marca, obs in cur.fetchall():
+            for eid, ref, marca, obs, corr, ca, ca_txt, esp, ver in cur.fetchall():
                 por_elemento.setdefault(eid, []).append(
-                    {"ref": ref, "marca": marca, "observacion": obs})
+                    {"ref": ref, "marca": marca, "observacion": obs,
+                     "corregido": bool(corr), "causa": ca, "causa_texto": ca_txt,
+                     "esperado": esp or {}, "verificado": ver})
             for e in aud["elementos"]:
                 e["barras_malas"] = por_elemento.get(e["id"], [])
     # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
@@ -1279,7 +1304,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
 class HallazgoBody(BaseModel):
     hallazgo: str
     texto: Optional[str] = None
-    causa: Optional[str] = None
+    # Sin causa, igual que `RevisionBody`: el auditor declara QUÉ está mal y el POR QUÉ lo
+    # clasifica el auditado, por barra. Esta puerta es la vieja —el elemento entero de un
+    # golpe, sin pasar por las barras— y se deja porque alguna auditoría se registró así.
 
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}")
@@ -1313,11 +1340,10 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
                 accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"
             cur.execute(
                 """UPDATE auditoria_elementos
-                      SET hallazgo = %s, texto = %s, causa = %s, revisado_por = %s, revisado_el = now(),
+                      SET hallazgo = %s, texto = %s, revisado_por = %s, revisado_el = now(),
                           accion_estado = %s
                     WHERE id = %s""",
-                (body.hallazgo, texto or None, (body.causa or None) if body.hallazgo != "conforme" else None,
-                 email, accion, elemento_id))
+                (body.hallazgo, texto or None, email, accion, elemento_id))
             cerro = _recalcular(cur, auditoria_id)
             audit(email, "auditoria_hallazgo", f"{codigo} · {nombre}: {body.hallazgo}", "auditoria", str(auditoria_id))
     # La acción le llega a quien cubicó. Fuera de la transacción: que falle el aviso no
@@ -1817,7 +1843,9 @@ class RevisionBody(BaseModel):
     """La revisión de UN elemento: el veredicto de cada barra y la severidad del conjunto."""
     items: List[ItemBody] = []
     hallazgo: Optional[str] = None     # severidad; si no viene, se deriva de las barras
-    causa: Optional[str] = None
+    # LA CAUSA YA NO VIENE ACÁ (8-oct). El auditor ve QUÉ está mal; el POR QUÉ lo sabe
+    # quien lo hizo, y lo clasifica al responder — por ítem, no por elemento. Vive en
+    # `auditoria_items.causa` y entra por /items/{id}/causa.
     texto: Optional[str] = None        # opcional: lo que se encontró ya está en las barras
 
 
@@ -1839,7 +1867,7 @@ def severidad_derivada(items, severidad: Optional[str]) -> str:
 def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
                      request: Request, user=Depends(get_current_user)):
     """Guarda la revisión completa de un elemento: cada barra con su veredicto y, si hay
-    alguna no conforme, la severidad y la causa del conjunto.
+    alguna no conforme, la severidad del conjunto. La causa no: ésa la pone el auditado.
 
     Una barra NO conforme EXIGE decir qué tiene: sin eso no es evidencia, y el cubicador
     no sabría qué corregir."""
@@ -1898,13 +1926,14 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
             accion = None
             if es_nc:
                 accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"
+            # `causa` no se toca: el auditor dejó de escribirla, y la columna se conserva
+            # porque las auditorías viejas la tienen y borrarla sería perder lo clasificado.
             cur.execute(
                 """UPDATE auditoria_elementos
-                      SET hallazgo = %s, texto = %s, causa = %s, revisado_por = %s, revisado_el = now(),
+                      SET hallazgo = %s, texto = %s, revisado_por = %s, revisado_el = now(),
                           accion_estado = %s
                     WHERE id = %s""",
-                (hallazgo, texto or None, (body.causa or None) if hallazgo != "conforme" else None,
-                 email, accion, elemento_id))
+                (hallazgo, texto or None, email, accion, elemento_id))
             cerro = _recalcular(cur, auditoria_id)
             audit(email, "auditoria_revision",
                   "%s · %s: %s (%d barras, %d no conformes)" % (codigo, nombre, hallazgo,
@@ -1965,6 +1994,80 @@ class CorreccionBody(BaseModel):
     cc_nuevo: Optional[str] = None
 
 
+def _barra_del_auditado(cur, auditoria_id: int, item_id: int, user) -> tuple:
+    """La barra marcada, comprobando que quien pregunta pueda tocarla.
+
+    QUIÉN PUEDE: quien cubicó, o administración. El auditor no corrige ni clasifica lo que
+    él mismo marcó —sería juez y parte— y el resto no tiene nada que hacer acá. Está en una
+    función porque lo piden los dos verbos del auditado (corregir y clasificar) y la regla
+    tiene que ser LA MISMA en los dos: dos copias se desincronizan."""
+    cur.execute(
+        """SELECT i.elemento_id, i.conforme, i.ref, e.cubicado_por, e.nombre,
+                  a.codigo, a.auditor
+             FROM auditoria_items i
+             JOIN auditoria_elementos e ON e.id = i.elemento_id
+             JOIN auditorias a ON a.id = e.auditoria_id
+            WHERE i.id = %s AND e.auditoria_id = %s""", (item_id, auditoria_id))
+    fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Esa barra no es de esta auditoría.")
+    if fila[1] is not False:
+        raise HTTPException(status_code=400, detail="Esa barra no tiene nada que corregir.")
+    email = user.get("email", "?")
+    cubico = fila[3]
+    if user.get("role") not in ROLES_ADMINISTRAN and cubico \
+            and (cubico or "").strip() not in alias_cubicador(cur, email):
+        raise HTTPException(status_code=403,
+                            detail="Esta corrección es de quien cubicó el elemento.")
+    return fila
+
+
+class CausaBody(BaseModel):
+    """LA CAUSA RAÍZ DE UNA BARRA, como la clasifica quien respondió.
+
+    Va aparte de la corrección a propósito: entender por qué pasó y arreglarlo son dos
+    momentos distintos —se puede clasificar antes de corregir, o reclasificar después—, y
+    obligar a hacer los dos de una vez haría que nadie clasifique."""
+    causa: str                             # el código de la sub-causa del Ishikawa
+    causa_categoria: Optional[str] = None  # la M a la que pertenece
+    causa_texto: Optional[str] = None      # la sub-causa, como se leyó al elegirla
+
+
+@router.put("/auditorias/{auditoria_id}/items/{item_id}/causa")
+def clasificar_item(auditoria_id: int, item_id: int, body: CausaBody,
+                    user=Depends(get_current_user)):
+    """EL AUDITADO CLASIFICA POR QUÉ PASÓ, barra por barra.
+
+    Lo pidió el usuario: «sacarlo de la auditoría y dejarlo para que el cubicador que
+    responde clasifique... como es por ITEM, debiera ser un Ishikawa por ítem».
+
+    Y NO SE MEZCLA CON EL DE LOS RECLAMOS: esto vive en `auditoria_items`, los reclamos en
+    `reclamos`, y ningún reporte de reclamos lee esta tabla. Un hallazgo de auditoría no es
+    un reclamo del cliente —el primero lo encontramos nosotros antes de fabricar, el
+    segundo lo encontró el cliente después— y sumarlos daría un Pareto que no describe
+    ninguna de las dos cosas. Lo que hoy comparten es el CATÁLOGO de causas, que es el
+    Ishikawa del área Cubicaciones."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    codigo_causa = (body.causa or "").strip()
+    if not codigo_causa:
+        raise HTTPException(status_code=400, detail="Elige una causa.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _, _, ref, _, nombre, codigo, _ = _barra_del_auditado(cur, auditoria_id, item_id, user)
+            cur.execute(
+                """UPDATE auditoria_items
+                      SET causa = %s, causa_categoria = %s, causa_texto = %s,
+                          causa_por = %s, causa_el = now()
+                    WHERE id = %s""",
+                (codigo_causa, (body.causa_categoria or "").strip() or None,
+                 (body.causa_texto or "").strip() or None, email, item_id))
+            audit(email, "auditoria_causa",
+                  "%s · %s · %s: %s" % (codigo, nombre, ref, codigo_causa),
+                  "auditoria", str(auditoria_id))
+    return detalle(auditoria_id, user)
+
+
 @router.put("/auditorias/{auditoria_id}/items/{item_id}/correccion")
 def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                   user=Depends(get_current_user)):
@@ -1983,26 +2086,8 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                                    "nadie puede ir a buscarlo después.")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT i.elemento_id, i.conforme, i.ref, e.cubicado_por, e.nombre,
-                          a.codigo, a.auditor
-                     FROM auditoria_items i
-                     JOIN auditoria_elementos e ON e.id = i.elemento_id
-                     JOIN auditorias a ON a.id = e.auditoria_id
-                    WHERE i.id = %s AND e.auditoria_id = %s""", (item_id, auditoria_id))
-            fila = cur.fetchone()
-            if not fila:
-                raise HTTPException(status_code=404, detail="Esa barra no es de esta auditoría.")
-            elemento_id, conforme, ref, cubico, nombre, codigo, auditor = fila
-            if conforme is not False:
-                raise HTTPException(status_code=400,
-                                    detail="Esa barra no tiene nada que corregir.")
-            # QUIÉN PUEDE: quien cubicó, o administración. El auditor no corrige lo que él
-            # mismo marcó, y el resto no tiene nada que hacer acá.
-            es_admin = user.get("role") in ROLES_ADMINISTRAN
-            if not es_admin and cubico and (cubico or "").strip() not in alias_cubicador(cur, email):
-                raise HTTPException(status_code=403,
-                                    detail="Esta corrección es de quien cubicó el elemento.")
+            elemento_id, _, ref, cubico, nombre, codigo, auditor = \
+                _barra_del_auditado(cur, auditoria_id, item_id, user)
             cur.execute(
                 """UPDATE auditoria_items
                       SET corregido = %s, corregido_por = %s,
@@ -2046,7 +2131,8 @@ def mis_items(user=Depends(get_current_user)):
                           CONCAT_WS(' · ', NULLIF(e.cc, ''), e.nombre),
                           i.id, i.ref, i.marca, i.observacion, i.esperado,
                           i.corregido, i.nota_correccion, i.tipo_correccion, i.cc_nuevo,
-                          i.verificado, a.plazo_fecha, a.auditor, e.hallazgo, e.causa
+                          i.verificado, a.plazo_fecha, a.auditor, e.hallazgo,
+                          i.causa, i.causa_categoria, i.causa_texto
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                      JOIN auditorias a ON a.id = e.auditoria_id
@@ -2059,7 +2145,8 @@ def mis_items(user=Depends(get_current_user)):
                       "corregido": bool(r[11]), "nota_correccion": r[12],
                       "tipo_correccion": r[13], "cc_nuevo": r[14], "verificado": r[15],
                       "plazo": r[16].isoformat() if r[16] else None, "auditor": r[17],
-                      "hallazgo": r[18], "causa": r[19]} for r in cur.fetchall()]
+                      "hallazgo": r[18], "causa": r[19], "causa_categoria": r[20],
+                      "causa_texto": r[21]} for r in cur.fetchall()]
     hoy = date.today()
     for f in filas:
         # EL PLAZO, REGISTRADO. Todavía no dispara nada —el correo no está— pero el dato
@@ -2068,6 +2155,9 @@ def mis_items(user=Depends(get_current_user)):
                             and date.fromisoformat(f["plazo"]) < hoy)
     return {"items": filas,
             "pendientes": sum(1 for f in filas if not f["corregido"]),
+            # LO QUE FALTA CLASIFICAR se cuenta aparte de lo que falta corregir: son dos
+            # deudas distintas, y una barra corregida sin causa deja el Pareto cojo.
+            "sin_causa": sum(1 for f in filas if not f["causa"]),
             "vencidas": sum(1 for f in filas if f["vencido"])}
 
 
