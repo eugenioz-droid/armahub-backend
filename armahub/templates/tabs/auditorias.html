@@ -185,6 +185,25 @@
         <div style="flex:1"></div>
         <button id="audPdf" class="audmini" title="Alcance, hallazgos, acciones y conclusión">Informe PDF</button>
       </div>
+
+      <!-- ══════ EL FLUJO, EN UNA FRANJA ══════
+           Lo primero que se ve al abrir una auditoría: en qué paso va, qué falta para el
+           siguiente y el botón que lo da. Va arriba y no escondida en un menú porque
+           ENVIAR es el acto central del módulo —el que le pasa el trabajo al auditado— y
+           hasta ahora no existía en ninguna parte. -->
+      <div id="audFlujo" class="audflujo" style="display:none;">
+        <div class="audpasos" id="audPasos"></div>
+        <div class="audflujoq" id="audFlujoQue"></div>
+        <div style="flex:1"></div>
+        <div class="audflujob" id="audFlujoBotones"></div>
+      </div>
+
+      <!-- EL PANEL DE ENVÍO. Enviar compromete a otra persona con un plazo, así que no va
+           con un confirm() pelado: se muestra a quién le llega, cuánto le llega y hasta
+           cuándo, con el plazo editable ahí mismo —es el momento en que empieza a correr
+           de verdad—. -->
+      <div id="audEnvio" class="audenvio" style="display:none;"></div>
+
       <div class="card audc">
       <div id="audDetInfo" class="muted" style="font-size:11px; margin-bottom:6px;"></div>
       <!-- LA MUESTRA Y LA REVISIÓN. Con un elemento abierto y pantalla ancha van lado a
@@ -451,6 +470,7 @@
   .audest{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
   .audest.planificada{background:#e3f2fd; color:#1565C0;}
   .audest.en_curso{background:#fff8e1; color:#8d6e00;}
+  .audest.enviada{background:#e8eaf6; color:#283593;}
   .audest.cerrada{background:#e8f5e9; color:#2e7d32;}
   /* Resultado: una barrita conforme / observación / hallazgo; vacía si no empezó. */
   .audres{display:flex; height:10px; width:120px; border-radius:2px; overflow:hidden; background:#eceff1;}
@@ -489,6 +509,74 @@
   .audt td.audesp{color:#2e7d32; font-weight:600; font-size:10.5px;}
   /* Fuera de plazo. No bloquea nada —todavía no hay correo— pero se ve. */
   .audt tr.audvenc td{background:#fff8f7;}
+  /* ══════ EL FLUJO DE LA AUDITORÍA ══════
+     Cuatro pasos en una franja. El paso en que va se pinta; los anteriores quedan
+     apagados pero visibles, porque saber de dónde viene es parte de entender dónde está. */
+  .audflujo{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:10px;
+            padding:8px 12px; background:#fff; border:1px solid #cfd8dc; border-radius:6px;}
+  .audpasos{display:flex; align-items:center; gap:0;}
+  .audpasos span{font-size:10px; font-weight:700; padding:3px 10px; background:#eceff1;
+                 color:#90a4ae; white-space:nowrap; border:1px solid #dfe5ea;
+                 border-right:none;}
+  .audpasos span:first-child{border-radius:99px 0 0 99px; padding-left:12px;}
+  .audpasos span:last-child{border-radius:0 99px 99px 0; border-right:1px solid #dfe5ea;
+                            padding-right:12px;}
+  .audpasos span.hecho{background:#e8f0e3; color:#558b2f; border-color:#dce8d4;}
+  .audpasos span.aqui{background:#1565C0; color:#fff; border-color:#0d47a1;}
+  .audflujoq{font-size:11px; color:#546e7a; max-width:560px;}
+  .audflujoq b{color:#c62828;}
+  .audflujob{display:flex; gap:6px; align-items:center;}
+  /* El botón de enviar: el único verde grande del tab. Deshabilitado se ve que no se puede,
+     y el motivo va al lado en texto, no en un tooltip que nadie abre. */
+  .audenviar{font-size:11.5px; font-weight:700; padding:6px 16px; border-radius:5px;
+             border:1px solid #2e7d32; background:#388e3c; color:#fff; cursor:pointer;}
+  .audenviar:disabled{background:#eceff1; color:#b0bec5; border-color:#dfe5ea; cursor:not-allowed;}
+  /* El panel de confirmación del envío. */
+  .audenvio{margin-bottom:10px; padding:12px 14px; background:#f1f8e9;
+            border:1px solid #aed581; border-radius:6px;}
+  .audenvio h4{margin:0 0 8px; font-size:12.5px; color:#33691e;}
+  .audenvio table{width:100%; border-collapse:collapse; margin-bottom:8px;}
+  .audenvio td{font-size:11px; padding:3px 6px; border-bottom:1px solid #dcedc8;}
+  .audenvio td.num{text-align:right; font-variant-numeric:tabular-nums;}
+  .audenvio .audenviop{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .audenvio input[type=date]{font-size:11px; padding:3px 6px; border:1px solid #aed581;
+                             border-radius:4px;}
+  /* Un cartel de borrador: mientras no se envía, el auditado no ve nada. */
+  .audborrador{font-size:10px; font-weight:700; color:#e65100; background:#fff3e0;
+               border:1px solid #ffcc80; border-radius:99px; padding:2px 9px;}
+  /* EN FABRICACIÓN. El único rojo urgente: la barra se está cortando ahora. */
+  .audfab{font-size:9.5px; font-weight:700; color:#fff; background:#c62828;
+          border-radius:3px; padding:1px 6px; white-space:nowrap;}
+  /* ══════ LA CELDA QUE EL AUDITOR CORRIGE ══════
+     Una barra marcada con hallazgo deja escribir el valor que DEBERÍA tener, en la misma
+     celda que muestra el que tiene. En blanco (con el valor real como marca de agua)
+     significa «este campo está bien»; escrito, se pinta verde: es lo que se pide. */
+  .audt td.audedc{padding:0; background:#fffdf5;}
+  .audt td.audedc input.auded{width:100%; min-width:46px; box-sizing:border-box; border:none;
+        background:transparent; font:inherit; font-size:10.5px; text-align:inherit;
+        padding:2px 4px; color:#2e7d32; font-weight:700;}
+  .audt td.audedc input.auded::placeholder{color:#b0bec5; font-weight:400;}
+  .audt td.audedc input.auded:focus{outline:2px solid #aed581; outline-offset:-2px;
+        background:#fff;}
+  .audt td.audedc.puesto{background:#f1f8e9;}
+  /* ══════ RESOLVER UNA BARRA ══════
+     Los tres caminos a la vista, en la fila de la propia barra. Antes esto era una cadena
+     de confirm() y prompt(): no se veía qué se estaba eligiendo ni se podía volver atrás. */
+  .audt tr.audresol td{background:#f7f9fb; padding:8px 10px;}
+  .audresolc{display:flex; flex-direction:column; gap:5px;}
+  .audresolq{font-size:11px; color:#37474f; margin-bottom:2px;}
+  .audresolc label{font-size:11px; color:#37474f; display:flex; align-items:center; gap:6px;
+                   cursor:pointer;}
+  .audresolc input[type=radio]{margin:0;}
+  .audresi{font-size:11px; padding:2px 6px; border:1px solid #cfd8dc; border-radius:4px;
+           width:140px;}
+  .audresn{font-size:11px; padding:4px 7px; border:1px solid #cfd8dc; border-radius:4px;
+           width:100%; max-width:680px;}
+  .audresolb{display:flex; align-items:center; gap:8px; margin-top:2px;}
+  /* Una barra desestimada por el auditado: no cuenta como abierta, pero se ve. */
+  .audt tr.audeses td{background:#fafafa; color:#78909c;}
+  .auddes{font-size:9.5px; font-weight:700; color:#5d4037; background:#efebe9;
+          border:1px solid #d7ccc8; border-radius:99px; padding:1px 7px;}
   /* La causa de una barra: botón, porque abre la matriz. Sin clasificar se ve que falta. */
   .audt td.audcausa{white-space:nowrap;}
   .audt td.audcausa .audmini{font-family:ui-monospace,Consolas,monospace;}

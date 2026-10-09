@@ -136,6 +136,9 @@ def _una_corrida():
     except Exception as e:
         log.error("aSa reloj: falló la sincronización de obras: %s", e)
     _revisar_barras()
+    # Después de los syncs: comprobar usa aSa en vivo, pero el aviso de fabricación lee
+    # `asa_pedidos`, que el sync acaba de refrescar.
+    _auditorias_al_dia()
 
 
 # LA REVISIÓN DE BARRAS, UNA VEZ AL DÍA (8-oct). Va DESPUÉS de sincronizar, porque lo que
@@ -145,6 +148,11 @@ def _una_corrida():
 # pide a aSa los ítems de cada código y tarda minutos. En el turno que no toca, el reloj
 # sigue haciendo lo de siempre y no revisa.
 HORA_REVISION = int(os.getenv("CHEQUEO_HORA", "6") or 6)
+# Cuántas correcciones se comprueban por corrida. Cada una es UNA llamada a aSa por código
+# de control, así que el tope existe para no pasarse del presupuesto de llamadas si alguien
+# declara doscientas correcciones el mismo día. Lo que sobra se comprueba en la corrida
+# siguiente, y el auditado siempre puede pedirlo a mano desde la pantalla.
+TOPE_COMPROBAR = int(os.getenv("AUDITORIA_TOPE_COMPROBAR", "120") or 120)
 
 
 def _revisar_barras():
@@ -170,6 +178,52 @@ def _revisar_barras():
     except Exception as e:
         # Igual que todo lo demás acá: que falle la revisión no puede tumbar el reloj.
         log.error("Revisión de barras: falló (%s)", e)
+
+
+def _auditorias_al_dia():
+    """Dos trabajos de auditoría que hay que hacer DESPUÉS del sync, no antes.
+
+      1. COMPROBAR las correcciones declaradas. El auditado dice que corrigió; acá se va a
+         mirar la barra a aSa. Se corre después del sync porque el aviso de fabricación de
+         abajo lee `asa_pedidos`, que el sync acaba de actualizar.
+      2. AVISAR de lo que entró a fabricación con una barra mal. Es lo único urgente del
+         módulo y no espera a que la auditoría se envíe.
+
+    Las dos cosas tienen que poder fallar sin tumbar el reloj, igual que todo lo de acá."""
+    from .db import get_conn
+    try:
+        from .auditorias import avisar_fabricacion, comprobar_item, _accion_de_items, _recalcular
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # LO QUE SE DECLARÓ CORREGIDO Y NO SE HA PODIDO COMPROBAR. Se reintenta lo
+                # que quedó en `no_aplica` o sin veredicto: casi siempre es que aSa no
+                # respondió, y eso se arregla solo al día siguiente. Lo ya comprobado no se
+                # vuelve a mirar: sería gastar una llamada por barra todos los días.
+                cur.execute(
+                    """SELECT i.id, e.auditoria_id, i.elemento_id
+                         FROM auditoria_items i
+                         JOIN auditoria_elementos e ON e.id = i.elemento_id
+                        WHERE i.conforme IS FALSE AND i.corregido AND NOT i.desestimado
+                          AND COALESCE(i.verificado, '') NOT IN ('ok', 'sigue_igual')
+                        ORDER BY i.id LIMIT %s""", (TOPE_COMPROBAR,))
+                pend = cur.fetchall()
+                ok = 0
+                for item_id, _aud_id, _eid in pend:
+                    try:
+                        if comprobar_item(cur, item_id).get("resultado") == "ok":
+                            ok += 1
+                    except Exception as e:
+                        log.warning("Auditorías: no se pudo comprobar la barra %s (%s)", item_id, e)
+                for eid in {p[2] for p in pend}:
+                    cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                                (_accion_de_items(cur, eid), eid))
+                for aud_id in {p[1] for p in pend}:
+                    _recalcular(cur, aud_id)
+                avisados = avisar_fabricacion(cur)
+        log.info("Auditorías: %d correccion(es) comprobadas (%d ok), %d aviso(s) de fabricación",
+                 len(pend), ok, len(avisados))
+    except Exception as e:
+        log.error("Auditorías: falló el repaso diario (%s)", e)
 
 
 def proxima(desde: datetime, turnos: list) -> datetime:

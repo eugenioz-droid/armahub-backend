@@ -32,6 +32,11 @@ HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html")
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
 SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"), encoding="utf-8").read()
 DEJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "reclamos", "detail-edit.js"), encoding="utf-8").read()
+SCHED = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
+MIG138 = open(os.path.join(ROOT, "armahub", "migrations", "138_auditoria_envio_cierre.sql"),
+              encoding="utf-8").read()
+MIG139 = open(os.path.join(ROOT, "armahub", "migrations", "139_auditoria_aviso_fabrica.sql"),
+              encoding="utf-8").read()
 MIG122 = open(os.path.join(ROOT, "armahub", "migrations", "122_auditoria_descr_cc.sql"),
               encoding="utf-8").read()
 MIG123 = open(os.path.join(ROOT, "armahub", "migrations", "123_auditoria_correlativo.sql"),
@@ -85,7 +90,10 @@ check("los pisos y ciclos salen en orden natural (P1, P2, …, P12)",
       SRC.count("regexp_replace(COALESCE(") == 2)
 
 print("\n4. El vocabulario es el de la ISO 19011 / 9001")
-check("estados: planificada · en curso · cerrada", A.ESTADOS == ("planificada", "en_curso", "cerrada"))
+# CUATRO ESTADOS desde el 9-oct: entre terminar de mirar y resolver estaba el ENVÍO, el
+# acto que le pasa el trabajo al auditado, y no existía. Ver 8a.
+check("estados: planificada · en curso · enviada · cerrada",
+      A.ESTADOS == ("planificada", "en_curso", "enviada", "cerrada"))
 # LA GRAVEDAD NO SE OPINA (7-oct). Eran cuatro niveles y dos pedían GRADUAR: «NC menor»
 # y «NC mayor». Dos auditores gradúan distinto el mismo defecto, así que el indicador
 # quedaba a merced de quién miró. Ahora el auditor declara un hecho y la gravedad la
@@ -107,10 +115,13 @@ check("acciones: pendiente · corregida · verificada", A.ACCIONES == ("pendient
 check("las fechas las pone el SISTEMA: creación hoy, plazo en días hábiles",
       "(automáticas)" in HTM and "DIAS_PLAZO = 10" in SRC and "def _habiles(" in SRC
       and "_habiles(hoy, DIAS_PLAZO)" in SRC)
-check("...y el estado se DERIVA de los hallazgos, en la base",
-      "def estado_de(revisados: int, total: int)" in SRC and "def _recalcular(cur" in SRC
+# EL ESTADO SE SIGUE DERIVANDO, pero de más cosas: revisar todo ya no cierra —sólo
+# habilita el envío— y cerrar pasó a significar RESUELTA. Lo que se congela acá es que
+# nadie lo elige a mano; el detalle de los cuatro estados está en 8a.
+check("...y el estado se DERIVA, en la base y no en el navegador",
+      "def estado_de(revisados: int, total: int" in SRC and "def _recalcular(cur" in SRC
       and A.estado_de(0, 5) == "planificada" and A.estado_de(1, 5) == "en_curso"
-      and A.estado_de(5, 5) == "cerrada" and A.estado_de(6, 5) == "cerrada")
+      and A.estado_de(5, 5) == "en_curso" and A.estado_de(6, 5) == "en_curso")
 check("...el plazo cuenta hábiles: 10 desde un viernes caen dos viernes después",
       A._habiles(__import__("datetime").date(2026, 10, 2), 10) == __import__("datetime").date(2026, 10, 16))
 check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
@@ -585,6 +596,119 @@ check("el auditor ya no tiene botones de corregir ni de verificar",
       'data-acc="corregida"' not in JS and 'data-acc="verificada"' not in JS
       and "Qué salió de esta auditoría" in JS)
 
+print("\n8a. El flujo: ENVIAR es lo que le pasa el trabajo al auditado")
+# Hasta el 8-oct «cerrada» significaba «se revisó el último elemento», y el auditado veía
+# sus barras en cuanto el auditor guardaba CADA elemento. El usuario lo fijó: «al enviar,
+# recién ahí el cubicador auditado puede accionar sobre la auditoría».
+check("cuatro estados, y revisar todo YA NO cierra",
+      A.ESTADOS == ("planificada", "en_curso", "enviada", "cerrada")
+      and A.estado_de(5, 5) == "en_curso"
+      and A.estado_de(5, 5, True, 0, 3) == "enviada"
+      and A.estado_de(5, 5, True, 3, 0) == "cerrada")
+check("...y el cierre a mano manda sobre todo lo demás",
+      A.estado_de(2, 5, False, 0, 0, True) == "cerrada")
+check("no se envía a medio revisar, y lo decidió el usuario",
+      "una auditoría se envía " in SRC and "Faltan %d de %d elementos" in SRC)
+check("...ni dos veces", "Esta auditoría ya fue enviada." in SRC)
+check("enviar, reabrir y cerrar son del auditor, en un solo lugar",
+      "def _solo_el_auditor(" in SRC
+      and SRC.count("_solo_el_auditor(cur, auditoria_id, user)") >= 3)
+check("el plazo se ajusta AL ENVIAR, que es cuando empieza a correr",
+      "class EnvioBody" in SRC and "audEnvioPlazo" in JS)
+check("un aviso por persona al enviar, no uno por elemento mientras se revisa",
+      "A QUIÉN LE TOCA QUÉ, para avisar UNA vez" in SRC)
+check("antes del envío el auditado no puede accionar, y se valida en el BACKEND",
+      "def _solo_si_enviada(" in SRC and SRC.count("_solo_si_enviada(cur, auditoria_id)") >= 3)
+check("...y su lista sólo trae auditorías enviadas", "AND a.enviada_el IS NOT NULL" in SRC)
+check("reabrir deshace el envío, con motivo, y queda registrado",
+      '@router.post("/auditorias/{auditoria_id}/reabrir")' in SRC
+      and "auditoria_reabierta" in SRC)
+check("el plazo no vence antes del envío: nadie podía corregir todavía",
+      "a.estado !== 'cerrada' && a.enviada && a.plazo" in JS)
+
+print("\n8b. La comprobación: el sistema va a mirar la barra a aSa")
+# «Debería generar una actualización o una búsqueda de esas barras (para no lanzar
+# actualización total), cosa de que traiga la data al día» — y no hizo falta construirla:
+# `_items_de` ya pide UN código en vivo, que es como el auditor abre un elemento.
+check("se pide UN código, en vivo, no una sincronización entera",
+      "def _barra_hoy(" in SRC and "_items_de(cc)" in SRC)
+check("la comparación es PURA y se prueba sin base ni red", "def comparar(" in SRC)
+check("ESPECÍFICA cuando el auditor corrigió los números",
+      A.comparar({"cant": 103}, {"cant": 100}, {"cant": 103})[0] == "ok"
+      and A.comparar({"cant": 103}, {}, {"cant": 100})[0] == "sigue_igual")
+check("...campo por campo, y un lado que la barra ya no tiene NO calza",
+      A.comparar({"lados": {"A": 1200}}, {}, {"lados": {"A": 1200.4}})[0] == "ok"
+      and A.comparar({"lados": {"B": 50}}, {}, {"lados": {"A": 1200}})[0] == "sigue_igual")
+check("DÉBIL cuando sólo hay un comentario: dice si la barra cambió",
+      A.comparar({}, {"cant": 100}, {"cant": 103})[0] == "ok"
+      and A.comparar({}, {"cant": 100}, {"cant": 100})[0] == "sigue_igual")
+check("TRES resultados: una caída de aSa no es una corrección no hecha",
+      A.comparar({}, {}, {"cant": 1})[0] == "no_aplica"
+      and A.comparar({"cant": 1}, {}, None)[0] == "no_aplica"
+      and "reintentable" in SRC)
+check("el ANTES se guarda al auditar y NO se pisa al volver a guardar",
+      "dato_original = COALESCE(auditoria_items.dato_original" in SRC)
+check("decir «lo rehice en otro código» obliga a decir cuál, y con qué marca",
+      "item_nuevo" in SRC and "audResCc" in JS and "audResItem" in JS)
+check("el reloj comprueba después del sync y con tope de llamadas",
+      "_auditorias_al_dia()" in SCHED and "TOPE_COMPROBAR" in SCHED)
+check("y se puede pedir a mano, sin esperar la corrida",
+      '@router.post("/auditorias/{auditoria_id}/comprobar")' in SRC
+      and "function comprobarEnAsa(" in JS)
+
+print("\n8c. El cierre se deriva, con una válvula a mano")
+check("cierra cuando no queda ninguna barra abierta, no cuando se revisó todo",
+      "COUNT(*) FILTER (WHERE i.desestimado OR i.verificado = 'ok')" in SRC)
+check("declararla corregida NO alcanza para cerrar",
+      "Declararla corregida NO alcanza" in SRC)
+check("hay cierre a mano con motivo, para lo que el sistema no puede comprobar",
+      '@router.post("/auditorias/{auditoria_id}/cerrar")' in SRC
+      and "Di por qué se cierra sin resolver" in SRC)
+check("las auditorías ya cerradas con la regla vieja no se reabren",
+      "se revisaron todos los " in MIG138)
+
+print("\n8d. El auditado puede DESCARTAR un hallazgo, y el auditor replicar")
+# «El cubicador auditado podría resolver que la observación del auditor no es la correcta,
+# pero debe tener un botón que le permita marcar como lista la barra donde desestime la
+# corrección». Con motivo obligatorio: es todo el valor de la trazabilidad que se busca.
+check("se puede descartar, con motivo obligatorio",
+      '/desestimar")' in SRC and "Di por qué no corresponde" in SRC)
+check("...y entonces la barra deja de estar abierta, pero NO desaparece",
+      '"desestimadas"' in SRC and "barras_desestimadas" in SRC)
+check("...porque si saliera del conteo, el auditado mejoraría su propio indicador",
+      "mejorar su propio indicador" in SRC)
+check("el warning se da al ELEGIR descartar, no de entrada",
+      "no se consideró lo auditado" in JS)
+check("el auditor NO valida los descartes: tiene derecho a réplica",
+      '/objecion")' in SRC and "derecho a réplica, no deber de validar" in SRC)
+check("...y las dos posturas quedan escritas", "El motivo del descarte no se borra" in SRC)
+check("si el auditor objeta, la barra vuelve a contar como abierta",
+      "SET desestimado = FALSE, objecion = %s" in SRC)
+
+print("\n8e. Lo que ya se está fabricando no espera el flujo")
+check("hay un aviso por CÓDIGO que entró a fabricación",
+      "def avisar_fabricacion(" in SRC and 'ESTADO_FABRICANDO = "Processed"' in SRC)
+check("...le llega al auditor Y a quien cubicó, sin esperar el envío",
+      "para que apure la auditoría" in SRC or "para que apure" in SRC)
+check("...una vez por código, no todos los días",
+      "aviso_fabrica_el" in SRC and "ix_aud_elem_cc_aviso" in MIG139)
+check("...y va por elemento, porque una auditoría tiene diez códigos",
+      "DROP COLUMN IF EXISTS aviso_fabrica_el" in MIG139)
+check("se ve en la fila de la barra del auditado", '"fabricando"' in SRC and "EN FÁBRICA" in JS)
+
+print("\n8f. El auditor corrige los números donde los ve")
+check("las celdas de una barra con hallazgo son editables",
+      "function celdaEd(" in JS and "td.audedc" in HTM)
+check("...sólo las marcadas con hallazgo", "v.conforme !== false" in JS)
+check("lo pedido viaja estructurado, no como texto",
+      "function _esperadoDe(" in JS and "esperado: Optional[dict]" in SRC)
+check("...y en las unidades de aSa, no en las de la pantalla",
+      "function _aMm(" in JS and "function _espAcm(" in JS)
+check("el ANTES de la barra viaja con la revisión",
+      "function _originalDe(" in JS and "original: Optional[dict]" in SRC)
+check("en ArmaHub la comprobación contra aSa no aplica, y se dice",
+      "hoy sólo " in SRC and 'origen != "asa"' in SRC)
+
 print("\n7c2. El largo que se audita es la SUMA DE LOS PARCIALES")
 # Lo cazó el cubicador que hizo la primera auditoría: el formulario mostraba 2.576 donde su
 # cubicación dice 2.640. aSa manda dos largos y no son lo mismo — el teórico es la suma de
@@ -772,10 +896,13 @@ check("...y el detalle de lo que salió mal, con su hallazgo",
       "Elementos con hallazgo:" in SRC and "_NOMBRE.get(e.get(\"hallazgo\")" in SRC)
 check("...o dice que no hubo nada, en vez de dejar un hueco",
       "No se detectaron no conformidades." in SRC)
+# Lo dispara el CIERRE y una sola vez. Los sitios donde puede cerrarse son tres desde el
+# 9-oct: las dos puertas de revisión de siempre y el cierre a mano, que es la válvula para
+# lo que el sistema no puede comprobar.
 check("lo dispara el cierre, una sola vez: revisar de nuevo algo ya cerrado no reenvía",
       "return estado == \"cerrada\" and antes != \"cerrada\"" in SRC
-      and SRC.count("cerro = _recalcular(cur, auditoria_id)") == 2
-      and SRC.count('aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)') == 2)
+      and SRC.count("cerro = _recalcular(cur, auditoria_id)") == 3
+      and SRC.count('aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)') == 3)
 
 print("\n12. El correo de la auditoría nueva: a quién y con qué enlace")
 # «Quiero que se envíe un correo a los cubicadores cuando se asigne una auditoría. Debe

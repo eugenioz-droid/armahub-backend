@@ -60,7 +60,11 @@ AREA_AUDITA = "Cubicaciones"
 # auditor. La pertenencia al area la decide la base, no el rol.
 ROLES_AUDITAN = ("admin", "admin_calidad", "miembro", "externo")
 # Estados de la auditoría (los usa el front; se congelan acá para que haya UNA lista).
-ESTADOS = ("planificada", "en_curso", "cerrada")
+# CUATRO, desde el 9-oct. «cerrada» significaba «se revisó el último elemento», y eso no es
+# cerrar: es terminar de mirar. Ahora cerrar es RESOLVER, y entre mirar y resolver está el
+# ENVÍO, que es el acto que le pasa la pelota al auditado. Lo fijó el usuario: «al enviar,
+# recién ahí el cubicador auditado puede accionar sobre la auditoría».
+ESTADOS = ("planificada", "en_curso", "enviada", "cerrada")
 # Hallazgos posibles sobre un elemento, en el idioma de la ISO.
 # LO QUE EL AUDITOR DECLARA, y nada más que eso (7-oct). Antes eran cuatro y dos de ellas
 # —«NC menor» y «NC mayor»— le pedían GRADUAR: dos auditores gradúan distinto el mismo
@@ -175,12 +179,29 @@ def _puede_ver(user):
     _puede_auditar(user)
 
 
-def estado_de(revisados: int, total: int) -> str:
-    """El estado NO se elige: se deriva. Sin revisar es planificada; algo revisado, en
-    curso; todo revisado, cerrada. Función pura para poder probarla."""
+def estado_de(revisados: int, total: int, enviada: bool = False,
+              resueltas: int = 0, abiertas: int = 0, a_mano: bool = False) -> str:
+    """El estado NO se elige: se deriva. Función pura para poder probarla.
+
+      planificada  sin revisar
+      en_curso     algo revisado, todavía NO enviada → sólo el auditor la ve
+      enviada      el auditor la terminó y la mandó; quedan barras por resolver
+      cerrada      enviada y sin barras abiertas, o cerrada a mano
+
+    REVISAR TODO YA NO CIERRA. Antes sí, y era el error de fondo: el auditor terminaba de
+    mirar y la auditoría quedaba «cerrada» con todos sus hallazgos sin tocar. Terminar de
+    mirar sólo habilita el botón de enviar.
+
+    `abiertas` son las barras con hallazgo que no están ni comprobadas ni desestimadas. Que
+    sean cero y esté enviada es el cierre normal; `a_mano` es la válvula para lo que el
+    sistema no puede comprobar."""
+    if a_mano:
+        return "cerrada"
+    if enviada:
+        return "cerrada" if abiertas <= 0 else "enviada"
     if revisados <= 0:
         return "planificada"
-    return "cerrada" if revisados >= total else "en_curso"
+    return "en_curso"
 
 
 @router.get("/auditorias/obras")
@@ -1015,7 +1036,24 @@ def listar(id_proyecto: str = "", auditor: str = "", estado: str = "", limite: i
                            COUNT(e.id) FILTER (WHERE e.hallazgo = 'observacion') AS observacion,
                            COUNT(e.id) FILTER (WHERE e.hallazgo = 'hallazgo')    AS hallazgo,
                            COUNT(e.id) FILTER (WHERE e.accion_estado = 'pendiente') AS acciones_abiertas,
-                           COALESCE(SUM(e.kg), 0)
+                           COALESCE(SUM(e.kg), 0),
+                           a.enviada_el, a.enviada_por, a.cerrada_a_mano, a.cerrada_motivo,
+                           -- EL AVANCE DE LA RESOLUCIÓN, para verlo sin entrar: de las
+                           -- barras con hallazgo, cuántas quedaron resueltas y cuántas se
+                           -- desestimaron. Se cuenta con sub-consultas y no con más
+                           -- FILTER sobre el JOIN de elementos, porque el grano de esta
+                           -- consulta es el ELEMENTO y contar barras ahí las multiplicaría.
+                           (SELECT COUNT(*) FROM auditoria_items i
+                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
+                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE),
+                           (SELECT COUNT(*) FROM auditoria_items i
+                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
+                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                              AND (i.desestimado OR i.verificado = 'ok')),
+                           (SELECT COUNT(*) FROM auditoria_items i
+                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
+                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                              AND i.desestimado)
                       FROM auditorias a
                       LEFT JOIN auditoria_elementos e ON e.auditoria_id = a.id
                      WHERE {' AND '.join(where)}
@@ -1035,7 +1073,18 @@ def _fila_lista(r):
             "cierre": r[14].isoformat() if r[14] else None,
             "semilla": r[15], "origen": r[16], "ccs": r[17] or [], "revisados": r[18],
             "resultado": {"conforme": r[19], "observacion": r[20], "hallazgo": r[21]},
-            "acciones_abiertas": r[22], "kg": float(r[23] or 0)}
+            "acciones_abiertas": r[22], "kg": float(r[23] or 0),
+            # EL ENVÍO. Mientras no esté, la auditoría es un borrador: el auditado no la ve
+            # y no puede accionar sobre ella. Las columnas 24-30 son las MISMAS en la lista
+            # y en el detalle, a propósito: las dos consultas pasan por acá y si cada una
+            # pusiera lo suyo en otra posición, esto leería un campo por otro.
+            "enviada": r[24].isoformat() if r[24] else None,
+            "enviada_por": r[25],
+            "cerrada_a_mano": bool(r[26]),
+            "cerrada_motivo": r[27],
+            "barras_malas": r[28] or 0,
+            "barras_resueltas": r[29] or 0,
+            "barras_desestimadas": r[30] or 0}
 
 
 @router.get("/auditorias/indicadores")
@@ -1220,7 +1269,23 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'observacion'),
                           COUNT(e.id) FILTER (WHERE e.hallazgo = 'hallazgo'),
                           COUNT(e.id) FILTER (WHERE e.accion_estado = 'pendiente'),
-                          COALESCE(SUM(e.kg), 0), a.notas, a.creada_por
+                          COALESCE(SUM(e.kg), 0),
+                          -- 24-30: lo mismo que la lista y en el mismo orden, porque las
+                          -- dos filas las arma `_fila_lista`. Lo propio del detalle va
+                          -- DESPUÉS, no en el medio.
+                          a.enviada_el, a.enviada_por, a.cerrada_a_mano, a.cerrada_motivo,
+                          (SELECT COUNT(*) FROM auditoria_items i
+                            JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
+                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE),
+                          (SELECT COUNT(*) FROM auditoria_items i
+                            JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
+                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                             AND (i.desestimado OR i.verificado = 'ok')),
+                          (SELECT COUNT(*) FROM auditoria_items i
+                            JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
+                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                             AND i.desestimado),
+                          a.notas, a.creada_por, a.cerrada_por
                      FROM auditorias a
                      LEFT JOIN auditoria_elementos e ON e.auditoria_id = a.id
                     WHERE a.id = %s GROUP BY a.id""", (auditoria_id,))
@@ -1228,8 +1293,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             if not r:
                 raise HTTPException(status_code=404, detail="Auditoría no encontrada.")
             aud = _fila_lista(r)
-            aud["notas"] = r[24]
-            aud["creada_por"] = r[25]
+            aud["notas"] = r[31]
+            aud["creada_por"] = r[32]
+            aud["cerrada_por"] = r[33]
             cur.execute(
                 """SELECT e.id, e.sector, e.piso, e.ciclo, e.eje, e.nombre, e.estructura, e.barras,
                           e.kg, e.cubicado_por, e.hallazgo, e.texto, e.causa, e.revisado_por,
@@ -1266,6 +1332,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "estado_cc": e[26],
                  "despacho_cc": e[27].isoformat() if e[27] else None,
                  "despachado": (e[26] or "") == ESTADO_DESPACHADO,
+                 # EN FABRICACIÓN: lo urgente. Un código Processed con una barra mal es el
+                 # único caso del módulo que no puede esperar al flujo.
+                 "fabricando": (e[26] or "") == ESTADO_FABRICANDO,
                  # La gravedad del hallazgo, calculada: no se le pregunta a nadie.
                  "gravedad": gravedad_de(e[10], e[26]),
                  "gravedad_txt": GRAVEDAD.get(gravedad_de(e[10], e[26]) or "", ""),
@@ -1279,17 +1348,29 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # no tienen nada que contar.
             cur.execute(
                 """SELECT i.elemento_id, i.ref, i.marca, i.observacion, i.corregido,
-                          i.causa, i.causa_texto, i.esperado, i.verificado
+                          i.causa, i.causa_texto, i.esperado, i.verificado,
+                          i.desestimado, i.desestimado_motivo, i.desestimado_por,
+                          i.tipo_correccion, i.cc_nuevo, i.item_nuevo, i.nota_correccion,
+                          i.id, i.objecion
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE
                     ORDER BY i.elemento_id, i.ref""", (auditoria_id,))
             por_elemento = {}
-            for eid, ref, marca, obs, corr, ca, ca_txt, esp, ver in cur.fetchall():
+            for fila_b in cur.fetchall():
+                (eid, ref, marca, obs, corr, ca, ca_txt, esp, ver,
+                 des, des_mot, des_por, tipo_c, cc_n, item_n, nota_c,
+                 item_id_b, objec) = fila_b
                 por_elemento.setdefault(eid, []).append(
                     {"ref": ref, "marca": marca, "observacion": obs,
                      "corregido": bool(corr), "causa": ca, "causa_texto": ca_txt,
-                     "esperado": esp or {}, "verificado": ver})
+                     "esperado": esp or {}, "verificado": ver,
+                     "desestimado": bool(des), "desestimado_motivo": des_mot,
+                     "desestimado_por": des_por, "tipo_correccion": tipo_c,
+                     "cc_nuevo": cc_n, "item_nuevo": item_n, "nota_correccion": nota_c,
+                     # El id de la barra viaja para que el auditor pueda objetar su
+                     # descarte desde la tabla de lo que salió de la auditoría.
+                     "item_id": item_id_b, "objecion": objec})
             for e in aud["elementos"]:
                 e["barras_malas"] = por_elemento.get(e["id"], [])
     # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
@@ -1784,10 +1865,16 @@ def _accion_de_items(cur, elemento_id: int) -> Optional[str]:
       verificada  el SISTEMA comprobó contra aSa que ya no están mal. Nadie la pone a
                   mano: antes la ponía el auditor y el usuario lo sacó, porque corregir
                   es responsabilidad del auditado y comprobar es del sistema.
+
+    UNA BARRA DESESTIMADA CUENTA COMO RESUELTA, no como corregida: el auditado dijo con su
+    motivo que lo observado no corresponde. No traba el elemento —si trabara, el desestimar
+    no serviría de nada— pero se cuenta aparte en el informe y en los indicadores, para que
+    nadie pueda mejorar su propio número en silencio.
     """
     cur.execute(
-        """SELECT COUNT(*), COUNT(*) FILTER (WHERE corregido),
-                  COUNT(*) FILTER (WHERE verificado = 'ok')
+        """SELECT COUNT(*),
+                  COUNT(*) FILTER (WHERE corregido OR desestimado),
+                  COUNT(*) FILTER (WHERE verificado = 'ok' OR desestimado)
              FROM auditoria_items WHERE elemento_id = %s AND conforme IS FALSE""",
         (elemento_id,))
     malas, corregidas, verificadas = cur.fetchone()
@@ -1805,14 +1892,28 @@ def _recalcular(cur, auditoria_id: int) -> bool:
     del resultado una sola vez. Se mira el estado anterior en vez de confiar en el nuevo:
     revisar de nuevo el último elemento de una auditoría ya cerrada la deja cerrada igual,
     y no es un cierre."""
-    cur.execute("SELECT estado FROM auditorias WHERE id = %s", (auditoria_id,))
+    cur.execute("SELECT estado, enviada_el IS NOT NULL, cerrada_a_mano FROM auditorias WHERE id = %s",
+                (auditoria_id,))
     fila = cur.fetchone()
     antes = fila[0] if fila else None
+    enviada, a_mano = (bool(fila[1]), bool(fila[2])) if fila else (False, False)
     cur.execute(
         """SELECT COUNT(*), COUNT(*) FILTER (WHERE hallazgo IS NOT NULL)
              FROM auditoria_elementos WHERE auditoria_id = %s""", (auditoria_id,))
     total, revisados = cur.fetchone()
-    estado = estado_de(revisados, total)
+    # LO QUE FALTA RESOLVER, barra por barra. Una barra está resuelta de dos maneras: el
+    # sistema comprobó contra aSa que ya no está mal, o el auditado la desestimó con su
+    # motivo. Declararla corregida NO alcanza: eso es un dicho, y el cierre tiene que
+    # apoyarse en algo comprobado o en alguien que firmó por qué no corresponde.
+    cur.execute(
+        """SELECT COUNT(*) FILTER (WHERE i.desestimado OR i.verificado = 'ok'),
+                  COUNT(*) FILTER (WHERE NOT i.desestimado
+                                     AND COALESCE(i.verificado, '') <> 'ok')
+             FROM auditoria_items i
+             JOIN auditoria_elementos e ON e.id = i.elemento_id
+            WHERE e.auditoria_id = %s AND i.conforme IS FALSE""", (auditoria_id,))
+    resueltas, abiertas = cur.fetchone()
+    estado = estado_de(revisados, total, enviada, resueltas or 0, abiertas or 0, a_mano)
     cur.execute(
         """UPDATE auditorias
               SET estado = %s,
@@ -1820,6 +1921,450 @@ def _recalcular(cur, auditoria_id: int) -> bool:
                   cierre_fecha = CASE WHEN %s = 'cerrada' THEN COALESCE(cierre_fecha, CURRENT_DATE) ELSE NULL END
             WHERE id = %s""", (estado, revisados, estado, auditoria_id))
     return estado == "cerrada" and antes != "cerrada"
+
+
+class EnvioBody(BaseModel):
+    """El envío. El plazo se puede ajustar acá y no antes: es el momento en que empieza a
+    correr de verdad, y hasta que no se vio el resultado no se sabe si 15 días sobran."""
+    plazo: Optional[str] = None     # YYYY-MM-DD
+
+
+def _solo_el_auditor(cur, auditoria_id: int, user) -> tuple:
+    """La auditoría, comprobando que quien pregunta sea su auditor o administración.
+
+    Enviar, reabrir y cerrar a mano son del auditor: son los tres actos que cambian de
+    manos el trabajo, y si los pudiera hacer cualquiera el registro no diría nada."""
+    cur.execute(
+        """SELECT codigo, obra, estado, auditor, enviada_el, plazo_fecha, cerrada_a_mano
+             FROM auditorias WHERE id = %s""", (auditoria_id,))
+    fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Auditoría no encontrada.")
+    if user.get("email", "?") != fila[3] and user.get("role") not in ROLES_ADMINISTRAN:
+        raise HTTPException(status_code=403, detail="Enviar y cerrar son del auditor de esta auditoría.")
+    return fila
+
+
+@router.post("/auditorias/{auditoria_id}/enviar")
+def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(get_current_user)):
+    """EL AUDITOR ENVÍA LA AUDITORÍA. Es el acto que le pasa la pelota al auditado.
+
+    Antes de esto no existe para nadie más que el auditor: sus barras no aparecen en el
+    panel del cubicador y no se puede accionar sobre ellas. Lo fijó el usuario: «al enviar,
+    recién ahí el cubicador auditado puede accionar sobre la auditoría».
+
+    NO SE PUEDE ENVIAR A MEDIO REVISAR, y también lo decidió él. La razón es que el
+    auditado arrancaría a corregir sobre información incompleta y el plazo correría sobre
+    una foto que todavía va a cambiar. Si hay que adelantar algo urgente, para eso está el
+    aviso de fabricación —que sale solo y no espera el envío—, no una auditoría a medias."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            codigo, obra, estado, _auditor, enviada_el, plazo, _a_mano = \
+                _solo_el_auditor(cur, auditoria_id, user)
+            if enviada_el:
+                raise HTTPException(status_code=400, detail="Esta auditoría ya fue enviada.")
+            cur.execute(
+                """SELECT COUNT(*), COUNT(*) FILTER (WHERE hallazgo IS NOT NULL)
+                     FROM auditoria_elementos WHERE auditoria_id = %s""", (auditoria_id,))
+            total, revisados = cur.fetchone()
+            if not total:
+                raise HTTPException(status_code=400, detail="Esta auditoría no tiene elementos.")
+            if revisados < total:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Faltan %d de %d elementos por revisar: una auditoría se envía "
+                           "terminada." % (total - revisados, total))
+            if body.plazo:
+                cur.execute("UPDATE auditorias SET plazo_fecha = %s WHERE id = %s",
+                            (body.plazo, auditoria_id))
+            cur.execute(
+                """UPDATE auditorias SET enviada_el = now(), enviada_por = %s WHERE id = %s""",
+                (email, auditoria_id))
+            _recalcular(cur, auditoria_id)
+            # A QUIÉN LE TOCA QUÉ, para avisar UNA vez a cada uno. Antes salía un aviso por
+            # cada elemento no conforme, a medida que el auditor revisaba: siete avisos
+            # sueltos de una auditoría sin terminar es ruido, y le adelantaba el resultado.
+            cur.execute(
+                """SELECT TRIM(e.cubicado_por), COUNT(*)
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+                      AND COALESCE(TRIM(e.cubicado_por), '') <> ''
+                    GROUP BY 1""", (auditoria_id,))
+            porcub = cur.fetchall()
+            cur.execute("SELECT plazo_fecha FROM auditorias WHERE id = %s", (auditoria_id,))
+            plazo = cur.fetchone()[0]
+            audit(email, "auditoria_enviada",
+                  "%s · %s: %d elementos, %d persona(s) con barras por corregir"
+                  % (codigo, obra, total, len(porcub)), "auditoria", str(auditoria_id))
+    fecha = plazo.strftime("%d-%m") if plazo else "sin plazo"
+    for quien, n in porcub:
+        _avisar(quien, "Auditoría %s · %s: %d barra(s) tuyas por corregir. Plazo %s."
+                       % (codigo, obra, n, fecha))
+    return detalle(auditoria_id, user)
+
+
+class ReaperturaBody(BaseModel):
+    motivo: str
+
+
+@router.post("/auditorias/{auditoria_id}/reabrir")
+def reabrir(auditoria_id: int, body: ReaperturaBody, user=Depends(get_current_user)):
+    """DESHACE EL ENVÍO. La vuelve a en_curso y la saca del panel del auditado.
+
+    Hace falta porque el auditor puede descubrir que escribió algo mal recién después de
+    enviar. Pero no es gratis: lo que el auditado ya declaró o desestimó se conserva —no es
+    nuestro para borrarlo— y el motivo es obligatorio, porque reabrir una auditoría enviada
+    es algo que a su vez hay que poder auditar."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    motivo = (body.motivo or "").strip()
+    if len(motivo) < 10:
+        raise HTTPException(status_code=400,
+                            detail="Di por qué la reabres: queda en el registro de la auditoría.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            codigo, _obra, _estado, _auditor, enviada_el, _plazo, _a_mano = \
+                _solo_el_auditor(cur, auditoria_id, user)
+            if not enviada_el:
+                raise HTTPException(status_code=400, detail="Esta auditoría no está enviada.")
+            cur.execute(
+                """UPDATE auditorias
+                      SET enviada_el = NULL, enviada_por = NULL, cerrada_a_mano = FALSE,
+                          cerrada_motivo = NULL, cerrada_por = NULL, cierre_fecha = NULL
+                    WHERE id = %s""", (auditoria_id,))
+            _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_reabierta", "%s: %s" % (codigo, motivo),
+                  "auditoria", str(auditoria_id))
+    return detalle(auditoria_id, user)
+
+
+class CierreBody(BaseModel):
+    motivo: str
+
+
+@router.post("/auditorias/{auditoria_id}/cerrar")
+def cerrar_a_mano(auditoria_id: int, body: CierreBody, request: Request,
+                  user=Depends(get_current_user)):
+    """CIERRE A MANO, con motivo. La válvula para lo que el sistema NO puede comprobar.
+
+    El cierre normal es derivado: la auditoría se cierra sola cuando no queda ninguna barra
+    abierta. Pero hay casos en que eso nunca va a pasar y no es culpa de nadie —la barra ya
+    no existe en aSa, el código se anuló, la obra terminó—, y sin esta puerta la auditoría
+    queda abierta para siempre. El motivo es obligatorio: un cierre sin explicación es
+    justamente lo que hace que después nadie confíe en el indicador."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    motivo = (body.motivo or "").strip()
+    if len(motivo) < 10:
+        raise HTTPException(status_code=400,
+                            detail="Di por qué se cierra sin resolver: queda en el informe.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            codigo, _obra, _estado, _auditor, enviada_el, _plazo, a_mano = \
+                _solo_el_auditor(cur, auditoria_id, user)
+            if not enviada_el:
+                raise HTTPException(status_code=400,
+                                    detail="Primero hay que enviarla: no se cierra lo que nadie vio.")
+            if a_mano:
+                raise HTTPException(status_code=400, detail="Esta auditoría ya está cerrada a mano.")
+            cur.execute(
+                """UPDATE auditorias SET cerrada_a_mano = TRUE, cerrada_motivo = %s,
+                          cerrada_por = %s WHERE id = %s""", (motivo, email, auditoria_id))
+            cerro = _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_cerrada_a_mano", "%s: %s" % (codigo, motivo),
+                  "auditoria", str(auditoria_id))
+    aud = detalle(auditoria_id, user)
+    if cerro:
+        aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)
+    return aud
+
+
+# ---------------------------------------------------------------------------
+# CUANDO EL CÓDIGO YA SE ESTÁ FABRICANDO
+# ---------------------------------------------------------------------------
+# El estado de aSa que dice «esto ya entró a producción». Un código Processed con una barra
+# mal sin corregir es el único caso urgente de todo el módulo: la barra se está fabricando
+# ahora y cada hora que pasa es material cortado mal.
+ESTADO_FABRICANDO = "Processed"
+
+
+def avisar_fabricacion(cur) -> list:
+    """Avisa de las barras mal que ya entraron a fabricación. Devuelve lo avisado.
+
+    LA ÚNICA EXCEPCIÓN AL ENVÍO, y la pidió el usuario: «sería deseable indicar si la
+    figura está como procesada, avisar al auditor para que sepa que debe apurarse y avisar
+    ojalá al cubicador para arreglar, aunque no se haya terminado la auditoría».
+
+    Tiene toda la razón en que ésta es la que vale: el orden del flujo existe para que
+    nadie trabaje sobre información a medias, pero una barra que ya está en la máquina no
+    puede esperar a que el auditor termine de revisar los otros once elementos. Por eso el
+    aviso lleva el código y la marca: con eso se va a arreglar directo a aSa, sin necesitar
+    que la auditoría aparezca en el panel.
+
+    SE AVISA UNA VEZ POR CÓDIGO. Un aviso diario que dice lo mismo se deja de leer, y
+    entonces el día que importa tampoco se lee."""
+    cur.execute(
+        """SELECT e.id, e.cc, a.codigo, a.obra, a.auditor, e.cubicado_por, e.nombre,
+                  COUNT(*) FILTER (WHERE i.conforme IS FALSE
+                                     AND NOT i.desestimado
+                                     AND COALESCE(i.verificado,'') <> 'ok'),
+                  STRING_AGG(DISTINCT i.ref, ', ') FILTER (WHERE i.conforme IS FALSE
+                                     AND NOT i.desestimado
+                                     AND COALESCE(i.verificado,'') <> 'ok')
+             FROM auditoria_elementos e
+             JOIN auditorias a ON a.id = e.auditoria_id
+             JOIN auditoria_items i ON i.elemento_id = e.id
+             JOIN asa_pedidos p ON p.control_code = e.cc
+            WHERE e.aviso_fabrica_el IS NULL
+              AND COALESCE(p.estado, '') = %s
+              AND e.cc IS NOT NULL
+            GROUP BY e.id, e.cc, a.codigo, a.obra, a.auditor, e.cubicado_por, e.nombre
+           HAVING COUNT(*) FILTER (WHERE i.conforme IS FALSE
+                                     AND NOT i.desestimado
+                                     AND COALESCE(i.verificado,'') <> 'ok') > 0""",
+        (ESTADO_FABRICANDO,))
+    filas = cur.fetchall()
+    avisados = []
+    for eid, cc, codigo, obra, auditor, cubico, nombre, n, refs in filas:
+        texto = ("EN FABRICACIÓN con %d barra(s) sin corregir: código %s · %s (%s). "
+                 "Arreglar en aSa ahora." % (n, cc, nombre or "", refs or ""))
+        # Al AUDITOR, para que apure la auditoría; a QUIEN CUBICÓ, para que lo arregle.
+        # Los dos reciben lo mismo porque el hecho es uno.
+        for quien in (auditor, cubico):
+            if quien:
+                _avisar(quien, "Auditoría %s · %s: %s" % (codigo, obra, texto))
+        cur.execute("UPDATE auditoria_elementos SET aviso_fabrica_el = now() WHERE id = %s",
+                    (eid,))
+        avisados.append({"elemento_id": eid, "cc": cc, "codigo": codigo, "barras": n,
+                         "refs": refs, "auditor": auditor, "cubicado_por": cubico})
+    return avisados
+
+
+@router.post("/auditorias/avisos-fabricacion")
+def avisos_fabricacion(user=Depends(get_current_user)):
+    """Dispara el aviso de fabricación a pedido. Lo mismo que hace el reloj, por si hace
+    falta antes de la corrida: lo urgente no se espera."""
+    _puede_auditar(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            avisados = avisar_fabricacion(cur)
+    return {"avisados": avisados, "n": len(avisados)}
+
+
+# ---------------------------------------------------------------------------
+# LA COMPROBACIÓN: EL SISTEMA VA A MIRAR LA BARRA
+# ---------------------------------------------------------------------------
+# Comprobar que algo se corrigió no es trabajo de una persona. El auditado DECLARA que
+# corrigió —eso es un dicho— y acá se va a mirar la barra a aSa, en vivo, para ver si es
+# cierto. Son dos campos distintos en la base justamente para no confundirlos.
+#
+# NO HACE FALTA SINCRONIZAR NADA. `_items_de(cc)` le pide a aSa UN código de control
+# (`CtrlCode eq '...'`) y la respuesta es del momento, no de la última corrida nocturna. Es
+# la misma puerta con la que el auditor abre un elemento, así que comprobar una barra
+# cuesta una llamada por código y trae la data al día. Lo pidió así el usuario: «debería
+# generar una actualización o una búsqueda de esas barras (para no lanzar actualización
+# total), cosa de que traiga la data al día y no la data de la mañana anterior».
+#
+# DOS NIVELES DE COMPROBACIÓN, y los dos los definió el usuario:
+#
+#   ESPECÍFICA — el auditor corrigió los números en el formulario (diámetro, lados,
+#   cantidad, figura). Entonces hay un valor esperado y se compara campo por campo: la
+#   barra está corregida si TODOS los campos que el auditor cambió coinciden ahora.
+#
+#   DÉBIL — el auditor sólo dejó un comentario. No hay con qué comparar, pero sí está la
+#   foto de cómo estaba la barra al auditarla, así que se puede decir si CAMBIÓ o si sigue
+#   idéntica. Es lo único honesto que se puede afirmar ahí, y es lo que el usuario pidió:
+#   «puede ser que verifique si existió algún tipo de cambio o no, aunque no haya datos
+#   para corroborar».
+#
+# TRES RESULTADOS, no dos: `ok`, `sigue_igual` y `no_aplica` (no se pudo mirar). Meter el
+# tercero dentro de `sigue_igual` haría que una caída de aSa se vea igual que una
+# corrección no hecha, y el auditado cargaría con un problema de red.
+
+# Lo que se compara, y con qué tolerancia. Las medidas de aSa vienen en mm con decimales;
+# 1 mm es menos que cualquier error de cubicación real y más que cualquier ruido de
+# redondeo. El diámetro y la cantidad son exactos: no hay media barra ni medio milímetro
+# de φ.
+TOLERANCIA_MM = 1.0
+CAMPOS_COMPARABLES = ("diam", "cant", "largo", "figura", "lados")
+
+
+def _igual(esperado, real, campo: str) -> bool:
+    """Si el valor real ya es el que el auditor dijo que tenía que ser. Función pura."""
+    if esperado is None or esperado == "":
+        return True                      # el auditor no tocó este campo
+    if campo in ("figura",):
+        return str(esperado).strip().upper() == str(real or "").strip().upper()
+    if campo in ("diam", "cant"):
+        try:
+            return abs(float(esperado) - float(real or 0)) < 0.01
+        except (TypeError, ValueError):
+            return False
+    if campo == "lados":
+        # Un dict {A: 120, C: 45}: cada lado que el auditor corrigió, comparado con el
+        # que tiene la barra ahora. Un lado que la barra ya no tiene NO coincide.
+        if not isinstance(esperado, dict):
+            return False
+        for letra, valor in esperado.items():
+            if valor in (None, ""):
+                continue
+            actual = (real or {}).get(str(letra).upper())
+            if actual is None:
+                return False
+            try:
+                if abs(float(valor) - float(actual)) > TOLERANCIA_MM:
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
+    try:
+        return abs(float(esperado) - float(real or 0)) <= TOLERANCIA_MM
+    except (TypeError, ValueError):
+        return str(esperado).strip() == str(real or "").strip()
+
+
+def comparar(esperado: dict, original: dict, real: dict) -> tuple:
+    """El veredicto de UNA barra: (resultado, por qué). Función pura, sin base ni red.
+
+    `esperado` es lo que el auditor dijo que debía decir; `original`, cómo estaba cuando se
+    auditó; `real`, lo que aSa dice hoy. Se prueba sin tocar nada."""
+    if not real:
+        return "no_aplica", "La barra ya no está en ese código de control."
+    esperado = esperado or {}
+    pedidos = {k: v for k, v in esperado.items()
+               if k in CAMPOS_COMPARABLES and v not in (None, "")}
+    if pedidos:
+        malos = [k for k, v in pedidos.items() if not _igual(v, real.get(k), k)]
+        if not malos:
+            return "ok", "Coincide con lo que el auditor pidió: " + ", ".join(sorted(pedidos))
+        return "sigue_igual", "Todavía no coincide en: " + ", ".join(sorted(malos))
+    # SIN VALOR ESPERADO: lo único que se puede decir es si cambió.
+    if not original:
+        return "no_aplica", ("Se auditó sin registrar cómo estaba la barra ni qué debía "
+                             "decir, así que no hay con qué comparar.")
+    campos = [c for c in CAMPOS_COMPARABLES if c in original or c in real]
+    distintos = [c for c in campos if not _igual(original.get(c), real.get(c), c)]
+    if distintos:
+        return "ok", "La barra cambió en: " + ", ".join(sorted(distintos))
+    return "sigue_igual", "La barra está idéntica a cuando se auditó."
+
+
+def _barra_hoy(cc: str, marca: str) -> Optional[dict]:
+    """La barra que aSa tiene HOY en ese código, buscada por su marca.
+
+    La marca puede repetirse dentro de un código —de ahí los `#2` de `refs_de_barras`— así
+    que se devuelve la primera: si hay dos con la misma marca, las dos tendrían que estar
+    corregidas para que la cubicación esté bien, y comprobar una basta para saber que se
+    trabajó. Devuelve los campos ya comparables, en las unidades de aSa (mm)."""
+    base = (marca or "").split("#")[0].strip()
+    if not cc or not base:
+        return None
+    for it in (_items_de(cc) or []):
+        if str(it.get("BarMark") or "").strip() != base:
+            continue
+        from .chequeos import normalizar_asa
+        n = normalizar_asa(it, base)
+        if not n:
+            continue
+        lados = {}
+        for l in (n.get("lados") or []):
+            nombre = str(l.get("nombre") or "").strip().upper()
+            if nombre:
+                lados[nombre] = l.get("largo")
+        return {"diam": n.get("diam"), "cant": n.get("cant"), "largo": n.get("largo"),
+                "figura": n.get("figura"), "lados": lados}
+    return None
+
+
+def comprobar_item(cur, item_id: int) -> dict:
+    """Va a mirar UNA barra a aSa y guarda el veredicto.
+
+    DÓNDE MIRAR depende de lo que declaró el auditado, y es el único dato que el sistema no
+    puede adivinar: si corrigió la misma barra, se mira su código; si la rehízo en otro
+    código, hay que mirar ESE código y ESA marca —la barra vieja va a seguir diciendo lo
+    mismo para siempre, y mirarla diría que no se corrigió cuando sí se corrigió—."""
+    cur.execute(
+        """SELECT i.esperado, i.dato_original, i.tipo_correccion, i.cc_nuevo, i.item_nuevo,
+                  i.ref, i.marca, e.cc, i.corregido, i.desestimado, a.origen
+             FROM auditoria_items i
+             JOIN auditoria_elementos e ON e.id = i.elemento_id
+             JOIN auditorias a ON a.id = e.auditoria_id
+            WHERE i.id = %s""", (item_id,))
+    fila = cur.fetchone()
+    if not fila:
+        return {"item_id": item_id, "resultado": "no_aplica", "porque": "La barra no existe."}
+    (esperado, original, tipo, cc_nuevo, item_nuevo, ref, marca, cc,
+     corregido, desest, origen) = fila
+    if origen != "asa":
+        # La barra de una obra de ArmaHub no vive en aSa: se corrige en la cubicación de
+        # acá. Comprobarla es otro trabajo —mirar la tabla `barras`— y mientras no exista,
+        # se dice en vez de devolver un «sigue igual» que no significaría nada.
+        return {"item_id": item_id, "resultado": "no_aplica",
+                "porque": "Es una barra de ArmaHub: la comprobación automática hoy sólo "
+                          "mira las obras de aSa."}
+    if desest:
+        return {"item_id": item_id, "resultado": "no_aplica",
+                "porque": "Desestimada por quien cubicó: no hay nada que comprobar."}
+    if not corregido:
+        return {"item_id": item_id, "resultado": "no_aplica",
+                "porque": "Todavía no se declaró corregida."}
+    if tipo == "nuevo":
+        donde, cual = (cc_nuevo or "").strip(), (item_nuevo or marca or ref or "").strip()
+    else:
+        donde, cual = (cc or "").strip(), (marca or ref or "").strip()
+    try:
+        real = _barra_hoy(donde, cual)
+    except HTTPException as e:
+        # aSa no respondió. NO se escribe nada: dejar `sigue_igual` por una caída de red
+        # sería acusar al auditado de no haber hecho su trabajo.
+        return {"item_id": item_id, "resultado": "no_aplica",
+                "porque": "aSa no respondió por el código %s." % donde,
+                "reintentable": True, "detalle": str(getattr(e, "detail", e))[:200]}
+    resultado, porque = comparar(esperado or {}, original or {}, real or {})
+    cur.execute(
+        """UPDATE auditoria_items
+              SET verificado = %s, verificado_el = now(), verificado_dato = %s
+            WHERE id = %s""",
+        (resultado, _json({"porque": porque, "donde": donde, "marca": cual,
+                           "real": real or None}), item_id))
+    return {"item_id": item_id, "ref": ref, "resultado": resultado, "porque": porque,
+            "donde": donde, "marca": cual}
+
+
+@router.post("/auditorias/{auditoria_id}/comprobar")
+def comprobar(auditoria_id: int, user=Depends(get_current_user)):
+    """COMPRUEBA A PEDIDO todas las barras declaradas corregidas de esta auditoría.
+
+    Existe aparte del barrido automático por lo mismo que en el módulo de chequeos: el
+    auditado acaba de corregir y quiere ver el resultado ahora, no mañana a las seis."""
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT i.id FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+                      AND i.corregido AND NOT i.desestimado
+                    ORDER BY i.id""", (auditoria_id,))
+            ids = [r[0] for r in cur.fetchall()]
+            salida = [comprobar_item(cur, i) for i in ids]
+            # Los elementos y la auditoría se re-derivan: comprobar puede cerrarla.
+            cur.execute(
+                "SELECT DISTINCT elemento_id FROM auditoria_items WHERE id = ANY(%s)", (ids,))
+            for (eid,) in cur.fetchall():
+                cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                            (_accion_de_items(cur, eid), eid))
+            _recalcular(cur, auditoria_id)
+            audit(user.get("email", "?"), "auditoria_comprobada",
+                  "%d barra(s): %d ok" % (len(salida),
+                                          sum(1 for s in salida if s["resultado"] == "ok")),
+                  "auditoria", str(auditoria_id))
+    aud = detalle(auditoria_id, user)
+    aud["comprobacion"] = salida
+    return aud
 
 
 class AccionBody(BaseModel):
@@ -1837,6 +2382,11 @@ class ItemBody(BaseModel):
     # nada; esto sí, y es lo que después deja que el sistema compruebe la corrección sin
     # que nadie tenga que mirar.
     esperado: Optional[dict] = None
+    # CÓMO ESTABA LA BARRA CUANDO SE AUDITÓ, tal como la vio el auditor. Es el ANTES, y sin
+    # él no se puede comprobar nada: para decir «esto cambió» hace falta con qué comparar.
+    # Lo manda el navegador porque es exactamente lo que tenía en pantalla; el backend no
+    # lo tiene a mano sin volver a pedirle la barra a aSa, y esa barra ya sería otra foto.
+    original: Optional[dict] = None
 
 
 class RevisionBody(BaseModel):
@@ -1913,15 +2463,20 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
             if body.items:
                 cur.executemany(
                     """INSERT INTO auditoria_items (elemento_id, ref, marca, conforme, observacion,
-                                                    esperado, revisado_por, revisado_el)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s, now())
+                                                    esperado, dato_original, revisado_por, revisado_el)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s, now())
                        ON CONFLICT (elemento_id, ref) DO UPDATE SET
                            marca = EXCLUDED.marca, conforme = EXCLUDED.conforme,
                            observacion = EXCLUDED.observacion, esperado = EXCLUDED.esperado,
+                           -- EL ANTES NO SE PISA si ya estaba: es la foto del momento en
+                           -- que se auditó, y volver a guardar la revisión más tarde
+                           -- traería una barra que puede haber cambiado en el medio.
+                           dato_original = COALESCE(auditoria_items.dato_original, EXCLUDED.dato_original),
                            revisado_por = EXCLUDED.revisado_por, revisado_el = now()""",
                     [(elemento_id, it.ref, it.marca, it.conforme,
                       (it.observacion or "").strip() or None,
-                      _json(it.esperado) if it.esperado else None, email)
+                      _json(it.esperado) if it.esperado else None,
+                      _json(it.original) if it.original else None, email)
                      for it in body.items])
             accion = None
             if es_nc:
@@ -1997,6 +2552,23 @@ class CorreccionBody(BaseModel):
     # a seguir diciendo lo mismo para siempre y comprobarla diría que no se corrigió.
     tipo: str = "item"
     cc_nuevo: Optional[str] = None
+    # LA MARCA DENTRO DEL CÓDIGO NUEVO. Sin ella habría que adivinar cuál de las barras del
+    # código nuevo reemplaza a ésta, y comprobar se volvería imposible. Si no se indica, se
+    # asume que conservó la misma marca, que es lo habitual.
+    item_nuevo: Optional[str] = None
+
+
+def _solo_si_enviada(cur, auditoria_id: int) -> None:
+    """Antes del envío la auditoría no existe para el auditado, así que tampoco puede
+    accionar sobre ella. Se comprueba en el BACKEND y no sólo escondiendo el botón: el
+    panel se puede quedar abierto de antes, y una auditoría se puede reabrir mientras
+    alguien la tiene en pantalla."""
+    cur.execute("SELECT enviada_el FROM auditorias WHERE id = %s", (auditoria_id,))
+    fila = cur.fetchone()
+    if not fila or not fila[0]:
+        raise HTTPException(status_code=409,
+                            detail="Esta auditoría todavía no fue enviada: el auditor la "
+                                   "está revisando.")
 
 
 def _barra_del_auditado(cur, auditoria_id: int, item_id: int, user) -> tuple:
@@ -2060,6 +2632,7 @@ def clasificar_item(auditoria_id: int, item_id: int, body: CausaBody,
     with get_conn() as conn:
         with conn.cursor() as cur:
             _, _, ref, _, nombre, codigo, _ = _barra_del_auditado(cur, auditoria_id, item_id, user)
+            _solo_si_enviada(cur, auditoria_id)
             cur.execute(
                 """UPDATE auditoria_items
                       SET causa = %s, causa_categoria = %s, causa_texto = %s,
@@ -2093,11 +2666,13 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
         with conn.cursor() as cur:
             elemento_id, _, ref, cubico, nombre, codigo, auditor = \
                 _barra_del_auditado(cur, auditoria_id, item_id, user)
+            _solo_si_enviada(cur, auditoria_id)
             cur.execute(
                 """UPDATE auditoria_items
                       SET corregido = %s, corregido_por = %s,
                           corregido_el = CASE WHEN %s THEN now() END,
                           nota_correccion = %s, tipo_correccion = %s, cc_nuevo = %s,
+                          item_nuevo = %s,
                           -- Volver a abrirla borra lo que el sistema había comprobado:
                           -- esa medición era de la corrección anterior.
                           verificado = CASE WHEN %s THEN verificado END,
@@ -2107,6 +2682,7 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                  (body.nota or "").strip() or None,
                  body.tipo if body.corregido else None,
                  (body.cc_nuevo or "").strip() or None if body.corregido else None,
+                 (body.item_nuevo or "").strip() or None if body.corregido else None,
                  body.corregido, body.corregido, item_id))
             accion = _accion_de_items(cur, elemento_id)
             cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
@@ -2117,6 +2693,133 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                   "auditoria", str(auditoria_id))
     if body.corregido and auditor:
         _avisar(auditor, "Auditoría %s: %s · %s quedó corregida." % (codigo, nombre, ref))
+    return detalle(auditoria_id, user)
+
+
+class DesestimarBody(BaseModel):
+    """El auditado dice que lo observado no corresponde."""
+    motivo: str
+    desestimado: bool = True
+
+
+@router.put("/auditorias/{auditoria_id}/items/{item_id}/desestimar")
+def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
+                    user=Depends(get_current_user)):
+    """EL AUDITADO DESESTIMA UN HALLAZGO, con su motivo.
+
+    Lo pidió el usuario: «el cubicador auditado podría resolver que la observación del
+    auditor no es la correcta, pero debe tener un botón que le permita marcar como lista la
+    barra donde desestime la corrección (suponiendo que el auditor tuviese mal un
+    criterio)». Y es correcto que exista: el auditor se puede equivocar, y sin esta salida
+    el auditado sólo podría elegir entre corregir algo que está bien o dejar la barra
+    abierta para siempre.
+
+    QUÉ HACE Y QUÉ NO. La barra deja de estar abierta —no traba el cierre ni cuenta como
+    pendiente— pero NO desaparece: se cuenta en su propia columna, el auditor recibe el
+    aviso y queda quién lo hizo, cuándo y por qué. Si se desestima mal, el error salta en
+    la obra y el registro dice que se avisó y no se consideró. El motivo es obligatorio
+    justamente porque ése es todo el valor de esto.
+
+    Si saliera del conteo sin dejar rastro, el auditado podría mejorar su propio indicador
+    de conformidad por decisión propia, y el indicador dejaría de medir nada."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    motivo = (body.motivo or "").strip()
+    if body.desestimado and len(motivo) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Di por qué no corresponde: el auditor lo va a leer y queda en el informe.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            elemento_id, _c, ref, _cub, nombre, codigo, auditor = \
+                _barra_del_auditado(cur, auditoria_id, item_id, user)
+            _solo_si_enviada(cur, auditoria_id)
+            cur.execute(
+                """UPDATE auditoria_items
+                      SET desestimado = %s,
+                          desestimado_motivo = %s,
+                          desestimado_por = CASE WHEN %s THEN %s END,
+                          desestimado_el = CASE WHEN %s THEN now() END
+                    WHERE id = %s""",
+                (body.desestimado, motivo or None, body.desestimado, email,
+                 body.desestimado, item_id))
+            # Volver a descartar después de una objeción la limpia: si no, la barra
+            # quedaría mostrando a la vez «descartada» y «el auditor no lo aceptó», que no
+            # es el estado en que está. Lo que pasó queda en el registro de auditoría.
+            if body.desestimado:
+                cur.execute("""UPDATE auditoria_items
+                                  SET objecion = NULL, objecion_por = NULL, objecion_el = NULL
+                                WHERE id = %s""", (item_id,))
+            accion = _accion_de_items(cur, elemento_id)
+            cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                        (accion, elemento_id))
+            _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_desestimada",
+                  "%s · %s · %s: %s" % (codigo, nombre, ref,
+                                        motivo if body.desestimado else "vuelta a abrir"),
+                  "auditoria", str(auditoria_id))
+    if body.desestimado and auditor:
+        _avisar(auditor, "Auditoría %s: %s · %s fue DESESTIMADA por quien cubicó. %s"
+                         % (codigo, nombre, ref, motivo[:120]))
+    return detalle(auditoria_id, user)
+
+
+class ObjecionBody(BaseModel):
+    motivo: str
+
+
+@router.put("/auditorias/{auditoria_id}/items/{item_id}/objecion")
+def objetar_descarte(auditoria_id: int, item_id: int, body: ObjecionBody,
+                     user=Depends(get_current_user)):
+    """EL AUDITOR NO ACEPTA UN DESCARTE y vuelve a abrir esa barra.
+
+    Es derecho a réplica, no deber de validar. El usuario preguntó si el auditor debía
+    validar los descartes y la respuesta es que no: si validar fuera obligatorio, el auditor
+    volvería al camino crítico —nada cerraría hasta que se pronuncie— y volveríamos a
+    mezclar los roles que él mismo separó. El descarte vale por defecto; esto es para cuando
+    de verdad no corresponde.
+
+    LAS DOS POSTURAS QUEDAN. El motivo del descarte no se borra: el registro tiene que poder
+    contar que el auditado descartó porque X y el auditor no lo aceptó porque Y. Si después
+    el error sale en la obra, está escrito quién dijo qué."""
+    _puede_auditar(user)
+    email = user.get("email", "?")
+    motivo = (body.motivo or "").strip()
+    if len(motivo) < 10:
+        raise HTTPException(status_code=400,
+                            detail="Di por qué no aceptas el descarte: lo va a leer quien cubicó.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT i.elemento_id, i.ref, i.desestimado, i.desestimado_por,
+                          e.nombre, a.codigo, a.auditor
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                     JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE i.id = %s AND e.auditoria_id = %s""", (item_id, auditoria_id))
+            fila = cur.fetchone()
+            if not fila:
+                raise HTTPException(status_code=404, detail="Esa barra no es de esta auditoría.")
+            elemento_id, ref, desest, desest_por, nombre, codigo, auditor = fila
+            if email != auditor and user.get("role") not in ROLES_ADMINISTRAN:
+                raise HTTPException(status_code=403,
+                                    detail="Objetar un descarte es del auditor de esta auditoría.")
+            if not desest:
+                raise HTTPException(status_code=400, detail="Esa barra no está descartada.")
+            cur.execute(
+                """UPDATE auditoria_items
+                      SET desestimado = FALSE, objecion = %s, objecion_por = %s,
+                          objecion_el = now()
+                    WHERE id = %s""", (motivo, email, item_id))
+            accion = _accion_de_items(cur, elemento_id)
+            cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                        (accion, elemento_id))
+            _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_objecion", "%s · %s · %s: %s" % (codigo, nombre, ref, motivo),
+                  "auditoria", str(auditoria_id))
+    if desest_por:
+        _avisar(desest_por, "Auditoría %s: el auditor NO aceptó el descarte de %s · %s. %s"
+                            % (codigo, nombre, ref, motivo[:120]))
     return detalle(auditoria_id, user)
 
 
@@ -2137,12 +2840,26 @@ def mis_items(user=Depends(get_current_user)):
                           i.id, i.ref, i.marca, i.observacion, i.esperado,
                           i.corregido, i.nota_correccion, i.tipo_correccion, i.cc_nuevo,
                           i.verificado, a.plazo_fecha, a.auditor, e.hallazgo,
-                          i.causa, i.causa_categoria, i.causa_texto
+                          i.causa, i.causa_categoria, i.causa_texto,
+                          i.desestimado, i.desestimado_motivo, i.item_nuevo,
+                          i.esperado IS NOT NULL OR i.dato_original IS NOT NULL,
+                          a.enviada_el, e.cc, i.verificado_dato, i.cc_nuevo,
+                          -- EL ESTADO DEL CÓDIGO EN aSa. Es lo que decide por cuál empezar:
+                          -- una barra de un código que ya entró a fabricación se arregla
+                          -- ahora, y una de un código despachado ya llegó tarde.
+                          p.estado, i.objecion, i.objecion_por
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                      JOIN auditorias a ON a.id = e.auditoria_id
+                     LEFT JOIN asa_pedidos p ON p.control_code = e.cc
                     WHERE i.conforme IS FALSE AND TRIM(e.cubicado_por) = ANY(%s)
-                    ORDER BY i.corregido, a.plazo_fecha, a.codigo, e.id, i.ref""",
+                      -- SÓLO LAS ENVIADAS. Una auditoría en curso es un borrador del
+                      -- auditor: mostrar sus barras acá le adelantaba al auditado un
+                      -- resultado que todavía podía cambiar, y lo dejaba corriendo detrás
+                      -- de correcciones sobre información incompleta.
+                      AND a.enviada_el IS NOT NULL
+                    ORDER BY (i.corregido OR i.desestimado), a.plazo_fecha, a.codigo,
+                             e.id, i.ref""",
                 (quien,))
             filas = [{"auditoria_id": r[0], "codigo": r[1], "obra": r[2], "elemento_id": r[3],
                       "cc": r[4], "elemento": r[5], "item_id": r[6], "ref": r[7],
@@ -2151,18 +2868,36 @@ def mis_items(user=Depends(get_current_user)):
                       "tipo_correccion": r[13], "cc_nuevo": r[14], "verificado": r[15],
                       "plazo": r[16].isoformat() if r[16] else None, "auditor": r[17],
                       "hallazgo": r[18], "causa": r[19], "causa_categoria": r[20],
-                      "causa_texto": r[21]} for r in cur.fetchall()]
+                      "causa_texto": r[21], "desestimado": bool(r[22]),
+                      "desestimado_motivo": r[23], "item_nuevo": r[24],
+                      "objecion": r[31], "objecion_por": r[32],
+                      # SI SE PUEDE COMPROBAR SOLA. Las barras auditadas antes del 9-oct no
+                      # tienen ni el valor esperado ni la foto original, así que de ésas no
+                      # se puede afirmar nada: la pantalla lo dice en vez de inventar una
+                      # comprobación que no existe.
+                      "comprobable": bool(r[25]),
+                      "enviada": r[26].isoformat() if r[26] else None,
+                      # POR QUÉ el sistema dijo lo que dijo. Un «sigue igual» sin explicar
+                      # no se puede discutir ni arreglar.
+                      "verificado_porque": (r[28] or {}).get("porque") if r[28] else None,
+                      "cc_nuevo": r[29], "estado_cc": r[30],
+                      "fabricando": (r[30] or "") == ESTADO_FABRICANDO,
+                      "despachado": (r[30] or "") == ESTADO_DESPACHADO}
+                     for r in cur.fetchall()]
     hoy = date.today()
     for f in filas:
         # EL PLAZO, REGISTRADO. Todavía no dispara nada —el correo no está— pero el dato
         # viaja desde ya, para que cuando se habilite no haya que reconstruirlo.
-        f["vencido"] = bool(f["plazo"] and not f["corregido"]
+        f["vencido"] = bool(f["plazo"] and not f["corregido"] and not f["desestimado"]
                             and date.fromisoformat(f["plazo"]) < hoy)
     return {"items": filas,
-            "pendientes": sum(1 for f in filas if not f["corregido"]),
+            "pendientes": sum(1 for f in filas
+                              if not f["corregido"] and not f["desestimado"]),
+            "desestimadas": sum(1 for f in filas if f["desestimado"]),
             # LO QUE FALTA CLASIFICAR se cuenta aparte de lo que falta corregir: son dos
             # deudas distintas, y una barra corregida sin causa deja el Pareto cojo.
-            "sin_causa": sum(1 for f in filas if not f["causa"]),
+            "sin_causa": sum(1 for f in filas
+                             if not f["causa"] and not f["desestimado"]),
             "vencidas": sum(1 for f in filas if f["vencido"])}
 
 
