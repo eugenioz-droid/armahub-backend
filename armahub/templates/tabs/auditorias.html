@@ -269,6 +269,13 @@
               la señal ya no está, se cierra sola. -->
     <div id="audSubRevision" style="display:none;">
 
+      <!-- ══════ MIS CHEQUEOS ══════
+           Lo que a MÍ me marcaron para corregir, barra por barra. Es la tarea del
+           cubicador: arregla en aSa y aprieta «comprobar»; el sistema vuelve a leer ese
+           código en el momento y la da por corregida o dice que sigue igual. Sin esto el
+           «hay que corregirla» del auditor se quedaba en un aviso sin destino. -->
+      <div class="card audc" id="revMios" style="display:none;"></div>
+
       <!-- LO PENDIENTE, ARRIBA DE TODO. La revisión corre sola una vez al día con el
            reloj de aSa, y mira sólo lo que cambió. Esto es para no depender de la hora:
            lo mismo, cuando uno quiera. -->
@@ -364,10 +371,21 @@
       <div class="card audc" id="revReporte">
         <div class="audh">Reporte por obra
           <span class="muted" id="revRepTxt"></span>
+          <span class="revcarga" id="revRepCarga" title="Cuándo se trajeron los datos de aSa por última vez. Todo lo de esta pantalla es a esa fecha."></span>
           <div style="flex:1"></div>
           <button id="revRepImprimir" class="audmini">Imprimir</button>
         </div>
         <div id="revRep"></div>
+      </div>
+
+      <!-- ══════ EL DETALLE DE UNA SEÑAL ══════ la barra dibujada con el mismo motor que
+           usa el auditor, qué tiene, quién cubicó, y las acciones. -->
+      <div id="revSenalModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); z-index:9999; overflow-y:auto;">
+        <div style="margin:40px auto; max-width:760px; background:#fff; border-radius:10px; padding:16px 18px; position:relative;">
+          <div class="audh"><span id="revSenalTit"></span><div style="flex:1"></div>
+            <button class="audmini" id="revSenalCerrar">✕</button></div>
+          <div id="revSenalCuerpo"></div>
+        </div>
       </div>
 
       <div class="card audc" id="revHistorial" style="display:none;">
@@ -539,6 +557,16 @@
   .audt td.audesp{color:#2e7d32; font-weight:600; font-size:10.5px;}
   /* Fuera de plazo. No bloquea nada —todavía no hay correo— pero se ve. */
   .audt tr.audvenc td{background:#fff8f7;}
+  /* ══════ EL FLUJO DE CHEQUEOS (13-oct) ══════ */
+  .revcarga{font-size:10px; color:#546e7a; background:#eceff1; border-radius:99px; padding:1px 8px; margin-left:8px;}
+  .audt tr.revrepfila{cursor:pointer;} .audt tr.revrepfila:hover td{background:#f1f8e9;}
+  .revsend{display:grid; grid-template-columns:1fr 1fr; gap:14px; font-size:11.5px;}
+  .revsend .revsenfig{grid-column:1 / -1; text-align:center; padding:8px; background:#fafafa; border:1px solid #eceff1; border-radius:6px;}
+  .revsend dl{margin:0;} .revsend dt{font-size:10px; color:#90a4ae; text-transform:uppercase; letter-spacing:.3px;}
+  .revsend dd{margin:0 0 6px;}
+  .revsenq{grid-column:1 / -1; padding:8px 10px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px;}
+  .revsenacc{grid-column:1 / -1; display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+  .revmio td.revmiotx{white-space:normal; max-width:420px;}
   /* ══════ LA BANDEJA DE HALLAZGOS (chequeos) ══════ */
   .revtot{display:inline-flex; gap:6px; margin-left:8px;}
   .revtot span{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}

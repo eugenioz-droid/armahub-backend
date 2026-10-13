@@ -312,5 +312,32 @@ check("al terminar una corrida, la bandeja se abre en lo de ESA revisión y dice
       "resuélvelas en la bandeja de abajo" in JS and "BAN.ultima = true" in JS)
 check("una señal resuelta desde cualquier lado refresca la bandeja", JS.count("await cargarBandeja()") >= 3)
 
+print("\n13. El flujo cierra: tarea al cubicador, detalle con la barra, comprobación al clic")
+# El usuario, 13-oct: «tengo hallazgos pero no tengo el reporte o flujo para marcarlos como
+# resueltos… debiera enviarse como tarea al cubicador y que tenga una forma de hacerle
+# seguimiento y modificar; por último se hace el check automático que valide esa
+# modificación». Y: «sería bueno tener aquí un texto que indique cuándo fue la última carga
+# de datos de aSa».
+check("el cubicador tiene «mis chequeos»: lo que le marcaron, resuelto por su login de aSa",
+      '@router.get("/chequeos/mios")' in API and "alias_cubicador(cur, user.get" in API
+      and "function cargarMios(" in JS and 'id="revMios"' in HTM)
+check("comprobar una señal vuelve a leer aSa en vivo con la MISMA lógica de la revisión",
+      '@router.post("/chequeos/senal/{senal_id}/comprobar")' in API
+      and "r = revisar_cc(RevisarCc(job=job, cc=cc), user)" in API)
+check("...y dice si quedó corregida o qué mide hoy", '"texto": (detalle or {}).get("texto")' in API
+      and "Sigue igual en aSa" in JS)
+check("cada señal tiene su detalle con la barra dibujada por el motor del auditor",
+      "function abrirDetalleSenal(" in JS and "global.audCeldaFigura(" in JS
+      and "global.audBarraNormalizada(" in JS and 'id="revSenalModal"' in HTM)
+check("...que auditorías expone en vez de copiarlo",
+      "global.audBarraNormalizada = normalizarBarra" in open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read())
+check("el reporte abre la bandeja de la obra (dos pantallas con puente)",
+      "class=\"revrepfila\"" in JS and "function irABandeja(" in JS)
+check("el reporte dice de cuándo son los datos de aSa",
+      '"ultima_carga"' in API and "SELECT MAX(fin) FROM asa_sync WHERE ok" in API and "datos de aSa al" in JS)
+check("«revisados» se cuenta sobre los mismos códigos que «códigos»: se acabó el «faltan -7»",
+      "JOIN asa_pedidos p ON p.asa_job_id = c.id_proyecto AND p.control_code = c.cc" in API
+      and "Math.max(0, o.ccs - o.revisados)" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

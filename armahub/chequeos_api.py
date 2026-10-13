@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .asa import AsaError
-from .auditorias import (PATRON_OBRAS_FUERA, _avisar, alias_de, _es_barra, _items_de, _puede_auditar,
+from .auditorias import (PATRON_OBRAS_FUERA, _avisar, alias_de, alias_cubicador, _es_barra, _items_de, _puede_auditar,
                          _puede_ver, refs_de_barras)
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
@@ -696,6 +696,84 @@ def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current
     return {"revision": rid, "ccs": cola, "obras": len(jobs)}
 
 
+# ══════ LA TAREA DEL CUBICADOR (13-oct) ══════
+#
+# «Hay que corregirla» le llegaba al cubicador como un aviso en la campana, y nada más: no
+# tenía dónde ver sus barras ni cómo cerrarlas. El usuario lo dijo: «debiera enviarse
+# como tarea al cubicador y que tenga una forma de hacerle seguimiento y modificar; por
+# último se hace el check automático que valide esa modificación». Son estos dos
+# endpoints: lo mío, y comprobar.
+
+def _fila_senal(r) -> dict:
+    """La misma forma que devuelve /chequeos, para que la pantalla trate igual una señal
+    venga de donde venga."""
+    return {"id": r[0], "regla": r[1], "job": r[2], "obra": r[3], "cc": r[4], "elemento": r[5],
+            "ref": r[6], "marca": r[7], "figura": r[8], "diam": float(r[9] or 0),
+            "detalle": r[10], "veces": r[11],
+            "visto_primero": r[12].isoformat() if r[12] else None,
+            "visto_ultimo": r[13].isoformat() if r[13] else None,
+            "estado": r[14], "resuelto_por": r[15],
+            "resuelto_el": r[16].isoformat() if r[16] else None,
+            "nota": r[17], "patron": r[18], "cubico": r[19]}
+
+
+_COLS_SENAL = ("s.id, s.regla, s.id_proyecto, s.obra, s.cc, s.elemento, s.ref, s.marca,"
+               " s.figura, s.diam_mm, s.detalle, s.veces, s.visto_primero, s.visto_ultimo,"
+               " s.estado, s.resuelto_por, s.resuelto_el, s.nota, s.firma_patron, s.cubico")
+
+
+@router.get("/chequeos/mios")
+def mios(user=Depends(get_current_user)):
+    """Las señales que ME marcaron para corregir: las de los códigos que yo cubiqué. El
+    `cubico` de la señal es el login de aSa; se resuelve con la misma regla que las
+    auditorías (`alias_cubicador`), así que llega a quien corresponde aunque el login no
+    se parezca al correo."""
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            quien = alias_cubicador(cur, user.get("email", "?"))
+            cur.execute(
+                "SELECT " + _COLS_SENAL + """ FROM chequeo_senales s
+                  WHERE s.estado = 'corregir' AND TRIM(COALESCE(s.cubico, '')) = ANY(%s)
+                  ORDER BY s.resuelto_el DESC NULLS LAST, s.obra, s.cc, s.ref""", (quien,))
+            filas = [_fila_senal(r) for r in cur.fetchall()]
+    return {"senales": filas, "n": len(filas),
+            "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}
+
+
+@router.post("/chequeos/senal/{senal_id}/comprobar")
+def comprobar_senal(senal_id: int, user=Depends(get_current_user)):
+    """EL CHECK AUTOMÁTICO, A UN CLIC. Vuelve a leer en aSa el código de esta señal —en
+    vivo, no del espejo— y corre las reglas de nuevo. Si la señal ya no salta, `revisar_cc`
+    la deja CORREGIDA (es la misma lógica de siempre, no otra); si salta igual, se devuelve
+    lo que mide hoy para que el cubicador vea qué falta.
+
+    Lo puede pedir el cubicador desde «mis chequeos» y el auditor desde la bandeja: la
+    comprobación es del sistema, no de una persona, así que da lo mismo quién la gatille."""
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto, cc, estado FROM chequeo_senales WHERE id = %s", (senal_id,))
+            fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Esa señal no existe.")
+    job, cc, estado_antes = fila
+    if estado_antes == "corregida":
+        return {"id": senal_id, "estado": "corregida", "cc": cc, "ya_estaba": True}
+    r = revisar_cc(RevisarCc(job=job, cc=cc), user)
+    if r.get("error"):
+        raise HTTPException(status_code=502, detail="aSa no respondió por el código %s: %s" % (cc, r["error"]))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT estado, detalle, nota FROM chequeo_senales WHERE id = %s", (senal_id,))
+            estado, detalle, nota = cur.fetchone()
+    audit(user.get("email", "?"), "chequeo_comprobar", "%s · señal %s: %s -> %s" % (cc, senal_id, estado_antes, estado),
+          "chequeo", str(senal_id))
+    return {"id": senal_id, "estado": estado, "cc": cc, "job": job,
+            "texto": (detalle or {}).get("texto") if estado != "corregida" else None,
+            "barras": r.get("barras", 0), "corregidas_en_el_codigo": r.get("corregidas", 0)}
+
+
 @router.get("/chequeos/reporte")
 def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
             user=Depends(get_current_user)):
@@ -730,13 +808,27 @@ def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
                            "aceptadas": 0, "corregidas": 0, "por_regla": {}, "quienes": [],
                            "ultima_revision": None}
                     for r in cur.fetchall()}
+            # «REVISADOS» SE CUENTA SOBRE LOS MISMOS CÓDIGOS QUE «CÓDIGOS» (13-oct). Antes
+            # contaba todo lo que alguna vez se revisó de la obra, y un código revisado
+            # cuando estaba Open que después pasó a Processed seguía sumando: por eso el
+            # reporte decía «16 revisados de 9 (faltan -7)». Un revisado de más no es un
+            # error chico: hacía ver completa una obra que no lo estaba.
             cur.execute(
-                """SELECT id_proyecto, COUNT(*), SUM(barras), MAX(revisado_el)
-                     FROM chequeo_codigos GROUP BY id_proyecto""")
+                """SELECT c.id_proyecto, COUNT(*), SUM(c.barras), MAX(c.revisado_el)
+                     FROM chequeo_codigos c
+                     JOIN asa_pedidos p ON p.asa_job_id = c.id_proyecto AND p.control_code = c.cc
+                    WHERE COALESCE(p.estado,'') = ANY(%s)
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""" + mov + """
+                    GROUP BY c.id_proyecto""",
+                (_estados(tarde), PATRON_OBRAS_FUERA) + arg)
             for job, n, barras, ult in cur.fetchall():
                 if job in base:
-                    base[job].update({"revisados": n, "barras": int(barras or 0),
+                    base[job].update({"revisados": min(n, base[job]["ccs"]), "barras": int(barras or 0),
                                       "ultima_revision": ult.isoformat() if ult else None})
+            # CUÁNDO SON ESTOS DATOS: la última carga de aSa que terminó bien. Lo pidió el
+            # usuario para el reporte, y es la respuesta a «¿esto está al día?».
+            cur.execute("SELECT MAX(fin) FROM asa_sync WHERE ok")
+            ultima_carga = cur.fetchone()[0]
             cur.execute(
                 """SELECT id_proyecto, regla, estado, COUNT(*),
                           STRING_AGG(DISTINCT cubico, ', ')
@@ -759,6 +851,7 @@ def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
                     o["corregidas"] += n
     filas = sorted(base.values(), key=lambda o: (-o["abiertas"], -(o["ccs"] - o["revisados"])))
     return {"obras": filas, "meses": meses, "tarde": tarde,
+            "ultima_carga": ultima_carga.isoformat() if ultima_carga else None,
             "reglas": {r["codigo"]: r.get("corto") or r["nombre"] for r in REGLAS},
             "total": {"obras": len(filas),
                       "ccs": sum(o["ccs"] for o in filas),

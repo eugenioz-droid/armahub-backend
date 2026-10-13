@@ -372,7 +372,149 @@
     tabla.querySelectorAll('button[data-sen]').forEach(function (b) {
       b.addEventListener('click', function () { resolver(b.dataset.sen, b.dataset.est, b.dataset.pat === '1'); });
     });
+    tabla.querySelectorAll('button[data-ver]').forEach(function (b) {
+      b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
+    });
     pintarLote();
+  }
+
+  // ══════ EL DETALLE DE UNA SEÑAL ══════
+  // La misma barra que ve el auditor, con el mismo motor (las piezas las expone
+  // auditorias/index.js). Se pide el elemento a aSa en vivo y se busca la barra por su
+  // referencia: así lo que se dibuja es lo que aSa tiene HOY, no la foto de la señal.
+  var _senalesPorId = {};
+  function _senal(id) {
+    var s = _senalesPorId[String(id)];
+    if (s) return s;
+    var todas = ((BAN.datos || {}).senales || []).concat(REV.senales || [], REV.mios || []);
+    todas.forEach(function (x) { _senalesPorId[String(x.id)] = x; });
+    return _senalesPorId[String(id)];
+  }
+
+  async function abrirDetalleSenal(id) {
+    var s = _senal(id);
+    if (!s) { aviso('No encuentro esa señal en pantalla; recarga la bandeja.'); return; }
+    var r = (REV.reglas || {})[s.regla] || { nombre: s.regla, porque: '' };
+    var d = s.detalle || {};
+    $('revSenalTit').textContent = (s.obra || s.job) + ' · ' + (s.cc || '') + ' · ' + s.ref;
+    $('revSenalCuerpo').innerHTML = '<div class="revsend">' +
+      '<div class="revsenfig" id="revSenalFig"><span class="muted">dibujando la barra…</span></div>' +
+      '<div class="revsenq"><b>' + esc(r.nombre) + ':</b> ' + esc(d.texto || '') +
+        (r.porque ? '<div class="muted" style="margin-top:3px; font-size:10.5px;">' + esc(r.porque) + '</div>' : '') + '</div>' +
+      '<dl><dt>Obra</dt><dd>' + esc(s.obra || s.job) + '</dd>' +
+          '<dt>Código · elemento</dt><dd>' + esc(s.cc || '') + (s.elemento ? ' · ' + esc(s.elemento) : '') + '</dd>' +
+          '<dt>Barra</dt><dd><span class="audref">' + esc(s.ref) + '</span>' + (s.figura ? ' · figura ' + esc(s.figura) : '') +
+          (s.diam ? ' · φ' + esc(String(s.diam)) : '') + '</dd></dl>' +
+      '<dl><dt>Cubicó</dt><dd>' + esc(s.cubico || '—') + '</dd>' +
+          '<dt>Estado</dt><dd>' + esc(ESTADO_TXT[s.estado] || s.estado) +
+            (s.resuelto_por ? ' <span class="muted">· ' + esc(s.resuelto_por.split('@')[0]) + (s.resuelto_el ? ' ' + _fechaHora(s.resuelto_el) : '') + '</span>' : '') +
+            (s.nota ? '<div class="muted">' + esc(s.nota) + '</div>' : '') + '</dd>' +
+          '<dt>Vista</dt><dd>' + (s.veces || 1) + ' revisión(es) · primera ' + (s.visto_primero ? _fechaHora(s.visto_primero) : '—') + '</dd></dl>' +
+      '<div class="revsenacc" id="revSenalAcc"></div></div>';
+    var acc = $('revSenalAcc');
+    var botones = '';
+    if (s.estado === 'abierta') {
+      botones = '<button class="audmini" data-est="corregir">Hay que corregirla</button>' +
+                '<button class="audmini ver" data-est="aceptada">Está bien</button>' +
+                '<button class="audmini" data-est="aceptada" data-pat="1" title="Ésta y todas las iguales de la obra">Está bien, todas las iguales</button>';
+    } else if (s.estado !== 'corregida') {
+      botones = '<button class="audmini" data-est="abierta">Deshacer</button>';
+    }
+    if (s.estado === 'corregir') {
+      botones += '<button class="audmini ver" id="revSenalComprobar" title="Vuelve a leer este código en aSa ahora mismo">Ya se corrigió: comprobar</button>';
+    }
+    acc.innerHTML = botones + '<span class="muted" id="revSenalMsg" style="font-size:10.5px"></span>';
+    acc.querySelectorAll('button[data-est]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        await resolver(s.id, b.dataset.est, b.dataset.pat === '1');
+        cerrarDetalleSenal();
+      });
+    });
+    var cmp = $('revSenalComprobar');
+    if (cmp) cmp.addEventListener('click', function () { comprobarSenal(s.id, cmp, $('revSenalMsg')); });
+    $('revSenalModal').style.display = '';
+    dibujarSenal(s);
+  }
+
+  function cerrarDetalleSenal() { $('revSenalModal').style.display = 'none'; }
+
+  async function dibujarSenal(s) {
+    var caja = $('revSenalFig');
+    if (!caja) return;
+    if (!global.audBarraNormalizada || !global.audCeldaFigura) {
+      caja.innerHTML = '<span class="muted">El motor de dibujo no está cargado (abre primero el tab Auditorías).</span>';
+      return;
+    }
+    try {
+      var el = encodeURIComponent(s.elemento || '(sin elemento)');
+      var d = await req('GET', '/auditorias/elemento-asa?cc=' + encodeURIComponent(s.cc || '') + '&element=' + el);
+      var barras = d.barras || [];
+      var b = barras.filter(function (x) { return x.ref === s.ref; })[0] ||
+              barras.filter(function (x) { return (x.marca || '') === String(s.ref).split('#')[0]; })[0];
+      if (!b) { caja.innerHTML = '<span class="muted">La barra ' + esc(s.ref) + ' ya no está en el código ' + esc(s.cc || '') + ' en aSa.</span>'; return; }
+      var f = global.audBarraNormalizada(b, 'asa');
+      var lados = Object.keys(f.dims || {}).sort().map(function (L) { return L + ' = ' + global.audNum(f.dims[L]); }).join(' · ');
+      caja.innerHTML = '<div style="display:inline-block;">' + global.audCeldaFigura(f) + '</div>' +
+        '<div class="muted" style="font-size:10.5px; margin-top:4px;">φ' + global.audNum(f.diam) + ' · ' + esc(lados) +
+        (f.largo != null ? ' · largo ' + global.audNum(f.largo) + ' cm' : '') +
+        (b.cant_total != null ? ' · ' + b.cant_total + ' u' : '') + '</div>';
+    } catch (e) { caja.innerHTML = '<span class="muted">No se pudo dibujar: ' + esc(e.message) + '</span>'; }
+  }
+
+  // COMPROBAR UNA SEÑAL EN EL MOMENTO: el sistema vuelve a leer ese código en aSa y
+  // vuelve a correr las reglas. Si la señal ya no salta, queda CORREGIDA; si salta igual,
+  // lo dice, con la medida de hoy.
+  async function comprobarSenal(id, boton, msg) {
+    if (boton) { boton.disabled = true; boton.textContent = 'Leyendo aSa…'; }
+    try {
+      var r = await req('POST', '/chequeos/senal/' + id + '/comprobar', {});
+      var txt = r.estado === 'corregida'
+        ? 'Corregida: la barra ya cumple en aSa.'
+        : 'Sigue igual en aSa' + (r.texto ? ': ' + r.texto : '') + '. Si ya la cambiaste, revisa que se haya guardado en el código ' + (r.cc || '') + '.';
+      if (msg) msg.textContent = txt;
+      ok(r.estado === 'corregida' ? 'Corregida' : 'Sigue igual en aSa');
+      _senalesPorId = {};
+      await Promise.all([cargarBandeja(), cargarMios(), cargarReporte()]);
+      if (REV.job) await cargarSenales();
+      if (r.estado === 'corregida') setTimeout(cerrarDetalleSenal, 900);
+    } catch (e) { aviso(e.message); if (msg) msg.textContent = e.message; }
+    if (boton) { boton.disabled = false; boton.textContent = 'Ya se corrigió: comprobar'; }
+  }
+
+  // ══════ MIS CHEQUEOS ══════
+  // La tarea del cubicador: lo que le marcaron para corregir, barra por barra, con la
+  // comprobación a un clic. Antes el «hay que corregirla» era un aviso en la campana y
+  // nada más: no había dónde verlo ni cómo cerrarlo.
+  async function cargarMios() {
+    var caja = $('revMios');
+    if (!caja) return;
+    try {
+      var d = await req('GET', '/chequeos/mios');
+      REV.mios = d.senales || [];
+      if (!REV.mios.length) { caja.style.display = 'none'; return; }
+      caja.style.display = '';
+      caja.innerHTML = '<div class="audh">Mis chequeos por corregir <span class="muted">' + REV.mios.length +
+        ' barra(s) que te marcaron. Arréglalas en aSa y aprieta «comprobar»: el sistema vuelve a leer el código en el momento.</span></div>' +
+        '<table class="audt revmio"><thead><tr><th>Obra</th><th>Código</th><th>Barra</th><th>Qué tiene</th>' +
+        '<th>Lo marcó</th><th></th></tr></thead><tbody>' +
+        REV.mios.map(function (s) {
+          var d2 = s.detalle || {};
+          return '<tr><td class="audnom" title="' + esc(s.obra || '') + '">' + esc(s.obra || s.job) + '</td>' +
+            '<td class="cc">' + esc(s.cc || '') + (s.elemento ? ' <span class="muted">' + esc(s.elemento) + '</span>' : '') + '</td>' +
+            '<td><span class="audref">' + esc(s.ref) + '</span></td>' +
+            '<td class="revmiotx">' + esc(d2.texto || '') + '</td>' +
+            '<td class="muted" style="font-size:10.5px">' + esc((s.resuelto_por || '').split('@')[0]) + (s.resuelto_el ? ' · ' + _fechaHora(s.resuelto_el) : '') +
+              (s.nota ? '<div>' + esc(s.nota) + '</div>' : '') + '</td>' +
+            '<td style="white-space:nowrap"><button class="audmini" data-ver="' + s.id + '">Ver</button> ' +
+              '<button class="audmini ver" data-cmp="' + s.id + '">Ya la corregí: comprobar</button></td></tr>';
+        }).join('') + '</tbody></table>';
+      caja.querySelectorAll('button[data-ver]').forEach(function (b) {
+        b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
+      });
+      caja.querySelectorAll('button[data-cmp]').forEach(function (b) {
+        b.addEventListener('click', function () { comprobarSenal(b.dataset.cmp, b, null); });
+      });
+    } catch (e) { caja.style.display = 'none'; }
   }
 
   function filaBandeja(s) {
@@ -390,7 +532,8 @@
       '<td><span class="audacc1 ' + (s.estado === 'corregir' ? 'pendiente' : s.estado === 'aceptada' ? 'verificada' : s.estado === 'corregida' ? 'corregida' : '') + '" title="' +
         esc(s.nota ? s.nota + (s.resuelto_por ? ' (' + s.resuelto_por.split('@')[0] + ')' : '') : '') + '">' +
         esc(ESTADO_TXT[s.estado] || s.estado) + '</span></td>' +
-      '<td>' + (s.estado === 'abierta'
+      '<td><button class="audmini" data-ver="' + s.id + '" title="La barra dibujada, qué tiene y las acciones">Ver</button> ' +
+        (s.estado === 'abierta'
           ? '<button class="audmini" data-sen="' + s.id + '" data-est="corregir">Hay que corregirla</button>' +
             '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada">Está bien</button>' +
             '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada" data-pat="1" title="Ésta y todas las iguales de la obra">+iguales</button>'
@@ -424,6 +567,7 @@
       await cargarBandeja();
       if (REV.job) await cargarSenales();
       await cargarObras();
+      await cargarMios();
     } catch (e) { aviso(e.message); }
   }
 
@@ -552,9 +696,13 @@
     try {
       var d = await req('GET', '/chequeos/reporte?meses=' + REV.meses + '&tarde=' + REV.tarde);
       var t = d.total || {}, obras = d.obras || [];
+      REV.reporte = obras;
       $('revRepTxt').textContent = t.obras + ' obra(s) · ' + t.revisados + ' de ' + t.ccs +
         ' código(s) revisados · ' + num(t.barras) + ' barras miradas · ' +
         t.abiertas + ' señal(es) esperando · ' + t.corregidas + ' ya corregida(s)';
+      // CUÁNDO SON ESTOS DATOS. Todo lo de esta pantalla es a la última carga de aSa.
+      var car = $('revRepCarga');
+      if (car) car.textContent = d.ultima_carga ? 'datos de aSa al ' + _fechaHora(d.ultima_carga) : 'sin carga de aSa registrada';
       var reglas = Object.keys(d.reglas || {});
       $('revRep').innerHTML = '<table class="audt"><thead><tr><th>Obra</th><th>Cubicó</th>' +
         '<th class="num">Códigos</th><th class="num">Revisados</th>' +
@@ -563,8 +711,11 @@
           esc(d.reglas[k]) + '">' + esc(d.reglas[k]) + '</th>'; }).join('') +
         '<th class="num">Por corregir</th><th class="num">Corregidas</th></tr></thead><tbody>' +
         obras.map(function (o) {
-          var falta = o.ccs - o.revisados;
-          return '<tr><td class="audnom" title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
+          var falta = Math.max(0, o.ccs - o.revisados);
+          // LA FILA ABRE LA BANDEJA DE ESA OBRA. El reporte dice dónde está el problema; la
+          // bandeja es donde se resuelve: sin este clic eran dos pantallas sin puente.
+          return '<tr class="revrepfila" data-job="' + esc(o.job) + '" title="Ver y resolver las señales de esta obra">' +
+            '<td class="audnom" title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
             '<td class="audnom" title="' + esc(o.cubico || '') + '">' +
               esc((o.quienes && o.quienes.length ? o.quienes : (o.cubico || '').split(', '))
                   .filter(Boolean).join(', ')) + '</td>' +
@@ -577,10 +728,28 @@
               var n = (o.por_regla || {})[k] || 0;
               return '<td class="num">' + (n || '<span class="muted">·</span>') + '</td>';
             }).join('') +
-            '<td class="num">' + (o.corregir || '<span class="muted">·</span>') + '</td>' +
-            '<td class="num">' + (o.corregidas || '<span class="muted">·</span>') + '</td></tr>';
+            '<td class="num">' + (o.corregir ? '<b style="color:#c62828">' + o.corregir + '</b>' : '<span class="muted">·</span>') + '</td>' +
+            '<td class="num">' + (o.corregidas ? '<b style="color:#2e7d32">' + o.corregidas + '</b>' : '<span class="muted">·</span>') + '</td></tr>';
         }).join('') + '</tbody></table>';
+      $('revRep').querySelectorAll('tr.revrepfila').forEach(function (tr) {
+        tr.addEventListener('click', function () { irABandeja({ job: tr.dataset.job }); });
+      });
     } catch (e) { $('revRep').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
+  }
+
+  function _fechaHora(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return ('0' + d.getDate()).slice(-2) + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' +
+           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  // Llevar la bandeja a una obra (o a un estado) y ponerla a la vista.
+  async function irABandeja(f) {
+    BAN.job = f.job || ''; BAN.estado = f.estado || ''; BAN.ultima = false; BAN.sel = {};
+    await cargarBandeja();
+    var ban = $('revBandeja');
+    if (ban && ban.scrollIntoView) ban.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   var _listo = false;
@@ -598,6 +767,8 @@
       $('revLoteOk').addEventListener('click', function () { resolverLote('aceptada'); });
       $('revLoteCorr').addEventListener('click', function () { resolverLote('corregir'); });
       $('revLoteNo').addEventListener('click', function () { BAN.sel = {}; pintarBandeja(); });
+      $('revSenalCerrar').addEventListener('click', cerrarDetalleSenal);
+      $('revSenalModal').addEventListener('click', function (e) { if (e.target === $('revSenalModal')) cerrarDetalleSenal(); });
       $('revParar').addEventListener('click', function () { REV.parar = true; });
       $('revPendCorrer').addEventListener('click', correrPendientes);
       $('revRepImprimir').addEventListener('click', function () { global.print(); });
@@ -621,6 +792,9 @@
     await cargarObras();
     await cargarPendientes();
     await cargarReporte();
+    // Lo mío primero y la bandeja completa: es lo que se viene a resolver.
+    await cargarMios();
+    await cargarBandeja();
   };
 
   // Las dos líneas del tab. La revisión se carga la primera vez que se entra, no al abrir

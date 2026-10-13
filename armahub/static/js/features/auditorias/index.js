@@ -1813,6 +1813,13 @@
     global.abrirIshikawaModal('auditoria');
   }
 
+  // EL DIBUJO DE UNA BARRA DE aSa, PARA OTRAS PANTALLAS (13-oct). El detalle de una señal
+  // de chequeo muestra la misma barra que mira el auditor, con el mismo motor: se exponen
+  // las dos piezas en vez de copiarlas a revision.js, que es como se desincronizan.
+  global.audBarraNormalizada = normalizarBarra;
+  global.audCeldaFigura = celdaFigura;
+  global.audNum = num;
+
   global.audIshikawa = function () {
     return { categoria: CAUSA_DE && CAUSA_DE.causa_categoria,
              cod_causa: CAUSA_DE && CAUSA_DE.causa,
