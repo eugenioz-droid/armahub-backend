@@ -70,6 +70,10 @@ function _bmTam(tam) {
 // El azul concreto tampoco se escribe acá: se nombra, para que probar otro sea una línea.
 function _bmTinta(b) {
   var M = window.disenadorMotor || {};
+  // Una barra leída de aSa no la dibujó nadie acá: se distingue de las nuestras. La marca
+  // la pone quien normaliza (ver normalizarBarra en auditorias/index.js), no se deduce
+  // del `origen`, que es una etiqueta y ya cambió de valor una vez.
+  if (b && b.de_asa) return M.TINTA_ASA || M.TINTA;
   return (b && b.template_instancia_id != null) ? M.TINTA_3D : M.TINTA;
 }
 

@@ -246,7 +246,10 @@
     $('revItemsModal').style.display = '';
     pintarItems();
   }
-  function cerrarItems() { $('revItemsModal').style.display = 'none'; }
+  function cerrarItems() {
+    $('revItemsModal').style.display = 'none';
+    if (_mirando) { _mirando.disconnect(); _mirando = null; }
+  }
 
   function pintarItems() {
     var d = REVS.detalle, r = d.revision, items = itemsVisibles();
@@ -289,7 +292,8 @@
           var fg = REVS.figs[g.cc];
           var quienes = {};
           g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
-          return '<div class="revcc2"><h5><input type="checkbox" data-grupo="' + esc(k) + '"> ' +
+          return '<div class="revcc2" data-grupocc="' + esc(g.cc || '') + '"><h5>' +
+            '<input type="checkbox" data-grupo="' + esc(k) + '"> ' +
             '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
             (Object.keys(quienes).length
               ? '<span class="revquien">' + esc(Object.keys(quienes).join(', ')) + '</span>' : '') +
@@ -300,6 +304,7 @@
             '<table>' + g.items.map(filaItem).join('') + '</table></div>';
         }).join('');
     _bindItems();
+    _observarFiguras();
   }
 
   // LA BARRA DE ACCIONES SE PINTA SOLA. Antes marcar un check repintaba la hoja entera,
@@ -374,12 +379,28 @@
         return '<b class="revmal">' + esc(L) + ' ' + (det.valor != null ? det.valor : '?') + '</b>';
       }).join(' · ') + ' ' + esp;
     }
-    var ks = Object.keys(f.dims).sort();
-    return ks.map(function (L) {
+    // LA FIGURA COMPLETA: todas sus letras y, entre lado y lado, el ángulo con el que
+    // dobla. Con eso la barra se verifica acá y no hay que abrir aSa, que es lo que el
+    // usuario pidió. Los ángulos vienen de aSa como el giro de cada lado CONTRA EL
+    // ANTERIOR, así que el primero no tiene y van intercalados.
+    // EN ORDEN DE RECORRIDO, NO ALFABÉTICO. Una T1 llega como G, E, D, C, B, A: ordenar
+    // por letra deja los ángulos pegados al lado equivocado, porque el ángulo n es el
+    // giro entre el lado n y el anterior EN EL RECORRIDO. El orden de inserción del
+    // objeto es el de aSa (lo arma `_lados` recorriendo los <cp>), así que vale tal cual.
+    var ks = Object.keys(f.dims);
+    var ang = f.angulos || [];
+    var out = [];
+    ks.forEach(function (L, n) {
       var v = Math.round(Number(f.dims[L]) || 0);
-      return malos[L] ? '<b class="revmal">' + esc(L) + ' ' + v + '</b>'
-                      : '<span>' + esc(L) + ' ' + v + '</span>';
-    }).join(' · ') + ' ' + esp;
+      // El ángulo que separa este lado del anterior. aSa manda uno por lado con giro, y
+      // el primero no gira contra nada: por eso se lee corrido en uno.
+      if (n > 0 && ang[n - 1] != null) {
+        out.push('<i class="revang">' + Math.round(ang[n - 1]) + '°</i>');
+      }
+      out.push(malos[L] ? '<b class="revmal">' + esc(L) + ' ' + v + '</b>'
+                        : '<span>' + esc(L) + ' ' + v + '</span>');
+    });
+    return out.join(' ') + ' ' + esp;
   }
 
   function _celda(cc, ref) {
@@ -442,6 +463,38 @@
       REVS.figs[cc] = { estado: 'error', barras: {}, msg: e.message };
     }
     _pintarFiguras(cc);
+  }
+
+  // SE PIDEN SOLAS, PERO SÓLO LAS QUE SE ESTÁN MIRANDO. Una columna vacía no se lee como
+  // «apretá acá», se lee como que está rota —el usuario lo dijo: «faltó el renderizado»—
+  // y pedir los cuarenta y ocho códigos al abrir serían dos minutos y medio de espera.
+  // Con el observer, bajar por la hoja va pidiendo lo que aparece, de a uno y en orden.
+  var _mirando = null;
+  function _observarFiguras() {
+    if (_mirando) { _mirando.disconnect(); _mirando = null; }
+    if (typeof global.IntersectionObserver !== 'function') return;
+    var cola = [], corriendo = false;
+    async function vaciar() {
+      if (corriendo) return;
+      corriendo = true;
+      while (cola.length) {
+        var cc = cola.shift();
+        if ($('revItemsModal').style.display === 'none') break;
+        await cargarFiguras(cc);
+        _pintarAcc();
+      }
+      corriendo = false;
+    }
+    _mirando = new global.IntersectionObserver(function (entradas) {
+      entradas.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var cc = e.target.dataset.grupocc;
+        _mirando.unobserve(e.target);
+        if (cc && !REVS.figs[cc] && cola.indexOf(cc) === -1) { cola.push(cc); vaciar(); }
+      });
+    }, { root: $('revItemsModal'), rootMargin: '200px' });
+    var caja = $('revItemsCuerpo');
+    if (caja) caja.querySelectorAll('[data-grupocc]').forEach(function (d) { _mirando.observe(d); });
   }
 
   // DE A UNO Y CON CUENTA. Treinta códigos en paralelo tumban la sesión de aSa; en serie

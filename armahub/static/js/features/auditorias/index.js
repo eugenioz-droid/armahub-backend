@@ -1093,7 +1093,10 @@
   // Manager: no se mezclan.
   function normalizarBarra(b, origen) {
     var k = origen === 'asa' ? 0.1 : 1;
-    var f = { figura: b.figura, diam: parseFloat(b.diam), dims: {}, eje: b.eje || null,
+    // DE DÓNDE SALIÓ LA BARRA, para que el dibujo lo diga con su color. La marca se pone
+    // acá, que es donde se sabe, y no en el dibujante: el motor sólo recibe un color.
+    var f = { de_asa: origen === 'asa',
+              figura: b.figura, diam: parseFloat(b.diam), dims: {}, eje: b.eje || null,
               angulos: (b.angulos || []).map(Number).filter(function (x) { return !isNaN(x); }),
               radio: origen === 'asa' ? 0 : (Number(b.radio) || 0),
               // `largo` es la SUMA DE LOS PARCIALES; `corte` es lo que aSa manda a cortar,

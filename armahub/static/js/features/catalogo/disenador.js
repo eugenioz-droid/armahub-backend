@@ -198,6 +198,18 @@
   // 6.6:1 sobre la fila azul —por encima del teal que reemplaza (6.6 / 5.9), así que las
   // cotas no pierden legibilidad—, mientras el 800 se queda en 4.8 / 4.3.
   var TINTA_3D = '#01579b';
+  // Barras que vienen de aSa: no las dibujó nadie acá, son la lectura de lo que el
+  // sistema de producción tiene hoy. Lo pidió el usuario (13-oct) para distinguirlas de
+  // un vistazo de las nuestras.
+  //
+  // POR QUÉ PÚRPURA Y NO LO OBVIO. El teal estaba tomado (es la tinta por defecto, las
+  // creadas acá) y el azul también (el 3D). El verde, el rojo, el ámbar y el marrón ya
+  // significan algo en este módulo —resuelto, error, aviso, no aplica— y un color con
+  // semántica de estado puesto en el trazo se lee como un juicio sobre la barra, que es
+  // justo lo que no es. El Purple 900 queda libre y da 11:1 sobre blanco, por encima del
+  // azul del 3D (7.4): el trazo es fino y los números de 11 px, así que el contraste es
+  // lo que decide.
+  var TINTA_ASA = '#4a148c';
 
   // ---- Render: puntos → <svg> string ----
   // Escala y centra la polilínea en un viewBox fijo, con margen. Dibuja los
@@ -2080,8 +2092,8 @@
   // Exponer al scope global.
   global.disenadorInit = disenadorInit;
   // Motor reutilizable (SVG 2D; base para 3D TubeGeometry y export BVBS futuros).
-  // TINTA/TINTA_3D se exportan para que el llamador NOMBRE el color en vez de repetir el
+  // Las tintas se exportan para que el llamador NOMBRE el color en vez de repetir el
   // hex: cambiar el azul de las barras del 3D se hace en una línea, no cazando #01579b.
   global.disenadorMotor = { geometriaAPuntos: geometriaAPuntos, svgDesdePuntos: svgDesdePuntos, dibujarFigura: dibujarFigura, puntosAGeometria: _puntosAGeometria,
-                            TINTA: TINTA, TINTA_3D: TINTA_3D };
+                            TINTA: TINTA, TINTA_3D: TINTA_3D, TINTA_ASA: TINTA_ASA };
 })(window);
