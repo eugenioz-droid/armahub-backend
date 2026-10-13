@@ -163,6 +163,23 @@ check("...y una diferencia de 1 mm se marca", len(C.r_lados_opuestos(estribo(300
 zeta = barra([("A", 300, "B", None), ("B", 300, "B", 90), ("C", 300, "B", -90),
               ("D", 300, "B", 90)], ref="z1")
 check("una Z gira para los dos lados y tampoco es un marco", C._marco(zeta) == [])
+# LA 106A TAMBIÉN ES UN ESTRIBO, lo avisó el usuario (13-oct). Y de hecho eran sus nombres
+# de lado los que tenía en la cabeza al explicar la regla: «B=D y C=E, A y F menor a 10
+# veces el diámetro». Se congela con una barra REAL (SUSH 8mmA37, φ8, ganchos de 80): sus
+# ganchos llegan como STD y no como H3, así que lo único que los reconoce es que son
+# terminales, cortos y dan la vuelta. Si alguien toca esa clasificación, la 106A se cae
+# de la regla sin hacer ruido.
+a106 = barra([("A", 80, "STD", None), ("B", 150, "STD", 135), ("C", 370, "STD", 90),
+              ("D", 150, "STD", 90), ("E", 370, "STD", 90), ("F", 80, "STD", 135)], diam=8.0)
+check("una 106A entra en la regla, aunque aSa no declare sus ganchos como H3",
+      [l["nombre"] for l in C._marco(a106)] == ["B", "C", "D", "E"])
+check("...y si está bien, no se marca", C.r_lados_opuestos(a106, []) == [])
+# EL CASO REAL QUE ENCONTRÓ: SUVI 8mmA100, una 106A con C=350 y E=360.
+mala106 = barra([("A", 100, "STD", None), ("B", 150, "STD", 135), ("C", 350, "STD", 90),
+                 ("D", 150, "STD", 90), ("E", 360, "STD", 90), ("F", 100, "STD", 135)], diam=8.0)
+m106 = C.r_lados_opuestos(mala106, [])
+check("...y una 106A con 350 contra 360 SÍ: es el hallazgo real de SUVI 8mmA100",
+      len(m106) == 1 and "350" in m106[0]["texto"] and "360" in m106[0]["texto"])
 recta = barra([("A", 500, "B", None)], mbr=(500.0, 500.0), ref="r")
 check("una barra recta no entra en esta regla", C.r_lados_opuestos(recta, []) == [])
 # LA DEFINICIÓN QUE SE RETIRÓ, POR SI ALGUIEN LA REPONE.
