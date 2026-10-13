@@ -270,6 +270,22 @@ def renew(user=Depends(get_current_user)):
             "token_type": "bearer", "role": user.get("role")}
 
 
+# CUÁNDO SE TRAJO LA DATA DE aSa (13-oct). Lo pidió el usuario para la barra negra: «sirve
+# para tener referencia de si podría faltar data o no». Va en `/me` —que el front pide al
+# arrancar— en vez de en un endpoint por pantalla, porque la pregunta es la misma en
+# Programación, Chequeos, Auditorías y Reclamos: todo lo que se ve sale de esa carga.
+# Al rol cliente no se le manda: no ve nada de aSa.
+def _asa_ultima_carga(cur, role: str):
+    if role == ROL_CLIENTE:
+        return None
+    try:
+        cur.execute("SELECT MAX(fin) FROM asa_sync WHERE ok")
+        fin = cur.fetchone()[0]
+        return fin.isoformat() if fin else None
+    except Exception:
+        return None
+
+
 @router.get("/me")
 def me(user=Depends(get_current_user)):
     email = user.get("email")
@@ -278,7 +294,8 @@ def me(user=Depends(get_current_user)):
             cur.execute("SELECT id, role, nombre, apellido FROM users WHERE email = %s", (email,))
             row = cur.fetchone()
             if not row:
-                return {"email": email, "role": user.get("role"), "nombre": None, "apellido": None, "areas": []}
+                return {"email": email, "role": user.get("role"), "nombre": None, "apellido": None,
+                        "areas": [], "asa_ultima_carga": _asa_ultima_carga(cur, user.get("role", ""))}
             user_id = row[0]
             cur.execute("""
                 SELECT au.area_id, a.nombre, a.slug
@@ -288,8 +305,10 @@ def me(user=Depends(get_current_user)):
                 ORDER BY a.nombre
             """, (user_id,))
             areas_rows = cur.fetchall()
+            ultima_carga = _asa_ultima_carga(cur, row[1])
     areas = [{"area_id": r[0], "area_nombre": r[1], "area_slug": r[2]} for r in areas_rows]
-    return {"email": email, "role": row[1], "nombre": row[2], "apellido": row[3], "areas": areas}
+    return {"email": email, "role": row[1], "nombre": row[2], "apellido": row[3], "areas": areas,
+            "asa_ultima_carga": ultima_carga}
 
 
 @router.post("/me/password")

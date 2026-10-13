@@ -30,8 +30,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .asa import AsaError
-from .auditorias import (PATRON_OBRAS_FUERA, _avisar, alias_de, alias_cubicador, _es_barra, _items_de, _puede_auditar,
-                         _puede_ver, refs_de_barras)
+from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_de, alias_cubicador,
+                         _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
 from .db import audit, get_conn
@@ -278,9 +278,9 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
                     """INSERT INTO chequeo_senales
                            (regla, origen, id_proyecto, obra, cc, elemento, ref, marca, figura,
                             diam_mm, cubico, detalle, firma, firma_patron, estado, resuelto_por,
-                            nota, resuelto_el)
+                            nota, resuelto_el, revision_id)
                        VALUES (%s,'asa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                               CASE WHEN %s THEN now() END)
+                               CASE WHEN %s THEN now() END, %s)
                        ON CONFLICT (firma) DO UPDATE
                           SET veces = chequeo_senales.veces + 1, visto_ultimo = now(),
                               detalle = EXCLUDED.detalle, cubico = EXCLUDED.cubico
@@ -291,7 +291,10 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
                      "aceptada" if acep else "abierta",
                      acep[0] if acep else None,
                      ("Aceptado antes en esta obra: " + (acep[1] or "sin motivo")) if acep else None,
-                     bool(acep)))
+                     bool(acep),
+                     # DE QUÉ REVISIÓN ES. Sólo al INSERTAR: una señal que ya existía sigue
+                     # siendo de la corrida que la encontró, aunque se vuelva a ver.
+                     body.revision))
                 if cur.fetchone()[0]:
                     nuevas += 1
                 else:
@@ -774,6 +777,317 @@ def comprobar_senal(senal_id: int, user=Depends(get_current_user)):
             "barras": r.get("barras", 0), "corregidas_en_el_codigo": r.get("corregidas", 0)}
 
 
+# ══════ LOS HALLAZGOS SE AGRUPAN POR CUBICADOR (13-oct) ══════
+#
+# Lo decidió el usuario: «mejor agrupamos de una por cubicador; al presionar se abre un
+# modal que resume ordenadamente todas las barras con problemas. Eso me permite generar una
+# acción por cubicador, y se envía todo listo».
+#
+# Y es lo correcto: una señal suelta no es accionable —nadie corrige UNA barra— pero «estas
+# 47 barras tuyas, en estos 9 códigos» sí es un encargo. La lista de 540 filas servía para
+# mirar; ésta sirve para repartir trabajo.
+
+# ══════ EL CICLO DE UN HALLAZGO ══════
+#
+#   Abierta ──[declarar]──> Corregida (declarada) ──[verificar en aSa]──> Verificada ✓
+#       │                         └──────── sigue igual ────────> vuelve a Abierta
+#       └──[no aplica + justificación]──> No aplica –
+#
+# ISO 9001 §10.2 separa la CORRECCIÓN de la VERIFICACIÓN de su eficacia, y acá son dos
+# actos de dos actores: la corrección la declara una persona, la eficacia la comprueba el
+# sistema leyendo aSa. Que alguien pudiera marcar «verificada» sería firmar su propia tarea.
+ESTADO_TXT = {"abierta": "Abierta", "declarada": "Corregida (por verificar)",
+              "corregida": "Verificada", "aceptada": "No aplica", "corregir": "Corregida (por verificar)"}
+# Los motivos por los que un hallazgo NO aplica. El usuario acotó cuándo es legítimo, y
+# categorizarlo permite leer lo que el texto libre esconde: si muchos marcan «la regla no
+# aplica a esta figura», el problema está en la REGLA.
+MOTIVOS_NO_APLICA = {
+    "figura": "La regla no aplica a esta figura",
+    "produccion": "Confirmado con producción: debe ir así",
+    "cliente": "Lo pide el cliente y no hay otra forma",
+    "otro": "Otro (explicar)",
+}
+
+
+class DeclararBody(BaseModel):
+    """Lo que declara quien corrigió, o quien deja un hallazgo sin efecto."""
+    ids: List[int]
+    estado: str                        # declarada | aceptada | abierta
+    motivo_tipo: Optional[str] = None  # sólo para 'aceptada'
+    nota: Optional[str] = None
+
+
+@router.put("/chequeos/declarar")
+def declarar(body: DeclararBody, user=Depends(get_current_user)):
+    """EL RESPONSABLE DECLARA: «ya la corregí» o «esto no aplica, por esto».
+
+    Quién puede: quien cubicó el código, o administración. El resto no: un hallazgo es de
+    quien lo hizo, y marcar lo ajeno dejaría el registro sin dueño.
+
+    «No aplica» exige motivo Y explicación, y queda firmado. El usuario fue explícito en
+    que sólo se justifica con una confirmación de producción o del cliente, o cuando la
+    regla no aplica a esa figura: si se usa mal, el error salta en producción y el registro
+    dice quién lo dejó pasar."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    if body.estado not in ("declarada", "aceptada", "abierta"):
+        raise HTTPException(status_code=422, detail="Estado no válido.")
+    nota = (body.nota or "").strip()
+    if body.estado == "aceptada":
+        if body.motivo_tipo not in MOTIVOS_NO_APLICA:
+            raise HTTPException(status_code=400, detail="Elige por qué no aplica.")
+        if len(nota) < 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Explica por qué no aplica: lo va a leer quien audita y queda en el registro.")
+    ids = list(dict.fromkeys(body.ids or []))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No marcaste ninguna barra.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, cubico, cc, ref FROM chequeo_senales
+                            WHERE id = ANY(%s) AND estado <> 'corregida'""", (ids,))
+            filas = cur.fetchall()
+            if not filas:
+                raise HTTPException(status_code=400,
+                                    detail="Esas barras ya están verificadas: no hay nada que declarar.")
+            if user.get("role") not in ROLES_ADMINISTRAN:
+                mios = set(alias_cubicador(cur, email))
+                ajenas = {f[1] for f in filas if (f[1] or "").strip() and (f[1] or "").strip() not in mios}
+                if ajenas:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Hay barras que cubicó otra persona (%s): sólo puede declararlas quien las hizo."
+                               % ", ".join(sorted(ajenas)[:3]))
+            ids = [f[0] for f in filas]
+            if body.estado == "declarada":
+                cur.execute(
+                    """UPDATE chequeo_senales
+                          SET estado = 'declarada', declarada_por = %s, declarada_el = now(),
+                              nota = NULLIF(%s, ''), motivo_tipo = NULL
+                        WHERE id = ANY(%s)""", (email, nota, ids))
+            elif body.estado == "aceptada":
+                cur.execute(
+                    """UPDATE chequeo_senales
+                          SET estado = 'aceptada', resuelto_por = %s, resuelto_el = now(),
+                              nota = %s, motivo_tipo = %s
+                        WHERE id = ANY(%s)""", (email, nota, body.motivo_tipo, ids))
+            else:
+                cur.execute(
+                    """UPDATE chequeo_senales
+                          SET estado = 'abierta', declarada_por = NULL, declarada_el = NULL,
+                              resuelto_por = NULL, resuelto_el = NULL, nota = NULL, motivo_tipo = NULL
+                        WHERE id = ANY(%s)""", (ids,))
+    audit(email, "chequeo_declarar", "%d barra(s) -> %s%s"
+          % (len(ids), body.estado, (" (%s)" % body.motivo_tipo) if body.motivo_tipo else ""),
+          "chequeo", "lote")
+    return {"ok": True, "afectadas": len(ids), "estado": body.estado}
+
+
+# ══════ LAS REVISIONES SON LA UNIDAD ══════
+
+@router.get("/chequeos/revision/{revision_id}")
+def detalle_revision(revision_id: int, user=Depends(get_current_user)):
+    """LO QUE ENCONTRÓ UNA REVISIÓN, y en qué va. Todos ven todo acá: el reparto por persona
+    es lo que hace falta para saber dónde está parado el trabajo."""
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, id_proyecto, obra, lanzada_por, arrancada, terminada, ccs,
+                          ccs_error, barras, senales_nuevas, nota
+                     FROM chequeo_revisiones WHERE id = %s""", (revision_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Esa revisión no existe.")
+            cab = {"id": r[0], "job": r[1], "obra": r[2], "por": r[3],
+                   "arrancada": r[4].isoformat(), "terminada": r[5].isoformat() if r[5] else None,
+                   "ccs": r[6], "ccs_error": r[7], "barras": r[8], "nuevas": r[9], "nota": r[10]}
+            cur.execute(
+                "SELECT " + _COLS_SENAL + """, s.motivo_tipo, s.declarada_por, s.declarada_el
+                     FROM chequeo_senales s WHERE s.revision_id = %s
+                    ORDER BY s.obra, s.cc, s.regla, s.ref""", (revision_id,))
+            items = []
+            for f in cur.fetchall():
+                d = _fila_senal(f)
+                d.update({"motivo_tipo": f[20], "declarada_por": f[21],
+                          "declarada_el": f[22].isoformat() if f[22] else None})
+                items.append(d)
+            # Los kilos de los códigos tocados: el tamaño de lo que está en juego.
+            ccs = sorted({(i["job"], i["cc"]) for i in items if i["cc"]})
+            kg = 0.0
+            if ccs:
+                # Los pares (job, código) van como dos arrays y se cruzan con `unnest`:
+                # psycopg3 no sabe mandar una lista de tuplas a un `IN`.
+                cur.execute(
+                    """SELECT COALESCE(SUM(p.kg), 0)
+                         FROM asa_pedidos p
+                         JOIN unnest(%s::text[], %s::text[]) AS t(job, cc)
+                           ON t.job = p.asa_job_id AND t.cc = p.control_code""",
+                    ([c[0] for c in ccs], [c[1] for c in ccs]))
+                kg = float(cur.fetchone()[0] or 0)
+    por_cub = {}
+    for i in items:
+        q = (i["cubico"] or "(sin dato)").strip() or "(sin dato)"
+        c = por_cub.setdefault(q, {"cubico": q, "n": 0, "resueltas": 0, "declaradas": 0,
+                                   "verificadas": 0, "no_aplica": 0, "abiertas": 0, "ccs": set()})
+        c["n"] += 1
+        c["ccs"].add(i["cc"])
+        if i["estado"] == "corregida":
+            c["verificadas"] += 1; c["resueltas"] += 1
+        elif i["estado"] == "aceptada":
+            c["no_aplica"] += 1; c["resueltas"] += 1
+        elif i["estado"] in ("declarada", "corregir"):
+            c["declaradas"] += 1
+        else:
+            c["abiertas"] += 1
+    for c in por_cub.values():
+        c["ccs"] = len(c["ccs"])
+        c["pct"] = round(c["resueltas"] / c["n"] * 100) if c["n"] else 0
+    cab.update({
+        "items": len(items),
+        "resueltas": sum(c["resueltas"] for c in por_cub.values()),
+        "obras": len({i["job"] for i in items}),
+        "ccs_con_hallazgo": len(ccs), "kg": kg,
+        "por_cubicador": sorted(por_cub.values(), key=lambda c: (c["pct"], -c["n"])),
+    })
+    return {"revision": cab, "items": items,
+            "estados": ESTADO_TXT, "motivos": MOTIVOS_NO_APLICA,
+            "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}
+
+
+@router.get("/chequeos/por-cubicador")
+def por_cubicador(user=Depends(get_current_user)):
+    """Una fila por cubicador: cuántos hallazgos tiene, en cuántas obras y códigos, cómo se
+    reparten por regla y en qué va su corrección.
+
+    El `cubico` es el login de aSa (`Nlopez`, `JHvelasquez`). Se resuelve a correo con la
+    misma regla que usan las auditorías para saber a quién se le puede mandar la tarea: los
+    que no son usuarios de la plataforma salen igual, marcados, porque sus barras existen y
+    alguien las tiene que ver."""
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT COALESCE(NULLIF(TRIM(cubico), ''), '(sin dato)') AS quien,
+                          COUNT(*) FILTER (WHERE estado = 'abierta'),
+                          COUNT(*) FILTER (WHERE estado = 'corregir'),
+                          COUNT(*) FILTER (WHERE estado = 'aceptada'),
+                          COUNT(*) FILTER (WHERE estado = 'corregida'),
+                          COUNT(DISTINCT id_proyecto) FILTER (WHERE estado = ANY(%s)),
+                          COUNT(DISTINCT cc) FILTER (WHERE estado = ANY(%s)),
+                          MAX(visto_ultimo)
+                     FROM chequeo_senales
+                    GROUP BY 1""", (list(ABIERTAS), list(ABIERTAS)))
+            filas = {r[0]: {"cubico": r[0], "abiertas": r[1], "corregir": r[2], "aceptadas": r[3],
+                            "corregidas": r[4], "obras": r[5], "ccs": r[6],
+                            "visto_ultimo": r[7].isoformat() if r[7] else None,
+                            "por_regla": {}, "email": None}
+                     for r in cur.fetchall()}
+            cur.execute(
+                """SELECT COALESCE(NULLIF(TRIM(cubico), ''), '(sin dato)'), regla, COUNT(*)
+                     FROM chequeo_senales WHERE estado = ANY(%s)
+                    GROUP BY 1, 2""", (list(ABIERTAS),))
+            for quien, regla, n in cur.fetchall():
+                if quien in filas:
+                    filas[quien]["por_regla"][regla] = n
+            for quien, f in filas.items():
+                f["email"] = _email_de_login(cur, quien) if quien != "(sin dato)" else None
+    lista = sorted(filas.values(), key=lambda f: (-(f["abiertas"] + f["corregir"]), f["cubico"]))
+    return {"cubicadores": lista,
+            "reglas": {r["codigo"]: r.get("corto") or r["nombre"] for r in REGLAS},
+            "total": {"abiertas": sum(f["abiertas"] for f in lista),
+                      "corregir": sum(f["corregir"] for f in lista),
+                      "corregidas": sum(f["corregidas"] for f in lista),
+                      "aceptadas": sum(f["aceptadas"] for f in lista),
+                      "cubicadores": len(lista)}}
+
+
+@router.get("/chequeos/cubicador/{quien}")
+def hoja_cubicador(quien: str, estado: str = "", user=Depends(get_current_user)):
+    """LA HOJA DE TRABAJO de un cubicador: todas sus barras con problema, ordenadas por obra
+    y código, que es como se corrigen —abriendo un código en aSa y arreglando lo de ahí—.
+    Se imprime tal cual."""
+    _puede_ver(user)
+    where, args = ["COALESCE(NULLIF(TRIM(s.cubico), ''), '(sin dato)') = %s"], [quien]
+    if estado == "todas":
+        pass
+    elif estado:
+        where.append("s.estado = %s"); args.append(estado)
+    else:
+        where.append("s.estado = ANY(%s)"); args.append(list(ABIERTAS) + ["corregida"])
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT " + _COLS_SENAL + """ FROM chequeo_senales s
+                  WHERE """ + " AND ".join(where) + """
+                  ORDER BY s.obra, s.cc, s.regla, s.ref""", tuple(args))
+            filas = [_fila_senal(r) for r in cur.fetchall()]
+            email = _email_de_login(cur, quien) if quien != "(sin dato)" else None
+    # Agrupado por código: es la unidad en la que se trabaja y en la que se comprueba (una
+    # llamada a aSa por código, no por barra).
+    por_cc, orden = {}, []
+    for f in filas:
+        k = (f["job"], f["cc"] or "")
+        if k not in por_cc:
+            por_cc[k] = {"job": f["job"], "cc": f["cc"], "obra": f["obra"], "senales": []}
+            orden.append(k)
+        por_cc[k]["senales"].append(f)
+    grupos = [por_cc[k] for k in orden]
+    for g in grupos:
+        g["n"] = len(g["senales"])
+        g["corregidas"] = sum(1 for s in g["senales"] if s["estado"] == "corregida")
+    return {"cubico": quien, "email": email, "grupos": grupos, "senales": filas,
+            "n": len(filas), "ccs": len(grupos),
+            "corregidas": sum(1 for f in filas if f["estado"] == "corregida"),
+            "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}
+
+
+class ComprobarLoteBody(BaseModel):
+    """Las señales marcadas por el cubicador: «éstas ya las corregí, revísalas»."""
+    ids: List[int]
+    # Tope de CÓDIGOS por llamada. Comprobar cuesta una lectura de aSa por código, no por
+    # barra: 47 barras en 9 códigos son 9 lecturas. El tope existe para que una hoja con
+    # treinta códigos no deje la pantalla colgada; lo que sobra vuelve en la siguiente.
+    tope_ccs: int = 12
+
+
+@router.post("/chequeos/comprobar-lote")
+def comprobar_lote(body: ComprobarLoteBody, user=Depends(get_current_user)):
+    """COMPRUEBA SÓLO LO MARCADO. Vuelve a leer en aSa los códigos de esas señales y corre
+    las reglas con la misma lógica de siempre (`revisar_cc`): la que ya no salta queda
+    corregida. Devuelve el estado final de cada id, para pintar verde lo que ya cumple."""
+    _puede_ver(user)
+    ids = list(dict.fromkeys(body.ids or []))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No marcaste ninguna barra.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT DISTINCT id_proyecto, cc FROM chequeo_senales
+                    WHERE id = ANY(%s) AND estado <> 'corregida' AND cc IS NOT NULL
+                    ORDER BY 1, 2""", (ids,))
+            ccs = cur.fetchall()
+    tope = max(1, min(int(body.tope_ccs or 12), 30))
+    hechos, errores = [], []
+    for job, cc in ccs[:tope]:
+        r = revisar_cc(RevisarCc(job=job, cc=cc), user)
+        (errores if r.get("error") else hechos).append(
+            {"cc": cc, "error": r.get("error"), "barras": r.get("barras", 0),
+             "corregidas": r.get("corregidas", 0)})
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, estado FROM chequeo_senales WHERE id = ANY(%s)", (ids,))
+            estados = {r[0]: r[1] for r in cur.fetchall()}
+    audit(user.get("email", "?"), "chequeo_comprobar_lote",
+          "%d barra(s) en %d código(s): %d corregida(s)"
+          % (len(ids), len(hechos), sum(1 for e in estados.values() if e == "corregida")),
+          "chequeo", "lote")
+    return {"estados": estados, "ccs_revisados": hechos, "errores": errores,
+            "faltan_ccs": max(0, len(ccs) - tope),
+            "corregidas": sum(1 for i in ids if estados.get(i) == "corregida")}
+
+
 @router.get("/chequeos/reporte")
 def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
             user=Depends(get_current_user)):
@@ -868,15 +1182,26 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
     _puede_ver(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # EL AVANCE DE CADA REVISIÓN, contado sobre SUS señales: una revisión sin
+            # resolver no se arrastra a la siguiente —lo pidió el usuario— así que la suya
+            # tiene que mostrar que sigue abierta.
             cur.execute(
-                """SELECT id, id_proyecto, obra, lanzada_por, arrancada, terminada, ccs,
-                          ccs_error, barras, senales_nuevas, senales_vistas, corregidas
-                     FROM chequeo_revisiones
-                    WHERE (%s = '' OR id_proyecto = %s)
-                    ORDER BY arrancada DESC LIMIT 60""", (job, job))
+                """SELECT r.id, r.id_proyecto, r.obra, r.lanzada_por, r.arrancada, r.terminada,
+                          r.ccs, r.ccs_error, r.barras, r.senales_nuevas, r.senales_vistas,
+                          COUNT(s.id),
+                          COUNT(s.id) FILTER (WHERE s.estado IN ('corregida', 'aceptada')),
+                          COUNT(s.id) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
+                          COUNT(DISTINCT s.cubico) FILTER (WHERE s.cubico IS NOT NULL)
+                     FROM chequeo_revisiones r
+                     LEFT JOIN chequeo_senales s ON s.revision_id = r.id
+                    WHERE (%s = '' OR r.id_proyecto = %s)
+                    GROUP BY r.id
+                    ORDER BY r.arrancada DESC LIMIT 60""", (job, job))
             filas = cur.fetchall()
     return {"revisiones": [
         {"id": f[0], "job": f[1], "obra": f[2], "por": f[3],
          "arrancada": f[4].isoformat(), "terminada": f[5].isoformat() if f[5] else None,
          "ccs": f[6], "ccs_error": f[7], "barras": f[8], "nuevas": f[9],
-         "vistas": f[10], "corregidas": f[11]} for f in filas]}
+         "vistas": f[10], "items": f[11], "resueltas": f[12], "declaradas": f[13],
+         "cubicadores": f[14],
+         "pct": round(f[12] / f[11] * 100) if f[11] else None} for f in filas]}

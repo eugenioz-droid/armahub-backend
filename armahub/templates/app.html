@@ -24,6 +24,10 @@
     <div class="user-info">
       <span class="user-badge" id="whoEmail">—</span>
       <span class="user-badge" id="whoRole">—</span>
+      <!-- CUÁNDO SE TRAJO LA DATA DE aSa. Va acá y no dentro de un tab porque la pregunta
+           «¿esto está al día?» es la misma en Programación, Chequeos, Auditorías y
+           Reclamos: todo lo que se ve sale de esa carga. -->
+      <span class="user-badge" id="whoAsa" style="display:none;" title="Última carga de datos desde aSa. Todo lo que ves en la plataforma es a esta fecha."></span>
       <!-- Notificaciones bell -->
       <div id="notifBellWrap" style="position:relative; display:inline-block; margin-right:6px;">
         <button id="notifBellBtn" class="btn-logout" onclick="toggleNotifPanel()" style="background:transparent; font-size:18px; padding:4px 8px; position:relative;">

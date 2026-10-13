@@ -144,7 +144,6 @@
         (sinRevisar ? sinRevisar + ' sin revisar' : 'todos revisados alguna vez');
       pintarCodigos();
       await cargarSenales();
-      await cargarHistorial();
     } catch (e) { aviso(e.message); $('revObraInfo').textContent = e.message; }
   }
 
@@ -176,14 +175,6 @@
     if (revision) { try { await req('PUT', '/chequeos/revision/' + revision + '/cerrar'); } catch (e) {} }
     // QUÉ HACER AHORA. Antes la corrida terminaba en «15 señales nuevas» y ahí quedaba
     // uno: la bandeja se abre en lo de ESTA revisión, para resolverlo de inmediato.
-    BAN.revision = revision || 0;
-    if (nuevas > 0) {
-      BAN.ultima = true; BAN.estado = ''; BAN.sel = {};
-      ui.txt.innerHTML += ' · <b>resuélvelas en la bandeja de abajo ↓</b>';
-      await cargarBandeja();
-      var ban = $('revBandeja');
-      if (ban && ban.scrollIntoView) ban.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
     return { hechos: hechos, nuevas: nuevas };
   }
 
@@ -210,7 +201,7 @@
       ok(REV.parar ? 'Revisión detenida; lo revisado quedó guardado' : 'Revisión terminada');
     } catch (e) { aviso(e.message); $('revProgTxt').textContent = e.message; }
     _termina('revCorrer', 'revParar');
-    await cargarSenales(); await cargarHistorial(); await cargarObras();
+    await cargarSenales(); await cargarObras();
     await cargarPendientes(); await cargarReporte();
   }
 
@@ -227,7 +218,7 @@
     } catch (e) { aviso(e.message); $('revPendProgTxt').textContent = e.message; }
     _termina('revPendCorrer', 'revPendParar');
     await cargarPendientes(); await cargarObras(); await cargarReporte();
-    if (REV.job) { await cargarSenales(); await cargarHistorial(); }
+    if (REV.job) await cargarSenales();
   }
 
   async function cargarPendientes() {
@@ -265,117 +256,351 @@
     }).join('');
   }
 
-  // ══════ LA BANDEJA DE HALLAZGOS ══════
-  // Todas las señales, sin obra abierta. Antes para ver una señal había que clickear su
-  // obra —32 obras—, y después de «revisar lo pendiente» la pantalla decía «15 señales
-  // nuevas» y nada más. Medido el 9-oct: 540 señales, todas abiertas, ninguna resuelta.
-  var BAN = { estado: '', regla: '', cubico: '', job: '', ultima: false, busca: '',
-              sel: {}, datos: null, revision: 0 };
-  var ESTADO_TXT = { abierta: 'Abierta', corregir: 'Por corregir', aceptada: 'Está bien',
-                     corregida: 'Corregida' };
+  // ══════ LAS REVISIONES SON LA UNIDAD ══════
+  //
+  // Lo redefinió el usuario (13-oct): cada vez que alguien aprieta el botón o corre el
+  // reloj queda un registro, y ese registro muestra SÓLO lo que apareció en él. Antes la
+  // pantalla era una bolsa de 540 señales acumuladas donde no se podía preguntar «¿qué
+  // salió hoy?», y por eso el trabajo no avanzaba: nadie sabe por dónde empezar una lista
+  // de 540. Una revisión sin resolver NO se arrastra a la siguiente: la suya queda abierta.
+  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '' };
+  var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Corregida (por verificar)',
+                     corregir: 'Corregida (por verificar)', corregida: 'Verificada',
+                     aceptada: 'No aplica' };
 
-  function _qs() {
-    var p = [];
-    if (BAN.estado) p.push('estado=' + BAN.estado);
-    if (BAN.regla) p.push('regla=' + encodeURIComponent(BAN.regla));
-    if (BAN.cubico) p.push('cubico=' + encodeURIComponent(BAN.cubico));
-    if (BAN.job) p.push('job=' + encodeURIComponent(BAN.job));
-    if (BAN.ultima && BAN.revision) p.push('revision=' + BAN.revision);
-    if (BAN.busca) p.push('busca=' + encodeURIComponent(BAN.busca));
-    return p.length ? '?' + p.join('&') : '';
+  function _fechaHora(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return ('0' + d.getDate()).slice(-2) + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' +
+           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
-  async function cargarBandeja() {
+  async function cargarRevisiones() {
     try {
-      BAN.datos = await req('GET', '/chequeos' + _qs());
-      REV.reglas = BAN.datos.reglas || REV.reglas;
-      pintarBandeja();
+      var d = await req('GET', '/chequeos/revisiones');
+      REVS.lista = d.revisiones || [];
+      pintarRevisiones();
+      if (REVS.lista.length && !REVS.sel) {
+        // Se abre sola la última que encontró algo: es lo que uno viene a ver.
+        var conAlgo = REVS.lista.filter(function (r) { return r.items > 0; })[0];
+        await abrirRevision((conAlgo || REVS.lista[0]).id);
+      }
+    } catch (e) { $('revLista').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
+  }
+
+  function pintarRevisiones() {
+    var el = $('revLista');
+    if (!el) return;
+    $('revListaN').textContent = REVS.lista.length + ' revisión(es)';
+    if (!REVS.lista.length) {
+      el.innerHTML = '<div class="revvacio">Todavía no se ha hecho ninguna revisión. ' +
+        'Apreta «Nueva revisión».</div>';
+      return;
+    }
+    el.innerHTML = REVS.lista.map(function (r) {
+      var pct = r.pct == null ? null : r.pct;
+      // UNA REVISIÓN SIN HALLAZGOS NO SE ESCONDE: deja constancia de que se miró, que es
+      // distinto de no haber mirado. Lo pidió el usuario.
+      var cuerpo = !r.items
+        ? '<div class="l2 vacia">sin hallazgos · ' + (r.ccs || 0) + ' código(s) revisados</div>'
+        : '<div class="l2">' + r.items + ' hallazgo(s) · ' + (r.cubicadores || 0) + ' cubicador(es)' +
+          (r.declaradas ? ' · ' + r.declaradas + ' por verificar' : '') + '</div>' +
+          '<div class="barra"><i class="' + (pct ? '' : 'cero') + '" style="width:' + (pct || 2) + '%"></i></div>' +
+          '<div class="l2">' + r.resueltas + ' de ' + r.items + ' resueltos' + (pct === 100 ? ' ✓' : '') + '</div>';
+      return '<div class="revfila' + (REVS.sel === r.id ? ' on' : '') + '" data-rev="' + r.id + '">' +
+        '<div class="l1"><b>#' + r.id + '</b> ' + _fechaHora(r.arrancada) +
+          '<div style="flex:1"></div><span class="muted" style="font-size:10px">' +
+          esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) + '</span></div>' +
+        '<div class="l2">' + esc(r.obra || '') + '</div>' + cuerpo + '</div>';
+    }).join('');
+    el.querySelectorAll('div[data-rev]').forEach(function (d) {
+      d.addEventListener('click', function () { abrirRevision(Number(d.dataset.rev)); });
+    });
+  }
+
+  async function abrirRevision(id) {
+    REVS.sel = id;
+    pintarRevisiones();
+    $('revResCuerpo').innerHTML = '<div class="revvacio">Cargando…</div>';
+    try {
+      REVS.detalle = await req('GET', '/chequeos/revision/' + id);
+      REV.reglas = {};
+      Object.keys(REVS.detalle.reglas || {}).forEach(function (k) { REV.reglas[k] = REVS.detalle.reglas[k]; });
+      pintarResumen();
+    } catch (e) { $('revResCuerpo').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
+  }
+
+  function pintarResumen() {
+    var d = REVS.detalle, r = d.revision;
+    var kpis = [
+      [r.items, 'hallazgos'], [r.resueltas + ' / ' + r.items, 'resueltos'],
+      [r.obras, 'obra(s)'], [r.ccs_con_hallazgo, 'código(s) con hallazgo'],
+      [num(Math.round(r.kg)), 'kg en juego'], [num(r.barras), 'barras miradas']
+    ];
+    var sinItems = !r.items;
+    $('revResCuerpo').innerHTML =
+      '<div class="audh">Revisión #' + r.id + ' <span class="muted">' + _fechaHora(r.arrancada) +
+        ' · ' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
+        ' · ' + esc(r.obra || '') + '</span><div style="flex:1"></div>' +
+        (sinItems ? '' : '<button class="audbtn" id="revAbrirItems">Abrir los ' + r.items + ' hallazgos</button>') +
+      '</div>' +
+      '<div class="revkpis">' + kpis.map(function (k) {
+        return '<div class="revkpi"><b>' + k[0] + '</b><span>' + k[1] + '</span></div>'; }).join('') + '</div>' +
+      (sinItems
+        ? '<div class="revvacio">Esta revisión no encontró hallazgos: se miraron ' + (r.ccs || 0) +
+          ' código(s) y todos cumplen. Queda el registro de que se revisó.</div>'
+        : '<table class="audt"><thead><tr><th>Cubicador</th><th class="num">Hallazgos</th>' +
+          '<th class="num">Códigos</th><th class="num">Por verificar</th><th class="num">No aplica</th>' +
+          '<th class="num">Resueltos</th><th>Avance</th></tr></thead><tbody>' +
+          r.por_cubicador.map(function (c) {
+            return '<tr><td>' + esc(c.cubico) + '</td>' +
+              '<td class="num">' + c.n + '</td><td class="num">' + c.ccs + '</td>' +
+              '<td class="num">' + (c.declaradas || '<span class="muted">·</span>') + '</td>' +
+              '<td class="num">' + (c.no_aplica || '<span class="muted">·</span>') + '</td>' +
+              '<td class="num">' + c.resueltas + '</td>' +
+              '<td><div class="revbar2" style="max-width:120px; display:inline-block; vertical-align:middle;">' +
+                '<i style="width:' + c.pct + '%"></i></div> ' +
+                (c.pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : c.pct + '%') + '</td></tr>';
+          }).join('') + '</tbody></table>');
+    var b = $('revAbrirItems');
+    if (b) b.addEventListener('click', function () { abrirItems(); });
+  }
+
+  // ══════ LA HOJA DE TRABAJO ══════
+  // El admin ve todos los ítems con filtro rápido por cubicador; el cubicador ve sólo los
+  // suyos (el backend igual se lo impide si intenta declarar lo ajeno). Dos checks, como
+  // los pidió el usuario: la casilla marca lo que ya se corrigió, y el botón lanza la
+  // consulta a aSa SÓLO de eso — el check le dice al sistema qué ir a buscar.
+  function _esAdmin() { return ['admin', 'admin_calidad'].indexOf(global.currentRole) !== -1; }
+
+  function _misLogins() {
+    // Lo que el backend resuelve por alias; acá sólo hace falta para filtrar la vista.
+    var yo = (global.currentUserEmail || '').toLowerCase();
+    var nom = (global.currentUserName || '').toLowerCase().split(' ').filter(Boolean);
+    return function (cubico) {
+      var c = (cubico || '').toLowerCase();
+      if (!c) return false;
+      if (c === yo) return true;
+      // inicial del nombre + apellido, la misma regla de alias_de
+      return nom.length >= 2 && c.slice(-nom[nom.length - 1].length) === nom[nom.length - 1] &&
+             c.charAt(0) === nom[0].charAt(0);
+    };
+  }
+
+  function itemsVisibles() {
+    var items = (REVS.detalle || {}).items || [];
+    if (!_esAdmin()) {
+      var mio = _misLogins();
+      items = items.filter(function (i) { return mio(i.cubico); });
+    } else if (REVS.filtro_cub) {
+      items = items.filter(function (i) { return (i.cubico || '(sin dato)') === REVS.filtro_cub; });
+    }
+    return items;
+  }
+
+  function abrirItems() {
+    REVS.sel_items = {}; REVS.filtro_cub = '';
+    $('revItemsModal').style.display = '';
+    pintarItems();
+  }
+  function cerrarItems() { $('revItemsModal').style.display = 'none'; }
+
+  function pintarItems() {
+    var d = REVS.detalle, r = d.revision, items = itemsVisibles();
+    $('revItemsTit').textContent = _esAdmin()
+      ? 'Revisión #' + r.id + ' · ' + r.items + ' hallazgos'
+      : 'Tus ' + items.length + ' hallazgos de la revisión #' + r.id;
+    var hechos = items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
+    var pct = items.length ? Math.round(hechos / items.length * 100) : 0;
+    $('revItemsAvance').innerHTML = '<span>' + hechos + ' de ' + items.length + ' resueltos</span>' +
+      '<div class="revbar2"><i style="width:' + pct + '%"></i></div><b>' + pct + '%</b>';
+    // Filtro rápido por cubicador: sólo para quien ve a todos.
+    var cubs = $('revItemsCubs');
+    if (!_esAdmin()) { cubs.innerHTML = ''; }
+    else {
+      cubs.innerHTML = '<button data-cub="" class="' + (REVS.filtro_cub ? '' : 'on') + '">Todos ' + r.items + '</button>' +
+        r.por_cubicador.map(function (c) {
+          return '<button data-cub="' + esc(c.cubico) + '" class="' + (REVS.filtro_cub === c.cubico ? 'on' : '') + '">' +
+                 esc(c.cubico) + ' ' + c.n + (c.pct === 100 ? ' ✓' : '') + '</button>';
+        }).join('');
+      cubs.querySelectorAll('button[data-cub]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          REVS.filtro_cub = b.dataset.cub; REVS.sel_items = {}; pintarItems();
+        });
+      });
+    }
+    var n = Object.keys(REVS.sel_items).length;
+    $('revItemsAcc').innerHTML =
+      '<b>' + (n ? n + ' marcado(s)' : 'Marca lo que ya corregiste') + '</b>' +
+      '<button class="audmini ver" id="revAccDecl"' + (n ? '' : ' disabled') + '>Ya las corregí</button>' +
+      '<button class="audmini" id="revAccNoAplica"' + (n ? '' : ' disabled') + '>No aplica…</button>' +
+      '<div style="flex:1"></div>' +
+      '<button class="audmini" id="revAccVerificar"' + (n ? '' : ' disabled') +
+        ' title="Lee en aSa SÓLO los códigos de lo que marcaste y comprueba si el cambio está hecho">' +
+        'Verificar en aSa lo marcado</button>' +
+      '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>';
+    // Agrupado por código: es como se corrige (se abre un CC en aSa y se arregla lo de ahí)
+    // y es como se comprueba (una lectura por código, no por barra).
+    var grupos = {}, orden = [];
+    items.forEach(function (i) {
+      var k = i.cc || '(sin código)';
+      if (!grupos[k]) { grupos[k] = { cc: i.cc, obra: i.obra, job: i.job, items: [] }; orden.push(k); }
+      grupos[k].items.push(i);
+    });
+    $('revItemsCuerpo').innerHTML = !items.length
+      ? '<div class="revvacio">No hay hallazgos tuyos en esta revisión.</div>'
+      : orden.map(function (k) {
+          var g = grupos[k];
+          var ok = g.items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
+          return '<div class="revcc2"><h5><input type="checkbox" data-grupo="' + esc(k) + '"> ' +
+            '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
+            '<div style="flex:1"></div><span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
+            '<table>' + g.items.map(filaItem).join('') + '</table></div>';
+        }).join('');
+    _bindItems();
+  }
+
+  function filaItem(i) {
+    var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
+    var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
+    var firma = '';
+    if (nap) {
+      firma = '<div class="muted" style="font-size:10px">' + esc(i.nota || '') +
+              (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</div>';
+    } else if (i.estado === 'declarada' && i.declarada_por) {
+      firma = '<div class="muted" style="font-size:10px">declarada por ' +
+              esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') + '</div>';
+    }
+    return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '">' +
+      '<td style="width:22px">' + (hecho || nap ? (hecho ? '✓' : '–') :
+        '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') + '>') + '</td>' +
+      '<td class="revm" style="width:92px"><span class="audref">' + esc(i.ref) + '</span></td>' +
+      '<td style="width:150px">' + esc(r.nombre) + '</td>' +
+      '<td>' + esc(det.texto || '') + firma + '</td>' +
+      (_esAdmin() ? '<td style="width:92px">' + esc(i.cubico || '') + '</td>' : '') +
+      '<td style="width:120px"><span class="revi ' + esc(i.estado) + '">' +
+        esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
+      '<td class="revacc" style="width:52px"><button class="audmini" data-ver="' + i.id + '">Ver</button></td></tr>';
+  }
+
+  function _bindItems() {
+    var caja = $('revItemsCuerpo');
+    caja.querySelectorAll('input[data-item]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        if (c.checked) REVS.sel_items[c.dataset.item] = true; else delete REVS.sel_items[c.dataset.item];
+        pintarItems();
+      });
+    });
+    caja.querySelectorAll('input[data-grupo]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        caja.querySelectorAll('input[data-item]').forEach(function (x) {
+          var tr = x.closest('.revcc2');
+          if (tr && tr.querySelector('input[data-grupo]') === c) {
+            x.checked = c.checked;
+            if (c.checked) REVS.sel_items[x.dataset.item] = true; else delete REVS.sel_items[x.dataset.item];
+          }
+        });
+        pintarItems();
+      });
+    });
+    caja.querySelectorAll('button[data-ver]').forEach(function (b) {
+      b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
+    });
+    var dec = $('revAccDecl');
+    if (dec) dec.addEventListener('click', function () { declararMarcados('declarada'); });
+    var na = $('revAccNoAplica');
+    if (na) na.addEventListener('click', pedirNoAplica);
+    var ver = $('revAccVerificar');
+    if (ver) ver.addEventListener('click', verificarMarcados);
+  }
+
+  function _marcados() { return Object.keys(REVS.sel_items).map(Number); }
+
+  async function declararMarcados(estado, motivo, nota) {
+    var ids = _marcados();
+    if (!ids.length) return;
+    try {
+      var r = await req('PUT', '/chequeos/declarar',
+                        { ids: ids, estado: estado, motivo_tipo: motivo || null, nota: nota || null });
+      ok(r.afectadas + ' hallazgo(s) ' + (estado === 'aceptada' ? 'marcados como «no aplica»' : 'declarados corregidos'));
+      REVS.sel_items = {};
+      await refrescarRevision();
     } catch (e) { aviso(e.message); }
   }
 
-  function _chips(id, lista, actual, al) {
-    var el = $(id);
-    if (!el) return;
-    el.innerHTML = lista.map(function (x) {
-      return '<button data-v="' + esc(x[0]) + '" class="' + (actual === x[0] ? 'on' : '') + '">' +
-             esc(x[1]) + '</button>';
-    }).join('');
-    el.querySelectorAll('button').forEach(function (b) {
-      b.addEventListener('click', function () { al(b.dataset.v); });
-    });
+  // «NO APLICA» PIDE MOTIVO Y EXPLICACIÓN. El usuario acotó cuándo es legítimo: confirmado
+  // con producción o con el cliente, o la regla no aplica a esa figura. Categorizarlo
+  // permite leer después lo que el texto libre esconde: si muchos marcan «la regla no
+  // aplica», el problema está en la REGLA, no en las barras.
+  function pedirNoAplica() {
+    var motivos = (REVS.detalle || {}).motivos || {};
+    var claves = Object.keys(motivos);
+    var txt = claves.map(function (k, n) { return (n + 1) + ') ' + motivos[k]; }).join('\n');
+    var el = global.prompt('¿Por qué NO aplica? Escribe el número:\n\n' + txt);
+    if (el === null) return;
+    var i = parseInt(el, 10) - 1;
+    if (!(i >= 0 && i < claves.length)) { aviso('Elige uno de los números.'); return; }
+    var nota = global.prompt('Explica brevemente (queda firmado y lo lee quien audita):');
+    if (nota === null) return;
+    if (nota.trim().length < 10) { aviso('Hace falta la explicación.'); return; }
+    declararMarcados('aceptada', claves[i], nota);
   }
 
-  function _select(id, lista, actual, al) {
-    var el = $(id);
-    if (!el) return;
-    el.innerHTML = '<option value="">' + (id === 'revBanCub' ? 'todos' : 'todas') + '</option>' +
-      lista.map(function (x) {
-        return '<option value="' + esc(x[0]) + '"' + (actual === x[0] ? ' selected' : '') + '>' +
-               esc(x[1]) + '</option>';
-      }).join('');
-    el.onchange = function () { al(el.value); };
+  // EL SEGUNDO CHECK: lee en aSa SÓLO los códigos de lo marcado y comprueba si el cambio
+  // está hecho. La verificación la hace el sistema, no una persona.
+  async function verificarMarcados() {
+    var ids = _marcados();
+    if (!ids.length) return;
+    var b = $('revAccVerificar'), msg = $('revAccMsg');
+    b.disabled = true; b.textContent = 'Leyendo aSa…';
+    var vueltas = 0;
+    try {
+      while (vueltas < 12) {
+        var r = await req('POST', '/chequeos/comprobar-lote', { ids: ids });
+        vueltas++;
+        msg.textContent = r.corregidas + ' de ' + ids.length + ' ya cumplen' +
+          (r.faltan_ccs ? ' · quedan ' + r.faltan_ccs + ' código(s) por leer…' : '');
+        if (!r.faltan_ccs) break;
+      }
+      REVS.sel_items = {};
+      await refrescarRevision();
+      ok('Verificación terminada');
+    } catch (e) { aviso(e.message); msg.textContent = e.message; }
+    b.disabled = false; b.textContent = 'Verificar en aSa lo marcado';
   }
 
-  function pintarBandeja() {
-    var d = BAN.datos || {}, tot = d.totales || {};
-    $('revBanTot').innerHTML = ['abierta', 'corregir', 'aceptada', 'corregida'].map(function (k) {
-      return '<span class="' + k + '" title="' + esc(ESTADO_TXT[k]) + '">' + (tot[k] || 0) + ' ' +
-             esc(ESTADO_TXT[k].toLowerCase()) + '</span>';
-    }).join('');
-    _chips('revBanEstado', [['', 'Esperan'], ['abierta', 'Abiertas'], ['corregir', 'Por corregir'],
-                            ['aceptada', 'Están bien'], ['corregida', 'Corregidas'], ['todas', 'Todas']],
-           BAN.estado, function (v) { BAN.estado = v; BAN.sel = {}; cargarBandeja(); });
-    _chips('revBanRegla', [['', 'Todas']].concat(Object.keys(REV.reglas || {}).map(function (k) {
-             return [k, REV.reglas[k].nombre]; })),
-           BAN.regla, function (v) { BAN.regla = v; BAN.sel = {}; cargarBandeja(); });
-    _select('revBanCub', (d.por_cubicador || []).map(function (c) { return [c.cubico, c.cubico + ' · ' + c.n]; }),
-            BAN.cubico, function (v) { BAN.cubico = v; BAN.sel = {}; cargarBandeja(); });
-    _select('revBanObra', (d.por_obra || []).map(function (o) { return [o.job, (o.obra || o.job) + ' · ' + o.n]; }),
-            BAN.job, function (v) { BAN.job = v; BAN.sel = {}; cargarBandeja(); });
-    var ult = $('revBanUltima');
-    if (ult) { ult.checked = BAN.ultima; ult.disabled = !BAN.revision; }
-    var filas = d.senales || [];
-    $('revBanQue').textContent = filas.length
-      ? filas.length + ' señal(es)' + (filas.length >= 2000 ? ' (tope: afina el filtro)' : '') +
-        ' · ' + (d.por_cubicador || []).length + ' cubicador(es) · ' + (d.por_obra || []).length + ' obra(s)'
-      : 'Nada con ese filtro.';
-    var tabla = $('revBanTabla');
-    if (!filas.length) {
-      tabla.innerHTML = '<tbody><tr><td class="audvacio">' +
-        (BAN.ultima ? 'La última revisión no dejó señales nuevas.' : 'No hay señales con ese filtro.') +
-        '</td></tr></tbody>';
-      pintarLote();
-      return;
-    }
-    var tope = Math.min(filas.length, 400);
-    tabla.innerHTML = '<thead><tr><th><input type="checkbox" id="revBanTodos" title="Marcar las visibles"></th>' +
-      '<th>Obra</th><th>Código</th><th>Barra</th><th>Regla</th><th>Qué tiene</th><th>Cubicó</th>' +
-      '<th class="num" title="Cuántas revisiones la vieron">Vista</th><th>Estado</th><th></th></tr></thead><tbody>' +
-      filas.slice(0, tope).map(filaBandeja).join('') +
-      (filas.length > tope ? '<tr><td colspan="10" class="muted" style="font-size:10.5px">Se muestran ' + tope +
-        ' de ' + filas.length + ': afina el filtro para ver el resto.</td></tr>' : '') +
-      '</tbody>';
-    tabla.querySelectorAll('input[data-sel]').forEach(function (c) {
-      c.addEventListener('change', function () {
-        if (c.checked) BAN.sel[c.dataset.sel] = true; else delete BAN.sel[c.dataset.sel];
-        pintarLote();
-      });
-    });
-    $('revBanTodos').addEventListener('change', function () {
-      var on = $('revBanTodos').checked;
-      tabla.querySelectorAll('input[data-sel]').forEach(function (c) {
-        c.checked = on;
-        if (on) BAN.sel[c.dataset.sel] = true; else delete BAN.sel[c.dataset.sel];
-      });
-      pintarLote();
-    });
-    tabla.querySelectorAll('button[data-sen]').forEach(function (b) {
-      b.addEventListener('click', function () { resolver(b.dataset.sen, b.dataset.est, b.dataset.pat === '1'); });
-    });
-    tabla.querySelectorAll('button[data-ver]').forEach(function (b) {
-      b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
-    });
-    pintarLote();
+  async function refrescarRevision() {
+    if (!REVS.sel) return;
+    REVS.detalle = await req('GET', '/chequeos/revision/' + REVS.sel);
+    pintarResumen();
+    if ($('revItemsModal').style.display !== 'none') pintarItems();
+    await cargarRevisiones();
+    await cargarMios();
+  }
+
+  // Una revisión nueva, desde el botón de arriba: lo mismo que corre el reloj.
+  async function nuevaRevision() {
+    if (REV.corriendo) return;
+    REV.corriendo = true; REV.parar = false;
+    $('revNueva').disabled = true;
+    $('revNuevaProg').style.display = '';
+    $('revNuevaParar').style.display = '';
+    try {
+      var ini = await req('POST', '/chequeos/revision-pendientes', { tarde: REV.tarde });
+      if (!(ini.ccs || []).length) {
+        $('revNuevaTxt').textContent = 'No hay nada pendiente: todo lo abierto está revisado y nada cambió en aSa.';
+      } else {
+        await recorrer(ini.ccs, ini.revision,
+                       { txt: $('revNuevaTxt'), barra: $('revNuevaBarra') });
+      }
+      REVS.sel = ini.revision || REVS.sel;
+      await cargarRevisiones();
+      if (ini.revision) await abrirRevision(ini.revision);
+      await cargarPendientes(); await cargarObras(); await cargarReporte(); await cargarMios();
+    } catch (e) { aviso(e.message); $('revNuevaTxt').textContent = e.message; }
+    REV.corriendo = false;
+    $('revNueva').disabled = false;
+    $('revNuevaParar').style.display = 'none';
   }
 
   // ══════ EL DETALLE DE UNA SEÑAL ══════
@@ -386,7 +611,7 @@
   function _senal(id) {
     var s = _senalesPorId[String(id)];
     if (s) return s;
-    var todas = ((BAN.datos || {}).senales || []).concat(REV.senales || [], REV.mios || []);
+    var todas = ((REVS.detalle || {}).items || []).concat(REV.senales || [], REV.mios || []);
     todas.forEach(function (x) { _senalesPorId[String(x.id)] = x; });
     return _senalesPorId[String(id)];
   }
@@ -474,7 +699,7 @@
       if (msg) msg.textContent = txt;
       ok(r.estado === 'corregida' ? 'Corregida' : 'Sigue igual en aSa');
       _senalesPorId = {};
-      await Promise.all([cargarBandeja(), cargarMios(), cargarReporte()]);
+      await Promise.all([refrescarRevision(), cargarReporte()]);
       if (REV.job) await cargarSenales();
       if (r.estado === 'corregida') setTimeout(cerrarDetalleSenal, 900);
     } catch (e) { aviso(e.message); if (msg) msg.textContent = e.message; }
@@ -515,60 +740,6 @@
         b.addEventListener('click', function () { comprobarSenal(b.dataset.cmp, b, null); });
       });
     } catch (e) { caja.style.display = 'none'; }
-  }
-
-  function filaBandeja(s) {
-    var d = s.detalle || {}, r = (REV.reglas || {})[s.regla] || { nombre: s.regla };
-    var espera = s.estado === 'abierta' || s.estado === 'corregir';
-    return '<tr class="' + esc(s.estado) + '">' +
-      '<td>' + (espera ? '<input type="checkbox" data-sel="' + s.id + '"' + (BAN.sel[s.id] ? ' checked' : '') + '>' : '') + '</td>' +
-      '<td class="audnom" title="' + esc(s.obra || s.job) + '">' + esc(s.obra || s.job) + '</td>' +
-      '<td class="cc">' + esc(s.cc || '') + '</td>' +
-      '<td><span class="audref">' + esc(s.ref) + '</span></td>' +
-      '<td>' + esc(r.nombre) + '</td>' +
-      '<td class="revbtx">' + esc(d.texto || '') + '</td>' +
-      '<td>' + esc(s.cubico || '') + '</td>' +
-      '<td class="num">' + (s.veces || 1) + '</td>' +
-      '<td><span class="audacc1 ' + (s.estado === 'corregir' ? 'pendiente' : s.estado === 'aceptada' ? 'verificada' : s.estado === 'corregida' ? 'corregida' : '') + '" title="' +
-        esc(s.nota ? s.nota + (s.resuelto_por ? ' (' + s.resuelto_por.split('@')[0] + ')' : '') : '') + '">' +
-        esc(ESTADO_TXT[s.estado] || s.estado) + '</span></td>' +
-      '<td><button class="audmini" data-ver="' + s.id + '" title="La barra dibujada, qué tiene y las acciones">Ver</button> ' +
-        (s.estado === 'abierta'
-          ? '<button class="audmini" data-sen="' + s.id + '" data-est="corregir">Hay que corregirla</button>' +
-            '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada">Está bien</button>' +
-            '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada" data-pat="1" title="Ésta y todas las iguales de la obra">+iguales</button>'
-          : s.estado === 'corregida' ? ''
-          : '<button class="audmini" data-sen="' + s.id + '" data-est="abierta">Deshacer</button>') + '</td></tr>';
-  }
-
-  function pintarLote() {
-    var n = Object.keys(BAN.sel).length, el = $('revLote');
-    if (!el) return;
-    el.style.display = n ? 'flex' : 'none';
-    if (n) $('revLoteN').textContent = n + ' seleccionada(s) →';
-  }
-
-  // EN LOTE. Con 540 abiertas, de a una no se avanza. «Están bien» pide UN motivo para
-  // todas; «hay que corregirlas» le avisa a cada cubicador con la lista de sus códigos.
-  async function resolverLote(estado) {
-    var ids = Object.keys(BAN.sel).map(Number);
-    if (!ids.length) return;
-    var nota = null;
-    if (estado === 'aceptada') {
-      nota = global.prompt('¿Por qué están bien estas ' + ids.length + ' señales? (queda en cada una)');
-      if (nota === null) return;
-      if (!nota.trim()) { aviso('Hace falta el motivo.'); return; }
-    }
-    try {
-      var r = await req('PUT', '/chequeos/senales', { ids: ids, estado: estado, nota: nota });
-      ok(r.afectadas + ' señal(es) ' + (estado === 'aceptada' ? 'aceptadas' : 'marcadas para corregir') +
-         (r.avisados ? ' · avisado a ' + r.avisados + ' cubicador(es)' : ''));
-      BAN.sel = {};
-      await cargarBandeja();
-      if (REV.job) await cargarSenales();
-      await cargarObras();
-      await cargarMios();
-    } catch (e) { aviso(e.message); }
   }
 
   // ── Las señales ───────────────────────────────────────────────────────────────────
@@ -643,38 +814,14 @@
         ? 'Aceptada' + (r.afectadas > 1 ? ' (' + r.afectadas + ' señales)' : '')
         : estado === 'corregir' ? 'Marcada para corregir' + (r.avisados ? ' · avisado al cubicador' : '')
         : 'Vuelta a abrir');
-      await cargarBandeja();
+      await refrescarRevision();
       if (REV.job) await cargarSenales();
       await cargarObras();
     } catch (e) { aviso(e.message); }
   }
 
   // ── El registro ───────────────────────────────────────────────────────────────────
-  async function cargarHistorial() {
-    if (!REV.job) return;
-    try {
-      var d = await req('GET', '/chequeos/revisiones?job=' + encodeURIComponent(REV.job));
-      var hs = d.revisiones || [];
-      $('revHistorial').style.display = hs.length ? '' : 'none';
-      $('revHist').innerHTML = hs.length
-        ? '<table class="audt"><thead><tr><th>Cuándo</th><th>Quién</th><th class="num">Códigos</th>' +
-          '<th class="num">Barras</th><th class="num">Nuevas</th><th class="num">Ya vistas</th>' +
-          '<th class="num">Corregidas</th><th></th></tr></thead><tbody>' +
-          hs.map(function (h) {
-            return '<tr><td>' + ddmm(h.arrancada) + '</td>' +
-              '<td>' + (h.por === 'reloj'
-                  ? '<span class="audori asa">automática</span>'
-                  : esc((h.por || '').split('@')[0])) + '</td>' +
-              '<td class="num">' + h.ccs + (h.ccs_error ? ' <span class="muted">(' + h.ccs_error + ' con error)</span>' : '') + '</td>' +
-              '<td class="num">' + num(h.barras) + '</td>' +
-              '<td class="num">' + h.nuevas + '</td>' +
-              '<td class="num">' + h.vistas + '</td>' +
-              '<td class="num">' + h.corregidas + '</td>' +
-              '<td class="muted" style="font-size:10px">' + esc(h.nota || '') + '</td></tr>';
-          }).join('') + '</tbody></table>'
-        : '';
-    } catch (e) { /* el historial es un extra: que falle no rompe la pantalla */ }
-  }
+
 
   async function cargarObras() {
     try {
@@ -745,11 +892,13 @@
   }
 
   // Llevar la bandeja a una obra (o a un estado) y ponerla a la vista.
+  // El reporte por obra ya no lleva a una bandeja: lleva a la obra, que es donde se
+  // revisa. Los hallazgos se trabajan por revisión.
   async function irABandeja(f) {
-    BAN.job = f.job || ''; BAN.estado = f.estado || ''; BAN.ultima = false; BAN.sel = {};
-    await cargarBandeja();
-    var ban = $('revBandeja');
-    if (ban && ban.scrollIntoView) ban.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!f.job) return;
+    await abrirObra(f.job);
+    var p = $('revPanel');
+    if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   var _listo = false;
@@ -758,15 +907,11 @@
     if (!_listo) {
       _listo = true;
       $('revCorrer').addEventListener('click', correr);
-      // La bandeja.
-      $('revBanBusca').addEventListener('input', function () {
-        BAN.busca = this.value.trim();
-        clearTimeout(BAN._t); BAN._t = setTimeout(cargarBandeja, 300);
-      });
-      $('revBanUltima').addEventListener('change', function () { BAN.ultima = this.checked; cargarBandeja(); });
-      $('revLoteOk').addEventListener('click', function () { resolverLote('aceptada'); });
-      $('revLoteCorr').addEventListener('click', function () { resolverLote('corregir'); });
-      $('revLoteNo').addEventListener('click', function () { BAN.sel = {}; pintarBandeja(); });
+      $('revNueva').addEventListener('click', nuevaRevision);
+      $('revNuevaParar').addEventListener('click', function () { REV.parar = true; });
+      $('revItemsCerrar').addEventListener('click', cerrarItems);
+      $('revItemsImprimir').addEventListener('click', function () { global.print(); });
+      $('revItemsModal').addEventListener('click', function (e) { if (e.target === $('revItemsModal')) cerrarItems(); });
       $('revSenalCerrar').addEventListener('click', cerrarDetalleSenal);
       $('revSenalModal').addEventListener('click', function (e) { if (e.target === $('revSenalModal')) cerrarDetalleSenal(); });
       $('revParar').addEventListener('click', function () { REV.parar = true; });
@@ -792,9 +937,9 @@
     await cargarObras();
     await cargarPendientes();
     await cargarReporte();
-    // Lo mío primero y la bandeja completa: es lo que se viene a resolver.
+    // Lo mío primero y las revisiones: es lo que se viene a resolver.
     await cargarMios();
-    await cargarBandeja();
+    await cargarRevisiones();
   };
 
   // Las dos líneas del tab. La revisión se carga la primera vez que se entra, no al abrir

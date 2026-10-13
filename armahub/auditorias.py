@@ -566,8 +566,17 @@ def alias_cubicador(cur, email: str) -> list:
     if not fila:
         return nombres
     nombre, apellido = fila
-    cur.execute("""SELECT DISTINCT NULLIF(TRIM(cubicado_por), '')
-                     FROM auditoria_elementos WHERE cubicado_por IS NOT NULL""")
+    # LOS CANDIDATOS SALEN DE aSa, NO DE LAS AUDITORÍAS (13-oct). Antes sólo se miraban los
+    # `cubicado_por` de `auditoria_elementos`, así que un cubicador que todavía no había
+    # salido en ninguna auditoría no se reconocía: por eso el dueño de un hallazgo de
+    # chequeos no podía declarar lo suyo («JHvelasquez» no estaba en esa tabla). La fuente
+    # correcta es `detail_person` de aSa —el universo de logins, 45 nombres— más lo que
+    # haya en auditorías y chequeos, que es donde después se compara.
+    cur.execute("""SELECT DISTINCT NULLIF(TRIM(quien), '') FROM (
+                       SELECT cubicado_por AS quien FROM auditoria_elementos
+                       UNION SELECT cubico FROM chequeo_senales
+                       UNION SELECT detail_person FROM asa_pedidos
+                   ) t WHERE quien IS NOT NULL""")
     for (login,) in cur.fetchall():
         if login and alias_de(nombre, apellido, login):
             nombres.append(login)

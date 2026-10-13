@@ -99,9 +99,17 @@ check("hay un trigger BEFORE INSERT OR UPDATE OF id_proyecto",
 print("\n7. Las obras de prueba de aSa no suman kilos ni aparecen")
 check("la verdad es una marca en el espejo (`asa_obras.excluida`), no una lista en el código",
       "excluida BOOLEAN" in M143)
-check("...y entra en TODOS los sitios que filtraban por nombre (22)",
-      sum(s.count("asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)")
-          for s in (PR, AU, CH, RE)) == 22)
+# NO SE CONGELA UN NÚMERO, SE CONGELA LA PROPIEDAD: cada sitio que filtra las obras de
+# prueba por su NOMBRE tiene que filtrar también por la marca del espejo. Un conteo exacto
+# falla sola la próxima consulta que se agregue, y lo que importa no es cuántos son.
+import re as _re
+_falta = []
+for _n, _s in (("programacion", PR), ("auditorias", AU), ("chequeos_api", CH), ("reclamos", RE)):
+    for _m in _re.finditer(r"job_name(?:, '')?\)? !~\* %s(.{0,120})", _s, _re.S):
+        if "asa_obras WHERE excluida" not in _m.group(1):
+            _falta.append((_n, _s.count(chr(10), 0, _m.start()) + 1))
+check("...y entra en TODOS los sitios que filtran las obras de prueba por nombre",
+      not _falta, _falta)
 check("TERRATEST no está excluida: contiene «test» pero es un cliente", "TERRATEST" not in M143.split("UPDATE asa_obras SET excluida")[1].split(";")[0])
 
 print("\n8. Contra la base")

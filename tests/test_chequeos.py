@@ -46,6 +46,11 @@ HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html")
            encoding="utf-8").read()
 APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf-8").read()
 MAIN = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
+MIG6 = open(os.path.join(ROOT, "armahub", "migrations", "146_chequeo_por_revision.sql"),
+            encoding="utf-8").read()
+AUTH = open(os.path.join(ROOT, "armahub", "auth.py"), encoding="utf-8").read()
+AUTHJS = open(os.path.join(ROOT, "armahub", "static", "js", "shared", "auth.js"),
+              encoding="utf-8").read()
 
 
 def barra(lados, diam=10.0, figura="X", mbr=None, elemento="E1", ref="r1", cc="CC1"):
@@ -281,8 +286,12 @@ check("usa el mismo permiso que la auditoría, que ya incluye al área de Cubica
       "_puede_ver" in API and "_puede_auditar" in API
       and 'ROLES_AUDITAN = ("admin", "admin_calidad", "miembro", "externo")' in AUD
       and 'AREA_AUDITA = "Cubicaciones"' in AUD)
+# Lo que no debe haber es una lista de roles PROPIA. Importar la de auditorías es justo lo
+# contrario: es compartirla. (Antes el test prohibía el texto «ROLES_», y eso también
+# prohibía el import correcto.)
 check("...o sea que no hay una lista de roles propia que se desincronice",
-      "ROLES_" not in API)
+      "ROLES_ADMINISTRAN = " not in API and "ROLES_AUDITAN = " not in API
+      and "from .auditorias import" in API and "ROLES_ADMINISTRAN" in API)
 
 print("\n12. La bandeja: todos los hallazgos en un lugar, y el cubicador se entera")
 # El usuario, 9-oct: «luego de revisar no entiendo cómo avanzo, debiera tener un menú para
@@ -305,12 +314,12 @@ check("marcar «corregir» le AVISA al cubicador, uno por persona, con sus códi
       "def _avisar_por_corregir(" in API and "def _email_de_login(" in API
       and API.count("_avisar_por_corregir(cur, hechas)") == 2)
 check("...resolviendo el login de aSa con la misma regla que las auditorías", "alias_de(" in API)
-check("la bandeja existe en la pantalla, con lote y filtros",
-      'id="revBandeja"' in HTM and 'id="revLote"' in HTM and 'id="revBanUltima"' in HTM
-      and "function cargarBandeja(" in JS and "function resolverLote(" in JS)
-check("al terminar una corrida, la bandeja se abre en lo de ESA revisión y dice qué hacer",
-      "resuélvelas en la bandeja de abajo" in JS and "BAN.ultima = true" in JS)
-check("una señal resuelta desde cualquier lado refresca la bandeja", JS.count("await cargarBandeja()") >= 3)
+# LA BANDEJA SE FUE (13-oct): era una bolsa de 540 señales acumuladas donde no se podía
+# preguntar «¿qué salió hoy?». La reemplaza la REVISIÓN como unidad — ver la sección 14.
+check("ya no hay bandeja: ni su HTML, ni su estado, ni sus funciones",
+      'id="revBandeja"' not in HTM and 'id="revLote"' not in HTM
+      and "var BAN" not in JS and "function cargarBandeja(" not in JS
+      and "function filaBandeja(" not in JS and "function resolverLote(" not in JS)
 
 print("\n13. El flujo cierra: tarea al cubicador, detalle con la barra, comprobación al clic")
 # El usuario, 13-oct: «tengo hallazgos pero no tengo el reporte o flujo para marcarlos como
@@ -338,6 +347,59 @@ check("el reporte dice de cuándo son los datos de aSa",
 check("«revisados» se cuenta sobre los mismos códigos que «códigos»: se acabó el «faltan -7»",
       "JOIN asa_pedidos p ON p.asa_job_id = c.id_proyecto AND p.control_code = c.cc" in API
       and "Math.max(0, o.ccs - o.revisados)" in JS)
+
+print("\n14. La REVISIÓN es la unidad, y el ciclo de un hallazgo se cierra")
+# El usuario, 13-oct: «un listado con cada auditoría que se haya hecho… al presionar esa
+# línea, un resumen de todos los ítems encontrados… en el modal cada usuario podrá revisar
+# sus ítems con opciones para ir marcando como corregido o dejar sin efecto… debe tener un
+# checkeo que permita actualizar». Y: «cada vez que hagamos una auditoría sólo muestre lo
+# nuevo».
+check("cada señal queda pegada a la revisión que la encontró (no se infiere por la hora)",
+      "revision_id" in MIG6 and "body.revision))" in API
+      and "WHERE s.revision_id = %s" in API)
+check("...sólo al INSERTAR: una señal que ya existía sigue siendo de su corrida",
+      "sigue\n                     # siendo de la corrida que la encontró" in API
+      or "sigue siendo la corrida" in API or "DE QUÉ REVISIÓN ES. Sólo al INSERTAR" in API)
+check("el listado de revisiones trae el avance de cada una, contado sobre SUS señales",
+      "LEFT JOIN chequeo_senales s ON s.revision_id = r.id" in API and '"pct"' in API)
+check("el detalle de una revisión resume por cubicador, con kilos y códigos",
+      '@router.get("/chequeos/revision/{revision_id}")' in API and '"por_cubicador"' in API
+      and '"ccs_con_hallazgo"' in API and "unnest(%s::text[], %s::text[])" in API)
+check("el ciclo tiene los nombres de la norma: declarar ≠ verificar",
+      'ESTADO_TXT = {"abierta": "Abierta", "declarada": "Corregida (por verificar)"' in API
+      and '"corregida": "Verificada"' in API and '"aceptada": "No aplica"' in API)
+check("...y verificar lo hace el SISTEMA, no una persona",
+      '@router.put("/chequeos/declarar")' in API
+      and 'body.estado not in ("declarada", "aceptada", "abierta")' in API)
+check("sólo declara quien cubicó (o administración)",
+      "sólo puede declararlas quien las hizo" in API and "alias_cubicador(cur, email)" in API)
+check("«no aplica» exige MOTIVO en categorías y explicación",
+      "MOTIVOS_NO_APLICA" in API and "Elige por qué no aplica." in API
+      and "motivo_tipo" in MIG6)
+check("el segundo check lee en aSa SÓLO los códigos de lo marcado",
+      '@router.post("/chequeos/comprobar-lote")' in API
+      and "una lectura de aSa por código, no por" in API
+      and "function verificarMarcados(" in JS)
+check("el alias del cubicador sale de aSa y no de las auditorías (si no, el dueño no podía declarar)",
+      "UNION SELECT detail_person FROM asa_pedidos" in AUD)
+check("la pantalla es lista + resumen + hoja de trabajo",
+      'id="revLista"' in HTM and 'id="revResCuerpo"' in HTM and 'id="revItemsModal"' in HTM
+      and "function cargarRevisiones(" in JS and "function pintarResumen(" in JS
+      and "function pintarItems(" in JS)
+check("...el cubicador ve sólo lo suyo en la hoja; el admin, todo con filtro por persona",
+      "function itemsVisibles(" in JS and "REVS.filtro_cub" in JS and "_esAdmin()" in JS)
+check("una revisión sin hallazgos deja constancia en vez de esconderse",
+      "sin hallazgos ·" in JS and "Queda el registro de que se revisó" in JS)
+check("la hoja se imprime", 'id="revItemsImprimir"' in HTM and "@media print" in HTM)
+check("el tab deja arriba el trabajo y pliega la herramienta",
+      HTM.count('<details class="revmas">') >= 3)
+
+print("\n15. La última carga de aSa, en la barra negra")
+check("viaja en /me, que el front pide al arrancar",
+      "def _asa_ultima_carga(" in AUTH and '"asa_ultima_carga"' in AUTH)
+check("...y al cliente no se le manda", "if role == ROL_CLIENTE:" in AUTH)
+check("la barra la muestra y avisa si está vieja",
+      'id="whoAsa"' in APP and "asa_ultima_carga" in AUTHJS and "horas > 24" in AUTHJS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

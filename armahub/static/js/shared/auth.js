@@ -29,6 +29,23 @@
     var whoRole = document.getElementById('whoRole');
     if (whoEmail) whoEmail.textContent = currentUserName || me.email || '—';
     if (whoRole) whoRole.textContent = 'Rol: ' + (currentRole || '—');
+    // La última carga de aSa, en la barra. Si pasó más de un día se pinta: no es un error,
+    // pero quien mira un número tiene que saber que puede estar viejo.
+    var whoAsa = document.getElementById('whoAsa');
+    if (whoAsa) {
+      if (!me.asa_ultima_carga) { whoAsa.style.display = 'none'; }
+      else {
+        var d = new Date(me.asa_ultima_carga);
+        var horas = (Date.now() - d.getTime()) / 3600000;
+        whoAsa.style.display = '';
+        whoAsa.textContent = 'aSa: ' + ('0' + d.getDate()).slice(-2) + '-' +
+          ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + ('0' + d.getHours()).slice(-2) + ':' +
+          ('0' + d.getMinutes()).slice(-2);
+        whoAsa.style.background = horas > 24 ? '#c62828' : '';
+        whoAsa.title = 'Última carga de datos desde aSa (' + Math.round(horas) + ' h). ' +
+          'Todo lo que ves en la plataforma es a esa fecha.';
+      }
+    }
   }
 
   async function loadCurrentSession() {
