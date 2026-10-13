@@ -429,15 +429,16 @@
         });
       });
     }
+    // UN SOLO BOTON CIERRA EL CICLO. Marcar el check es decir «ya la corregí»; el botón
+    // declara esa corrección y la lee en aSa en el mismo paso, que es lo que el usuario
+    // pidió. Lo que no aplica no se marca: se resuelve en su fila.
     var n = Object.keys(REVS.sel_items).length;
     $('revItemsAcc').innerHTML =
-      '<b>' + (n ? n + ' marcado(s)' : 'Marca lo que ya corregiste') + '</b>' +
-      '<button class="audmini ver" id="revAccDecl"' + (n ? '' : ' disabled') + '>Ya las corregí</button>' +
-      '<button class="audmini" id="revAccNoAplica"' + (n ? '' : ' disabled') + '>No aplica…</button>' +
+      '<b>' + (n ? n + ' marcada(s) como corregida(s)' : 'Marca con el check las barras que ya corregiste') + '</b>' +
       '<div style="flex:1"></div>' +
-      '<button class="audmini" id="revAccVerificar"' + (n ? '' : ' disabled') +
+      '<button class="audmini ver" id="revAccVerificar"' + (n ? '' : ' disabled') +
         ' title="Lee en aSa SÓLO los códigos de lo que marcaste y comprueba si el cambio está hecho">' +
-        'Verificar en aSa lo marcado</button>' +
+        'Verificar en aSa' + (n ? ' (' + n + ')' : '') + '</button>' +
       '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>';
     // Agrupado por código: es como se corrige (se abre un CC en aSa y se arregla lo de ahí)
     // y es como se comprueba (una lectura por código, no por barra).
@@ -471,16 +472,44 @@
       firma = '<div class="muted" style="font-size:10px">declarada por ' +
               esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') + '</div>';
     }
-    return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '">' +
+    // LOS BOTONES VAN EN LA FILA. «Aplica» es el estado normal del hallazgo —el par está
+    // ahí para poder VOLVER— y «No aplica» abre el campo de explicación debajo, sin sacar
+    // a nadie de la hoja. Una barra ya verificada no se discute: no lleva botones.
+    var acc = hecho ? '<span class="muted">verificada</span>'
+      : '<div class="revseg">' +
+          '<button class="' + (nap ? '' : 'on') + '" data-aplica="' + i.id + '"' +
+            (nap ? '' : ' disabled') + ' title="El hallazgo es válido y hay que corregirlo">Aplica</button>' +
+          '<button class="' + (nap ? 'on' : '') + '" data-noaplica="' + i.id + '"' +
+            ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
+        '</div>';
+    var cols = _esAdmin() ? 7 : 6;
+    return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
       '<td style="width:22px">' + (hecho || nap ? (hecho ? '✓' : '–') :
-        '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') + '>') + '</td>' +
-      '<td class="revm" style="width:92px"><span class="audref">' + esc(i.ref) + '</span></td>' +
+        '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
+        ' title="Ya la corregí">') + '</td>' +
+      '<td class="revm" style="width:92px"><span class="audref" data-ver="' + i.id +
+        '" title="Ver la barra como está hoy en aSa">' + esc(i.ref) + '</span></td>' +
       '<td style="width:150px">' + esc(r.nombre) + '</td>' +
       '<td>' + esc(det.texto || '') + firma + '</td>' +
       (_esAdmin() ? '<td style="width:92px">' + esc(i.cubico || '') + '</td>' : '') +
-      '<td style="width:120px"><span class="revi ' + esc(i.estado) + '">' +
+      '<td style="width:116px"><span class="revi ' + esc(i.estado) + '">' +
         esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
-      '<td class="revacc" style="width:52px"><button class="audmini" data-ver="' + i.id + '">Ver</button></td></tr>';
+      '<td class="revacc" style="width:132px">' + acc + '</td></tr>' +
+      '<tr class="revnapform" data-form="' + i.id + '" style="display:none"><td colspan="' + cols +
+        '"><div class="revnapcaja">' +
+        '<select data-mot="' + i.id + '">' + _opcionesMotivo() + '</select>' +
+        '<input type="text" data-nota="' + i.id + '" placeholder="Explica por qué no aplica — lo lee quien audita y queda firmado">' +
+        '<button class="audmini ver" data-napok="' + i.id + '">Guardar</button>' +
+        '<button class="audmini" data-napno="' + i.id + '">Cancelar</button>' +
+        '</div></td></tr>';
+  }
+
+  function _opcionesMotivo() {
+    var m = (REVS.detalle || {}).motivos || {};
+    return '<option value="">¿Por qué no aplica?</option>' +
+      Object.keys(m).map(function (k) {
+        return '<option value="' + esc(k) + '">' + esc(m[k]) + '</option>';
+      }).join('');
   }
 
   function _bindItems() {
@@ -503,56 +532,89 @@
         pintarItems();
       });
     });
-    caja.querySelectorAll('button[data-ver]').forEach(function (b) {
+    // La referencia abre el render: el detalle sigue estando, pero sin un botón que
+    // compita con la decisión.
+    caja.querySelectorAll('[data-ver]').forEach(function (b) {
       b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
     });
-    var dec = $('revAccDecl');
-    if (dec) dec.addEventListener('click', function () { declararMarcados('declarada'); });
-    var na = $('revAccNoAplica');
-    if (na) na.addEventListener('click', pedirNoAplica);
+    caja.querySelectorAll('button[data-aplica]').forEach(function (b) {
+      b.addEventListener('click', function () { declararUno(b.dataset.aplica, 'abierta'); });
+    });
+    caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
+      b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });
+    });
+    caja.querySelectorAll('button[data-napno]').forEach(function (b) {
+      b.addEventListener('click', function () { cerrarNoAplica(b.dataset.napno); });
+    });
+    caja.querySelectorAll('button[data-napok]').forEach(function (b) {
+      b.addEventListener('click', function () { guardarNoAplica(b.dataset.napok); });
+    });
+    caja.querySelectorAll('input[data-nota]').forEach(function (c) {
+      c.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') guardarNoAplica(c.dataset.nota);
+      });
+    });
     var ver = $('revAccVerificar');
     if (ver) ver.addEventListener('click', verificarMarcados);
   }
 
   function _marcados() { return Object.keys(REVS.sel_items).map(Number); }
 
-  async function declararMarcados(estado, motivo, nota) {
-    var ids = _marcados();
-    if (!ids.length) return;
+  // «NO APLICA» PIDE MOTIVO Y EXPLICACIÓN, EN LA PROPIA FILA. El usuario acotó cuándo es
+  // legítimo: confirmado con producción o con el cliente, o la regla no aplica a esa
+  // figura. Categorizarlo permite leer después lo que el texto libre esconde: si muchos
+  // marcan «la regla no aplica», el problema está en la REGLA, no en las barras.
+  //
+  // Antes esto eran dos `prompt()` del navegador, uno pidiendo un NÚMERO. Se hace acá
+  // porque la decisión se toma mirando el dato que está en la fila de al lado.
+  function _form(id) { return document.querySelector('tr[data-form="' + id + '"]'); }
+
+  function abrirNoAplica(id) {
+    var f = _form(id);
+    if (!f) return;
+    f.style.display = '';
+    var n = f.querySelector('input[data-nota]');
+    if (n) n.focus();
+  }
+  function cerrarNoAplica(id) {
+    var f = _form(id);
+    if (f) f.style.display = 'none';
+  }
+
+  async function guardarNoAplica(id) {
+    var f = _form(id);
+    if (!f) return;
+    var mot = f.querySelector('select[data-mot]').value;
+    var nota = (f.querySelector('input[data-nota]').value || '').trim();
+    if (!mot) { aviso('Elige por qué no aplica.'); return; }
+    if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
+    await declararUno(id, 'aceptada', mot, nota);
+  }
+
+  // Una barra, una decisión: así se resuelve en la fila. El lote quedó sólo para el check
+  // de «ya la corregí», que es lo único que se hace de a muchas.
+  async function declararUno(id, estado, motivo, nota) {
     try {
-      var r = await req('PUT', '/chequeos/declarar',
-                        { ids: ids, estado: estado, motivo_tipo: motivo || null, nota: nota || null });
-      ok(r.afectadas + ' hallazgo(s) ' + (estado === 'aceptada' ? 'marcados como «no aplica»' : 'declarados corregidos'));
-      REVS.sel_items = {};
+      await req('PUT', '/chequeos/declarar',
+                { ids: [Number(id)], estado: estado, motivo_tipo: motivo || null, nota: nota || null });
+      ok(estado === 'aceptada' ? 'Hallazgo dejado sin efecto' : 'El hallazgo vuelve a quedar por corregir');
+      delete REVS.sel_items[id];
       await refrescarRevision();
     } catch (e) { aviso(e.message); }
   }
 
-  // «NO APLICA» PIDE MOTIVO Y EXPLICACIÓN. El usuario acotó cuándo es legítimo: confirmado
-  // con producción o con el cliente, o la regla no aplica a esa figura. Categorizarlo
-  // permite leer después lo que el texto libre esconde: si muchos marcan «la regla no
-  // aplica», el problema está en la REGLA, no en las barras.
-  function pedirNoAplica() {
-    var motivos = (REVS.detalle || {}).motivos || {};
-    var claves = Object.keys(motivos);
-    var txt = claves.map(function (k, n) { return (n + 1) + ') ' + motivos[k]; }).join('\n');
-    var el = global.prompt('¿Por qué NO aplica? Escribe el número:\n\n' + txt);
-    if (el === null) return;
-    var i = parseInt(el, 10) - 1;
-    if (!(i >= 0 && i < claves.length)) { aviso('Elige uno de los números.'); return; }
-    var nota = global.prompt('Explica brevemente (queda firmado y lo lee quien audita):');
-    if (nota === null) return;
-    if (nota.trim().length < 10) { aviso('Hace falta la explicación.'); return; }
-    declararMarcados('aceptada', claves[i], nota);
-  }
-
-  // EL SEGUNDO CHECK: lee en aSa SÓLO los códigos de lo marcado y comprueba si el cambio
-  // está hecho. La verificación la hace el sistema, no una persona.
+  // EL BOTON DEL MODAL: declara lo marcado y lo lee en aSa, en un paso. Siguen siendo dos
+  // hechos distintos en el registro —quién dijo que lo corrigió y qué encontró el sistema,
+  // que es lo que separa la ISO 9001 §10.2— pero para quien trabaja es un solo gesto.
   async function verificarMarcados() {
     var ids = _marcados();
     if (!ids.length) return;
     var b = $('revAccVerificar'), msg = $('revAccMsg');
-    b.disabled = true; b.textContent = 'Leyendo aSa…';
+    b.disabled = true; b.textContent = 'Declarando…';
+    try {
+      await req('PUT', '/chequeos/declarar', { ids: ids, estado: 'declarada' });
+    } catch (e) { aviso(e.message); b.disabled = false; b.textContent = 'Verificar en aSa'; return; }
+    b.textContent = 'Leyendo aSa…';
     var vueltas = 0;
     try {
       while (vueltas < 12) {
@@ -566,7 +628,7 @@
       await refrescarRevision();
       ok('Verificación terminada');
     } catch (e) { aviso(e.message); msg.textContent = e.message; }
-    b.disabled = false; b.textContent = 'Verificar en aSa lo marcado';
+    b.disabled = false; b.textContent = 'Verificar en aSa';
   }
 
   async function refrescarRevision() {
@@ -721,19 +783,22 @@
       caja.innerHTML = '<div class="audh">Mis chequeos por corregir <span class="muted">' + REV.mios.length +
         ' barra(s) que te marcaron. Arréglalas en aSa y aprieta «comprobar»: el sistema vuelve a leer el código en el momento.</span></div>' +
         '<table class="audt revmio"><thead><tr><th>Obra</th><th>Código</th><th>Barra</th><th>Qué tiene</th>' +
-        '<th>Lo marcó</th><th></th></tr></thead><tbody>' +
+        '<th>Desde</th><th></th></tr></thead><tbody>' +
         REV.mios.map(function (s) {
           var d2 = s.detalle || {};
           return '<tr><td class="audnom" title="' + esc(s.obra || '') + '">' + esc(s.obra || s.job) + '</td>' +
             '<td class="cc">' + esc(s.cc || '') + (s.elemento ? ' <span class="muted">' + esc(s.elemento) + '</span>' : '') + '</td>' +
-            '<td><span class="audref">' + esc(s.ref) + '</span></td>' +
+            // La referencia abre el render: el detalle sigue a un clic, sin un botón que
+            // compita con la acción que importa.
+            '<td><span class="audref" data-ver="' + s.id + '" title="Ver la barra como está hoy en aSa">' +
+              esc(s.ref) + '</span></td>' +
             '<td class="revmiotx">' + esc(d2.texto || '') + '</td>' +
-            '<td class="muted" style="font-size:10.5px">' + esc((s.resuelto_por || '').split('@')[0]) + (s.resuelto_el ? ' · ' + _fechaHora(s.resuelto_el) : '') +
-              (s.nota ? '<div>' + esc(s.nota) + '</div>' : '') + '</td>' +
-            '<td style="white-space:nowrap"><button class="audmini" data-ver="' + s.id + '">Ver</button> ' +
+            '<td class="muted" style="font-size:10.5px">' + _fechaHora(s.visto_primero) +
+              (s.estado === 'declarada' ? '<div>declarada, por verificar</div>' : '') + '</td>' +
+            '<td style="white-space:nowrap">' +
               '<button class="audmini ver" data-cmp="' + s.id + '">Ya la corregí: comprobar</button></td></tr>';
         }).join('') + '</tbody></table>';
-      caja.querySelectorAll('button[data-ver]').forEach(function (b) {
+      caja.querySelectorAll('[data-ver]').forEach(function (b) {
         b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
       });
       caja.querySelectorAll('button[data-cmp]').forEach(function (b) {

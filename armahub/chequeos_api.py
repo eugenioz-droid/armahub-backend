@@ -730,15 +730,21 @@ def mios(user=Depends(get_current_user)):
     """Las señales que ME marcaron para corregir: las de los códigos que yo cubiqué. El
     `cubico` de la señal es el login de aSa; se resuelve con la misma regla que las
     auditorías (`alias_cubicador`), así que llega a quien corresponde aunque el login no
-    se parezca al correo."""
+    se parezca al correo.
+
+    LO MÍO ES LO QUE ESTÁ ABIERTO O DECLARADO, no un estado aparte. Esto filtraba por
+    'corregir', que era el paso de ASIGNAR —el usuario lo eliminó: la señal nace con dueño—
+    y desde la migración 146 ya no existe ninguna fila así, con lo que la caja salía
+    siempre vacía."""
     _puede_ver(user)
     with get_conn() as conn:
         with conn.cursor() as cur:
             quien = alias_cubicador(cur, user.get("email", "?"))
             cur.execute(
                 "SELECT " + _COLS_SENAL + """ FROM chequeo_senales s
-                  WHERE s.estado = 'corregir' AND TRIM(COALESCE(s.cubico, '')) = ANY(%s)
-                  ORDER BY s.resuelto_el DESC NULLS LAST, s.obra, s.cc, s.ref""", (quien,))
+                  WHERE s.estado IN ('abierta', 'declarada')
+                    AND TRIM(COALESCE(s.cubico, '')) = ANY(%s)
+                  ORDER BY s.visto_primero DESC, s.obra, s.cc, s.ref""", (quien,))
             filas = [_fila_senal(r) for r in cur.fetchall()]
     return {"senales": filas, "n": len(filas),
             "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}

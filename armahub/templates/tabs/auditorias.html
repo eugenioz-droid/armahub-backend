@@ -604,6 +604,21 @@
   .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
   .revi.abierta{background:#fff8e1; color:#8d6e00;} .revi.declarada{background:#e3f2fd; color:#1565C0;}
   .revi.corregida{background:#e8f5e9; color:#2e7d32;} .revi.aceptada{background:#efebe9; color:#5d4037;}
+  /* LA DECISIÓN, EN LA FILA. El par Aplica|No aplica se lee como un interruptor: lo que
+     está encendido es lo que vale hoy. */
+  .revseg{display:inline-flex; border:1px solid #cfd8dc; border-radius:5px; overflow:hidden;}
+  .revseg button{border:none; background:#fff; color:#546e7a; font-size:10px; font-weight:600;
+                 padding:3px 8px; cursor:pointer; white-space:nowrap;}
+  .revseg button + button{border-left:1px solid #cfd8dc;}
+  .revseg button:hover:not(:disabled){background:#eceff1;}
+  .revseg button.on{background:#1565C0; color:#fff;}
+  .revseg button.on:disabled{cursor:default; opacity:1;}
+  .revseg button[data-noaplica].on{background:#6d4c41;}
+  .revcc2 .audref{cursor:pointer; text-decoration:underline dotted #b0bec5;}
+  .revnapcaja{display:flex; gap:6px; align-items:center; padding:2px 0 4px 22px;}
+  .revnapcaja select{font-size:11px; padding:3px 5px; border:1px solid #cfd8dc; border-radius:4px;}
+  .revnapcaja input[type=text]{flex:1; font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px;}
+  .revcc2 tr.revnapform td{background:#fff8e1; border-top:none;}
   /* Las cajas de herramienta, plegadas. */
   .revmas{margin-top:10px; border:1px solid #cfd8dc; border-radius:6px; background:#fff;}
   .revmas > summary{cursor:pointer; padding:8px 12px; font-size:12px; font-weight:600; color:#37474f;}
@@ -616,7 +631,7 @@
     #revItemsModal{position:static !important; background:none !important; overflow:visible !important; display:block !important;}
     .revhoja{max-width:none; margin:0; padding:0;}
     #revItemsImprimir, #revItemsCerrar, .revcubacc, #revItemsCubs,
-    .revcc2 input[type=checkbox], .revcc2 td.revacc { display:none !important; }
+    .revcc2 input[type=checkbox], .revcc2 td.revacc, .revcc2 tr.revnapform { display:none !important; }
   }
   /* ══════ EL FLUJO DE CHEQUEOS (13-oct) ══════ */
   .revcarga{font-size:10px; color:#546e7a; background:#eceff1; border-radius:99px; padding:1px 8px; margin-left:8px;}

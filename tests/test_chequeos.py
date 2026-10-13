@@ -401,5 +401,24 @@ check("...y al cliente no se le manda", "if role == ROL_CLIENTE:" in AUTH)
 check("la barra la muestra y avisa si está vieja",
       'id="whoAsa"' in APP and "asa_ultima_carga" in AUTHJS and "horas > 24" in AUTHJS)
 
+print("\n16. La corrección se hace en la fila, no en otra pantalla")
+check("se fue el botón «Ver»: la decisión está donde está el dato",
+      ">Ver</button>" not in JS)
+check("cada fila lleva el par Aplica | No aplica",
+      "data-aplica=" in JS and "data-noaplica=" in JS and ".revseg" in HTM)
+check("«no aplica» pide motivo y explicación EN la fila, sin prompt del navegador",
+      "revnapform" in JS and "data-mot=" in JS and "data-nota=" in JS
+      and "¿Por qué NO aplica? Escribe el número" not in JS)
+check("...y sigue exigiendo los dos",
+      "Elige por qué no aplica." in JS and "nota.length < 10" in JS)
+check("el check es «ya la corregí» y UN botón cierra el ciclo: declara y lee aSa",
+      'title="Ya la corregí"' in JS and JS.count('id="revAccVerificar"') == 1
+      and "{ ids: ids, estado: 'declarada' }" in JS
+      and "revAccDecl" not in JS and "revAccNoAplica" not in JS)
+check("la referencia abre el render: el detalle no se perdió",
+      "abrirDetalleSenal(b.dataset.ver)" in JS and 'audref" data-ver=' in JS)
+check("«Mis chequeos» ya no filtra por el estado muerto que dejó la 146",
+      "s.estado = 'corregir'" not in API and "s.estado IN ('abierta', 'declarada')" in API)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
