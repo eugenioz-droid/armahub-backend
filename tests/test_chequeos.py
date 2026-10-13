@@ -105,30 +105,47 @@ check("la comparación es ESTRICTA: con «menor o igual» todos los ganchos ser�
 b = barra([("A", 900, "B", None), ("B", 900, "B", 90)], diam=10.0)
 check("una barra sana no dice nada", C.r_lado_corto(b, [b]) == [])
 
-# ── 3. El estribo cuadrado ───────────────────────────────────────────────────────────
-print("\n3. Estribo cuadrado entre hermanos que no lo son")
-E = [("A", 100, "H3", None), ("B", 300, "B", 135), ("C", 300, "B", 90),
-     ("D", 300, "B", 90), ("E", 300, "B", 90), ("G", 100, "H3", 135)]
-cuad = barra(E, mbr=(300.0, 300.0), ref="e1")
-largo = barra(E, mbr=(300.0, 800.0), ref="e2")
-check("un estribo cuadrado entre hermanos rectangulares se marca",
-      len(C.r_estribo_cuadrado(cuad, [cuad, largo])) == 1)
-check("...y el mensaje dice contra qué se comparó, no sólo que es cuadrado",
-      "los otros 1 estribos del elemento no lo son" in C.r_estribo_cuadrado(cuad, [cuad, largo])[0]["texto"])
-otro = barra(E, mbr=(400.0, 400.0), ref="e3")
-check("si TODOS los estribos del elemento son cuadrados, es el diseño y no se dice nada",
-      C.r_estribo_cuadrado(cuad, [cuad, otro]) == [])
-check("el único estribo del elemento se marca igual, pero avisando que no hay con qué comparar",
-      "no hay con qué compararlo" in C.r_estribo_cuadrado(cuad, [cuad])[0]["texto"])
-check("un estribo rectangular no dice nada", C.r_estribo_cuadrado(largo, [cuad, largo]) == [])
-# UNA BARRA RECTA NO ES UN ESTRIBO, aunque su envolvente sea cuadrada por casualidad.
+# ── 3. Los lados opuestos del estribo ────────────────────────────────────────────────
+print("\n3. Lados opuestos del estribo con medidas distintas")
+# LOS TRES CASOS QUE TRAJO EL USUARIO (13-oct), que la regla ANTERIOR marcaba y están
+# BIEN: estribos cuadrados de 560, 710 y 160 por lado (SUSW 10mmA26, SUSW 10mmA29 y
+# SUQ8 8mmA51, figura T1). Un pilar cuadrado existe; lo que importa no es que sea
+# cuadrado, es que los dos lados que se miran de frente midan igual.
+def estribo(l1, l2, l3, l4, g=100):
+    return barra([("G1", g, "H3", None), ("A", l1, "B", 135), ("B", l2, "B", 90),
+                  ("C", l3, "B", 90), ("D", l4, "B", 90), ("G2", g, "H3", 135)],
+                 mbr=(max(l1, l3), max(l2, l4)), ref="e1")
+for lado in (560, 710, 160):
+    check("un estribo cuadrado de %d está BIEN y no se marca" % lado,
+          C.r_lados_opuestos(estribo(lado, lado, lado, lado), []) == [])
+check("un estribo rectangular coherente tampoco", C.r_lados_opuestos(estribo(300, 800, 300, 800), []) == [])
+# EL CASO QUE SÍ: medido en producción, SUL0 12mmA103 con 1.520 contra 1.530.
+mal = C.r_lados_opuestos(estribo(1520, 310, 1530, 310), [])
+check("dos lados que se miran de frente con medidas distintas SÍ se marcan", len(mal) == 1)
+check("...y el mensaje dice cuáles son y cuánto difieren",
+      "se miran de frente" in mal[0]["texto"] and "1520" in mal[0]["texto"]
+      and "1530" in mal[0]["texto"] and "10 de diferencia" in mal[0]["texto"])
+check("la diferencia va con su esperado, para poder comprobarla después",
+      mal[0]["valor"] == 1520 and mal[0]["esperado"] == 1530)
+# LO QUE SEPARA UN ESTRIBO DE UNA C, Y ES TODO EL PROBLEMA DE LA REGLA ANTERIOR. Una
+# 105A o una J71 gira 90° tres veces igual que un estribo y sus patas SON paralelas al
+# tramo largo: compararlas marcaba la barra entera siendo correcta (25 de 146 casos).
+ce = barra([("A", 100, "B", None), ("B", 120, "B", 90), ("C", 3350, "B", 90),
+            ("D", 120, "B", 90), ("E", 420, "B", 90)], ref="c1")
+check("una C de tramo largo con dos patas desiguales NO es un estribo: no se marca",
+      C.r_lados_opuestos(ce, []) == [] and C._marco(ce) == [])
+check("...y lo que las separa es si el contorno CIERRA, no la lista de figuras",
+      "el contorno CIERRA" in SRC and "HUECO_MARCO" in SRC)
+zeta = barra([("A", 300, "B", None), ("B", 300, "B", 90), ("C", 300, "B", -90),
+              ("D", 300, "B", 90)], ref="z1")
+check("una Z gira para los dos lados y tampoco es un marco", C._marco(zeta) == [])
 recta = barra([("A", 500, "B", None)], mbr=(500.0, 500.0), ref="r")
-check("una barra que no es estribo no entra en esta regla", C.r_estribo_cuadrado(recta, [recta]) == [])
-# Y LA DEFINICIÓN QUE SE DESCARTÓ, POR SI ALGUIEN LA REPONE: «dos lados opuestos iguales»
-# dispara en el 53 al 98 por ciento de los estribos, porque eso es un rectángulo.
-check("no se usa «dos lados iguales»: eso es la definición de un rectángulo",
-      "POR QUÉ ASÍ Y NO «DOS LADOS IGUALES»" in SRC
-      and "53 al 98 por ciento de los estribos" in SRC)
+check("una barra recta no entra en esta regla", C.r_lados_opuestos(recta, []) == [])
+# LA DEFINICIÓN QUE SE RETIRÓ, POR SI ALGUIEN LA REPONE.
+check("ya no se marca «el estribo es cuadrado»: eso marcaba 43 barras correctas",
+      not hasattr(C, "r_estribo_cuadrado")
+      and "56 × 56 es un pilar cuadrado y está bien" in SRC
+      and "estribo_cuadrado" not in [r["codigo"] for r in C.REGLAS])
 
 # ── 4. El motor ──────────────────────────────────────────────────────────────────────
 print("\n4. El motor no sabe de ninguna regla en particular")
@@ -287,7 +304,7 @@ check("y queda dicho que NO es un ranking de personas",
 check("la columna de barras dice que son las MIRADAS, no las malas",
       "Barras miradas" in JS and "no cuántas están malas" in JS)
 check("el nombre corto de la regla lo declara la REGLA, no lo recorta la tabla",
-      '"corto": "Lado corto"' in SRC and '"corto": "Estribo cuadrado"' in SRC
+      all(r.get("corto") and len(r["corto"]) <= 20 for r in C.REGLAS)
       and "split(' ').slice(0, 2)" not in JS)
 check("una obra sin revisar NO se lee como limpia: se dice que está sin revisar",
       "no está limpia, está sin revisar" in API and "sin revisar</span>" in JS)

@@ -155,38 +155,84 @@ def _es_estribo(barra) -> bool:
     return len(barra["lados"]) >= 4 and 340 <= sum(giros) <= 380
 
 
-def r_estribo_cuadrado(barra, hermanas) -> list:
-    """UN ESTRIBO CUADRADO ENTRE HERMANOS QUE NO LO SON. Suele ser una medida tipeada dos
-    veces.
+# Cuánto puede quedar abierto el contorno y seguir siendo un marco, como fracción del
+# lado mayor. Es generoso A PROPÓSITO: la digitación que se busca es justamente lo que
+# impide cerrar, y un umbral estrecho dejaría fuera los errores grandes.
+HUECO_MARCO = 0.35
+TOLERANCIA_OPUESTOS = 5.0   # mm
 
-    POR QUÉ ASÍ Y NO «DOS LADOS IGUALES». Medido sobre 2.250 barras: «dos lados opuestos
-    iguales» dispara en el 53 al 98 por ciento de los estribos, porque eso es la definición
-    de un rectángulo. Lo que sí separa es el RECUADRO EXTERIOR que declara aSa: cuadrado
-    exacto en 10 de 279 estribos. Y como un pilar de 20 × 20 existe y es correcto, lo que
-    de verdad baja el falso positivo es compararlo con los OTROS estribos del mismo
-    elemento: si los demás son 160 × 400 y éste es 160 × 160, no es un pilar cuadrado, es
-    una digitación. Si no hay con quién comparar, la señal se levanta igual pero lo dice."""
-    mbr = barra.get("mbr")
-    if not mbr or not _es_estribo(barra):
+
+def _marco(barra) -> list:
+    """Los cuatro lados del estribo rectangular, en orden, o lista vacía si la figura no
+    es un marco.
+
+    POR QUÉ HACE FALTA ESTA PRUEBA Y NO BASTA CON «CUATRO LADOS QUE GIRAN 90°». Una 105A
+    o una J71 —un tramo largo con dos patas— gira noventa grados tres veces igual que un
+    estribo, y sus patas SON paralelas al tramo largo. Compararlas marca la barra entera
+    siendo correcta: medido, eran 25 de los 146 casos.
+
+    Lo que de verdad separa es si el contorno CIERRA. Se camina lado por lado y se mira
+    dónde se termina: un estribo vuelve al punto de partida, una C termina a tres metros.
+    Medido sobre 2.169 barras reales: pasan 122, y son T1 y J45, que son los estribos."""
+    ls = [l for l in barra["lados"]
+          if not l["gancho"] and not l["arco"] and l["largo"] > 0]
+    if len(ls) != 4:
         return []
-    x, y = _num(mbr[0]), _num(mbr[1])
-    if x <= 0 or y <= 0 or abs(x - y) > 0.5:
+    giros = [_num(l["angulo"]) for l in ls[1:]]
+    if any(abs(abs(g) - 90.0) > 15.0 for g in giros):
         return []
-    otros = [h for h in hermanas
-             if h["ref"] != barra["ref"] and _es_estribo(h) and h.get("mbr")
-             and _num(h["mbr"][0]) > 0 and _num(h["mbr"][1]) > 0]
-    cuadrados = [h for h in otros if abs(_num(h["mbr"][0]) - _num(h["mbr"][1])) <= 0.5]
-    if otros and len(cuadrados) == len(otros):
-        return []            # todos los estribos del elemento son cuadrados: es el diseño
-    detalle = "el estribo mide %d × %d: cuadrado" % (round(x), round(y))
-    if otros:
-        ej = otros[0]
-        detalle += ", y los otros %d estribos del elemento no lo son (%s es %d × %d)" % (
-            len(otros), ej["ref"], round(_num(ej["mbr"][0])), round(_num(ej["mbr"][1])))
-    else:
-        detalle += "; es el único estribo del elemento, así que no hay con qué compararlo"
-    return [{"texto": detalle, "lados": [], "valor": round(x), "esperado": None,
-             "clave": ("mbr", round(x), round(y))}]
+    # Una Z gira para los dos lados y no es un marco, aunque sus tramos sean paralelos.
+    if not (all(g > 0 for g in giros) or all(g < 0 for g in giros)):
+        return []
+    ang = x = y = 0.0
+    for i, l in enumerate(ls):
+        if i:
+            ang += _num(l["angulo"])
+        r = math.radians(ang)
+        x += l["largo"] * math.cos(r)
+        y += l["largo"] * math.sin(r)
+    if math.hypot(x, y) > HUECO_MARCO * max(l["largo"] for l in ls):
+        return []
+    return ls
+
+
+def r_lados_opuestos(barra, hermanas) -> list:
+    """LOS LADOS OPUESTOS DE UN ESTRIBO TIENEN QUE MEDIR LO MISMO. Si no, hay una medida
+    tipeada mal.
+
+    Lo fijó el usuario (13-oct): «la revisión consiste en comparar los lados que son
+    paralelos para esa figura; si un lado paralelo al otro es distinto, debiera mostrar
+    hallazgo».
+
+    QUÉ REEMPLAZA Y POR QUÉ. Antes acá se marcaba el estribo CUADRADO, con la idea de que
+    un cuadrado suele ser la misma medida tipeada dos veces. Era falso: un estribo de
+    56 × 56 es un pilar cuadrado y está bien. En la primera revisión de verdad levantó 43
+    barras y el usuario trajo tres —SUSW 10mmA26, SUSW 10mmA29 y SUQ8 8mmA51, de 560, 710
+    y 160 por lado— que estaban correctas. Lo que importa no es que sea cuadrado: es que
+    los dos lados que se miran de frente midan igual.
+
+    MEDIDO SOBRE 2.169 BARRAS REALES: esto marca UNA, la 12mmA103 de SUL0, con 1.520
+    contra 1.530 en lados opuestos. La definición anterior marcaba 43. Los tres estribos
+    que el usuario trajo quedan limpios."""
+    m = _marco(barra)
+    if not m:
+        return []
+    salida = []
+    for i in (0, 1):
+        a, b = m[i], m[i + 2]
+        dif = abs(a["largo"] - b["largo"])
+        if dif <= TOLERANCIA_OPUESTOS:
+            continue
+        salida.append({
+            "texto": "los lados %s y %s se miran de frente y miden distinto: %d y %d mm "
+                     "(%d de diferencia)" % (a["nombre"], b["nombre"], round(a["largo"]),
+                                             round(b["largo"]), round(dif)),
+            "lados": [a["nombre"], b["nombre"]],
+            "valor": round(a["largo"]), "esperado": round(b["largo"]),
+            "clave": ("opuestos", a["nombre"], b["nombre"],
+                      round(a["largo"]), round(b["largo"])),
+        })
+    return salida
 
 
 REGLAS = [
@@ -200,14 +246,13 @@ REGLAS = [
                "ni anclar. Los ganchos no cuentan: son cortos por norma.",
      "necesita": ("lados", "diam"),
      "fn": r_lado_corto},
-    {"codigo": "estribo_cuadrado",
-     "corto": "Estribo cuadrado",
-     "nombre": "Estribo cuadrado entre hermanos que no lo son",
-     "porque": "Un estribo cuadrado suele ser la misma medida tipeada dos veces. A veces es "
-               "correcto —un pilar cuadrado existe—, por eso se compara con los otros "
-               "estribos del mismo elemento.",
-     "necesita": ("lados", "mbr"),
-     "fn": r_estribo_cuadrado},
+    {"codigo": "lados_opuestos",
+     "corto": "Lados opuestos",
+     "nombre": "Lados opuestos del estribo con medidas distintas",
+     "porque": "En un estribo rectangular los dos lados que se miran de frente tienen que "
+               "medir lo mismo. Si no, hay una medida tipeada mal.",
+     "necesita": ("lados",),
+     "fn": r_lados_opuestos},
 ]
 
 REGLAS_POR_CODIGO = {r["codigo"]: r for r in REGLAS}
