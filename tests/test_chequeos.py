@@ -534,5 +534,27 @@ check("...pero se olvida lo de los códigos que una verificación acaba de leer 
 check("la figura se imprime: es la mitad de para qué sirve la hoja",
       ".revfig, .revfig svg { display:table-cell !important; }" in HTM)
 
+print("\n18. La fila muestra la barra, no la describe")
+# El usuario (13-oct): «demasiado texto. Debe indicar hallazgo, mostrar barra renderizada
+# y los lados que tiene la figura, resaltar en rojo el que no cumple. Eso es mejor que
+# todo ese texto. Además así el usuario verifica acá sin tener que ir a aSa».
+check("los lados de la figura están en la fila, con el que falla en rojo",
+      "function _ladosCelda(" in JS and 'class="revmal"' in JS
+      and ".revlados .revmal" in HTM and "color:#c62828" in HTM)
+check("...salen de la misma lectura que el dibujo: no cuesta una llamada más",
+      "global.audBarraNormalizada(b, 'asa')" in JS.split("function _ladosCelda(")[1][:900]
+      and "f.dims" in JS)
+check("...y mientras no se pidan las figuras, al menos se ve el lado del hallazgo",
+      "Sin la figura leída" in JS and "det.valor" in JS)
+check("el esperado se rotula según lo que significa en cada regla, no «debería» siempre",
+      "i.regla === 'lado_corto' ? 'mín ' : 'debería '" in JS)
+check("el hallazgo va como etiqueta corta, no como párrafo",
+      "r.corto || r.nombre" in JS and 'class="revreg"' in JS
+      and "esc(det.texto || '') + firma" not in JS)
+check("...y el texto entero no se pierde: queda en el title de la celda",
+      'class="revlados" title="\' + esc(det.texto' in JS)
+check("el cubicador se dice una vez por código, no en cada fila",
+      "revquien" in JS and "revquien" in HTM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -287,8 +287,12 @@
           var g = grupos[k];
           var ok = g.items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
           var fg = REVS.figs[g.cc];
+          var quienes = {};
+          g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
           return '<div class="revcc2"><h5><input type="checkbox" data-grupo="' + esc(k) + '"> ' +
             '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
+            (Object.keys(quienes).length
+              ? '<span class="revquien">' + esc(Object.keys(quienes).join(', ')) + '</span>' : '') +
             '<div style="flex:1"></div>' +
             (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                            '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
@@ -343,6 +347,41 @@
     return c.barras[ref] || c.barras[String(ref).split('#')[0]] || null;
   }
 
+  // LOS LADOS DE LA FIGURA, que es lo que el usuario necesita para decidir sin abrir
+  // aSa. Salen de la misma lectura que trae el dibujo —`dims` de la barra normalizada—
+  // así que no cuesta una llamada más. Mientras no se hayan pedido las figuras se
+  // muestra sólo el lado del hallazgo, que es el dato que la señal ya trae.
+  function _ladosCelda(i) {
+    var det = i.detalle || {};
+    var malos = {};
+    (det.lados || []).forEach(function (L) { malos[L] = 1; });
+    var b = _barraDe(i.cc, i.ref);
+    var f = null;
+    if (b && global.audBarraNormalizada) {
+      try { f = global.audBarraNormalizada(b, 'asa'); } catch (e) { f = null; }
+    }
+    // QUÉ SIGNIFICA EL `esperado` DE CADA REGLA, en un solo lugar: en el lado corto es un
+    // PISO (puede medir más y estar bien) y en los opuestos es la medida exacta que
+    // debería tener. Decir «debería 100» en el primero sería pedir que mida 100 justo.
+    var esp = det.esperado != null
+      ? '<span class="revesp">' + (i.regla === 'lado_corto' ? 'mín ' : 'debería ') +
+        det.esperado + '</span>' : '';
+    if (!f || !f.dims) {
+      // Sin la figura leída: el lado del hallazgo y su medida, que es lo que hay.
+      var ns = Object.keys(malos);
+      if (!ns.length) return '<span class="muted">—</span>';
+      return ns.map(function (L) {
+        return '<b class="revmal">' + esc(L) + ' ' + (det.valor != null ? det.valor : '?') + '</b>';
+      }).join(' · ') + ' ' + esp;
+    }
+    var ks = Object.keys(f.dims).sort();
+    return ks.map(function (L) {
+      var v = Math.round(Number(f.dims[L]) || 0);
+      return malos[L] ? '<b class="revmal">' + esc(L) + ' ' + v + '</b>'
+                      : '<span>' + esc(L) + ' ' + v + '</span>';
+    }).join(' · ') + ' ' + esp;
+  }
+
   function _celda(cc, ref) {
     var c = REVS.figs[cc];
     if (!c) return '';
@@ -361,9 +400,18 @@
   function _pintarFiguras(cc) {
     var caja = $('revItemsCuerpo');
     if (!caja) return;
+    var porRef = {};
+    itemsVisibles().forEach(function (i) { porRef[(i.cc || '') + '|' + i.ref] = i; });
     caja.querySelectorAll('td[data-fig]').forEach(function (td) {
       if (cc && td.dataset.cc !== cc) return;
       td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);
+      // Los lados salen de la misma lectura, así que se llenan en el mismo paso.
+      var lad = td.parentNode && td.parentNode.querySelector('td.revlados');
+      var it = porRef[td.dataset.cc + '|' + td.dataset.fig];
+      if (lad && it) {
+        var firma = lad.querySelector('div');
+        lad.innerHTML = _ladosCelda(it) + (firma ? firma.outerHTML : '');
+      }
     });
   }
 
@@ -431,19 +479,22 @@
           '<button class="' + (nap ? 'on' : '') + '" data-noaplica="' + i.id + '"' +
             ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
         '</div>';
-    var cols = _esAdmin() ? 8 : 7;
+    var cols = 7;
+    // LA FILA MUESTRA LA BARRA, NO LA DESCRIBE. El texto entero de la señal queda en el
+    // `title`: no se pierde, pero deja de ocupar dos renglones por fila para decir lo
+    // que `D 90` en rojo dice de un vistazo.
     return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
       '<td style="width:22px">' + (hecho || nap ? (hecho ? '✓' : '–') :
         '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
         ' title="Ya la corregí">') + '</td>' +
-      '<td class="revm" style="width:92px"><span class="audref" data-ver="' + i.id +
+      '<td class="revm" style="width:84px"><span class="audref" data-ver="' + i.id +
         '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
       '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '">' +
         _celda(i.cc, i.ref) + '</td>' +
-      '<td style="width:150px">' + esc(r.nombre) + '</td>' +
-      '<td>' + esc(det.texto || '') + firma + '</td>' +
-      (_esAdmin() ? '<td style="width:92px">' + esc(i.cubico || '') + '</td>' : '') +
-      '<td style="width:116px"><span class="revi ' + esc(i.estado) + '">' +
+      '<td class="revlados" title="' + esc(det.texto || '') + '">' + _ladosCelda(i) + firma + '</td>' +
+      '<td style="width:104px"><span class="revreg" title="' + esc(r.porque || r.nombre || '') + '">' +
+        esc(r.corto || r.nombre) + '</span></td>' +
+      '<td style="width:112px"><span class="revi ' + esc(i.estado) + '">' +
         esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
       '<td class="revacc" style="width:132px">' + acc + '</td></tr>' +
       '<tr class="revnapform" data-form="' + i.id + '" style="display:none"><td colspan="' + cols +
