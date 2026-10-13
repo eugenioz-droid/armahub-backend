@@ -113,7 +113,7 @@ def obras(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
                           STRING_AGG(DISTINCT NULLIF(TRIM(p.detail_person),''), ', ')
                      FROM asa_pedidos p
                     WHERE COALESCE(p.estado,'') = ANY(%s)
-                      AND p.job_name !~* %s""" + mov + """
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""" + mov + """
                     GROUP BY p.asa_job_id
                     ORDER BY MAX(p.order_date) DESC NULLS LAST""",
                 (_estados(tarde), PATRON_OBRAS_FUERA) + arg)
@@ -154,7 +154,7 @@ def codigos(job: str, tarde: bool = False, user=Depends(get_current_user)):
                           COALESCE(estado,''), COALESCE(detail_person,'')
                      FROM asa_pedidos
                     WHERE asa_job_id = %s AND COALESCE(estado,'') = ANY(%s)
-                      AND job_name !~* %s
+                      AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                     ORDER BY order_date DESC NULLS LAST, control_code""",
                 (job, _estados(tarde), PATRON_OBRAS_FUERA))
             ccs = [{"cc": r[0], "descr": r[1], "kg": float(r[2] or 0),
@@ -604,7 +604,7 @@ def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = Fal
                      LEFT JOIN chequeo_codigos c
                             ON c.id_proyecto = p.asa_job_id AND c.cc = p.control_code
                     WHERE COALESCE(p.estado,'') = ANY(%s)
-                      AND p.job_name !~* %s
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND (c.cc IS NULL
                            OR (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
                                AND p.ultima_mod > c.ultima_mod))""" + mov + """
@@ -721,7 +721,7 @@ def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
                           MAX(p.order_date)
                      FROM asa_pedidos p
                     WHERE COALESCE(p.estado,'') = ANY(%s)
-                      AND p.job_name !~* %s""" + mov + """
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""" + mov + """
                     GROUP BY p.asa_job_id""",
                 (_estados(tarde), PATRON_OBRAS_FUERA) + arg)
             base = {r[0]: {"job": r[0], "obra": r[1], "ccs": r[2], "kg": float(r[3] or 0),

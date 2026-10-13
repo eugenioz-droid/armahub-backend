@@ -96,7 +96,12 @@ async function crearReclamo() {
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
   var anioCalidad = document.getElementById('recAnioCalidad') ? parseInt(document.getElementById('recAnioCalidad').value) : null;
   var numeroCalidad = document.getElementById('recNumeroCalidad') ? parseInt(document.getElementById('recNumeroCalidad').value) : null;
-  if (proyecto) body.id_proyecto = proyecto;
+  // LA OBRA VIENE DEL ESPEJO DE aSa. Si ya está en ArmaHub el valor es su id; si no, es
+  // «asa:<job>» y el backend la adopta al guardar.
+  if (proyecto) {
+    if (proyecto.indexOf('asa:') === 0) body.asa_job_id = proyecto.slice(4);
+    else body.id_proyecto = proyecto;
+  }
   if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
   if (respEmail) { body.cubicador_asignado = respEmail; body.responsable = respDisplay || respEmail; }
   if (asignadoA) body.asignado_a = asignadoA;
@@ -170,40 +175,6 @@ function toggleNuevoProyectoRec() {
   }
 }
 
-async function crearProyectoDesdeReclamo() {
-  var nombre = document.getElementById('recNuevoProjNombre').value.trim();
-  var msg = document.getElementById('recNuevoProjMsg');
-  if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
-  msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var body = { nombre_proyecto: nombre };
-  var calcId = document.getElementById('recNuevoProjCalculista').value;
-  if (calcId) body.calculista_id = parseInt(calcId);
-  var constId = document.getElementById('recNuevoProjConstructora').value;
-  if (constId) body.constructora_id = parseInt(constId);
-  var desc = document.getElementById('recNuevoProjDescripcion').value.trim();
-  if (desc) body.descripcion = desc;
-  var res = await fetch(apiUrl('/proyectos'), {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) {
-    msg.textContent = 'Obra creada'; msg.style.color = '#558B2F';
-    document.getElementById('recNuevoProjNombre').value = '';
-    document.getElementById('recNuevoProjCalculista').value = '';
-    document.getElementById('recNuevoProjConstructora').value = '';
-    document.getElementById('recNuevoProjDescripcion').value = '';
-    await loadProyectos();
-    await loadFilters();
-    var sel = document.getElementById('recProyecto');
-    if (sel && data.id_proyecto) sel.value = data.id_proyecto;
-    toggleNuevoProyectoRec();
-  } else {
-    msg.textContent = 'Error: ' + (data.detail || data.error || 'desconocido'); msg.style.color = '#b42318';
-  }
-}
 
 function toggleRecNewCalc() {
   var f = document.getElementById('recNewCalcForm');
@@ -278,6 +249,28 @@ function _syncExtProyectoDatalist() {
     dl.appendChild(o);
   });
 }
+// EL SELECTOR DE OBRA SE LLENA DEL ESPEJO DE aSa (13-oct): cualquier obra válida, esté o no
+// en ArmaHub. Antes salía de /proyectos —las 37 creadas a mano— y para reclamar sobre una
+// obra nueva había que «crearla». Las adoptadas usan su id; las demás, «asa:<job>».
+async function loadObrasReclamo() {
+  var sel = document.getElementById('recProyecto');
+  if (!sel) return;
+  var d; try { d = await apiGet('/programacion/asa/espejo'); } catch (e) { d = null; }
+  var obras = (d && d.obras) || [];
+  if (!obras.length) return;
+  var prev = sel.value;
+  sel.innerHTML = '<option value="">— Sin obra —</option>' + obras.map(function (o) {
+    var val = o.id_proyecto || ('asa:' + o.asa_job_id);
+    var txt = (o.nombre || o.asa_job_id) + ' · ' + o.asa_job_id +
+              (o.estado && o.estado !== 'Open' ? ' (' + o.estado + ')' : '');
+    return '<option value="' + val + '">' + txt + '</option>';
+  }).join('');
+  if (prev) sel.value = prev;
+  if (typeof _syncExtProyectoDatalist === 'function') _syncExtProyectoDatalist();
+  if (typeof populateRecFilterProyecto === 'function') populateRecFilterProyecto();
+}
+window.loadObrasReclamo = loadObrasReclamo;
+
 function _onExtProyectoInput(texto) {
   var sel = document.getElementById('recProyecto');
   if (!sel) return;

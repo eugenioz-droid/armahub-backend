@@ -32,7 +32,9 @@ function _applyProyectoFilters() {
 }
 
 async function loadProyectos() {
-  const data = await apiGet('/proyectos');
+  // SÓLO LAS OBRAS QUE SE CUBICAN EN ArmaHub (13-oct). Una obra adoptada por un reclamo
+  // existe, pero no aparece acá. El backend las muestra ya con el nombre de aSa.
+  const data = await apiGet('/proyectos?cubicacion=1');
   if (!data) return;
   
   _proyectosData = data.proyectos || [];
@@ -83,16 +85,8 @@ async function loadProyectos() {
     if (prevP) ppf.value = prevP;
   }
 
-  // Populate reclamos project filter
-  const rpf = document.getElementById('recProyecto');
-  if (rpf) {
-    const prevR = rpf.value;
-    rpf.innerHTML = '<option value="">— Sin proyecto —</option>' +
-      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-    if (prevR) rpf.value = prevR;
-    if (typeof _syncExtProyectoDatalist === 'function') _syncExtProyectoDatalist();
-    if (typeof populateRecFilterProyecto === 'function') populateRecFilterProyecto();
-  }
+  // El selector de obra de RECLAMOS ya no sale de acá: se llena del espejo de aSa
+  // (cualquier obra, adoptada o no). Ver loadObrasReclamo en reclamos/form.js.
 
   // Populate obra destino selector (import flow)
   if (typeof populateObraDestino === 'function') populateObraDestino();
@@ -163,7 +157,11 @@ function renderProyectosTable(proyectos) {
       var ppiStr = p.ppi ? formatDecimal(p.ppi, 1, '-') : '-';
       
       html += '<tr class="proyecto-row" data-id="' + p.id_proyecto + '" style="border-bottom:1px solid #eee; cursor:pointer;" onclick="openObraDetailModal(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">';
-      html += '<td style="padding:6px;"><strong>' + (p.nombre_proyecto || p.id_proyecto) + '</strong></td>';
+      // EL CÓDIGO ES EL JOB DE aSa. El nombre también viene del espejo cuando está enlazada.
+      html += '<td style="padding:6px;"><strong>' + (p.nombre_proyecto || p.id_proyecto) + '</strong>' +
+        (p.codigo ? ' <span style="font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#546e7a; ' +
+          'background:#eceff1; border-radius:3px; padding:0 5px;" title="Job en aSa">' + p.codigo + '</span>' : '') +
+        '</td>';
       html += '<td style="padding:6px; color:#666;">' + (p.cubicador || '-') + '</td>';
       html += '<td style="padding:6px; text-align:right; font-weight:500;">' + kilosStr + ' kg</td>';
       html += '<td style="padding:6px; text-align:right; color:#666;">' + diamStr + '</td>';
@@ -320,14 +318,59 @@ function goToBarManager(idProyecto, sector, piso, ciclo) {
   }, 100);
 }
 
-// Modal functions
+// ══════ TRAER UNA OBRA DESDE aSa ══════
+// Las obras ya no se crean a mano (13-oct): se eligen del espejo de aSa y se traen. Lo que
+// se trae desde acá queda marcado «se cubica en ArmaHub» y por eso aparece en esta lista.
 function openCrearObraModal() {
   showModal('crearObraModal');
-  document.getElementById('newObraName').value = '';
-  document.getElementById('newObraDescripcion').value = '';
+  var q = document.getElementById('traerObraQ');
+  if (q) { q.value = ''; q.focus(); }
   document.getElementById('crearObraMsg').innerHTML = '';
-  populateCalcSelect('newObraCalculista');
-  populateConstSelect('newObraCliente');
+  document.getElementById('traerObraRes').innerHTML =
+    '<div class="muted" style="font-size:11px;">Escribe parte del nombre, del código o del cliente.</div>';
+}
+
+var _traerObraT = null;
+function buscarObraAsa() {
+  clearTimeout(_traerObraT);
+  _traerObraT = setTimeout(async function () {
+    var q = (document.getElementById('traerObraQ').value || '').trim();
+    var caja = document.getElementById('traerObraRes');
+    if (q.length < 2) { caja.innerHTML = '<div class="muted" style="font-size:11px;">Escribe al menos dos letras.</div>'; return; }
+    var d = await apiGet('/programacion/asa/buscar?limite=40&q=' + encodeURIComponent(q));
+    var filas = (d && d.resultados) || [];
+    if (!filas.length) { caja.innerHTML = '<div class="muted" style="font-size:11px;">Ninguna obra de aSa coincide.</div>'; return; }
+    caja.innerHTML = filas.map(function (o) {
+      var sub = [o.asa_job_id, o.cliente, o.estado].filter(Boolean).join(' · ');
+      return '<div style="display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid #eee;">' +
+        '<div style="flex:1; min-width:0;"><b style="font-size:12px;">' + (o.nombre || o.asa_job_id) + '</b>' +
+        '<div class="muted" style="font-size:10px;">' + sub + '</div></div>' +
+        '<button data-job="' + o.asa_job_id + '" style="font-size:11px; padding:4px 10px; white-space:nowrap;">' +
+        (o.adoptada ? 'Agregar a cubicación' : 'Traer') + '</button></div>';
+    }).join('');
+    caja.querySelectorAll('button[data-job]').forEach(function (b) {
+      b.addEventListener('click', function () { traerObraAsa(b.dataset.job, b); });
+    });
+  }, 250);
+}
+
+async function traerObraAsa(job, boton) {
+  boton.disabled = true;
+  var msg = document.getElementById('crearObraMsg');
+  try {
+    var res = await fetch(apiUrl('/programacion/asa/adoptar'), {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asa_job_id: job, en_cubicacion: true })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'No se pudo traer la obra');
+    msg.innerHTML = '<span style="color:#2e7d32; font-size:12px;">Obra lista en Cubicaciones: ' + data.id_proyecto + '</span>';
+    await loadProyectos();
+    setTimeout(closeCrearObraModal, 700);
+  } catch (e) {
+    msg.innerHTML = '<span style="color:#b42318; font-size:12px;">' + e.message + '</span>';
+    boton.disabled = false;
+  }
 }
 
 function closeCrearObraModal() {

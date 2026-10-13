@@ -56,6 +56,11 @@
     if (typeof global.loadProyectos === 'function') {
       await Promise.resolve(global.loadProyectos());
     }
+    // EL SELECTOR DE OBRA SALE DEL ESPEJO DE aSa (13-oct), no de la lista de Cubicaciones:
+    // un reclamo puede ser sobre cualquier obra de aSa, esté o no adoptada.
+    if (typeof global.loadObrasReclamo === 'function') {
+      await Promise.resolve(global.loadObrasReclamo());
+    }
     await Promise.resolve(loadRecUsersDropdown());
     populateRecFilterProyecto();
     await Promise.resolve(loadReclamos());

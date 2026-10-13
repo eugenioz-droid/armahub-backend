@@ -479,7 +479,7 @@ def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
                 """SELECT detail_person, job_name, MAX(asa_job_id), order_date, SUM(kg), COUNT(*)
                      FROM asa_pedidos
                     WHERE order_date BETWEEN %s AND %s
-                      AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                      AND COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                     GROUP BY 1, 2, 4 ORDER BY 1, 2, 4""",
                 (lunes, viernes, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
             real = [{"persona": r[0], "obra": r[1], "job": r[2], "dia": r[3].isoformat(),
@@ -489,7 +489,7 @@ def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
             cur.execute(
                 """SELECT job_name, MAX(asa_job_id), ROUND(SUM(kg))
                      FROM asa_pedidos
-                    WHERE COALESCE(estado,'') <> %s AND job_name !~* %s
+                    WHERE COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND GREATEST(order_date, proj_ship_date) >= CURRENT_DATE - make_interval(months => 12)
                     GROUP BY 1 ORDER BY 1""",
                 (ESTADO_NUNCA, PATRON_OBRAS_FUERA))
@@ -504,7 +504,7 @@ def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
                           MAX(order_date)
                      FROM asa_pedidos
                     WHERE COALESCE(detail_person,'') <> ''
-                      AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                      AND COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                     GROUP BY 1 ORDER BY 1""",
                 (VENTANA_ACTIVO_MESES, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
             personas = [{"persona": r[0], "kg": float(r[1] or 0), "activo": float(r[1] or 0) > 0,
@@ -516,7 +516,7 @@ def semana_real(desde: Optional[str] = None, user=Depends(get_current_user)):
                 """SELECT detail_person, job_name, MAX(asa_job_id), SUM(kg), MAX(order_date)
                      FROM asa_pedidos
                     WHERE COALESCE(detail_person,'') <> ''
-                      AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                      AND COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND order_date >= CURRENT_DATE - make_interval(months => %s)
                     GROUP BY 1, 2 ORDER BY 1, 4 DESC""",
                 (ESTADO_NUNCA, PATRON_OBRAS_FUERA, VENTANA_OBRAS_MESES))
@@ -605,11 +605,41 @@ def asa_sincronizar(endpoint: str = "getJobData", solo_abiertas: bool = False,
     return dict(r, ok=True)
 
 
+@router.get("/programacion/asa/espejo")
+def asa_espejo(user=Depends(get_current_user)):
+    """TODAS las obras válidas de aSa, para los selectores de obra (13-oct). Es de donde se
+    elige una obra en Reclamos: cualquiera de aSa, esté o no adoptada. Las adoptadas traen
+    su `id_proyecto`; las demás se adoptan solas al guardar. Las no válidas no salen.
+
+    Primero las abiertas y las que tienen actividad reciente: con 500 obras, el orden es
+    lo que hace usable el selector."""
+    if user.get("role") == "cliente":
+        raise HTTPException(status_code=403, detail="No disponible para clientes.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT a.asa_job_id, a.nombre, a.cliente, a.estado, a.ultima_actividad,
+                          (SELECT MIN(p.id_proyecto) FROM proyectos p WHERE p.asa_job_id = a.asa_job_id),
+                          (SELECT BOOL_OR(p.en_cubicacion) FROM proyectos p WHERE p.asa_job_id = a.asa_job_id)
+                     FROM asa_obras a
+                    WHERE NOT a.excluida
+                      AND a.asa_job_id !~ 'B$'                 -- el gemelo «- BARRAS» no es otra obra
+                    ORDER BY (COALESCE(a.estado,'') = 'Open') DESC, a.ultima_actividad DESC NULLS LAST, a.nombre""")
+            obras = [{"asa_job_id": r[0], "nombre": r[1], "cliente": r[2], "estado": r[3],
+                      "ultima_actividad": r[4].isoformat() if r[4] else None,
+                      "id_proyecto": r[5], "en_cubicacion": bool(r[6])} for r in cur.fetchall()]
+    return {"obras": obras, "n": len(obras)}
+
+
 @router.get("/programacion/asa/buscar")
 def asa_buscar(q: str = "", limite: int = 30, user=Depends(get_current_user)):
     """Busca en el ESPEJO, no en aSa. Por eso es instantáneo y funciona aunque aSa esté
-    caído. Marca cuáles ya están adoptadas para no traer dos veces la misma."""
-    _exigir_admin(user)
+    caído. Marca cuáles ya están adoptadas para no traer dos veces la misma.
+
+    Lo usan los selectores de obra de Cubicaciones y de Reclamos (13-oct): toda obra se
+    elige de acá. Las marcadas como no válidas (prueba, cotizaciones) no salen."""
+    if user.get("role") == "cliente":
+        raise HTTPException(status_code=403, detail="No disponible para clientes.")
     termino = "%" + (q or "").strip().lower() + "%"
     limite = max(1, min(int(limite or 30), 100))
     with get_conn() as conn:
@@ -620,9 +650,10 @@ def asa_buscar(q: str = "", limite: int = 30, user=Depends(get_current_user)):
                        p.id_proyecto, COALESCE(p.nombre_proyecto, '')
                   FROM asa_obras a
                   LEFT JOIN proyectos p ON p.asa_job_id = a.asa_job_id
-                 WHERE lower(a.nombre) LIKE %s
+                 WHERE NOT a.excluida
+                   AND (lower(a.nombre) LIKE %s
                     OR lower(a.asa_job_id) LIKE %s
-                    OR lower(COALESCE(a.cliente,'')) LIKE %s
+                    OR lower(COALESCE(a.cliente,'')) LIKE %s)
                  ORDER BY (p.id_proyecto IS NOT NULL), a.nombre
                  LIMIT %s
                 """,
@@ -637,10 +668,51 @@ def asa_buscar(q: str = "", limite: int = 30, user=Depends(get_current_user)):
     return {"resultados": filas}
 
 
+def adoptar_obra(cur, job: str, email: str, en_cubicacion: bool = False,
+                 nombre: Optional[str] = None) -> str:
+    """Trae una obra del espejo de aSa a ArmaHub, o devuelve la que ya existe. Es LA ÚNICA
+    puerta por la que entra una obra (13-oct): la usa el botón de Cubicaciones, el reclamo
+    que se crea sobre una obra que todavía no estaba, y lo que venga después.
+
+    Idempotente: adoptar dos veces el mismo job devuelve la misma obra. El id de la obra ES
+    el job de aSa, así el enlace se ve mirando la tabla. Si el job ya está enlazado a una
+    obra legacy (`PROY-…`), se devuelve ésa: no se duplica."""
+    job = (job or "").strip()
+    if not job:
+        raise HTTPException(status_code=400, detail="Falta el identificador de la obra en aSa.")
+    cur.execute("SELECT nombre, excluida FROM asa_obras WHERE asa_job_id = %s", (job,))
+    fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Esa obra no está en el espejo de aSa.")
+    if fila[1]:
+        raise HTTPException(status_code=400,
+                            detail="Esa obra está marcada como no válida en aSa (prueba, "
+                                   "cotizaciones…). No se trae.")
+    cur.execute("SELECT id_proyecto FROM proyectos WHERE asa_job_id = %s OR id_proyecto = %s ORDER BY 1",
+                (job, job))
+    ya = [r[0] for r in cur.fetchall()]
+    if ya:
+        if en_cubicacion:
+            cur.execute("UPDATE proyectos SET en_cubicacion = TRUE WHERE id_proyecto = %s", (ya[0],))
+        return ya[0]
+    nombre = (nombre or fila[0] or job).strip()[:250]
+    cur.execute(
+        """INSERT INTO proyectos (id_proyecto, nombre_proyecto, asa_job_id, origen,
+                                  en_cubicacion, usuario_creador)
+           VALUES (%s, %s, %s, 'asa', %s, %s)""",
+        (job[:60], nombre, job, en_cubicacion, email))
+    audit(email, "asa_adoptar", f"{job} -> creada «{nombre}»"
+                                 + (" (cubicación)" if en_cubicacion else ""))
+    return job[:60]
+
+
 class AdoptarBody(BaseModel):
     asa_job_id: str
     id_proyecto: Optional[str] = None     # si viene, ENLAZA a una obra que ya existe
     nombre: Optional[str] = None
+    # Si la obra se trae DESDE la caluga de Cubicaciones, aparece ahí. Si la trae un
+    # reclamo o una auditoría, existe pero no aparece: existir no es cubicarse acá.
+    en_cubicacion: bool = False
 
 
 @router.post("/programacion/asa/adoptar")
@@ -651,48 +723,51 @@ def asa_adoptar(body: AdoptarBody, user=Depends(get_current_user)):
       - Con `id_proyecto`: la obra ya existe con otro nombre → se ENLAZA escribiéndole el
         asa_job_id. Nunca se duplica.
     """
-    _exigir_admin(user)
+    # ANTES SÓLO ADMIN. Ahora es la única puerta por la que entra una obra —un reclamo
+    # sobre una obra nueva de aSa la trae solo— así que la puede usar quien pueda escribir
+    # en la plataforma. El cliente no: su lista de endpoints no la incluye (auth.py).
+    if user.get("role") == "cliente":
+        raise HTTPException(status_code=403, detail="No disponible para clientes.")
     email = user.get("email", "?")
     job = (body.asa_job_id or "").strip()
     if not job:
         raise HTTPException(status_code=400, detail="Falta el identificador de la obra en aSa.")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT nombre, cliente FROM asa_obras WHERE asa_job_id = %s", (job,))
+            cur.execute("SELECT nombre, cliente, excluida FROM asa_obras WHERE asa_job_id = %s", (job,))
             fila = cur.fetchone()
             if not fila:
                 raise HTTPException(status_code=404, detail="Esa obra no está en el espejo de aSa.")
-            cur.execute("SELECT id_proyecto FROM proyectos WHERE asa_job_id = %s", (job,))
-            ya = cur.fetchone()
-            if ya:
-                raise HTTPException(status_code=409,
-                                    detail="Esa obra de aSa ya está enlazada a «%s»." % ya[0])
+            if fila[2]:
+                raise HTTPException(status_code=400,
+                                    detail="Esa obra está marcada como no válida en aSa (prueba, "
+                                           "cotizaciones…). No se trae.")
+            # UN JOB PUEDE TENER VARIAS OBRAS DE ArmaHub (los frentes de San Pablo son tres
+            # obras acá y un job allá), así que ENLAZAR no exige que el job esté libre. Lo
+            # que sí: no se CREA una obra nueva para un job que ya tiene la suya.
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE asa_job_id = %s ORDER BY 1", (job,))
+            ya = [r[0] for r in cur.fetchall()]
 
             if body.id_proyecto:
                 cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (body.id_proyecto,))
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="La obra de ArmaHub no existe.")
-                cur.execute("UPDATE proyectos SET asa_job_id = %s WHERE id_proyecto = %s",
-                            (job, body.id_proyecto))
+                cur.execute("""UPDATE proyectos SET asa_job_id = %s,
+                                      en_cubicacion = en_cubicacion OR %s
+                                WHERE id_proyecto = %s""",
+                            (job, body.en_cubicacion, body.id_proyecto))
                 audit(email, "asa_enlazar", f"{job} -> {body.id_proyecto}")
                 return {"ok": True, "id_proyecto": body.id_proyecto, "creada": False}
 
-            nombre = (body.nombre or fila[0] or job).strip()[:250]
-            # El id del proyecto en ArmaHub lo manda aSa: así el enlace es evidente al
-            # mirar la tabla, sin tener que cruzar por otra columna.
-            id_proyecto = job[:60]
-            cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
-            if cur.fetchone():
-                raise HTTPException(
-                    status_code=409,
-                    detail="Ya existe una obra con el código «%s» en ArmaHub. Enlázala en vez "
-                           "de crearla." % id_proyecto)
-            cur.execute(
-                """INSERT INTO proyectos (id_proyecto, nombre_proyecto, asa_job_id, origen)
-                   VALUES (%s, %s, %s, 'asa')""",
-                (id_proyecto, nombre, job),
-            )
-            audit(email, "asa_adoptar", f"{job} -> creada {id_proyecto} «{nombre}»")
+            if ya:
+                # Ya existe como obra: si se pide para cubicación, sólo se enciende la marca.
+                cur.execute("UPDATE proyectos SET en_cubicacion = en_cubicacion OR %s WHERE id_proyecto = %s",
+                            (body.en_cubicacion, ya[0]))
+                if body.en_cubicacion:
+                    audit(email, "obra_a_cubicacion", f"{job} -> {ya[0]}")
+                return {"ok": True, "id_proyecto": ya[0], "creada": False, "ya_existia": True}
+
+            id_proyecto = adoptar_obra(cur, job, email, body.en_cubicacion, body.nombre)
     return {"ok": True, "id_proyecto": id_proyecto, "creada": True}
 
 
@@ -886,7 +961,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                 # Los ANULADOS sí viajan (antes no): la lista de obras de «Obras aSa» los
                 # muestra en su barra por estado. El front los separa (`estado_nunca`) y
                 # ningún otro cuadro los cuenta.
-                (" AND " if cond_periodo else " WHERE ") + "job_name !~* %s"
+                (" AND " if cond_periodo else " WHERE ") + "job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)"
                 " ORDER BY COALESCE(proj_ship_date, promised_date) DESC NULLS LAST,"
                 "          job_name, descr, control_code",
                 params + [PATRON_OBRAS_FUERA])
@@ -923,7 +998,7 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
             # la lista dejó de traerlas y el contador las seguía sumando.
             cur.execute("SELECT COUNT(*) FROM asa_pedidos" + cond_periodo +
                         (" AND " if cond_periodo else " WHERE ") +
-                        "estado = %s AND job_name !~* %s",
+                        "estado = %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)",
                         params + [ESTADO_NUNCA, PATRON_OBRAS_FUERA])
             anulados = cur.fetchone()[0]
             if todos:
@@ -1060,7 +1135,7 @@ def asa_cubicador(meses: int = 3, user=Depends(get_current_user)):
     anejo = f"{stock} AND order_date < CURRENT_DATE - make_interval(months => {MESES_STOCK_ANEJO})"
     sql = f"""
         WITH vivos AS (
-            SELECT * FROM asa_pedidos WHERE COALESCE(estado,'') <> %s AND job_name !~* %s
+            SELECT * FROM asa_pedidos WHERE COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
         ),
         activas AS (
             SELECT DISTINCT job_name FROM asa_pedidos
@@ -1204,7 +1279,7 @@ def asa_mensual(anio: Optional[int] = None, obras: str = "", personas: str = "",
                      FROM asa_pedidos p""" + unir + """
                     WHERE p.order_date IS NOT NULL
                       AND EXTRACT(YEAR FROM p.order_date)::int IN (%s, %s)
-                      AND p.job_name !~* %s""" + filtro + """
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""" + filtro + """
                     GROUP BY 1, 2 ORDER BY 1, 2""",
                 tuple([anio, anio - 1, PATRON_OBRAS_FUERA] + args))
             meses = {}
@@ -1220,7 +1295,7 @@ def asa_mensual(anio: Optional[int] = None, obras: str = "", personas: str = "",
                           COALESCE(SUM(p.kg), 0)
                      FROM asa_pedidos p""" + unir + """
                     WHERE EXTRACT(YEAR FROM p.order_date)::int = %s
-                      AND p.job_name !~* %s""" + filtro + """
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""" + filtro + """
                     GROUP BY 1, 2 ORDER BY 1, 2""",
                 tuple([SIN_SEGMENTO, anio, PATRON_OBRAS_FUERA] + args))
             segmentos = {}
@@ -1237,7 +1312,7 @@ def asa_mensual(anio: Optional[int] = None, obras: str = "", personas: str = "",
                 """SELECT EXTRACT(YEAR FROM p.order_date)::int,
                           EXTRACT(MONTH FROM p.order_date)::int, COALESCE(SUM(p.kg), 0)
                      FROM asa_pedidos p""" + unir + """
-                    WHERE p.order_date IS NOT NULL AND p.job_name !~* %s""" + filtro + """
+                    WHERE p.order_date IS NOT NULL AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""" + filtro + """
                     GROUP BY 1, 2 ORDER BY 1, 2""", tuple([PATRON_OBRAS_FUERA] + args))
             por_anio = {}
             for a, m, kg in cur.fetchall():
@@ -1250,7 +1325,7 @@ def asa_mensual(anio: Optional[int] = None, obras: str = "", personas: str = "",
                           EXTRACT(MONTH FROM p.order_date)::int, COALESCE(SUM(p.kg), 0)
                      FROM asa_pedidos p""" + unir + """
                     WHERE EXTRACT(YEAR FROM p.order_date)::int = %s
-                      AND p.job_name !~* %s
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND NULLIF(TRIM(p.detail_person), '') IS NOT NULL""" + filtro + """
                     GROUP BY 1, 2""", tuple([anio, PATRON_OBRAS_FUERA] + args))
             porcub = {}
@@ -1260,7 +1335,7 @@ def asa_mensual(anio: Optional[int] = None, obras: str = "", personas: str = "",
                 """SELECT DISTINCT NULLIF(TRIM(detail_person), '')
                      FROM asa_pedidos
                     WHERE order_date >= CURRENT_DATE - make_interval(months => %s)
-                      AND job_name !~* %s AND NULLIF(TRIM(detail_person), '') IS NOT NULL""",
+                      AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida) AND NULLIF(TRIM(detail_person), '') IS NOT NULL""",
                 (MESES_VIGENTE, PATRON_OBRAS_FUERA))
             vigentes = {r[0] for r in cur.fetchall()}
 
@@ -1322,7 +1397,7 @@ def asa_atributos(meses: int = 12, user=Depends(get_current_user)):
                     SELECT job_name, MAX(asa_job_id) AS job, SUM(kg) AS kg,
                            MAX(GREATEST(order_date, proj_ship_date)) AS ultimo
                       FROM asa_pedidos
-                     WHERE COALESCE(estado,'') <> %s AND job_name !~* %s
+                     WHERE COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                      GROUP BY job_name
                     HAVING MAX(GREATEST(order_date, proj_ship_date))
                            >= CURRENT_DATE - make_interval(months => %s)

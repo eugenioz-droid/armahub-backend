@@ -307,6 +307,9 @@ def _as_text(value):
 
 class ReclamoCreate(BaseModel):
     id_proyecto: Optional[str] = None
+    # LA OBRA SE ELIGE DEL ESPEJO DE aSa (13-oct): puede venir el job en vez del id. Si la
+    # obra todavía no está en ArmaHub, se adopta sola al guardar.
+    asa_job_id: Optional[str] = None
     titulo: str
     descripcion: Optional[str] = None
     prioridad: Optional[str] = "alta"
@@ -328,6 +331,7 @@ class ReclamoCreate(BaseModel):
 
 class ReclamoUpdate(BaseModel):
     id_proyecto: Optional[str] = None
+    asa_job_id: Optional[str] = None     # igual que al crear: el job del espejo
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
     estado: Optional[str] = None
@@ -485,7 +489,8 @@ def listar_reclamos(
                 SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
                        r.prioridad, r.categoria_ishikawa, r.responsable,
                        r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
-                       COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
+                       COALESCE(ao.nombre, p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
+                       COALESCE(p.asa_job_id, r.asa_job_id) AS asa_job_id,
                        COALESCE(seg.seg_count, 0) AS seg_count,
                        r.aplica, r.sub_causa, r.cod_causa,
                        r.detectado_por, r.fecha_deteccion,
@@ -495,6 +500,7 @@ def listar_reclamos(
                        r.tipo_origen, r.area_id, ar.nombre AS area_nombre
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
                 LEFT JOIN areas ar ON ar.id = r.area_id
                 LEFT JOIN (
                     SELECT reclamo_id, COUNT(*) AS seg_count
@@ -525,7 +531,8 @@ def listar_reclamos(
         "total_base": int(total_base or 0),
         "data": [
             {
-                "id": r.get("id"), "id_proyecto": r.get("id_proyecto"), "titulo": r.get("titulo"), "descripcion": r.get("descripcion"),
+                "id": r.get("id"), "id_proyecto": r.get("id_proyecto"), "asa_job_id": r.get("asa_job_id"),
+                "titulo": r.get("titulo"), "descripcion": r.get("descripcion"),
                 "estado": r.get("estado"), "prioridad": r.get("prioridad"), "categoria_ishikawa": r.get("categoria_ishikawa"),
                 "responsable": r.get("responsable"), "creado_por": r.get("creado_por"), "fecha_creacion": _as_text(r.get("fecha_creacion")),
                 "fecha_actualizacion": _as_text(r.get("fecha_actualizacion")), "fecha_cierre": _as_text(r.get("fecha_cierre")),
@@ -596,6 +603,11 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
+            if body.asa_job_id and not body.id_proyecto:
+                # La obra viene del espejo de aSa. Si no está en ArmaHub, se adopta acá
+                # mismo: nadie tiene que «crear la obra» antes de reclamar sobre ella.
+                from .programacion import adoptar_obra
+                body.id_proyecto = adoptar_obra(cur, body.asa_job_id, email)
             if body.id_proyecto:
                 cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (body.id_proyecto,))
                 if not cur.fetchone():
@@ -921,12 +933,13 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
                 cur.execute("""
                     -- Mismo COALESCE que q_por_proyecto: la obra de los reclamos
                     -- históricos viaja como texto, no como proyecto.
-                    SELECT COALESCE(p.nombre_proyecto, r.id_proyecto,
+                    SELECT COALESCE(ao.nombre, p.nombre_proyecto, r.id_proyecto,
                                     NULLIF(TRIM(r.obra_texto), ''), 'Sin proyecto') AS proy,
                            TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp, 'YYYY-MM') AS mes,
                            COUNT(*) AS total
                     FROM reclamos r
                     LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                    LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
                     WHERE COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp >= NOW() - INTERVAL '12 months'
                       AND NOT r.historico
                     GROUP BY 1, 2 ORDER BY 1, 2
@@ -1103,7 +1116,7 @@ def reclamos_analisis_lista(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT r.id, r.correlativo, r.anio_calidad, r.fecha_deteccion,
-                       COALESCE(p.nombre_proyecto, r.obra_texto, '(sin obra)'),
+                       COALESCE(ao.nombre, p.nombre_proyecto, r.obra_texto, '(sin obra)'),
                        COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''),
                                 r.cubicador_asignado, 'Sin cubicador'),
                        -- El %% va doble porque esta consulta SÍ lleva parámetros: con
@@ -1116,6 +1129,7 @@ def reclamos_analisis_lista(user=Depends(get_current_user)):
                        r.analisis_validado_el, r.analisis_validado_por
                   FROM reclamos r
                   LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                  LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
                   LEFT JOIN users u ON u.email = r.cubicador_asignado
                   LEFT JOIN asa_obra_atributos at ON at.asa_job_id = r.asa_job_id
                  WHERE r.historico AND r.anio_calidad <= %s
@@ -1159,7 +1173,7 @@ def reclamos_analisis_detalle(reclamo_id: int, user=Depends(get_current_user)):
             cur.execute("""
                 SELECT r.id, r.correlativo, r.anio_calidad, r.fecha_deteccion, r.titulo,
                        r.descripcion, r.observaciones,
-                       COALESCE(p.nombre_proyecto, r.obra_texto, '(sin obra)'),
+                       COALESCE(ao.nombre, p.nombre_proyecto, r.obra_texto, '(sin obra)'),
                        COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''),
                                 r.cubicador_asignado, 'Sin cubicador'),
                        r.kilos_mal_fabricados, r.tipo_reclamo, r.aplica,
@@ -1168,6 +1182,7 @@ def reclamos_analisis_detalle(reclamo_id: int, user=Depends(get_current_user)):
                        r.analisis_validado_el, r.fuente, r.id_calidad, r.detectado_por
                   FROM reclamos r
                   LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                  LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
                   LEFT JOIN users u ON u.email = r.cubicador_asignado
                  WHERE r.id = %s AND r.historico""", (reclamo_id,))
             r = cur.fetchone()
@@ -1323,7 +1338,7 @@ def reclamos_indicadores(user=Depends(require_admin_or_admin_calidad)):
                   LEFT JOIN asa_obra_atributos at ON at.asa_job_id = p.asa_job_id
                  WHERE p.order_date IS NOT NULL
                    AND COALESCE(p.estado, '') <> %s
-                   AND COALESCE(p.job_name, '') !~* %s
+                   AND COALESCE(p.job_name, '') !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                    AND EXTRACT(YEAR FROM p.order_date)::int <> ALL(%s)
                  GROUP BY 1, 2, 3, 5""", (ESTADO_NUNCA_ASA, PATRON_OBRA_BARRAS, list(ANIOS_BASE_PLANILLA)))
             base = []
@@ -1919,7 +1934,7 @@ def get_reclamo_optimizado(
                         CASE
                             WHEN r.id_proyecto IS NULL AND r.tipo_origen = 'interno' THEN 'Armacero'
                             WHEN r.id_proyecto IS NULL THEN 'Obra eliminada'
-                            ELSE COALESCE(p.nombre_proyecto, 'Obra eliminada')
+                            ELSE COALESCE(ao.nombre, p.nombre_proyecto, 'Obra eliminada')
                         END AS nombre_proyecto,
                         p.nombre_proyecto AS nombre_proyecto_lookup,
                         ar.nombre AS area_nombre,
@@ -1927,6 +1942,7 @@ def get_reclamo_optimizado(
                         ar.tiene_revision_interno AS area_tiene_revision_interno
                     FROM reclamos r
                     LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                    LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
                     LEFT JOIN areas ar ON ar.id = r.area_id
                     WHERE r.id = %s
                 """, (reclamo_id,))
@@ -2174,6 +2190,10 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             respuesta_actual = row[7]
 
             # Filtrar campos según rol
+            if body.asa_job_id and "id_proyecto" not in body.__fields_set__:
+                from .programacion import adoptar_obra
+                body.id_proyecto = adoptar_obra(cur, body.asa_job_id, email)
+                body.__fields_set__.add("id_proyecto")
             submitted_fields = {f for f in body.__fields_set__ if getattr(body, f) is not None}
             if role in ("admin", "admin_calidad"):
                 pass  # sin restricción

@@ -2121,15 +2121,23 @@ def get_empresas_distintas(user=Depends(get_current_user)):
 
 
 @router.get("/proyectos")
-def get_proyectos(user=Depends(get_current_user)):
+def get_proyectos(cubicacion: int = 0, user=Depends(get_current_user)):
     """
     Devuelve lista de proyectos con resumen de kilos, barras, diam_prom, PPI, PPB.
     Incluye constructora, calculista y cubicador asignado. Filtered by user authorization.
+
+    LA OBRA SE MUESTRA COMO ESTÁ EN aSa (13-oct): `codigo` es el job de aSa y `nombre` el
+    nombre del espejo cuando la obra está enlazada. `id_proyecto` sigue viajando porque es
+    la llave con la que el navegador pide barras, lotes y todo lo demás; pero lo que se VE
+    es lo de aSa. Con `cubicacion=1` salen sólo las obras que se cubican en ArmaHub: una
+    obra adoptada por un reclamo existe, pero no aparece en esa caluga.
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
             allowed = _get_allowed_project_ids(cur, user)
             pf_p, pf_pp = _project_filter_sql(allowed, "p")
+            if cubicacion:
+                pf_p += " AND p.en_cubicacion"
             cur.execute("""
                 SELECT 
                     p.id_proyecto,
@@ -2148,11 +2156,13 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.clasificacion,
                     p.empresa,
                     COALESCE(rec.n_reclamos, 0) as n_reclamos,
-                    COALESCE(SUM(b.cant_total), 0) as total_barras_fisicas
+                    COALESCE(SUM(b.cant_total), 0) as total_barras_fisicas,
+                    p.asa_job_id, ao.nombre, ao.cliente, ao.estado, p.en_cubicacion, p.origen
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto AND b.estado IS DISTINCT FROM 'borrador'
                 LEFT JOIN constructoras co ON p.constructora_id = co.id
                 LEFT JOIN calculistas ca ON p.calculista_id = ca.id
+                LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
                 LEFT JOIN (
                     SELECT id_proyecto, COUNT(*) AS n_reclamos
                     FROM reclamos GROUP BY id_proyecto
@@ -2161,8 +2171,9 @@ def get_proyectos(user=Depends(get_current_user)):
                 GROUP BY p.id_proyecto, p.nombre_proyecto,
                          p.constructora_id, co.nombre, p.calculista_id, ca.nombre,
                          p.descripcion, p.fecha_creacion, p.usuario_creador, p.fecha_inicio,
-                         p.clasificacion, p.empresa, rec.n_reclamos
-                ORDER BY COALESCE(p.fecha_inicio, p.fecha_creacion) ASC NULLS LAST, p.nombre_proyecto ASC
+                         p.clasificacion, p.empresa, rec.n_reclamos,
+                         p.asa_job_id, ao.nombre, ao.cliente, ao.estado, p.en_cubicacion, p.origen
+                ORDER BY COALESCE(ao.nombre, p.nombre_proyecto) ASC
             """, pf_pp)
             rows = cur.fetchall()
 
@@ -2205,7 +2216,17 @@ def get_proyectos(user=Depends(get_current_user)):
 
         proyectos.append({
             "id_proyecto": r[0],
-            "nombre_proyecto": r[1],
+            # LO QUE SE VE ES LO DE aSa. `nombre_proyecto` pasa a ser el nombre del espejo
+            # cuando hay enlace; el nombre que se escribió a mano queda en `nombre_armahub`
+            # por si hace falta reconocer una obra vieja.
+            "nombre_proyecto": r[18] or r[1],
+            "nombre_armahub": r[1],
+            "codigo": r[17] or r[0],
+            "asa_job_id": r[17],
+            "cliente_asa": r[19],
+            "estado_asa": r[20],
+            "en_cubicacion": bool(r[21]),
+            "origen": r[22],
             "total_items": total_items,
             "total_barras": total_barras,
             "total_kilos": total_kilos,
@@ -2308,6 +2329,15 @@ def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
     Solo admin/admin_calidad: la creación de obras se centraliza en administración
     (decisión 2026-06-18). Evita el cruce con proyecto_usuarios cuyo CHECK legacy no
     acepta el rol 'miembro'. A futuro habrá un panel de administración de obras."""
+    # CERRADO (13-oct). Las obras ya no se crean a mano: se traen del espejo de aSa
+    # (POST /programacion/asa/adoptar), que es la única puerta. Lo pidió el usuario —«lo
+    # que debiera desaparecer es la creación de obras»— y es lo que hace que no vuelvan a
+    # existir dos estándares de obra. El endpoint queda para responder con la razón, no
+    # con un 404 que parezca un error.
+    raise HTTPException(
+        status_code=410,
+        detail="Las obras ya no se crean a mano: se traen desde aSa. Busca la obra en el "
+               "selector y apreta «Traer».")
     role = user.get("role", "")
     if role not in ("admin", "admin_calidad"):
         raise HTTPException(status_code=403, detail="Solo administración puede crear obras. Contacta a un administrador.")

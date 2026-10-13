@@ -213,8 +213,13 @@ for ruta in ("/programacion/asa/estado", "/programacion/asa/sincronizar",
 check("todos exigen administración", PROG.count("_exigir_admin(user)") >= 7)
 check("adoptar puede ENLAZAR una obra existente en vez de duplicarla",
       "UPDATE proyectos SET asa_job_id" in PROG)
-check("...y rechaza enlazar dos veces la misma obra de aSa",
-      "ya está enlazada" in PROG)
+# LA REGLA CAMBIÓ (13-oct, homologación de obras): un job de aSa puede tener VARIAS obras
+# de ArmaHub —los tres frentes de Euro San Pablo son un solo job—, así que enlazar ya no
+# exige que el job esté libre. Lo que sí sigue valiendo: no se CREA una segunda obra para
+# un job que ya tiene la suya; adoptar dos veces devuelve la misma.
+check("...y adoptar dos veces el mismo job devuelve la misma obra, no crea otra",
+      "ya_existia" in PROG and "ENLAZAR no exige que el job esté libre" in PROG
+      and "WHERE asa_job_id = %s OR id_proyecto = %s" in PROG)
 check("asignar USC borra la anterior: una obra tiene UN USC",
       "DELETE FROM proyecto_usuarios WHERE id_proyecto = %s AND rol = 'usc'" in PROG)
 check("quitar el USC es mandar user_id=null, no un endpoint aparte",

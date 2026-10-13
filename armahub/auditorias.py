@@ -260,17 +260,21 @@ def obras(user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT b.id_proyecto, COALESCE(p.nombre_proyecto, b.id_proyecto),
+                f"""SELECT b.id_proyecto, COALESCE(ao.nombre, p.nombre_proyecto, b.id_proyecto),
                            COUNT(*), COALESCE(SUM(b.peso_total), 0),
                            COUNT(DISTINCT {_CLAVE}),
                            (SELECT COUNT(*) FROM reclamos r
                              WHERE r.id_proyecto = b.id_proyecto
-                               AND r.estado NOT IN ('cerrado', 'rechazado')) AS reclamos
+                               AND r.estado NOT IN ('cerrado', 'rechazado')) AS reclamos,
+                           p.asa_job_id
                       FROM barras b
                       LEFT JOIN proyectos p ON p.id_proyecto = b.id_proyecto
-                     GROUP BY 1, 2 ORDER BY 2""")
+                      LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
+                     GROUP BY 1, 2, p.asa_job_id ORDER BY 2""")
+            # LA OBRA SE VE COMO EN aSa (13-oct): el nombre del espejo y el job como código.
             lista = [{"id_proyecto": r[0], "obra": r[1], "barras": r[2], "kg": float(r[3] or 0),
-                      "elementos": r[4], "reclamos": r[5]} for r in cur.fetchall()]
+                      "elementos": r[4], "reclamos": r[5], "codigo": r[6] or r[0]}
+                     for r in cur.fetchall()]
             # Los que pueden quedar como auditor: los integrantes del area de
             # Cubicaciones. Es la misma lista que mantiene el usuario en el panel de
             # areas, asi que agregar o sacar un cubicador se hace alla y no aca.
@@ -313,7 +317,7 @@ def obras(user=Depends(get_current_user)):
                      FROM asa_pedidos p
                     WHERE COALESCE(p.estado,'') <> 'Cancelled'
                       AND p.asa_job_id IS NOT NULL
-                      AND p.job_name !~* %s
+                      AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND GREATEST(p.order_date, p.proj_ship_date) >= CURRENT_DATE - make_interval(months => 12)
                       AND NOT EXISTS (SELECT 1 FROM proyectos pr
                                        WHERE pr.asa_job_id = p.asa_job_id
@@ -754,7 +758,7 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
                      FROM asa_pedidos
                     WHERE asa_job_id = %s
                       AND COALESCE(estado,'') <> %s
-                      AND job_name !~* %s
+                      AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                     -- PRIMERO LO QUE NO SALIÓ, DESPUÉS LO DESPACHADO, y dentro de cada
                     -- grupo del más nuevo al más antiguo. Ordenar sólo por fecha dejaba
                     -- los despachados intercalados entre los vivos, y en la práctica no
@@ -791,7 +795,7 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
                 """SELECT MAX(job_name),
                           COUNT(*) FILTER (WHERE COALESCE(estado,'') = %s),
                           COUNT(*) FILTER (WHERE COALESCE(estado,'') NOT IN (%s, %s))
-                     FROM asa_pedidos WHERE asa_job_id = %s AND job_name !~* %s""",
+                     FROM asa_pedidos WHERE asa_job_id = %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)""",
                 (ESTADO_DESPACHADO, ESTADO_NUNCA, ESTADO_DESPACHADO, job, PATRON_OBRAS_FUERA))
             obra, despachados, vivos = cur.fetchone()
             vivos = (vivos or 0) + (despachados or 0)   # ahora se ofrecen los dos
@@ -1256,7 +1260,7 @@ def cobertura(id_proyecto: str, origen: str = "armahub", user=Depends(get_curren
                     """SELECT control_code, COALESCE(descr,''), kg, COALESCE(estado,''),
                               COALESCE(detail_person,'')
                          FROM asa_pedidos
-                        WHERE asa_job_id = %s AND COALESCE(estado,'') <> %s AND job_name !~* %s
+                        WHERE asa_job_id = %s AND COALESCE(estado,'') <> %s AND job_name !~* %s AND asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                         ORDER BY order_date DESC NULLS LAST, control_code""",
                     (id_proyecto, ESTADO_NUNCA, PATRON_OBRAS_FUERA))
                 por_cc: dict = {}

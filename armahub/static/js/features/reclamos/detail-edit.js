@@ -291,7 +291,8 @@ async function guardarEdicionReclamo() {
     id_calidad: null,
     anio_calidad: parseInt(document.getElementById('recEditAnioCalidad').value) || null,
     numero_calidad: parseInt(document.getElementById('recEditNumeroCalidad').value) || null,
-    id_proyecto: editProyVal || null,
+    id_proyecto: (editProyVal && editProyVal.indexOf('asa:') !== 0) ? editProyVal : null,
+    asa_job_id: (editProyVal && editProyVal.indexOf('asa:') === 0) ? editProyVal.slice(4) : null,
   };
   // USC Responsable — reasignable solo por admin/admin_calidad (externos).
   if (currentRole === 'admin' || currentRole === 'admin_calidad') {
