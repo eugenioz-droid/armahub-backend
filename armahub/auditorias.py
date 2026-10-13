@@ -1418,7 +1418,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           i.causa, i.causa_texto, i.esperado, i.verificado,
                           i.desestimado, i.desestimado_motivo, i.desestimado_por,
                           i.tipo_correccion, i.cc_nuevo, i.item_nuevo, i.nota_correccion,
-                          i.id, i.objecion
+                          i.id, i.objecion, i.causa_categoria
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE
@@ -1427,7 +1427,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             for fila_b in cur.fetchall():
                 (eid, ref, marca, obs, corr, ca, ca_txt, esp, ver,
                  des, des_mot, des_por, tipo_c, cc_n, item_n, nota_c,
-                 item_id_b, objec) = fila_b
+                 item_id_b, objec, ca_cat) = fila_b
                 por_elemento.setdefault(eid, []).append(
                     {"ref": ref, "marca": marca, "observacion": obs,
                      "corregido": bool(corr), "causa": ca, "causa_texto": ca_txt,
@@ -1437,9 +1437,25 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                      "cc_nuevo": cc_n, "item_nuevo": item_n, "nota_correccion": nota_c,
                      # El id de la barra viaja para que el auditor pueda objetar su
                      # descarte desde la tabla de lo que salió de la auditoría.
-                     "item_id": item_id_b, "objecion": objec})
+                     "item_id": item_id_b, "objecion": objec,
+                     # La categoría viaja para que el modal del Ishikawa abra con la
+                     # causa ya elegida marcada, en vez de en blanco.
+                     "causa_categoria": ca_cat})
+            # QUIÉN PUEDE QUÉ, DICHO POR EL BACKEND. El front no puede deducirlo: saber si
+            # una barra es «mía» exige comparar el login de aSa de quien cubicó con mi
+            # correo, y esa equivalencia la resuelve `alias_cubicador` acá. Deducirla en el
+            # navegador es tener la regla escrita dos veces, y la copia se queda atrás.
+            mios = set(alias_cubicador(cur, user.get("email", "?")))
+            soy_admin = user.get("role") in ROLES_ADMINISTRAN
+            soy_auditor = user.get("email", "?") == aud.get("auditor") or soy_admin
+            aud["soy_auditor"] = soy_auditor
+            # Editar lo que marcó el auditor: sólo él, y sólo mientras no la haya enviado.
+            aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada_el"))
             for e in aud["elementos"]:
                 e["barras_malas"] = por_elemento.get(e["id"], [])
+                e["mio"] = bool(soy_admin or
+                                ((e.get("cubicado_por") or "").strip() in mios
+                                 and (e.get("cubicado_por") or "").strip()))
     # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
     # responde «qué falta por mirar».
     try:
@@ -1473,6 +1489,7 @@ def registrar_hallazgo(auditoria_id: int, elemento_id: int, body: HallazgoBody,
     es_nc = body.hallazgo in ("hallazgo",)
     with get_conn() as conn:
         with conn.cursor() as cur:
+            _solo_antes_de_enviar(cur, auditoria_id, user)
             cur.execute(
                 """SELECT e.nombre, e.cubicado_por, e.accion_estado, a.codigo, a.obra, a.n
                      FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
@@ -2517,6 +2534,7 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
     es_nc = hallazgo in ("hallazgo",)
     with get_conn() as conn:
         with conn.cursor() as cur:
+            _solo_antes_de_enviar(cur, auditoria_id, user)
             cur.execute(
                 """SELECT e.nombre, e.cubicado_por, e.accion_estado, a.codigo, a.obra, e.cc
                      FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
@@ -2637,6 +2655,25 @@ def _solo_si_enviada(cur, auditoria_id: int) -> None:
         raise HTTPException(status_code=409,
                             detail="Esta auditoría todavía no fue enviada: el auditor la "
                                    "está revisando.")
+
+
+def _solo_antes_de_enviar(cur, auditoria_id: int, user) -> tuple:
+    """LO QUE MARCÓ EL AUDITOR QUEDA FIRME AL ENVIAR, y sólo lo escribe él.
+
+    Faltaban las dos mitades: cualquier cubicador podía abrir una auditoría ajena y
+    cambiar lo que el auditor marcó, y podía hacerlo DESPUÉS de enviada —o sea mientras el
+    auditado corregía contra ese mismo texto—. Un registro de calidad que se puede
+    reescribir por detrás no prueba nada, y acá hay plazos colgando de esa fecha.
+
+    Para cambiar algo después del envío está REABRIR, que es del auditor y queda escrito.
+    """
+    fila = _solo_el_auditor(cur, auditoria_id, user)
+    if fila[4]:   # enviada_el
+        raise HTTPException(
+            status_code=409,
+            detail="Esta auditoría ya se envió: lo que marcaste quedó firme y el auditado "
+                   "está trabajando sobre eso. Si hay que cambiarlo, reábrela primero.")
+    return fila
 
 
 def _barra_del_auditado(cur, auditoria_id: int, item_id: int, user) -> tuple:
@@ -2858,6 +2895,9 @@ def objetar_descarte(auditoria_id: int, item_id: int, body: ObjecionBody,
                             detail="Di por qué no aceptas el descarte: lo va a leer quien cubicó.")
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # No basta con «puede auditar»: objetar un descarte es del auditor DE ESTA
+            # auditoría. Cualquier otro reabriría una barra de un trabajo que no es suyo.
+            _solo_el_auditor(cur, auditoria_id, user)
             cur.execute(
                 """SELECT i.elemento_id, i.ref, i.desestimado, i.desestimado_por,
                           e.nombre, a.codigo, a.auditor
