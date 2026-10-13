@@ -217,6 +217,9 @@
            conforme · observación · hallazgo (la gravedad la calcula el sistema); qué encontró
            (obligatorio si no es conforme) y la causa del Ishikawa de Cubicaciones. -->
       <div id="audRev" class="audrev" style="display:none;">
+        <!-- POR QUÉ NO SE PUEDE ESCRIBIR. Un formulario apagado sin explicación se lee
+             como que está roto. -->
+        <div class="audcandado" id="audRevCandado" style="display:none;"></div>
         <div class="audh"><span id="audRevTitulo"></span>
           <div style="flex:1"></div><span class="muted" id="audRevInfo" style="font-size:10.5px;"></span></div>
         <div class="audbd" style="max-height:60vh;"><table class="audt" id="audRevBarras"></table></div>
@@ -520,6 +523,18 @@
   .audt td.audesp{color:#2e7d32; font-weight:600; font-size:10.5px;}
   /* Fuera de plazo. No bloquea nada —todavía no hay correo— pero se ve. */
   .audt tr.audvenc td{background:#fff8f7;}
+  /* EL FORMULARIO DEL AUDITOR, BLOQUEADO. Se apaga entero y se dice por qué: media
+     docena de campos editables con el guardar escondido invita a escribir para nada. */
+  .audcandado{background:#fff8e1; border:1px solid #ffe082; color:#8d6e00; font-size:11.5px;
+              padding:7px 10px; border-radius:6px; margin-bottom:8px;}
+  .audsololeer #audRevBarras{opacity:.75;}
+  .audsololeer #audRevBarras .audv, .audsololeer #audRevBarras input,
+  .audsololeer #audRevBarras select, .audsololeer #audRevChips{pointer-events:none;}
+  .audnota{background:#f7f9fb; border:1px solid #e3e8ef; color:#607d8b; font-size:11px;
+           padding:6px 9px; border-radius:5px; margin-bottom:8px;}
+  .audacc2{white-space:nowrap; display:flex; gap:4px; align-items:center;}
+  .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
+  .audacct tr.audnapform td{background:#fff8e1;}
   /* ══════ LAS REVISIONES ══════ */
   .audrevs{display:grid; grid-template-columns:360px 1fr; gap:10px; align-items:start;}
   @media (max-width:980px){ .audrevs{grid-template-columns:1fr;} }

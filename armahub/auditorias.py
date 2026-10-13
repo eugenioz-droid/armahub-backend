@@ -1450,7 +1450,10 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             soy_auditor = user.get("email", "?") == aud.get("auditor") or soy_admin
             aud["soy_auditor"] = soy_auditor
             # Editar lo que marcó el auditor: sólo él, y sólo mientras no la haya enviado.
-            aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada_el"))
+            # La fecha de envío viaja como `enviada` (la arma `_fila_lista`), no como
+            # `enviada_el`: con el nombre equivocado esto daba True sobre una auditoría ya
+            # enviada, la pantalla abría el formulario y el guardado moría en un 409.
+            aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada"))
             for e in aud["elementos"]:
                 e["barras_malas"] = por_elemento.get(e["id"], [])
                 e["mio"] = bool(soy_admin or

@@ -975,5 +975,58 @@ check("el front abre la auditoría del enlace, una sola vez y limpiando el hash"
       "function auditoriaDelEnlace()" in JS and "aud=(\\d+)" in JS
       and "if (delEnlace) await abrir(delEnlace);" in JS and "replaceState(null, '', limpio" in JS)
 
+print("\nLO DEL AUDITOR QUEDA FIRME, Y EL AUDITADO ACCIONA EN LA BARRA")
+# El usuario, 13-oct: «el auditado no tiene acciones. Primero debiera bloquearse lo que
+# marcó el auditor, hoy puede mover y editar todo. Segundo debe poder generar la acción
+# sobre cada observación: aplica, no aplica. Si aplica debe poder elegir el ISHIKAWA
+# desde la matriz, pero debe ser por ITEM, hoy está agrupado».
+def _cuerpo(ruta):
+    """El cuerpo de un endpoint: desde su decorador hasta el siguiente."""
+    tr = SRC.split('@router.put("/auditorias/%s")' % ruta)
+    assert len(tr) == 2, ruta
+    return tr[1].split("@router.")[0]
+
+
+check("escribir lo del auditor pide ser SU auditor y que no esté enviada",
+      "def _solo_antes_de_enviar(" in SRC
+      and "_solo_el_auditor(cur, auditoria_id, user)" in
+          SRC.split("def _solo_antes_de_enviar(")[1][:1200]
+      and 'if fila[4]:' in SRC.split("def _solo_antes_de_enviar(")[1][:1200])
+check("...en los DOS endpoints que lo escriben, no en uno",
+      all("_solo_antes_de_enviar(cur, auditoria_id, user)" in _cuerpo(r)
+          for r in ("{auditoria_id}/elementos/{elemento_id}",
+                    "{auditoria_id}/elementos/{elemento_id}/revision")))
+check("objetar un descarte también es del auditor de esa auditoría",
+      "_solo_el_auditor(cur, auditoria_id, user)" in
+      _cuerpo("{auditoria_id}/items/{item_id}/objecion"))
+# QUIÉN PUEDE QUÉ LO DICE EL BACKEND. El front no puede deducir si una barra es «mía»:
+# exige comparar el login de aSa de quien cubicó con mi correo, y eso es alias_cubicador.
+check("el detalle dice soy_auditor, puedo_editar y, por elemento, mio",
+      '"soy_auditor"' in SRC and '"puedo_editar"' in SRC and 'e["mio"]' in SRC
+      and "alias_cubicador(cur, user" in SRC.split('aud["soy_auditor"]')[0][-600:])
+# EL BUG QUE TUVO ESTO: la fecha de envío viaja como `enviada`, no como `enviada_el`, y
+# con el nombre equivocado puedo_editar daba True sobre una enviada.
+check("...y puedo_editar mira la clave que existe, no una parecida",
+      'not aud.get("enviada")' in SRC and 'not aud.get("enviada_el")' not in SRC)
+check("el formulario del auditor se bloquea entero y DICE por qué",
+      "function _puedoEditar(" in JS and "function _porQueNoEdito(" in JS
+      and 'id="audRevCandado"' in HTM and ".audsololeer" in HTM
+      and "if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }" in JS)
+check("la tabla de lo que salió es POR BARRA, no por elemento",
+      "function filaAccion(" in JS and "malas.map(function (b) { return filaAccion(" in JS)
+check("cada barra lleva Aplica | No aplica, y «no aplica» pide el motivo ahí mismo",
+      "data-aplica=" in JS and "data-noaplica=" in JS and "audnapform" in JS
+      and "function desestimarItem(" in JS and "m.length < 10" in JS)
+check("el Ishikawa es POR BARRA y abre la MISMA matriz de los reclamos",
+      "function clasificarItem(" in JS and "global.abrirIshikawaModal('auditoria')" in JS
+      and "item_id: b.item_id" in JS and "window.audIshikawa" in DEJS)
+check("declarar la corrección pregunta CÓMO, porque si se rehizo en otro código no se puede comprobar",
+      "function corregirItem(" in JS and "cuerpo.tipo = 'nuevo'" in JS
+      and "/correccion'" in JS)
+check("los botones salen sólo en las barras propias, y sólo si está enviada",
+      "var puede = !!(e.mio && enviada && !b.corregido);" in JS)
+check("el auditor conserva su derecho a réplica sobre un descarte",
+      "data-objetar=" in JS and "AUD.soy_auditor" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

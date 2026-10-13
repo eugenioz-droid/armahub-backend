@@ -976,6 +976,7 @@
     $('audRevBarras').querySelectorAll('button[data-v]').forEach(function (b) {
       b.addEventListener('click', function () {
         var ref = b.dataset.ref, si = b.dataset.v === '1';
+        if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }
         if (VERED[ref] && VERED[ref].conforme === si) delete VERED[ref];   // volver a tocarlo lo suelta
         else VERED[ref] = { conforme: si, observacion: (VERED[ref] || {}).observacion || '' };
         pintarBarras(); pintarRevision();
@@ -1295,6 +1296,7 @@
 
   async function guardarUbicacion() {
     if (!AUD || !ELEM) return;
+    if (!_puedoEditar()) return;
     var cuerpo = {};
     $('audDetElems').querySelectorAll('.audub').forEach(function (inp) { cuerpo[inp.dataset.campo] = inp.value; });
     try {
@@ -1308,9 +1310,39 @@
   }
 
   // La SEVERIDAD es del elemento y sólo se pregunta si hay alguna barra no conforme.
+  // ¿SE PUEDE ESCRIBIR LO DEL AUDITOR? Lo dice el backend, que es el único que lo sabe:
+  // sólo el auditor de esta auditoría, y sólo mientras no la haya enviado. El servidor lo
+  // rechaza igual (409 / 403); esto es para que no se intente y se vea por qué.
+  function _puedoEditar() { return !!(AUD && AUD.puedo_editar); }
+
+  function _porQueNoEdito() {
+    if (!AUD) return '';
+    if (AUD.enviada || AUD.enviada_el) {
+      return 'Esta auditoría ya se envió: lo que marcó el auditor quedó firme y el ' +
+             'auditado está trabajando sobre eso. Para cambiarlo hay que reabrirla.';
+    }
+    if (!AUD.soy_auditor) {
+      return 'La audita ' + ((AUD.auditor || '').split('@')[0] || 'otra persona') +
+             '. Acá puedes mirar lo que encontró; lo tuyo se resuelve abajo, en cada barra.';
+    }
+    return '';
+  }
+
   function pintarRevision() {
     mostrarRevision(!!ELEM);
     if (!ELEM) return;
+    // EL FORMULARIO SE BLOQUEA ENTERO, no botón por botón: media docena de campos
+    // editables con el guardar apagado invita a escribir para nada.
+    var puedo = _puedoEditar();
+    var cand = $('audRevCandado');
+    if (cand) {
+      cand.textContent = puedo ? '' : _porQueNoEdito();
+      cand.style.display = puedo ? 'none' : '';
+    }
+    var pan = $('audRev');
+    if (pan) pan.classList.toggle('audsololeer', !puedo);
+    if ($('audRevGuardar')) $('audRevGuardar').style.display = puedo ? '' : 'none';
+    if ($('audRevTexto')) $('audRevTexto').readOnly = !puedo;
     var c = cuentaBarras();
     $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
       (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '');
@@ -1338,6 +1370,7 @@
 
   async function guardarHallazgo() {
     if (!AUD || !ELEM) return;
+    if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }
     var c = cuentaBarras();
     if (!c.revisadas) { $('audRevMsg').textContent = 'Marca al menos una barra como conforme o no conforme.'; return; }
     var faltan = Object.keys(VERED).filter(function (r) {
@@ -1401,64 +1434,241 @@
     return html || '<span class="muted">—</span>';
   }
 
-  // LO QUE SALIÓ DE LA AUDITORÍA: para mirar, no para tocar (8-oct).
+  // LO QUE SALIÓ DE LA AUDITORÍA, BARRA POR BARRA Y CON LA ACCIÓN AL LADO (13-oct).
   //
-  // Antes esta tabla tenía dos botones —«Marcar corregida» y «Verificar»— y los dos se
-  // cayeron por lo mismo que dijo el usuario: «el auditor no debe verificar la corrección,
-  // es responsabilidad del auditado». Corregir se declara barra por barra en «Mis
-  // correcciones», y comprobar que se hizo es del sistema, que vuelve a pedirle la barra a
-  // aSa. Lo que al auditor le sirve acá es ver EN QUÉ VA, y eso se cuenta, no se elige.
+  // El usuario: «el auditado no tiene acciones… debe poder generar la acción sobre cada
+  // observación, aplica o no aplica; si aplica debe poder elegir el Ishikawa desde la
+  // matriz, pero debe ser por ITEM, hoy está agrupado».
+  //
+  // Estaba agrupado por elemento y era de sólo lectura, y las acciones vivían en otra
+  // caja —«Mis correcciones»— que ni siquiera aparece si no eres dueño de ninguna barra.
+  // Era el mismo problema que el módulo de chequeos ya resolvió: la decisión se toma
+  // mirando el hallazgo, no en otra pantalla.
+  //
+  // QUIÉN VE QUÉ. La tabla la ven todos, porque el registro es público dentro del equipo.
+  // Los botones salen sólo en las barras que uno cubicó, que es lo que dice `e.mio` —lo
+  // resuelve el backend con `alias_cubicador`, porque el login de aSa no se parece al
+  // correo—. El auditor no corrige lo que él mismo marcó: sería juez y parte.
   function pintarAcciones() {
     var caja = $('audAcciones');
     var acc = (AUD.elementos || []).filter(function (e) { return e.accion_estado; });
     if (!acc.length) { caja.style.display = 'none'; return; }
     caja.style.display = '';
-    caja.innerHTML = '<div class="audh">Qué salió de esta auditoría <span class="muted">' + acc.length +
-      ' · la corrección la declara quien cubicó, barra por barra, y el sistema la comprueba ' +
-      'contra aSa. Acá no hay nada que marcar.</span></div>' +
-      '<table class="audt audacct"><thead><tr><th>Elemento</th><th>Para</th><th>Hallazgo</th>' +
-      '<th title="La observación del elemento entero, si el auditor escribió una, y debajo ' +
-      'lo que se anotó en cada barra. Son campos distintos.">Qué se encontró</th>' +
-      '<th title="Por qué pasó. La clasifica quien respondió, barra por barra.">Causa</th>' +
-      '<th title="Barras que quien cubicó dice que no corresponden. Valen por defecto; si no ' +
-      'estás de acuerdo, las reabres acá.">Descartes</th>' +
-      '<th>En qué va</th></tr></thead><tbody>' +
+    var total = 0, resueltas = 0, mias = 0;
+    acc.forEach(function (e) {
+      (e.barras_malas || []).forEach(function (b) {
+        total++;
+        if (b.corregido || b.desestimado) resueltas++;
+        if (e.mio && !b.corregido && !b.desestimado) mias++;
+      });
+    });
+    var enviada = !!(AUD.enviada || AUD.enviada_el);
+    caja.innerHTML = '<div class="audh">Qué salió de esta auditoría ' +
+      '<span class="muted">' + total + ' barra(s) · ' + resueltas + ' resuelta(s)' +
+      (mias ? ' · <b style="color:#c62828">' + mias + ' tuya(s) por resolver</b>' : '') +
+      '</span></div>' +
+      (!enviada
+        ? '<div class="audnota">Todavía no se envía: hasta que el auditor la mande, nadie ' +
+          'puede accionar sobre estas barras.</div>'
+        : (mias ? '' : '<div class="audnota">Acá se ve todo lo que salió. Los botones ' +
+                       'aparecen en las barras que cubicaste tú.</div>')) +
+      '<table class="audt audacct"><thead><tr><th>Barra</th><th>Elemento</th><th>Cubicó</th>' +
+      '<th title="Lo que el auditor anotó en esta barra.">Qué se encontró</th>' +
+      '<th title="Lo que la barra debería decir, como lo dejó el auditor. De esto vive la ' +
+      'comprobación automática contra aSa.">Debería decir</th>' +
+      '<th title="Por qué pasó. Se elige en la matriz Ishikawa, y es POR BARRA: dos barras ' +
+      'del mismo eje pueden estar mal por razones distintas.">Por qué pasó</th>' +
+      '<th>Estado</th><th></th></tr></thead><tbody>' +
       acc.map(function (e) {
         var malas = (e.barras_malas || []);
-        var hechas = malas.filter(function (b) { return b.corregido; }).length;
-        return '<tr><td title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
-          '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
-          '<td><span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span></td>' +
-          '<td class="audqse">' + celdaQueSeEncontro(e) + '</td>' +
-          '<td class="audqse">' + celdaCausas(e) + '</td>' +
-          '<td>' + celdaDescartes(e) + '</td>' +
-          '<td><span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' +
-            (malas.length ? ' <span class="muted" style="font-size:9px">' + hechas + ' de ' +
-                            malas.length + ' barra(s)</span>' : '') + '</td></tr>';
+        if (!malas.length) {
+          // Un elemento con acción pero sin barras marcadas: el hallazgo es del elemento
+          // entero (las auditorías viejas son así). Se muestra igual, o desaparecería.
+          return '<tr><td colspan="8" class="audqse"><b>' + esc(nombreCompleto(e)) + '</b> · ' +
+                 celdaQueSeEncontro(e) + '</td></tr>';
+        }
+        return malas.map(function (b) { return filaAccion(e, b, enviada); }).join('');
       }).join('') + '</tbody></table>';
+    _bindAcciones(caja);
+  }
+
+  // UNA BARRA DE LA AUDITORÍA, con lo que se puede hacer con ella.
+  //
+  //   Aplica | No aplica   — el par se lee como un interruptor: lo encendido es lo que
+  //                          vale hoy. «No aplica» pide el motivo ahí mismo y queda
+  //                          firmado; es lo que el usuario llamó «dejar sin efecto».
+  //   Por qué pasó         — abre la matriz Ishikawa de esta barra, no del elemento.
+  //   Ya la corregí        — la declara corregida. Comprobarlo es del sistema, que vuelve
+  //                          a pedirle la barra a aSa: nadie marca «verificada» a mano.
+  function filaAccion(e, b, enviada) {
+    var puede = !!(e.mio && enviada && !b.corregido);
+    var estado = b.desestimado
+      ? '<span class="auddes" title="' + esc(b.desestimado_motivo || '') + '">No aplica</span>'
+      : b.objecion
+        ? '<span class="audacc1 pendiente" title="' + esc(b.objecion) + '">Descarte no aceptado</span>'
+        : b.verificado === 'ok'
+          ? '<span class="audacc1 verificada">Comprobada</span>'
+          : b.corregido
+            ? '<span class="audacc1 corregida" title="Declarada corregida. El sistema la mira en aSa.">Corregida</span>'
+            : '<span class="audacc1 pendiente">Por corregir</span>';
+    var acc = '';
+    if (puede) {
+      acc = '<div class="revseg">' +
+              '<button class="' + (b.desestimado ? '' : 'on') + '" data-aplica="' + b.item_id + '"' +
+                (b.desestimado ? '' : ' disabled') +
+                ' title="El hallazgo es válido y hay que corregir la barra">Aplica</button>' +
+              '<button class="' + (b.desestimado ? 'on' : '') + '" data-noaplica="' + b.item_id + '"' +
+                ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
+            '</div>' +
+            (b.desestimado ? '' :
+              '<button class="audmini ver" data-corregi="' + b.item_id + '">Ya la corregí</button>');
+    } else if (b.corregido && e.mio) {
+      acc = '<button class="audmini" data-deshacer="' + b.item_id + '">Deshacer</button>';
+    } else if (b.desestimado && AUD.soy_auditor) {
+      // Derecho a réplica del auditor: el descarte vale por defecto, pero si no
+      // corresponde lo reabre dejando por escrito por qué.
+      acc = '<button class="audmini" data-objetar="' + b.item_id + '" title="Reabre esta ' +
+            'barra: el descarte no se acepta. Queda registrado y le llega a quien cubicó.">No lo acepto</button>';
+    }
+    var causa = b.causa
+      ? '<button class="audmini" data-causa="' + b.item_id + '"' + (puede ? '' : ' disabled') +
+        ' title="' + esc(b.causa + (b.causa_texto ? ' · ' + b.causa_texto : '')) + '">' +
+        esc(b.causa) + (puede ? ' ✎' : '') + '</button>'
+      : (puede
+          ? '<button class="audmini sinc" data-causa="' + b.item_id +
+            '" title="Elige en la matriz Ishikawa por qué pasó.">Clasificar</button>'
+          : '<span class="muted">sin clasificar</span>');
+    var cols = 8;
+    return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
+      '<td><span class="audref">' + esc(b.ref || b.marca || '') + '</span></td>' +
+      '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
+      '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
+      '<td class="audqse">' + esc(b.observacion || '') +
+        (b.desestimado && b.desestimado_motivo
+          ? '<div class="muted" style="font-size:10px">no aplica: ' + esc(b.desestimado_motivo) +
+            (b.desestimado_por ? ' — ' + esc(b.desestimado_por.split('@')[0]) : '') + '</div>'
+          : '') + '</td>' +
+      '<td class="audesp">' + esc(_esperadoTxt(b.esperado)) + '</td>' +
+      '<td class="audcausa">' + causa + '</td>' +
+      '<td>' + estado + '</td>' +
+      '<td class="audacc2">' + acc + '</td></tr>' +
+      '<tr class="audnapform" data-form="' + b.item_id + '" style="display:none">' +
+        '<td colspan="' + cols + '"><div class="revnapcaja">' +
+          '<input type="text" data-motivo="' + b.item_id + '" ' +
+            'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
+          '<button class="audmini ver" data-napok="' + b.item_id + '">Guardar</button>' +
+          '<button class="audmini" data-napno="' + b.item_id + '">Cancelar</button>' +
+        '</div></td></tr>';
+  }
+
+  function _bindAcciones(caja) {
     caja.querySelectorAll('button[data-objetar]').forEach(function (b) {
       b.addEventListener('click', function () { objetar(b.dataset.objetar); });
     });
+    caja.querySelectorAll('button[data-causa]').forEach(function (b) {
+      b.addEventListener('click', function () { clasificarItem(b.dataset.causa); });
+    });
+    caja.querySelectorAll('button[data-corregi]').forEach(function (b) {
+      b.addEventListener('click', function () { corregirItem(b.dataset.corregi, true); });
+    });
+    caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
+      b.addEventListener('click', function () { corregirItem(b.dataset.deshacer, false); });
+    });
+    caja.querySelectorAll('button[data-aplica]').forEach(function (b) {
+      b.addEventListener('click', function () { desestimarItem(b.dataset.aplica, false); });
+    });
+    caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
+      b.addEventListener('click', function () { _formNap(b.dataset.noaplica, true); });
+    });
+    caja.querySelectorAll('button[data-napno]').forEach(function (b) {
+      b.addEventListener('click', function () { _formNap(b.dataset.napno, false); });
+    });
+    caja.querySelectorAll('button[data-napok]').forEach(function (b) {
+      b.addEventListener('click', function () { _guardarNap(b.dataset.napok); });
+    });
+    caja.querySelectorAll('input[data-motivo]').forEach(function (i) {
+      i.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') _guardarNap(i.dataset.motivo);
+      });
+    });
   }
 
-  // LOS DESCARTES, para el auditor. Quien cubicó puede decir que lo observado no
-  // corresponde, y eso vale por defecto: no traba el cierre. Pero el auditor tiene derecho
-  // a réplica —no deber de validar, que lo devolvería al camino crítico— así que acá los ve
-  // con su motivo y, si no los acepta, reabre esa barra dejando por escrito por qué.
-  function celdaDescartes(e) {
-    var des = (e.barras_malas || []).filter(function (b) { return b.desestimado; });
-    var obj = (e.barras_malas || []).filter(function (b) { return b.objecion && !b.desestimado; });
-    if (!des.length && !obj.length) return '<span class="muted">—</span>';
-    return '<ul class="audobsb">' +
-      des.map(function (b) {
-        return '<li><b>' + esc(b.ref || 'barra') + '</b> ' + esc(b.desestimado_motivo || '') +
-          ' <button class="audmini" data-objetar="' + b.item_id + '" title="Reabre esta barra: ' +
-          'el descarte no se acepta. Queda registrado y le llega a quien cubicó.">No lo acepto</button></li>';
-      }).join('') +
-      obj.map(function (b) {
-        return '<li class="muted"><b>' + esc(b.ref || 'barra') + '</b> descarte no aceptado: ' +
-               esc(b.objecion) + '</li>';
-      }).join('') + '</ul>';
+  function _formNap(itemId, abrir) {
+    var f = document.querySelector('tr[data-form="' + itemId + '"]');
+    if (!f) return;
+    f.style.display = abrir ? '' : 'none';
+    if (abrir) {
+      var i = f.querySelector('input[data-motivo]');
+      if (i) i.focus();
+    }
+  }
+
+  function _guardarNap(itemId) {
+    var f = document.querySelector('tr[data-form="' + itemId + '"]');
+    if (!f) return;
+    var m = (f.querySelector('input[data-motivo]').value || '').trim();
+    if (m.length < 10) { aviso('Di por qué no corresponde: lo va a leer quien auditó.'); return; }
+    desestimarItem(itemId, true, m);
+  }
+
+  // DEJAR SIN EFECTO UNA BARRA, o volverla a dejar válida. El motivo es obligatorio y es
+  // todo el valor de esto: sin él, dentro de un mes nadie sabe si estaba bien o si alguien
+  // la apagó para sacársela de encima.
+  async function desestimarItem(itemId, desestimar, motivo) {
+    try {
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/desestimar',
+                      { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.' });
+      ok(desestimar ? 'Barra dejada sin efecto' : 'La barra vuelve a quedar por corregir');
+      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+    } catch (e) { aviso(e.message); }
+  }
+
+  // DECLARAR QUE SE CORRIGIÓ. Se pregunta CÓMO, y no es burocracia: si se corrigió la
+  // misma barra el sistema puede ir a mirarla en aSa, y si se rehizo en otro código NO
+  // puede —la barra vieja va a seguir diciendo lo mismo para siempre—.
+  async function corregirItem(itemId, corregido) {
+    var cuerpo = { corregido: !!corregido, tipo: 'item' };
+    if (corregido) {
+      var nuevo = global.confirm(
+        'Aceptar = se rehízo en un CÓDIGO o ÍTEM NUEVO.\n' +
+        'Cancelar = se corrigió esta misma barra (el sistema lo comprueba en aSa).');
+      if (nuevo) {
+        var cc = global.prompt('¿Cuál es el código nuevo?');
+        if (cc === null) return;
+        if (!cc.trim()) { aviso('Hace falta el código nuevo.'); return; }
+        cuerpo.tipo = 'nuevo';
+        cuerpo.cc_nuevo = cc.trim();
+        var im = global.prompt('¿Y la marca, si cambió? (puedes dejarlo vacío)');
+        if (im && im.trim()) cuerpo.item_nuevo = im.trim();
+      }
+    }
+    try {
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/correccion', cuerpo);
+      ok(corregido ? 'Declarada corregida: el sistema la va a comprobar en aSa'
+                   : 'Vuelve a quedar por corregir');
+      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+    } catch (e) { aviso(e.message); }
+  }
+
+  // LA MATRIZ ISHIKAWA DE UNA BARRA. Es la MISMA matriz de los reclamos, con la misma
+  // función: el modal lee la selección de `audIshikawa` y devuelve la elegida por
+  // `audCausaElegida`. Tener dos matrices es tenerlas desincronizadas.
+  function clasificarItem(itemId) {
+    var b = null, el = null;
+    (AUD.elementos || []).forEach(function (e) {
+      (e.barras_malas || []).forEach(function (x) {
+        if (String(x.item_id) === String(itemId)) { b = x; el = e; }
+      });
+    });
+    if (!b) return;
+    if (typeof global.abrirIshikawaModal !== 'function') {
+      aviso('No se pudo abrir la matriz de causas. Recarga la página.');
+      return;
+    }
+    CAUSA_DE = { auditoria_id: AUD.id, item_id: b.item_id, causa: b.causa,
+                 causa_categoria: b.causa_categoria, causa_texto: b.causa_texto,
+                 ref: b.ref, elemento: el && el.nombre };
+    global.abrirIshikawaModal('auditoria');
   }
 
   async function objetar(itemId) {
@@ -1472,26 +1682,6 @@
       ok('Descarte no aceptado: la barra vuelve a estar abierta');
       await cargarLista(); await cargarMisAcciones(); pintarDetalle();
     } catch (e) { aviso(e.message); }
-  }
-
-  // LAS CAUSAS DE UN ELEMENTO SON LAS DE SUS BARRAS, y pueden ser varias: dos barras del
-  // mismo eje pueden estar mal por razones distintas —una por un plano viejo y otra por una
-  // digitación— y meterlas en la misma casilla hace que el Pareto mienta. Las auditorías
-  // de antes del 8-oct tienen UNA causa en el elemento, puesta por el auditor: se muestra
-  // como lo que es, para no perderla ni confundirla con las nuevas.
-  function celdaCausas(e) {
-    var malas = (e.barras_malas || []).filter(function (b) { return b.causa; });
-    if (malas.length) {
-      return '<ul class="audobsb">' + malas.map(function (b) {
-        return '<li><b>' + esc(b.ref || b.marca || 'barra') + '</b> ' +
-               esc(b.causa) + (b.causa_texto ? ' · ' + esc(b.causa_texto) : '') + '</li>';
-      }).join('') + '</ul>';
-    }
-    if (e.causa) {
-      return '<span class="cc" title="Causa del elemento, de antes de que la causa fuera por barra.">' +
-             esc(e.causa) + '</span>';
-    }
-    return '<span class="muted">sin clasificar</span>';
   }
 
   // CUÁNTO DE LA OBRA SE HA MIRADO, contando TODAS sus auditorías. Un cuadrito por
@@ -1839,39 +2029,6 @@
       if (AUD && AUD.id === a.auditoria_id) { AUD = await req('GET', '/auditorias/' + AUD.id); pintarDetalle(); }
     } catch (e) { aviso(e.message); }
   };
-
-  // AL DECLARAR LA CORRECCIÓN SE PREGUNTA CÓMO SE HIZO, y no es burocracia: si se corrigió
-  // la misma barra el sistema puede ir a mirarla, y si se hizo un código nuevo NO puede —la
-  // barra vieja va a seguir diciendo lo mismo para siempre y comprobarla diría que no se
-  // corrigió—. Es el único caso que el usuario dijo que no iba a ser automático.
-  async function resolverMia(itemId, accion) {
-    var a = MIS.filter(function (x) { return String(x.item_id) === String(itemId); })[0];
-    if (!a) return;
-    var cuerpo = { corregido: accion === 'corregir' };
-    if (cuerpo.corregido) {
-      var nuevo = global.confirm(
-        'Barra ' + a.ref + '\n\n' +
-        'Aceptar = se hizo un CÓDIGO o ÍTEM NUEVO.\n' +
-        'Cancelar = se corrigió esta misma barra (el sistema lo va a comprobar en aSa).');
-      cuerpo.tipo = nuevo ? 'nuevo' : 'item';
-      if (nuevo) {
-        var cc = global.prompt('¿Cuál es el código nuevo?');
-        if (cc === null) return;
-        if (!cc.trim()) { aviso('Hace falta el código nuevo.'); return; }
-        cuerpo.cc_nuevo = cc.trim();
-      }
-      var nota = global.prompt(
-        'Comentario, si lo que hiciste no calza exacto con lo observado (opcional):');
-      if (nota === null) return;
-      cuerpo.nota = nota;
-    }
-    try {
-      await req('PUT', '/auditorias/' + a.auditoria_id + '/items/' + itemId + '/correccion', cuerpo);
-      ok(cuerpo.corregido ? 'Corrección registrada' : 'Vuelta a abrir');
-      await cargarMisAcciones(); await cargarLista();
-      if (AUD && AUD.id === a.auditoria_id) { AUD = await req('GET', '/auditorias/' + AUD.id); pintarDetalle(); }
-    } catch (e) { aviso(e.message); }
-  }
 
   // Expuesto para los tests: lo puro.
   global.__auditoriasTest = { marcar: marcar, HALLAZGO_TXT: HALLAZGO_TXT, ACCION_TXT: ACCION_TXT,
