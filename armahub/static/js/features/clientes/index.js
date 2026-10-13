@@ -78,9 +78,15 @@
     var data = await apiGet('/proyectos');
     _obrasData = (data && data.proyectos) || [];
   }
+  var _clientesAsa = [], _clientesSueltas = [], _cliAbierto = null;
   async function _cargarEmpresas() {
     var data = await apiGet('/constructoras');
     _empresasData = (data && data.constructoras) || [];
+    // LA VISTA DE aSa (13-oct): lo que existe de verdad son los clientes de aSa; las
+    // constructoras son su complemento.
+    var asa = await apiGet('/clientes/asa');
+    _clientesAsa = (asa && asa.clientes) || [];
+    _clientesSueltas = (asa && asa.sin_nombre_asa) || [];
   }
   async function _cargarCalculistas() {
     var data = await apiGet('/calculistas?activo=true');
@@ -100,8 +106,6 @@
   function renderObrasLista() {
     var cont = document.getElementById('obrasLista');
     if (!cont) return;
-    var btnNueva = document.getElementById('btnNuevaObra');
-    if (btnNueva) btnNueva.style.display = _puedeCrearObra() ? '' : 'none';
     _poblarFiltroEmpresaObras();
     var busq = ((document.getElementById('cliFiltroBusqueda') || {}).value || '').trim().toLowerCase();
     var fClasif = (document.getElementById('cliFiltroClasif') || {}).value || '';
@@ -149,7 +153,9 @@
           ? '<span style="display:inline-block; min-width:22px; text-align:center; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700; color:#fff; background:#e53935;">' + o.n_reclamos + '</span>'
           : '<span style="color:#ccc;">0</span>';
         return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="editarObraData(\'' + _esc(o.id_proyecto) + '\')">' +
-          '<td style="padding:4px 6px; font-weight:500;">' + _esc(o.nombre_proyecto) + '</td>' +
+          '<td style="padding:4px 6px; font-weight:500;">' + _esc(o.nombre_proyecto) +
+            (o.codigo ? ' <span style="font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#546e7a; background:#eceff1; border-radius:3px; padding:0 5px;" title="Job en aSa">' + _esc(o.codigo) + '</span>' : '') +
+            '</td>' +
           '<td style="padding:4px 6px; font-size:11px;">' + (_CLASIF_LABELS[clasif] || clasif) + '</td>' +
           '<td style="padding:4px 6px; font-size:11px;">' + empresa + '</td>' +
           '<td style="padding:4px 6px; font-size:11px;">' + _esc(o.calculista_nombre || '-') + '</td>' +
@@ -253,139 +259,141 @@
   }
 
   // ----- Crear nueva obra (POST /proyectos) -----
+  // «CREAR OBRA» SE FUE (13-oct): las obras se traen desde aSa en Cubicaciones. Las tres
+  // funciones quedan sólo para que un botón viejo diga por qué ya no hace nada.
   function abrirModalNuevaObra() {
-    if (!_puedeCrearObra()) return;
-    document.getElementById('nuevaObraNombre').value = '';
-    document.getElementById('nuevaObraClasificacion').value = 'obra';
-    document.getElementById('nuevaObraDescripcion').value = '';
-    // Poblar selector de empresa (entidades constructoras)
-    var empSel = document.getElementById('nuevaObraEmpresa');
-    if (empSel) {
-      empSel.innerHTML = '<option value="">— Sin empresa —</option>' +
-        _empresasData.map(function(e) {
-          return '<option value="' + e.id + '">' + _esc(e.nombre) + ' (' + (_TIPO_EMP_LABELS[e.tipo] || e.tipo) + ')</option>';
-        }).join('');
-    }
-    // Poblar selector de calculista
-    var calcSel = document.getElementById('nuevaObraCalculista');
-    if (calcSel) {
-      calcSel.innerHTML = '<option value="">— Sin calculista —</option>' +
-        _calculistasCache.map(function(c) {
-          return '<option value="' + c.id + '">' + _esc(c.nombre) + '</option>';
-        }).join('');
-    }
-    document.getElementById('nuevaObraMsg').textContent = '';
-    document.getElementById('nuevaObraModal').style.display = 'block';
-    document.getElementById('nuevaObraNombre').focus();
+    if (typeof showToast === 'function') showToast('Las obras ya no se crean a mano: se traen desde aSa en Cubicaciones («Traer obra de aSa»).', 'error');
   }
+  function cerrarModalNuevaObra() {}
 
-  function cerrarModalNuevaObra() { document.getElementById('nuevaObraModal').style.display = 'none'; }
+  async function guardarNuevaObra() { abrirModalNuevaObra(); }
 
-  async function guardarNuevaObra() {
-    var msg = document.getElementById('nuevaObraMsg');
-    var nombre = document.getElementById('nuevaObraNombre').value.trim();
-    if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
-    // Evitar duplicado por nombre (la BD genera el id; el usuario no lo elige).
-    var dup = _obrasData.filter(function(o) {
-      return (o.nombre_proyecto || '').trim().toLowerCase() === nombre.toLowerCase();
-    })[0];
-    if (dup) { msg.textContent = 'Ya existe una obra con ese nombre.'; msg.style.color = '#b42318'; return; }
-    var body = { nombre_proyecto: nombre };
-    var clasif = document.getElementById('nuevaObraClasificacion').value || 'obra';
-    var empVal = parseInt(document.getElementById('nuevaObraEmpresa').value);
-    var calcVal = parseInt(document.getElementById('nuevaObraCalculista').value);
-    var desc = document.getElementById('nuevaObraDescripcion').value.trim();
-    if (empVal) body.constructora_id = empVal;
-    if (calcVal) body.calculista_id = calcVal;
-    if (desc) body.descripcion = desc;
-    msg.textContent = 'Creando...'; msg.style.color = '#666';
-    var res, data;
-    try {
-      res = await fetch(apiUrl('/proyectos'), {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-    } catch (e) {
-      msg.textContent = 'Error de conexión al crear la obra'; msg.style.color = '#b42318';
-      return;
-    }
-    if (res.status === 401) { logout(); return; }
-    try { data = await res.json(); } catch (e) { data = null; }
-    if (res.ok && data && data.ok) {
-      var idNuevo = data.id_proyecto;
-      // La clasificación no se envía en POST /proyectos; si el usuario eligió algo
-      // distinto de 'obra', persistirlo con un PATCH (mismo patrón que guardarObraData).
-      if (clasif && clasif !== 'obra' && idNuevo) {
-        try {
-          await fetch(apiUrl('/proyectos/' + encodeURIComponent(idNuevo)), {
-            method: 'PATCH',
-            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clasificacion: clasif })
-          });
-        } catch (e) { /* no bloquear: la obra ya quedó creada */ }
-      }
-      cerrarModalNuevaObra();
-      if (typeof showToast === 'function') showToast('Obra creada', 'success');
-      // Recargar obras del servidor para traer la nueva con sus campos calculados.
-      await _cargarObras();
-      // Refrescar también otros listados de proyectos si están cargados (tab Obras).
-      if (typeof loadProyectos === 'function') { try { await loadProyectos(); } catch (e) {} }
-      renderObrasLista();
-    } else {
-      var detalle = (data && (data.detail || data.error)) ? _errDetail(data) : ('Error ' + res.status);
-      msg.textContent = 'Error: ' + detalle; msg.style.color = '#b42318';
-    }
-  }
 
   // ======================= SUB-TAB EMPRESAS =======================
+  // ══════ LOS CLIENTES, COMO LOS VE aSa ══════
+  // Una fila por cliente de aSa: sus obras, kilos del año, última actividad, y al lado lo
+  // que ArmaHub le agregó (si algo). Lo activo primero. Clic en la fila: sus obras.
   function renderEmpresasLista() {
     var cont = document.getElementById('empresasLista');
     if (!cont) return;
     var busq = ((document.getElementById('empFiltroBusqueda') || {}).value || '').trim().toLowerCase();
-    var rows = _empresasData.filter(function(e) {
+    var rows = _clientesAsa.filter(function(c) {
       if (!busq) return true;
-      return ((e.nombre || '') + ' ' + (e.rut || '') + ' ' + (e.contacto || '')).toLowerCase().indexOf(busq) !== -1;
+      var a = c.armahub || {};
+      var blob = (c.cliente_asa + ' ' + (a.nombre || '') + ' ' + (a.rut || '') + ' ' + (a.contacto || '') + ' ' +
+                  c.obras.map(function(o) { return o.nombre + ' ' + o.asa_job_id; }).join(' ')).toLowerCase();
+      return blob.indexOf(busq) !== -1;
     });
-    // Conteo de obras por empresa (desde _obrasData, ya cargado)
-    var obrasPorEmp = {};
-    _obrasData.forEach(function(o) {
-      if (o.constructora_id) obrasPorEmp[o.constructora_id] = (obrasPorEmp[o.constructora_id] || 0) + 1;
-    });
-    if (rows.length === 0) {
-      cont.innerHTML = '<div class="muted">No hay empresas registradas. Crea la primera con "+ Nueva empresa".</div>';
+    var res = document.getElementById('cliAsaResumen');
+    if (res) res.textContent = _clientesAsa.length + ' cliente(s) en aSa · ' +
+      _clientesAsa.filter(function(c) { return c.armahub; }).length + ' con datos de ArmaHub';
+    if (!rows.length) {
+      cont.innerHTML = '<div class="muted">Ningún cliente de aSa coincide.</div>';
       return;
     }
+    var puede = _puedeGestionarCalc();
+    var otrasOpc = _empresasData.map(function(e) {
+      return '<option value="' + e.id + '">' + _esc(e.nombre) + '</option>'; }).join('');
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
       '<tr style="background:#f5f5f5; text-align:left;">' +
-        '<th style="padding:5px 6px;">Empresa</th>' +
-        '<th style="padding:5px 6px;">Tipo</th>' +
-        '<th style="padding:5px 6px;">RUT</th>' +
-        '<th style="padding:5px 6px;">Contacto</th>' +
-        '<th style="padding:5px 6px; text-align:right;">Obras</th>' +
+        '<th style="padding:5px 6px;">Cliente (aSa)</th>' +
+        '<th style="padding:5px 6px; text-align:right;" title="Abiertas / total">Obras</th>' +
+        '<th style="padding:5px 6px; text-align:right;">Kilos 12 m</th>' +
+        '<th style="padding:5px 6px;">Último pedido</th>' +
+        '<th style="padding:5px 6px;">Datos en ArmaHub</th>' +
         '<th style="padding:5px 4px;"></th>' +
       '</tr>' +
-      rows.map(function(e) {
+      rows.map(function(c) {
+        var a = c.armahub;
+        var key = c.cliente_asa.replace(/'/g, "\\'");
+        var datos = a
+          ? '<b>' + _esc(a.nombre) + '</b>' + (a.rut ? ' · ' + _esc(a.rut) : '') + (a.contacto ? ' · ' + _esc(a.contacto) : '')
+          : '<span class="muted">—</span>';
         var acciones = '';
-        if (e.puede_modificar) {
-          acciones =
-            '<button class="secondary" title="Editar" style="font-size:10px; padding:1px 6px; color:#00695c; margin-right:3px;" onclick="editarEmpresa(' + e.id + ')">✏️</button>' +
-            '<button class="secondary" title="Eliminar" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarEmpresa(' + e.id + ')">✕</button>';
+        if (puede) {
+          acciones = a
+            ? '<button class="secondary" style="font-size:10px; padding:1px 8px; color:#00695c;" onclick="event.stopPropagation(); editarDatosCliente(' + a.id + ', \'' + key + '\')">✏️ Datos</button>'
+            : '<button class="secondary" style="font-size:10px; padding:1px 8px; color:#00695c;" onclick="event.stopPropagation(); complementarCliente(\'' + key + '\', null)">＋ Agregar datos</button>' +
+              (otrasOpc ? ' <select style="font-size:10px; max-width:150px;" onclick="event.stopPropagation()" onchange="event.stopPropagation(); if (this.value) complementarCliente(\'' + key + '\', parseInt(this.value))" title="Si este nombre es otra grafía de un cliente que ya tiene datos, júntalos.">' +
+                '<option value="">Es el mismo que…</option>' + otrasOpc + '</select>' : '');
         }
-        return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:4px 6px; font-weight:500;">' + _esc(e.nombre) + '</td>' +
-          '<td style="padding:4px 6px; font-size:11px;">' + (_TIPO_EMP_LABELS[e.tipo] || e.tipo || '-') + '</td>' +
-          '<td style="padding:4px 6px; font-size:11px;">' + _esc(e.rut || '-') + '</td>' +
-          '<td style="padding:4px 6px; font-size:11px;">' + _esc(e.contacto || '-') + '</td>' +
-          '<td style="padding:4px 6px; text-align:right;">' + (obrasPorEmp[e.id] || 0) + '</td>' +
+        var abierto = _cliAbierto === c.cliente_asa;
+        var fila = '<tr style="border-bottom:1px solid #eee; cursor:pointer;' + (abierto ? ' background:#f1f8e9;' : '') + '" onclick="toggleObrasCliente(\'' + key + '\')">' +
+          '<td style="padding:4px 6px; font-weight:500;">' + _esc(c.cliente_asa) + '</td>' +
+          '<td style="padding:4px 6px; text-align:right;">' + c.n_abiertas + ' / ' + c.n_obras + '</td>' +
+          '<td style="padding:4px 6px; text-align:right; font-size:11px;">' + _kg(Math.round(c.kg_12m)) + '</td>' +
+          '<td style="padding:4px 6px; font-size:11px;">' + (c.ultimo_pedido ? c.ultimo_pedido.slice(0, 10) : '—') + '</td>' +
+          '<td style="padding:4px 6px; font-size:11px;">' + datos + '</td>' +
           '<td style="padding:4px 4px; white-space:nowrap; text-align:right;">' + acciones + '</td>' +
           '</tr>';
+        if (abierto) {
+          fila += '<tr><td colspan="6" style="padding:4px 6px 10px 22px; background:#fafafa;">' +
+            '<table style="width:100%; font-size:11px; border-collapse:collapse;">' +
+            c.obras.map(function(o) {
+              return '<tr>' +
+                '<td style="padding:2px 6px; font-family:ui-monospace,Consolas,monospace; color:#546e7a;">' + _esc(o.asa_job_id) + '</td>' +
+                '<td style="padding:2px 6px;">' + _esc(o.nombre || '') + '</td>' +
+                '<td style="padding:2px 6px; color:' + (o.estado === 'Open' ? '#2e7d32' : '#90a4ae') + ';">' + _esc(o.estado || '') + '</td>' +
+                '<td style="padding:2px 6px; color:#90a4ae;">' + (o.id_proyecto ? (o.en_cubicacion ? 'en Cubicaciones' : 'en ArmaHub') : '') + '</td>' +
+                '</tr>';
+            }).join('') + '</table></td></tr>';
+        }
+        return fila;
       }).join('') +
       '</table>' +
-      '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + rows.length + ' empresa(s)</div>';
+      '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + rows.length + ' cliente(s)</div>' +
+      (_clientesSueltas.length
+        ? '<div style="margin-top:12px; padding:8px 10px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; font-size:11px;">' +
+          '<b>Constructoras sin cliente de aSa (' + _clientesSueltas.length + '):</b> ' +
+          _clientesSueltas.map(function(s) { return _esc(s.nombre); }).join(' · ') +
+          '<div class="muted" style="margin-top:3px;">Son datos de ArmaHub que todavía no están enlazados a ningún nombre de aSa. Búscalas arriba y usa «Es el mismo que…».</div></div>'
+        : '');
+  }
+
+  function toggleObrasCliente(nombreAsa) {
+    _cliAbierto = (_cliAbierto === nombreAsa) ? null : nombreAsa;
+    renderEmpresasLista();
+  }
+
+  // LA ÚNICA FORMA DE QUE NAZCA UNA CONSTRUCTORA: desde un cliente de aSa. Con
+  // `constructoraId` junta esta grafía a una que ya existe («es el mismo que…»).
+  async function complementarCliente(nombreAsa, constructoraId) {
+    var res = await fetch(apiUrl('/clientes/asa/complementar'), {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre_asa: nombreAsa, constructora_id: constructoraId || null })
+    });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    if (!res.ok || !data.ok) {
+      if (typeof showToast === 'function') showToast('Error: ' + _errDetail(data), 'error');
+      return;
+    }
+    await _cargarEmpresas();
+    renderEmpresasLista();
+    if (typeof showToast === 'function') {
+      showToast(constructoraId ? 'Grafía junta al cliente' : (data.creada ? 'Cliente creado en ArmaHub: completa sus datos' : 'Cliente enlazado'), 'success');
+    }
+    if (!constructoraId) editarDatosCliente(data.constructora_id, nombreAsa);
+  }
+
+  function editarDatosCliente(id, nombreAsa) {
+    editarEmpresa(id);
+    var t = document.getElementById('empresaModalTitulo');
+    if (t) t.textContent = 'Datos del cliente en ArmaHub';
+    var al = document.getElementById('empAliasAsa');
+    if (al) {
+      var nombres = _clientesAsa.filter(function(c) { return c.armahub && c.armahub.id === id; })
+                                .map(function(c) { return c.cliente_asa; });
+      al.textContent = nombres.length ? 'En aSa aparece como: ' + nombres.join(' · ') : '';
+    }
   }
 
   function abrirModalEmpresa() {
+    // Retirado (13-oct): el cliente viene de aSa y sus datos de ArmaHub se agregan desde
+    // su fila. Queda para que cualquier botón viejo lo diga en vez de abrir un formulario
+    // que crearía un cliente suelto.
+    if (typeof showToast === 'function') showToast('Los clientes vienen de aSa: usa «Agregar datos» en su fila.', 'error');
+    return;
     _setEmpForm({});
     document.getElementById('empId').value = '';
     document.getElementById('empresaModalTitulo').textContent = 'Nueva empresa';
@@ -427,10 +435,11 @@
       telefono: document.getElementById('empTelefono').value.trim() || null,
       notas: document.getElementById('empNotas').value.trim() || null
     };
+    if (!id) { msg.textContent = 'Los clientes vienen de aSa: usa «Agregar datos» en la lista.'; msg.style.color = '#b42318'; return; }
     msg.textContent = 'Guardando...'; msg.style.color = '#666';
-    var url = id ? ('/constructoras/' + id) : '/constructoras';
+    var url = '/constructoras/' + id;
     var res = await fetch(apiUrl(url), {
-      method: id ? 'PATCH' : 'POST',
+      method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
@@ -438,7 +447,7 @@
     var data = await res.json();
     if (data.ok) {
       cerrarModalEmpresa();
-      if (typeof showToast === 'function') showToast(id ? 'Empresa actualizada' : 'Empresa creada', 'success');
+      if (typeof showToast === 'function') showToast('Datos del cliente actualizados', 'success');
       await _cargarEmpresas();   // recarga solo empresas (lista chica, no pesa)
       // Al editar una empresa, el nombre embebido en las obras (constructora_nombre)
       // queda desactualizado en _obrasData. Refrescarlo en memoria para que el
@@ -607,6 +616,9 @@
 
   // Exponer como globales (onclick del HTML + loader del shell)
   global.loadClientesModule = loadClientesModule;
+  global.toggleObrasCliente = toggleObrasCliente;
+  global.complementarCliente = complementarCliente;
+  global.editarDatosCliente = editarDatosCliente;
   global.switchCliSubTab = switchCliSubTab;
   global.renderObrasLista = renderObrasLista;
   global.limpiarFiltrosObras = limpiarFiltrosObras;

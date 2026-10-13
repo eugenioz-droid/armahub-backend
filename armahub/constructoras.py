@@ -184,8 +184,14 @@ def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_cli
 
 @router.post("/constructoras")
 def crear_constructora(body: ConstructoraCreate, user=Depends(_require_gestion_clientes)):
-    """Crear una nueva constructora. admin/admin_calidad/usc. Guarda creado_por
-    para la regla de ownership (editar/borrar solo el creador o admin)."""
+    """CERRADO (13-oct). Los clientes vienen de aSa: la constructora de ArmaHub se crea
+    desde la ficha del cliente de aSa («agregar datos de ArmaHub»), que es lo que la deja
+    enlazada a su nombre en aSa. Crearla suelta la dejaba sin obras y duplicada. El
+    endpoint responde con la razón, no con un 404 que parezca un error."""
+    raise HTTPException(
+        status_code=410,
+        detail="Los clientes ya no se crean a mano: vienen de aSa. Abre el cliente en la "
+               "lista y apreta «Agregar datos de ArmaHub».")
     nombre = body.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es requerido")
@@ -302,6 +308,153 @@ def eliminar_constructora(constructora_id: int, user=Depends(_require_gestion_cl
             cur.execute("DELETE FROM constructoras WHERE id = %s", (constructora_id,))
     audit(user.get("email", "?"), "eliminar_constructora", nombre, "constructora", str(constructora_id))
     return {"ok": True, "id": constructora_id}
+
+
+# ══════ LOS CLIENTES, COMO LOS VE aSa (13-oct) ══════
+#
+# La unidad es el CLIENTE DE aSa (el texto que trae `asa_obras.cliente`), con lo que aSa
+# sabe de él: sus obras, cuántas abiertas, kilos del último año, última actividad. Y al
+# lado, si lo tiene, lo que ArmaHub agregó: la constructora enlazada por `constructora_alias`
+# con su RUT, contacto, correo y notas.
+#
+# POR QUÉ LA UNIDAD ES EL NOMBRE DE aSa Y NO LA CONSTRUCTORA: porque lo que existe de
+# verdad son los 173 nombres de aSa; las constructoras son 9 y son el complemento. Si la
+# lista partiera de las constructoras, 160 clientes con obras no aparecerían.
+
+MESES_KILOS = 12
+
+
+@router.get("/clientes/asa")
+def clientes_asa(user=Depends(_require_gestion_clientes)):
+    """La lista de clientes según aSa, cada uno con sus obras y, si lo tiene, su complemento
+    de ArmaHub. Sólo lee."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Los kilos por cliente, con el gemelo «- BARRAS» incluido (son kilos de la misma
+            # obra) y sin las obras marcadas como no válidas.
+            cur.execute(
+                """SELECT TRIM(o.cliente),
+                          COALESCE(SUM(p.kg), 0),
+                          COALESCE(SUM(p.kg) FILTER (WHERE p.order_date >= CURRENT_DATE - make_interval(months => %s)), 0),
+                          MAX(GREATEST(p.order_date, p.proj_ship_date))
+                     FROM asa_pedidos p
+                     JOIN asa_obras o ON o.asa_job_id = p.asa_job_id
+                    WHERE NOT o.excluida AND COALESCE(p.estado, '') <> 'Cancelled'
+                      AND o.cliente IS NOT NULL AND TRIM(o.cliente) <> ''
+                    GROUP BY 1""", (MESES_KILOS,))
+            kilos = {r[0]: {"kg": float(r[1] or 0), "kg_12m": float(r[2] or 0),
+                            "ultimo_pedido": r[3].isoformat() if r[3] else None} for r in cur.fetchall()}
+            # Las obras de cada cliente (sin gemelos ni inválidas), con su obra de ArmaHub
+            # si está adoptada.
+            cur.execute(
+                """SELECT TRIM(o.cliente), o.asa_job_id, o.nombre, o.estado, o.ultima_actividad,
+                          (SELECT MIN(p.id_proyecto) FROM proyectos p WHERE p.asa_job_id = o.asa_job_id),
+                          (SELECT BOOL_OR(p.en_cubicacion) FROM proyectos p WHERE p.asa_job_id = o.asa_job_id)
+                     FROM asa_obras o
+                    WHERE NOT o.excluida AND o.asa_job_id !~ 'B$'
+                      AND o.cliente IS NOT NULL AND TRIM(o.cliente) <> ''
+                    ORDER BY (COALESCE(o.estado,'') = 'Open') DESC, o.ultima_actividad DESC NULLS LAST, o.nombre""")
+            obras = {}
+            for cli, job, nom, est, ult, idp, encub in cur.fetchall():
+                obras.setdefault(cli, []).append(
+                    {"asa_job_id": job, "nombre": nom, "estado": est,
+                     "ultima_actividad": ult.isoformat() if ult else None,
+                     "id_proyecto": idp, "en_cubicacion": bool(encub)})
+            # El complemento de ArmaHub, por nombre de aSa.
+            cur.execute(
+                """SELECT a.nombre_asa, c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
+                          c.direccion, c.notas, c.tipo, c.creado_por
+                     FROM constructora_alias a JOIN constructoras c ON c.id = a.constructora_id
+                    WHERE COALESCE(c.activo, TRUE)""")
+            comp = {r[0]: {"id": r[1], "nombre": r[2], "rut": r[3], "contacto": r[4], "email": r[5],
+                           "telefono": r[6], "direccion": r[7], "notas": r[8], "tipo": r[9],
+                           "creado_por": r[10]} for r in cur.fetchall()}
+            # Y las constructoras que todavía no tienen ningún nombre de aSa: no se esconden,
+            # se muestran al final para que alguien las junte con su cliente.
+            cur.execute(
+                """SELECT c.id, c.nombre, c.rut, c.contacto FROM constructoras c
+                    WHERE COALESCE(c.activo, TRUE)
+                      AND NOT EXISTS (SELECT 1 FROM constructora_alias a WHERE a.constructora_id = c.id)
+                    ORDER BY c.nombre""")
+            sueltas = [{"id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3]} for r in cur.fetchall()]
+    nombres = sorted(set(kilos) | set(obras))
+    filas = []
+    for n in nombres:
+        k = kilos.get(n, {})
+        obs = obras.get(n, [])
+        filas.append({
+            "cliente_asa": n,
+            "obras": obs,
+            "n_obras": len(obs),
+            "n_abiertas": sum(1 for o in obs if (o["estado"] or "") == "Open"),
+            "kg": k.get("kg", 0.0), "kg_12m": k.get("kg_12m", 0.0),
+            "ultimo_pedido": k.get("ultimo_pedido"),
+            "armahub": comp.get(n),            # None = sin complemento todavía
+        })
+    # Lo activo primero: kilos del último año, después abiertas, después nombre.
+    filas.sort(key=lambda f: (-f["kg_12m"], -f["n_abiertas"], f["cliente_asa"]))
+    return {"clientes": filas, "n": len(filas), "sin_nombre_asa": sueltas,
+            "puede_gestionar": user.get("role") in _ROLES_CLIENTES}
+
+
+class ComplementarBody(BaseModel):
+    """Enlaza un nombre de aSa con una constructora de ArmaHub. Sin `constructora_id` se
+    crea una con ese nombre (o se usa la que ya se llame igual); con él, se junta esta
+    grafía a una constructora existente («es el mismo cliente que…»)."""
+    nombre_asa: str
+    constructora_id: Optional[int] = None
+
+
+@router.post("/clientes/asa/complementar")
+def complementar_cliente(body: ComplementarBody, user=Depends(_require_gestion_clientes)):
+    """LA ÚNICA FORMA DE QUE NAZCA UNA CONSTRUCTORA: desde un cliente de aSa. Así nunca
+    queda una constructora sin cliente, ni un cliente con dos constructoras."""
+    email = user.get("email", "?")
+    nombre_asa = (body.nombre_asa or "").strip()
+    if not nombre_asa:
+        raise HTTPException(status_code=400, detail="Falta el nombre del cliente en aSa.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM asa_obras WHERE TRIM(cliente) = %s LIMIT 1", (nombre_asa,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Ese cliente no está en el espejo de aSa.")
+            cur.execute("SELECT constructora_id FROM constructora_alias WHERE nombre_asa = %s", (nombre_asa,))
+            ya = cur.fetchone()
+            if body.constructora_id:
+                cur.execute("SELECT id, nombre FROM constructoras WHERE id = %s", (body.constructora_id,))
+                c = cur.fetchone()
+                if not c:
+                    raise HTTPException(status_code=404, detail="Esa constructora no existe.")
+                cid, cnombre, creada = c[0], c[1], False
+            elif ya:
+                return {"ok": True, "constructora_id": ya[0], "creada": False, "ya_estaba": True}
+            else:
+                # Se usa la que ya se llame igual, si la hay; si no, se crea con el nombre
+                # de aSa y después se edita (RUT, contacto…) desde la misma ficha.
+                cur.execute("SELECT id FROM constructoras WHERE lower(nombre) = lower(%s)", (nombre_asa,))
+                c = cur.fetchone()
+                if c:
+                    cid, creada = c[0], False
+                else:
+                    cur.execute(
+                        """INSERT INTO constructoras (nombre, tipo, creado_por)
+                           VALUES (%s, 'constructora', %s) RETURNING id""", (nombre_asa[:120], email))
+                    cid, creada = cur.fetchone()[0], True
+                cnombre = nombre_asa
+            cur.execute(
+                """INSERT INTO constructora_alias (nombre_asa, constructora_id, creado_por)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT (nombre_asa) DO UPDATE SET constructora_id = EXCLUDED.constructora_id""",
+                (nombre_asa, cid, email))
+            # Las obras de ese cliente heredan la constructora, si no tenían una.
+            cur.execute(
+                """UPDATE proyectos p SET constructora_id = %s
+                     FROM asa_obras o
+                    WHERE o.asa_job_id = p.asa_job_id AND TRIM(o.cliente) = %s
+                      AND p.constructora_id IS NULL""", (cid, nombre_asa))
+            audit(email, "cliente_complementar", "%s -> constructora %s%s"
+                  % (nombre_asa, cnombre, " (creada)" if creada else ""), "constructora", str(cid))
+    return {"ok": True, "constructora_id": cid, "creada": creada}
 
 
 @router.get("/proyectos-sin-constructora")

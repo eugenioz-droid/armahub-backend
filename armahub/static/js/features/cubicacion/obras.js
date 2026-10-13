@@ -476,7 +476,13 @@ function renderObraDetailSidebar(p, authData) {
 
   // Metadata
   html += '<div style="font-size:12px; line-height:1.8; color:#444;">';
-  html += '<div><strong>ID:</strong> <span style="font-size:10px; color:#888;">' + p.id_proyecto + '</span></div>';
+  // EL CÓDIGO ES EL JOB DE aSa. El id interno se muestra chico y sólo si es distinto: es
+  // la llave con la que la plataforma guarda las barras, no algo que alguien tenga que leer.
+  html += '<div><strong>Código aSa:</strong> <span style="font-family:ui-monospace,Consolas,monospace;">' +
+    (p.codigo || p.id_proyecto) + '</span>' +
+    (p.codigo && p.codigo !== p.id_proyecto
+      ? ' <span style="font-size:10px; color:#aaa;" title="Id interno de ArmaHub (legacy)">· ' + p.id_proyecto + '</span>' : '') +
+    '</div>';
   html += '<div><strong>Creado:</strong> ' + formatDateShort(p.fecha_creacion, '-') + '</div>';
   html += '<div><strong>Inicio:</strong> ' + formatDateShort(p.fecha_inicio, '-') + '</div>';
   html += '<div><strong>Creador:</strong> ' + (p.usuario_creador || '-') + '</div>';
