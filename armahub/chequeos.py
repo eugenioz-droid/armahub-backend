@@ -124,22 +124,30 @@ def _minimo_fabricacion(diam_mm: float) -> float:
 def r_lado_corto(barra, hermanas) -> list:
     """UN LADO MÁS CORTO QUE 10 DIÁMETROS. Menos que eso no se dobla ni ancla.
 
-    LOS GANCHOS QUEDAN FUERA, y no por prolijidad: Armacero los fabrica a 10φ EXACTOS, o sea
-    justo en el límite de la regla. Medido sobre 2.250 barras reales: 78 ganchos miden
-    exactamente 10 diámetros. Comparar con «menor o igual» en vez de «menor» llevaría la
-    regla de 40 a 184 lados señalados, casi todos correctos."""
+    NINGÚN LADO SE EXCLUYE, TAMPOCO LOS GANCHOS. Lo corrigió el usuario (13-oct): «de qué
+    hablas, ningún lado se excluye, el cubicador siempre puede condorearse y digitar algo
+    mal». Antes los ganchos quedaban fuera por una precaución mal leída: lo que disparaba
+    de más NO era incluirlos, era comparar con «menor o igual». Medido sobre las mismas
+    barras: con «menor» estricto, incluir los ganchos pasa de 140 a 161 barras marcadas
+    (21 más, el 1,6 por ciento); con «menor o igual» salta a 319. Son dos cosas distintas
+    y sólo una era el problema.
+
+    LA COMPARACIÓN SIGUE SIENDO ESTRICTA, y eso no se toca: Armacero fabrica el gancho a
+    10φ EXACTOS, o sea justo en el límite. 78 ganchos miden exactamente 10 diámetros y
+    están bien."""
     diam = barra["diam"]
     if diam <= 0:
         return []
     minimo = _minimo_fabricacion(diam)
     salida = []
     for l in barra["lados"]:
-        if l["gancho"] or l["arco"] or l["largo"] <= 0:
+        if l["arco"] or l["largo"] <= 0:
             continue
         if l["largo"] < minimo - 0.01:          # estricto: 10φ justo NO es un error
             salida.append({
-                "texto": "el lado %s mide %d mm y el mínimo de fabricación es %d (10 × φ%g)"
-                         % (l["nombre"], round(l["largo"]), round(minimo), diam),
+                "texto": "el %s %s mide %d mm y el mínimo de fabricación es %d (10 × φ%g)"
+                         % ("gancho" if l["gancho"] else "lado", l["nombre"],
+                            round(l["largo"]), round(minimo), diam),
                 "lados": [l["nombre"]],
                 "valor": round(l["largo"]), "esperado": round(minimo),
                 "clave": (l["nombre"], round(l["largo"])),
@@ -155,45 +163,44 @@ def _es_estribo(barra) -> bool:
     return len(barra["lados"]) >= 4 and 340 <= sum(giros) <= 380
 
 
-# Cuánto puede quedar abierto el contorno y seguir siendo un marco, como fracción del
-# lado mayor. Es generoso A PROPÓSITO: la digitación que se busca es justamente lo que
-# impide cerrar, y un umbral estrecho dejaría fuera los errores grandes.
-HUECO_MARCO = 0.35
-TOLERANCIA_OPUESTOS = 5.0   # mm
+# CERO. Los lados opuestos de un estribo tienen que medir lo MISMO, y lo fijó el usuario
+# así: «de dónde sacas los 5 mm, deben ser idénticos». Medido: no cambia nada respecto de
+# una tolerancia de 5 mm —no existe ninguna barra con los opuestos a menos de 5 mm de
+# diferencia— con lo que tolerar algo sólo servía para dejar pasar un error de verdad.
+TOLERANCIA_OPUESTOS = 0.0
 
 
 def _marco(barra) -> list:
     """Los cuatro lados del estribo rectangular, en orden, o lista vacía si la figura no
-    es un marco.
+    es un estribo cerrado.
 
-    POR QUÉ HACE FALTA ESTA PRUEBA Y NO BASTA CON «CUATRO LADOS QUE GIRAN 90°». Una 105A
-    o una J71 —un tramo largo con dos patas— gira noventa grados tres veces igual que un
+    QUÉ SEPARA UN ESTRIBO DE UNA C, que es todo el problema de esta regla. Una 105A o una
+    J71 —un tramo largo con dos patas— gira noventa grados tres veces igual que un
     estribo, y sus patas SON paralelas al tramo largo. Compararlas marca la barra entera
-    siendo correcta: medido, eran 25 de los 146 casos.
+    siendo correcta: eran 25 de 146 casos, y después 27 de 29.
 
-    Lo que de verdad separa es si el contorno CIERRA. Se camina lado por lado y se mira
-    dónde se termina: un estribo vuelve al punto de partida, una C termina a tres metros.
-    Medido sobre 2.169 barras reales: pasan 122, y son T1 y J45, que son los estribos."""
-    ls = [l for l in barra["lados"]
-          if not l["gancho"] and not l["arco"] and l["largo"] > 0]
-    if len(ls) != 4:
+    Lo que lo separa es EL GANCHO EN LOS DOS EXTREMOS. Un estribo cierra sobre sí mismo y
+    por eso lleva gancho al principio y al final, con sus cuatro lados en medio; una C
+    tiene gancho en una punta y la otra termina en un tramo recto. Medido sobre 1.392
+    barras reales: pasan 87, y todas son T1, que es el estribo. Sin lista de figuras.
+
+    SE PROBÓ ANTES con «el contorno cierra» y no alcanzaba: una C de 950 y 700 cierra con
+    un hueco del 26 por ciento del lado mayor, y cualquier umbral que la deje fuera deja
+    fuera también al estribo con un lado muy mal tipeado, que es lo que se busca."""
+    ls = barra["lados"]
+    if len(ls) < 6 or not ls[0]["gancho"] or not ls[-1]["gancho"]:
         return []
-    giros = [_num(l["angulo"]) for l in ls[1:]]
+    medio = [l for l in ls[1:-1]
+             if not l["gancho"] and not l["arco"] and l["largo"] > 0]
+    if len(medio) != 4:
+        return []
+    giros = [_num(l["angulo"]) for l in medio[1:]]
     if any(abs(abs(g) - 90.0) > 15.0 for g in giros):
         return []
     # Una Z gira para los dos lados y no es un marco, aunque sus tramos sean paralelos.
     if not (all(g > 0 for g in giros) or all(g < 0 for g in giros)):
         return []
-    ang = x = y = 0.0
-    for i, l in enumerate(ls):
-        if i:
-            ang += _num(l["angulo"])
-        r = math.radians(ang)
-        x += l["largo"] * math.cos(r)
-        y += l["largo"] * math.sin(r)
-    if math.hypot(x, y) > HUECO_MARCO * max(l["largo"] for l in ls):
-        return []
-    return ls
+    return medio
 
 
 def r_lados_opuestos(barra, hermanas) -> list:
@@ -211,9 +218,9 @@ def r_lados_opuestos(barra, hermanas) -> list:
     y 160 por lado— que estaban correctas. Lo que importa no es que sea cuadrado: es que
     los dos lados que se miran de frente midan igual.
 
-    MEDIDO SOBRE 2.169 BARRAS REALES: esto marca UNA, la 12mmA103 de SUL0, con 1.520
-    contra 1.530 en lados opuestos. La definición anterior marcaba 43. Los tres estribos
-    que el usuario trajo quedan limpios."""
+    MEDIDO SOBRE BARRAS REALES: de 1.392 barras hay 87 estribos cerrados y esto marca UNO,
+    la 12mmA14 de SUR8, con 240 contra 270. La definición anterior marcaba 43, casi todas
+    correctas. Los tres estribos que el usuario trajo quedan limpios."""
     m = _marco(barra)
     if not m:
         return []
@@ -221,7 +228,7 @@ def r_lados_opuestos(barra, hermanas) -> list:
     for i in (0, 1):
         a, b = m[i], m[i + 2]
         dif = abs(a["largo"] - b["largo"])
-        if dif <= TOLERANCIA_OPUESTOS:
+        if dif <= TOLERANCIA_OPUESTOS + 0.01:   # +0.01: el redondeo de los flotantes
             continue
         salida.append({
             "texto": "los lados %s y %s se miran de frente y miden distinto: %d y %d mm "

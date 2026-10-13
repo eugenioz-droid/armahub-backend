@@ -11,6 +11,12 @@ barras: 78 ganchos miden 10φ justo. Comparar con «menor o igual» en vez de «
 el umbral un diámetro, lleva la regla de 40 a 184 lados señalados, casi todos correctos.
 Por eso hay un test con un gancho de 10φ clavados que tiene que pasar.
 
+Lo que NO hay que hacer es sacar los ganchos de la regla para arreglar eso, que es lo que
+se hizo primero: el usuario lo corrigió el 13-oct —«ningún lado se excluye, el cubicador
+siempre puede condorearse y digitar algo mal»— y los números le dan la razón. Con «menor»
+estricto, incluirlos pasa de 140 a 161 barras; el salto a 319 lo causaba el «menor o
+igual», que es otra cosa.
+
 Correr con: python tests/test_chequeos.py
 """
 import os
@@ -90,9 +96,18 @@ check("un gancho de 10φ CLAVADOS no dispara: así los fabrica la planta",
 b = barra([("A", 99, "STD", None), ("B", 900, "B", 20), ("C", 300, "B", 20)], diam=10.0)
 check("...pero un lado recto de 99 mm en φ10 sí: le falta un milímetro para el mínimo",
       len(C.r_lado_corto(b, [b])) == 1)
+# NINGÚN LADO SE EXCLUYE, TAMPOCO LOS GANCHOS. Lo corrigió el usuario (13-oct): «el
+# cubicador siempre puede condorearse y digitar algo mal». Antes quedaban fuera por una
+# precaución mal leída: lo que disparaba de más era el «menor o igual», no incluirlos.
 b = barra([("A", 90, "H3", None), ("B", 900, "B", 135)], diam=10.0)
-check("un GANCHO de 90 mm no dispara aunque esté bajo el mínimo: es corto por norma",
-      C.r_lado_corto(b, [b]) == [])
+g = C.r_lado_corto(b, [b])
+check("un GANCHO de 90 mm en φ10 SÍ dispara: nadie está exento de una digitación",
+      len(g) == 1 and "el gancho A mide 90" in g[0]["texto"])
+# PERO LA COMPARACIÓN SIGUE SIENDO ESTRICTA, y de eso depende todo: la planta fabrica el
+# gancho a 10φ EXACTOS. Con «menor o igual» serían 319 barras en vez de 161.
+b10 = barra([("A", 100, "H3", None), ("B", 900, "B", 135), ("G", 100, "H3", 135)], diam=10.0)
+check("...pero un gancho de 10φ CLAVADOS no, que es como los fabrica la planta",
+      C.r_lado_corto(b10, [b10]) == [])
 # El umbral sale de la configuración del gancho, no de un número suelto.
 check("el mínimo lo lee de la configuración de fabricación, no de una constante propia",
       "GANCHO_FABRICACION" in SRC and "def _minimo_fabricacion(" in SRC
@@ -134,8 +149,17 @@ ce = barra([("A", 100, "B", None), ("B", 120, "B", 90), ("C", 3350, "B", 90),
             ("D", 120, "B", 90), ("E", 420, "B", 90)], ref="c1")
 check("una C de tramo largo con dos patas desiguales NO es un estribo: no se marca",
       C.r_lados_opuestos(ce, []) == [] and C._marco(ce) == [])
-check("...y lo que las separa es si el contorno CIERRA, no la lista de figuras",
-      "el contorno CIERRA" in SRC and "HUECO_MARCO" in SRC)
+check("...y lo que las separa es EL GANCHO EN LOS DOS EXTREMOS, no la lista de figuras",
+      "EL GANCHO EN LOS DOS EXTREMOS" in SRC
+      and 'not ls[0]["gancho"] or not ls[-1]["gancho"]' in SRC
+      and "T1" not in SRC.split("def _marco(")[1].split("def ")[0].split('"""')[2])
+# SE PROBÓ CON «EL CONTORNO CIERRA» Y NO ALCANZABA, y queda escrito para no repetirlo:
+# una C de 950 y 700 cierra con un hueco del 26% del lado mayor.
+check("queda dicho por qué no basta con que el contorno cierre",
+      "un hueco del 26 por ciento del lado mayor" in SRC)
+check("la tolerancia de los opuestos es CERO: deben ser idénticos",
+      C.TOLERANCIA_OPUESTOS == 0.0)
+check("...y una diferencia de 1 mm se marca", len(C.r_lados_opuestos(estribo(300, 800, 301, 800), [])) == 1)
 zeta = barra([("A", 300, "B", None), ("B", 300, "B", 90), ("C", 300, "B", -90),
               ("D", 300, "B", 90)], ref="z1")
 check("una Z gira para los dos lados y tampoco es un marco", C._marco(zeta) == [])
