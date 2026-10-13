@@ -284,6 +284,9 @@
           <div class="audh">Revisiones
             <span class="muted" id="revListaN"></span>
             <div style="flex:1"></div>
+            <div class="dshchips"><button id="revTarde" title="Un código Processed ya está
+              confirmado en planta: revisarlo suele llegar tarde, pero a veces hay que
+              mirarlo igual.">Processed</button></div>
             <button id="revNueva" class="audbtn" title="Revisa los códigos nuevos y los que cambiaron en aSa desde la última vez">Nueva revisión</button>
           </div>
           <div id="revNuevaProg" class="revprog" style="display:none;">
@@ -326,60 +329,9 @@
       </div>
 
       <!-- ══════ HERRAMIENTA ══════
-           Todo esto estaba arriba, en cajas abiertas, y empujaba el trabajo hacia abajo.
-           Lo que se usa a diario es lo de arriba; esto se abre cuando hace falta. -->
-      <details class="revmas">
-        <summary>Revisar una obra en particular <span class="muted">— y lo que está pendiente</span></summary>
-      <div class="card audc" id="revPend">
-        <div class="audh">Pendiente de revisar <span class="muted" id="revPendTxt">…</span>
-          <div style="flex:1"></div>
-          <button id="revPendCorrer" class="audbtn">Revisar lo pendiente</button>
-          <button id="revPendParar" class="audmini" style="display:none;">Detener</button>
-        </div>
-        <div id="revPendProg" class="revprog" style="display:none;">
-          <div class="revbar"><i id="revPendBarra"></i></div>
-          <div class="muted" id="revPendProgTxt" style="font-size:11px; margin-top:4px;"></div>
-        </div>
-      </div>
-      <div class="card audc">
-        <div class="audh">Obras con códigos por cubicar
-          <span class="muted">sólo los <b>Open</b>: un Processed ya está confirmado en planta y
-          casi siempre despacha dentro de la semana, así que corregirlo llega tarde.</span>
-          <div style="flex:1"></div>
-          <input type="text" id="revBuscaObra" class="audccb" style="max-width:260px"
-                 placeholder="🔍 buscar obra…" autocomplete="off">
-        </div>
-        <!-- LA VENTANA DE MOVIMIENTO, el mismo criterio que Stock Cubicaciones: una obra
-             está en producción si tuvo pedidos hace poco. Sin esto entran obras cuyo
-             último pedido es de 2021, que son códigos que nadie cerró en aSa. Se ve y se
-             puede soltar: una obra quieta se mira igual, pero que uno lo pida. -->
-        <div class="audccbar" style="margin-bottom:8px;">
-          <span class="dshbl">Con movimiento en</span>
-          <div class="dshchips" id="revMeses"></div>
-          <div class="dshchips"><button id="revTarde" title="Un código Processed ya está confirmado
-            en planta: de los 186 que hay, 86 ya pasaron su fecha de despacho y 88 salen dentro de
-            la semana. Revisarlos llega tarde, pero a veces hay que mirarlos igual.">Incluir Processed</button></div>
-          <span class="muted" style="font-size:11px" id="revMesesTxt"></span>
-        </div>
-        <div id="revObras" class="revobras"></div>
-      </div>
-      <div class="card audc" id="revPanel" style="display:none;">
-        <div class="audh"><span id="revObraNom"></span>
-          <span class="muted" id="revObraInfo"></span>
-          <div style="flex:1"></div>
-          <button id="revCorrer" class="audbtn">Revisar los códigos</button>
-          <button id="revParar" class="audmini" style="display:none;">Detener</button>
-        </div>
-        <div id="revProgreso" class="revprog" style="display:none;">
-          <div class="revbar"><i id="revBarra"></i></div>
-          <div class="muted" id="revProgTxt" style="font-size:11px; margin-top:4px;"></div>
-        </div>
-        <!-- Los códigos de la obra, con su propio estado de revisión. -->
-        <div id="revCodigos" class="revccs"></div>
-        <div id="revSenales"></div>
-      </div>
-      </details>
-
+           Lo que se usa a diario está arriba; esto se abre cuando hace falta. Acá vivía
+           «revisar una obra en particular», que se eliminó: era el camino anterior a que
+           la revisión fuera la unidad y ofrecía una segunda forma de hacer lo mismo. -->
       <details class="revmas">
         <summary>Reporte por obra <span class="muted">— dónde está concentrado el problema</span></summary>
       <!-- EL REPORTE MASIVO: una fila por obra. La pantalla de arriba responde «qué
@@ -396,13 +348,13 @@
       </div>
       </details>
 
-      <details class="revmas">
-        <summary>Qué se revisa <span class="muted">— las reglas y por qué</span></summary>
-      <div class="card audc">
+      <!-- QUÉ SE REVISA, A LA VISTA Y EN UNA LÍNEA POR REGLA. Estaba plegado y en
+           tarjetas: quien mira un hallazgo necesita saber qué regla lo levantó sin
+           tener que abrir nada. -->
+      <div class="card audc revreglasc">
         <div class="audh">Qué se revisa <span class="muted" id="revReglasN"></span></div>
-        <div id="revReglas" class="revreglas"></div>
+        <ul id="revReglas"></ul>
       </div>
-      </details>
 
     </div><!-- fin sub-tab revisión -->
 
@@ -618,7 +570,13 @@
   .revnapcaja{display:flex; gap:6px; align-items:center; padding:2px 0 4px 22px;}
   .revnapcaja select{font-size:11px; padding:3px 5px; border:1px solid #cfd8dc; border-radius:4px;}
   .revnapcaja input[type=text]{flex:1; font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px;}
+  .revnapcaja label{display:flex; align-items:center; gap:4px; font-size:10.5px; color:#6d4c41;
+                    white-space:nowrap; cursor:pointer;}
   .revcc2 tr.revnapform td{background:#fff8e1; border-top:none;}
+  /* Las reglas: una línea cada una, sin tarjetas. */
+  .revreglasc ul{margin:0; padding:0 0 0 16px; list-style:disc;}
+  .revreglasc li{font-size:11.5px; color:#37474f; padding:2px 0;}
+  .revreglasc li span{color:#78909c;}
   /* Las cajas de herramienta, plegadas. */
   .revmas{margin-top:10px; border:1px solid #cfd8dc; border-radius:6px; background:#fff;}
   .revmas > summary{cursor:pointer; padding:8px 12px; font-size:12px; font-weight:600; color:#37474f;}

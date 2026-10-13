@@ -20,10 +20,11 @@
 (function (global) {
   'use strict';
 
-  var REV = { obras: [], job: null, obra: null, ccs: [], senales: [], reglas: {},
-              corriendo: false, parar: false, busca: '', meses: 3, tarde: false };
-  // Las ventanas que se ofrecen. 0 = todas. Las mismas que el tab de Stock Cubicaciones.
-  var MESES = [[3, '3 meses'], [6, '6 meses'], [12, '1 año'], [0, 'Todas']];
+  // `meses` y `tarde` siguen siendo la ventana con la que se piden los datos —el reporte
+  // por obra la usa— pero ya no son un control: 3 meses es la ventana de producción y los
+  // Processed se incluyen desde el botón de arriba, que es donde importa.
+  var REV = { reglas: {}, corriendo: false, parar: false, meses: 3, tarde: false,
+              senales: [], mios: [], reporte: [] };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -31,12 +32,6 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
   }
   function num(n) { return Math.round(Number(n) || 0).toLocaleString('es-CL'); }
-  function ddmm(s) {
-    if (!s) return '';
-    var d = new Date(s);
-    return isNaN(d) ? '' : ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) +
-           '/' + String(d.getFullYear()).slice(-2);
-  }
   // La misma puerta que usa el resto del tab (ver index.js): el token, el 401 que
   // desloguea y el detalle de error de FastAPI desarmado para que se pueda leer.
   async function req(metodo, url, cuerpo) {
@@ -64,94 +59,16 @@
     var el = $('revReglas');
     if (!el) return;
     var ks = Object.keys(REV.reglas);
-    $('revReglasN').textContent = ks.length + ' regla(s). La máquina marca; la decisión es de quien mira.';
+    $('revReglasN').textContent = ks.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
     el.innerHTML = ks.map(function (k) {
       var r = REV.reglas[k];
-      return '<div class="revregla"><b>' + esc(r.nombre) + '</b><div>' + esc(r.porque) + '</div></div>';
+      return '<li><b>' + esc(r.nombre) + '</b> <span>' + esc(r.porque) + '</span></li>';
     }).join('');
-  }
-
-  function pintarMeses() {
-    var el = $('revMeses');
-    if (!el) return;
-    el.innerHTML = MESES.map(function (m) {
-      return '<button data-m="' + m[0] + '" class="' + (REV.meses === m[0] ? 'on' : '') + '">' +
-             esc(m[1]) + '</button>';
-    }).join('');
-    el.querySelectorAll('button').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        REV.meses = Number(b.dataset.m);
-        pintarMeses();
-        await cargarObras(); await cargarPendientes(); await cargarReporte();
-      });
-    });
-  }
-
-  // ── Las obras ─────────────────────────────────────────────────────────────────────
-  function obrasVisibles() {
-    var q = (REV.busca || '').trim().toLowerCase();
-    if (!q) return REV.obras;
-    return REV.obras.filter(function (o) { return (o.obra || '').toLowerCase().indexOf(q) !== -1; });
-  }
-
-  function pintarObras() {
-    var el = $('revObras');
-    if (!el) return;
-    var vis = obrasVisibles();
-    if (!vis.length) {
-      el.innerHTML = '<div class="revvacio">' +
-        (REV.obras.length ? 'Ninguna obra con ese nombre.' : 'No hay obras con códigos abiertos.') + '</div>';
-      return;
-    }
-    el.innerHTML = vis.map(function (o) {
-      var s = o.senales || {};
-      // UNA OBRA SIN SEÑALES Y SIN REVISAR NO ES LO MISMO QUE UNA REVISADA SIN SEÑALES.
-      // La primera no se miró; la segunda está limpia. Decir «0» en las dos sería mentir.
-      var marca = !o.ultima_revision
-        ? '<span class="s" style="background:#eceff1;color:#90a4ae">sin revisar</span>'
-        : (s.abiertas
-            ? '<span class="s hay">' + s.abiertas + ' por mirar</span>'
-            : '<span class="s cero">limpia</span>');
-      return '<div class="revobra' + (REV.job === o.job ? ' on' : '') + '" data-job="' + esc(o.job) + '">' +
-        '<span class="n">' + esc(o.obra || o.job) + '</span>' +
-        '<span class="c">' + o.ccs + ' código(s)</span>' +
-        '<span class="c">' + num(o.kg) + ' kg</span>' +
-        '<span class="u">' + (o.ultima_revision
-            ? 'revisada ' + ddmm(o.ultima_revision.el) + ' por ' + esc((o.ultima_revision.por || '').split('@')[0])
-            : '') + '</span>' + marca + '</div>';
-    }).join('');
-    el.querySelectorAll('.revobra').forEach(function (d) {
-      d.addEventListener('click', function () { abrirObra(d.dataset.job); });
-    });
-  }
-
-  async function abrirObra(job) {
-    if (REV.corriendo) return;
-    REV.job = job;
-    var o = REV.obras.filter(function (x) { return x.job === job; })[0] || {};
-    REV.obra = o.obra || job;
-    pintarObras();
-    $('revPanel').style.display = '';
-    $('revObraNom').textContent = REV.obra;
-    $('revObraInfo').textContent = 'cargando…';
-    $('revSenales').innerHTML = '';
-    try {
-      var d = await req('GET', '/chequeos/codigos?job=' + encodeURIComponent(job) +
-                        '&tarde=' + REV.tarde);
-      REV.ccs = d.ccs || [];
-      var sinRevisar = REV.ccs.filter(function (c) { return !c.revisado; }).length;
-      $('revObraInfo').textContent = REV.ccs.length + ' código(s) abiertos o en proceso · ' +
-        (sinRevisar ? sinRevisar + ' sin revisar' : 'todos revisados alguna vez');
-      pintarCodigos();
-      await cargarSenales();
-    } catch (e) { aviso(e.message); $('revObraInfo').textContent = e.message; }
   }
 
   // ── Correr la revisión, código por código ─────────────────────────────────────────
-  // UNA SOLA FUNCIÓN PARA LOS DOS BOTONES. Revisar una obra y revisar lo pendiente de
-  // todas son el mismo recorrido con otra cola: lo que cambia es de dónde sale la lista.
-  // Escribirlo dos veces sería tener dos formas de contar el progreso que algún día dirían
-  // cosas distintas.
+  // EL RECORRIDO, APARTE DE QUIÉN LO PIDE. Lo usan el botón «Nueva revisión» y el reloj:
+  // lo único que cambia es de dónde sale la cola de códigos.
   async function recorrer(cola, revision, ui) {
     var hechos = 0, barras = 0, nuevas = 0, errores = 0;
     for (var i = 0; i < cola.length; i++) {
@@ -176,84 +93,6 @@
     // QUÉ HACER AHORA. Antes la corrida terminaba en «15 señales nuevas» y ahí quedaba
     // uno: la bandeja se abre en lo de ESTA revisión, para resolverlo de inmediato.
     return { hechos: hechos, nuevas: nuevas };
-  }
-
-  function _arranca(btnId, pararId, progId) {
-    REV.corriendo = true; REV.parar = false;
-    $(btnId).disabled = true;
-    $(pararId).style.display = '';
-    $(progId).style.display = '';
-  }
-
-  function _termina(btnId, pararId) {
-    REV.corriendo = false;
-    $(btnId).disabled = false;
-    $(pararId).style.display = 'none';
-  }
-
-  async function correr() {
-    if (!REV.job || REV.corriendo) return;
-    _arranca('revCorrer', 'revParar', 'revProgreso');
-    try {
-      var ini = await req('POST', '/chequeos/revision', { job: REV.job, tarde: REV.tarde });
-      await recorrer((ini.ccs || []).map(function (cc) { return { job: REV.job, cc: cc }; }),
-                     ini.revision, { txt: $('revProgTxt'), barra: $('revBarra') });
-      ok(REV.parar ? 'Revisión detenida; lo revisado quedó guardado' : 'Revisión terminada');
-    } catch (e) { aviso(e.message); $('revProgTxt').textContent = e.message; }
-    _termina('revCorrer', 'revParar');
-    await cargarSenales(); await cargarObras();
-    await cargarPendientes(); await cargarReporte();
-  }
-
-  // LO PENDIENTE DE TODAS LAS OBRAS. Es el mismo trabajo que hace el reloj una vez al día,
-  // disponible cuando uno quiera: así no hay que esperar a la hora para ver lo de recién.
-  async function correrPendientes() {
-    if (REV.corriendo) return;
-    _arranca('revPendCorrer', 'revPendParar', 'revPendProg');
-    try {
-      var ini = await req('POST', '/chequeos/revision-pendientes', { tarde: REV.tarde });
-      await recorrer(ini.ccs || [], ini.revision,
-                     { txt: $('revPendProgTxt'), barra: $('revPendBarra') });
-      ok(REV.parar ? 'Detenida; lo revisado quedó guardado' : 'Pendientes revisados');
-    } catch (e) { aviso(e.message); $('revPendProgTxt').textContent = e.message; }
-    _termina('revPendCorrer', 'revPendParar');
-    await cargarPendientes(); await cargarObras(); await cargarReporte();
-    if (REV.job) await cargarSenales();
-  }
-
-  async function cargarPendientes() {
-    try {
-      var d = await req('GET', '/chequeos/pendientes?tarde=' + REV.tarde);
-      var n = d.pendientes || 0;
-      $('revPendTxt').textContent = n
-        ? n + ' código(s) en ' + (d.obras || 0) + ' obra(s): nunca revisados, o cambiados en aSa ' +
-          'desde la última vez. La revisión corre sola una vez al día; este botón no espera a la hora. ' +
-          'Va de a ' + d.tope + ' por vez.'
-        : 'Nada pendiente: todo lo abierto está revisado y nada cambió desde entonces.';
-      $('revPendCorrer').disabled = !n;
-    } catch (e) { $('revPendTxt').textContent = e.message; }
-  }
-
-  // CÓDIGO POR CÓDIGO: cuándo se revisó, quién, y si cambió en aSa desde entonces. Un
-  // código limpio también deja constancia, si no no se podría distinguir «lo miramos y
-  // está bien» de «nunca lo miramos».
-  function pintarCodigos() {
-    var el = $('revCodigos');
-    if (!el) return;
-    el.innerHTML = (REV.ccs || []).map(function (c) {
-      var m = !c.revisado ? '<span class="m no">sin revisar</span>'
-            : c.cambio ? '<span class="m cambio">cambió en aSa</span>'
-            : c.abiertas ? '<span class="m hay">' + c.abiertas + ' por mirar</span>'
-            : '<span class="m ok">limpio</span>';
-      return '<div class="revcc"><span class="k">' + esc(c.cc) + '</span>' +
-        '<span class="d">' + esc(c.descr || '') + '</span>' +
-        '<span class="r">' + (c.revisado
-            ? 'revisado ' + ddmm(c.revisado) + ' · ' +
-              esc((c.revisado_por === 'reloj' ? 'automática' : (c.revisado_por || '').split('@')[0])) +
-              (c.barras_vistas ? ' · ' + c.barras_vistas + ' barras' : '')
-            : '') + '</span>' +
-        (c.error ? '<span class="m hay" title="' + esc(c.error) + '">error</span>' : '') + m + '</div>';
-    }).join('');
   }
 
   // ══════ LAS REVISIONES SON LA UNIDAD ══════
@@ -499,6 +338,10 @@
         '"><div class="revnapcaja">' +
         '<select data-mot="' + i.id + '">' + _opcionesMotivo() + '</select>' +
         '<input type="text" data-nota="' + i.id + '" placeholder="Explica por qué no aplica — lo lee quien audita y queda firmado">' +
+        // «Y TODAS LAS IGUALES»: una figura que la regla marca siempre sale decenas de
+        // veces en la misma obra. Explicarlo treinta veces es como no tenerlo.
+        '<label title="Aplica esta misma explicación a las barras iguales de esta obra que sigan abiertas">' +
+        '<input type="checkbox" data-pat="' + i.id + '"> y todas las iguales</label>' +
         '<button class="audmini ver" data-napok="' + i.id + '">Guardar</button>' +
         '<button class="audmini" data-napno="' + i.id + '">Cancelar</button>' +
         '</div></td></tr>';
@@ -586,18 +429,22 @@
     if (!f) return;
     var mot = f.querySelector('select[data-mot]').value;
     var nota = (f.querySelector('input[data-nota]').value || '').trim();
+    var pat = f.querySelector('input[data-pat]').checked;
     if (!mot) { aviso('Elige por qué no aplica.'); return; }
     if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
-    await declararUno(id, 'aceptada', mot, nota);
+    await declararUno(id, 'aceptada', mot, nota, pat);
   }
 
   // Una barra, una decisión: así se resuelve en la fila. El lote quedó sólo para el check
   // de «ya la corregí», que es lo único que se hace de a muchas.
-  async function declararUno(id, estado, motivo, nota) {
+  async function declararUno(id, estado, motivo, nota, patron) {
     try {
-      await req('PUT', '/chequeos/declarar',
-                { ids: [Number(id)], estado: estado, motivo_tipo: motivo || null, nota: nota || null });
-      ok(estado === 'aceptada' ? 'Hallazgo dejado sin efecto' : 'El hallazgo vuelve a quedar por corregir');
+      var r = await req('PUT', '/chequeos/declarar',
+                        { ids: [Number(id)], estado: estado, motivo_tipo: motivo || null,
+                          nota: nota || null, patron: !!patron });
+      ok(estado === 'aceptada'
+         ? 'Hallazgo dejado sin efecto' + (r.afectadas > 1 ? ' (' + r.afectadas + ' iguales)' : '')
+         : 'El hallazgo vuelve a quedar por corregir');
       delete REVS.sel_items[id];
       await refrescarRevision();
     } catch (e) { aviso(e.message); }
@@ -658,7 +505,7 @@
       REVS.sel = ini.revision || REVS.sel;
       await cargarRevisiones();
       if (ini.revision) await abrirRevision(ini.revision);
-      await cargarPendientes(); await cargarObras(); await cargarReporte(); await cargarMios();
+      await cargarReporte(); await cargarMios();
     } catch (e) { aviso(e.message); $('revNuevaTxt').textContent = e.message; }
     REV.corriendo = false;
     $('revNueva').disabled = false;
@@ -698,27 +545,13 @@
             (s.nota ? '<div class="muted">' + esc(s.nota) + '</div>' : '') + '</dd>' +
           '<dt>Vista</dt><dd>' + (s.veces || 1) + ' revisión(es) · primera ' + (s.visto_primero ? _fechaHora(s.visto_primero) : '—') + '</dd></dl>' +
       '<div class="revsenacc" id="revSenalAcc"></div></div>';
-    var acc = $('revSenalAcc');
-    var botones = '';
-    if (s.estado === 'abierta') {
-      botones = '<button class="audmini" data-est="corregir">Hay que corregirla</button>' +
-                '<button class="audmini ver" data-est="aceptada">Está bien</button>' +
-                '<button class="audmini" data-est="aceptada" data-pat="1" title="Ésta y todas las iguales de la obra">Está bien, todas las iguales</button>';
-    } else if (s.estado !== 'corregida') {
-      botones = '<button class="audmini" data-est="abierta">Deshacer</button>';
-    }
-    if (s.estado === 'corregir') {
-      botones += '<button class="audmini ver" id="revSenalComprobar" title="Vuelve a leer este código en aSa ahora mismo">Ya se corrigió: comprobar</button>';
-    }
-    acc.innerHTML = botones + '<span class="muted" id="revSenalMsg" style="font-size:10.5px"></span>';
-    acc.querySelectorAll('button[data-est]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        await resolver(s.id, b.dataset.est, b.dataset.pat === '1');
-        cerrarDetalleSenal();
-      });
-    });
-    var cmp = $('revSenalComprobar');
-    if (cmp) cmp.addEventListener('click', function () { comprobarSenal(s.id, cmp, $('revSenalMsg')); });
+    // ESTE MODAL MIRA, NO DECIDE. Tenía los botones del flujo anterior («hay que
+    // corregirla», «está bien») y era justo lo que el usuario sacó: la decisión se toma
+    // en la fila, mirando el hallazgo junto a los demás del mismo código. Acá se viene a
+    // ver la barra.
+    $('revSenalAcc').innerHTML =
+      '<span class="muted">Así está la barra hoy en aSa. La decisión se toma en la lista: ' +
+      'marca el check si ya la corregiste, o «No aplica» con su explicación.</span>';
     $('revSenalModal').style.display = '';
     dibujarSenal(s);
   }
@@ -761,8 +594,7 @@
       if (msg) msg.textContent = txt;
       ok(r.estado === 'corregida' ? 'Corregida' : 'Sigue igual en aSa');
       _senalesPorId = {};
-      await Promise.all([refrescarRevision(), cargarReporte()]);
-      if (REV.job) await cargarSenales();
+      await Promise.all([refrescarRevision(), cargarReporte(), cargarMios()]);
       if (r.estado === 'corregida') setTimeout(cerrarDetalleSenal, 900);
     } catch (e) { aviso(e.message); if (msg) msg.textContent = e.message; }
     if (boton) { boton.disabled = false; boton.textContent = 'Ya se corrigió: comprobar'; }
@@ -807,98 +639,8 @@
     } catch (e) { caja.style.display = 'none'; }
   }
 
-  // ── Las señales ───────────────────────────────────────────────────────────────────
-  async function cargarSenales() {
-    if (!REV.job) return;
-    try {
-      var d = await req('GET', '/chequeos?job=' + encodeURIComponent(REV.job));
-      REV.senales = d.senales || [];
-      REV.reglas = d.reglas || REV.reglas;
-      pintarSenales(d.resumen || {});
-    } catch (e) { aviso(e.message); }
-  }
-
-  function pintarSenales(resumen) {
-    var el = $('revSenales');
-    if (!el) return;
-    if (!REV.senales.length) {
-      var revisado = (REV.ccs || []).some(function (c) { return c.revisado; });
-      el.innerHTML = '<div class="revvacio">' +
-        (revisado ? 'Nada que mirar: todas las señales de esta obra están resueltas.'
-                  : 'Todavía no se ha revisado esta obra. Aprieta «Revisar los códigos».') +
-        '</div>';
-      return;
-    }
-    // AGRUPADAS POR REGLA. Lo que el usuario resuelve no es una barra suelta, es «todos los
-    // estribos cuadrados de esta obra»: verlos juntos es lo que deja decidir de una vez.
-    var por = {};
-    REV.senales.forEach(function (s) { (por[s.regla] = por[s.regla] || []).push(s); });
-    el.innerHTML = Object.keys(por).map(function (k) {
-      var r = REV.reglas[k] || { nombre: k };
-      return '<div class="revgrupo"><h4>' + esc(r.nombre) + ' · ' + por[k].length + '</h4>' +
-        por[k].map(fila).join('') + '</div>';
-    }).join('');
-    el.querySelectorAll('button[data-sen]').forEach(function (b) {
-      b.addEventListener('click', function () { resolver(b.dataset.sen, b.dataset.est, b.dataset.pat === '1'); });
-    });
-  }
-
-  function fila(s) {
-    var d = s.detalle || {};
-    return '<div class="revsen ' + esc(s.estado) + '">' +
-      '<span class="cc">' + esc(s.cc || '') + '</span>' +
-      '<span class="ref">' + esc(s.ref) + '</span>' +
-      '<span class="tx">' + esc(d.texto || '') + '</span>' +
-      (s.veces > 1 ? '<span class="ve">vista ' + s.veces + ' veces</span>' : '') +
-      (s.estado === 'corregir' ? '<span class="est corregir">Por corregir</span>' : '') +
-      (s.estado === 'corregir'
-        ? '<button class="audmini" data-sen="' + s.id + '" data-est="abierta">Deshacer</button>'
-        : '<button class="audmini" data-sen="' + s.id + '" data-est="corregir">Hay que corregirla</button>' +
-          '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada">Está bien</button>' +
-          '<button class="audmini" data-sen="' + s.id + '" data-est="aceptada" data-pat="1" ' +
-          'title="Acepta ésta y todas las iguales de esta obra, ahora y las que aparezcan después.">' +
-          'Está bien, todas las iguales</button>') +
-      '</div>';
-  }
-
-  async function resolver(id, estado, patron) {
-    var nota = null;
-    if (estado === 'aceptada') {
-      // EL MOTIVO ES OBLIGATORIO. Una señal aceptada sin motivo es una señal que nadie
-      // puede volver a discutir: dentro de un mes no se sabe si estaba bien o si alguien
-      // la apagó para sacársela de encima.
-      nota = global.prompt(patron
-        ? '¿Por qué están bien todas las iguales de esta obra?'
-        : '¿Por qué está bien?');
-      if (nota === null) return;
-      if (!nota.trim()) { aviso('Hace falta el motivo.'); return; }
-    }
-    try {
-      var r = await req('PUT', '/chequeos/senal/' + id, { estado: estado, nota: nota, patron: !!patron });
-      ok(estado === 'aceptada'
-        ? 'Aceptada' + (r.afectadas > 1 ? ' (' + r.afectadas + ' señales)' : '')
-        : estado === 'corregir' ? 'Marcada para corregir' + (r.avisados ? ' · avisado al cubicador' : '')
-        : 'Vuelta a abrir');
-      await refrescarRevision();
-      if (REV.job) await cargarSenales();
-      await cargarObras();
-    } catch (e) { aviso(e.message); }
-  }
-
   // ── El registro ───────────────────────────────────────────────────────────────────
 
-
-  async function cargarObras() {
-    try {
-      var d = await req('GET', '/chequeos/obras?meses=' + REV.meses + '&tarde=' + REV.tarde);
-      REV.obras = d.obras || [];
-      pintarObras();
-      var n = REV.obras.length;
-      $('revMesesTxt').textContent = n + ' obra(s)' +
-        (REV.meses ? ' con pedidos en los últimos ' + REV.meses + ' meses.'
-                   : ' — todas, incluidas las que no se mueven hace años.');
-    } catch (e) { aviso(e.message); }
-  }
 
   // ── El reporte por obra ───────────────────────────────────────────────────────────
   // UNA OBRA CON CERO SEÑALES Y CERO CÓDIGOS REVISADOS NO ESTÁ LIMPIA, ESTÁ SIN REVISAR.
@@ -924,9 +666,9 @@
         '<th class="num">Por corregir</th><th class="num">Corregidas</th></tr></thead><tbody>' +
         obras.map(function (o) {
           var falta = Math.max(0, o.ccs - o.revisados);
-          // LA FILA ABRE LA BANDEJA DE ESA OBRA. El reporte dice dónde está el problema; la
-          // bandeja es donde se resuelve: sin este clic eran dos pantallas sin puente.
-          return '<tr class="revrepfila" data-job="' + esc(o.job) + '" title="Ver y resolver las señales de esta obra">' +
+          // EL REPORTE DICE DÓNDE ESTÁ EL PROBLEMA, no lo resuelve: se resuelve en la
+          // revisión que lo encontró, que es la que tiene el dueño y el ciclo.
+          return '<tr>' +
             '<td class="audnom" title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
             '<td class="audnom" title="' + esc(o.cubico || '') + '">' +
               esc((o.quienes && o.quienes.length ? o.quienes : (o.cubico || '').split(', '))
@@ -943,9 +685,6 @@
             '<td class="num">' + (o.corregir ? '<b style="color:#c62828">' + o.corregir + '</b>' : '<span class="muted">·</span>') + '</td>' +
             '<td class="num">' + (o.corregidas ? '<b style="color:#2e7d32">' + o.corregidas + '</b>' : '<span class="muted">·</span>') + '</td></tr>';
         }).join('') + '</tbody></table>';
-      $('revRep').querySelectorAll('tr.revrepfila').forEach(function (tr) {
-        tr.addEventListener('click', function () { irABandeja({ job: tr.dataset.job }); });
-      });
     } catch (e) { $('revRep').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
@@ -956,22 +695,11 @@
            ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
-  // Llevar la bandeja a una obra (o a un estado) y ponerla a la vista.
-  // El reporte por obra ya no lleva a una bandeja: lleva a la obra, que es donde se
-  // revisa. Los hallazgos se trabajan por revisión.
-  async function irABandeja(f) {
-    if (!f.job) return;
-    await abrirObra(f.job);
-    var p = $('revPanel');
-    if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
   var _listo = false;
   global.loadRevisionBarras = async function () {
     if (!$('audSubRevision')) return;
     if (!_listo) {
       _listo = true;
-      $('revCorrer').addEventListener('click', correr);
       $('revNueva').addEventListener('click', nuevaRevision);
       $('revNuevaParar').addEventListener('click', function () { REV.parar = true; });
       $('revItemsCerrar').addEventListener('click', cerrarItems);
@@ -979,19 +707,14 @@
       $('revItemsModal').addEventListener('click', function (e) { if (e.target === $('revItemsModal')) cerrarItems(); });
       $('revSenalCerrar').addEventListener('click', cerrarDetalleSenal);
       $('revSenalModal').addEventListener('click', function (e) { if (e.target === $('revSenalModal')) cerrarDetalleSenal(); });
-      $('revParar').addEventListener('click', function () { REV.parar = true; });
-      $('revPendCorrer').addEventListener('click', correrPendientes);
       $('revRepImprimir').addEventListener('click', function () { global.print(); });
+      // LOS PROCESSED, JUNTO AL BOTÓN QUE LOS VA A LEER. Un código Processed ya está
+      // confirmado en planta, así que corregirlo suele llegar tarde; por eso no entra
+      // salvo que se pida, y se pide acá y no en otra pantalla.
       $('revTarde').addEventListener('click', async function () {
         REV.tarde = !REV.tarde;
         this.classList.toggle('on', REV.tarde);
-        await cargarObras(); await cargarPendientes(); await cargarReporte();
-        if (REV.job) await abrirObra(REV.job);
-      });
-      pintarMeses();
-      $('revPendParar').addEventListener('click', function () { REV.parar = true; });
-      $('revBuscaObra').addEventListener('input', function () {
-        REV.busca = this.value; pintarObras();
+        await cargarReporte();
       });
       try {
         var r = await req('GET', '/chequeos/reglas');
@@ -999,8 +722,6 @@
       } catch (e) { /* las reglas son texto: si fallan, la pantalla sigue sirviendo */ }
       pintarReglas();
     }
-    await cargarObras();
-    await cargarPendientes();
     await cargarReporte();
     // Lo mío primero y las revisiones: es lo que se viene a resolver.
     await cargarMios();
@@ -1025,6 +746,6 @@
     if (sub === 'revision') global.loadRevisionBarras();
   };
 
-  global.__revisionTest = { REV: REV, obrasVisibles: obrasVisibles, fila: fila };
+  global.__revisionTest = { REV: REV, estadoTxt: ESTADO_TXT };
 
 })(window);

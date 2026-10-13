@@ -821,6 +821,10 @@ class DeclararBody(BaseModel):
     estado: str                        # declarada | aceptada | abierta
     motivo_tipo: Optional[str] = None  # sólo para 'aceptada'
     nota: Optional[str] = None
+    # «Y TODAS LAS IGUALES DE LA OBRA». Sólo para «no aplica», y es lo que hace que esto
+    # se siga usando a la semana: una figura que la regla marca siempre sale decenas de
+    # veces en la misma obra, y explicar treinta veces lo mismo es como no tenerlo.
+    patron: bool = False
 
 
 @router.put("/chequeos/declarar")
@@ -866,6 +870,28 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
                         detail="Hay barras que cubicó otra persona (%s): sólo puede declararlas quien las hizo."
                                % ", ".join(sorted(ajenas)[:3]))
             ids = [f[0] for f in filas]
+            # «Y TODAS LAS IGUALES»: se suman las señales de la misma obra con la misma
+            # regla y la misma firma —la figura que la regla marca siempre— que todavía
+            # están abiertas. Las ya resueltas no se tocan: cada una tiene su firma y su
+            # motivo, y reescribirlas borraría lo que alguien decidió antes.
+            if body.patron and body.estado == "aceptada":
+                cur.execute(
+                    """SELECT s.id FROM chequeo_senales s
+                         JOIN chequeo_senales o ON o.id_proyecto = s.id_proyecto
+                                               AND o.regla = s.regla
+                                               AND o.firma_patron = s.firma_patron
+                        WHERE o.id = ANY(%s) AND s.estado IN ('abierta', 'declarada')""",
+                    (ids,))
+                del_patron = [r[0] for r in cur.fetchall()]
+                if user.get("role") not in ROLES_ADMINISTRAN and del_patron:
+                    # Las del patrón que cubicó otra persona no entran: un hallazgo es de
+                    # quien lo hizo, y acá se estaría resolviendo lo ajeno sin pedirlo.
+                    cur.execute(
+                        """SELECT id FROM chequeo_senales
+                            WHERE id = ANY(%s) AND TRIM(COALESCE(cubico, '')) = ANY(%s)""",
+                        (del_patron, list(mios)))
+                    del_patron = [r[0] for r in cur.fetchall()]
+                ids = sorted(set(ids) | set(del_patron))
             if body.estado == "declarada":
                 cur.execute(
                     """UPDATE chequeo_senales

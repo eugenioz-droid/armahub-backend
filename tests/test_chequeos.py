@@ -167,13 +167,19 @@ check("...y los Processed se pueden pedir igual, con un chip que lo dice",
 check("la pantalla recorre los códigos DE A UNO, para que no haya un request de minutos",
       '@router.post("/chequeos/revisar")' in API
       and "for (var i = 0; i < cola.length; i++)" in JS
-      and "UNA SOLA FUNCIÓN PARA LOS DOS BOTONES" in JS)
+      and "EL RECORRIDO, APARTE DE QUIÉN LO PIDE" in JS)
 check("...y se puede detener sin perder lo ya revisado",
-      "REV.parar" in JS and 'id="revParar"' in HTM)
-check("aceptar una señal EXIGE el motivo: sin él, nadie puede revisarlo después",
-      "una señal aceptada sin motivo" in API and "Hace falta el motivo." in JS)
-check("se puede aceptar el PATRÓN completo, no de a una",
-      "firma_patron = %s" in API and "data-pat=" in JS)
+      "REV.parar" in JS and 'id="revNuevaParar"' in HTM)
+check("dejar un hallazgo sin efecto EXIGE el motivo: sin él, nadie puede revisarlo después",
+      "una señal aceptada sin motivo" in API
+      and "Explica por qué no aplica" in API and "Hace falta la explicación" in JS)
+check("se puede dejar sin efecto el PATRÓN completo, no de a una",
+      "firma_patron = %s" in API and "data-pat=" in JS
+      and "patron: bool = False" in API and "o.firma_patron = s.firma_patron" in API
+      and "y todas las iguales" in JS)
+check("...pero el patrón no se lleva por delante lo ajeno ni lo ya resuelto",
+      "s.estado IN ('abierta', 'declarada')" in API
+      and "Las del patrón que cubicó otra persona no entran" in API)
 check("lo ya aceptado no vuelve a la lista al revisar de nuevo",
       "aceptados.get((s[\"regla\"], s[\"firma_patron\"]))" in API)
 # QUE SE CORRIGIÓ NO LO DICE NADIE: LO COMPROBÁMOS.
@@ -218,7 +224,8 @@ check("...y tiene presupuesto de códigos y de minutos, con lo que quedó escrit
       and "Se cortó por el tope de %g minutos" in API)
 check("a pedido es el MISMO recorrido, conducido por la pantalla",
       '@router.post("/chequeos/revision-pendientes")' in API
-      and "async function correrPendientes(" in JS and "function recorrer(" in JS)
+      and "async function nuevaRevision(" in JS and "function recorrer(" in JS
+      and "'/chequeos/revision-pendientes'" in JS)
 check("...y no hay un endpoint que barra todo de una: serían 15 minutos colgado de un request",
       "/chequeos/automatica" not in API
       and "hay un endpoint que haga el barrido entero de una" in API
@@ -233,8 +240,12 @@ check("...con quién lo revisó y la marca de tiempo que tenía en aSa",
       "revisado_por" in MIG2 and "ultima_mod" in MIG2 and "p.ultima_mod" in API)
 check("...y eso es lo mismo que deja al reloj saltarse lo que no cambió",
       "volver a pedirle los ítems a aSa son segundos tirados" in API)
-check("la pantalla muestra, por código, cuándo se revisó y si cambió desde entonces",
-      "function pintarCodigos(" in JS and "cambió en aSa" in JS and "sin revisar" in JS)
+# Esto lo mostraba la pantalla por obra, código por código. Esa pantalla se fue; el dato
+# no, porque es de donde sale la cola de lo pendiente: un código se vuelve a revisar si
+# cambió en aSa desde la última vez.
+check("se guarda, por código, cuándo se revisó, quién y cómo estaba en aSa",
+      "revisado_el" in MIG2 and "revisado_por" in MIG2 and "ultima_mod" in MIG2
+      and "p.ultima_mod > c.ultima_mod" in API)
 check("...y distingue la revisión automática de la que pidió una persona",
       "'reloj' ? 'automática'" in JS or "=== 'reloj'" in JS)
 check("el registro de cada revisión dice cómo terminó, no sólo que corrió",
@@ -251,8 +262,12 @@ check("...y se puede soltar: 0 es «todas», no un valor que se ignora",
       "if not meses:" in API and 'VENTANA_TODO' in API)
 check("el reloj tampoco barre obras muertas: la cola usa la misma ventana",
       "def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = False)" in API)
-check("la pantalla lo muestra como chips, no escondido",
-      "var MESES = [[3," in JS and 'id="revMeses"' in HTM and "function pintarMeses(" in JS)
+# El selector de ventana se fue con la pantalla por obra: el reporte usa los 3 meses de
+# producción y no hay dos sitios donde elegirla. Lo que sí quedó a la vista es el otro
+# interruptor, el que decide si entran los Processed, y está junto al botón que los lee.
+check("la ventana es del backend y ya no se elige en dos sitios",
+      "var MESES = [[3," not in JS and 'id="revMeses"' not in HTM
+      and "meses: 3" in JS and 'id="revTarde"' in HTM)
 
 # ── 10. El reporte masivo ────────────────────────────────────────────────────────────
 print("\n10. El reporte: por obra, con quién cubicó")
@@ -340,8 +355,12 @@ check("cada señal tiene su detalle con la barra dibujada por el motor del audit
       and "global.audBarraNormalizada(" in JS and 'id="revSenalModal"' in HTM)
 check("...que auditorías expone en vez de copiarlo",
       "global.audBarraNormalizada = normalizarBarra" in open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read())
-check("el reporte abre la bandeja de la obra (dos pantallas con puente)",
-      "class=\"revrepfila\"" in JS and "function irABandeja(" in JS)
+# EL REPORTE DICE DÓNDE ESTÁ EL PROBLEMA; NO LO RESUELVE. Llevaba a la pantalla por obra,
+# que era un segundo camino para lo mismo: un hallazgo se resuelve en la revisión que lo
+# encontró, que es la que tiene dueño, plazo y ciclo.
+check("el reporte informa, y resolver es de la revisión",
+      "function irABandeja(" not in JS and "revrepfila" not in JS
+      and "no lo resuelve" in JS)
 check("el reporte dice de cuándo son los datos de aSa",
       '"ultima_carga"' in API and "SELECT MAX(fin) FROM asa_sync WHERE ok" in API and "datos de aSa al" in JS)
 check("«revisados» se cuenta sobre los mismos códigos que «códigos»: se acabó el «faltan -7»",
@@ -392,7 +411,22 @@ check("una revisión sin hallazgos deja constancia en vez de esconderse",
       "sin hallazgos ·" in JS and "Queda el registro de que se revisó" in JS)
 check("la hoja se imprime", 'id="revItemsImprimir"' in HTM and "@media print" in HTM)
 check("el tab deja arriba el trabajo y pliega la herramienta",
-      HTM.count('<details class="revmas">') >= 3)
+      HTM.count('<details class="revmas">') >= 1
+      and HTM.index('id="revLista"') < HTM.index('<details class="revmas">'))
+# El usuario, 13-oct: «yo no dejaría revisar obra en particular». Era la pantalla anterior
+# a que la revisión fuera la unidad, y ofrecía otro camino para lo mismo.
+check("se fue «revisar una obra en particular», con todo lo suyo",
+      "Revisar una obra en particular" not in HTM
+      and all(('id="%s"' % i) not in HTM for i in
+              ("revPend", "revPanel", "revObras", "revCodigos", "revBuscaObra", "revCorrer"))
+      and all(("function %s(" % f) not in JS for f in
+              ("pintarObras", "abrirObra", "correr", "correrPendientes", "pintarCodigos",
+               "cargarObras", "cargarSenales", "resolver")))
+check("...y «qué se revisa» es una lista a la vista, no un desplegable",
+      "<ul id=\"revReglas\">" in HTM and "revreglasc" in HTM
+      and "Qué se revisa <span class=\"muted\">— las reglas" not in HTM)
+check("el detalle de la barra mira y no decide: la decisión está en la fila",
+      "ESTE MODAL MIRA, NO DECIDE" in JS and "La decisión se toma en la lista" in JS)
 
 print("\n15. La última carga de aSa, en la barra negra")
 check("viaja en /me, que el front pide al arrancar",
