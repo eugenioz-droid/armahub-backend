@@ -102,7 +102,10 @@
   // pantalla era una bolsa de 540 señales acumuladas donde no se podía preguntar «¿qué
   // salió hoy?», y por eso el trabajo no avanzaba: nadie sabe por dónde empezar una lista
   // de 540. Una revisión sin resolver NO se arrastra a la siguiente: la suya queda abierta.
-  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '' };
+  // `figs` es lo leído de aSa, por código: {cc: {estado, barras: {ref: barra}, msg}}. Es
+  // caché a propósito —una lectura por código y no por barra— y se vacía al refrescar la
+  // revisión, porque entonces lo de aSa puede haber cambiado.
+  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '', figs: {} };
   var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Corregida (por verificar)',
                      corregir: 'Corregida (por verificar)', corregida: 'Verificada',
                      aceptada: 'No aplica' };
@@ -158,6 +161,7 @@
   }
 
   async function abrirRevision(id) {
+    REVS.figs = {};
     REVS.sel = id;
     pintarRevisiones();
     $('revResCuerpo').innerHTML = '<div class="revvacio">Cargando…</div>';
@@ -268,17 +272,7 @@
         });
       });
     }
-    // UN SOLO BOTON CIERRA EL CICLO. Marcar el check es decir «ya la corregí»; el botón
-    // declara esa corrección y la lee en aSa en el mismo paso, que es lo que el usuario
-    // pidió. Lo que no aplica no se marca: se resuelve en su fila.
-    var n = Object.keys(REVS.sel_items).length;
-    $('revItemsAcc').innerHTML =
-      '<b>' + (n ? n + ' marcada(s) como corregida(s)' : 'Marca con el check las barras que ya corregiste') + '</b>' +
-      '<div style="flex:1"></div>' +
-      '<button class="audmini ver" id="revAccVerificar"' + (n ? '' : ' disabled') +
-        ' title="Lee en aSa SÓLO los códigos de lo que marcaste y comprueba si el cambio está hecho">' +
-        'Verificar en aSa' + (n ? ' (' + n + ')' : '') + '</button>' +
-      '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>';
+    _pintarAcc();
     // Agrupado por código: es como se corrige (se abre un CC en aSa y se arregla lo de ahí)
     // y es como se comprueba (una lectura por código, no por barra).
     var grupos = {}, orden = [];
@@ -292,12 +286,128 @@
       : orden.map(function (k) {
           var g = grupos[k];
           var ok = g.items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
+          var fg = REVS.figs[g.cc];
           return '<div class="revcc2"><h5><input type="checkbox" data-grupo="' + esc(k) + '"> ' +
             '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
-            '<div style="flex:1"></div><span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
+            '<div style="flex:1"></div>' +
+            (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
+                           '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
+            '<span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
             '<table>' + g.items.map(filaItem).join('') + '</table></div>';
         }).join('');
     _bindItems();
+  }
+
+  // LA BARRA DE ACCIONES SE PINTA SOLA. Antes marcar un check repintaba la hoja entera,
+  // que con las figuras cargadas serían trescientos SVG rehechos por clic.
+  function _pintarAcc() {
+    var n = Object.keys(REVS.sel_items).length;
+    var faltan = _ccsSinFigura().length;
+    $('revItemsAcc').innerHTML =
+      '<b>' + (n ? n + ' marcada(s) como corregida(s)' : 'Marca con el check las barras que ya corregiste') + '</b>' +
+      (faltan ? '<button class="audmini" id="revAccFiguras" title="Lee los ' + faltan +
+                ' código(s) en aSa y dibuja cada barra. Va de a uno para no colgarse.">' +
+                'Ver las figuras (' + faltan + ')</button>' : '') +
+      '<div style="flex:1"></div>' +
+      '<button class="audmini ver" id="revAccVerificar"' + (n ? '' : ' disabled') +
+        ' title="Lee en aSa SÓLO los códigos de lo que marcaste y comprueba si el cambio está hecho">' +
+        'Verificar en aSa' + (n ? ' (' + n + ')' : '') + '</button>' +
+      '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>';
+    var f = $('revAccFiguras');
+    if (f) f.addEventListener('click', function () { cargarTodasLasFiguras(f); });
+    var ver = $('revAccVerificar');
+    if (ver) ver.addEventListener('click', verificarMarcados);
+  }
+
+  // ══════ LAS FIGURAS ══════
+  // Se piden POR CÓDIGO porque así las devuelve aSa y así están agrupadas las filas: una
+  // lectura sirve a todas las barras de ese código. Pedirlas de a una sería multiplicar
+  // por diez el tiempo para el mismo dibujo.
+  function _ccsVisibles() {
+    var vistos = {}, out = [];
+    itemsVisibles().forEach(function (i) {
+      var k = i.cc || '';
+      if (k && !vistos[k]) { vistos[k] = 1; out.push({ cc: k, job: i.job }); }
+    });
+    return out;
+  }
+  function _ccsSinFigura() {
+    return _ccsVisibles().filter(function (g) { return !REVS.figs[g.cc]; });
+  }
+
+  // La barra que corresponde a una señal dentro de lo leído: por referencia y, si no, por
+  // la marca —el mismo par que ya usaba el detalle de una señal—.
+  function _barraDe(cc, ref) {
+    var c = REVS.figs[cc];
+    if (!c || c.estado !== 'listo') return null;
+    return c.barras[ref] || c.barras[String(ref).split('#')[0]] || null;
+  }
+
+  function _celda(cc, ref) {
+    var c = REVS.figs[cc];
+    if (!c) return '';
+    if (c.estado === 'cargando') return '<span class="muted">…</span>';
+    if (c.estado === 'error') return '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
+    var b = _barraDe(cc, ref);
+    if (!b) return '<span class="muted" title="La barra ya no está en este código en aSa">ya no está</span>';
+    if (!global.audBarraNormalizada || !global.audCeldaFigura) return '';
+    try {
+      return global.audCeldaFigura(global.audBarraNormalizada(b, 'asa'));
+    } catch (e) { return '<span class="muted">—</span>'; }
+  }
+
+  // Se escribe SOBRE las celdas, sin repintar la hoja: lo que ya está marcado sigue
+  // marcado y los formularios abiertos no se cierran.
+  function _pintarFiguras(cc) {
+    var caja = $('revItemsCuerpo');
+    if (!caja) return;
+    caja.querySelectorAll('td[data-fig]').forEach(function (td) {
+      if (cc && td.dataset.cc !== cc) return;
+      td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);
+    });
+  }
+
+  // Olvida lo leído de los códigos a los que pertenecen esas señales.
+  function _olvidarFiguras(ids) {
+    var m = {};
+    ids.forEach(function (x) { m[String(x)] = 1; });
+    ((REVS.detalle || {}).items || []).forEach(function (i) {
+      if (m[String(i.id)] && i.cc) delete REVS.figs[i.cc];
+    });
+  }
+
+  async function cargarFiguras(cc, job) {
+    if (!cc || REVS.figs[cc]) return;
+    REVS.figs[cc] = { estado: 'cargando', barras: {} };
+    _pintarFiguras(cc);
+    try {
+      // Sin `element`: el código entero de una vez. aSa cobra lo mismo por uno que por
+      // todos sus elementos, y las filas de un grupo son de varios elementos.
+      var d = await req('GET', '/auditorias/elemento-asa?cc=' + encodeURIComponent(cc));
+      var ix = {};
+      (d.barras || []).forEach(function (b) {
+        if (b.ref) ix[b.ref] = b;
+        if (b.marca && !ix[b.marca]) ix[b.marca] = b;
+      });
+      REVS.figs[cc] = { estado: 'listo', barras: ix };
+    } catch (e) {
+      REVS.figs[cc] = { estado: 'error', barras: {}, msg: e.message };
+    }
+    _pintarFiguras(cc);
+  }
+
+  // DE A UNO Y CON CUENTA. Treinta códigos en paralelo tumban la sesión de aSa; en serie
+  // se ve avanzar y se puede cerrar el modal sin dejar nada a medias.
+  async function cargarTodasLasFiguras(boton) {
+    var faltan = _ccsSinFigura();
+    if (!faltan.length) return;
+    if (boton) boton.disabled = true;
+    for (var i = 0; i < faltan.length; i++) {
+      if (!$('revItemsModal') || $('revItemsModal').style.display === 'none') break;
+      if (boton) boton.textContent = 'Leyendo aSa… ' + (i + 1) + ' de ' + faltan.length;
+      await cargarFiguras(faltan[i].cc, faltan[i].job);
+    }
+    _pintarAcc();
   }
 
   function filaItem(i) {
@@ -321,13 +431,15 @@
           '<button class="' + (nap ? 'on' : '') + '" data-noaplica="' + i.id + '"' +
             ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
         '</div>';
-    var cols = _esAdmin() ? 7 : 6;
+    var cols = _esAdmin() ? 8 : 7;
     return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
       '<td style="width:22px">' + (hecho || nap ? (hecho ? '✓' : '–') :
         '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
         ' title="Ya la corregí">') + '</td>' +
       '<td class="revm" style="width:92px"><span class="audref" data-ver="' + i.id +
-        '" title="Ver la barra como está hoy en aSa">' + esc(i.ref) + '</span></td>' +
+        '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
+      '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '">' +
+        _celda(i.cc, i.ref) + '</td>' +
       '<td style="width:150px">' + esc(r.nombre) + '</td>' +
       '<td>' + esc(det.texto || '') + firma + '</td>' +
       (_esAdmin() ? '<td style="width:92px">' + esc(i.cubico || '') + '</td>' : '') +
@@ -360,7 +472,7 @@
     caja.querySelectorAll('input[data-item]').forEach(function (c) {
       c.addEventListener('change', function () {
         if (c.checked) REVS.sel_items[c.dataset.item] = true; else delete REVS.sel_items[c.dataset.item];
-        pintarItems();
+        _pintarAcc();
       });
     });
     caja.querySelectorAll('input[data-grupo]').forEach(function (c) {
@@ -372,7 +484,15 @@
             if (c.checked) REVS.sel_items[x.dataset.item] = true; else delete REVS.sel_items[x.dataset.item];
           }
         });
-        pintarItems();
+        _pintarAcc();
+      });
+    });
+    caja.querySelectorAll('button[data-figs]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        b.disabled = true; b.textContent = 'Leyendo aSa…';
+        await cargarFiguras(b.dataset.figs);
+        b.remove();
+        _pintarAcc();
       });
     });
     // La referencia abre el render: el detalle sigue estando, pero sin un botón que
@@ -397,8 +517,6 @@
         if (e.key === 'Enter') guardarNoAplica(c.dataset.nota);
       });
     });
-    var ver = $('revAccVerificar');
-    if (ver) ver.addEventListener('click', verificarMarcados);
   }
 
   function _marcados() { return Object.keys(REVS.sel_items).map(Number); }
@@ -471,6 +589,10 @@
           (r.faltan_ccs ? ' · quedan ' + r.faltan_ccs + ' código(s) por leer…' : '');
         if (!r.faltan_ccs) break;
       }
+      // LO DIBUJADO DE ESOS CÓDIGOS YA NO VALE: se acaba de leer aSa y la barra pudo
+      // cambiar —es justamente lo que se fue a comprobar—. Se tira sólo lo de esos
+      // códigos, no todo, y se vuelve a pedir cuando alguien lo mire.
+      _olvidarFiguras(ids);
       REVS.sel_items = {};
       await refrescarRevision();
       ok('Verificación terminada');
@@ -480,6 +602,9 @@
 
   async function refrescarRevision() {
     if (!REVS.sel) return;
+    // Las figuras leídas NO se tiran acá: lo que cambia es el estado del hallazgo, no la
+    // barra, y volver a leer treinta códigos en cada clic es justo lo que hay que evitar.
+    // Se tiran al abrir otra revisión y cuando una verificación dice que aSa cambió.
     REVS.detalle = await req('GET', '/chequeos/revision/' + REVS.sel);
     pintarResumen();
     if ($('revItemsModal').style.display !== 'none') pintarItems();

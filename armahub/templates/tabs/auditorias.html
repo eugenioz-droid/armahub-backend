@@ -538,7 +538,8 @@
   .revkpi b{display:block; font-size:17px; color:#263238; font-variant-numeric:tabular-nums;}
   .revkpi span{font-size:10px; color:#78909c;}
   /* ══════ LA HOJA DE TRABAJO ══════ */
-  .revhoja{margin:30px auto; max-width:1040px; background:#fff; border-radius:10px; padding:16px 18px;}
+  /* 1180 y no 1040: con la columna de la figura, el texto del hallazgo quedaba en 276px. */
+  .revhoja{margin:30px auto; max-width:1180px; background:#fff; border-radius:10px; padding:16px 18px;}
   .revavance{display:flex; align-items:center; gap:10px; font-size:11.5px; color:#546e7a; margin-bottom:8px;}
   .revavance .revbar2{flex:1; max-width:340px; height:8px; background:#eceff1; border-radius:99px; overflow:hidden;}
   .revavance .revbar2 i{display:block; height:100%; background:#8BC34A;}
@@ -550,6 +551,8 @@
   .revcc2 h5 .muted{font-weight:400;}
   .revcc2 table{width:100%; border-collapse:collapse; font-size:11px;}
   .revcc2 td{padding:4px 9px; border-top:1px solid #f2f4f7; vertical-align:top;}
+  .revfig{width:120px; text-align:center; padding:3px 4px !important;}
+  .revfig svg{display:block; margin:0 auto; max-width:112px; height:auto;}
   .revcc2 tr.hecho td{background:#f1f8e9;}
   .revcc2 tr.hecho td.revm{color:#558b2f;}
   .revcc2 tr.nap td{background:#fafafa; color:#90a4ae;}
@@ -590,6 +593,9 @@
     .revhoja{max-width:none; margin:0; padding:0;}
     #revItemsImprimir, #revItemsCerrar, .revcubacc, #revItemsCubs,
     .revcc2 input[type=checkbox], .revcc2 td.revacc, .revcc2 tr.revnapform { display:none !important; }
+    /* La figura SÍ se imprime: es la mitad de para qué sirve la hoja. */
+    .revfig, .revfig svg { display:table-cell !important; }
+    .revcc2 tr { break-inside:avoid; }
   }
   /* ══════ EL FLUJO DE CHEQUEOS (13-oct) ══════ */
   .revcarga{font-size:10px; color:#546e7a; background:#eceff1; border-radius:99px; padding:1px 8px; margin-left:8px;}

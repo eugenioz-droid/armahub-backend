@@ -454,5 +454,27 @@ check("la referencia abre el render: el detalle no se perdió",
 check("«Mis chequeos» ya no filtra por el estado muerto que dejó la 146",
       "s.estado = 'corregir'" not in API and "s.estado IN ('abierta', 'declarada')" in API)
 
+print("\n17. La figura de la barra, en la hoja de trabajo")
+# El usuario la pidió en el modal: ver la barra no es lo mismo que leer «lado B de 90 mm».
+check("cada fila tiene su celda de dibujo, con el mismo motor que el auditor",
+      'class="revfig"' in JS and "global.audCeldaFigura(global.audBarraNormalizada(" in JS
+      and ".revfig svg" in HTM)
+# LO QUE NO PUEDE PASAR: pedirle a aSa una barra por fila. Son ~3 segundos cada llamada,
+# y un código entero cuesta lo mismo que una de sus barras.
+check("se pide POR CÓDIGO y sólo cuando alguien lo pide, no al abrir el modal",
+      "'/auditorias/elemento-asa?cc=' + encodeURIComponent(cc)" in JS
+      and "&element=" not in JS.split("async function cargarFiguras(")[1][:900]
+      and "data-figs=" in JS and 'id="revAccFiguras"' in JS)
+check("...y de a uno, no treinta en paralelo",
+      "for (var i = 0; i < faltan.length; i++)" in JS and "await cargarFiguras(faltan[i].cc" in JS)
+check("lo leído queda en memoria: marcar un check no vuelve a dibujar nada",
+      "REVS.figs" in JS and "function _pintarAcc(" in JS
+      and "pintarItems();" not in JS.split("input[data-item]")[1][:300])
+check("...pero se olvida lo de los códigos que una verificación acaba de leer en aSa",
+      "function _olvidarFiguras(" in JS and "_olvidarFiguras(ids);" in JS
+      and "REVS.figs = {};" in JS)
+check("la figura se imprime: es la mitad de para qué sirve la hoja",
+      ".revfig, .revfig svg { display:table-cell !important; }" in HTM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
