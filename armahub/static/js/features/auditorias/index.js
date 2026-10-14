@@ -853,6 +853,17 @@
       inp.addEventListener('click', function (ev) { ev.stopPropagation(); });
       inp.addEventListener('change', guardarUbicacion);
     });
+    // EL INFORME ES DE UNA AUDITORÍA TERMINADA. Lo pidió el usuario: sacarlo a medio
+    // camino produce un documento que dice una cosa hoy y otra mañana, y los informes se
+    // guardan y se mandan.
+    var pdf = $('audPdf');
+    if (pdf) {
+      var lista = AUD.estado === 'cerrada';
+      pdf.disabled = !lista;
+      pdf.title = lista ? 'Informe de la auditoría, en PDF.'
+                        : 'El informe se emite con la auditoría cerrada: hasta entonces ' +
+                          'lo que dice todavía puede cambiar.';
+    }
     pintarAcciones();
     pintarCobertura();
     if (ELEM) {
@@ -1466,16 +1477,33 @@
       });
     });
     var enviada = !!(AUD.enviada || AUD.enviada_el);
-    caja.innerHTML = '<div class="audh">Qué salió de esta auditoría ' +
+    var faltan = AUD.barras_pendientes || 0;
+    caja.innerHTML = '<div class="audh">Resumen Hallazgos ' +
       '<span class="muted">' + total + ' barra(s) · ' + resueltas + ' resuelta(s)' +
       (mias ? ' · <b style="color:#c62828">' + mias + ' tuya(s) por resolver</b>' : '') +
-      '</span></div>' +
+      '</span>' +
+      // LAS FIGURAS, A PEDIDO. Son una lectura a aSa por código: se piden cuando alguien
+      // las quiere, no al abrir la auditoría.
+      (total ? '<button class="audmini" id="audFigs" title="Lee los códigos en aSa y ' +
+               'dibuja cada barra con sus lados. Tarda unos segundos por código.">' +
+               'Ver las figuras</button>' : '') +
+      '<div style="flex:1"></div>' +
+      // EL CIERRE ES DEL AUDITADO: lo aprieta quien respondió, y sólo cuando no le queda
+      // ninguna barra pendiente. La condición la dice el backend, que es el que después
+      // la valida: ofrecer un botón que va a dar 400 es peor que no ofrecerlo.
+      (AUD.puedo_cerrar
+        ? '<button class="audenviar" id="audBtnCerrarOk">Cerrar la auditoría</button>'
+        : (enviada && faltan && AUD.estado !== 'cerrada'
+            ? '<span class="muted" style="font-size:10.5px">quedan ' + faltan +
+              ' barra(s) por resolver para poder cerrar</span>' : '')) +
+      '</div>' +
       (!enviada
         ? '<div class="audnota">Todavía no se envía: hasta que el auditor la mande, nadie ' +
           'puede accionar sobre estas barras.</div>'
         : (mias ? '' : '<div class="audnota">Acá se ve todo lo que salió. Los botones ' +
                        'aparecen en las barras que cubicaste tú.</div>')) +
-      '<table class="audt audacct"><thead><tr><th>Barra</th><th>Elemento</th><th>Cubicó</th>' +
+      '<table class="audt audacct"><thead><tr><th>Barra</th><th>Figura</th>' +
+      '<th>Elemento</th><th>Cubicó</th>' +
       '<th title="Lo que el auditor anotó en esta barra.">Qué se encontró</th>' +
       '<th title="Lo que la barra debería decir, como lo dejó el auditor. De esto vive la ' +
       'comprobación automática contra aSa.">Debería decir</th>' +
@@ -1487,7 +1515,7 @@
         if (!malas.length) {
           // Un elemento con acción pero sin barras marcadas: el hallazgo es del elemento
           // entero (las auditorías viejas son así). Se muestra igual, o desaparecería.
-          return '<tr><td colspan="8" class="audqse"><b>' + esc(nombreCompleto(e)) + '</b> · ' +
+          return '<tr><td colspan="9" class="audqse"><b>' + esc(nombreCompleto(e)) + '</b> · ' +
                  celdaQueSeEncontro(e) + '</td></tr>';
         }
         return malas.map(function (b) { return filaAccion(e, b, enviada); }).join('');
@@ -1516,6 +1544,13 @@
             : '<span class="audacc1 pendiente">Por corregir</span>';
     var acc = '';
     if (puede) {
+      // EL CHECK ES EL ESTADO, NO UNA ORDEN. Era un botón que decía «Ya la corregí» y
+      // encima se veía apretado: no se distinguía lo hecho de lo por hacer. Un check
+      // marcado o no es el estado de la barra, que es lo que se está mirando.
+      //
+      // SIN RCA NO SE PUEDE MARCAR. El backend lo rechaza igual; acá se apaga el check y
+      // se dice por qué, en vez de dejar que lo aprieten y les salte un error.
+      var sinRca = !b.causa;
       acc = '<div class="revseg">' +
               '<button class="' + (b.desestimado ? '' : 'on') + '" data-aplica="' + b.item_id + '"' +
                 (b.desestimado ? '' : ' disabled') +
@@ -1524,26 +1559,36 @@
                 ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
             '</div>' +
             (b.desestimado ? '' :
-              '<button class="audmini ver" data-corregi="' + b.item_id + '">Ya la corregí</button>');
+              '<label class="audchk' + (sinRca ? ' off' : '') + '" title="' +
+                (sinRca ? 'Primero clasifica por qué pasó (RCA).'
+                        : 'Márcala cuando ya esté cambiada en aSa. El sistema lo comprueba solo.') +
+                '"><input type="checkbox" data-corregi="' + b.item_id + '"' +
+                (sinRca ? ' disabled' : '') + '> Corregido en aSa</label>');
     } else if (b.corregido && e.mio) {
-      acc = '<button class="audmini" data-deshacer="' + b.item_id + '">Deshacer</button>';
+      acc = '<label class="audchk on" title="Marcada como corregida. Desmárcala si no lo está.">' +
+            '<input type="checkbox" data-deshacer="' + b.item_id + '" checked> Corregido en aSa</label>';
     } else if (b.desestimado && AUD.soy_auditor) {
       // Derecho a réplica del auditor: el descarte vale por defecto, pero si no
       // corresponde lo reabre dejando por escrito por qué.
       acc = '<button class="audmini" data-objetar="' + b.item_id + '" title="Reabre esta ' +
             'barra: el descarte no se acepta. Queda registrado y le llega a quien cubicó.">No lo acepto</button>';
     }
+    // RCA = análisis de causa raíz. El usuario lo llama así y es como se llama en la
+    // norma; «Clasificar» no decía qué se estaba clasificando.
     var causa = b.causa
       ? '<button class="audmini" data-causa="' + b.item_id + '"' + (puede ? '' : ' disabled') +
         ' title="' + esc(b.causa + (b.causa_texto ? ' · ' + b.causa_texto : '')) + '">' +
         esc(b.causa) + (puede ? ' ✎' : '') + '</button>'
       : (puede
           ? '<button class="audmini sinc" data-causa="' + b.item_id +
-            '" title="Elige en la matriz Ishikawa por qué pasó.">Clasificar</button>'
-          : '<span class="muted">sin clasificar</span>');
-    var cols = 8;
+            '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar la ' +
+            'barra por corregida.">RCA</button>'
+          : '<span class="muted">sin RCA</span>');
+    var cols = 9;
     return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
       '<td><span class="audref">' + esc(b.ref || b.marca || '') + '</span></td>' +
+      '<td class="revfig" data-afig="' + esc(b.ref || '') + '" data-acc="' + esc(e.cc || '') + '">' +
+        _figAud(e.cc, b.ref) + '</td>' +
       '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
       '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
       '<td class="audqse">' + esc(b.observacion || '') +
@@ -1564,18 +1609,71 @@
         '</div></td></tr>';
   }
 
+  // LAS FIGURAS DE LA AUDITORÍA. Mismo trato que en la revisión de barras: se piden POR
+  // CÓDIGO —una lectura sirve a todas sus barras— y sólo cuando alguien las pide, porque
+  // cada una son un par de segundos contra aSa.
+  var AFIGS = {};
+  function _figAud(cc, ref) {
+    var c = AFIGS[cc];
+    if (!c) return '';
+    if (c.estado === 'cargando') return '<span class="muted">…</span>';
+    if (c.estado === 'error') return '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
+    var b = c.barras[ref] || c.barras[String(ref).split('#')[0]];
+    if (!b) return '<span class="muted">ya no está</span>';
+    if (!global.audCeldaFigura) return '';
+    try {
+      var f = normalizarBarra(b, 'asa');
+      var dims = Object.keys(f.dims || {});
+      var ang = f.angulos || [];
+      var txt = dims.map(function (L, n) {
+        return (n > 0 && ang[n - 1] != null ? '<i class="revang">' + Math.round(ang[n - 1]) + '°</i> ' : '') +
+               '<span>' + esc(L) + ' ' + Math.round(f.dims[L]) + '</span>';
+      }).join(' ');
+      return celdaFigura(f) + '<div class="audlados">' + txt + '</div>';
+    } catch (err) { return '<span class="muted">—</span>'; }
+  }
+
+  async function cargarFigurasAud(boton) {
+    var ccs = [];
+    (AUD.elementos || []).forEach(function (e) {
+      if ((e.barras_malas || []).length && e.cc && !AFIGS[e.cc] && ccs.indexOf(e.cc) === -1) {
+        ccs.push(e.cc);
+      }
+    });
+    if (!ccs.length) return;
+    if (boton) boton.disabled = true;
+    for (var i = 0; i < ccs.length; i++) {
+      if (boton) boton.textContent = 'Leyendo aSa… ' + (i + 1) + ' de ' + ccs.length;
+      AFIGS[ccs[i]] = { estado: 'cargando', barras: {} };
+      try {
+        var d = await req('GET', '/auditorias/elemento-asa?cc=' + encodeURIComponent(ccs[i]));
+        var ix = {};
+        (d.barras || []).forEach(function (b) {
+          if (b.ref) ix[b.ref] = b;
+          if (b.marca && !ix[b.marca]) ix[b.marca] = b;
+        });
+        AFIGS[ccs[i]] = { estado: 'listo', barras: ix };
+      } catch (err) { AFIGS[ccs[i]] = { estado: 'error', barras: {}, msg: err.message }; }
+    }
+    pintarAcciones();
+  }
+
   function _bindAcciones(caja) {
+    var f = $('audFigs');
+    if (f) f.addEventListener('click', function () { cargarFigurasAud(f); });
+    var cz = $('audBtnCerrarOk');
+    if (cz) cz.addEventListener('click', cerrarResueltas);
     caja.querySelectorAll('button[data-objetar]').forEach(function (b) {
       b.addEventListener('click', function () { objetar(b.dataset.objetar); });
     });
     caja.querySelectorAll('button[data-causa]').forEach(function (b) {
       b.addEventListener('click', function () { clasificarItem(b.dataset.causa); });
     });
-    caja.querySelectorAll('button[data-corregi]').forEach(function (b) {
-      b.addEventListener('click', function () { corregirItem(b.dataset.corregi, true); });
+    caja.querySelectorAll('input[data-corregi]').forEach(function (b) {
+      b.addEventListener('change', function () { corregirItem(b.dataset.corregi, true, b); });
     });
-    caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
-      b.addEventListener('click', function () { corregirItem(b.dataset.deshacer, false); });
+    caja.querySelectorAll('input[data-deshacer]').forEach(function (b) {
+      b.addEventListener('change', function () { corregirItem(b.dataset.deshacer, false, b); });
     });
     caja.querySelectorAll('button[data-aplica]').forEach(function (b) {
       b.addEventListener('click', function () { desestimarItem(b.dataset.aplica, false); });
@@ -1617,19 +1715,31 @@
   // DEJAR SIN EFECTO UNA BARRA, o volverla a dejar válida. El motivo es obligatorio y es
   // todo el valor de esto: sin él, dentro de un mes nadie sabe si estaba bien o si alguien
   // la apagó para sacársela de encima.
+  // MIENTRAS EL SERVIDOR RESPONDE, EL BOTÓN LO DICE. Sin esto quedaban «pegados»: el
+  // clic no cambiaba nada a la vista y la gente apretaba de nuevo.
+  function _ocupado(el, si) {
+    if (!el) return;
+    el.disabled = !!si;
+    el.classList.toggle('audwait', !!si);
+  }
+
+  function _botonDe(sel) { return document.querySelector(sel); }
+
   async function desestimarItem(itemId, desestimar, motivo) {
+    var bt = _botonDe('[data-' + (desestimar ? 'noaplica' : 'aplica') + '="' + itemId + '"]');
+    _ocupado(bt, true);
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/desestimar',
                       { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.' });
       ok(desestimar ? 'Barra dejada sin efecto' : 'La barra vuelve a quedar por corregir');
       await cargarLista(); await cargarMisAcciones(); pintarDetalle();
-    } catch (e) { aviso(e.message); }
+    } catch (e) { aviso(e.message); _ocupado(bt, false); }
   }
 
   // DECLARAR QUE SE CORRIGIÓ. Se pregunta CÓMO, y no es burocracia: si se corrigió la
   // misma barra el sistema puede ir a mirarla en aSa, y si se rehizo en otro código NO
   // puede —la barra vieja va a seguir diciendo lo mismo para siempre—.
-  async function corregirItem(itemId, corregido) {
+  async function corregirItem(itemId, corregido, control) {
     var cuerpo = { corregido: !!corregido, tipo: 'item' };
     if (corregido) {
       var nuevo = global.confirm(
@@ -1645,12 +1755,33 @@
         if (im && im.trim()) cuerpo.item_nuevo = im.trim();
       }
     }
+    _ocupado(control, true);
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/correccion', cuerpo);
       ok(corregido ? 'Declarada corregida: el sistema la va a comprobar en aSa'
                    : 'Vuelve a quedar por corregir');
       await cargarLista(); await cargarMisAcciones(); pintarDetalle();
-    } catch (e) { aviso(e.message); }
+    } catch (e) {
+      aviso(e.message);
+      // El check vuelve a como estaba: si no, queda marcado algo que el servidor rechazó.
+      if (control) { control.checked = !corregido; _ocupado(control, false); }
+    }
+  }
+
+  // CERRAR, cuando no queda ninguna barra pendiente. Lo aprieta quien respondió.
+  async function cerrarResueltas() {
+    var b = $('audBtnCerrarOk');
+    _ocupado(b, true);
+    if (b) b.textContent = 'Cerrando…';
+    try {
+      AUD = await req('POST', '/auditorias/' + AUD.id + '/cerrar-resueltas', {});
+      ok('Auditoría cerrada');
+      await cargarLista(); await cargarMisAcciones(); await cargarIndicadores(); pintarDetalle();
+    } catch (e) {
+      aviso(e.message);
+      _ocupado(b, false);
+      if (b) b.textContent = 'Cerrar la auditoría';
+    }
   }
 
   // LA MATRIZ ISHIKAWA DE UNA BARRA. Es la MISMA matriz de los reclamos, con la misma

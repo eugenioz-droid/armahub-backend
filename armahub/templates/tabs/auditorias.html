@@ -533,6 +533,26 @@
   .audnota{background:#f7f9fb; border:1px solid #e3e8ef; color:#607d8b; font-size:11px;
            padding:6px 9px; border-radius:5px; margin-bottom:8px;}
   .audacc2{white-space:nowrap; display:flex; gap:4px; align-items:center;}
+  /* EL CHECK ES EL ESTADO, no una orden: marcado = la barra ya está cambiada en aSa. */
+  .audchk{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:#37474f;
+          background:#f1f8e9; border:1px solid #c5e1a5; border-radius:5px; padding:2px 7px;
+          cursor:pointer; white-space:nowrap;}
+  .audchk.on{background:#e8f5e9; border-color:#81c784; color:#2e7d32; font-weight:600;}
+  .audchk.off{background:#fafafa; border-color:#e0e0e0; color:#b0bec5; cursor:not-allowed;}
+  /* LA SEÑAL DE QUE SE APRETÓ. Sin esto los botones quedaban «pegados»: el clic no
+     cambiaba nada a la vista mientras el servidor respondía, y se apretaba de nuevo. */
+  .audwait{opacity:.55; cursor:progress !important; position:relative;}
+  .audwait::after{content:''; position:absolute; left:0; right:0; bottom:-1px; height:2px;
+                  background:linear-gradient(90deg, transparent, #1565C0, transparent);
+                  animation:audwait 0.9s linear infinite;}
+  @keyframes audwait{ 0%{transform:translateX(-100%);} 100%{transform:translateX(100%);} }
+  .audmini:active:not(:disabled), .audbtn:active:not(:disabled),
+  .audenviar:active:not(:disabled){transform:translateY(1px);}
+  .revseg button:active:not(:disabled){transform:translateY(1px);}
+  .audlados{font-size:9.5px; color:#78909c; margin-top:2px; line-height:1.4;}
+  .audlados .revang{color:#b0bec5; font-style:normal; font-size:9px;}
+  .audacct td.revfig{width:124px; text-align:center;}
+  .audacct td.revfig svg{display:block; margin:0 auto; max-width:116px; height:auto;}
   .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
   .audacct tr.audnapform td{background:#fff8e1;}
   /* ══════ LAS REVISIONES ══════ */

@@ -1454,11 +1454,22 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # `enviada_el`: con el nombre equivocado esto daba True sobre una auditoría ya
             # enviada, la pantalla abría el formulario y el guardado moría en un 409.
             aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada"))
+            tengo_barras = False
             for e in aud["elementos"]:
                 e["barras_malas"] = por_elemento.get(e["id"], [])
                 e["mio"] = bool(soy_admin or
                                 ((e.get("cubicado_por") or "").strip() in mios
                                  and (e.get("cubicado_por") or "").strip()))
+                if e["barras_malas"] and (e["mio"] or soy_admin):
+                    tengo_barras = True
+            # PUEDO CERRAR: lo dice el backend con la misma regla que valida el endpoint,
+            # para que el botón no ofrezca algo que va a dar 400. Cierra quien respondió,
+            # y sólo cuando no queda ninguna barra pendiente.
+            todas = [b for e in aud["elementos"] for b in e["barras_malas"]]
+            pendientes = [b for b in todas if not b["corregido"] and not b["desestimado"]]
+            aud["barras_pendientes"] = len(pendientes)
+            aud["puedo_cerrar"] = bool(aud.get("enviada") and aud.get("estado") != "cerrada"
+                                       and todas and not pendientes and tengo_barras)
     # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
     # responde «qué falta por mirar».
     try:
@@ -2129,6 +2140,83 @@ def reabrir(auditoria_id: int, body: ReaperturaBody, user=Depends(get_current_us
     return detalle(auditoria_id, user)
 
 
+@router.post("/auditorias/{auditoria_id}/cerrar-resueltas")
+def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_current_user)):
+    """EL AUDITADO CIERRA, cuando ya no le queda ninguna barra pendiente.
+
+    Lo pidió el usuario (13-oct): «debe haber un botón de cerrar, que sólo se puede
+    presionar una vez cerradas todas las barras», y que lo apriete el auditado.
+
+    POR QUÉ UN BOTÓN Y NO SÓLO EL CIERRE AUTOMÁTICO. La auditoría ya se cierra sola cuando
+    el sistema comprueba la última barra contra aSa, y eso no cambia. Pero una barra puede
+    quedarse esperando esa comprobación —se rehízo en otro código, aSa todavía no refresca,
+    la barra ya no existe— y entonces el trabajo está hecho y el registro dice que no. Esto
+    es la firma de quien lo hizo: «terminé lo mío».
+
+    LO QUE NO PERMITE es cerrar con algo pendiente. La condición se comprueba acá y no sólo
+    escondiendo el botón: la pantalla se puede quedar abierta de antes, y entre que se pinta
+    y se aprieta alguien pudo reabrir una barra.
+    """
+    _puede_ver(user)
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT codigo, auditor, enviada_el, estado FROM auditorias WHERE id = %s",
+                        (auditoria_id,))
+            fila = cur.fetchone()
+            if not fila:
+                raise HTTPException(status_code=404, detail="Auditoría no encontrada.")
+            codigo, auditor, enviada_el, estado = fila
+            if not enviada_el:
+                raise HTTPException(status_code=400,
+                                    detail="Primero hay que enviarla: no se cierra lo que nadie vio.")
+            if estado == "cerrada":
+                raise HTTPException(status_code=400, detail="Esta auditoría ya está cerrada.")
+            # QUIÉN: alguien que tenga barras acá (el auditado) o administración. El auditor
+            # tiene su propio camino —«cerrar a mano», con motivo— porque cerrar lo que él
+            # mismo observó sin que nadie responda es otra cosa y tiene que quedar dicho.
+            mios = alias_cubicador(cur, email)
+            cur.execute(
+                """SELECT COUNT(*) FILTER (WHERE NOT i.corregido AND NOT i.desestimado),
+                          COUNT(*),
+                          COUNT(*) FILTER (WHERE TRIM(COALESCE(e.cubicado_por, '')) = ANY(%s))
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE""",
+                (mios, auditoria_id))
+            pendientes, total, mias = cur.fetchone()
+            if user.get("role") not in ROLES_ADMINISTRAN and not mias:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cierra quien tuvo barras que corregir en esta auditoría.")
+            if pendientes:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Todavía quedan %d barra(s) sin resolver: cada una tiene que "
+                           "quedar corregida o sin efecto antes de cerrar." % pendientes)
+            cur.execute(
+                """UPDATE auditorias
+                      SET cerrada_a_mano = TRUE, cerrada_por = %s,
+                          cerrada_motivo = %s
+                    WHERE id = %s""",
+                (email, "Cerrada por quien respondió: las %d barra(s) quedaron resueltas."
+                        % (total or 0), auditoria_id))
+            cerro = _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_cerrada_auditado",
+                  "%s: %d barra(s) resueltas" % (codigo, total or 0),
+                  "auditoria", str(auditoria_id))
+    aud = detalle(auditoria_id, user)
+    # EL MISMO AVISO QUE LOS OTROS DOS CIERRES. Un cierre es un cierre venga de donde
+    # venga: si éste no mandara el correo, el auditor se enteraría de que su auditoría
+    # terminó sólo si entra a mirarla.
+    if cerro:
+        aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)
+        if auditor:
+            _avisar(auditor, "Auditoría %s: %s cerró sus correcciones."
+                    % (codigo, email.split("@")[0]))
+    return aud
+
+
 class CierreBody(BaseModel):
     motivo: str
 
@@ -2775,6 +2863,21 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
             elemento_id, _, ref, cubico, nombre, codigo, auditor = \
                 _barra_del_auditado(cur, auditoria_id, item_id, user)
             _solo_si_enviada(cur, auditoria_id)
+            # SIN CAUSA NO SE DA POR CORREGIDA. Lo fijó el usuario (13-oct): «no se puede
+            # presionar resuelto si no se clasifica el Ishikawa».
+            #
+            # Y no es burocracia: una corrección sin causa arregla la barra y deja el
+            # problema vivo. El Pareto de causas es lo único que dice si el error se repite
+            # por el plano, por la figura o por la digitación, y se llena acá o no se llena.
+            # Dejar sin efecto NO la pide: ahí no hubo error que explicar, y su motivo ya
+            # va escrito y firmado.
+            if body.corregido:
+                cur.execute("SELECT causa FROM auditoria_items WHERE id = %s", (item_id,))
+                if not (cur.fetchone() or [None])[0]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Antes de darla por corregida, clasifica por qué pasó (RCA). "
+                               "Sin eso se arregla la barra y el problema queda vivo.")
             cur.execute(
                 """UPDATE auditoria_items
                       SET corregido = %s, corregido_por = %s,

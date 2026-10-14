@@ -630,7 +630,7 @@ check("en el veredicto de cada barra",
       ">Hallazgo</button>' +" in JS and 'title="No conforme">NC<' not in JS)
 check("el auditor ya no tiene botones de corregir ni de verificar",
       'data-acc="corregida"' not in JS and 'data-acc="verificada"' not in JS
-      and "Qué salió de esta auditoría" in JS)
+      and "Resumen Hallazgos" in JS)
 
 print("\n8a. El flujo: ENVIAR es lo que le pasa el trabajo al auditado")
 # Hasta el 8-oct «cerrada» significaba «se revisó el último elemento», y el auditado veía
@@ -943,8 +943,10 @@ check("...o dice que no hubo nada, en vez de dejar un hueco",
 # lo que el sistema no puede comprobar.
 check("lo dispara el cierre, una sola vez: revisar de nuevo algo ya cerrado no reenvía",
       "return estado == \"cerrada\" and antes != \"cerrada\"" in SRC
-      and SRC.count("cerro = _recalcular(cur, auditoria_id)") == 3
-      and SRC.count('aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)') == 3)
+      # Cada camino que puede cerrar manda el aviso, y los dos conteos van juntos: si
+      # alguien agrega un cierre nuevo y se olvida del correo, esto se cae.
+      and SRC.count("cerro = _recalcular(cur, auditoria_id)") ==
+          SRC.count('aud["correo_cierre"] = _avisar_auditoria_cerrada(aud, request)') >= 4)
 
 print("\n12. El correo de la auditoría nueva: a quién y con qué enlace")
 # «Quiero que se envíe un correo a los cubicadores cuando se asigne una auditoría. Debe
@@ -1027,6 +1029,52 @@ check("los botones salen sólo en las barras propias, y sólo si está enviada",
       "var puede = !!(e.mio && enviada && !b.corregido);" in JS)
 check("el auditor conserva su derecho a réplica sobre un descarte",
       "data-objetar=" in JS and "AUD.soy_auditor" in JS)
+
+print("\nRESUMEN HALLAZGOS: el auditado cierra su trabajo")
+check("la caja se llama Resumen Hallazgos",
+      "Resumen Hallazgos" in JS and "Qué salió de esta auditoría" not in JS)
+# SIN RCA NO SE DA POR CORREGIDA. Una correccion sin causa arregla la barra y deja el
+# problema vivo: el Pareto de causas es lo unico que dice si el error se repite.
+check("sin RCA no se puede dar una barra por corregida, y lo rechaza el BACKEND",
+      "clasifica por qué pasó (RCA)" in SRC
+      and "SELECT causa FROM auditoria_items WHERE id = %s" in SRC)
+check("...y la pantalla apaga el check en vez de dejar que salte el error",
+      "var sinRca = !b.causa;" in JS and "audchk' + (sinRca ? ' off' : '')" in JS)
+check("...pero «no aplica» NO lo pide: ahí no hubo error que explicar",
+      "Dejar sin efecto NO la pide" in SRC
+      and "if body.corregido:" in SRC.split("clasifica por qué pasó")[0][-700:])
+check("«Clasificar» pasa a llamarse RCA", ">RCA</button>" in JS and "sin RCA" in JS)
+check("«Ya la corregí» pasa a ser un CHECK que dice «Corregido en aSa»",
+      "Corregido en aSa" in JS and ">Ya la corregí</button>" not in JS
+      and 'type="checkbox" data-corregi=' in JS and ".audchk" in HTM)
+# El usuario: «al presionar los botones no funciona la animacion, quedan pegados».
+check("los botones dan señal mientras el servidor responde",
+      "function _ocupado(" in JS and ".audwait" in HTM and "@keyframes audwait" in HTM
+      and ":active:not(:disabled)" in HTM)
+check("...y si el servidor rechaza, el check vuelve a como estaba",
+      "control.checked = !corregido" in JS)
+# EL CIERRE ES DEL AUDITADO, y sólo con todo resuelto. Verificado contra A-2026-018:
+# con 15 pendientes da 400; marcadas las 15, la condición se cumple.
+check("hay un cierre del auditado, aparte del «cerrar a mano» del auditor",
+      '@router.post("/auditorias/{auditoria_id}/cerrar-resueltas")' in SRC
+      and "def cerrar_resueltas(" in SRC)
+check("...que exige que no quede NINGUNA barra pendiente",
+      "Todavía quedan %d barra(s) sin resolver" in SRC
+      and "COUNT(*) FILTER (WHERE NOT i.corregido AND NOT i.desestimado)" in SRC)
+check("...y que lo cierre quien tuvo barras acá, no cualquiera",
+      "Cierra quien tuvo barras que corregir en esta auditoría." in SRC)
+check("la condición la dice el backend, para no ofrecer un botón que iba a dar 400",
+      '"puedo_cerrar"' in SRC and '"barras_pendientes"' in SRC and "AUD.puedo_cerrar" in JS)
+# EL INFORME ES DE UNA AUDITORIA TERMINADA: a medio camino dice una cosa hoy y otra
+# mañana, y los informes se guardan y se mandan.
+check("el informe PDF sólo se emite con la auditoría cerrada",
+      "AUD.estado === 'cerrada'" in JS.split("var pdf = $('audPdf');")[1][:400]
+      and "pdf.disabled = !lista" in JS)
+check("la figura de la barra se puede ver en el resumen, pedida por código",
+      "function _figAud(" in JS and "async function cargarFigurasAud(" in JS
+      and 'id="audFigs"' in JS and "'/auditorias/elemento-asa?cc='" in JS)
+check("...con sus lados y ángulos, como en la revisión de barras",
+      "audlados" in JS and "audlados" in HTM and "f.angulos" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
