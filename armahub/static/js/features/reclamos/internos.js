@@ -6,7 +6,10 @@
 
 var _intAbiertoFilter = '';
 var _intAplicaFilter = '';
-var _intScopeAll = false;
+// Igual que la lista de clientes: se arranca viendo TODO. Lo pidió el usuario el
+// 14-oct, y el backend nunca restringió el listado — `scope=mine` es un filtro que
+// manda el cliente, no una barrera.
+var _intScopeAll = true;
 var _intFormInit = false;
 
 var _INT_APLICA_CYCLE = ['', 'pendiente', 'si', 'no'];
@@ -239,7 +242,7 @@ function toggleIntAbierto() {
 function limpiarFiltrosInternos() {
   var b = document.getElementById('recIntFiltroBusqueda');
   if (b) b.value = '';
-  _intAbiertoFilter = ''; _intAplicaFilter = ''; _intScopeAll = false;
+  _intAbiertoFilter = ''; _intAplicaFilter = ''; _intScopeAll = true;
   var btnA = document.getElementById('recIntFiltroAbiertoBtn');
   if (btnA) { btnA.textContent = 'Abiertos/Cerrados'; btnA.style.borderColor = '#7b1fa2'; btnA.style.color = '#7b1fa2'; btnA.style.background = '#fff'; }
   var btnAp = document.getElementById('recIntFiltroAplicaBtn');

@@ -63,18 +63,28 @@ function populateRecFilterProyecto() {
   var _recScopeAll = false;
   var _recScopeInitialized = false;
 
+  // TODOS LOS CUBICADORES VEN TODO (14-oct, lo pidió el usuario). Antes cada uno
+  // arrancaba viendo sólo lo suyo y el rol `externo` ni siquiera tenía el botón para
+  // mirar el resto.
+  //
+  // NO ES UN PERMISO QUE SE ABRE: el backend nunca restringió el listado —`solo_mios` es
+  // un filtro opcional que manda el cliente— así que esto era una vista por defecto, no
+  // una barrera. Lo que sí sigue cerrado es ESCRIBIR: editar un reclamo ajeno da 403, y
+  // eso no se toca.
+  //
+  // El `cliente` queda fuera, y no por esta lista: su cerrojo está en auth.py, que le
+  // niega todo lo que no sea su propio módulo.
   function _initScopeToggle() {
     var scopeBtn = document.getElementById('recFiltroScope');
     if (!scopeBtn) return;
-    if (['externo','cliente'].includes(currentRole)) {
+    if (currentRole === 'cliente') {
       scopeBtn.style.display = 'none';
       return;
     }
     scopeBtn.style.display = '';
     if (!_recScopeInitialized) {
       _recScopeInitialized = true;
-      // Admin/admin_calidad start seeing ALL; usc/cubicador start seeing MINE
-      _recScopeAll = ['admin','admin_calidad'].includes(currentRole);
+      _recScopeAll = true;
       _updateScopeBtnLabel(scopeBtn);
     }
   }
@@ -173,12 +183,8 @@ async function loadReclamos() {
   if (_recAbiertoFilter) params.push('abierto_cerrado=' + encodeURIComponent(_recAbiertoFilter));
   // Reclamos Clientes = solo externos (Internos viven en su propio sub-tab).
   params.push('tipo_origen=externo');
-  // Scope: externo always solo_mios; others depend on toggle
-  if (currentRole === 'externo') {
-    params.push('solo_mios=true');
-  } else if (!_recScopeAll) {
-    params.push('solo_mios=true');
-  }
+  // El alcance lo manda el toggle, para todos por igual. El cliente no llega acá.
+  if (!_recScopeAll) params.push('solo_mios=true');
   if (params.length > 0) url += '?' + params.join('&');
 
   var data = await apiGet(url);
