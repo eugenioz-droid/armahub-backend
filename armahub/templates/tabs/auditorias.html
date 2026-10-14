@@ -291,15 +291,12 @@
              Si seleccionamos una revisión se filtra. Así además tiene sentido el filtro
              de los cubicadores que se aplica a todas las revisiones». -->
         <div class="card audc" id="revResumen">
-          <div id="revResCuerpo"></div>
-        </div>
-
-        <div class="card audc" id="revListaCard">
-          <div class="audh">Revisiones
-            <span class="muted" id="revListaN"></span>
-            <!-- El año: un año nuevo no arrastra las columnas de cubicadores del
-                 anterior. Sólo aparece cuando hay más de uno. -->
-            <div class="dshchips audtam" id="revAnios"></div>
+          <!-- LA ACCIÓN QUE INICIA TODO, ARRIBA. Estaba abajo, en la cabecera de la
+               lista, y lo de arriba era «abrir los hallazgos»: el usuario pidió
+               invertirlos. Correr una revisión es lo primero que se hace; abrir lo que
+               encontró es lo segundo, y ahora va en cada línea. -->
+          <div class="audh" id="revAcciones">
+            <span id="revAccTit"></span>
             <div style="flex:1"></div>
             <div class="dshchips"><button id="revTarde" title="Un código Processed ya está
               confirmado en planta: revisarlo suele llegar tarde, pero a veces hay que
@@ -310,6 +307,16 @@
             <div class="revbar"><i id="revNuevaBarra"></i></div>
             <div class="muted" id="revNuevaTxt" style="font-size:11px; margin-top:4px;"></div>
             <button id="revNuevaParar" class="audmini" style="display:none; margin-top:4px;">Detener</button>
+          </div>
+          <div id="revResCuerpo"></div>
+        </div>
+
+        <div class="card audc" id="revListaCard">
+          <div class="audh">Revisiones
+            <span class="muted" id="revListaN"></span>
+            <!-- El año: un año nuevo no arrastra las columnas de cubicadores del
+                 anterior. Sólo aparece cuando hay más de uno. -->
+            <div class="dshchips audtam" id="revAnios"></div>
           </div>
           <div class="audbd" style="max-height:62vh;"><div id="revLista"></div></div>
         </div>

@@ -194,7 +194,7 @@
       '<th class="num" title="Lo que la máquina marcó.">Detectados</th>' +
       '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
       'Es contra esto que se mide el avance.">Aplican</th>' +
-      '<th>Avance</th></tr></thead><tbody>' +
+      '<th>Avance</th><th></th></tr></thead><tbody>' +
       vis.map(function (r) {
         var pct = r.pct == null ? 0 : r.pct;
         var pc = r.por_cubicador || {};
@@ -221,7 +221,13 @@
             ? '<span class="muted">sin hallazgos</span>'
             : '<div class="revbar2" style="max-width:90px; display:inline-block; vertical-align:middle;">' +
               '<i style="width:' + pct + '%"></i></div> ' +
-              (pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : pct + '%')) + '</td></tr>';
+              (pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : pct + '%')) + '</td>' +
+          // UN BOTÓN POR LÍNEA, que es lo que pidió el usuario: «tal vez sería más
+          // intuitivo un botón por línea, pero sólo si no recarga la UI». No recarga: abre
+          // el modal con lo de esa revisión y la pantalla de atrás no se vuelve a pintar.
+          '<td class="revacc">' + (r.aplican
+            ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir ' + r.aplican + '</button>'
+            : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
     // La celda abre lo de esa persona; la fila, la revisión entera.
     el.querySelectorAll('td.revcel').forEach(function (td) {
@@ -230,6 +236,13 @@
         await abrirRevision(Number(td.dataset.rev));
         REVS.filtro_cub = td.dataset.cub;
         abrirItems(true);
+      });
+    });
+    el.querySelectorAll('button[data-abrir]').forEach(function (b) {
+      b.addEventListener('click', async function (ev) {
+        ev.stopPropagation();
+        await abrirRevision(Number(b.dataset.abrir));
+        abrirItems();
       });
     });
     el.querySelectorAll('tr.revmatf').forEach(function (tr) {
@@ -287,10 +300,12 @@
         'Ver todo</button>'
       : 'Todas las revisiones <span class="muted">' + (T.revisiones || 0) +
         ' corrida(s) · elige una abajo para filtrar</span>';
+    tit += det ? '<button class="audmini ver" id="revAbrirItems">Abrir los ' + apl +
+                 ' hallazgos</button>' : '';
+    // El título y el «ver todo» viven en la barra de acciones, que ya tiene el botón de
+    // correr una revisión nueva: así arriba queda una sola fila de cabecera.
+    $('revAccTit').innerHTML = tit;
     $('revResCuerpo').innerHTML =
-      '<div class="audh">' + tit + '<div style="flex:1"></div>' +
-        (det ? '<button class="audbtn" id="revAbrirItems">Abrir los ' + apl + ' hallazgos</button>' : '') +
-      '</div>' +
       '<div class="revkpis">' + kpis.map(function (k) {
         return '<div class="revkpi"><b>' + k[0] + '</b><span>' + k[1] + '</span></div>'; }).join('') + '</div>' +
       (!det
