@@ -439,7 +439,13 @@ print("\n14. La REVISIÓN es la unidad, y el ciclo de un hallazgo se cierra")
 # nuevo».
 check("cada señal queda pegada a la revisión que la encontró (no se infiere por la hora)",
       "revision_id" in MIG6 and "body.revision))" in API
-      and "WHERE s.revision_id = %s" in API)
+      and "s.revision_id = %s" in API)
+# CON id 0 SON TODAS. El estado de la pantalla paso a ser global —se mira el total y se
+# filtra eligiendo una revision—, asi que «abrir los hallazgos» sin ninguna elegida tiene
+# que poder abrirlos todos. Es la misma consulta sin el filtro, no otra pantalla.
+check("...y el detalle sabe devolver TODAS, para el bloque global de arriba",
+      "todas = revision_id == 0" in API
+      and "(%s AND s.revision_id IS NOT NULL) OR s.revision_id = %s" in API)
 check("...sólo al INSERTAR: una señal que ya existía sigue siendo de su corrida",
       "sigue\n                     # siendo de la corrida que la encontró" in API
       or "sigue siendo la corrida" in API or "DE QUÉ REVISIÓN ES. Sólo al INSERTAR" in API)
@@ -465,6 +471,17 @@ check("el segundo check lee en aSa SÓLO los códigos de lo marcado",
       and "function verificarMarcados(" in JS)
 check("el alias del cubicador sale de aSa y no de las auditorías (si no, el dueño no podía declarar)",
       "UNION SELECT detail_person FROM asa_pedidos" in AUD)
+# EL ESTADO VA ARRIBA Y ES GLOBAL (14-oct). Era un segundo cuadro debajo que repetia lo
+# de UNA revision, y los chips de cubicador solo valian para esa: no se podia preguntar
+# «cuanto le queda a Nlopez en total».
+check("el bloque de estado va ARRIBA de la matriz y mira TODAS las revisiones",
+      HTM.index('id="revResumen"') < HTM.index('id="revListaCard"')
+      and "var T = REVS.total || {};" in JS and "Todas las revisiones" in JS)
+check("...y al elegir una revision se filtra, con un boton para volver al total",
+      'id="revTodo"' in JS and "REVS.sel = null; REVS.detalle = null;" in JS)
+check("...el total lo calcula el backend, no se suma fila a fila",
+      '"revisiones": revs, "total": total' in API
+      and "una obra que aparece en dos revisiones es UNA obra" in API)
 check("la pantalla es lista + resumen + hoja de trabajo",
       'id="revLista"' in HTM and 'id="revResCuerpo"' in HTM and 'id="revItemsModal"' in HTM
       and "function cargarRevisiones(" in JS and "function pintarResumen(" in JS

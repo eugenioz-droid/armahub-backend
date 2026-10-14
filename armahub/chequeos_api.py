@@ -921,24 +921,45 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
 @router.get("/chequeos/revision/{revision_id}")
 def detalle_revision(revision_id: int, user=Depends(get_current_user)):
     """LO QUE ENCONTRÓ UNA REVISIÓN, y en qué va. Todos ven todo acá: el reparto por persona
-    es lo que hace falta para saber dónde está parado el trabajo."""
+    es lo que hace falta para saber dónde está parado el trabajo.
+
+    CON `revision_id = 0` SON TODAS. El estado de la pantalla pasó a ser global —se mira
+    el total y se filtra eligiendo una revisión—, así que «abrir los hallazgos» sin
+    ninguna elegida tiene que poder abrirlos todos. Es la misma consulta sin el filtro."""
     _puede_ver(user)
+    todas = revision_id == 0
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, id_proyecto, obra, lanzada_por, arrancada, terminada, ccs,
-                          ccs_error, barras, senales_nuevas, nota
-                     FROM chequeo_revisiones WHERE id = %s""", (revision_id,))
-            r = cur.fetchone()
-            if not r:
-                raise HTTPException(status_code=404, detail="Esa revisión no existe.")
-            cab = {"id": r[0], "job": r[1], "obra": r[2], "por": r[3],
-                   "arrancada": r[4].isoformat(), "terminada": r[5].isoformat() if r[5] else None,
-                   "ccs": r[6], "ccs_error": r[7], "barras": r[8], "nuevas": r[9], "nota": r[10]}
+            if todas:
+                cur.execute(
+                    """SELECT COUNT(*), MIN(arrancada), MAX(arrancada),
+                              COALESCE(SUM(ccs), 0), COALESCE(SUM(barras), 0)
+                         FROM chequeo_revisiones""")
+                n, desde, hasta, ccs_t, barras_t = cur.fetchone()
+                if not n:
+                    raise HTTPException(status_code=404, detail="Todavía no hay revisiones.")
+                cab = {"id": 0, "job": None, "obra": "%d revisión(es)" % n, "por": None,
+                       "arrancada": (hasta or desde).isoformat(), "terminada": None,
+                       "ccs": ccs_t, "ccs_error": 0, "barras": barras_t,
+                       "nuevas": None, "nota": None, "todas": True}
+            else:
+                cur.execute(
+                    """SELECT id, id_proyecto, obra, lanzada_por, arrancada, terminada, ccs,
+                              ccs_error, barras, senales_nuevas, nota
+                         FROM chequeo_revisiones WHERE id = %s""", (revision_id,))
+                r = cur.fetchone()
+                if not r:
+                    raise HTTPException(status_code=404, detail="Esa revisión no existe.")
+                cab = {"id": r[0], "job": r[1], "obra": r[2], "por": r[3],
+                       "arrancada": r[4].isoformat(),
+                       "terminada": r[5].isoformat() if r[5] else None,
+                       "ccs": r[6], "ccs_error": r[7], "barras": r[8], "nuevas": r[9],
+                       "nota": r[10], "todas": False}
             cur.execute(
                 "SELECT " + _COLS_SENAL + """, s.motivo_tipo, s.declarada_por, s.declarada_el
-                     FROM chequeo_senales s WHERE s.revision_id = %s
-                    ORDER BY s.obra, s.cc, s.regla, s.ref""", (revision_id,))
+                     FROM chequeo_senales s
+                    WHERE (%s AND s.revision_id IS NOT NULL) OR s.revision_id = %s
+                    ORDER BY s.obra, s.cc, s.regla, s.ref""", (todas, revision_id))
             items = []
             for f in cur.fetchall():
                 d = _fila_senal(f)
@@ -1252,6 +1273,30 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
             for rid, quien, n, nap, res in cur.fetchall():
                 porcub.setdefault(rid, {})[quien or "(sin dato)"] = {
                     "n": n, "no_aplica": nap, "resueltos": res}
+            # EL TOTAL DE TODAS LAS REVISIONES, calculado acá y no sumando las filas: una
+            # obra que aparece en dos revisiones es UNA obra, y sumarlas la contaría dos
+            # veces. Lo mismo el código. Es el bloque de arriba de la pantalla, que mira
+            # todo hasta que se elige una revisión.
+            cur.execute(
+                """SELECT COUNT(*), COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
+                          COUNT(*) FILTER (WHERE s.estado = 'corregida'),
+                          COUNT(*) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
+                          COUNT(DISTINCT s.id_proyecto), COUNT(DISTINCT (s.id_proyecto, s.cc))
+                     FROM chequeo_senales s
+                    WHERE s.revision_id IS NOT NULL""")
+            t = cur.fetchone() or (0, 0, 0, 0, 0, 0)
+            # Los kilos de los códigos que tienen algún hallazgo: es «cuánto acero está en
+            # juego», no la suma de las barras marcadas.
+            cur.execute(
+                """SELECT COALESCE(SUM(p.kg), 0) FROM asa_pedidos p
+                    WHERE (p.asa_job_id, p.control_code) IN
+                          (SELECT DISTINCT s.id_proyecto, s.cc FROM chequeo_senales s
+                            WHERE s.revision_id IS NOT NULL AND s.cc <> '')""")
+            kg_total = float((cur.fetchone() or [0])[0] or 0)
+            total = {"detectados": t[0], "no_aplica": t[1], "aplican": t[0] - t[1],
+                     "resueltas": t[2], "declaradas": t[3],
+                     "obras": t[4], "ccs_con_hallazgo": t[5], "kg": kg_total,
+                     "pct": round(t[2] / (t[0] - t[1]) * 100) if (t[0] - t[1]) else None}
     def _fila(f):
         detectados, resueltos, no_aplica = f[11], f[12], f[15]
         aplican = detectados - no_aplica
@@ -1265,4 +1310,16 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 "resueltas": resueltos, "declaradas": f[13], "cubicadores": f[14],
                 "anio": f[16], "por_cubicador": porcub.get(f[0], {}),
                 "pct": round(resueltos / aplican * 100) if aplican else None}
-    return {"revisiones": [_fila(f) for f in filas]}
+    revs = [_fila(f) for f in filas]
+    # El desglose por persona de TODO, para que los chips de cubicador del bloque de
+    # arriba valgan sobre todas las revisiones y no sólo sobre la que esté abierta.
+    cubs = {}
+    for r in revs:
+        for q, c in (r["por_cubicador"] or {}).items():
+            a = cubs.setdefault(q, {"n": 0, "no_aplica": 0, "resueltos": 0})
+            a["n"] += c["n"]; a["no_aplica"] += c["no_aplica"]; a["resueltos"] += c["resueltos"]
+    total["barras"] = sum(r["barras"] or 0 for r in revs)
+    total["ccs"] = sum(r["ccs"] or 0 for r in revs)
+    total["revisiones"] = len(revs)
+    total["por_cubicador"] = cubs
+    return {"revisiones": revs, "total": total}

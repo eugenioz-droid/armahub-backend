@@ -283,6 +283,17 @@
            revisión sin resolver no se arrastra a la siguiente: la suya queda abierta hasta
            que se cierre, que es lo que pidió el usuario. -->
       <div class="audrevs">
+        <!-- ══════ EL ESTADO, ARRIBA Y GLOBAL ══════
+             Mira TODAS las revisiones; al elegir una, se filtra a ella. Antes era un
+             segundo cuadro debajo que repetía lo de una sola revisión, y los chips de
+             cubicador sólo valían para esa. Lo pidió el usuario: «pon este cuadrado
+             arriba como un bloque global, muestra toda la data de todas las revisiones.
+             Si seleccionamos una revisión se filtra. Así además tiene sentido el filtro
+             de los cubicadores que se aplica a todas las revisiones». -->
+        <div class="card audc" id="revResumen">
+          <div id="revResCuerpo"></div>
+        </div>
+
         <div class="card audc" id="revListaCard">
           <div class="audh">Revisiones
             <span class="muted" id="revListaN"></span>
@@ -301,10 +312,6 @@
             <button id="revNuevaParar" class="audmini" style="display:none; margin-top:4px;">Detener</button>
           </div>
           <div class="audbd" style="max-height:62vh;"><div id="revLista"></div></div>
-        </div>
-
-        <div class="card audc" id="revResumen">
-          <div id="revResCuerpo"><div class="revvacio">Elige una revisión de la izquierda.</div></div>
         </div>
       </div>
 

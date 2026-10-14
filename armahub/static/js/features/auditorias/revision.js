@@ -106,7 +106,7 @@
   // caché a propósito —una lectura por código y no por barra— y se vacía al refrescar la
   // revisión, porque entonces lo de aSa puede haber cambiado.
   var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '',
-               figs: {}, anio: null };
+               figs: {}, anio: null, total: {} };
   var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Corregida (por verificar)',
                      corregir: 'Corregida (por verificar)', corregida: 'Verificada',
                      aceptada: 'No aplica' };
@@ -122,12 +122,11 @@
     try {
       var d = await req('GET', '/chequeos/revisiones');
       REVS.lista = d.revisiones || [];
+      REVS.total = d.total || {};
       pintarRevisiones();
-      if (REVS.lista.length && !REVS.sel) {
-        // Se abre sola la última que encontró algo: es lo que uno viene a ver.
-        var conAlgo = REVS.lista.filter(function (r) { return r.items > 0; })[0];
-        await abrirRevision((conAlgo || REVS.lista[0]).id);
-      }
+      // NO SE ABRE NINGUNA SOLA. El bloque de arriba arranca mostrando el total de todas,
+      // que es lo que se viene a ver; elegir una es FILTRAR, no el punto de partida.
+      if (REVS.sel) await abrirRevision(REVS.sel); else pintarResumen();
     } catch (e) { $('revLista').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
@@ -251,36 +250,71 @@
     } catch (e) { $('revResCuerpo').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
+  // EL ESTADO, ARRIBA Y GLOBAL. Mira TODAS las revisiones; al elegir una en la matriz,
+  // se filtra a ella y aparece el botón para entrar a trabajarla. Antes era un segundo
+  // cuadro debajo que sólo sabía de la revisión abierta, y los chips de cubicador sólo
+  // valían para esa: no se podía preguntar «cuánto le queda a Nlopez en total».
   function pintarResumen() {
-    var d = REVS.detalle, r = d.revision;
+    var sel = REVS.sel && REVS.detalle ? REVS.detalle.revision : null;
+    var T = REVS.total || {};
+    // De una revisión o del total: las dos formas traen los mismos nombres salvo `items`,
+    // que es como se llamaba `detectados` cuando sólo existía la vista por revisión.
+    var det = sel ? (sel.detectados != null ? sel.detectados : sel.items) : (T.detectados || 0);
+    var apl = sel ? (sel.aplican != null ? sel.aplican : det) : (T.aplican || 0);
+    var res = sel ? (sel.resueltas || 0) : (T.resueltas || 0);
+    var nap = sel ? (sel.no_aplica || 0) : (T.no_aplica || 0);
+    var cubs = sel
+      ? (sel.por_cubicador || []).map(function (c) {
+          return { q: c.cubico, n: c.n, no_aplica: c.no_aplica || 0, resueltos: c.resueltas || 0 }; })
+      : Object.keys(T.por_cubicador || {}).map(function (q) {
+          var c = T.por_cubicador[q];
+          return { q: q, n: c.n, no_aplica: c.no_aplica, resueltos: c.resueltos }; });
+    cubs.sort(function (a, b) { return b.n - a.n; });
     var kpis = [
-      [r.items, 'hallazgos'], [r.resueltas + ' / ' + r.items, 'resueltos'],
-      [r.obras, 'obra(s)'], [r.ccs_con_hallazgo, 'código(s) con hallazgo'],
-      [num(Math.round(r.kg)), 'kg en juego'], [num(r.barras), 'barras miradas']
+      [det, 'detectados'],
+      [res + ' / ' + apl, 'resueltos'] ,
+      [sel ? sel.obras : (T.obras || 0), 'obra(s)'],
+      [sel ? sel.ccs_con_hallazgo : (T.ccs_con_hallazgo || 0), 'código(s) con hallazgo'],
+      [num(Math.round(sel ? sel.kg : (T.kg || 0))), 'kg en juego'],
+      [num(sel ? sel.barras : (T.barras || 0)), 'barras miradas']
     ];
-    var sinItems = !r.items;
+    if (nap) kpis.splice(2, 0, [nap, 'no aplican']);
+    var tit = sel
+      ? 'Revisión #' + sel.id + ' <span class="muted">' + _fechaHora(sel.arrancada) +
+        ' · ' + esc(sel.por === 'reloj' ? 'automática' : (sel.por || '').split('@')[0]) +
+        ' · ' + esc(sel.obra || '') + '</span>' +
+        '<button class="audmini" id="revTodo" title="Volver al total de todas las revisiones">' +
+        'Ver todo</button>'
+      : 'Todas las revisiones <span class="muted">' + (T.revisiones || 0) +
+        ' corrida(s) · elige una abajo para filtrar</span>';
     $('revResCuerpo').innerHTML =
-      '<div class="audh">Revisión #' + r.id + ' <span class="muted">' + _fechaHora(r.arrancada) +
-        ' · ' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
-        ' · ' + esc(r.obra || '') + '</span><div style="flex:1"></div>' +
-        (sinItems ? '' : '<button class="audbtn" id="revAbrirItems">Abrir los ' + r.items + ' hallazgos</button>') +
+      '<div class="audh">' + tit + '<div style="flex:1"></div>' +
+        (det ? '<button class="audbtn" id="revAbrirItems">Abrir los ' + apl + ' hallazgos</button>' : '') +
       '</div>' +
       '<div class="revkpis">' + kpis.map(function (k) {
         return '<div class="revkpi"><b>' + k[0] + '</b><span>' + k[1] + '</span></div>'; }).join('') + '</div>' +
-      (sinItems
-        ? '<div class="revvacio">Esta revisión no encontró hallazgos: se miraron ' + (r.ccs || 0) +
-          ' código(s) y todos cumplen. Queda el registro de que se revisó.</div>'
-        // LOS CUBICADORES, COMO BOTONES PARA ENTRAR. La tabla que había acá repetía
-        // los números de la matriz de la izquierda; lo que sirve en este panel es abrir
-        // lo de una persona y ponerse a resolverlo.
-        : '<div class="dshchips revcubs">' + r.por_cubicador.map(function (c) {
-            var falta = c.n - (c.no_aplica || 0) - (c.resueltas || 0);
-            return '<button data-abrir-cub="' + esc(c.cubico) + '" class="' +
+      (!det
+        ? '<div class="revvacio">' + (sel
+            ? 'Esta revisión no encontró hallazgos: se miraron ' + (sel.ccs || 0) +
+              ' código(s) y todos cumplen. Queda el registro de que se revisó.'
+            : 'Todavía no hay hallazgos.') + '</div>'
+        // LOS CUBICADORES, COMO BOTONES PARA ENTRAR. Valen sobre lo que se está mirando:
+        // el total si no hay revisión elegida, o esa revisión si la hay.
+        : '<div class="dshchips revcubs">' + cubs.map(function (c) {
+            var falta = c.n - c.no_aplica - c.resueltos;
+            return '<button data-abrir-cub="' + esc(c.q) + '" class="' +
                    (falta <= 0 ? 'listo' : '') + '" title="Ver y resolver sólo lo de ' +
-                   esc(c.cubico) + '">' + esc(c.cubico) + ' <b>' + c.n + '</b>' +
+                   esc(c.q) + (sel ? '' : ', en todas las revisiones') + '">' +
+                   esc(c.q) + ' <b>' + c.n + '</b>' +
                    (falta <= 0 ? ' ✓' : '') + '</button>'; }).join('') + '</div>');
     var b = $('revAbrirItems');
     if (b) b.addEventListener('click', function () { abrirItems(); });
+    var vt = $('revTodo');
+    if (vt) vt.addEventListener('click', function (e) {
+      e.stopPropagation();
+      REVS.sel = null; REVS.detalle = null;
+      pintarResumen(); pintarRevisiones();
+    });
     $('revResCuerpo').querySelectorAll('button[data-abrir-cub]').forEach(function (x) {
       x.addEventListener('click', function () {
         REVS.filtro_cub = x.dataset.abrirCub;
@@ -321,9 +355,17 @@
     return items;
   }
 
-  function abrirItems(conFiltro) {
+  async function abrirItems(conFiltro) {
     REVS.sel_items = {};
     if (!conFiltro) REVS.filtro_cub = '';
+    // Sin revisión elegida se abren TODAS: el estado de arriba es global, así que el
+    // botón y los chips de cubicador tienen que poder entrar a todo.
+    if (!REVS.detalle || (REVS.sel && REVS.detalle.revision.id !== REVS.sel)
+        || (!REVS.sel && !REVS.detalle.revision.todas)) {
+      try {
+        REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0));
+      } catch (e) { aviso(e.message); return; }
+    }
     $('revItemsModal').style.display = '';
     pintarItems();
   }
@@ -780,11 +822,11 @@
   }
 
   async function refrescarRevision() {
-    if (!REVS.sel) return;
+    if (!REVS.sel && !(REVS.detalle && REVS.detalle.revision.todas)) return;
     // Las figuras leídas NO se tiran acá: lo que cambia es el estado del hallazgo, no la
     // barra, y volver a leer treinta códigos en cada clic es justo lo que hay que evitar.
     // Se tiran al abrir otra revisión y cuando una verificación dice que aSa cambió.
-    REVS.detalle = await req('GET', '/chequeos/revision/' + REVS.sel);
+    REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0));
     pintarResumen();
     if ($('revItemsModal').style.display !== 'none') pintarItems();
     await cargarRevisiones();
