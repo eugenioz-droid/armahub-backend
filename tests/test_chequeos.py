@@ -481,7 +481,7 @@ check("...y al elegir una revision se filtra, con un boton para volver al total"
       'id="revTodo"' in JS and "REVS.sel = null; REVS.detalle = null;" in JS)
 check("...el total lo calcula el backend, no se suma fila a fila",
       '"revisiones": revs, "total": total' in API
-      and "una obra que aparece en dos revisiones es UNA obra" in API)
+      and "obra que aparece en dos revisiones es UNA obra" in API)
 check("la pantalla es lista + resumen + hoja de trabajo",
       'id="revLista"' in HTM and 'id="revResCuerpo"' in HTM and 'id="revItemsModal"' in HTM
       and "function cargarRevisiones(" in JS and "function pintarResumen(" in JS
