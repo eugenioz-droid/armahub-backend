@@ -84,9 +84,11 @@ check("...la muestra se guarda (no se resortea) y la semilla queda para explicar
       and "cur.executemany(" in SRC)
 check("...el mismo elemento no puede estar dos veces en una auditoría",
       "ux_aud_elem" in MIG and "(auditoria_id, sector, piso, ciclo, eje)" in MIG)
-check("el front ya NO guarda en el navegador: todo pasa por la API",
-      "localStorage" not in JS and "req('POST', '/auditorias'" in JS
-      and "req('GET', '/auditorias/'" in JS)
+import re as _re
+_ls = _re.findall(r"localStorage\.\w+\('([^']+)'", JS)
+check("el front ya NO guarda DATOS en el navegador: todo pasa por la API",
+      [k for k in _ls if k != "armahub_fig_tam"] == []
+      and "req('POST', '/auditorias'" in JS and "req('GET', '/auditorias/'" in JS)
 check("un solo sorteo para la vista previa y para la creación",
       "def _sortear(cur" in SRC and SRC.count("_sortear(") == 3)
 
@@ -1100,7 +1102,7 @@ check("el minimo sigue existiendo para las figuras abiertas",
 # «Por que no los pones claros, A = 15, B = XX... preferiria que pongas encabezados».
 check("los lados se muestran en una grilla con encabezados, una columna por lado",
       "global.audGrillaLados = function" in JS
-      and "'Lado'" in JS and "'mm'" in JS and "'Áng'" in JS
+      and "'Lado'" in JS and "'cm'" in JS and "'Áng'" in JS
       and ".audgl th" in HTM)
 check("...en orden alfabetico, que ahora se puede porque cada angulo va en SU columna",
       "var ks = orden.slice().sort();" in JS and "deLado[L] = ang[i - 1]" in JS)
@@ -1112,6 +1114,30 @@ check("el lado que no cumple se marca en la grilla, no en medio del texto",
 # auditoria muestran la misma barra y no tienen por que pintarla distinto.
 check("la grilla se escribe una vez y la usan las dos pantallas",
       "audGrillaLados(f, malos, esc)" in REVJS and "function audGrillaLados" not in REVJS)
+# EL BUG DE LAS UNIDADES, que no se ve hasta que alguien lo mira: `normalizarBarra` trae
+# lo de aSa en CENTIMETROS (k=0,1) y el render rotula cm, pero la REGLA guarda su valor y
+# su esperado en MILIMETROS. La grilla mostraba los dos juntos —«55» al lado de «min
+# 160»— y encima rotulaba «mm» sobre valores que ya eran cm.
+check("la grilla va en CENTIMETROS, que es lo que ya rotula el dibujo",
+      "fila('v', 'cm'," in JS and "fila('v', 'mm'," not in JS
+      and "global.audNumCm" in JS)
+check("...y el esperado de la regla se convierte: lo guarda en milimetros",
+      "cm(det.esperado / 10)" in REVJS and "cm(det.valor / 10)" in REVJS)
+check("...con un decimal solo cuando hace falta: 1,5 se lee, 55,0 es ruido",
+      "Math.abs(r - Math.round(r)) < 0.05" in JS and "replace('.', ',')" in JS)
+# «La grilla se desordena, dejala fija»: sin ancho fijo cada columna se estira con su
+# contenido y el «Lado» de una barra no queda sobre su medida.
+check("la grilla tiene ancho fijo, para que no se desordene fila a fila",
+      "table-layout:fixed" in HTM and ".audgl td{" in HTM and "width:34px" in HTM)
+check("el dibujo lleva el nombre de la figura, que es con lo que se habla de una barra",
+      "function _conNombre(" in JS and "audfign" in JS and ".audfign" in HTM)
+check("hay tres tamanos de dibujo y se recuerdan por navegador",
+      "global.audFigTam = function" in JS and "global.audChipsTam = function" in JS
+      and "armahub_fig_tam" in JS and "[['s', 'S'], ['m', 'M'], ['l', 'L']]" in JS)
+check("...y estan en las dos pantallas, repintando lo que el tamano cambia",
+      "audChipsTam('revTam', pintarItems)" in REVJS
+      and "audChipsTam('audTam', pintarAcciones)" in JS
+      and 'id="revTam"' in HTM)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -304,6 +304,8 @@
             '<table>' + g.items.map(filaItem).join('') + '</table></div>';
         }).join('');
     _bindItems();
+    // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la hoja.
+    if (global.audChipsTam) global.audChipsTam('revTam', pintarItems);
     _observarFiguras();
   }
 
@@ -368,15 +370,21 @@
     // QUÉ SIGNIFICA EL `esperado` DE CADA REGLA, en un solo lugar: en el lado corto es un
     // PISO (puede medir más y estar bien) y en los opuestos es la medida exacta que
     // debería tener. Decir «debería 100» en el primero sería pedir que mida 100 justo.
+    //
+    // Y VA EN CENTÍMETROS. La regla lo guarda en milímetros, que es como vienen de aSa,
+    // pero la grilla de al lado está en cm (lo convierte `normalizarBarra`) y el dibujo
+    // también: mostrarlos juntos sin convertir ponía «55» al lado de «mín 160».
+    var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
     var esp = det.esperado != null
       ? '<span class="revesp">' + (i.regla === 'lado_corto' ? 'mín ' : 'debería ') +
-        det.esperado + '</span>' : '';
+        cm(det.esperado / 10) + ' cm</span>' : '';
     if (!f || !f.dims) {
       // Sin la figura leída: el lado del hallazgo y su medida, que es lo que hay.
       var ns = Object.keys(malos);
       if (!ns.length) return '<span class="muted">—</span>';
       return ns.map(function (L) {
-        return '<b class="revmal">' + esc(L) + ' ' + (det.valor != null ? det.valor : '?') + '</b>';
+        return '<b class="revmal">' + esc(L) + ' ' +
+               (det.valor != null ? cm(det.valor / 10) : '?') + '</b>';
       }).join(' · ') + ' ' + esp;
     }
     // LA FIGURA COMPLETA: todas sus letras y, entre lado y lado, el ángulo con el que

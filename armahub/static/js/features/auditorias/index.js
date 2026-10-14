@@ -1150,11 +1150,52 @@
   //     sus lados. Si la envolvente no cuadra con la que aSa declara, se dibuja igual y
   //     queda un aviso al lado con el porqué: el auditor decide, no se le esconde nada.
   //   · Si tampoco hay eje, un guion.
+  // EL TAMAÑO DEL DIBUJO, que elige quien mira. Son los mismos tres del Bar Manager
+  // (hay un cuarto, 'xl', que acá no entra: la figura vive en una celda de tabla).
+  // Se recuerda por navegador: quien trabaja con figuras chicas las quiere chicas
+  // siempre, y volver a elegirlo en cada pantalla es trabajo que no paga.
   var FIG_TAM = 'm';
+  try { FIG_TAM = global.localStorage.getItem('armahub_fig_tam') || 'm'; } catch (e) {}
+  if (['s', 'm', 'l'].indexOf(FIG_TAM) === -1) FIG_TAM = 'm';
+
+  global.audFigTam = function (t) {
+    if (t && ['s', 'm', 'l'].indexOf(t) !== -1) {
+      FIG_TAM = t;
+      try { global.localStorage.setItem('armahub_fig_tam', t); } catch (e) {}
+    }
+    return FIG_TAM;
+  };
+
+  // Los chips S/M/L, para la pantalla que los quiera poner. `alRepintar` es lo que hay
+  // que volver a dibujar: el tamaño cambia el SVG, así que no basta con marcar el chip.
+  global.audChipsTam = function (idCaja, alRepintar) {
+    var el = document.getElementById(idCaja);
+    if (!el) return;
+    var T = [['s', 'S'], ['m', 'M'], ['l', 'L']];
+    el.innerHTML = T.map(function (x) {
+      return '<button data-tam="' + x[0] + '" class="' + (FIG_TAM === x[0] ? 'on' : '') +
+             '" title="Tamaño del dibujo">' + x[1] + '</button>';
+    }).join('');
+    el.querySelectorAll('button[data-tam]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        global.audFigTam(b.dataset.tam);
+        if (typeof alRepintar === 'function') alRepintar();
+      });
+    });
+  };
+
+  // EL NOMBRE DE LA FIGURA, debajo del dibujo. Es el código del catálogo de aSa (T1,
+  // 106A, 105A…) y es con lo que se habla de una barra en planta: sin él, dos figuras
+  // parecidas en una miniatura son la misma.
+  function _conNombre(svg, f) {
+    if (!svg || !f || !f.figura) return svg;
+    return svg + '<div class="audfign" title="Figura del catálogo de aSa">' +
+           esc(f.figura) + '</div>';
+  }
 
   function celdaFigura(f) {
     var svg = global._bmFiguraSvg ? global._bmFiguraSvg(f, FIG_TAM) : '';
-    if (svg) return svg;
+    if (svg) return _conNombre(svg, f);
     svg = svgEje(f);
     if (!svg) return '<span class="muted">—</span>';
     // DE DÓNDE SALIÓ EL DIBUJO, cuando no salió de donde sale siempre. El backend intenta
@@ -1163,11 +1204,11 @@
     // esté dibujando por la segunda vía no es un problema —al contrario, es la topología de
     // aSa— pero el auditor tiene derecho a saber qué está mirando.
     if (f.eje.fuente === 'catalogo_asa') {
-      return svg + '<span class="audfigfte" title="Esta figura se dibuja con el trazo que ' +
+      return _conNombre(svg, f) + '<span class="audfigfte" title="Esta figura se dibuja con el trazo que ' +
         'exportó aSa en su catálogo, a las medidas de esta barra. La reconstrucción desde ' +
         'los vectores no cuadraba con la envolvente que aSa declara.">aSa</span>';
     }
-    return svg + (f.eje.ok ? '' :
+    return _conNombre(svg, f) + (f.eje.ok ? '' :
       '<span class="audfigav" title="' + esc(f.eje.motivo || 'La envolvente no cuadra con la que declara aSa') + '">⚠</span>');
   }
 
@@ -1285,8 +1326,12 @@
   // claros, A = 15, B = XX… preferiría que pongas encabezados, ordenado».
   //
   //     Lado   A     B     C     D     E     G
-  //     mm     15    45    55    45    55    15
+  //     cm     1,5   4,5   5,5   4,5   5,5   1,5
   //     Áng          135°  90°   90°   90°   135°
+  //
+  // EN CENTÍMETROS, que es la unidad en la que se habla en planta y la que ya rotula el
+  // dibujo. `normalizarBarra` ya trae las dims convertidas (aSa manda milímetros); lo que
+  // estaba mal era el ENCABEZADO, que decía «mm» sobre valores que eran cm.
   //
   // EN ORDEN ALFABÉTICO, que es como se leen y como vienen rotuladas en el dibujo. Antes
   // iban en orden de RECORRIDO (G, E, D, C, B, A) y no por gusto: el ángulo que manda aSa
@@ -1296,6 +1341,15 @@
   //
   // SIN SIGNO. El menos es el sentido de giro (horario / antihorario), no una medida: en
   // una tabla que se lee para verificar una barra es ruido.
+  // Un decimal SÓLO cuando hace falta. Un gancho de 1,5 cm necesita el decimal; un lado
+  // de 55 no, y «55,0» en una tabla de seis columnas es ruido.
+  global.audNumCm = function (v) {
+    var n = Number(v) || 0;
+    var r = Math.round(n * 10) / 10;
+    return (Math.abs(r - Math.round(r)) < 0.05 ? String(Math.round(r))
+                                               : r.toFixed(1)).replace('.', ',');
+  };
+
   global.audGrillaLados = function (f, malos, esc_) {
     if (!f || !f.dims) return '';
     var E = esc_ || function (s) { return String(s == null ? '' : s); };
@@ -1313,7 +1367,7 @@
     }
     return '<table class="audgl">' +
       fila('l', 'Lado', function (L) { return E(L); }) +
-      fila('v', 'mm', function (L) { return Math.round(Number(f.dims[L]) || 0); }) +
+      fila('v', 'cm', function (L) { return global.audNumCm(f.dims[L]); }) +
       (hayAng ? fila('a', 'Áng', function (L) {
         return deLado[L] == null ? '' : Math.abs(Math.round(deLado[L])) + '°'; }) : '') +
       '</table>';
@@ -1553,7 +1607,8 @@
       // las quiere, no al abrir la auditoría.
       (total ? '<button class="audmini" id="audFigs" title="Lee los códigos en aSa y ' +
                'dibuja cada barra con sus lados. Tarda unos segundos por código.">' +
-               'Ver las figuras</button>' : '') +
+               'Ver las figuras</button>' +
+               '<span class="dshchips audtam" id="audTam"></span>' : '') +
       '<div style="flex:1"></div>' +
       // EL CIERRE ES DEL AUDITADO: lo aprieta quien respondió, y sólo cuando no le queda
       // ninguna barra pendiente. La condición la dice el backend, que es el que después
@@ -1722,6 +1777,7 @@
   function _bindAcciones(caja) {
     var f = $('audFigs');
     if (f) f.addEventListener('click', function () { cargarFigurasAud(f); });
+    if (global.audChipsTam) global.audChipsTam('audTam', pintarAcciones);
     var cz = $('audBtnCerrarOk');
     if (cz) cz.addEventListener('click', cerrarResueltas);
     caja.querySelectorAll('button[data-objetar]').forEach(function (b) {
