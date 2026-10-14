@@ -105,7 +105,8 @@
   // `figs` es lo leído de aSa, por código: {cc: {estado, barras: {ref: barra}, msg}}. Es
   // caché a propósito —una lectura por código y no por barra— y se vacía al refrescar la
   // revisión, porque entonces lo de aSa puede haber cambiado.
-  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '', figs: {} };
+  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '',
+               figs: {}, anio: null };
   var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Corregida (por verificar)',
                      corregir: 'Corregida (por verificar)', corregida: 'Verificada',
                      aceptada: 'No aplica' };
@@ -130,33 +131,110 @@
     } catch (e) { $('revLista').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
+  // LAS REVISIONES, EN MATRIZ. Una fila por revisión y una COLUMNA POR CUBICADOR, que
+  // salen del dato y no de una lista: si mañana aparece alguien nuevo, su columna aparece
+  // sola. Con el filtro de año, un año que no tiene hallazgos de alguien no dibuja su
+  // columna, que es lo que evita arrastrar ruido de años anteriores.
+  //
+  // ANTES ERAN DOS PANELES —la lista a la izquierda y el desglose por persona a la
+  // derecha— y decían lo mismo dos veces. El detalle vive en el modal.
+  function _anios() {
+    var a = {};
+    REVS.lista.forEach(function (r) { if (r.anio) a[r.anio] = 1; });
+    return Object.keys(a).sort().reverse();
+  }
+
+  function _visibles() {
+    if (!REVS.anio) return REVS.lista;
+    return REVS.lista.filter(function (r) { return String(r.anio) === String(REVS.anio); });
+  }
+
+  // Las columnas: las personas con hallazgos en lo que se está mirando, de la que más
+  // tiene a la que menos. El orden es el dato, no el alfabeto: la primera columna es
+  // donde está el problema.
+  function _columnas(vis) {
+    var tot = {};
+    vis.forEach(function (r) {
+      Object.keys(r.por_cubicador || {}).forEach(function (q) {
+        tot[q] = (tot[q] || 0) + (r.por_cubicador[q].n || 0);
+      });
+    });
+    return Object.keys(tot).sort(function (a, b) { return tot[b] - tot[a]; });
+  }
+
   function pintarRevisiones() {
     var el = $('revLista');
     if (!el) return;
-    $('revListaN').textContent = REVS.lista.length + ' revisión(es)';
-    if (!REVS.lista.length) {
-      el.innerHTML = '<div class="revvacio">Todavía no se ha hecho ninguna revisión. ' +
-        'Apreta «Nueva revisión».</div>';
+    var vis = _visibles();
+    $('revListaN').textContent = vis.length + ' revisión(es)';
+    // El filtro de año sólo aparece cuando hay más de uno: con un año solo es un control
+    // que no decide nada.
+    var anios = _anios();
+    var caja = $('revAnios');
+    if (caja) {
+      caja.innerHTML = anios.length < 2 ? '' :
+        '<button data-anio="" class="' + (REVS.anio ? '' : 'on') + '">Todos</button>' +
+        anios.map(function (a) {
+          return '<button data-anio="' + a + '" class="' + (String(REVS.anio) === String(a) ? 'on' : '') +
+                 '">' + a + '</button>'; }).join('');
+      caja.querySelectorAll('button[data-anio]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          REVS.anio = b.dataset.anio || null; pintarRevisiones();
+        });
+      });
+    }
+    if (!vis.length) {
+      el.innerHTML = '<div class="revvacio">' + (REVS.lista.length
+        ? 'No hay revisiones de ese año.'
+        : 'Todavía no se ha hecho ninguna revisión. Apreta «Nueva revisión».') + '</div>';
       return;
     }
-    el.innerHTML = REVS.lista.map(function (r) {
-      var pct = r.pct == null ? null : r.pct;
-      // UNA REVISIÓN SIN HALLAZGOS NO SE ESCONDE: deja constancia de que se miró, que es
-      // distinto de no haber mirado. Lo pidió el usuario.
-      var cuerpo = !r.items
-        ? '<div class="l2 vacia">sin hallazgos · ' + (r.ccs || 0) + ' código(s) revisados</div>'
-        : '<div class="l2">' + r.items + ' hallazgo(s) · ' + (r.cubicadores || 0) + ' cubicador(es)' +
-          (r.declaradas ? ' · ' + r.declaradas + ' por verificar' : '') + '</div>' +
-          '<div class="barra"><i class="' + (pct ? '' : 'cero') + '" style="width:' + (pct || 2) + '%"></i></div>' +
-          '<div class="l2">' + r.resueltas + ' de ' + r.items + ' resueltos' + (pct === 100 ? ' ✓' : '') + '</div>';
-      return '<div class="revfila' + (REVS.sel === r.id ? ' on' : '') + '" data-rev="' + r.id + '">' +
-        '<div class="l1"><b>#' + r.id + '</b> ' + _fechaHora(r.arrancada) +
-          '<div style="flex:1"></div><span class="muted" style="font-size:10px">' +
-          esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) + '</span></div>' +
-        '<div class="l2">' + esc(r.obra || '') + '</div>' + cuerpo + '</div>';
-    }).join('');
-    el.querySelectorAll('div[data-rev]').forEach(function (d) {
-      d.addEventListener('click', function () { abrirRevision(Number(d.dataset.rev)); });
+    var cols = _columnas(vis);
+    el.innerHTML = '<table class="audt revmat"><thead><tr><th>Revisión</th>' +
+      cols.map(function (q) { return '<th class="num" title="' + esc(q) + '">' + esc(q) + '</th>'; }).join('') +
+      '<th class="num" title="Lo que la máquina marcó.">Detectados</th>' +
+      '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
+      'Es contra esto que se mide el avance.">Aplican</th>' +
+      '<th>Avance</th></tr></thead><tbody>' +
+      vis.map(function (r) {
+        var pct = r.pct == null ? 0 : r.pct;
+        var pc = r.por_cubicador || {};
+        return '<tr class="revmatf' + (REVS.sel === r.id ? ' on' : '') + '" data-rev="' + r.id + '">' +
+          '<td><b>#' + r.id + '</b> ' + _fechaHora(r.arrancada) +
+            '<div class="l2">' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
+            ' · ' + esc(r.obra || '') + '</div></td>' +
+          cols.map(function (q) {
+            var c = pc[q];
+            if (!c || !c.n) return '<td class="num"><span class="muted">·</span></td>';
+            var falta = c.n - c.no_aplica - c.resueltos;
+            return '<td class="num revcel" data-rev="' + r.id + '" data-cub="' + esc(q) +
+                   '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' + c.n +
+                   ' detectado(s)' + (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
+                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') +
+                   '. Clic para ver sólo lo suyo.">' +
+                   '<b>' + c.n + '</b>' +
+                   (falta <= 0 ? ' <span class="revok">✓</span>' : '') + '</td>';
+          }).join('') +
+          '<td class="num">' + (r.detectados || 0) + '</td>' +
+          '<td class="num"><b>' + (r.aplican || 0) + '</b>' +
+            (r.no_aplica ? '<div class="l2">' + r.no_aplica + ' no aplica</div>' : '') + '</td>' +
+          '<td>' + (!r.aplican
+            ? '<span class="muted">sin hallazgos</span>'
+            : '<div class="revbar2" style="max-width:90px; display:inline-block; vertical-align:middle;">' +
+              '<i style="width:' + pct + '%"></i></div> ' +
+              (pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : pct + '%')) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    // La celda abre lo de esa persona; la fila, la revisión entera.
+    el.querySelectorAll('td.revcel').forEach(function (td) {
+      td.addEventListener('click', async function (ev) {
+        ev.stopPropagation();
+        await abrirRevision(Number(td.dataset.rev));
+        REVS.filtro_cub = td.dataset.cub;
+        abrirItems(true);
+      });
+    });
+    el.querySelectorAll('tr.revmatf').forEach(function (tr) {
+      tr.addEventListener('click', function () { abrirRevision(Number(tr.dataset.rev)); });
     });
   }
 
@@ -192,21 +270,23 @@
       (sinItems
         ? '<div class="revvacio">Esta revisión no encontró hallazgos: se miraron ' + (r.ccs || 0) +
           ' código(s) y todos cumplen. Queda el registro de que se revisó.</div>'
-        : '<table class="audt"><thead><tr><th>Cubicador</th><th class="num">Hallazgos</th>' +
-          '<th class="num">Códigos</th><th class="num">Por verificar</th><th class="num">No aplica</th>' +
-          '<th class="num">Resueltos</th><th>Avance</th></tr></thead><tbody>' +
-          r.por_cubicador.map(function (c) {
-            return '<tr><td>' + esc(c.cubico) + '</td>' +
-              '<td class="num">' + c.n + '</td><td class="num">' + c.ccs + '</td>' +
-              '<td class="num">' + (c.declaradas || '<span class="muted">·</span>') + '</td>' +
-              '<td class="num">' + (c.no_aplica || '<span class="muted">·</span>') + '</td>' +
-              '<td class="num">' + c.resueltas + '</td>' +
-              '<td><div class="revbar2" style="max-width:120px; display:inline-block; vertical-align:middle;">' +
-                '<i style="width:' + c.pct + '%"></i></div> ' +
-                (c.pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : c.pct + '%') + '</td></tr>';
-          }).join('') + '</tbody></table>');
+        // LOS CUBICADORES, COMO BOTONES PARA ENTRAR. La tabla que había acá repetía
+        // los números de la matriz de la izquierda; lo que sirve en este panel es abrir
+        // lo de una persona y ponerse a resolverlo.
+        : '<div class="dshchips revcubs">' + r.por_cubicador.map(function (c) {
+            var falta = c.n - (c.no_aplica || 0) - (c.resueltas || 0);
+            return '<button data-abrir-cub="' + esc(c.cubico) + '" class="' +
+                   (falta <= 0 ? 'listo' : '') + '" title="Ver y resolver sólo lo de ' +
+                   esc(c.cubico) + '">' + esc(c.cubico) + ' <b>' + c.n + '</b>' +
+                   (falta <= 0 ? ' ✓' : '') + '</button>'; }).join('') + '</div>');
     var b = $('revAbrirItems');
     if (b) b.addEventListener('click', function () { abrirItems(); });
+    $('revResCuerpo').querySelectorAll('button[data-abrir-cub]').forEach(function (x) {
+      x.addEventListener('click', function () {
+        REVS.filtro_cub = x.dataset.abrirCub;
+        abrirItems(true);
+      });
+    });
   }
 
   // ══════ LA HOJA DE TRABAJO ══════
@@ -241,8 +321,9 @@
     return items;
   }
 
-  function abrirItems() {
-    REVS.sel_items = {}; REVS.filtro_cub = '';
+  function abrirItems(conFiltro) {
+    REVS.sel_items = {};
+    if (!conFiltro) REVS.filtro_cub = '';
     $('revItemsModal').style.display = '';
     pintarItems();
   }

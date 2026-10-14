@@ -1221,19 +1221,48 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 """SELECT r.id, r.id_proyecto, r.obra, r.lanzada_por, r.arrancada, r.terminada,
                           r.ccs, r.ccs_error, r.barras, r.senales_nuevas, r.senales_vistas,
                           COUNT(s.id),
-                          COUNT(s.id) FILTER (WHERE s.estado IN ('corregida', 'aceptada')),
+                          COUNT(s.id) FILTER (WHERE s.estado = 'corregida'),
                           COUNT(s.id) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
-                          COUNT(DISTINCT s.cubico) FILTER (WHERE s.cubico IS NOT NULL)
+                          COUNT(DISTINCT s.cubico) FILTER (WHERE s.cubico IS NOT NULL),
+                          -- LO QUE NO APLICA SALE DEL DENOMINADOR (14-oct). El avance se
+                          -- medía contra todo lo DETECTADO, incluido lo que alguien ya
+                          -- descartó: una revisión no llegaba nunca al cien por ciento
+                          -- aunque no quedara nada que hacer. Son dos cosas distintas y
+                          -- se dicen las dos: lo que la máquina marcó y lo que aplica.
+                          COUNT(s.id) FILTER (WHERE s.estado = 'aceptada'),
+                          EXTRACT(YEAR FROM r.arrancada)::int
                      FROM chequeo_revisiones r
                      LEFT JOIN chequeo_senales s ON s.revision_id = r.id
                     WHERE (%s = '' OR r.id_proyecto = %s)
                     GROUP BY r.id
                     ORDER BY r.arrancada DESC LIMIT 60""", (job, job))
             filas = cur.fetchall()
-    return {"revisiones": [
-        {"id": f[0], "job": f[1], "obra": f[2], "por": f[3],
-         "arrancada": f[4].isoformat(), "terminada": f[5].isoformat() if f[5] else None,
-         "ccs": f[6], "ccs_error": f[7], "barras": f[8], "nuevas": f[9],
-         "vistas": f[10], "items": f[11], "resueltas": f[12], "declaradas": f[13],
-         "cubicadores": f[14],
-         "pct": round(f[12] / f[11] * 100) if f[11] else None} for f in filas]}
+            # EL DESGLOSE POR CUBICADOR, para la matriz: una columna por persona, y las
+            # personas salen del dato, no de una lista. Si mañana aparece alguien nuevo,
+            # su columna aparece sola; si un año no tiene hallazgos de alguien, su columna
+            # no se dibuja y no mete ruido.
+            cur.execute(
+                """SELECT s.revision_id, NULLIF(TRIM(s.cubico), ''),
+                          COUNT(*), COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
+                          COUNT(*) FILTER (WHERE s.estado = 'corregida')
+                     FROM chequeo_senales s
+                    WHERE s.revision_id IS NOT NULL
+                    GROUP BY 1, 2""")
+            porcub = {}
+            for rid, quien, n, nap, res in cur.fetchall():
+                porcub.setdefault(rid, {})[quien or "(sin dato)"] = {
+                    "n": n, "no_aplica": nap, "resueltos": res}
+    def _fila(f):
+        detectados, resueltos, no_aplica = f[11], f[12], f[15]
+        aplican = detectados - no_aplica
+        return {"id": f[0], "job": f[1], "obra": f[2], "por": f[3],
+                "arrancada": f[4].isoformat(), "terminada": f[5].isoformat() if f[5] else None,
+                "ccs": f[6], "ccs_error": f[7], "barras": f[8], "nuevas": f[9],
+                "vistas": f[10],
+                # `items` se mantiene por lo que ya lo lee; `detectados` es su nombre real.
+                "items": detectados, "detectados": detectados, "aplican": aplican,
+                "no_aplica": no_aplica,
+                "resueltas": resueltos, "declaradas": f[13], "cubicadores": f[14],
+                "anio": f[16], "por_cubicador": porcub.get(f[0], {}),
+                "pct": round(resueltos / aplican * 100) if aplican else None}
+    return {"revisiones": [_fila(f) for f in filas]}

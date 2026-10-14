@@ -286,6 +286,9 @@
         <div class="card audc" id="revListaCard">
           <div class="audh">Revisiones
             <span class="muted" id="revListaN"></span>
+            <!-- El año: un año nuevo no arrastra las columnas de cubicadores del
+                 anterior. Sólo aparece cuando hay más de uno. -->
+            <div class="dshchips audtam" id="revAnios"></div>
             <div style="flex:1"></div>
             <div class="dshchips"><button id="revTarde" title="Un código Processed ya está
               confirmado en planta: revisarlo suele llegar tarde, pero a veces hay que
@@ -559,8 +562,18 @@
   .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
   .audacct tr.audnapform td{background:#fff8e1;}
   /* ══════ LAS REVISIONES ══════ */
-  .audrevs{display:grid; grid-template-columns:360px 1fr; gap:10px; align-items:start;}
-  @media (max-width:980px){ .audrevs{grid-template-columns:1fr;} }
+  /* UN PANEL, NO DOS. La matriz de revisiones ocupa el ancho y el resumen de la
+     seleccionada va debajo: antes eran dos columnas que decían lo mismo. */
+  .audrevs{display:block;}
+  .revmat td{vertical-align:middle;}
+  .revmat .l2{color:#90a4ae; font-size:10px; font-weight:400; margin-top:1px;}
+  .revmat tbody tr{cursor:pointer;}
+  .revmat tbody tr:hover{background:#f3f7fc;}
+  .revmat tbody tr.on{background:#e8f1fb; box-shadow:inset 3px 0 0 #1565C0;}
+  .revmat td.revcel{cursor:pointer;}
+  .revmat td.revcel:hover{background:#dcedc8; outline:1px solid #aed581;}
+  .revmat .revok{color:#2e7d32;}
+  .revcubs button.listo{border-color:#81c784; color:#2e7d32;}
   .revfila{padding:7px 9px; border-bottom:1px solid #f2f4f7; cursor:pointer; font-size:11.5px;}
   .revfila:hover{background:#f3f7fc;}
   .revfila.on{background:#e8f1fb; box-shadow:inset 3px 0 0 #1565C0;}
@@ -576,8 +589,12 @@
   .revkpi b{display:block; font-size:17px; color:#263238; font-variant-numeric:tabular-nums;}
   .revkpi span{font-size:10px; color:#78909c;}
   /* ══════ LA HOJA DE TRABAJO ══════ */
-  /* 1180 y no 1040: con la columna de la figura, el texto del hallazgo quedaba en 276px. */
-  .revhoja{margin:30px auto; max-width:1180px; background:#fff; border-radius:10px; padding:16px 18px;}
+  /* EL ANCHO DE LA HOJA. 1040 → 1180 al entrar la figura; ahora al 96% de la pantalla
+     porque el usuario la vio chica: «igual las barras están pequeñas, no se ven, agranda
+     un poco más el modal, tenemos espacio». El tope alto es para que en una pantalla muy
+     ancha la fila no quede con los botones a un metro del dato. */
+  .revhoja{margin:18px auto; width:96%; max-width:1760px; background:#fff;
+           border-radius:10px; padding:16px 18px;}
   .revavance{display:flex; align-items:center; gap:10px; font-size:11.5px; color:#546e7a; margin-bottom:8px;}
   .revavance .revbar2{flex:1; max-width:340px; height:8px; background:#eceff1; border-radius:99px; overflow:hidden;}
   .revavance .revbar2 i{display:block; height:100%; background:#8BC34A;}

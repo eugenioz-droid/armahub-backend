@@ -114,6 +114,15 @@ def _clasificar_lados(lados, diam_mm: float) -> None:
 # LAS REGLAS
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _y(xs) -> str:
+    """«A», «A y B», «A, B y C». Para que un hallazgo de tres lados se lea como una frase
+    y no como «A y B y C»."""
+    xs = [str(x) for x in xs]
+    if len(xs) <= 1:
+        return xs[0] if xs else ""
+    return ", ".join(xs[:-1]) + " y " + xs[-1]
+
+
 def _minimo_fabricacion(diam_mm: float) -> float:
     """El lado más corto que la planta sabe fabricar, en mm. Sale de la configuración del
     gancho —10 veces el diámetro, con piso de 7,5 cm— y NO de una constante propia: si
@@ -139,20 +148,39 @@ def r_lado_corto(barra, hermanas) -> list:
     if diam <= 0:
         return []
     minimo = _minimo_fabricacion(diam)
-    salida = []
-    for l in barra["lados"]:
-        if l["arco"] or l["largo"] <= 0:
-            continue
-        if l["largo"] < minimo - 0.01:          # estricto: 10φ justo NO es un error
-            salida.append({
-                "texto": "el %s %s mide %d mm y el mínimo de fabricación es %d (10 × φ%g)"
-                         % ("gancho" if l["gancho"] else "lado", l["nombre"],
-                            round(l["largo"]), round(minimo), diam),
-                "lados": [l["nombre"]],
-                "valor": round(l["largo"]), "esperado": round(minimo),
-                "clave": (l["nombre"], round(l["largo"])),
-            })
-    return salida
+    cortos = [l for l in barra["lados"]
+              if not l["arco"] and l["largo"] > 0 and l["largo"] < minimo - 0.01]
+    if not cortos:
+        return []
+    # UNA BARRA ES UN HALLAZGO, aunque le fallen tres lados. Lo pidió el usuario (14-oct)
+    # viendo la misma barra dos veces en la lista, una por cada lado: «aunque sean 2 cosas
+    # para una barra, creo que es mejor dejarlo como un único hallazgo».
+    #
+    # Y no es sólo contar: quien corrige abre el código UNA vez y arregla la barra entera.
+    # Dos filas para la misma barra son dos veces el mismo trabajo, y la fila sólo sabía
+    # pintar SU lado, así que un lado igual de malo quedaba sin marcar al lado del otro.
+    # Medido sobre las 482 señales que había: son 324 barras, y 157 tenían más de una.
+    nombres = [l["nombre"] for l in cortos]
+    if len(cortos) == 1:
+        l = cortos[0]
+        texto = ("el %s %s mide %d mm y el mínimo de fabricación es %d (10 × φ%g)"
+                 % ("gancho" if l["gancho"] else "lado", l["nombre"],
+                    round(l["largo"]), round(minimo), diam))
+    else:
+        # Cada lado con SU medida al lado: «A (90) y E (90)» se lee; «A y E miden 90 y 90»
+        # obliga a emparejar dos listas de memoria, y con tres lados ya no se puede.
+        texto = ("los lados %s miden menos que el mínimo de fabricación, %d mm (10 × φ%g)"
+                 % (_y(["%s (%d)" % (l["nombre"], round(l["largo"])) for l in cortos]),
+                    round(minimo), diam))
+    return [{
+        "texto": texto,
+        "lados": nombres,
+        # El valor que se muestra es el PEOR: es el que decide cuán lejos está la barra.
+        "valor": round(min(l["largo"] for l in cortos)), "esperado": round(minimo),
+        # La firma lleva los lados ORDENADOS, para que no dependa del orden en que aSa
+        # los mande: si no, la misma barra generaría señales distintas entre corridas.
+        "clave": tuple(sorted(nombres)) + (round(min(l["largo"] for l in cortos)),),
+    }]
 
 
 def _es_estribo(barra) -> bool:
@@ -224,22 +252,29 @@ def r_lados_opuestos(barra, hermanas) -> list:
     m = _marco(barra)
     if not m:
         return []
-    salida = []
+    pares = []
     for i in (0, 1):
         a, b = m[i], m[i + 2]
         dif = abs(a["largo"] - b["largo"])
-        if dif <= TOLERANCIA_OPUESTOS + 0.01:   # +0.01: el redondeo de los flotantes
-            continue
-        salida.append({
-            "texto": "los lados %s y %s se miran de frente y miden distinto: %d y %d mm "
-                     "(%d de diferencia)" % (a["nombre"], b["nombre"], round(a["largo"]),
-                                             round(b["largo"]), round(dif)),
-            "lados": [a["nombre"], b["nombre"]],
-            "valor": round(a["largo"]), "esperado": round(b["largo"]),
-            "clave": ("opuestos", a["nombre"], b["nombre"],
-                      round(a["largo"]), round(b["largo"])),
-        })
-    return salida
+        if dif > TOLERANCIA_OPUESTOS + 0.01:    # +0.01: el redondeo de los flotantes
+            pares.append((a, b, dif))
+    if not pares:
+        return []
+    # UN ESTRIBO ES UN HALLAZGO, aunque le fallen los dos pares. Mismo criterio que el
+    # lado corto: quien corrige abre el código una vez y arregla la barra entera.
+    texto = " · ".join(
+        "%s y %s se miran de frente y miden distinto: %d y %d mm (%d de diferencia)"
+        % (a["nombre"], b["nombre"], round(a["largo"]), round(b["largo"]), round(d))
+        for a, b, d in pares)
+    lados = [x["nombre"] for a, b, _ in pares for x in (a, b)]
+    a0, b0, _ = pares[0]
+    return [{
+        "texto": ("los lados " if len(pares) == 1 else "") + texto,
+        "lados": lados,
+        "valor": round(a0["largo"]), "esperado": round(b0["largo"]),
+        "clave": ("opuestos",) + tuple(sorted(lados)) +
+                 tuple(round(x["largo"]) for a, b, _ in pares for x in (a, b)),
+    }]
 
 
 REGLAS = [
@@ -297,7 +332,20 @@ def correr(barras, reglas=None) -> list:
         for r in reglas:
             if not _tiene(b, r["necesita"]):
                 continue
-            for h in (r["fn"](b, hermanas) or []):
+            # UNA BARRA, UNA REGLA, UN HALLAZGO. Las reglas ya devuelven uno solo por
+            # barra, pero esto lo garantiza para la que venga: una regla que devuelva
+            # varios se funde acá en vez de llenar la lista con la misma barra repetida.
+            # Lo pidió el usuario y es la unidad con la que se trabaja: quien corrige abre
+            # el código una vez y arregla la barra entera.
+            _hs = r["fn"](b, hermanas) or []
+            if len(_hs) > 1:
+                _hs = [{
+                    "texto": " · ".join(x.get("texto") or "" for x in _hs),
+                    "lados": [L for x in _hs for L in (x.get("lados") or [])],
+                    "valor": _hs[0].get("valor"), "esperado": _hs[0].get("esperado"),
+                    "clave": tuple(sorted(str(c) for x in _hs for c in (x.get("clave") or ()))),
+                }]
+            for h in _hs:
                 clave = h.get("clave") or ()
                 salida.append({
                     "regla": r["codigo"], "ref": b["ref"], "cc": b.get("cc"),

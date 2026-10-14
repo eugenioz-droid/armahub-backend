@@ -471,8 +471,12 @@ check("la pantalla es lista + resumen + hoja de trabajo",
       and "function pintarItems(" in JS)
 check("...el cubicador ve sólo lo suyo en la hoja; el admin, todo con filtro por persona",
       "function itemsVisibles(" in JS and "REVS.filtro_cub" in JS and "_esAdmin()" in JS)
+# Una revisión sin hallazgos ENTRA IGUAL en la matriz: es la constancia de que se miró,
+# que es distinto de no haber mirado. La lista no filtra por tener hallazgos.
 check("una revisión sin hallazgos deja constancia en vez de esconderse",
-      "sin hallazgos ·" in JS and "Queda el registro de que se revisó" in JS)
+      "'<span class=\"muted\">sin hallazgos</span>'" in JS
+      and "Queda el registro de que se revisó" in JS
+      and "function _visibles(" in JS and "r.items > 0" not in JS.split("function _visibles(")[1][:400])
 check("la hoja se imprime", 'id="revItemsImprimir"' in HTM and "@media print" in HTM)
 check("el tab deja arriba el trabajo y pliega la herramienta",
       HTM.count('<details class="revmas">') >= 1
