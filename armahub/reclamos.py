@@ -37,6 +37,39 @@ def _invalidate_reclamos_cache():
     _cache.invalidate("reclamos:", "landing:")
 
 
+def _mismo_responsable(cur, nombre=None, email=None):
+    """El par (correo, nombre) de la persona responsable, venga por donde venga.
+
+    POR QUÉ HACE FALTA. El responsable de un reclamo vive en DOS columnas:
+    `cubicador_asignado` (el correo, con el que se filtra y se decide quién puede editar)
+    y `responsable` (el nombre, que es lo que se ve). Nada obligaba a que dijeran lo
+    mismo, y bastaba un PATCH que tocara una sola para que se separaran: el reclamo
+    2026-046 mostraba «Gerardo Mendoza» y se filtraba como de Jose Rodriguez, porque el
+    correo se había escrito aparte y la reasignación posterior sólo cambió el nombre.
+
+    Lo correcto a futuro es que el nombre se derive del correo al leer y la columna
+    sobre; mientras tanto, acá se cierra el agujero: tocar una obliga a resolver la otra.
+    """
+    if email:
+        cur.execute("""SELECT email, NULLIF(TRIM(CONCAT_WS(' ', nombre, apellido)), '')
+                         FROM users WHERE LOWER(email) = LOWER(%s)""", (email.strip(),))
+        f = cur.fetchone()
+        if f:
+            return f[0], (f[1] or nombre or f[0])
+        return email.strip(), (nombre or email.strip())
+    if nombre:
+        # Por nombre completo, que es lo que guarda `responsable`. Si hay dos personas que
+        # se llaman igual no se adivina: se deja el nombre y el correo sin tocar, que es
+        # mejor que apuntar al que no es.
+        cur.execute("""SELECT email FROM users
+                        WHERE LOWER(TRIM(CONCAT_WS(' ', nombre, apellido))) = LOWER(%s)
+                          AND COALESCE(activo, TRUE)""", (nombre.strip(),))
+        f = cur.fetchall()
+        if len(f) == 1:
+            return f[0][0], nombre.strip()
+    return None, (nombre or None)
+
+
 def _area_id_de_usuario(cur, email):
     """Infiere el area_id de un usuario por su email, vía area_usuarios.
     Si el usuario pertenece a varias áreas, prioriza donde es jefe_servicio;
@@ -2354,6 +2387,31 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             # 5L.4: el Ishikawa responde al ÁREA. Si el área CAMBIA de valor, la causa
             # raíz elegida ya no pertenece a la matriz vigente → se limpia (y se avisa).
             # Si el área se mantiene, el Ishikawa NO se toca (antes se perdía siempre).
+            # EL CORREO Y EL NOMBRE DEL RESPONSABLE VIAJAN JUNTOS. Se filtra por el correo
+            # (`cubicador_asignado`) y se muestra el nombre (`responsable`): si un PATCH
+            # toca uno solo, el reclamo queda diciendo una cosa y filtrándose por otra.
+            # Pasó con el 2026-046 y el 2026-066 —«Gerardo Mendoza» en pantalla, Jose
+            # Rodriguez en el filtro— y se arregla acá, no en el filtro: el filtro no tiene
+            # por qué saber que el dato puede estar partido.
+            _toca_resp = ("responsable" in body.__fields_set__
+                          or "cubicador_asignado" in body.__fields_set__)
+            if _toca_resp:
+                _em = (body.cubicador_asignado or "").strip() \
+                    if "cubicador_asignado" in body.__fields_set__ else None
+                _nom = (body.responsable or "").strip() \
+                    if "responsable" in body.__fields_set__ else None
+                _em2, _nom2 = _mismo_responsable(cur, nombre=_nom or None, email=_em or None)
+                # Sólo se AGREGA la columna que falta. La que vino en el cuerpo se
+                # respeta tal cual: `sets` y `params` no están alineados uno a uno
+                # —hay sets con `::jsonb` y sets sin parámetro— y reescribir por índice
+                # es la clase de arreglo que corrompe el UPDATE de al lado.
+                if _em2 and not _col_in_sets("cubicador_asignado"):
+                    sets.append("cubicador_asignado = %s")
+                    params.append(_em2)
+                if _nom2 and not _col_in_sets("responsable"):
+                    sets.append("responsable = %s")
+                    params.append(_nom2)
+
             if "cubicador_asignado" in body.__fields_set__ or "asignado_a" in body.__fields_set__:
                 _nuevo_resp = None
                 if "cubicador_asignado" in body.__fields_set__ and body.cubicador_asignado:
