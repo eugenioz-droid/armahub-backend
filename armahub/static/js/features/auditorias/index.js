@@ -1194,12 +1194,41 @@
   //
   // Un arco, además, nunca necesita el mínimo: es una curva, se ve aunque sea chica. Lo que
   // desaparece en una miniatura es un tramo RECTO corto, y ésos son los que se estiran.
+  // ¿EL CONTORNO CIERRA? Mirando el primer punto contra el último, o —y esto es lo que
+  // faltaba— quitándole los tramos de las PUNTAS. En un estribo los extremos son las
+  // puntas de los ganchos, que no se tocan entre sí: el marco cierra, las puntas no. Por
+  // eso la guarda de «figura cerrada» no lo reconocía y el estribo entraba a estirarse.
+  //
+  // SE PRUEBAN DOS TRAMOS POR PUNTA porque un gancho son DOS: el arco del doblez y la
+  // pata recta. Medido sobre barras de aSa: una T1 y una 106A llegan con ocho tramos
+  // —pata, arco, cuatro lados, arco, pata— y su marco cierra recortando exactamente dos
+  // de cada lado. Una barra abierta (102A) no cierra con ningún recorte, así que sigue
+  // recibiendo el mínimo, que es para lo que está.
+  function _cierraRecortando(pts) {
+    for (var k = 0; k <= 2; k++) {
+      var d = k, h = pts.length - 1 - k;
+      if (h - d < 3) break;
+      var per = 0;
+      for (var i = d + 1; i <= h; i++) {
+        per += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      }
+      if (per > 0 && Math.hypot(pts[h].x - pts[d].x, pts[h].y - pts[d].y) <= 0.02 * per) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function _conMinimo(pts, tipos) {
     if (pts.length < 3) return pts;
     // Una figura CERRADA no se toca: estirar un lado la dejaría abierta, y un estribo con
     // una esquina suelta se lee como un error de la barra y no del dibujo.
-    var p0 = pts[0], pn = pts[pts.length - 1];
-    if (Math.hypot(pn.x - p0.x, pn.y - p0.y) < 0.01) return pts;
+    //
+    // UN ESTRIBO TAMPOCO, aunque sus puntas no se toquen. Es el caso que el usuario vio
+    // descuadrado: lo que cierra ahí es el MARCO, y los ganchos sobresalen de él. Y un
+    // estribo no necesita el mínimo —sus cuatro lados son del mismo orden de magnitud—,
+    // así que no se pierde nada por no tocarlo.
+    if (_cierraRecortando(pts)) return pts;
     var esArco = function (i) { return !!(tipos && tipos[i] === 'arco'); };
     var largos = [], i;
     for (i = 1; i < pts.length; i++) {
@@ -1251,6 +1280,44 @@
                                      diam_mm: f.diam, metrico: true });
     } catch (e) { return ''; }
   }
+
+  // LOS LADOS DE UNA BARRA, EN GRILLA. Lo pidió el usuario así: «por qué no los pones
+  // claros, A = 15, B = XX… preferiría que pongas encabezados, ordenado».
+  //
+  //     Lado   A     B     C     D     E     G
+  //     mm     15    45    55    45    55    15
+  //     Áng          135°  90°   90°   90°   135°
+  //
+  // EN ORDEN ALFABÉTICO, que es como se leen y como vienen rotuladas en el dibujo. Antes
+  // iban en orden de RECORRIDO (G, E, D, C, B, A) y no por gusto: el ángulo que manda aSa
+  // es el giro de cada lado contra el ANTERIOR EN EL RECORRIDO, así que ordenar por letra
+  // los despegaba del lado que les toca. Acá cada ángulo viaja en la columna de SU lado,
+  // así que el orden ya no lo rompe.
+  //
+  // SIN SIGNO. El menos es el sentido de giro (horario / antihorario), no una medida: en
+  // una tabla que se lee para verificar una barra es ruido.
+  global.audGrillaLados = function (f, malos, esc_) {
+    if (!f || !f.dims) return '';
+    var E = esc_ || function (s) { return String(s == null ? '' : s); };
+    var mal = malos || {};
+    var orden = Object.keys(f.dims);          // el recorrido, como lo manda aSa
+    var ang = f.angulos || [];
+    var deLado = {};                          // lado → ángulo con el anterior
+    orden.forEach(function (L, i) { if (i > 0 && ang[i - 1] != null) deLado[L] = ang[i - 1]; });
+    var ks = orden.slice().sort();
+    var hayAng = ks.some(function (L) { return deLado[L] != null; });
+    function fila(clase, rotulo, celda) {
+      return '<tr class="' + clase + '"><th>' + rotulo + '</th>' +
+             ks.map(function (L) { return '<td' + (mal[L] ? ' class="mal"' : '') + '>' +
+                                          celda(L) + '</td>'; }).join('') + '</tr>';
+    }
+    return '<table class="audgl">' +
+      fila('l', 'Lado', function (L) { return E(L); }) +
+      fila('v', 'mm', function (L) { return Math.round(Number(f.dims[L]) || 0); }) +
+      (hayAng ? fila('a', 'Áng', function (L) {
+        return deLado[L] == null ? '' : Math.abs(Math.round(deLado[L])) + '°'; }) : '') +
+      '</table>';
+  };
 
   function esAdmin() {
     return ['admin', 'admin_calidad'].indexOf(global.currentRole) !== -1;
@@ -1623,13 +1690,7 @@
     if (!global.audCeldaFigura) return '';
     try {
       var f = normalizarBarra(b, 'asa');
-      var dims = Object.keys(f.dims || {});
-      var ang = f.angulos || [];
-      var txt = dims.map(function (L, n) {
-        return (n > 0 && ang[n - 1] != null ? '<i class="revang">' + Math.round(ang[n - 1]) + '°</i> ' : '') +
-               '<span>' + esc(L) + ' ' + Math.round(f.dims[L]) + '</span>';
-      }).join(' ');
-      return celdaFigura(f) + '<div class="audlados">' + txt + '</div>';
+      return celdaFigura(f) + global.audGrillaLados(f, null, esc);
     } catch (err) { return '<span class="muted">—</span>'; }
   }
 

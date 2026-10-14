@@ -383,24 +383,10 @@
     // dobla. Con eso la barra se verifica acá y no hay que abrir aSa, que es lo que el
     // usuario pidió. Los ángulos vienen de aSa como el giro de cada lado CONTRA EL
     // ANTERIOR, así que el primero no tiene y van intercalados.
-    // EN ORDEN DE RECORRIDO, NO ALFABÉTICO. Una T1 llega como G, E, D, C, B, A: ordenar
-    // por letra deja los ángulos pegados al lado equivocado, porque el ángulo n es el
-    // giro entre el lado n y el anterior EN EL RECORRIDO. El orden de inserción del
-    // objeto es el de aSa (lo arma `_lados` recorriendo los <cp>), así que vale tal cual.
-    var ks = Object.keys(f.dims);
-    var ang = f.angulos || [];
-    var out = [];
-    ks.forEach(function (L, n) {
-      var v = Math.round(Number(f.dims[L]) || 0);
-      // El ángulo que separa este lado del anterior. aSa manda uno por lado con giro, y
-      // el primero no gira contra nada: por eso se lee corrido en uno.
-      if (n > 0 && ang[n - 1] != null) {
-        out.push('<i class="revang">' + Math.round(ang[n - 1]) + '°</i>');
-      }
-      out.push(malos[L] ? '<b class="revmal">' + esc(L) + ' ' + v + '</b>'
-                        : '<span>' + esc(L) + ' ' + v + '</span>');
-    });
-    return out.join(' ') + ' ' + esp;
+    // LA MISMA GRILLA QUE EL RESUMEN DE LA AUDITORÍA. Vive en index.js y se usa acá: las
+    // dos pantallas muestran la misma barra y no tienen por qué pintarla distinto.
+    if (!global.audGrillaLados) return '<span class="muted">—</span>';
+    return global.audGrillaLados(f, malos, esc) + esp;
   }
 
   function _celda(cc, ref) {

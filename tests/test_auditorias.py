@@ -43,6 +43,8 @@ HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html")
 JS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
 SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"), encoding="utf-8").read()
 DEJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "reclamos", "detail-edit.js"), encoding="utf-8").read()
+REVJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "revision.js"),
+             encoding="utf-8").read()
 SCHED = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
 MIG138 = open(os.path.join(ROOT, "armahub", "migrations", "138_auditoria_envio_cierre.sql"),
               encoding="utf-8").read()
@@ -1074,7 +1076,42 @@ check("la figura de la barra se puede ver en el resumen, pedida por código",
       "function _figAud(" in JS and "async function cargarFigurasAud(" in JS
       and 'id="audFigs"' in JS and "'/auditorias/elemento-asa?cc='" in JS)
 check("...con sus lados y ángulos, como en la revisión de barras",
-      "audlados" in JS and "audlados" in HTM and "f.angulos" in JS)
+      "audGrillaLados(f, null, esc)" in JS and ".audgl" in HTM)
+
+print("\nEL ESTRIBO NO SE ESTIRA, Y LOS LADOS SE LEEN EN GRILLA")
+# El usuario: «el renderizado sigue desencuadrando la esquina con algun tipo de
+# resguardo». El resguardo es `_conMinimo`, que estira los tramos rectos cortos para que
+# un gancho no desaparezca al lado de una barra de doce metros. Su guarda de «figura
+# cerrada» comparaba el PRIMER punto con el ULTIMO, y en un estribo esos son las puntas
+# de los dos ganchos, que no se tocan: el estribo entraba a estirarse y la esquina salia
+# descuadrada.
+check("una figura cuyo CONTORNO cierra no se estira, aunque sus puntas no se toquen",
+      "function _cierraRecortando(" in JS and "for (var k = 0; k <= 2; k++)" in JS
+      and "if (_cierraRecortando(pts)) return pts;" in JS)
+# MEDIDO sobre barras de aSa: una T1 (SUSW 10mmA26) y una 106A (SUSH 8mmA37) llegan con
+# ocho tramos —pata, arco, cuatro lados, arco, pata— y su marco cierra recortando DOS de
+# cada punta. Una 102A (barra abierta) no cierra con ningun recorte y sigue recibiendo el
+# minimo, que es para lo que esta.
+check("...y se prueban DOS tramos por punta, porque un gancho son dos: arco y pata",
+      "SE PRUEBAN DOS TRAMOS POR PUNTA porque un gancho son DOS" in JS
+      and "Una barra abierta (102A) no cierra con ning" in JS)
+check("el minimo sigue existiendo para las figuras abiertas",
+      "MIN_LADO_REL" in JS and "var minimo = (mayor" in JS)
+# «Por que no los pones claros, A = 15, B = XX... preferiria que pongas encabezados».
+check("los lados se muestran en una grilla con encabezados, una columna por lado",
+      "global.audGrillaLados = function" in JS
+      and "'Lado'" in JS and "'mm'" in JS and "'Áng'" in JS
+      and ".audgl th" in HTM)
+check("...en orden alfabetico, que ahora se puede porque cada angulo va en SU columna",
+      "var ks = orden.slice().sort();" in JS and "deLado[L] = ang[i - 1]" in JS)
+check("...sin el signo, que es el sentido de giro y no una medida",
+      "Math.abs(Math.round(deLado[L]))" in JS)
+check("el lado que no cumple se marca en la grilla, no en medio del texto",
+      "mal[L] ? ' class=\"mal\"' : ''" in JS and ".audgl td.mal" in HTM)
+# UNA SOLA GRILLA PARA LAS DOS PANTALLAS: la revision de barras y el resumen de la
+# auditoria muestran la misma barra y no tienen por que pintarla distinto.
+check("la grilla se escribe una vez y la usan las dos pantallas",
+      "audGrillaLados(f, malos, esc)" in REVJS and "function audGrillaLados" not in REVJS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

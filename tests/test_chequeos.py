@@ -570,14 +570,14 @@ check("...de a una y en cola, no cuarenta y ocho de golpe",
       "cola.shift()" in JS and "await cargarFiguras(cc)" in JS)
 check("...y al cerrar el modal se deja de mirar",
       "_mirando.disconnect()" in JS.split("function cerrarItems")[1][:300])
-check("la figura va completa: todas sus letras y los angulos entre lado y lado",
-      "revang" in JS and "f.angulos" in JS and ".revlados .revang" in HTM)
-# EL BUG QUE TUVO: una T1 llega como G, E, D, C, B, A. Ordenar por letra pega cada
-# angulo al lado equivocado, porque el angulo n es el giro contra el anterior EN EL
-# RECORRIDO. Verificado contra aSa: SUSW 10mmA26 sale G 130 -135 E 560 -90 D 560...
-check("...en orden de RECORRIDO, no alfabetico",
-      "Object.keys(f.dims);" in JS and "Object.keys(f.dims).sort()" not in
-      JS.split("function _ladosCelda(")[1][:1800])
+# EL CHURRO SE FUE: iba en un renglon, en orden de recorrido, con los angulos
+# intercalados en chico y con signo. El usuario: «la forma de presentar esto esta media
+# sucia... por que no los pones claros, A = 15, B = XX, con encabezados».
+check("la figura va completa, en la grilla con encabezados que vive en index.js",
+      "global.audGrillaLados(f, malos, esc)" in JS and "revang" not in JS
+      and ".audgl" in HTM)
+check("...y la grilla no se copia aca: es la misma que usa el resumen de la auditoria",
+      "function audGrillaLados" not in JS and "audGrillaLados" in AUDJS)
 # El usuario: «establecer un color especifico para las figuras que vienen de aSa».
 check("las barras de aSa se dibujan con su propia tinta",
       "TINTA_ASA" in DIS and "#4a148c" in DIS and "TINTA_ASA: TINTA_ASA" in DIS

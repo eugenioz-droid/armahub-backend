@@ -591,7 +591,17 @@
   .revlados{font-size:11px; color:#546e7a; line-height:1.5;}
   .revlados span{white-space:nowrap;}
   /* El ángulo entre lado y lado: se lee, pero no compite con las medidas. */
-  .revlados .revang{color:#b0bec5; font-style:normal; font-size:9.5px; vertical-align:1px;}
+  /* LA GRILLA DE LADOS: una columna por lado, con sus encabezados. Compacta, porque
+     vive dentro de una celda de tabla y al lado del dibujo. */
+  .audgl{border-collapse:collapse; font-size:10px; line-height:1.3;}
+  .audgl th{color:#90a4ae; font-weight:600; text-align:right; padding:0 6px 0 0;
+            font-size:9px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap;}
+  .audgl td{text-align:center; padding:0 5px; min-width:26px; font-variant-numeric:tabular-nums;}
+  .audgl tr.l td{color:#546e7a; font-weight:700;}
+  .audgl tr.v td{color:#263238; font-weight:600; font-size:11px;}
+  .audgl tr.a td{color:#90a4ae; font-size:9px;}
+  .audgl td.mal{background:#ffebee; color:#c62828;}
+  .audgl tr.v td.mal{font-weight:700;}
   .revlados .revmal{color:#c62828; background:#ffebee; border-radius:3px; padding:0 4px;
                     white-space:nowrap;}
   .revlados .revesp{color:#8d6e00; background:#fff8e1; border-radius:3px; padding:0 4px;
