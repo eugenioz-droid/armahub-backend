@@ -1568,11 +1568,19 @@
         if (b.corregido || b.desestimado) resueltas++;
         if (e.mio && !b.corregido && !b.desestimado) mias++;
       });
+      // El comentario que no es de ninguna barra cuenta como una línea más: es trabajo del
+      // auditado igual que una barra, y si no se contara el total mentiría.
+      if (e.comentario_suelto) {
+        total++;
+        var resuelto = (e.accion_estado || 'pendiente') !== 'pendiente';
+        if (resuelto) resueltas++;
+        if (e.mio && !resuelto) mias++;
+      }
     });
     var enviada = !!(AUD.enviada || AUD.enviada_el);
     var faltan = AUD.barras_pendientes || 0;
     caja.innerHTML = '<div class="audh">Resumen Hallazgos ' +
-      '<span class="muted">' + total + ' barra(s) · ' + resueltas + ' resuelta(s)' +
+      '<span class="muted">' + total + ' línea(s) · ' + resueltas + ' resuelta(s)' +
       (mias ? ' · <b style="color:#c62828">' + mias + ' tuya(s) por resolver</b>' : '') +
       '</span>' +
       // LAS FIGURAS, A PEDIDO. Son una lectura a aSa por código: se piden cuando alguien
@@ -1589,7 +1597,7 @@
         ? '<button class="audenviar" id="audBtnCerrarOk">Cerrar la auditoría</button>'
         : (enviada && faltan && AUD.estado !== 'cerrada'
             ? '<span class="muted" style="font-size:10.5px">quedan ' + faltan +
-              ' barra(s) por resolver para poder cerrar</span>' : '')) +
+              ' por resolver para poder cerrar</span>' : '')) +
       '</div>' +
       (!enviada
         ? '<div class="audnota">Todavía no se envía: hasta que el auditor la mande, nadie ' +
@@ -1606,15 +1614,75 @@
       '<th>Estado</th><th></th></tr></thead><tbody>' +
       acc.map(function (e) {
         var malas = (e.barras_malas || []);
-        if (!malas.length) {
-          // Un elemento con acción pero sin barras marcadas: el hallazgo es del elemento
-          // entero (las auditorías viejas son así). Se muestra igual, o desaparecería.
-          return '<tr><td colspan="9" class="audqse"><b>' + esc(nombreCompleto(e)) + '</b> · ' +
-                 celdaQueSeEncontro(e) + '</td></tr>';
-        }
+        if (!malas.length) return filaComentario(e, enviada);
         return malas.map(function (b) { return filaAccion(e, b, enviada); }).join('');
       }).join('') + '</tbody></table>';
     _bindAcciones(caja);
+  }
+
+  // EL COMENTARIO DEL ELEMENTO, cuando el hallazgo no es de ninguna barra.
+  //
+  // «Falta trabas de muro» no se puede colgar de una barra: la barra que falta no está. El
+  // auditor lo escribe en el comentario del elemento y antes eso quedaba como un texto
+  // muerto —el auditado lo leía y el elemento no se podía cerrar nunca—. Lleva los mismos
+  // tres controles que una barra, porque es el mismo trabajo a otra escala.
+  function filaComentario(e, enviada) {
+    var est = e.accion_estado || 'pendiente';
+    var suelto = !!e.comentario_suelto;
+    var puede = !!(suelto && e.mio && enviada && est !== 'corregida' && est !== 'verificada');
+    var sinRca = !e.causa;
+    var estado = est === 'desestimada'
+      ? '<span class="auddes" title="' + esc(e.accion_nota || '') + '">No aplica</span>'
+      : est === 'verificada'
+        ? '<span class="audacc1 verificada">Comprobada</span>'
+        : est === 'corregida'
+          ? '<span class="audacc1 corregida">Corregida</span>'
+          : '<span class="audacc1 pendiente">Por resolver</span>';
+    var acc = '';
+    if (puede) {
+      acc = '<div class="revseg">' +
+              '<button class="' + (est === 'desestimada' ? '' : 'on') + '" data-eaplica="' + e.id + '"' +
+                (est === 'desestimada' ? '' : ' disabled') +
+                ' title="El comentario es válido y hay que resolverlo">Aplica</button>' +
+              '<button class="' + (est === 'desestimada' ? 'on' : '') + '" data-enoaplica="' + e.id + '"' +
+                ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
+            '</div>' +
+            (est === 'desestimada' ? '' :
+              '<label class="audchk' + (sinRca ? ' off' : '') + '" title="' +
+                (sinRca ? 'Primero clasifica por qué pasó (RCA).'
+                        : 'Márcalo cuando ya esté resuelto en aSa.') +
+                '"><input type="checkbox" data-ecorregi="' + e.id + '"' +
+                (sinRca ? ' disabled' : '') + '> Corregido en aSa</label>');
+    } else if (est === 'corregida' && e.mio && suelto) {
+      acc = '<label class="audchk on" title="Marcado como corregido. Desmárcalo si no lo está.">' +
+            '<input type="checkbox" data-edeshacer="' + e.id + '" checked> Corregido en aSa</label>';
+    }
+    var causa = e.causa
+      ? '<button class="audmini" data-ecausa="' + e.id + '"' + (puede ? '' : ' disabled') +
+        ' title="' + esc(e.causa + (e.causa_texto ? ' · ' + e.causa_texto : '')) + '">' +
+        esc(e.causa) + (puede ? ' ✎' : '') + '</button>'
+      : (puede
+          ? '<button class="audmini sinc" data-ecausa="' + e.id +
+            '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar por ' +
+            'resuelto.">RCA</button>'
+          : '<span class="muted">sin RCA</span>');
+    return '<tr' + (est === 'desestimada' ? ' class="audeses"' : '') + '>' +
+      '<td><span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
+        'del elemento.">elemento</span></td>' +
+      '<td></td>' +
+      '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
+      '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
+      '<td class="audqse" colspan="2">' + esc(e.texto || '') + '</td>' +
+      '<td>' + causa + '</td>' +
+      '<td>' + estado + '</td>' +
+      '<td>' + acc + '</td></tr>' +
+      '<tr class="audnapform" data-eform="' + e.id + '" style="display:none">' +
+        '<td colspan="9"><div class="revnapcaja">' +
+          '<input type="text" data-emotivo="' + e.id + '" ' +
+            'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
+          '<button class="audmini ver" data-enapok="' + e.id + '">Guardar</button>' +
+          '<button class="audmini" data-enapno="' + e.id + '">Cancelar</button>' +
+        '</div></td></tr>';
   }
 
   // UNA BARRA DE LA AUDITORÍA, con lo que se puede hacer con ella.
@@ -1781,6 +1849,39 @@
         if (e.key === 'Enter') _guardarNap(i.dataset.motivo);
       });
     });
+    // Los mismos cuatro verbos sobre el comentario del elemento.
+    caja.querySelectorAll('button[data-ecausa]').forEach(function (b) {
+      b.addEventListener('click', function () { clasificarComentario(b.dataset.ecausa); });
+    });
+    caja.querySelectorAll('input[data-ecorregi]').forEach(function (b) {
+      b.addEventListener('change', function () {
+        resolverElemento(b.dataset.ecorregi, { aplica: true, corregido: true }, b);
+      });
+    });
+    caja.querySelectorAll('input[data-edeshacer]').forEach(function (b) {
+      b.addEventListener('change', function () {
+        resolverElemento(b.dataset.edeshacer, { aplica: true, corregido: false }, b);
+      });
+    });
+    caja.querySelectorAll('button[data-eaplica]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        resolverElemento(b.dataset.eaplica, { aplica: true, corregido: false }, b);
+      });
+    });
+    caja.querySelectorAll('button[data-enoaplica]').forEach(function (b) {
+      b.addEventListener('click', function () { _formNapE(b.dataset.enoaplica, true); });
+    });
+    caja.querySelectorAll('button[data-enapno]').forEach(function (b) {
+      b.addEventListener('click', function () { _formNapE(b.dataset.enapno, false); });
+    });
+    caja.querySelectorAll('button[data-enapok]').forEach(function (b) {
+      b.addEventListener('click', function () { _guardarNapE(b.dataset.enapok); });
+    });
+    caja.querySelectorAll('input[data-emotivo]').forEach(function (i) {
+      i.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') _guardarNapE(i.dataset.emotivo);
+      });
+    });
   }
 
   function _formNap(itemId, abrir) {
@@ -1891,6 +1992,56 @@
     CAUSA_DE = { auditoria_id: AUD.id, item_id: b.item_id, causa: b.causa,
                  causa_categoria: b.causa_categoria, causa_texto: b.causa_texto,
                  ref: b.ref, elemento: el && el.nombre };
+    global.abrirIshikawaModal('auditoria');
+  }
+
+  // LO MISMO, PARA EL COMENTARIO DEL ELEMENTO. Un solo endpoint recibe las tres cosas
+  // —aplica, causa, corregido— porque en el elemento no hay nada que comprobar en aSa
+  // barra por barra: lo que hay es un dicho del auditado, y va en una sola escritura.
+  async function resolverElemento(eid, cuerpo, control) {
+    _ocupado(control, true);
+    try {
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + eid + '/resolucion', cuerpo);
+      ok(cuerpo.aplica === false ? 'Comentario dejado sin efecto'
+                                 : (cuerpo.corregido ? 'Comentario dado por resuelto'
+                                                     : 'Vuelve a quedar por resolver'));
+      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+    } catch (e) {
+      aviso(e.message);
+      if (control && control.type === 'checkbox') control.checked = !cuerpo.corregido;
+      _ocupado(control, false);
+    }
+  }
+
+  function _formNapE(eid, abrir) {
+    var f = document.querySelector('tr[data-eform="' + eid + '"]');
+    if (!f) return;
+    f.style.display = abrir ? '' : 'none';
+    if (abrir) {
+      var i = f.querySelector('input[data-emotivo]');
+      if (i) i.focus();
+    }
+  }
+
+  function _guardarNapE(eid) {
+    var f = document.querySelector('tr[data-eform="' + eid + '"]');
+    if (!f) return;
+    var m = (f.querySelector('input[data-emotivo]').value || '').trim();
+    if (m.length < 10) { aviso('Di por qué no corresponde: lo va a leer quien auditó.'); return; }
+    resolverElemento(eid, { aplica: false, nota: m },
+                     _botonDe('[data-enapok="' + eid + '"]'));
+  }
+
+  function clasificarComentario(eid) {
+    var el = (AUD.elementos || []).filter(function (x) { return String(x.id) === String(eid); })[0];
+    if (!el) return;
+    if (typeof global.abrirIshikawaModal !== 'function') {
+      aviso('No se pudo abrir la matriz de causas. Recarga la página.');
+      return;
+    }
+    CAUSA_DE = { auditoria_id: AUD.id, elemento_id: el.id, causa: el.causa,
+                 causa_categoria: el.causa_categoria, causa_texto: el.causa_texto,
+                 elemento: el.nombre };
     global.abrirIshikawaModal('auditoria');
   }
 
@@ -2244,7 +2395,12 @@
     var a = CAUSA_DE;
     if (!a || !sel || !sel.cod_causa) return;
     try {
-      await req('PUT', '/auditorias/' + a.auditoria_id + '/items/' + a.item_id + '/causa',
+      // La misma matriz sirve a la barra y al comentario del elemento: cambia a dónde se
+      // guarda, no qué se pregunta. `elemento_id` manda cuando no hay barra.
+      var ruta = a.elemento_id
+        ? '/auditorias/' + a.auditoria_id + '/elementos/' + a.elemento_id + '/resolucion'
+        : '/auditorias/' + a.auditoria_id + '/items/' + a.item_id + '/causa';
+      await req('PUT', ruta,
                 { causa: sel.cod_causa, causa_categoria: sel.categoria, causa_texto: sel.sub_causa });
       ok('Causa registrada');
       await cargarMisAcciones();

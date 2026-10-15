@@ -135,7 +135,11 @@ check("la gravedad se calcula del estado del código, no se pregunta",
 check("...y se dice en palabras", A.GRAVEDAD["despachado"] == "Detectado después del despacho"
       and A.GRAVEDAD["antes"] == "Detectado antes del despacho")
 check("...y viaja en cada elemento", '"gravedad": gravedad_de(e[10], e[26])' in SRC)
-check("acciones: pendiente · corregida · verificada", A.ACCIONES == ("pendiente", "corregida", "verificada"))
+# «desestimada» entró el 15-oct, y sólo para el comentario del elemento: el descarte de
+# una barra vive en la barra (`desestimado`) y el elemento lo deriva, pero un comentario
+# que no tiene barra dónde apoyarse necesita poder quedar sin efecto en el elemento mismo.
+check("acciones: pendiente · corregida · verificada · desestimada",
+      A.ACCIONES == ("pendiente", "corregida", "verificada", "desestimada"))
 check("las fechas las pone el SISTEMA: creación hoy, plazo automático",
       "(automáticas)" in HTM and "HORAS_AUDITORIA = 24" in SRC
       and "vence_en(datetime.now(timezone.utc), HORAS_AUDITORIA," in SRC)
@@ -1087,7 +1091,7 @@ check("hay un cierre del auditado, aparte del «cerrar a mano» del auditor",
       '@router.post("/auditorias/{auditoria_id}/cerrar-resueltas")' in SRC
       and "def cerrar_resueltas(" in SRC)
 check("...que exige que no quede NINGUNA barra pendiente",
-      "Todavía quedan %d barra(s) sin resolver" in SRC
+      "Todavía quedan %s sin resolver" in SRC
       and "COUNT(*) FILTER (WHERE NOT i.corregido AND NOT i.desestimado)" in SRC)
 check("...y que lo cierre quien tuvo barras acá, no cualquiera",
       "Cierra quien tuvo barras que corregir en esta auditoría." in SRC)
@@ -1214,6 +1218,49 @@ check("el auditado no abre el formulario del auditor, ni a mirar: lo lleva al Re
       and "mostrarRevision(false);" in JS.split("async function abrirElemento(e) {")[1][:900])
 check("...y la fila de la muestra se lo dice en vez de prometerle revisar",
       "Lo tuyo se resuelve abajo, en Resumen Hallazgos" in JS)
+
+print("\nEL COMENTARIO QUE NO ES DE NINGUNA BARRA")
+# NO TODO HALLAZGO ES DE UNA BARRA (15-oct). «Falta trabas de muro» no se puede colgar de
+# ninguna: la barra que falta no está. El auditor lo escribe en el comentario del elemento
+# y hasta hoy ese comentario no tenía dónde resolverse —el auditado lo leía y el elemento
+# quedaba pendiente para siempre—. El usuario: «el comentario general queda para que lo
+# trate el auditado, pero falta algún check para resolver el comentario que quede».
+check("el backend dice cuál elemento tiene comentario y ninguna barra marcada",
+      '"comentario_suelto"' in SRC and "and not e[\"barras_malas\"]" in SRC)
+check("el auditado lo resuelve con las mismas tres cosas que una barra",
+      "/elementos/{elemento_id}/resolucion" in SRC and "class ResolucionBody" in SRC
+      and all(c in SRC.split("class ResolucionBody")[1][:700]
+              for c in ("aplica", "causa", "corregido", "nota")))
+_res = _cuerpo("{auditoria_id}/elementos/{elemento_id}/resolucion")
+check("...pide ser quien cubicó y que la auditoría esté enviada",
+      "_elemento_del_auditado(cur, auditoria_id, elemento_id, user)" in _res
+      and "_solo_si_enviada(cur, auditoria_id)" in _res)
+check("...no se da por corregido sin RCA, igual que la barra",
+      "Antes de darlo por corregido, clasifica por qué pasó (RCA)" in _res)
+check("...y «no aplica» sin motivo es borrar el hallazgo: se rechaza",
+      "es borrar el hallazgo" in _res and 'if not nota:' in _res)
+check("si el elemento SÍ tiene barras marcadas, se resuelven una por una",
+      "se resuelven una por una" in SRC.split("def _elemento_del_auditado(")[1][:2200])
+check("el estado del elemento sin barras sale de lo que dejó el auditado, no de NULL",
+      'return fila[2] or "pendiente"' in SRC.split("def _accion_de_items(")[1][:2200])
+check("cerrar cuenta los comentarios pendientes, no sólo las barras",
+      "comentario(s) de elemento" in SRC and "sueltos_pend" in SRC)
+check("...y el detalle los suma a lo que falta por resolver",
+      'aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)' in SRC)
+check("la pantalla le pone sus controles al comentario, en vez de dejarlo como texto muerto",
+      "function filaComentario(" in JS and "data-ecorregi=" in JS and "data-enoaplica=" in JS
+      and "data-ecausa=" in JS)
+check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
+      "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
+      and "/resolucion" in JS.split("global.audCausaElegida")[1][:800])
+# UN SOLO VOCABULARIO. Quedaban cuatro elementos diciendo «nc_menor», del vocabulario que
+# el usuario sacó el 9-oct, y el código compara contra «hallazgo» para saber si hay una no
+# conformidad: eran no conformidades que el sistema no contaba como tales.
+MIG156 = open(os.path.join(ROOT, "armahub", "migrations",
+                           "156_un_solo_vocabulario_de_hallazgo.sql"), encoding="utf-8").read()
+check("los hallazgos viejos («nc_menor») pasan al vocabulario de hoy",
+      "UPDATE auditoria_elementos SET hallazgo = 'hallazgo'" in MIG156
+      and "'nc_menor'" in MIG156)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

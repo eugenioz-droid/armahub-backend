@@ -98,7 +98,11 @@ MUESTRA_MAXIMA_ASA = 20
 
 # Estados de la acción que nace de una no conformidad. La CORRECCIÓN la hace quien
 # cubicó, en su cubicación; el auditor sólo VERIFICA. Por eso son tres y no dos.
-ACCIONES = ("pendiente", "corregida", "verificada")
+#
+# «desestimada» es del comentario suelto del elemento, no de las barras: ahí el descarte
+# vive en la propia barra (`desestimado`) y el elemento lo deriva. Un comentario que no
+# tiene barra dónde apoyarse necesita poder quedar sin efecto en el elemento mismo.
+ACCIONES = ("pendiente", "corregida", "verificada", "desestimada")
 # LOS DOS PLAZOS, que el usuario fijó en 24 horas cada uno. Son dos y no uno: cada uno es
 # de una persona distinta y arranca en un momento distinto.
 #
@@ -1436,16 +1440,29 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                 # pase en silencio.
                 rp = e.get("revisado_por")
                 e["revisado_por_ajeno"] = bool(rp and rp != aud.get("auditor") and rp not in admins)
-                if e["barras_malas"] and (e["mio"] or soy_admin):
+                # EL COMENTARIO QUE NO ES DE NINGUNA BARRA (15-oct). Un hallazgo con texto
+                # y sin barras marcadas —«falta trabas de muro»: la barra que falta no
+                # está— es la unidad de trabajo del auditado en ese elemento. Lo dice el
+                # backend y no el front, igual que el resto de quién-puede-qué.
+                e["comentario_suelto"] = bool(e.get("hallazgo") == HALLAZGO_ABRE_ACCION
+                                              and (e.get("texto") or "").strip()
+                                              and not e["barras_malas"])
+                if (e["barras_malas"] or e["comentario_suelto"]) and (e["mio"] or soy_admin):
                     tengo_barras = True
             # PUEDO CERRAR: lo dice el backend con la misma regla que valida el endpoint,
             # para que el botón no ofrezca algo que va a dar 400. Cierra quien respondió,
             # y sólo cuando no queda ninguna barra pendiente.
             todas = [b for e in aud["elementos"] for b in e["barras_malas"]]
             pendientes = [b for b in todas if not b["corregido"] and not b["desestimado"]]
-            aud["barras_pendientes"] = len(pendientes)
+            # Los comentarios sueltos cuentan igual que una barra: son trabajo del auditado
+            # y, si quedan pendientes, la auditoría no está resuelta.
+            sueltos = [e for e in aud["elementos"] if e.get("comentario_suelto")]
+            sueltos_pend = [e for e in sueltos
+                            if (e.get("accion_estado") or "pendiente") == "pendiente"]
+            aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)
             aud["puedo_cerrar"] = bool(aud.get("enviada") and aud.get("estado") != "cerrada"
-                                       and todas and not pendientes and tengo_barras)
+                                       and (todas or sueltos)
+                                       and not pendientes and not sueltos_pend and tengo_barras)
     # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
     # responde «qué falta por mirar».
     try:
@@ -1957,6 +1974,16 @@ def _accion_de_items(cur, elemento_id: int) -> Optional[str]:
         (elemento_id,))
     malas, corregidas, verificadas = cur.fetchone()
     if not malas:
+        # SIN BARRAS MARCADAS, PERO CON COMENTARIO (15-oct). El hallazgo que no es de
+        # ninguna barra —«falta trabas de muro»— vive en el comentario del elemento y lo
+        # resuelve el auditado ahí mismo. Entonces el estado no se deriva de las barras: es
+        # el que él dejó. Sin comentario y sin barras no hay nada que corregir, y queda en
+        # NULL como siempre.
+        cur.execute("""SELECT hallazgo, COALESCE(texto, ''), accion_estado
+                         FROM auditoria_elementos WHERE id = %s""", (elemento_id,))
+        fila = cur.fetchone() or (None, "", None)
+        if fila[0] == HALLAZGO_ABRE_ACCION and fila[1].strip():
+            return fila[2] or "pendiente"
         return None
     if verificadas >= malas:
         return "verificada"
@@ -2165,15 +2192,35 @@ def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_curre
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE""",
                 (mios, auditoria_id))
             pendientes, total, mias = cur.fetchone()
-            if user.get("role") not in ROLES_ADMINISTRAN and not mias:
+            # LOS COMENTARIOS SUELTOS CUENTAN IGUAL (15-oct). Un hallazgo que no es de
+            # ninguna barra se resuelve en el elemento, y si queda pendiente la auditoría
+            # tampoco está resuelta: cerrarla dejaría el comentario sin respuesta.
+            cur.execute(
+                """SELECT COUNT(*) FILTER (WHERE COALESCE(e.accion_estado, 'pendiente') = 'pendiente'),
+                          COUNT(*),
+                          COUNT(*) FILTER (WHERE TRIM(COALESCE(e.cubicado_por, '')) = ANY(%s))
+                     FROM auditoria_elementos e
+                    WHERE e.auditoria_id = %s AND e.hallazgo = %s
+                      AND TRIM(COALESCE(e.texto, '')) <> ''
+                      AND NOT EXISTS (SELECT 1 FROM auditoria_items i
+                                       WHERE i.elemento_id = e.id AND i.conforme IS FALSE)""",
+                (mios, auditoria_id, HALLAZGO_ABRE_ACCION))
+            sueltos_pend, sueltos, sueltos_mios = cur.fetchone()
+            total = (total or 0) + (sueltos or 0)
+            if user.get("role") not in ROLES_ADMINISTRAN and not mias and not sueltos_mios:
                 raise HTTPException(
                     status_code=403,
                     detail="Cierra quien tuvo barras que corregir en esta auditoría.")
-            if pendientes:
+            if pendientes or sueltos_pend:
+                falta = []
+                if pendientes:
+                    falta.append("%d barra(s)" % pendientes)
+                if sueltos_pend:
+                    falta.append("%d comentario(s) de elemento" % sueltos_pend)
                 raise HTTPException(
                     status_code=400,
-                    detail="Todavía quedan %d barra(s) sin resolver: cada una tiene que "
-                           "quedar corregida o sin efecto antes de cerrar." % pendientes)
+                    detail="Todavía quedan %s sin resolver: cada uno tiene que quedar "
+                           "corregido o sin efecto antes de cerrar." % " y ".join(falta))
             cur.execute(
                 """UPDATE auditorias
                       SET cerrada_a_mano = TRUE, cerrada_por = %s,
@@ -2781,6 +2828,111 @@ def _barra_del_auditado(cur, auditoria_id: int, item_id: int, user) -> tuple:
         raise HTTPException(status_code=403,
                             detail="Esta corrección es de quien cubicó el elemento.")
     return fila
+
+
+def _elemento_del_auditado(cur, auditoria_id: int, elemento_id: int, user) -> tuple:
+    """EL COMENTARIO SUELTO DEL ELEMENTO, comprobando que quien pregunta pueda resolverlo.
+
+    POR QUÉ EXISTE (15-oct). El hallazgo es por barra, pero NO TODO HALLAZGO ES DE UNA
+    BARRA: «falta trabas de muro» no se puede colgar de ninguna, porque la barra que falta
+    no está. El auditor lo escribe en el comentario del elemento y hasta hoy ese comentario
+    no tenía dónde resolverse: el auditado lo leía y el elemento quedaba pendiente para
+    siempre. El usuario lo dijo así: «el comentario general queda para que lo trate el
+    auditado, pero falta algún check para resolver el comentario que quede».
+
+    Mismo dueño que la barra: quien cubicó, o administración. Y sólo cuando el elemento NO
+    tiene barras marcadas: si las tiene, el flujo es por barra y éste sobra."""
+    cur.execute(
+        """SELECT e.cubicado_por, e.nombre, e.hallazgo, e.texto, e.causa, e.accion_estado,
+                  a.codigo, a.auditor,
+                  (SELECT COUNT(*) FROM auditoria_items i
+                    WHERE i.elemento_id = e.id AND i.conforme IS FALSE)
+             FROM auditoria_elementos e
+             JOIN auditorias a ON a.id = e.auditoria_id
+            WHERE e.id = %s AND e.auditoria_id = %s""", (elemento_id, auditoria_id))
+    fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Ese elemento no es de esta auditoría.")
+    cubico, nombre, hallazgo, texto, _causa, _accion, _codigo, _auditor, malas = fila
+    if hallazgo != HALLAZGO_ABRE_ACCION:
+        raise HTTPException(status_code=400, detail="Ese elemento no tiene una no conformidad.")
+    if malas:
+        raise HTTPException(
+            status_code=400,
+            detail="Ese elemento tiene barras marcadas: se resuelven una por una, que es "
+                   "donde está la observación.")
+    if not (texto or "").strip():
+        raise HTTPException(status_code=400,
+                            detail="Ese elemento no tiene comentario que resolver.")
+    email = user.get("email", "?")
+    if user.get("role") not in ROLES_ADMINISTRAN and cubico \
+            and (cubico or "").strip() not in alias_cubicador(cur, email):
+        raise HTTPException(status_code=403,
+                            detail="Este comentario es de quien cubicó el elemento.")
+    return fila
+
+
+class ResolucionBody(BaseModel):
+    """CÓMO EL AUDITADO RESUELVE EL COMENTARIO DE UN ELEMENTO. Las mismas tres cosas que
+    hace sobre una barra, porque es la misma pregunta a otra escala: si aplica, por qué
+    pasó, y si ya quedó arreglado en aSa."""
+    aplica: bool = True
+    causa: Optional[str] = None
+    causa_categoria: Optional[str] = None
+    causa_texto: Optional[str] = None
+    corregido: bool = False
+    nota: Optional[str] = None
+
+
+@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/resolucion")
+def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBody,
+                        user=Depends(get_current_user)):
+    """El auditado resuelve el comentario suelto del elemento: aplica o no, por qué pasó, y
+    si ya lo corrigió. Mismas reglas que la barra —RCA antes de darlo por corregido, y sólo
+    con la auditoría enviada—, porque es el mismo trabajo sobre lo que no cabe en una
+    barra."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            fila = _elemento_del_auditado(cur, auditoria_id, elemento_id, user)
+            nombre, causa_hoy, codigo, auditor = fila[1], fila[4], fila[6], fila[7]
+            _solo_si_enviada(cur, auditoria_id)
+            causa = (body.causa or "").strip() or causa_hoy
+            nota = (body.nota or "").strip() or None
+            if not body.aplica:
+                # NO APLICA. Igual que la barra desestimada: no traba el elemento, pero
+                # pide el motivo —sin motivo, «no aplica» es borrar el hallazgo— y queda
+                # escrito quién lo dijo, para que el auditor lo pueda objetar.
+                if not nota:
+                    raise HTTPException(status_code=400,
+                                        detail="Si no aplica, di por qué: sin motivo esto "
+                                               "es borrar el hallazgo.")
+                estado = "desestimada"
+            elif body.corregido:
+                if not causa:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Antes de darlo por corregido, clasifica por qué pasó (RCA).")
+                estado = "corregida"
+            else:
+                estado = "pendiente"
+            cur.execute(
+                """UPDATE auditoria_elementos
+                      SET causa = %s, causa_categoria = %s, causa_texto = %s,
+                          accion_estado = %s, accion_nota = %s, accion_por = %s,
+                          accion_el = now()
+                    WHERE id = %s""",
+                (causa, (body.causa_categoria or "").strip() or None,
+                 (body.causa_texto or "").strip() or None, estado, nota, email, elemento_id))
+            _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_resolucion",
+                  "%s · %s: %s%s" % (codigo, nombre, estado, (" (%s)" % causa) if causa else ""),
+                  "auditoria", str(auditoria_id))
+    if estado in ("corregida", "desestimada") and auditor:
+        _avisar(auditor, "Auditoría %s: %s — el comentario del elemento quedó %s."
+                % (codigo, nombre, "sin efecto" if estado == "desestimada" else "corregido"))
+    return detalle(auditoria_id, user)
 
 
 class CausaBody(BaseModel):
