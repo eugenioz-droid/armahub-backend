@@ -530,10 +530,20 @@ check("«no aplica» pide motivo y explicación EN la fila, sin prompt del naveg
       and "¿Por qué NO aplica? Escribe el número" not in JS)
 check("...y sigue exigiendo los dos",
       "Elige por qué no aplica." in JS and "nota.length < 10" in JS)
-check("el check es «ya la corregí» y UN botón cierra el ciclo: declara y lee aSa",
+check("el check es «ya la corregí» y UN botón cierra ese ciclo: declara y lee aSa",
       'title="Ya la corregí"' in JS and JS.count('id="revAccVerificar"') == 1
       and "{ ids: ids, estado: 'declarada' }" in JS
-      and "revAccDecl" not in JS and "revAccNoAplica" not in JS)
+      and "revAccDecl" not in JS)
+# «NO APLICA» DE A MUCHAS VOLVIO, con una razon nueva: la regla del cabezal marca 70
+# barras de las que la mayoria son correctas. El usuario: «con los check que pusiste, el
+# usuario pueda ponerle No aplica masivamente, marca checks, contesta y eso se hace
+# multiple para cada barra seleccionada». Cien barras correctas no pueden ser cien
+# explicaciones iguales: lo que pasa entonces es que nadie explica nada.
+check("...y las marcadas se pueden dejar sin efecto de a muchas, con UNA explicacion",
+      'id="revAccNoAplica"' in JS and "async function noAplicaMarcadas(" in JS
+      and "estado: 'aceptada', motivo_tipo: mot, nota: nota" in JS)
+check("...que sigue exigiendo motivo y explicacion, igual que una barra suelta",
+      "Elige por qué no aplican." in JS and "nota.length < 10" in JS)
 check("la referencia abre el render: el detalle no se perdió",
       "abrirDetalleSenal(b.dataset.ver)" in JS and 'audref" data-ver=' in JS)
 check("«Mis chequeos» ya no filtra por el estado muerto que dejó la 146",
@@ -560,6 +570,32 @@ check("...pero se olvida lo de los códigos que una verificación acaba de leer 
       and "REVS.figs = {};" in JS)
 check("la figura se imprime: es la mitad de para qué sirve la hoja",
       ".revfig, .revfig svg { display:table-cell !important; }" in HTM)
+
+print("\n17b. El cabezal con diametro chico")
+# «Revisar si tenemos cabezales con diametros 8, 10 o 12... podria aplicar a vigas, muros
+# y elementos en general que tengan el texto CB en la tipologia».
+def _cab(diam, nota="Cb"):
+    b = barra([("A", 900, "B", None), ("B", 900, "B", 90)], diam=diam)
+    b["tipologia"] = nota
+    return b
+check("un cabezal de phi12 se marca", len(C.r_cabezal_delgado(_cab(12.0), [])) == 1)
+check("...y uno de phi16 no", C.r_cabezal_delgado(_cab(16.0), []) == [])
+check("la tipologia se lee con diccionario, porque la escribe una persona",
+      C.tipologia_de("Cb") == "cabezal" and C.tipologia_de("CAB SUP") == "cabezal"
+      and C.tipologia_de("MH") == "horizontal" and C.tipologia_de("HORIZ") == "horizontal"
+      and C.tipologia_de("TRABA MURO") == "traba" and C.tipologia_de("MV VAR") == "vertical")
+# LO QUE NO DEBE HACER: tragarse cualquier texto que contenga esas letras. Se busca la
+# PALABRA completa, no el trozo.
+check("...y no se traga lo que no es", C.tipologia_de("CAPITEL") is None
+      and C.tipologia_de("TC") is None and C.tipologia_de("F=F'") is None
+      and C.tipologia_de("") is None and C.tipologia_de(None) is None)
+check("una barra sin tipologia de cabezal no entra en la regla",
+      C.r_cabezal_delgado(_cab(12.0, "MH"), []) == []
+      and C.r_cabezal_delgado(_cab(12.0, None), []) == [])
+# NO AFIRMA QUE ESTE MAL: 117 de 475 cabezales son phi12, demasiado para ser todo error.
+check("la regla dice que hay que mirarlo, no que este mal",
+      "no afirma que esté mal" in SRC and "de a muchos" in SRC)
+check("la tipologia llega desde aSa en `Notes`", '"tipologia": (item.get("Notes")' in SRC)
 
 print("\n18. La fila muestra la barra, no la describe")
 # El usuario (13-oct): «demasiado texto. Debe indicar hallazgo, mostrar barra renderizada

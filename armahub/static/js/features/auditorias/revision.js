@@ -300,8 +300,9 @@
         'Ver todo</button>'
       : 'Todas las revisiones <span class="muted">' + (T.revisiones || 0) +
         ' corrida(s) · elige una abajo para filtrar</span>';
-    tit += det ? '<button class="audmini ver" id="revAbrirItems">Abrir los ' + apl +
-                 ' hallazgos</button>' : '';
+    // SIN BOTÓN DE ABRIR ACÁ. Cada revisión tiene el suyo en su línea, y el usuario lo
+    // dijo: «aparte de feo te quedó de más ahí si ya le pusiste a cada revisión un botón».
+    // Para entrar a TODO están los chips de cubicador, que es como se entra de verdad.
     // El título y el «ver todo» viven en la barra de acciones, que ya tiene el botón de
     // correr una revisión nueva: así arriba queda una sola fila de cabecera.
     $('revAccTit').innerHTML = tit;
@@ -322,8 +323,6 @@
                    esc(c.q) + (sel ? '' : ', en todas las revisiones') + '">' +
                    esc(c.q) + ' <b>' + c.n + '</b>' +
                    (falta <= 0 ? ' ✓' : '') + '</button>'; }).join('') + '</div>');
-    var b = $('revAbrirItems');
-    if (b) b.addEventListener('click', function () { abrirItems(); });
     var vt = $('revTodo');
     if (vt) vt.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -453,19 +452,70 @@
     var n = Object.keys(REVS.sel_items).length;
     var faltan = _ccsSinFigura().length;
     $('revItemsAcc').innerHTML =
-      '<b>' + (n ? n + ' marcada(s) como corregida(s)' : 'Marca con el check las barras que ya corregiste') + '</b>' +
+      '<b>' + (n ? n + ' barra(s) marcada(s)' : 'Marca con el check las barras que ya corregiste') + '</b>' +
       (faltan ? '<button class="audmini" id="revAccFiguras" title="Lee los ' + faltan +
                 ' código(s) en aSa y dibuja cada barra. Va de a uno para no colgarse.">' +
                 'Ver las figuras (' + faltan + ')</button>' : '') +
       '<div style="flex:1"></div>' +
+      // «NO APLICA» DE A MUCHAS. Lo pidió el usuario para los casos que la regla marca y
+      // son correctos —un cabezal φ12 es inusual pero legítimo—: marcar los checks,
+      // explicar UNA vez y que valga para todos. Sin esto, cien barras correctas son cien
+      // explicaciones iguales, y lo que pasa entonces es que nadie explica nada.
+      '<button class="audmini" id="revAccNoAplica"' + (n ? '' : ' disabled') +
+        ' title="Deja sin efecto las barras marcadas, con una sola explicación para todas">' +
+        'No aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
       '<button class="audmini ver" id="revAccVerificar"' + (n ? '' : ' disabled') +
         ' title="Lee en aSa SÓLO los códigos de lo que marcaste y comprueba si el cambio está hecho">' +
         'Verificar en aSa' + (n ? ' (' + n + ')' : '') + '</button>' +
-      '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>';
+      '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>' +
+      // El formulario del «no aplica» de lote: el mismo motivo y la misma explicación que
+      // pide una barra suelta, porque el registro vale lo mismo para una que para cien.
+      '<div class="revnapcaja" id="revAccNapForm" style="display:none; width:100%; margin-top:6px;">' +
+        '<select id="revAccNapMot">' + _opcionesMotivo() + '</select>' +
+        '<input type="text" id="revAccNapNota" placeholder="Explica por qué no aplican — lo lee quien audita y queda firmado">' +
+        '<button class="audmini ver" id="revAccNapOk">Guardar</button>' +
+        '<button class="audmini" id="revAccNapNo">Cancelar</button>' +
+      '</div>';
     var f = $('revAccFiguras');
     if (f) f.addEventListener('click', function () { cargarTodasLasFiguras(f); });
     var ver = $('revAccVerificar');
     if (ver) ver.addEventListener('click', verificarMarcados);
+    var na = $('revAccNoAplica');
+    if (na) na.addEventListener('click', function () {
+      $('revAccNapForm').style.display = 'flex';
+      $('revAccNapNota').focus();
+    });
+    var no = $('revAccNapNo');
+    if (no) no.addEventListener('click', function () { $('revAccNapForm').style.display = 'none'; });
+    var si = $('revAccNapOk');
+    if (si) si.addEventListener('click', noAplicaMarcadas);
+    var nota = $('revAccNapNota');
+    if (nota) nota.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') noAplicaMarcadas();
+    });
+  }
+
+  // DEJAR SIN EFECTO LO MARCADO, con UNA explicación para todas. El backend ya recibía
+  // varios ids: lo que faltaba era la pantalla.
+  async function noAplicaMarcadas() {
+    var ids = _marcados();
+    if (!ids.length) return;
+    var mot = $('revAccNapMot').value;
+    var nota = ($('revAccNapNota').value || '').trim();
+    if (!mot) { aviso('Elige por qué no aplican.'); return; }
+    if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
+    var b = $('revAccNapOk');
+    b.disabled = true; b.textContent = 'Guardando…';
+    try {
+      var r = await req('PUT', '/chequeos/declarar',
+                        { ids: ids, estado: 'aceptada', motivo_tipo: mot, nota: nota });
+      ok((r.afectadas || ids.length) + ' barra(s) dejadas sin efecto');
+      REVS.sel_items = {};
+      await refrescarRevision();
+    } catch (e) {
+      aviso(e.message);
+      b.disabled = false; b.textContent = 'Guardar';
+    }
   }
 
   // ══════ LAS FIGURAS ══════

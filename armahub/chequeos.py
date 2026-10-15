@@ -77,6 +77,10 @@ def normalizar_asa(item: dict, ref: str) -> Optional[dict]:
         "cc": (item.get("CtrlCode") or "").strip() or None,
         "elemento": (item.get("ElementID") or "").strip() or None,
         "marca": item.get("BarMark"), "figura": (item.get("ShpNameID") or "").strip() or None,
+        # LA TIPOLOGÍA, que en aSa va en `Notes`: MH, MV, TR, CB… La escribe el cubicador
+        # a mano y NO está normalizada —para lo mismo conviven MH/HORIZ/HOR— así que se
+        # guarda cruda y se interpreta en `tipologia_de`, que es donde vive el diccionario.
+        "tipologia": (item.get("Notes") or "").strip() or None,
         "diam": diam, "pin": _num(item.get("PinDiam")),
         "largo": _num(item.get("LengthTheor")), "cant": _num(item.get("TotalQty")),
         "lados": lados, "mbr": envolvente_declarada(legangle),
@@ -113,6 +117,40 @@ def _clasificar_lados(lados, diam_mm: float) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # LAS REGLAS
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LA TIPOLOGÍA DE UNA BARRA
+# ─────────────────────────────────────────────────────────────────────────────
+# Vive en `Notes` y la escribe una persona, así que para lo mismo conviven varias formas.
+# Medido sobre barras reales: MH / HORIZ / HOR, MV / VERT / VRT, TR / TRABA, CB / CAB,
+# ESTR / ESTRIBO. El usuario lo confirmó: «tipologías en cubicaciones manuales están
+# normalizadas de palabra, o sea el usuario si se acuerda lo hace bien, entonces tendríamos
+# que buscar matches».
+#
+# Se busca la palabra COMPLETA, no el trozo: sin eso «TRABA MURO» entra por TR (bien) pero
+# también cualquier texto que contenga esas dos letras pegadas a otra cosa.
+TIPOLOGIAS = {
+    "horizontal": ("MH", "HORIZ", "HOR"),
+    "vertical":   ("MV", "VERT", "VRT"),
+    "traba":      ("TR", "TRABA"),
+    "cabezal":    ("CB", "CAB"),
+    "estribo":    ("ESTR", "ESTRIBO"),
+    "confinam":   ("CONF",),
+}
+
+
+def tipologia_de(texto) -> Optional[str]:
+    """Qué es la barra, según lo que escribió quien cubicó. None si no se reconoce: eso
+    NO es un error —hay tipologías que no son de muro— y por eso no se marca nada."""
+    u = (texto or "").upper()
+    if not u.strip():
+        return None
+    for clave, alias in TIPOLOGIAS.items():
+        for a in alias:
+            if re.search(r"\b" + a + r"\b", u):
+                return clave
+    return None
+
 
 def _y(xs) -> str:
     """«A», «A y B», «A, B y C». Para que un hallazgo de tres lados se lea como una frase
@@ -277,6 +315,39 @@ def r_lados_opuestos(barra, hermanas) -> list:
     }]
 
 
+# El diámetro desde el que un cabezal es lo habitual. Por debajo NO es necesariamente un
+# error —el usuario: «12 es legítimo en algunos casos, pero es más inusual»— y por eso la
+# señal se levanta para que alguien lo mire, no para afirmar que está mal.
+CABEZAL_DIAM_MINIMO = 16.0
+
+
+def r_cabezal_delgado(barra, hermanas) -> list:
+    """UN CABEZAL CON φ12 O MENOS. Es inusual y conviene mirarlo.
+
+    Lo pidió el usuario: «revisar si tenemos cabezales con diámetros 8, 10 o 12… podría
+    aplicar a vigas, muros y elementos en general que tengan el texto CB en la tipología».
+
+    LA TIPOLOGÍA LA ESCRIBE UNA PERSONA y no está normalizada: `CB`, `Cb`, `CAB`, `CAB
+    SUP`. El diccionario vive en `tipologia_de` y no acá, para que la regla que venga
+    mañana no tenga que repetirlo.
+
+    MEDIDO sobre 475 cabezales reales: 124 están en φ12 o menos, y 117 de ésos son φ12. Es
+    demasiado para ser todo error, y por eso esto no afirma que esté mal: dice que hay que
+    mirarlo. Lo que hace que no sea ruido es poder dejarlo sin efecto DE A MUCHOS, con una
+    sola explicación, que es como el usuario pidió resolverlo."""
+    if tipologia_de(barra.get("tipologia")) != "cabezal":
+        return []
+    diam = barra.get("diam") or 0
+    if diam <= 0 or diam >= CABEZAL_DIAM_MINIMO:
+        return []
+    return [{
+        "texto": "es un cabezal de φ%g, y lo habitual es φ%g o más" % (diam, CABEZAL_DIAM_MINIMO),
+        "lados": [],
+        "valor": diam, "esperado": CABEZAL_DIAM_MINIMO,
+        "clave": ("cabezal", diam),
+    }]
+
+
 REGLAS = [
     {"codigo": "lado_corto",
      # El nombre corto es para los encabezados de tabla. Lo declara la regla y no lo recorta
@@ -295,6 +366,13 @@ REGLAS = [
                "medir lo mismo. Si no, hay una medida tipeada mal.",
      "necesita": ("lados",),
      "fn": r_lados_opuestos},
+    {"codigo": "cabezal_delgado",
+     "corto": "Cabezal φ chico",
+     "nombre": "Cabezal con diámetro menor al habitual",
+     "porque": "Un cabezal de φ12 o menos es inusual. Puede ser correcto —y entonces se "
+               "deja sin efecto, de a muchos si hace falta— pero conviene mirarlo.",
+     "necesita": ("diam",),
+     "fn": r_cabezal_delgado},
 ]
 
 REGLAS_POR_CODIGO = {r["codigo"]: r for r in REGLAS}
