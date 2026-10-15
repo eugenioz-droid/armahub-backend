@@ -286,12 +286,27 @@
     return Number(m[1]);
   }
 
+  // EL FORMULARIO DE CREAR NO ARRASTRA LO DE LA VEZ ANTERIOR (15-oct). El estado —origen,
+  // obra elegida, su universo, los códigos marcados— vive en variables del módulo y se
+  // quedaba de una visita a la otra: el usuario volvió desde los dashboards y el
+  // selector seguía en «aSa» con la obra de la vez pasada, así que la obra de ArmaHub que
+  // buscaba no aparecía. «Me dejaste un filtro pegado». Sólo se conserva si el formulario
+  // está ABIERTO, que es la única señal de que alguien lo estaba llenando.
+  function _formEnBlanco() {
+    ORIGEN = 'armahub'; OBRA = ''; UNIV = null;
+    SECT = []; PISOS = []; CICLOS = []; CCS = []; CC_LISTA = []; CC_BUSCA = '';
+    if (CB_OBRA) CB_OBRA.limpiar();
+    var b = $('audCcBusca');
+    if (b) b.value = '';
+  }
+
   global.loadAuditorias = async function () {
     if (!$('tab-auditorias')) return;
     try {
       BASE = await req('GET', '/auditorias/obras');
       if (!BASE) return;
       if (!_bound) { _bound = true; bind(); }
+      if ($('audForm').style.display === 'none') _formEnBlanco();
       pintarOrigen();
       pintarForm();
       await cargarLista();

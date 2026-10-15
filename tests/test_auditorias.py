@@ -1139,5 +1139,25 @@ check("...y estan en las dos pantallas, repintando lo que el tamano cambia",
       and "audChipsTam('audTam', pintarAcciones)" in JS
       and 'id="revTam"' in HTM)
 
+print("\nEL SELECTOR DE OBRA: SIN REPETIDAS Y SIN LO DE LA VEZ ANTERIOR")
+# «Ahora me aparece 3 veces euro san pablo». San Pablo son tres frentes —Basílica, Lourdes
+# y San Pablo— cubicados aparte y enlazados al mismo job de aSa. Con el nombre de aSa
+# solo, el selector mostraba tres entradas iguales y el combobox, que resuelve por texto
+# exacto, no podía distinguirlas.
+check("si varias obras de ArmaHub comparten un job, el selector les agrega el frente",
+      '"frente": frente' in SRC and 'nombre = "%s · %s" % (r[1], frente)' in SRC
+      and "p2.asa_job_id = p.asa_job_id" in SRC)
+check("...y no se funden: la auditoría de ArmaHub se sortea sobre las barras de UN proyecto",
+      "no se funden: se les agrega el frente" in SRC)
+# «Me dejaste un filtro pegado, llegué de los dashboards y no me encontraba la obra». El
+# estado del formulario de crear vive en variables del módulo y se quedaba de una visita
+# a la otra: el origen seguía en «aSa» con la obra de la vez pasada.
+check("al volver al tab con el formulario cerrado, el estado de crear se limpia",
+      "function _formEnBlanco(" in JS
+      and "if ($('audForm').style.display === 'none') _formEnBlanco();" in JS
+      and "ORIGEN = 'armahub'; OBRA = ''; UNIV = null;" in JS)
+check("...y se conserva sólo si el formulario está ABIERTO, que es la señal de que alguien lo llenaba",
+      "Sólo se conserva si el formulario\n  // está ABIERTO" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

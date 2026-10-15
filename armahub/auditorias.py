@@ -266,15 +266,38 @@ def obras(user=Depends(get_current_user)):
                            (SELECT COUNT(*) FROM reclamos r
                              WHERE r.id_proyecto = b.id_proyecto
                                AND r.estado NOT IN ('cerrado', 'rechazado')) AS reclamos,
-                           p.asa_job_id
+                           p.asa_job_id, p.nombre_proyecto,
+                           -- Cuántas obras de ArmaHub comparten este job: si son varias,
+                           -- el nombre de aSa solo no las distingue.
+                           (SELECT COUNT(*) FROM proyectos p2
+                             WHERE p2.asa_job_id = p.asa_job_id
+                               AND EXISTS (SELECT 1 FROM barras b2 WHERE b2.id_proyecto = p2.id_proyecto))
                       FROM barras b
                       LEFT JOIN proyectos p ON p.id_proyecto = b.id_proyecto
                       LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
-                     GROUP BY 1, 2, p.asa_job_id ORDER BY 2""")
+                     GROUP BY 1, 2, p.asa_job_id, p.nombre_proyecto ORDER BY 2, p.nombre_proyecto""")
             # LA OBRA SE VE COMO EN aSa (13-oct): el nombre del espejo y el job como código.
-            lista = [{"id_proyecto": r[0], "obra": r[1], "barras": r[2], "kg": float(r[3] or 0),
-                      "elementos": r[4], "reclamos": r[5], "codigo": r[6] or r[0]}
-                     for r in cur.fetchall()]
+            #
+            # PERO UN JOB PUEDE SER VARIAS OBRAS DE ARMAHUB (15-oct). San Pablo son tres
+            # frentes —Basílica, Lourdes y San Pablo— cubicados aparte y enlazados al mismo
+            # job 2012732. Con el nombre de aSa solo, el selector mostraba «EURO - EDIFICIO
+            # SAN PABLO» tres veces iguales y el usuario no sabía cuál era cuál: «ahora me
+            # aparece 3 veces euro san pablo». La auditoría de ArmaHub se sortea sobre las
+            # barras de UN proyecto, así que no se funden: se les agrega el frente.
+            lista = []
+            for r in cur.fetchall():
+                nombre, frente = r[1], None
+                if (r[8] or 0) > 1 and r[7]:
+                    # El frente es lo que el nombre de ArmaHub agrega al de aSa: de
+                    # «Euro - San Pablo - Basilica» queda «Basilica». Si no hay un prefijo
+                    # común que recortar, se usa el nombre de ArmaHub entero.
+                    partes = [x.strip() for x in str(r[7]).split(" - ") if x.strip()]
+                    frente = partes[-1] if len(partes) > 1 else str(r[7]).strip()
+                    nombre = "%s · %s" % (r[1], frente)
+                lista.append({"id_proyecto": r[0], "obra": nombre, "barras": r[2],
+                              "kg": float(r[3] or 0), "elementos": r[4], "reclamos": r[5],
+                              "codigo": r[6] or r[0], "frente": frente,
+                              "nombre_armahub": r[7]})
             # Los que pueden quedar como auditor: los integrantes del area de
             # Cubicaciones. Es la misma lista que mantiene el usuario en el panel de
             # areas, asi que agregar o sacar un cubicador se hace alla y no aca.
