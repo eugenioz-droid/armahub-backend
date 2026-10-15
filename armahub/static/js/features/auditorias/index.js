@@ -401,10 +401,9 @@
 
   // El alcance se arma con lo que la obra TIENE: cada chip dice cuántos elementos trae.
   function pintarAlcance() {
-    var caja = $('audAlcance'), cajaAsa = $('audAlcanceAsa');
-    // La caja de tipo/piso/ciclo era el alcance de ArmaHub; en aSa el alcance son los
-    // códigos de control, que es lo único que aSa tiene.
-    caja.style.display = 'none';
+    // El alcance de una auditoría son los códigos de control de la obra, que es lo único
+    // que aSa tiene. La caja de tipo/piso/ciclo era de ArmaHub y ya no existe.
+    var cajaAsa = $('audAlcanceAsa');
     if (!UNIV) {
       cajaAsa.style.display = 'none';
       $('audObraInfo').textContent = (BASE.obras_asa || []).length + ' obras en aSa';
@@ -771,7 +770,9 @@
       '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th><th>Acción</th></tr></thead><tbody>';
     (AUD.elementos || []).forEach(function (e) {
       var abierto = ELEM && ELEM.id === e.id;
-      html += '<tr class="fila' + (abierto ? ' sel' : '') + '" data-id="' + e.id + '" title="Clic para revisar este elemento">' +
+      html += '<tr class="fila' + (abierto ? ' sel' : '') + '" data-id="' + e.id + '" title="' +
+        (AUD.soy_auditor ? 'Clic para revisar este elemento'
+                         : 'Lo tuyo se resuelve abajo, en Resumen Hallazgos: acá sólo se mira la muestra') + '">' +
         (esAsa ? '<td class="cc"><b>' + esc(e.cc || '') + '</b></td>' + celdaEstadoCc(e) : '') +
         // Lo que ancla la fila va en negrita: en aSa es el código, en ArmaHub el elemento.
         '<td class="audnom" title="' + esc(e.nombre) + '">' + (esAsa ? esc(e.nombre) : '<b>' + esc(e.nombre) + '</b>') + '</td>' +
@@ -789,7 +790,16 @@
         // la tabla de acciones, que es donde se trabaja; acá va en el title.
         '<td title="' + esc(queSeEncontro(e)) + '">' + (e.hallazgo
           ? '<span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span>'
-          : '<span class="muted">pendiente</span>') + '</td>' +
+          : '<span class="muted">pendiente</span>') +
+          // UN VEREDICTO QUE NO ES DEL AUDITOR SE MARCA EN ROJO. Pasó el 11-oct: el auditado
+          // guardó cuatro elementos como «conforme» desde este mismo formulario y la
+          // auditoría se cerró «sin hallazgos» sin que nadie lo viera. El backend ya no lo
+          // permite; esto es para que, si vuelve a pasar por donde sea, se vea.
+          (e.revisado_por_ajeno
+            ? ' <span class="audajeno" title="Este veredicto lo guardó ' +
+              esc((e.revisado_por || '').split('@')[0]) + ', que no es quien audita. No vale ' +
+              'como revisión: el auditor tiene que volver a mirarlo.">no es del auditor</span>'
+            : '') + '</td>' +
         '<td>' + (e.accion_estado ? '<span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' : '') + '</td></tr>';
     });
     $('audDetElems').innerHTML = html + '</tbody>';
@@ -840,6 +850,17 @@
 
   // Abrir un elemento: se traen sus barras y aparece el formulario de hallazgo.
   async function abrirElemento(e) {
+    // EL AUDITADO NO ENTRA AL FORMULARIO DEL AUDITOR, ni a mirar (15-oct). Hasta hoy se
+    // abría en sólo lectura y aun así invitaba: el 11-oct un auditado «respondió» la
+    // auditoría de Zañartu guardando acá sus elementos como conforme, y el veredicto del
+    // auditor se perdió. El usuario: «debiera ver sólo su parte para actuar». Su parte es
+    // el Resumen Hallazgos, abajo, con Aplica / No aplica / RCA / Corregido en aSa.
+    if (!AUD || !AUD.soy_auditor) {
+      mostrarRevision(false);
+      var res = $('audAcciones');
+      if (res && res.scrollIntoView) res.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     ELEM = e; pintarDetalle();
     $('audRev').style.display = '';
     $('audRevTitulo').textContent = nombreCompleto(e);

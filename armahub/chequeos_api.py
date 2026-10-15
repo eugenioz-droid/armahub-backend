@@ -368,14 +368,28 @@ def _sumar_revision(rid, ccs=0, errores=0, barras=0, nuevas=0, vistas=0, corregi
                 (ccs, errores, barras, nuevas, vistas, corregidas, rid))
 
 
+class CierreRevision(BaseModel):
+    """Cómo terminó: vacío si recorrió toda su cola; si no, por qué se cortó."""
+    nota: Optional[str] = None
+
+
 @router.put("/chequeos/revision/{revision_id}/cerrar")
-def cerrar_revision(revision_id: int, user=Depends(get_current_user)):
-    """Cierra el registro. La pantalla lo llama al terminar de recorrer los códigos."""
+def cerrar_revision(revision_id: int, body: Optional[CierreRevision] = None,
+                    user=Depends(get_current_user)):
+    """Cierra el registro. La pantalla lo llama al terminar de recorrer los códigos.
+
+    CON NOTA SI NO LLEGÓ AL FINAL (15-oct). El barrido del reloj ya escribía «se cortó por
+    el tope de 15 minutos: quedaban N»; el de la pantalla no escribía nada, ni cuando el
+    usuario lo detenía ni cuando la cola venía recortada al tope de códigos. Así dos
+    corridas que eran una sola pasada partida al medio parecían completas, y el usuario
+    tuvo que preguntar por qué una tenía 350 hallazgos y la otra 132."""
     _puede_auditar(user)
+    nota = ((body.nota if body else None) or "").strip() or None
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE chequeo_revisiones SET terminada = now() WHERE id = %s RETURNING id",
-                        (revision_id,))
+            cur.execute("""UPDATE chequeo_revisiones
+                              SET terminada = now(), nota = COALESCE(%s, nota)
+                            WHERE id = %s RETURNING id""", (nota, revision_id))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Esa revisión no existe.")
     return {"ok": True}
@@ -685,6 +699,11 @@ def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current
     cola = pendientes(max(1, min(body.limite or TOPE_AUTO, 2000)), tarde=body.tarde)
     if not cola:
         raise HTTPException(status_code=400, detail="No hay códigos pendientes de revisar.")
+    # CUÁNTOS HAY EN TOTAL, aparte de cuántos se llevan. Si la cola se recortó al tope, la
+    # pantalla tiene que saberlo para dejarlo escrito: una revisión que se cortó y parece
+    # completa es peor que no tenerla. El usuario lo vio en carne propia: su «tanda de
+    # inicio oficial» quedó partida en dos sin que nada lo dijera.
+    total = len(pendientes(0, tarde=body.tarde))
     jobs = {c["job"] for c in cola}
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -696,7 +715,7 @@ def abrir_revision_pendientes(body: RevisionPendientes, user=Depends(get_current
             rid = cur.fetchone()[0]
     audit(email, "chequeo_revision", "pendientes · %d codigos · %d obras" % (len(cola), len(jobs)),
           "chequeo", str(rid))
-    return {"revision": rid, "ccs": cola, "obras": len(jobs)}
+    return {"revision": rid, "ccs": cola, "obras": len(jobs), "total": total}
 
 
 # ══════ LA TAREA DEL CUBICADOR (13-oct) ══════

@@ -69,7 +69,11 @@
   // ── Correr la revisión, código por código ─────────────────────────────────────────
   // EL RECORRIDO, APARTE DE QUIÉN LO PIDE. Lo usan el botón «Nueva revisión» y el reloj:
   // lo único que cambia es de dónde sale la cola de códigos.
-  async function recorrer(cola, revision, ui) {
+  // `total` es cuántos códigos esperaban en realidad: si la cola vino recortada al tope,
+  // o si el usuario detuvo, la revisión se cierra DICIENDO cuántos quedaron. Una corrida
+  // que se cortó y parece completa es peor que no tenerla: el usuario vio dos revisiones
+  // que eran una sola pasada partida al medio y tuvo que preguntar por qué.
+  async function recorrer(cola, revision, ui, total) {
     var hechos = 0, barras = 0, nuevas = 0, errores = 0;
     for (var i = 0; i < cola.length; i++) {
       if (REV.parar) break;
@@ -89,7 +93,15 @@
     ui.txt.textContent = hechos + ' código(s) · ' + num(barras) + ' barras · ' +
       nuevas + ' señal(es) nueva(s)' + (errores ? ' · ' + errores + ' con error' : '') +
       (REV.parar ? ' · detenida' : '');
-    if (revision) { try { await req('PUT', '/chequeos/revision/' + revision + '/cerrar'); } catch (e) {} }
+    if (revision) {
+      var quedaron = (total || cola.length) - hechos;
+      var nota = REV.parar
+        ? 'Detenida por quien la corría: quedaban ' + quedaron + ' código(s).'
+        : (total && total > cola.length
+            ? 'Se cortó por el tope de ' + cola.length + ' códigos: quedaban ' + (total - cola.length) + '.'
+            : null);
+      try { await req('PUT', '/chequeos/revision/' + revision + '/cerrar', { nota: nota }); } catch (e) {}
+    }
     // QUÉ HACER AHORA. Antes la corrida terminaba en «15 señales nuevas» y ahí quedaba
     // uno: la bandeja se abre en lo de ESTA revisión, para resolverlo de inmediato.
     return { hechos: hechos, nuevas: nuevas };
@@ -906,12 +918,16 @@
     $('revNuevaProg').style.display = '';
     $('revNuevaParar').style.display = '';
     try {
-      var ini = await req('POST', '/chequeos/revision-pendientes', { tarde: REV.tarde });
+      // LA COLA ENTERA. El servidor recorta a 300 por defecto porque ese tope es para el
+      // reloj, que corre dentro del proceso web con 15 minutos; acá el recorrido va en el
+      // navegador, de a un código, y puede durar lo que haga falta. Con el tope por
+      // defecto la tanda del usuario quedó partida en dos revisiones sin que él lo pidiera.
+      var ini = await req('POST', '/chequeos/revision-pendientes', { tarde: REV.tarde, limite: 2000 });
       if (!(ini.ccs || []).length) {
         $('revNuevaTxt').textContent = 'No hay nada pendiente: todo lo abierto está revisado y nada cambió en aSa.';
       } else {
         await recorrer(ini.ccs, ini.revision,
-                       { txt: $('revNuevaTxt'), barra: $('revNuevaBarra') });
+                       { txt: $('revNuevaTxt'), barra: $('revNuevaBarra') }, ini.total);
       }
       REVS.sel = ini.revision || REVS.sel;
       await cargarRevisiones();

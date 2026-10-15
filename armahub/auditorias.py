@@ -367,39 +367,8 @@ def elemento(id_proyecto: str, sector: str = "", piso: str = "", ciclo: str = ""
             "cubicaron": sorted({b["cubicado_por"] for b in barras})}
 
 
-@router.get("/auditorias/universo")
-def universo(id_proyecto: str, user=Depends(get_current_user)):
-    _puede_ver(user)
-    """De qué está hecha una obra, para armar el alcance: tipos (sector), pisos y ciclos
-    con cuántos elementos tiene cada uno, y quién cubicó. Todo sale de las barras."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""SELECT sector, COUNT(DISTINCT (piso, ciclo, eje)), COUNT(*), COALESCE(SUM(peso_total),0)
-                      FROM barras WHERE id_proyecto = %s GROUP BY 1 ORDER BY 2 DESC""", (id_proyecto,))
-            sectores = [{"sector": r[0] or "", "nombre": SECTORES.get(r[0] or "", r[0] or "(sin sector)"),
-                         "elementos": r[1], "barras": r[2], "kg": float(r[3] or 0)} for r in cur.fetchall()]
-            # Pisos en orden natural (P1, P2, …, P12), no alfabético (P1, P12, P2).
-            cur.execute(
-                """SELECT piso, COUNT(DISTINCT (sector, ciclo, eje))
-                     FROM barras WHERE id_proyecto = %s GROUP BY 1
-                    ORDER BY NULLIF(regexp_replace(COALESCE(piso,''), '\\D', '', 'g'), '')::int NULLS LAST, piso""",
-                (id_proyecto,))
-            pisos = [{"piso": r[0] or "", "elementos": r[1]} for r in cur.fetchall()]
-            cur.execute(
-                """SELECT ciclo, COUNT(DISTINCT (sector, piso, eje))
-                     FROM barras WHERE id_proyecto = %s GROUP BY 1
-                    ORDER BY NULLIF(regexp_replace(COALESCE(ciclo,''), '\\D', '', 'g'), '')::int NULLS LAST, ciclo""",
-                (id_proyecto,))
-            ciclos = [{"ciclo": r[0] or "", "elementos": r[1]} for r in cur.fetchall()]
-            cur.execute(
-                f"""SELECT COALESCE(creado_por, editado_por, '?'), COUNT(DISTINCT {_CLAVE}), COUNT(*)
-                      FROM barras WHERE id_proyecto = %s GROUP BY 1 ORDER BY 2 DESC""", (id_proyecto,))
-            cubicadores = [{"email": r[0], "elementos": r[1], "barras": r[2]} for r in cur.fetchall()]
-            cur.execute(f"SELECT COUNT(DISTINCT {_CLAVE}) FROM barras WHERE id_proyecto = %s", (id_proyecto,))
-            total = cur.fetchone()[0]
-    return {"id_proyecto": id_proyecto, "elementos": total, "sectores": sectores,
-            "pisos": pisos, "ciclos": ciclos, "cubicadores": cubicadores}
+# Acá vivió `/auditorias/universo`: tipos, pisos y ciclos de una obra de ArmaHub para
+# armar el alcance. Era del origen ArmaHub y se fue con él (15-oct): nadie lo llamaba ya.
 
 
 @router.get("/auditorias/muestra")
@@ -1452,11 +1421,21 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # enviada, la pantalla abría el formulario y el guardado moría en un 409.
             aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada"))
             tengo_barras = False
+            cur.execute("SELECT email FROM users WHERE role IN ('admin', 'admin_calidad')")
+            admins = {r[0] for r in cur.fetchall()}
             for e in aud["elementos"]:
                 e["barras_malas"] = por_elemento.get(e["id"], [])
                 e["mio"] = bool(soy_admin or
                                 ((e.get("cubicado_por") or "").strip() in mios
                                  and (e.get("cubicado_por") or "").strip()))
+                # UN VEREDICTO QUE NO ES DEL AUDITOR SE VE (15-oct). El 11-oct el auditado de
+                # Zañartu guardó cuatro elementos como «conforme» desde el formulario del
+                # auditor y nadie lo notó hasta que la auditoría se cerró «sin hallazgos».
+                # El backend ya no lo deja (b3f108a) y la migración 153 anuló lo escrito;
+                # esto es para que, si alguna vez vuelve a pasar por el camino que sea, no
+                # pase en silencio.
+                rp = e.get("revisado_por")
+                e["revisado_por_ajeno"] = bool(rp and rp != aud.get("auditor") and rp not in admins)
                 if e["barras_malas"] and (e["mio"] or soy_admin):
                     tengo_barras = True
             # PUEDO CERRAR: lo dice el backend con la misma regla que valida el endpoint,

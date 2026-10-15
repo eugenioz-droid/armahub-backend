@@ -107,8 +107,11 @@ check("...acotada, y cada elemento dice quién lo cubicó (para la independencia
       and 'indep' in JS and "cubicados por quien audita" in JS)
 check("el alcance filtra por sector, piso y ciclo, y sin nada marcado es todo",
       SRC.count("COALESCE({col},'') = ANY(%s)") == 1 and "_lista(valor)" in SRC)
-check("los pisos y ciclos salen en orden natural (P1, P2, …, P12)",
-      SRC.count("regexp_replace(COALESCE(") == 2)
+# El orden natural de pisos y ciclos (P1, P2, …, P12) era del alcance de ArmaHub, que vivía
+# en /auditorias/universo. Se fue con el origen ArmaHub (15-oct): en aSa el alcance son
+# códigos de control y no hay pisos que ordenar.
+check("el alcance por pisos y ciclos se fue con el origen ArmaHub",
+      "regexp_replace(COALESCE(" not in SRC and 'get("/auditorias/universo")' not in SRC)
 
 print("\n4. El vocabulario es el de la ISO 19011 / 9001")
 # CUATRO ESTADOS desde el 9-oct: entre terminar de mirar y resolver estaba el ENVÍO, el
@@ -322,8 +325,8 @@ check("el alcance elegido se guarda, para poder decir de qué códigos salió la
       and '"ccs": r[17] or []' in SRC and "a.ccs.slice(0, 6)" in JS)
 check("el selector de origen se fue del formulario",
       'id="audOrigen"' not in HTM and "audOrigen" not in JS)
-check("...y el alcance es solo los codigos de control: la caja de tipo/piso/ciclo no se abre",
-      "caja.style.display = 'none';" in JS.split("function pintarAlcance(")[1][:500]
+check("...y el alcance es solo los codigos de control: la caja de tipo/piso/ciclo ya no existe",
+      "$('audAlcance')" not in JS and 'id="audAlcance"' not in HTM
       and "/auditorias/universo" not in JS)
 check("...acotado, porque cada elemento cuesta una consulta a aSa",
       "MUESTRA_MAXIMA_ASA = 20" in SRC and "tope de este endpoint es 500" in SRC)
@@ -1168,6 +1171,42 @@ check("al volver al tab con el formulario cerrado, el estado de crear se limpia"
       and "OBRA = ''; UNIV = null;" in JS)
 check("...y se conserva sólo si el formulario está ABIERTO, que es la señal de que alguien lo llenaba",
       "Sólo se conserva si el formulario\n  // está ABIERTO" in JS)
+
+print("\nEL AUDITADO NO ESCRIBE EL VEREDICTO DEL AUDITOR, Y SI LO HIZO SE VE")
+# 11-oct: el auditado de Zañartu guardó cuatro elementos como «conforme» desde el
+# formulario del auditor; José la envió el 13 con «10 de 10 conforme» sin saberlo y se
+# cerró «sin hallazgos». El usuario: «eso tenía como 10 hallazgos, ahora no tiene ninguno
+# porque el cubicador no entendió cómo responder, y modificó los hallazgos a conforme».
+MIG153 = open(os.path.join(ROOT, "armahub", "migrations", "153_veredictos_del_auditado_fuera.sql"),
+              encoding="utf-8").read()
+check("lo que el auditado escribió se ANULÓ con una regla general, no con una lista de ids",
+      "e.revisado_por <> a.auditor" in MIG153 and "DELETE FROM auditoria_items WHERE elemento_id IN (SELECT elemento_id FROM _ajenos)" in MIG153
+      and "SET hallazgo = NULL, texto = NULL, revisado_por = NULL" in MIG153)
+check("...y la auditoría enviada sobre eso se reabrió con el mismo reset que «Reabrir»",
+      "enviada_el = NULL, enviada_por = NULL, cerrada_a_mano = FALSE" in MIG153
+      and "correccion_vence = NULL" in MIG153 and "estado = 'en_curso'" in MIG153)
+check("...sin inventar lo que marcó el auditor: se le manda el conteo y vuelve a pendiente",
+      "No se\n-- inventa lo que marcó José" in MIG153 and "perdieron tu veredicto" in MIG153)
+# LA PUERTA que lo permitió ya está cerrada (b3f108a): escribir la revisión exige ser el
+# auditor de ESA auditoría. Acá se congela que ES esa guarda la que cubre este caso.
+check("la guarda que lo impide está en el endpoint que guarda la revisión barra por barra",
+      "_solo_antes_de_enviar(cur, auditoria_id, user)" in
+      SRC.split('@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")')[1][:2500])
+# Y SI VUELVE A PASAR POR DONDE SEA, SE VE: el detalle marca el veredicto ajeno y la
+# pantalla lo pinta en rojo. Un cierre «sin hallazgos» sobre eso ya no pasa en silencio.
+check("el detalle marca los veredictos que no son del auditor",
+      'e["revisado_por_ajeno"] = bool(rp and rp != aud.get("auditor") and rp not in admins)' in SRC)
+check("...y la pantalla los pinta en rojo, diciendo de quién son",
+      "e.revisado_por_ajeno" in JS and 'class="audajeno"' in JS and ".audajeno{" in HTM
+      and "no es del auditor" in JS)
+# EL AUDITADO VE SOLO SU PARTE. «Debiera ver sólo su parte para actuar… tal vez debe
+# desaparecer el menú donde se hace la auditoría». El formulario del auditor no se le
+# abre ni en sólo lectura —abierto invitaba a escribir—; su parte es el Resumen Hallazgos.
+check("el auditado no abre el formulario del auditor, ni a mirar: lo lleva al Resumen Hallazgos",
+      "if (!AUD || !AUD.soy_auditor) {" in JS.split("async function abrirElemento(e) {")[1][:900]
+      and "mostrarRevision(false);" in JS.split("async function abrirElemento(e) {")[1][:900])
+check("...y la fila de la muestra se lo dice en vez de prometerle revisar",
+      "Lo tuyo se resuelve abajo, en Resumen Hallazgos" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

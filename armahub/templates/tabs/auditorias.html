@@ -85,27 +85,9 @@
         <span class="muted" style="width:250px; flex:none;">inicio = primer hallazgo · cierre = último revisado</span>
       </div>
 
-      <!-- El ALCANCE sale de la obra: lo que hay, con cuántos elementos tiene cada cosa. -->
-      <div id="audAlcance" class="audalcance" style="display:none;">
-        <div class="audlbl" style="margin-bottom:6px;">Alcance <span class="muted" style="font-weight:400;">
-          qué parte de la obra entra al sorteo. El número de cada botón son los <b>elementos disponibles</b>.
-          Se pueden marcar <b>varios</b>; «Todos» suelta la selección.</span></div>
-        <div class="audfila" style="align-items:flex-start;">
-          <div class="audcampo" style="flex:none;">
-            <label>Tipo</label>
-            <div id="audSectores" class="audchips"></div>
-          </div>
-          <div class="audcampo" style="flex:1;">
-            <label>Pisos</label>
-            <div id="audPisos" class="audchips"></div>
-          </div>
-          <div class="audcampo" style="flex:1;">
-            <label>Ciclos</label>
-            <div id="audCiclos" class="audchips"></div>
-          </div>
-        </div>
-        <div class="muted" style="font-size:10px;"><span id="audRango"></span></div>
-      </div>
+      <!-- Acá vivía el alcance por tipo/piso/ciclo de las obras de ArmaHub. Se fue con el
+           origen ArmaHub (15-oct): la auditoría es sobre aSa y su alcance son los códigos
+           de control, abajo. -->
 
       <!-- El alcance de una obra de aSa es OTRO: allá no hay sector, piso ni ciclo —el
            sector va como texto libre en la descripción del código—, así que se acota por
@@ -536,6 +518,9 @@
   .audt tr.audvenc td{background:#fff8f7;}
   /* EL FORMULARIO DEL AUDITOR, BLOQUEADO. Se apaga entero y se dice por qué: media
      docena de campos editables con el guardar escondido invita a escribir para nada. */
+  /* Un veredicto que no guardó el auditor: no vale como revisión y se dice en rojo. */
+  .audajeno{display:inline-block; margin-left:6px; font-size:9.5px; font-weight:700;
+            color:#fff; background:#c62828; border-radius:99px; padding:1px 7px; white-space:nowrap;}
   .audcandado{background:#fff8e1; border:1px solid #ffe082; color:#8d6e00; font-size:11.5px;
               padding:7px 10px; border-radius:6px; margin-bottom:8px;}
   .audsololeer #audRevBarras{opacity:.75;}
