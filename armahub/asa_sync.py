@@ -170,9 +170,14 @@ def sincronizar_obras(lanzado_por: str = "sistema", solo_abiertas: bool = False,
             )
             cur.execute("SELECT COUNT(*) FROM asa_obras")
             nuevas = cur.fetchone()[0] - antes
+            # El nombre de la obra lo pone aSa: si allá le cambiaron el nombre, acá cambia
+            # solo. Va en la misma transacción que el espejo del que sale.
+            from armahub.programacion import refrescar_nombres
+            renombradas = refrescar_nombres(cur)
         conn.commit()
     _cerrar_bitacora(sync_id, True, len(valores), nuevas)
-    return {"filas": len(valores), "nuevas": nuevas, "endpoint": endpoint}
+    return {"filas": len(valores), "nuevas": nuevas, "renombradas": renombradas,
+            "endpoint": endpoint}
 
 
 # ---------------------------------------------------------------------------

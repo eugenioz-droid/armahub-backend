@@ -697,13 +697,43 @@ def adoptar_obra(cur, job: str, email: str, en_cubicacion: bool = False,
         return ya[0]
     nombre = (nombre or fila[0] or job).strip()[:250]
     cur.execute(
-        """INSERT INTO proyectos (id_proyecto, nombre_proyecto, asa_job_id, origen,
-                                  en_cubicacion, usuario_creador)
-           VALUES (%s, %s, %s, 'asa', %s, %s)""",
-        (job[:60], nombre, job, en_cubicacion, email))
+        """INSERT INTO proyectos (id_proyecto, nombre_proyecto, nombre_armahub, asa_job_id,
+                                  origen, en_cubicacion, usuario_creador)
+           VALUES (%s, %s, %s, %s, 'asa', %s, %s)""",
+        (job[:60], nombre, nombre, job, en_cubicacion, email))
     audit(email, "asa_adoptar", f"{job} -> creada «{nombre}»"
                                  + (" (cubicación)" if en_cubicacion else ""))
     return job[:60]
+
+
+def refrescar_nombres(cur) -> int:
+    """EL NOMBRE DE LA OBRA LO PONE aSa (15-oct). Lo corre la sincronización del espejo,
+    para que un nombre que cambió en aSa cambie también acá y no haya que tocar nada a
+    mano.
+
+    El nombre propio de ArmaHub no se pierde —vive en `nombre_armahub`— y vuelve como
+    distintivo cuando varias obras de ArmaHub cuelgan del mismo job de aSa: en aSa «EURO -
+    EDIFICIO SAN PABLO» es un job y acá son tres despiezes distintos, así que las tres
+    tienen que poder llamarse por su parte. Donde el job tiene una sola obra, el nombre
+    queda limpio.
+
+    Devuelve cuántos nombres quedaron distintos de como estaban."""
+    cur.execute(
+        """WITH cuantas AS (
+               SELECT asa_job_id, COUNT(*) AS n FROM proyectos
+                WHERE asa_job_id IS NOT NULL GROUP BY asa_job_id
+           )
+           UPDATE proyectos p
+              SET nombre_proyecto = LEFT(ao.nombre ||
+                      CASE WHEN c.n > 1 AND COALESCE(p.nombre_armahub, '') <> ''
+                           THEN ' · ' || p.nombre_armahub ELSE '' END, 250)
+             FROM asa_obras ao, cuantas c
+            WHERE ao.asa_job_id = p.asa_job_id AND c.asa_job_id = p.asa_job_id
+              AND COALESCE(ao.nombre, '') <> ''
+              AND p.nombre_proyecto IS DISTINCT FROM LEFT(ao.nombre ||
+                      CASE WHEN c.n > 1 AND COALESCE(p.nombre_armahub, '') <> ''
+                           THEN ' · ' || p.nombre_armahub ELSE '' END, 250)""")
+    return cur.rowcount or 0
 
 
 class AdoptarBody(BaseModel):

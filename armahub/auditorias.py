@@ -1615,6 +1615,10 @@ def ubicar_elemento(auditoria_id: int, elemento_id: int, body: UbicacionBody,
             if not el:
                 raise HTTPException(status_code=404, detail="Ese elemento no es de esta auditoría.")
             origen, codigo, nombre, ref, eje_actual = el
+            # NI ESTO SE TOCA DESPUÉS DEL ENVÍO (15-oct). La ubicación sale impresa en el
+            # informe, debajo del hallazgo: cambiarla después de enviada cambia lo que el
+            # auditado ya leyó y lo que el PDF dice. Si está mal, se reabre.
+            _solo_antes_de_enviar(cur, auditoria_id, user)
             if origen != "asa":
                 raise HTTPException(
                     status_code=400,
@@ -2681,6 +2685,14 @@ def mover_accion(auditoria_id: int, elemento_id: int, body: AccionBody, user=Dep
             if actual is None:
                 raise HTTPException(status_code=400, detail="Ese elemento no tiene una no conformidad.")
             es_admin = user.get("role") in ("admin", "admin_calidad")
+            # QUIÉN PUEDE EMPUJAR ESTO (15-oct). No lo llama ninguna pantalla, pero es un
+            # PUT abierto: sin esta puerta cualquier usuario con sesión podía dejar sus
+            # propias no conformidades en «corregida» por la API, sin RCA y sin pasar por
+            # sus barras. Queda para el auditor, administración y el cubicado.
+            if email != auditor and not es_admin and email != cubico:
+                raise HTTPException(status_code=403,
+                                    detail="Esa acción es del auditor, del cubicador auditado o de "
+                                           "administración.")
             if body.estado == "verificada" and email != auditor and not es_admin:
                 raise HTTPException(status_code=403, detail="Verificar es del auditor de esta auditoría.")
             cur.execute(

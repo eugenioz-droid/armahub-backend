@@ -1015,10 +1015,17 @@ check("escribir lo del auditor pide ser SU auditor y que no esté enviada",
       and "_solo_el_auditor(cur, auditoria_id, user)" in
           SRC.split("def _solo_antes_de_enviar(")[1][:1200]
       and 'if fila[4]:' in SRC.split("def _solo_antes_de_enviar(")[1][:1200])
-check("...en los DOS endpoints que lo escriben, no en uno",
+check("...en los TRES endpoints que lo escriben, no en uno",
       all("_solo_antes_de_enviar(cur, auditoria_id, user)" in _cuerpo(r)
           for r in ("{auditoria_id}/elementos/{elemento_id}",
-                    "{auditoria_id}/elementos/{elemento_id}/revision")))
+                    "{auditoria_id}/elementos/{elemento_id}/revision",
+                    "{auditoria_id}/elementos/{elemento_id}/ubicacion")))
+# LA PUERTA DE ADMINISTRACIÓN TAMBIÉN TIENE LLAVE (15-oct). `mover_accion` no lo llama
+# ninguna pantalla, pero es un PUT abierto: sin esto, cualquiera con sesión dejaba sus
+# propias no conformidades en «corregida» por la API, sin RCA.
+check("mover la acción a mano es del auditor, del cubicado o de administración",
+      "email != auditor and not es_admin and email != cubico" in
+      _cuerpo("{auditoria_id}/elementos/{elemento_id}/accion"))
 check("objetar un descarte también es del auditor de esa auditoría",
       "_solo_el_auditor(cur, auditoria_id, user)" in
       _cuerpo("{auditoria_id}/items/{item_id}/objecion"))

@@ -133,6 +133,16 @@ with get_conn() as conn:
         excluidas = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM reclamos WHERE NOT historico AND id_proyecto IS NOT NULL AND asa_job_id IS NULL")
         sin_job = cur.fetchone()[0]
+        # EL NOMBRE LO PONE aSa (15-oct). Ninguna obra enlazada se llama distinto que en
+        # aSa, y el nombre de ArmaHub no se perdió: quedó guardado.
+        cur.execute("""SELECT COUNT(*) FROM proyectos p JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
+                        WHERE COALESCE(ao.nombre, '') <> '' AND p.nombre_proyecto NOT LIKE ao.nombre || '%'""")
+        nombre_ajeno = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM proyectos WHERE nombre_armahub IS NULL")
+        sin_memoria = cur.fetchone()[0]
+        # Las tres San Pablo son tres despiezes distintos: tienen que seguir distinguiéndose.
+        cur.execute("SELECT COUNT(DISTINCT nombre_proyecto) FROM proyectos WHERE asa_job_id = '2012732'")
+        sp_distintas = cur.fetchone()[0]
         # El trigger, dentro de una transacción que se deshace: no toca nada.
         cur.execute("SELECT id FROM reclamos WHERE id_proyecto = 'PROY-E84CFAAE' LIMIT 1")
         rid = (cur.fetchone() or [None])[0]
@@ -149,6 +159,9 @@ check("los reclamos de Torre B apuntan a Torre B", not torreb_mal, torreb_mal)
 check("hay obras de aSa excluidas (las de prueba)", excluidas >= 10, excluidas)
 check("ningún reclamo vivo con obra se quedó sin job", sin_job == 0, sin_job)
 check("el trigger pone el job de la obra nueva al mover un reclamo", job_tras == "2013080", job_tras)
+check("ninguna obra enlazada se sigue llamando como la bautizó ArmaHub", nombre_ajeno == 0, nombre_ajeno)
+check("...y ese nombre no se perdió: quedó guardado para relacionar", sin_memoria == 0, sin_memoria)
+check("las tres San Pablo siguen distinguiéndose entre sí", sp_distintas == 3, sp_distintas)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
