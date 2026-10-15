@@ -257,47 +257,13 @@ def obras(user=Depends(get_current_user)):
     """Las obras que tienen algo que auditar (barras en ArmaHub), con su tamaño y sus
     reclamos abiertos —el dato que después ordena el programa de auditorías—, y la
     gente que puede auditar."""
+    # LA LISTA DE OBRAS DE ARMAHUB YA NO SE OFRECE (15-oct). La auditoría es siempre sobre
+    # aSa, así que la única lista de obras que necesita la pantalla es la de jobs. Acá
+    # vivió hasta hoy una consulta sobre `barras` que listaba las obras de ArmaHub, y
+    # encima un parche de la mañana que les pegaba el frente para distinguir las tres de
+    # San Pablo: todo eso era el enredo que el usuario pidió eliminar, y se fue con él.
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""SELECT b.id_proyecto, COALESCE(ao.nombre, p.nombre_proyecto, b.id_proyecto),
-                           COUNT(*), COALESCE(SUM(b.peso_total), 0),
-                           COUNT(DISTINCT {_CLAVE}),
-                           (SELECT COUNT(*) FROM reclamos r
-                             WHERE r.id_proyecto = b.id_proyecto
-                               AND r.estado NOT IN ('cerrado', 'rechazado')) AS reclamos,
-                           p.asa_job_id, p.nombre_proyecto,
-                           -- Cuántas obras de ArmaHub comparten este job: si son varias,
-                           -- el nombre de aSa solo no las distingue.
-                           (SELECT COUNT(*) FROM proyectos p2
-                             WHERE p2.asa_job_id = p.asa_job_id
-                               AND EXISTS (SELECT 1 FROM barras b2 WHERE b2.id_proyecto = p2.id_proyecto))
-                      FROM barras b
-                      LEFT JOIN proyectos p ON p.id_proyecto = b.id_proyecto
-                      LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
-                     GROUP BY 1, 2, p.asa_job_id, p.nombre_proyecto ORDER BY 2, p.nombre_proyecto""")
-            # LA OBRA SE VE COMO EN aSa (13-oct): el nombre del espejo y el job como código.
-            #
-            # PERO UN JOB PUEDE SER VARIAS OBRAS DE ARMAHUB (15-oct). San Pablo son tres
-            # frentes —Basílica, Lourdes y San Pablo— cubicados aparte y enlazados al mismo
-            # job 2012732. Con el nombre de aSa solo, el selector mostraba «EURO - EDIFICIO
-            # SAN PABLO» tres veces iguales y el usuario no sabía cuál era cuál: «ahora me
-            # aparece 3 veces euro san pablo». La auditoría de ArmaHub se sortea sobre las
-            # barras de UN proyecto, así que no se funden: se les agrega el frente.
-            lista = []
-            for r in cur.fetchall():
-                nombre, frente = r[1], None
-                if (r[8] or 0) > 1 and r[7]:
-                    # El frente es lo que el nombre de ArmaHub agrega al de aSa: de
-                    # «Euro - San Pablo - Basilica» queda «Basilica». Si no hay un prefijo
-                    # común que recortar, se usa el nombre de ArmaHub entero.
-                    partes = [x.strip() for x in str(r[7]).split(" - ") if x.strip()]
-                    frente = partes[-1] if len(partes) > 1 else str(r[7]).strip()
-                    nombre = "%s · %s" % (r[1], frente)
-                lista.append({"id_proyecto": r[0], "obra": nombre, "barras": r[2],
-                              "kg": float(r[3] or 0), "elementos": r[4], "reclamos": r[5],
-                              "codigo": r[6] or r[0], "frente": frente,
-                              "nombre_armahub": r[7]})
             # Los que pueden quedar como auditor: los integrantes del area de
             # Cubicaciones. Es la misma lista que mantiene el usuario en el panel de
             # areas, asi que agregar o sacar un cubicador se hace alla y no aca.
@@ -327,10 +293,10 @@ def obras(user=Depends(get_current_user)):
             # la matriz que usan los reclamos, y ese modal pide las categorías por área. Sin
             # este id habría que adivinar cuál es, o duplicar la matriz acá.
             causas_area = filas_causa[0][4] if filas_causa else None
-            # LAS OBRAS DE aSa: 319 activas contra 18 con barras en ArmaHub. Se auditan
-            # igual —el elemento vive en getOrderItemView—, sólo cambia de dónde sale la
-            # muestra. Las que YA están en ArmaHub no se repiten acá: ahí la auditoría es
-            # más profunda (las barras están en casa) y ésa es la que conviene.
+            # LAS OBRAS DE aSa: todas las activas, incluidas las que también tienen barras
+            # en ArmaHub. Hasta el 15-oct ésas se excluían de acá porque se auditaban por
+            # ArmaHub; al quedar la auditoría sólo sobre aSa, excluirlas las dejaba sin
+            # forma de auditarse (San Pablo, Zañartu y las demás con cubicación en casa).
             # UNA FILA POR JOB DE aSa, no por nombre. Nueve obras tienen dos jobs con el
             # mismo nombre, y agrupando por nombre el conteo decía una cosa y la muestra
             # miraba otra: se elegía «422 códigos» y se sorteaba dentro de 63.
@@ -342,14 +308,11 @@ def obras(user=Depends(get_current_user)):
                       AND p.asa_job_id IS NOT NULL
                       AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND GREATEST(p.order_date, p.proj_ship_date) >= CURRENT_DATE - make_interval(months => 12)
-                      AND NOT EXISTS (SELECT 1 FROM proyectos pr
-                                       WHERE pr.asa_job_id = p.asa_job_id
-                                         AND EXISTS (SELECT 1 FROM barras b WHERE b.id_proyecto = pr.id_proyecto))
                     GROUP BY p.asa_job_id ORDER BY 1""",
                 (PATRON_OBRAS_FUERA,))
             asa_obras = [{"job": r[1], "obra": r[0], "cc": r[2], "kg": float(r[3] or 0),
                           "ultimo": r[4].isoformat() if r[4] else None} for r in cur.fetchall()]
-    return {"obras": lista, "obras_asa": asa_obras, "auditores": auditores, "sectores": SECTORES,
+    return {"obras_asa": asa_obras, "auditores": auditores, "sectores": SECTORES,
             "estados": list(ESTADOS), "hallazgos": list(HALLAZGOS), "acciones": list(ACCIONES),
             "causas": causas, "causas_area": causas_area,
             "muestra_por_defecto": MUESTRA_POR_DEFECTO, "dias_plazo": DIAS_PLAZO}
@@ -1039,7 +1002,18 @@ def crear(body: CrearBody, request: Request, user=Depends(get_current_user)):
     email = user.get("email", "?")
     if body.origen not in ORIGENES:
         raise HTTPException(status_code=422, detail="Origen no válido: " + " / ".join(ORIGENES))
-    es_asa = body.origen == "asa"
+    # LA AUDITORÍA ES SIEMPRE SOBRE aSa (15-oct). Lo fijó el usuario: «para la auditoría
+    # hoy puedo elegir ArmaHub o aSa, pero en realidad debe ser siempre aSa, de hecho
+    # eliminemos la opción de ArmaHub para evitar enredos». Lo que se audita es lo que va
+    # a fabricación, y eso vive en aSa; las obras de ArmaHub son contenedores de
+    # cubicación, y una misma obra de aSa puede ser varias de ArmaHub (los tres frentes de
+    # San Pablo), que es justamente el enredo. El origen 'armahub' queda en la tabla para
+    # leer lo que ya existe; crear algo nuevo con él no.
+    if body.origen != "asa":
+        raise HTTPException(status_code=410,
+                            detail="Las auditorías se hacen sobre aSa: elige la obra como "
+                                   "está allá (el job) y sus códigos de control.")
+    es_asa = True
     with get_conn() as conn:
         with conn.cursor() as cur:
             if es_asa:

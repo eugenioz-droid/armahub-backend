@@ -51,26 +51,17 @@
         <div style="flex:1"></div>
         <button id="audFormCerrar" class="audx" title="Cerrar">✕</button></div>
 
-      <!-- DE DÓNDE SALE LA MUESTRA. Es lo primero que se decide porque cambia el
-           formulario entero: en ArmaHub el alcance es tipo/piso/ciclo (los frentes están
-           en casa); en aSa son los códigos de control, que es lo único que aSa tiene. -->
-      <div class="audfila" style="margin-bottom:10px;">
-        <div class="audcampo" style="flex:none;">
-          <label>Cubicación a auditar</label>
-          <div class="audchips" id="audOrigen"></div>
-        </div>
-        <div class="audcampo" style="flex:1; justify-content:flex-end;">
-          <small class="muted" id="audOrigenInfo"></small>
-        </div>
-      </div>
+      <!-- LA AUDITORÍA ES SOBRE aSa, SIEMPRE (15-oct). Acá hubo un selector para elegir
+           entre ArmaHub y aSa; el usuario lo cerró: «debe ser siempre aSa, eliminemos la
+           opción de ArmaHub para evitar enredos». La obra es el job de aSa y el alcance
+           son sus códigos de control. -->
 
       <!-- Los tres campos que se llenan van ALINEADOS: mismo alto de etiqueta y de
            control. Las aclaraciones van abajo, en su propia línea, porque si cuelgan de
            cada campo lo estiran distinto y las cajas quedan desparejas. -->
       <div class="audfila audtres">
         <div class="audcampo" style="flex:1.6;">
-          <!-- DOS FUENTES: las obras con barras en ArmaHub (auditoría más profunda) y las
-               de aSa, que son muchas más. Se escribe para buscar entre las 340. -->
+          <!-- Las obras de aSa, una por job. Se escribe para buscar entre las 300 y pico. -->
           <label>Obra</label>
           <input type="text" id="audObra" placeholder="🔍 escribe para buscar la obra…" autocomplete="off">
         </div>
@@ -936,5 +927,4 @@
   .audcc .e{flex:none; width:70px; color:#90a4ae;}
   .audcc .q{flex:none; width:80px; color:#90a4ae; overflow:hidden; text-overflow:ellipsis;}
   /* El origen, como dos botones grandes: es la primera decisión. */
-  #audOrigen button{font-size:11px; font-weight:700; padding:5px 14px;}
 </style>

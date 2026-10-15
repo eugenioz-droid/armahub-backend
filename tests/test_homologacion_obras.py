@@ -79,7 +79,10 @@ check("/proyectos: código = job, nombre = espejo, y el de ArmaHub queda aparte"
 check("la lista de reclamos prefiere el nombre del espejo",
       "COALESCE(ao.nombre, p.nombre_proyecto, r.id_proyecto, 'Obra eliminada')" in RE)
 check("...y los dashboards de reclamos también", RE.count("COALESCE(ao.nombre, p.nombre_proyecto") >= 4)
-check("el selector de auditorías trae el código de aSa", '"codigo": r[6] or r[0]' in AU)
+# El selector de auditorías ya no lista obras de ArmaHub (15-oct: la auditoría es siempre
+# sobre aSa). Lo que ofrece son los jobs, y el job ES el código de aSa.
+check("el selector de auditorías ofrece los jobs de aSa, uno por obra",
+      '"job": r[1]' in AU and '"obras": lista' not in AU)
 check("Cubicaciones muestra el job al lado del nombre", 'title="Job en aSa"' in OBJS)
 
 print("\n5. Un reclamo puede ser sobre cualquier obra de aSa")

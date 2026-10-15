@@ -37,6 +37,10 @@ def _d(a, m, d):
     return _DATE(a, m, d)
 
 SRC = open(os.path.join(ROOT, "armahub", "auditorias.py"), encoding="utf-8").read()
+
+
+def _leer_rec():
+    return open(os.path.join(ROOT, "armahub", "reclamos.py"), encoding="utf-8").read()
 MAIN = open(os.path.join(ROOT, "armahub", "main.py"), encoding="utf-8").read()
 APP = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf-8").read()
 HTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html"), encoding="utf-8").read()
@@ -164,8 +168,11 @@ check("...el del auditado no corre si la auditoría se reabre: él deja de verla
       "correccion_vence = NULL" in SRC)
 check("...y se mide con la HORA, no con el día",
       "datetime.fromisoformat(f[\"vence\"]) < ahora" in SRC)
-check("las obras traen sus reclamos abiertos (para el programa rotativo por riesgo)",
-      "AS reclamos" in SRC and "reclamo(s) abierto(s)" in JS)
+# La lista de obras de ArmaHub —con sus reclamos abiertos— se fue con el origen ArmaHub
+# (15-oct). Los reclamos siguen asociados al job de aSa, que es toda la homologacion.
+check("los reclamos cuelgan del job de aSa, que es por donde se correlacionan",
+      "asa_job_id" in _leer_rec() and "trg_reclamo_job_desde_obra" in
+      open(os.path.join(ROOT, "armahub", "migrations", "144_reclamo_job_desde_obra.sql"), encoding="utf-8").read())
 
 print("\n5. La revisión elemento a elemento")
 check("el elemento se trae ENTERO: marca, Ø, figura, dimensiones, largo, cantidad, peso, plano",
@@ -272,14 +279,21 @@ MIG118 = open(os.path.join(ROOT, "armahub", "migrations", "118_auditorias_asa.sq
 check("los dos orígenes están declarados", A.ORIGENES == ("armahub", "asa")
       and 'origen          TEXT NOT NULL DEFAULT \'armahub\'' in MIG
       and "ADD COLUMN cc TEXT" in MIG118)
-check("el selector trae las dos fuentes en una sola lista buscable (combobox estándar)",
-      '"obras_asa": asa_obras' in SRC and "function obrasParaElegir()" in JS
-      and "global.Combobox.crear($('audObra')" in JS
-      and "origen: 'armahub'" in JS and "origen: 'asa'" in JS)
-check("...y el origen viaja en el item, no se adivina del texto",
-      "ORIGEN = item ? item.origen : 'armahub';" in JS and "OBRA = item ? item.clave : '';" in JS)
-check("...y una obra que ya está en ArmaHub no se repite como obra de aSa",
-      "NOT EXISTS (SELECT 1 FROM proyectos pr" in SRC and "FROM barras b WHERE b.id_proyecto" in SRC)
+# LA AUDITORIA ES SIEMPRE SOBRE aSa (15-oct). El usuario: «debe ser siempre aSa, de hecho
+# eliminemos la opcion de ArmaHub para evitar enredos». Una fuente, una lista, un job por
+# obra: los frentes que ArmaHub tenga de esa obra son cosa de la cubicacion.
+check("el selector trae UNA fuente, los jobs de aSa, en el combobox estándar",
+      '"obras_asa": asa_obras' in SRC and '"obras": lista' not in SRC
+      and "function obrasParaElegir()" in JS and "global.Combobox.crear($('audObra')" in JS
+      and "origen: 'asa'" in JS and "origen: 'armahub'" not in JS)
+check("...el origen no se elige: es aSa", "var ORIGEN = 'asa'" in JS
+      and "LOS_ORIGENES" not in JS and "function pintarOrigen" not in JS)
+check("...y una obra con barras en ArmaHub TAMBIEN se ofrece: si no, no se podria auditar",
+      "NOT EXISTS (SELECT 1 FROM proyectos pr" not in SRC
+      and "excluirlas las dejaba sin" in SRC)
+check("crear con origen ArmaHub se rechaza en el backend, no solo en la pantalla",
+      'if body.origen != "asa":' in SRC and "status_code=410" in
+      SRC.split('if body.origen != "asa":')[1][:300])
 check("el elemento de aSa es CtrlCode + ElementID, guardado en las mismas columnas",
       "def _elementos_de_items(" in SRC and '"eje": clave' in SRC
       and "CtrlCode eq '%s'" in SRC and 'ADD COLUMN cc TEXT' in MIG118)
@@ -306,11 +320,11 @@ check("el alcance elegido se guarda, para poder decir de qué códigos salió la
       "ADD COLUMN ccs TEXT[]" in open(os.path.join(ROOT, "armahub", "migrations",
                                                    "119_auditorias_ccs.sql"), encoding="utf-8").read()
       and '"ccs": r[17] or []' in SRC and "a.ccs.slice(0, 6)" in JS)
-check("el origen se elige primero y cambia el formulario",
-      'id="audOrigen"' in HTM and "function pintarOrigen()" in JS
-      and "var LOS_ORIGENES = [" in JS and "if (ORIGEN === 'asa') {" in JS)
-check("...y el combobox sólo ofrece obras de ese origen",
-      "no mezcla dos mundos" in JS and "if (ORIGEN === 'asa') {\n      return (BASE.obras_asa" in JS)
+check("el selector de origen se fue del formulario",
+      'id="audOrigen"' not in HTM and "audOrigen" not in JS)
+check("...y el alcance es solo los codigos de control: la caja de tipo/piso/ciclo no se abre",
+      "caja.style.display = 'none';" in JS.split("function pintarAlcance(")[1][:500]
+      and "/auditorias/universo" not in JS)
 check("...acotado, porque cada elemento cuesta una consulta a aSa",
       "MUESTRA_MAXIMA_ASA = 20" in SRC and "tope de este endpoint es 500" in SRC)
 check("la muestra son ELEMENTOS al azar dentro de los códigos elegidos",
@@ -400,12 +414,12 @@ check("...y al crear se entra directo a la auditoría recién creada",
       "ABIERTA = a.id; AUD = a; ELEM = null;" in JS)
 
 print("\n6. El alcance se arma: multi-selección y contadores que se entienden")
-check("el clic simple suma (no exige Ctrl) y hay un botón «Todos» que suelta",
-      "function marcar(lista, valor)" in JS and "if (b.dataset.todos) activos.length = 0; else marcar(activos" in JS
-      and "data-todos=\"1\"" in JS and "alternar" not in JS)
-check("el contador va en su propia pastilla y dice qué es",
-      "elementos disponibles" in JS and ".audchips button i{" in HTM
-      and "<b>elementos disponibles</b>" in HTM)
+# Los chips de tipo/piso/ciclo eran el alcance de ArmaHub y se fueron con el (15-oct).
+# `marcar` sigue siendo la forma de sumar con clic simple donde haya chips.
+check("el clic simple suma (no exige Ctrl): la regla sigue escrita una vez",
+      "function marcar(lista, valor)" in JS and "alternar" not in JS)
+check("los chips de ESTADO de los codigos de aSa eligen, no filtran",
+      "EL CHIP ELIGE, NO FILTRA" in JS and "function estadosDisponibles()" in JS)
 check("se dice que la muestra son elementos completos, no barras",
       "un eje completo con TODAS sus barras" in HTM)
 check("los tres campos van alineados y las aclaraciones en su propia fila",
@@ -1139,23 +1153,19 @@ check("...y estan en las dos pantallas, repintando lo que el tamano cambia",
       and "audChipsTam('audTam', pintarAcciones)" in JS
       and 'id="revTam"' in HTM)
 
-print("\nEL SELECTOR DE OBRA: SIN REPETIDAS Y SIN LO DE LA VEZ ANTERIOR")
-# «Ahora me aparece 3 veces euro san pablo». San Pablo son tres frentes —Basílica, Lourdes
-# y San Pablo— cubicados aparte y enlazados al mismo job de aSa. Con el nombre de aSa
-# solo, el selector mostraba tres entradas iguales y el combobox, que resuelve por texto
-# exacto, no podía distinguirlas.
-check("si varias obras de ArmaHub comparten un job, el selector les agrega el frente",
-      '"frente": frente' in SRC and 'nombre = "%s · %s" % (r[1], frente)' in SRC
-      and "p2.asa_job_id = p.asa_job_id" in SRC)
-check("...y no se funden: la auditoría de ArmaHub se sortea sobre las barras de UN proyecto",
-      "no se funden: se les agrega el frente" in SRC)
+print("\nEL SELECTOR DE OBRA: UNA POR JOB, Y SIN LO DE LA VEZ ANTERIOR")
+# «Ahora me aparece 3 veces euro san pablo». Eran los tres frentes de ArmaHub de un solo
+# job, en un selector que ya no debia existir: la auditoria es sobre aSa, y ahi San Pablo
+# es UNA obra. Correlacionar las obras de ArmaHub con los jobs no era fundir nada.
+check("en el selector cada job de aSa aparece una sola vez",
+      '"job": r[1]' in SRC and "GROUP BY p.asa_job_id" in SRC)
 # «Me dejaste un filtro pegado, llegué de los dashboards y no me encontraba la obra». El
 # estado del formulario de crear vive en variables del módulo y se quedaba de una visita
 # a la otra: el origen seguía en «aSa» con la obra de la vez pasada.
 check("al volver al tab con el formulario cerrado, el estado de crear se limpia",
       "function _formEnBlanco(" in JS
       and "if ($('audForm').style.display === 'none') _formEnBlanco();" in JS
-      and "ORIGEN = 'armahub'; OBRA = ''; UNIV = null;" in JS)
+      and "OBRA = ''; UNIV = null;" in JS)
 check("...y se conserva sólo si el formulario está ABIERTO, que es la señal de que alguien lo llenaba",
       "Sólo se conserva si el formulario\n  // está ABIERTO" in JS)
 

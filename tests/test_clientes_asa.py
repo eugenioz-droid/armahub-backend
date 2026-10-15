@@ -100,12 +100,17 @@ check("...y el nombre que se muestra es el del espejo",
           or x.get("nombre_armahub") != x.get("nombre_proyecto") for x in enl[:10]))
 # «Obra de Prueba» no tiene job a propósito (decisión del usuario): se exime lo que no
 # está enlazado, que es lo que la regla dice.
-sin_enlace = {x["id_proyecto"] for x in p if not x.get("asa_job_id")}
-a = [x for x in cli.get("/api/v1/auditorias/obras", headers=HA).json().get("obras", [])
-     if x.get("id_proyecto") not in sin_enlace]
-check("/auditorias/obras: `codigo` es el job en toda obra enlazada (%d)" % len(a),
-      a and not any(PROY.match(str(x.get("codigo") or "")) for x in a),
-      [x.get("codigo") for x in a if PROY.match(str(x.get("codigo") or ""))][:5])
+# /auditorias/obras YA NO LISTA OBRAS DE ARMAHUB (15-oct): la auditoría es siempre sobre
+# aSa, así que lo que ofrece son los jobs, uno por obra, y el job ES el código de aSa. Las
+# tres de San Pablo —tres frentes de ArmaHub, un job— aparecen UNA vez.
+_ao = cli.get("/api/v1/auditorias/obras", headers=HA).json()
+a = _ao.get("obras_asa", [])
+check("/auditorias/obras: ofrece jobs de aSa y ya no una lista de obras de ArmaHub (%d)" % len(a),
+      a and "obras" not in _ao and not any(PROY.match(str(x.get("job") or "")) for x in a),
+      [x.get("job") for x in a if PROY.match(str(x.get("job") or ""))][:5])
+check("...y San Pablo, que en ArmaHub son tres frentes, es UNA obra en el selector",
+      sum(1 for x in a if x.get("job") == "2012732") == 1,
+      [x.get("obra") for x in a if x.get("job") == "2012732"])
 rl = cli.get("/api/v1/reclamos?limite=300", headers=HA).json().get("data", [])
 con_job = [x for x in rl if x.get("asa_job_id") and x.get("id_proyecto")]
 check("/reclamos: la obra se nombra como aSa en los reclamos con obra enlazada (%d)" % len(con_job),

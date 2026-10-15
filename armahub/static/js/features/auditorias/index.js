@@ -65,7 +65,12 @@
   var BASE = null, UNIV = null;
   // La obra se elige con su ORIGEN pegado ('armahub|PROY-x' o 'asa|2010136'): una misma
   // pantalla sirve para las dos fuentes y no hay un segundo selector que mantener.
-  var ORIGEN = 'armahub', OBRA = '', AUDITOR = '';
+  // EL ORIGEN ES aSa, SIEMPRE (15-oct). Hasta hoy acá se elegía entre ArmaHub y aSa, y
+  // el usuario lo cerró: «debe ser siempre aSa, eliminemos la opción de ArmaHub para
+  // evitar enredos». Lo que se audita es lo que va a fabricación, y eso vive en aSa. La
+  // constante se queda con el nombre de antes porque la lee el resto del archivo —el
+  // detalle de una auditoría vieja de ArmaHub, si la hubiera, sigue pintando su alcance—.
+  var ORIGEN = 'asa', OBRA = '', AUDITOR = '';
   var SECT = [], PISOS = [], CICLOS = [];              // alcance de ArmaHub
   // Alcance de aSa. El piso y el ciclo se reconocen del TEXTO del código: allá no
   // son campos. Se ofrecen los que se reconocen en esa obra (55-77% según la obra).
@@ -86,48 +91,15 @@
   // Vive acá mientras se revisa y se guarda todo junto.
   var BARRAS = [], VERED = {};
 
-  // Las obras de las DOS fuentes en una sola lista, que es lo que come el combobox. El
-  // origen viaja en el item, así que elegir una obra de aSa o de ArmaHub es lo mismo
-  // para la pantalla.
-  // Sólo las obras del origen elegido: el combobox no mezcla dos mundos.
+  // Las obras que se pueden auditar: los jobs de aSa, con su código y su tamaño. Una
+  // entrada por job, que es la identidad de la obra en producción: los frentes que
+  // ArmaHub tenga de esa obra son cosa de la cubicación y acá no aparecen.
   function obrasParaElegir() {
     if (!BASE) return [];
-    if (ORIGEN === 'asa') {
-      return (BASE.obras_asa || []).map(function (o) {
-        return { id: 'asa|' + o.job, label: o.obra, origen: 'asa', clave: o.job,
-                 sub: 'job ' + o.job + ' · ' + o.cc + ' códigos · ' + kg0(o.kg) + ' kg' };
-      });
-    }
-    return (BASE.obras || []).map(function (o) {
-      return { id: 'armahub|' + o.id_proyecto, label: o.obra, origen: 'armahub', clave: o.id_proyecto,
-               sub: o.elementos + ' elementos' + (o.reclamos ? ' · ' + o.reclamos + ' reclamo(s) abierto(s)' : '') };
+    return (BASE.obras_asa || []).map(function (o) {
+      return { id: 'asa|' + o.job, label: o.obra, origen: 'asa', clave: o.job,
+               sub: 'job ' + o.job + ' · ' + o.cc + ' códigos · ' + kg0(o.kg) + ' kg' };
     });
-  }
-
-  // LA PRIMERA DECISIÓN: de dónde sale la muestra. Cambia el formulario entero, porque
-  // las dos fuentes no tienen la misma forma: en ArmaHub hay sector/piso/ciclo; en aSa
-  // lo único que hay son códigos de control con el nombre que les puso el cubicador.
-  var LOS_ORIGENES = [
-    ['armahub', 'ArmaHub', 'Obras cubicadas en ArmaHub: se audita ANTES de exportar a aSa, y el alcance es por tipo, piso y ciclo.'],
-    ['asa', 'aSa', 'Obras que no están en ArmaHub: se eligen los códigos de control y de ahí salen los elementos.']
-  ];
-  function pintarOrigen() {
-    $('audOrigen').innerHTML = LOS_ORIGENES.map(function (o) {
-      var n = o[0] === 'armahub' ? (BASE.obras || []).length : (BASE.obras_asa || []).length;
-      return '<button data-o="' + o[0] + '" class="' + (ORIGEN === o[0] ? 'on' : '') + '" title="' + esc(o[2]) + '">' +
-             esc(o[1]) + ' <i>' + n + '</i></button>';
-    }).join('');
-    $('audOrigen').querySelectorAll('button').forEach(function (b) {
-      b.addEventListener('click', function () {
-        if (ORIGEN === b.dataset.o) return;
-        ORIGEN = b.dataset.o;
-        OBRA = ''; UNIV = null; CCS = []; CC_LISTA = []; CC_BUSCA = '';
-        SECT = []; PISOS = []; CICLOS = [];
-        if (CB_OBRA) CB_OBRA.limpiar();
-        pintarOrigen(); pintarAlcance(); pintarEstado();
-      });
-    });
-    $('audOrigenInfo').textContent = (LOS_ORIGENES.filter(function (o) { return o[0] === ORIGEN; })[0] || [])[2] || '';
   }
 
   // LA CAJA DE CÓDIGOS DE CONTROL: el alcance de una auditoría de aSa.
@@ -253,19 +225,16 @@
   }
 
   async function elegirObra(item) {
-    ORIGEN = item ? item.origen : 'armahub';
     OBRA = item ? item.clave : '';
     SECT = []; PISOS = []; CICLOS = []; CCS = []; CC_LISTA = []; CC_BUSCA = '';
     $('audCcBusca').value = ''; UNIV = null;
     if (OBRA) {
       try {
-        UNIV = ORIGEN === 'asa'
-          ? await req('GET', '/auditorias/cc?job=' + encodeURIComponent(OBRA))
-          : await req('GET', '/auditorias/universo?id_proyecto=' + encodeURIComponent(OBRA));
+        UNIV = await req('GET', '/auditorias/cc?job=' + encodeURIComponent(OBRA));
         // LOS DESPACHADOS SIGUEN APARECIENDO, abajo de todo y sin marcar: lo normal es
         // revisar lo que todavía se puede atajar, pero esconderlos le quitaría al usuario
         // una decisión que es suya. El chip queda a la vista con su cuenta, a un clic.
-        if (ORIGEN === 'asa') CC_LISTA = (UNIV && UNIV.ccs) || [];
+        CC_LISTA = (UNIV && UNIV.ccs) || [];
       } catch (e) { aviso(e.message); }
     }
     pintarAlcance(); pintarEstado();
@@ -293,7 +262,7 @@
   // buscaba no aparecía. «Me dejaste un filtro pegado». Sólo se conserva si el formulario
   // está ABIERTO, que es la única señal de que alguien lo estaba llenando.
   function _formEnBlanco() {
-    ORIGEN = 'armahub'; OBRA = ''; UNIV = null;
+    OBRA = ''; UNIV = null;
     SECT = []; PISOS = []; CICLOS = []; CCS = []; CC_LISTA = []; CC_BUSCA = '';
     if (CB_OBRA) CB_OBRA.limpiar();
     var b = $('audCcBusca');
@@ -307,7 +276,6 @@
       if (!BASE) return;
       if (!_bound) { _bound = true; bind(); }
       if ($('audForm').style.display === 'none') _formEnBlanco();
-      pintarOrigen();
       pintarForm();
       await cargarLista();
       await cargarMisAcciones();
@@ -434,62 +402,30 @@
   // El alcance se arma con lo que la obra TIENE: cada chip dice cuántos elementos trae.
   function pintarAlcance() {
     var caja = $('audAlcance'), cajaAsa = $('audAlcanceAsa');
+    // La caja de tipo/piso/ciclo era el alcance de ArmaHub; en aSa el alcance son los
+    // códigos de control, que es lo único que aSa tiene.
+    caja.style.display = 'none';
     if (!UNIV) {
-      caja.style.display = 'none'; cajaAsa.style.display = 'none';
-      $('audObraInfo').textContent = (BASE.obras || []).length + ' obras en ArmaHub (con sus barras) · ' +
-        (BASE.obras_asa || []).length + ' en aSa';
+      cajaAsa.style.display = 'none';
+      $('audObraInfo').textContent = (BASE.obras_asa || []).length + ' obras en aSa';
       return;
     }
-    if (ORIGEN === 'asa') { caja.style.display = 'none'; cajaAsa.style.display = ''; return pintarCC(); }
-    caja.style.display = ''; cajaAsa.style.display = 'none';
-    var o = (BASE.obras || []).filter(function (x) { return x.id_proyecto === OBRA; })[0] || {};
-    $('audObraInfo').textContent = UNIV.elementos + ' elementos · ' + kg0(o.kg) + ' kg · cubicaron: ' +
-      (UNIV.cubicadores || []).map(function (c) { return c.email.split('@')[0]; }).join(', ');
-    // Cada chip lleva CUÁNTOS ELEMENTOS tiene disponibles, en su propia pastilla: pegado
-    // al nombre parecía parte del nombre («C12 8») y no se entendía qué era ese número.
-    // El primero es «Todos», que suelta la selección: así se ve que vacío = todos.
-    var chips = function (cont, lista, clave, activos, etiqueta) {
-      var total = lista.reduce(function (a, x) { return a + x.elementos; }, 0);
-      cont.innerHTML = '<button data-todos="1" class="todos' + (activos.length ? '' : ' on') + '"' +
-          ' title="Sin nada marcado se auditan todos">Todos <i>' + total + '</i></button>' +
-        lista.map(function (x) {
-          var v = x[clave], n = etiqueta ? etiqueta(x) : (v || '(sin dato)');
-          return '<button data-v="' + esc(v) + '" class="' + (activos.indexOf(v) !== -1 ? 'on' : '') + '"' +
-                 ' title="' + esc(n) + ' · ' + x.elementos + ' elementos disponibles">' +
-                 esc(n) + ' <i>' + x.elementos + '</i></button>';
-        }).join('');
-      cont.querySelectorAll('button').forEach(function (b) {
-        b.addEventListener('click', function () {
-          if (b.dataset.todos) activos.length = 0; else marcar(activos, b.dataset.v);
-          pintarAlcance(); pintarEstado();
-        });
-      });
-    };
-    chips($('audSectores'), UNIV.sectores || [], 'sector', SECT, function (x) { return x.nombre; });
-    chips($('audPisos'), UNIV.pisos || [], 'piso', PISOS);
-    chips($('audCiclos'), UNIV.ciclos || [], 'ciclo', CICLOS);
+    cajaAsa.style.display = '';
+    pintarCC();
   }
 
   function pintarEstado() {
     var n = parseInt($('audN').value, 10) || 0;
     var listo = !!(OBRA && AUDITOR && n > 0 && UNIV);
     $('audCrear').disabled = !listo;
-    if (ORIGEN === 'asa') {
-      // Sin códigos marcados no hay de dónde sacar la muestra.
-      listo = listo && CCS.length > 0;
-      $('audCrear').disabled = !listo;
-      $('audNInfo').textContent = UNIV ? ('máx ' + UNIV.maximo) : '';
-      if (!OBRA || !AUDITOR) $('audCrearMsg').textContent = 'Elige obra y quién audita.';
-      else if (!CCS.length) $('audCrearMsg').textContent = 'Marca los códigos de control de los que quieres sacar la muestra.';
-      else if (n > (UNIV.maximo || 20)) $('audCrearMsg').textContent = 'En aSa el máximo es ' + UNIV.maximo + ': cada código se le pide a aSa.';
-      else $('audCrearMsg').textContent = 'Puede tardar: se le piden los elementos a aSa, un código a la vez.';
-      return;
-    }
-    $('audRango').textContent = UNIV ? ('alcance: ' + (SECT.length ? SECT.map(function (s) {
-      return ((UNIV.sectores || []).filter(function (x) { return x.sector === s; })[0] || {}).nombre || s; }).join(', ') : 'todos los tipos') +
-      ' · ' + (PISOS.length ? PISOS.join(', ') : 'todos los pisos') + ' · ' + (CICLOS.length ? CICLOS.join(', ') : 'todos los ciclos')) : '';
-    $('audNInfo').textContent = UNIV ? ('de ' + UNIV.elementos) : '';
-    $('audCrearMsg').textContent = listo ? '' : 'Elige obra y quién audita.';
+    // Sin códigos marcados no hay de dónde sacar la muestra.
+    listo = listo && CCS.length > 0;
+    $('audCrear').disabled = !listo;
+    $('audNInfo').textContent = UNIV ? ('máx ' + UNIV.maximo) : '';
+    if (!OBRA || !AUDITOR) $('audCrearMsg').textContent = 'Elige obra y quién audita.';
+    else if (!CCS.length) $('audCrearMsg').textContent = 'Marca los códigos de control de los que quieres sacar la muestra.';
+    else if (n > (UNIV.maximo || 20)) $('audCrearMsg').textContent = 'En aSa el máximo es ' + UNIV.maximo + ': cada código se le pide a aSa.';
+    else $('audCrearMsg').textContent = 'Puede tardar: se le piden los elementos a aSa, un código a la vez.';
   }
 
   async function crear() {
