@@ -493,12 +493,17 @@
     var ver = $('revAccVerificar');
     if (ver) ver.addEventListener('click', verificarMarcados);
     var na = $('revAccNoAplica');
+    // Mismo trato que el de la fila: el botón queda marcado mientras se escribe el motivo.
     if (na) na.addEventListener('click', function () {
       $('revAccNapForm').style.display = 'flex';
+      na.classList.add('eligiendo');
       $('revAccNapNota').focus();
     });
     var no = $('revAccNapNo');
-    if (no) no.addEventListener('click', function () { $('revAccNapForm').style.display = 'none'; });
+    if (no) no.addEventListener('click', function () {
+      $('revAccNapForm').style.display = 'none';
+      if (na) na.classList.remove('eligiendo');
+    });
     var si = $('revAccNapOk');
     if (si) si.addEventListener('click', noAplicaMarcadas);
     var nota = $('revAccNapNota');
@@ -828,16 +833,33 @@
   // porque la decisión se toma mirando el dato que está en la fila de al lado.
   function _form(id) { return document.querySelector('tr[data-form="' + id + '"]'); }
 
+  function _botones(id) {
+    return { ap: document.querySelector('button[data-aplica="' + id + '"]'),
+             na: document.querySelector('button[data-noaplica="' + id + '"]') };
+  }
+
+  // EL BOTÓN TIENE QUE DECIR QUE LO APRETASTE (19-oct). «No aplica» sólo desplegaba el
+  // campo de abajo y el par de botones quedaba igual que antes: el usuario apretaba y nada
+  // cambiaba de color, así que parecía que el clic no había entrado. Mientras se está
+  // escribiendo el motivo, el botón queda marcado como lo que estás eligiendo —y se
+  // distingue del decidido, que es el que queda firme al guardar—.
   function abrirNoAplica(id) {
     var f = _form(id);
     if (!f) return;
     f.style.display = '';
+    var b = _botones(id);
+    if (b.na) b.na.classList.add('eligiendo');
+    if (b.ap) { b.ap.classList.remove('on'); b.ap.disabled = false; }
     var n = f.querySelector('input[data-nota]');
     if (n) n.focus();
   }
   function cerrarNoAplica(id) {
     var f = _form(id);
     if (f) f.style.display = 'none';
+    // Vuelve a como estaba: nada se decidió.
+    var b = _botones(id);
+    if (b.na) b.na.classList.remove('eligiendo');
+    if (b.ap) { b.ap.classList.add('on'); b.ap.disabled = true; }
   }
 
   async function guardarNoAplica(id) {
@@ -848,12 +870,18 @@
     var pat = f.querySelector('input[data-pat]').checked;
     if (!mot) { aviso('Elige por qué no aplica.'); return; }
     if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
-    await declararUno(id, 'aceptada', mot, nota, pat);
+    await declararUno(id, 'aceptada', mot, nota, pat,
+                      f.querySelector('button[data-napok]'));
   }
 
   // Una barra, una decisión: así se resuelve en la fila. El lote quedó sólo para el check
   // de «ya la corregí», que es lo único que se hace de a muchas.
-  async function declararUno(id, estado, motivo, nota, patron) {
+  async function declararUno(id, estado, motivo, nota, patron, boton) {
+    // MIENTRAS EL SERVIDOR RESPONDE, SE VE. Son dos viajes (declarar y volver a leer la
+    // revisión): sin esto el botón se queda mudo un segundo largo y se vuelve a apretar.
+    var b = _botones(id);
+    var tocados = [boton, b.ap, b.na].filter(Boolean);
+    tocados.forEach(function (x) { x.disabled = true; x.classList.add('audwait'); });
     try {
       var r = await req('PUT', '/chequeos/declarar',
                         { ids: [Number(id)], estado: estado, motivo_tipo: motivo || null,
@@ -862,8 +890,26 @@
          ? 'Hallazgo dejado sin efecto' + (r.afectadas > 1 ? ' (' + r.afectadas + ' iguales)' : '')
          : 'El hallazgo vuelve a quedar por corregir');
       delete REVS.sel_items[id];
+      // LO QUE YA SE SABE SE PINTA AL TIRO. El servidor confirmó; el refresco de abajo es
+      // para los contadores y para las iguales que pudo arrastrar el patrón. Si ese
+      // refresco no corre —el modal se abrió sin revisión elegida, la lista llegó de otra
+      // pantalla—, la fila igual queda como quedó, que es lo que el usuario estaba
+      // esperando ver.
+      ((REVS.detalle || {}).items || []).forEach(function (i) {
+        if (String(i.id) === String(id)) {
+          i.estado = estado;
+          if (estado === 'aceptada') { i.nota = nota || i.nota; i.motivo_tipo = motivo || i.motivo_tipo; }
+        }
+      });
+      if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
       await refrescarRevision();
-    } catch (e) { aviso(e.message); }
+    } catch (e) {
+      aviso(e.message);
+      tocados.forEach(function (x) { x.classList.remove('audwait'); });
+      // Se repinta en vez de rehabilitar a mano: el par Aplica|No aplica tiene un botón
+      // apagado a propósito según el estado, y devolverlo «a mano» lo dejaba al revés.
+      if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
+    }
   }
 
   // EL BOTON DEL MODAL: declara lo marcado y lo lee en aSa, en un paso. Siguen siendo dos

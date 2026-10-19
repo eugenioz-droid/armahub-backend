@@ -544,6 +544,23 @@ check("...y las marcadas se pueden dejar sin efecto de a muchas, con UNA explica
       and "estado: 'aceptada', motivo_tipo: mot, nota: nota" in JS)
 check("...que sigue exigiendo motivo y explicacion, igual que una barra suelta",
       "Elige por qué no aplican." in JS and "nota.length < 10" in JS)
+# EL BOTON TIENE QUE DECIR QUE LO APRETASTE (19-oct). El usuario: «al presionar el boton
+# de no aplica en el formulario de las revisiones, no me actualiza los colores de los
+# botones». «No aplica» sólo desplegaba el campo de abajo y el par quedaba igual que
+# antes del clic, asi que parecia que el clic no habia entrado.
+check("«No aplica» se marca mientras se escribe el motivo, en la fila y en el lote",
+      "b.na.classList.add('eligiendo')" in JS and "na.classList.add('eligiendo')" in JS
+      and ".eligiendo{" in HTM)
+check("...y vuelve a como estaba si se cancela: nada se decidio",
+      "b.na.classList.remove('eligiendo')" in JS
+      and "na.classList.remove('eligiendo')" in JS)
+# Y LO DECIDIDO SE PINTA AL TIRO, sin esperar el refresco: son dos viajes al servidor y
+# el refresco no corre en todos los caminos (el modal abierto sin revision elegida).
+check("al guardar, la fila queda como quedo aunque el refresco no corra",
+      "i.estado = estado;" in JS
+      and "if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();" in JS)
+check("...y mientras el servidor responde, el boton lo dice",
+      "x.classList.add('audwait')" in JS.split("async function declararUno(")[1][:1400])
 check("la referencia abre el render: el detalle no se perdió",
       "abrirDetalleSenal(b.dataset.ver)" in JS and 'audref" data-ver=' in JS)
 check("«Mis chequeos» ya no filtra por el estado muerto que dejó la 146",

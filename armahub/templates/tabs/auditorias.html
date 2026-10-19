@@ -652,6 +652,14 @@
   .revseg button.on{background:#1565C0; color:#fff;}
   .revseg button.on:disabled{cursor:default; opacity:1;}
   .revseg button[data-noaplica].on{background:#6d4c41;}
+  /* MIENTRAS SE ESCRIBE EL MOTIVO (19-oct). «No aplica» abre el campo de abajo y hasta
+     guardar no hay nada decidido, pero el botón tiene que decir que se apretó: antes el
+     par quedaba igual que antes del clic y parecía que no había entrado. Tenue a
+     propósito —lo firme es el `.on` café— y con el borde del lado del campo abierto. */
+  .revseg button[data-noaplica].eligiendo{background:#efebe9; color:#4e342e;
+                 box-shadow:inset 0 -2px 0 #6d4c41;}
+  .audmini.eligiendo{background:#efebe9; color:#4e342e; border-color:#a1887f;
+                 box-shadow:inset 0 -2px 0 #6d4c41;}
   .revcc2 .audref{cursor:pointer; text-decoration:underline dotted #b0bec5;}
   .revnapcaja{display:flex; gap:6px; align-items:center; padding:2px 0 4px 22px;}
   .revnapcaja select{font-size:11px; padding:3px 5px; border:1px solid #cfd8dc; border-radius:4px;}
