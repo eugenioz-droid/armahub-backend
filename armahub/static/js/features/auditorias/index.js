@@ -31,7 +31,14 @@
     if (!res.ok) {
       var det = data && data.detail;
       if (Array.isArray(det)) det = det.map(function (d) { return (d.loc || []).slice(-1) + ': ' + d.msg; }).join(' · ');
-      throw new Error((det && (det.msg || det)) || ('Error ' + res.status));
+      // El detalle puede ser un objeto (el 409 del cierre trae {motivo, mensaje, barras}):
+      // el mensaje legible va en `message` y el objeto entero viaja en `detalle`, con el
+      // status, para que quien llama pueda decidir qué hacer con él.
+      var err = new Error((det && (det.mensaje || det.msg || (typeof det === 'string' ? det : null)))
+                          || ('Error ' + res.status));
+      err.status = res.status;
+      err.detalle = det;
+      throw err;
     }
     return data;
   }
@@ -60,7 +67,13 @@
     { k: 'enviada', t: 'Enviada' },
     { k: 'cerrada', t: 'Cerrada' }
   ];
-  var ACCION_TXT = { pendiente: 'Pendiente', corregida: 'Corregida', verificada: 'Verificada' };
+  // TODO LO RESUELTO DICE «RESUELTO» (20-oct). Antes se distinguía «corregida» (lo dijo el
+  // auditado) de «verificada» (lo comprobó el sistema); el usuario unificó: «cambiemos
+  // todo a resuelto, al final los usuarios no han validado nada aún». La comprobación
+  // contra aSa sigue existiendo, pero corre al cerrar y queda en el registro, no en el
+  // nombre del estado.
+  var ACCION_TXT = { pendiente: 'Pendiente', corregida: 'Resuelto', verificada: 'Resuelto',
+                     desestimada: 'No aplica' };
 
   var BASE = null, UNIV = null;
   // La obra se elige con su ORIGEN pegado ('armahub|PROY-x' o 'asa|2010136'): una misma
@@ -341,14 +354,20 @@
       if (!k || !k.total || !k.total.revisados) { caja.style.display = 'none'; return; }
       caja.style.display = '';
       var t = k.total, nc = (t.hallazgo || 0);
-      $('audKpiN').textContent = '· ' + k.auditorias + ' auditorías · ' + k.cerradas + ' cerradas';
+      $('audKpiN').textContent = '· ' + k.cerradas + ' cerradas';
+      // LOS SEIS QUE PIDIÓ EL USUARIO (20-oct), y fuera el % de conformidad: «no se entiende
+      // sobre qué se están tomando los porcentajes». El único porcentaje que queda es el de
+      // hallazgos sobre lo auditado —«5 de 30»—, que tiene un denominador que se lee.
       $('audKpiCajas').innerHTML =
-        caj(t.conformidad + '%', 'conformidad sobre ' + t.revisados + ' elementos revisados',
-            t.conformidad >= 90 ? 'bien' : (t.conformidad < 70 ? 'mal' : '')) +
+        caj(k.auditorias || 0, 'auditorías') +
         caj(nc, 'hallazgos', nc ? 'mal' : 'bien') +
-        caj(t.observacion || 0, 'observaciones') +
+        caj(k.obras_auditadas || 0, 'obras auditadas') +
+        caj(k.cubicadores_auditados || 0, 'cubicadores auditados') +
         caj(k.acciones.pendiente || 0, 'acciones sin corregir',
-            (k.acciones.pendiente || 0) ? 'mal' : 'bien');
+            (k.acciones.pendiente || 0) ? 'mal' : 'bien') +
+        caj(t.pct_hallazgos == null ? '—' : t.pct_hallazgos + '%',
+            'de hallazgos sobre ' + (t.revisados || 0) + ' elementos auditados',
+            t.pct_hallazgos == null ? '' : (t.pct_hallazgos > 30 ? 'mal' : (t.pct_hallazgos <= 10 ? 'bien' : '')));
       $('audKpiCub').innerHTML = tabla(k.por_cubicador, 'cubicador', function (x) {
         return esc((x.cubicador || '').split('@')[0]); });
       $('audKpiCausa').innerHTML = k.causas.length
@@ -371,13 +390,17 @@
 
   function tabla(filas, clave, etiqueta) {
     if (!filas || !filas.length) return '<tbody><tr><td class="audvacio">Sin datos.</td></tr></tbody>';
+    // Fuera la conformidad también acá (20-oct): la columna es cuántos hallazgos sobre
+    // cuántos elementos auditados, y la barra lo dibuja.
+    var tope = Math.max.apply(null, filas.map(function (x) { return x.nc || 0; }).concat([1]));
     return '<thead><tr><th>' + (clave === 'cubicador' ? 'Cubicó' : 'Obra') +
-      '</th><th class="num">Revisados</th><th class="num">NC</th><th class="num">Conformidad</th><th></th></tr></thead><tbody>' +
+      '</th><th class="num" title="Elementos auditados">Auditados</th>' +
+      '<th class="num" title="Elementos con hallazgo">Hallazgos</th><th></th></tr></thead><tbody>' +
       filas.map(function (x) {
         return '<tr><td>' + etiqueta(x) + '</td><td class="num">' + x.revisados + '</td>' +
           '<td class="num"' + (x.nc ? ' style="color:#c62828;font-weight:700"' : '') + '>' + x.nc + '</td>' +
-          '<td class="num">' + (x.conformidad == null ? '—' : x.conformidad + '%') + '</td>' +
-          '<td><div class="audbar"><i style="width:' + (x.conformidad || 0) + '%"></i></div></td></tr>';
+          '<td><div class="audbar"><i style="width:' + ((x.nc || 0) / tope * 100).toFixed(0) +
+          '%; background:#ef9a9a"></i></div></td></tr>';
       }).join('') + '</tbody>';
   }
 
@@ -595,10 +618,10 @@
     if (!malas) return 'Enviada, sin barras con hallazgo. Se cierra sola.';
     var abiertas = malas - ok;
     return '<b>' + ok + ' de ' + malas + '</b> barra(s) resueltas' +
-      (des ? ' · ' + des + ' desestimada(s) por quien cubicó' : '') +
+      (des ? ' · ' + des + ' sin efecto por quien cubicó' : '') +
       (abiertas > 0
-        ? ' · quedan <b>' + abiertas + '</b>. Se cierra sola cuando no quede ninguna.'
-        : ' · sin barras abiertas.');
+        ? ' · quedan <b>' + abiertas + '</b>. Cuando no quede ninguna, quien respondió la cierra.'
+        : ' · sin barras abiertas: quien respondió puede cerrarla.');
   }
 
   function _flujoBotones() {
@@ -623,8 +646,10 @@
              '>Enviar al auditado</button>' +
              '<span class="audborrador" title="Mientras no se envíe, el auditado no ve nada.">borrador</span>';
     }
-    var h = '<button class="audmini" id="audBtnComprobar" title="Va a mirar las barras a aSa ' +
-            'ahora mismo, en vez de esperar la corrida de la noche.">Comprobar en aSa</button>';
+    // «COMPROBAR EN aSa» SE FUE DE ACÁ (20-oct): la comprobación corre sola al cerrar, que
+    // es cuando importa, y avisa sin bloquear. Un botón para correrla a mano era un paso
+    // más que el usuario no quería: «es menos engorroso».
+    var h = '';
     if (!puedo) return h;
     if (AUD.estado !== 'cerrada') {
       h += '<button class="audmini" id="audBtnCerrar" title="Para lo que el sistema no puede ' +
@@ -637,8 +662,6 @@
   function _flujoBind() {
     var e = $('audBtnEnviar');
     if (e) e.addEventListener('click', pedirEnvio);
-    var c = $('audBtnComprobar');
-    if (c) c.addEventListener('click', comprobarEnAsa);
     var cm = $('audBtnCerrar');
     if (cm) cm.addEventListener('click', cerrarAMano);
     var r = $('audBtnReabrir');
@@ -694,19 +717,6 @@
     });
   }
 
-  async function comprobarEnAsa() {
-    var b = $('audBtnComprobar');
-    b.disabled = true; b.textContent = 'Mirando en aSa…';
-    try {
-      AUD = await req('POST', '/auditorias/' + AUD.id + '/comprobar', {});
-      var r = AUD.comprobacion || [];
-      var buenas = r.filter(function (x) { return x.resultado === 'ok'; }).length;
-      ok(r.length ? (buenas + ' de ' + r.length + ' comprobadas en aSa')
-                  : 'No hay correcciones declaradas que comprobar');
-      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
-    } catch (e) { aviso(e.message); b.disabled = false; b.textContent = 'Comprobar en aSa'; }
-  }
-
   async function cerrarAMano() {
     var m = global.prompt('¿Por qué se cierra sin resolver todas las barras?\n' +
                           '(la barra ya no existe, el código se anuló, la obra terminó…)\n' +
@@ -745,6 +755,16 @@
       ' · revisados <b>' + AUD.revisados + '/' + AUD.n + '</b> · ' + kg0(AUD.kg) + ' kg' +
       ' · <span class="audest ' + esc(AUD.estado) + '">' + esc(ESTADO_TXT[AUD.estado] || AUD.estado) + '</span>' +
       ' · semilla <code>' + esc(AUD.semilla) + '</code>';
+    // TRES CUENTAS, NO PORCENTAJES (20-oct). Acá abajo iba la «cobertura de la obra», con
+    // porcentajes sobre denominadores que se movían solos y que el usuario no podía leer.
+    // Pidió esto en su lugar: elementos auditados, ítems auditados, hallazgos.
+    var rs = AUD.resumen || {};
+    $('audDetInfo').innerHTML += '<div class="audkpis audres3">' +
+      caj(rs.elementos_auditados || 0, 'elementos auditados' +
+          (rs.elementos && rs.elementos !== rs.elementos_auditados ? ' de ' + rs.elementos : '')) +
+      caj(rs.items_auditados || 0, 'ítems auditados') +
+      caj(rs.hallazgos || 0, 'hallazgos', rs.hallazgos ? 'mal' : 'bien') +
+      '</div>';
     var conflicto = (AUD.elementos || []).filter(function (e) { return e.conflicto; }).length;
     if (conflicto) $('audDetInfo').innerHTML += ' · <b style="color:#c62828">' + conflicto + ' elemento(s) cubicados por quien audita</b>';
     pintarFlujo();
@@ -826,7 +846,6 @@
                           'lo que dice todavía puede cambiar.';
     }
     pintarAcciones();
-    pintarCobertura();
     if (ELEM) {
       var vivo = (AUD.elementos || []).filter(function (x) { return x.id === ELEM.id; })[0];
       if (vivo) { ELEM = vivo; pintarRevision(); } else { ELEM = null; mostrarRevision(false); }
@@ -1620,6 +1639,25 @@
     _bindAcciones(caja);
   }
 
+  // EL BOTÓN «RESUELTO» (20-oct). Era un check «Corregido en aSa» y el sistema iba después
+  // a comprobar la barra; el usuario lo cambió por un botón que el auditado aprieta cuando
+  // ya hizo el cambio en aSa —verde cuando está marcado, y se vuelve a apretar para
+  // deshacerlo—. «Es menos engorroso». La comprobación contra aSa no se perdió: corre al
+  // cerrar. Sin RCA no se puede marcar, igual que antes: el backend lo rechaza y acá se
+  // apaga y se dice por qué, en vez de dejar que lo aprieten y les salte un error.
+  function _btnResuelto(resuelto, sinRca, attr, id) {
+    if (resuelto) {
+      return '<button class="audres on" ' + attr + '="' + id + '" title="Marcado como resuelto. ' +
+             'Vuelve a apretar si todavía no está cambiado en aSa.">✓ Resuelto</button>';
+    }
+    return '<button class="audres' + (sinRca ? ' off' : '') + '" ' + attr + '="' + id + '"' +
+           (sinRca ? ' disabled' : '') + ' title="' +
+           (sinRca ? 'Primero clasifica por qué pasó (RCA).'
+                   : 'Márcalo cuando ya hayas hecho el cambio en aSa. Al cerrar la auditoría ' +
+                     'se comprueba contra aSa y, si algo sigue igual, te avisa.') +
+           '">Resuelto</button>';
+  }
+
   // EL COMENTARIO DEL ELEMENTO, cuando el hallazgo no es de ninguna barra.
   //
   // «Falta trabas de muro» no se puede colgar de una barra: la barra que falta no está. El
@@ -1629,43 +1667,39 @@
   function filaComentario(e, enviada) {
     var est = e.accion_estado || 'pendiente';
     var suelto = !!e.comentario_suelto;
-    var puede = !!(suelto && e.mio && enviada && est !== 'corregida' && est !== 'verificada');
+    var resuelto = est === 'corregida' || est === 'verificada';
+    var nap = est === 'desestimada';
+    var puede = !!(suelto && e.mio && enviada && AUD.estado !== 'cerrada');
     var sinRca = !e.causa;
-    var estado = est === 'desestimada'
+    var estado = nap
       ? '<span class="auddes" title="' + esc(e.accion_nota || '') + '">No aplica</span>'
-      : est === 'verificada'
-        ? '<span class="audacc1 verificada">Comprobada</span>'
-        : est === 'corregida'
-          ? '<span class="audacc1 corregida">Corregida</span>'
-          : '<span class="audacc1 pendiente">Por resolver</span>';
+      : resuelto
+        ? '<span class="audacc1 corregida">Resuelto</span>'
+        : '<span class="audacc1 pendiente">Por resolver</span>';
     var acc = '';
     if (puede) {
       acc = '<div class="revseg">' +
-              '<button class="' + (est === 'desestimada' ? '' : 'on') + '" data-eaplica="' + e.id + '"' +
-                (est === 'desestimada' ? '' : ' disabled') +
+              '<button class="' + (nap ? '' : 'on') + '" data-eaplica="' + e.id + '"' +
+                (nap ? '' : ' disabled') +
                 ' title="El comentario es válido y hay que resolverlo">Aplica</button>' +
-              '<button class="' + (est === 'desestimada' ? 'on' : '') + '" data-enoaplica="' + e.id + '"' +
+              '<button class="' + (nap ? 'on' : '') + '" data-enoaplica="' + e.id + '"' +
                 ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
             '</div>' +
-            (est === 'desestimada' ? '' :
-              '<label class="audchk' + (sinRca ? ' off' : '') + '" title="' +
-                (sinRca ? 'Primero clasifica por qué pasó (RCA).'
-                        : 'Márcalo cuando ya esté resuelto en aSa.') +
-                '"><input type="checkbox" data-ecorregi="' + e.id + '"' +
-                (sinRca ? ' disabled' : '') + '> Corregido en aSa</label>');
-    } else if (est === 'corregida' && e.mio && suelto) {
-      acc = '<label class="audchk on" title="Marcado como corregido. Desmárcalo si no lo está.">' +
-            '<input type="checkbox" data-edeshacer="' + e.id + '" checked> Corregido en aSa</label>';
+            (nap ? '' : _btnResuelto(resuelto, sinRca, resuelto ? 'data-edeshacer' : 'data-ecorregi', e.id));
     }
-    var causa = e.causa
-      ? '<button class="audmini" data-ecausa="' + e.id + '"' + (puede ? '' : ' disabled') +
-        ' title="' + esc(e.causa + (e.causa_texto ? ' · ' + e.causa_texto : '')) + '">' +
-        esc(e.causa) + (puede ? ' ✎' : '') + '</button>'
-      : (puede
-          ? '<button class="audmini sinc" data-ecausa="' + e.id +
-            '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar por ' +
-            'resuelto.">RCA</button>'
-          : '<span class="muted">sin RCA</span>');
+    // EL RCA SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa
+    // que clasificar, y si la tenía el backend la quitó para que no pese en el Pareto.
+    var causa = nap
+      ? '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>'
+      : e.causa
+        ? '<button class="audmini" data-ecausa="' + e.id + '"' + (puede ? '' : ' disabled') +
+          ' title="' + esc(e.causa + (e.causa_texto ? ' · ' + e.causa_texto : '')) + '">' +
+          esc(e.causa) + (puede ? ' ✎' : '') + '</button>'
+        : (puede
+            ? '<button class="audmini sinc" data-ecausa="' + e.id +
+              '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar por ' +
+              'resuelto.">RCA</button>'
+            : '<span class="muted">sin RCA</span>');
     return '<tr' + (est === 'desestimada' ? ' class="audeses"' : '') + '>' +
       '<td><span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
         'del elemento.">elemento</span></td>' +
@@ -1694,24 +1728,17 @@
   //   Ya la corregí        — la declara corregida. Comprobarlo es del sistema, que vuelve
   //                          a pedirle la barra a aSa: nadie marca «verificada» a mano.
   function filaAccion(e, b, enviada) {
-    var puede = !!(e.mio && enviada && !b.corregido);
+    var cerrada = AUD.estado === 'cerrada';
+    var puede = !!(e.mio && enviada && !cerrada);
     var estado = b.desestimado
       ? '<span class="auddes" title="' + esc(b.desestimado_motivo || '') + '">No aplica</span>'
       : b.objecion
         ? '<span class="audacc1 pendiente" title="' + esc(b.objecion) + '">Descarte no aceptado</span>'
-        : b.verificado === 'ok'
-          ? '<span class="audacc1 verificada">Comprobada</span>'
-          : b.corregido
-            ? '<span class="audacc1 corregida" title="Declarada corregida. El sistema la mira en aSa.">Corregida</span>'
-            : '<span class="audacc1 pendiente">Por corregir</span>';
+        : b.corregido
+          ? '<span class="audacc1 corregida">Resuelto</span>'
+          : '<span class="audacc1 pendiente">Por resolver</span>';
     var acc = '';
     if (puede) {
-      // EL CHECK ES EL ESTADO, NO UNA ORDEN. Era un botón que decía «Ya la corregí» y
-      // encima se veía apretado: no se distinguía lo hecho de lo por hacer. Un check
-      // marcado o no es el estado de la barra, que es lo que se está mirando.
-      //
-      // SIN RCA NO SE PUEDE MARCAR. El backend lo rechaza igual; acá se apaga el check y
-      // se dice por qué, en vez de dejar que lo aprieten y les salte un error.
       var sinRca = !b.causa;
       acc = '<div class="revseg">' +
               '<button class="' + (b.desestimado ? '' : 'on') + '" data-aplica="' + b.item_id + '"' +
@@ -1721,15 +1748,8 @@
                 ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
             '</div>' +
             (b.desestimado ? '' :
-              '<label class="audchk' + (sinRca ? ' off' : '') + '" title="' +
-                (sinRca ? 'Primero clasifica por qué pasó (RCA).'
-                        : 'Márcala cuando ya esté cambiada en aSa. El sistema lo comprueba solo.') +
-                '"><input type="checkbox" data-corregi="' + b.item_id + '"' +
-                (sinRca ? ' disabled' : '') + '> Corregido en aSa</label>');
-    } else if (b.corregido && e.mio) {
-      acc = '<label class="audchk on" title="Marcada como corregida. Desmárcala si no lo está.">' +
-            '<input type="checkbox" data-deshacer="' + b.item_id + '" checked> Corregido en aSa</label>';
-    } else if (b.desestimado && AUD.soy_auditor) {
+              _btnResuelto(!!b.corregido, sinRca, b.corregido ? 'data-deshacer' : 'data-corregi', b.item_id));
+    } else if (b.desestimado && AUD.soy_auditor && !cerrada) {
       // Derecho a réplica del auditor: el descarte vale por defecto, pero si no
       // corresponde lo reabre dejando por escrito por qué.
       acc = '<button class="audmini" data-objetar="' + b.item_id + '" title="Reabre esta ' +
@@ -1737,15 +1757,20 @@
     }
     // RCA = análisis de causa raíz. El usuario lo llama así y es como se llama en la
     // norma; «Clasificar» no decía qué se estaba clasificando.
-    var causa = b.causa
-      ? '<button class="audmini" data-causa="' + b.item_id + '"' + (puede ? '' : ' disabled') +
-        ' title="' + esc(b.causa + (b.causa_texto ? ' · ' + b.causa_texto : '')) + '">' +
-        esc(b.causa) + (puede ? ' ✎' : '') + '</button>'
-      : (puede
-          ? '<button class="audmini sinc" data-causa="' + b.item_id +
-            '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar la ' +
-            'barra por corregida.">RCA</button>'
-          : '<span class="muted">sin RCA</span>');
+    //
+    // Y SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa
+    // que clasificar, y si la tenía el backend la quitó para que no pese en el Pareto.
+    var causa = b.desestimado
+      ? '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>'
+      : b.causa
+        ? '<button class="audmini" data-causa="' + b.item_id + '"' + (puede && !b.corregido ? '' : ' disabled') +
+          ' title="' + esc(b.causa + (b.causa_texto ? ' · ' + b.causa_texto : '')) + '">' +
+          esc(b.causa) + (puede && !b.corregido ? ' ✎' : '') + '</button>'
+        : (puede
+            ? '<button class="audmini sinc" data-causa="' + b.item_id +
+              '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar la ' +
+              'barra por resuelta.">RCA</button>'
+            : '<span class="muted">sin RCA</span>');
     var cols = 9;
     return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
       '<td><span class="audref">' + esc(b.ref || b.marca || '') + '</span></td>' +
@@ -1826,11 +1851,11 @@
     caja.querySelectorAll('button[data-causa]').forEach(function (b) {
       b.addEventListener('click', function () { clasificarItem(b.dataset.causa); });
     });
-    caja.querySelectorAll('input[data-corregi]').forEach(function (b) {
-      b.addEventListener('change', function () { corregirItem(b.dataset.corregi, true, b); });
+    caja.querySelectorAll('button[data-corregi]').forEach(function (b) {
+      b.addEventListener('click', function () { corregirItem(b.dataset.corregi, true, b); });
     });
-    caja.querySelectorAll('input[data-deshacer]').forEach(function (b) {
-      b.addEventListener('change', function () { corregirItem(b.dataset.deshacer, false, b); });
+    caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
+      b.addEventListener('click', function () { corregirItem(b.dataset.deshacer, false, b); });
     });
     caja.querySelectorAll('button[data-aplica]').forEach(function (b) {
       b.addEventListener('click', function () { desestimarItem(b.dataset.aplica, false); });
@@ -1853,13 +1878,13 @@
     caja.querySelectorAll('button[data-ecausa]').forEach(function (b) {
       b.addEventListener('click', function () { clasificarComentario(b.dataset.ecausa); });
     });
-    caja.querySelectorAll('input[data-ecorregi]').forEach(function (b) {
-      b.addEventListener('change', function () {
+    caja.querySelectorAll('button[data-ecorregi]').forEach(function (b) {
+      b.addEventListener('click', function () {
         resolverElemento(b.dataset.ecorregi, { aplica: true, corregido: true }, b);
       });
     });
-    caja.querySelectorAll('input[data-edeshacer]').forEach(function (b) {
-      b.addEventListener('change', function () {
+    caja.querySelectorAll('button[data-edeshacer]').forEach(function (b) {
+      b.addEventListener('click', function () {
         resolverElemento(b.dataset.edeshacer, { aplica: true, corregido: false }, b);
       });
     });
@@ -1929,49 +1954,75 @@
   // DECLARAR QUE SE CORRIGIÓ. Se pregunta CÓMO, y no es burocracia: si se corrigió la
   // misma barra el sistema puede ir a mirarla en aSa, y si se rehizo en otro código NO
   // puede —la barra vieja va a seguir diciendo lo mismo para siempre—.
+  // UN CLIC, SIN PREGUNTAS (20-oct). Antes preguntaba si se rehízo en un código nuevo y cuál,
+  // porque de eso vivía la comprobación barra por barra. Ahora la comprobación corre al
+  // cerrar y avisa sin bloquear: si la barra se rehízo en otro código, aSa va a decir que
+  // la vieja sigue igual, el aviso lo va a mostrar y quien cierra lo confirma. Dos
+  // preguntas por barra para cubrir ese caso era justo lo «engorroso» que se quiso sacar.
   async function corregirItem(itemId, corregido, control) {
-    var cuerpo = { corregido: !!corregido, tipo: 'item' };
-    if (corregido) {
-      var nuevo = global.confirm(
-        'Aceptar = se rehízo en un CÓDIGO o ÍTEM NUEVO.\n' +
-        'Cancelar = se corrigió esta misma barra (el sistema lo comprueba en aSa).');
-      if (nuevo) {
-        var cc = global.prompt('¿Cuál es el código nuevo?');
-        if (cc === null) return;
-        if (!cc.trim()) { aviso('Hace falta el código nuevo.'); return; }
-        cuerpo.tipo = 'nuevo';
-        cuerpo.cc_nuevo = cc.trim();
-        var im = global.prompt('¿Y la marca, si cambió? (puedes dejarlo vacío)');
-        if (im && im.trim()) cuerpo.item_nuevo = im.trim();
-      }
-    }
     _ocupado(control, true);
     try {
-      AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/correccion', cuerpo);
-      ok(corregido ? 'Declarada corregida: el sistema la va a comprobar en aSa'
-                   : 'Vuelve a quedar por corregir');
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/correccion',
+                      { corregido: !!corregido, tipo: 'item' });
+      ok(corregido ? 'Resuelto' : 'Vuelve a quedar por resolver');
       await cargarLista(); await cargarMisAcciones(); pintarDetalle();
     } catch (e) {
       aviso(e.message);
-      // El check vuelve a como estaba: si no, queda marcado algo que el servidor rechazó.
-      if (control) { control.checked = !corregido; _ocupado(control, false); }
+      _ocupado(control, false);
     }
   }
 
   // CERRAR, cuando no queda ninguna barra pendiente. Lo aprieta quien respondió.
-  async function cerrarResueltas() {
+  // CERRAR VA A aSa (20-oct). Al apretar, el servidor vuelve a pedirle a aSa cada barra que
+  // se marcó resuelta. Si alguna sigue como estaba, contesta 409 con la lista y acá se le
+  // muestra a quien cierra; puede confirmar igual —«en ese warning igual el cubicador puede
+  // confirmar y queda trazabilidad»— y entonces se vuelve a llamar con confirmar=true. Lo
+  // que aSa dijo queda guardado en la auditoría de todos modos.
+  async function cerrarResueltas(confirmar) {
     var b = $('audBtnCerrarOk');
     _ocupado(b, true);
-    if (b) b.textContent = 'Cerrando…';
+    if (b) b.textContent = confirmar ? 'Cerrando…' : 'Comprobando en aSa…';
     try {
-      AUD = await req('POST', '/auditorias/' + AUD.id + '/cerrar-resueltas', {});
+      AUD = await req('POST', '/auditorias/' + AUD.id + '/cerrar-resueltas' +
+                              (confirmar ? '?confirmar=true' : ''), {});
       ok('Auditoría cerrada');
       await cargarLista(); await cargarMisAcciones(); await cargarIndicadores(); pintarDetalle();
     } catch (e) {
+      var det = e.detalle || e.detail || null;
+      if (e.status === 409 && det && det.motivo === 'sigue_igual') {
+        _ocupado(b, false);
+        if (b) b.textContent = 'Cerrar la auditoría';
+        _avisoCierre(det);
+        return;
+      }
       aviso(e.message);
       _ocupado(b, false);
       if (b) b.textContent = 'Cerrar la auditoría';
     }
+  }
+
+  // EL AVISO DEL CIERRE: qué barras siguen igual en aSa, y dos salidas. No es un
+  // confirm() pelado porque hay que poder leer la lista.
+  function _avisoCierre(det) {
+    var caja = $('audAcciones');
+    var viejo = $('audCierreAviso');
+    if (viejo) viejo.remove();
+    var div = document.createElement('div');
+    div.id = 'audCierreAviso';
+    div.className = 'audnota audcierre';
+    div.innerHTML = '<b>' + esc(det.mensaje) + '</b>' +
+      '<ul>' + (det.barras || []).map(function (x) {
+        return '<li><span class="audref">' + esc(x.ref) + '</span> ' + esc(x.porque || '') + '</li>';
+      }).join('') + '</ul>' +
+      '<div class="audenviop">' +
+        '<button class="audmini" id="audCierreNo">Volver a revisar</button>' +
+        '<button class="audenviar" id="audCierreSi" title="Cierra igual. Queda registrado qué ' +
+        'barras seguían como estaban en aSa y que lo confirmaste tú.">Cerrar igual</button>' +
+      '</div>';
+    caja.insertBefore(div, caja.firstChild);
+    div.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('audCierreNo').addEventListener('click', function () { div.remove(); });
+    $('audCierreSi').addEventListener('click', function () { div.remove(); cerrarResueltas(true); });
   }
 
   // LA MATRIZ ISHIKAWA DE UNA BARRA. Es la MISMA matriz de los reclamos, con la misma
@@ -2061,39 +2112,6 @@
   // CUÁNTO DE LA OBRA SE HA MIRADO, contando TODAS sus auditorías. Un cuadrito por
   // elemento (o por código, en aSa): gris lo no auditado, color según cómo salió. Es la
   // respuesta a «qué falta», que una auditoría suelta no da.
-  function pintarCobertura() {
-    var caja = $('audCobertura'), c = AUD && AUD.cobertura;
-    if (!c || !c.total) { caja.style.display = 'none'; return; }
-    caja.style.display = '';
-    var falta = c.total - c.auditados;
-    // DOS DENOMINADORES: contra lo auditable (lo exigible) y contra el total de la obra.
-    // Medir sólo contra el total castiga por lo despachado, que ya no se puede auditar.
-    var noAud = c.total - c.auditable;
-    caja.innerHTML = '<div class="audh">Cobertura de la obra <span class="muted">' +
-        esc(AUD.obra) + ' · todas sus auditorías</span></div>' +
-      '<div class="audkpis">' +
-        caj(c.pct + '%', 'de lo auditable · ' + c.auditados + ' de ' + c.auditable,
-            c.pct >= 20 ? 'bien' : '') +
-        caj(c.pct_total + '%', 'del total de la obra (' + c.total + ')') +
-        caj(c.pct_kg + '%', 'de los kilos auditables') +
-        caj(falta, 'sin mirar' + (noAud ? ' · ' + noAud + ' ya despachados' : '')) +
-      '</div>' +
-      '<div class="audcobbar" title="' + c.pct + '% de lo auditable"><i style="width:' + c.pct + '%"></i></div>' +
-      '<div class="audgrid">' + c.filas.map(function (f) {
-        // Tres estados, no dos: sin mirar · con algo auditado · no auditable (despachado).
-        var cl = !f.auditable ? 'fuera'
-               : (f.auditados ? ((f.hallazgos || [])[0] || 'pendiente') : '');
-        return '<span class="' + esc(cl) + '" title="' + esc(f.nombre) +
-               (f.auditados ? ' · ' + f.auditados + ' elemento(s) auditado(s) en ' + (f.auditorias || []).join(', ')
-                            : (f.auditable ? ' · sin auditar' : ' · despachado, ya no se audita')) + '"></span>';
-      }).join('') + '</div>' +
-      '<div class="audleyc">' +
-        '<span><i class="g"></i>sin auditar</span><span><i class="a"></i>auditado</span>' +
-        '<span><i class="r"></i>con hallazgo</span><span><i class="f"></i>despachado</span>' +
-        (c.origen === 'asa' ? '<span class="muted">· en aSa la unidad es el código: auditar un elemento no agota el código</span>' : '') +
-      '</div>';
-  }
-
   // MIS CORRECCIONES, BARRA POR BARRA (8-oct).
   //
   // Antes era una fila por ELEMENTO con un botón «Ya la corregí». Un elemento son cuatro,
@@ -2191,7 +2209,7 @@
     if (a.verificado === 'ok') {
       return '<span class="audacc1 verificada" title="' +
              esc(a.verificado_porque || 'El sistema volvió a mirar la barra en aSa y ya no está mal.') +
-             '">Comprobada</span>';
+             '">Resuelto</span>';
     }
     if (a.verificado === 'sigue_igual') {
       return '<span class="audacc1 pendiente" title="' +

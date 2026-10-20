@@ -222,7 +222,6 @@
 
       <!-- CUÁNTO DE LA OBRA SE HA MIRADO, contando todas sus auditorías. Responde la
            pregunta que una auditoría suelta no contesta: qué falta. -->
-      <div id="audCobertura" class="audcob" style="display:none;"></div>
 
       <div class="muted" style="font-size:10.5px; margin-top:6px;">
         Clic en un elemento para revisarlo. El estado y las fechas se ponen solos: <b>en curso</b> al
@@ -843,28 +842,26 @@
   .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
           border:1px solid #ef9a9a; border-radius:4px;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
-  .audcob{margin-top:10px; padding:10px 12px; background:#f7f9fb; border:1px solid #e3e8ef; border-radius:6px;}
-  .audcobbar{height:12px; background:#eceff1; border-radius:3px; overflow:hidden; margin:4px 0 8px;}
-  .audcobbar i{display:block; height:100%; background:#1565C0;}
-  /* La grilla de la obra: un cuadrito por elemento, pintado según cómo salió. */
-  .audgrid{display:flex; flex-wrap:wrap; gap:3px; max-height:26vh; overflow:auto;}
-  .audgrid span{width:13px; height:13px; border-radius:2px; background:#e3e8ef; display:block; cursor:default;}
-  .audgrid span.conforme{background:#8BC34A;} .audgrid span.observacion{background:#ffb74d;}
-  .audgrid span.hallazgo{background:#c62828;}
-  .audgrid span.pendiente{background:#90caf9;}
-  /* Despachado: ya no se puede auditar. Se muestra rayado para que no se confunda con
-     «falta por mirar», que es lo único exigible. */
-  .audgrid span.fuera{background:repeating-linear-gradient(45deg,#eceff1,#eceff1 2px,#fff 2px,#fff 4px);}
-  .audleyc{display:flex; gap:12px; flex-wrap:wrap; font-size:10px; color:#546e7a; margin-top:6px; align-items:center;}
-  .audleyc i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px;}
-  .audleyc i.g{background:#e3e8ef;} .audleyc i.a{background:#8BC34A;}
-  .audleyc i.r{background:#c62828;} .audleyc i.f{background:repeating-linear-gradient(45deg,#eceff1,#eceff1 2px,#fff 2px,#fff 4px); border:1px solid #e3e8ef;}
+  /* EL BOTÓN «RESUELTO» (20-oct). Reemplaza el check «Corregido en aSa»: verde cuando está
+     marcado, apagado mientras falte el RCA, y se vuelve a apretar para deshacerlo. */
+  .audres{border:1px solid #a5d6a7; background:#fff; color:#2e7d32; font-size:10px; font-weight:700;
+          padding:3px 9px; border-radius:5px; cursor:pointer; white-space:nowrap; margin-left:6px;}
+  .audres:hover:not(:disabled){background:#e8f5e9;}
+  .audres.on{background:#2e7d32; border-color:#2e7d32; color:#fff;}
+  .audres.off{opacity:.45; cursor:not-allowed;}
+  /* Las tres cuentas del detalle, en vez de la cobertura. */
+  .audres3{margin-top:8px;}
+  .audres3 .audkpi b{font-size:18px;}
+  /* El aviso del cierre: lo que aSa dijo que sigue igual, y las dos salidas. */
+  .audcierre{background:#fff8e1; border:1px solid #ffe082; border-radius:6px; padding:8px 10px; margin-bottom:8px;}
+  .audcierre ul{margin:6px 0 4px 16px; padding:0; font-size:11px; color:#5d4037;}
+  .audcierre li{margin:2px 0;}
   /* Mis correcciones pendientes: lo primero que ve el cubicador al entrar. */
   .audmias{background:#fffdf5; border-top:3px solid #ffb300;}
   /* Estado de la acción. Pendiente pesa, verificada se apaga: lo cerrado no debe gritar. */
   .audacc1{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
   .audacc1.pendiente{background:#fff3e0; color:#e65100;}
-  .audacc1.corregida{background:#e3f2fd; color:#1565C0;}
+  .audacc1.corregida{background:#e8f5e9; color:#2e7d32;}   /* «Resuelto», del mismo verde que el botón */
   .audacc1.verificada{background:#e8f5e9; color:#2e7d32;}
   .audmini{font-size:10px; font-weight:600; padding:2px 9px; border-radius:4px; cursor:pointer;
            border:1px solid #cfd8dc; background:#fff; color:#546e7a; white-space:nowrap;}

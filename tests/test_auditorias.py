@@ -134,7 +134,7 @@ check("la gravedad se calcula del estado del código, no se pregunta",
       and A.gravedad_de("observacion", "Shipped") is None)
 check("...y se dice en palabras", A.GRAVEDAD["despachado"] == "Detectado después del despacho"
       and A.GRAVEDAD["antes"] == "Detectado antes del despacho")
-check("...y viaja en cada elemento", '"gravedad": gravedad_de(e[10], e[26])' in SRC)
+check("...y viaja en cada elemento", '"gravedad": gravedad_de(e[10], e[28])' in SRC)
 # «desestimada» entró el 15-oct, y sólo para el comentario del elemento: el descarte de
 # una barra vive en la barra (`desestimado`) y el elemento lo deriva, pero un comentario
 # que no tiene barra dónde apoyarse necesita poder quedar sin efecto en el elemento mismo.
@@ -372,19 +372,18 @@ check("hay un endpoint que lista TODO y marca lo auditado",
       and '"pct": round(con / len(auditables) * 100)' in SRC and '"pct_kg"' in SRC)
 check("...y va antes de /auditorias/{id}, o la tomaría como id",
       SRC.index('@router.get("/auditorias/cobertura")') < SRC.index('@router.get("/auditorias/{auditoria_id}")'))
-check("...con DOS denominadores: lo auditable y el total de la obra",
-      '"auditable": len(auditables)' in SRC and '"pct_total"' in SRC
-      and '"auditable": r[3] != ESTADO_DESPACHADO' in SRC
-      and "castiga por algo que nadie puede hacer" in SRC
-      and "de lo auditable" in JS and "del total de la obra" in JS)
-check("...y tres estados en la grilla: sin mirar, auditado y no auditable",
-      ".audgrid span.fuera{" in HTM and "'fuera'" in JS and "despachado, ya no se audita" in JS)
-check("la unidad se dice, porque las dos fuentes no se miden igual",
-      'unidad = "código de control"' in SRC and 'unidad = "elemento"' in SRC
-      and "auditar un elemento no agota el código" in JS)
-check("la pantalla la pinta como grilla, un cuadrito por elemento",
-      'id="audCobertura"' in HTM and ".audgrid span.hallazgo" in HTM and "function pintarCobertura()" in JS
-      and "sin auditar</span>" in JS)
+# LA COBERTURA SE FUE DE LA PANTALLA (20-oct). El usuario: «están un poco raros los
+# indicadores y no se entiende sobre qué se están tomando los porcentajes… mejor mostrar
+# cantidad de elementos auditados, cantidad de ítems auditados, cantidad de hallazgos».
+# El endpoint queda (lo usa el informe); el detalle ya no lo llama, que además era la
+# parte lenta de abrir una auditoría.
+check("el detalle ya no pide la cobertura ni la pinta",
+      'aud["cobertura"] = cobertura(' not in SRC and "function pintarCobertura()" not in JS
+      and 'id="audCobertura"' not in HTM and ".audgrid" not in HTM)
+check("...y trae tres cuentas en su lugar: elementos, ítems, hallazgos",
+      'aud["resumen"] = {' in SRC and '"elementos_auditados"' in SRC
+      and '"items_auditados"' in SRC and '"hallazgos": sum(int(e.get("items_malos")' in SRC
+      and "'ítems auditados'" in JS and "'elementos auditados'" in JS)
 check("...y entra al informe como su propia sección",
       "def _cobertura(self)" in SRC and '"5. Cobertura de la obra"' in SRC
       and '"6. Conclusion"' in SRC and "self._cobertura()" in SRC)
@@ -611,8 +610,9 @@ check("...dice qué encontró el auditor y qué DEBERÍA decir",
       "function _esperadoTxt(" in JS and "Debería decir" in JS)
 check("...y el plazo vencido se ve, aunque todavía no dispare nada",
       "audvenc" in JS and ".audt tr.audvenc td{" in HTM)
-check("la comprobación del sistema se muestra aparte de lo que declaró la persona",
-      "Sigue igual en aSa" in JS and "Comprobada" in JS)
+check("lo que aSa dijo se muestra aparte de lo que declaró la persona, pero todo resuelto dice «Resuelto»",
+      "Sigue igual en aSa" in JS and "Comprobada" not in JS
+      and "corregida: 'Resuelto', verificada: 'Resuelto'" in JS)
 
 print("\n7c0d. El POR QUÉ es del auditado, por ITEM, y se elige en la matriz")
 # LO PIDIÓ EL USUARIO (8-oct): «lo del ishikawa sería bueno sacarlo de la auditoría y
@@ -665,7 +665,11 @@ check("cuatro estados, y revisar todo YA NO cierra",
       A.ESTADOS == ("planificada", "en_curso", "enviada", "cerrada")
       and A.estado_de(5, 5) == "en_curso"
       and A.estado_de(5, 5, True, 0, 3) == "enviada"
-      and A.estado_de(5, 5, True, 3, 0) == "cerrada")
+      # RESOLVER TODO TAMPOCO CIERRA (20-oct): el cierre lo aprieta quien respondió.
+      and A.estado_de(5, 5, True, 3, 0) == "enviada"
+      and A.estado_de(5, 5, True, 3, 0, True) == "cerrada"
+      # La que no dejó nada que resolver sí se cierra sola al enviar.
+      and A.estado_de(5, 5, True, 0, 0) == "cerrada")
 check("...y el cierre a mano manda sobre todo lo demás",
       A.estado_de(2, 5, False, 0, 0, True) == "cerrada")
 check("no se envía a medio revisar, y lo decidió el usuario",
@@ -719,15 +723,18 @@ check("decir «lo rehice en otro código» obliga a decir cuál, y con qué marc
       "item_nuevo" in SRC and "audResCc" in JS and "audResItem" in JS)
 check("el reloj comprueba después del sync y con tope de llamadas",
       "_auditorias_al_dia()" in SCHED and "TOPE_COMPROBAR" in SCHED)
-check("y se puede pedir a mano, sin esperar la corrida",
-      '@router.post("/auditorias/{auditoria_id}/comprobar")' in SRC
-      and "function comprobarEnAsa(" in JS)
+# LA COMPROBACIÓN CORRE AL CERRAR (20-oct), no a pedido ni de noche: «vamos a reemplazar
+# la revisión automática por un botón que el usuario marque como resuelto».
+check("la comprobación corre al cerrar y ya no hay botón para pedirla",
+      "def _chequear_lo_resuelto(" in SRC and "function comprobarEnAsa(" not in JS
+      and "audBtnComprobar" not in JS)
 
 print("\n8c. El cierre se deriva, con una válvula a mano")
-check("cierra cuando no queda ninguna barra abierta, no cuando se revisó todo",
-      "COUNT(*) FILTER (WHERE i.desestimado OR i.verificado = 'ok')" in SRC)
-check("declararla corregida NO alcanza para cerrar",
-      "Declararla corregida NO alcanza" in SRC)
+check("lo resuelto es lo que dijo quien lo hizo, no lo que comprobó un barrido",
+      "COUNT(*) FILTER (WHERE i.desestimado OR i.corregido)" in SRC
+      and "COUNT(*) FILTER (WHERE i.desestimado OR i.verificado = 'ok')" not in SRC)
+check("...y los comentarios de elemento sin responder cuentan como abiertos",
+      "abiertas = (abiertas or 0) + (cur.fetchone()[0] or 0)" in SRC)
 check("hay cierre a mano con motivo, para lo que el sistema no puede comprobar",
       '@router.post("/auditorias/{auditoria_id}/cerrar")' in SRC
       and "Di por qué se cierra sin resolver" in SRC)
@@ -858,7 +865,7 @@ print("\n7d2. El estado del código de control, en la muestra")
 # Open el lunes sale el jueves y la auditoría ya estaba creada.
 check("el detalle trae el estado del código y su fecha de despacho",
       "p.estado, p.proj_ship_date" in SRC and "LEFT JOIN asa_pedidos p ON p.control_code = e.cc" in SRC
-      and '"estado_cc": e[26]' in SRC and '"despachado": (e[26] or "") == ESTADO_DESPACHADO' in SRC)
+      and '"estado_cc": e[28]' in SRC and '"despachado": (e[28] or "") == ESTADO_DESPACHADO' in SRC)
 check("...la lista lo muestra como columna, sólo en las auditorías de aSa",
       "function celdaEstadoCc(" in JS and "celdaEstadoCc(e) : ''" in JS)
 check("...y el despachado va en rojo, con la fecha y el porqué",
@@ -1014,6 +1021,12 @@ def _cuerpo(ruta):
     return tr[1].split("@router.")[0]
 
 
+def _cuerpo_post(ruta):
+    tr = SRC.split('@router.post("/auditorias/%s")' % ruta)
+    assert len(tr) == 2, ruta
+    return tr[1].split("@router.")[0]
+
+
 check("escribir lo del auditor pide ser SU auditor y que no esté enviada",
       "def _solo_antes_de_enviar(" in SRC
       and "_solo_el_auditor(cur, auditoria_id, user)" in
@@ -1054,11 +1067,14 @@ check("cada barra lleva Aplica | No aplica, y «no aplica» pide el motivo ahí 
 check("el Ishikawa es POR BARRA y abre la MISMA matriz de los reclamos",
       "function clasificarItem(" in JS and "global.abrirIshikawaModal('auditoria')" in JS
       and "item_id: b.item_id" in JS and "window.audIshikawa" in DEJS)
-check("declarar la corrección pregunta CÓMO, porque si se rehizo en otro código no se puede comprobar",
-      "function corregirItem(" in JS and "cuerpo.tipo = 'nuevo'" in JS
+# UN CLIC, SIN PREGUNTAS (20-oct): el «¿se rehizo en otro código?» se fue; si se rehizo, el
+# chequeo del cierre lo dice y quien cierra lo confirma.
+check("marcar resuelto es un clic: ya no pregunta cómo se corrigió",
+      "function corregirItem(" in JS and "cuerpo.tipo = 'nuevo'" not in JS
+      and "global.confirm(" not in JS.split("async function corregirItem(")[1][:900]
       and "/correccion'" in JS)
-check("los botones salen sólo en las barras propias, y sólo si está enviada",
-      "var puede = !!(e.mio && enviada && !b.corregido);" in JS)
+check("los botones salen sólo en las barras propias, sólo si está enviada y no cerrada",
+      "var puede = !!(e.mio && enviada && !cerrada);" in JS)
 check("el auditor conserva su derecho a réplica sobre un descarte",
       "data-objetar=" in JS and "AUD.soy_auditor" in JS)
 
@@ -1070,21 +1086,25 @@ check("la caja se llama Resumen Hallazgos",
 check("sin RCA no se puede dar una barra por corregida, y lo rechaza el BACKEND",
       "clasifica por qué pasó (RCA)" in SRC
       and "SELECT causa FROM auditoria_items WHERE id = %s" in SRC)
-check("...y la pantalla apaga el check en vez de dejar que salte el error",
-      "var sinRca = !b.causa;" in JS and "audchk' + (sinRca ? ' off' : '')" in JS)
+check("...y la pantalla apaga el botón en vez de dejar que salte el error",
+      "var sinRca = !b.causa;" in JS and "audres' + (sinRca ? ' off' : '')" in JS)
 check("...pero «no aplica» NO lo pide: ahí no hubo error que explicar",
       "Dejar sin efecto NO la pide" in SRC
       and "if body.corregido:" in SRC.split("clasifica por qué pasó")[0][-700:])
 check("«Clasificar» pasa a llamarse RCA", ">RCA</button>" in JS and "sin RCA" in JS)
-check("«Ya la corregí» pasa a ser un CHECK que dice «Corregido en aSa»",
-      "Corregido en aSa" in JS and ">Ya la corregí</button>" not in JS
-      and 'type="checkbox" data-corregi=' in JS and ".audchk" in HTM)
+# EL BOTÓN «RESUELTO» (20-oct). El check «Corregido en aSa» pasó a ser un botón verde que
+# se aprieta cuando el cambio ya está hecho en aSa; el hover lo dice.
+check("«Corregido en aSa» pasa a ser el botón «Resuelto», verde, con su hover",
+      "function _btnResuelto(" in JS and "> Corregido en aSa</label>" not in JS
+      and 'type="checkbox" data-corregi=' not in JS
+      and ">✓ Resuelto</button>" in JS and ".audres.on{background:#2e7d32" in HTM
+      and "cuando ya hayas hecho el cambio en aSa" in JS)
 # El usuario: «al presionar los botones no funciona la animacion, quedan pegados».
 check("los botones dan señal mientras el servidor responde",
       "function _ocupado(" in JS and ".audwait" in HTM and "@keyframes audwait" in HTM
       and ":active:not(:disabled)" in HTM)
-check("...y si el servidor rechaza, el check vuelve a como estaba",
-      "control.checked = !corregido" in JS)
+check("...y si el servidor rechaza, el botón se suelta y la pantalla no miente",
+      "_ocupado(control, false);" in JS.split("async function corregirItem(")[1][:900])
 # EL CIERRE ES DEL AUDITADO, y sólo con todo resuelto. Verificado contra A-2026-018:
 # con 15 pendientes da 400; marcadas las 15, la condición se cumple.
 check("hay un cierre del auditado, aparte del «cerrar a mano» del auditor",
@@ -1248,7 +1268,7 @@ check("cerrar cuenta los comentarios pendientes, no sólo las barras",
 check("...y el detalle los suma a lo que falta por resolver",
       'aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)' in SRC)
 check("la pantalla le pone sus controles al comentario, en vez de dejarlo como texto muerto",
-      "function filaComentario(" in JS and "data-ecorregi=" in JS and "data-enoaplica=" in JS
+      "function filaComentario(" in JS and "'data-ecorregi'" in JS and "data-enoaplica=" in JS
       and "data-ecausa=" in JS)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
@@ -1256,11 +1276,55 @@ check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
 # UN SOLO VOCABULARIO. Quedaban cuatro elementos diciendo «nc_menor», del vocabulario que
 # el usuario sacó el 9-oct, y el código compara contra «hallazgo» para saber si hay una no
 # conformidad: eran no conformidades que el sistema no contaba como tales.
+MIG157 = open(os.path.join(ROOT, "armahub", "migrations",
+                           "157_cierre_con_firma_y_chequeo.sql"), encoding="utf-8").read()
 MIG156 = open(os.path.join(ROOT, "armahub", "migrations",
                            "156_un_solo_vocabulario_de_hallazgo.sql"), encoding="utf-8").read()
 check("los hallazgos viejos («nc_menor») pasan al vocabulario de hoy",
       "UPDATE auditoria_elementos SET hallazgo = 'hallazgo'" in MIG156
       and "'nc_menor'" in MIG156)
+
+
+print("\nRESUELTO, CIERRE CON CHEQUEO, RCA FUERA EN «NO APLICA», CUENTAS EN VEZ DE PORCENTAJES (20-oct)")
+# El usuario, de una vez: botón Resuelto en vez de la comprobación automática; cerrar sólo
+# cuando todo está resuelto, y que al cerrar se compruebe contra aSa avisando sin bloquear;
+# «no aplica» sin RCA; fuera la cobertura y el % de conformidad; cuentas en su lugar.
+_cr = _cuerpo_post("{auditoria_id}/cerrar-resueltas")
+_des = _cuerpo("{auditoria_id}/items/{item_id}/desestimar")
+_res = _cuerpo("{auditoria_id}/elementos/{elemento_id}/resolucion")
+check("cerrar le pregunta a aSa por cada barra resuelta, en vivo",
+      "chequeo = _chequear_lo_resuelto(cur, auditoria_id)" in _cr
+      and "real = _barra_hoy(donde, cual)" in SRC)
+check("...y si alguna sigue igual, avisa con 409 y la lista, SIN cerrar",
+      "status_code=409" in _cr and '"motivo": "sigue_igual"' in _cr
+      and '"barras": chequeo["siguen_igual"]' in _cr
+      and 'if chequeo["siguen_igual"] and not confirmar:' in _cr)
+check("...quien cierra puede confirmar igual, y queda escrito qué seguía igual y que lo confirmó",
+      "confirmar: bool = False" in SRC
+      and "Confirmó el cierre con %d barra(s) que en aSa seguían" in _cr
+      and "cierre_chequeo = %s" in _cr)
+check("...y lo que no se pudo comprobar se dice, no se cuenta como incumplido",
+      '"sin_leer"' in SRC and "no se pudieron comprobar" in _cr)
+check("el cierre del auditado se distingue del cierre forzado del auditor",
+      "cierre_tipo = 'auditado'" in _cr and "cierre_tipo" in MIG157 and "cierre_chequeo" in MIG157)
+check("la pantalla muestra el aviso con la lista y dos salidas, y reintenta con confirmar",
+      "function _avisoCierre(" in JS and "?confirmar=true" in JS and "Cerrar igual" in JS
+      and "e.status === 409" in JS and "err.detalle = det;" in JS)
+check("«no aplica» se lleva el RCA de la barra, y deja escrito cuál era",
+      "causa = NULL, causa_categoria = NULL, causa_texto = NULL" in _des
+      and "se quitó el RCA %s" in _des)
+check("...y del comentario de elemento también",
+      "causa = None" in _res and "se quitó el RCA %s" in _res)
+check("...y la pantalla apaga el RCA en una barra sin efecto",
+      "Sin efecto: no lleva RCA." in JS)
+check("los indicadores del área son cuentas: auditorías, hallazgos, obras, cubicadores, sin corregir",
+      '"obras_auditadas"' in SRC and '"cubicadores_auditados"' in SRC
+      and "'obras auditadas'" in JS and "'cubicadores auditados'" in JS
+      and "'acciones sin corregir'" in JS and "conformidad sobre" not in JS)
+check("...más el único porcentaje que quedó: hallazgos sobre elementos auditados",
+      'total["pct_hallazgos"]' in SRC and "de hallazgos sobre" in JS)
+check("...y las tablas por cubicador y por obra ya no gradúan conformidad",
+      'Conformidad</th>' not in JS and 'Hallazgos</th>' in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

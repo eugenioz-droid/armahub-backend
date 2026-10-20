@@ -243,13 +243,24 @@ def estado_de(revisados: int, total: int, enviada: bool = False,
     mirar y la auditoría quedaba «cerrada» con todos sus hallazgos sin tocar. Terminar de
     mirar sólo habilita el botón de enviar.
 
-    `abiertas` son las barras con hallazgo que no están ni comprobadas ni desestimadas. Que
-    sean cero y esté enviada es el cierre normal; `a_mano` es la válvula para lo que el
-    sistema no puede comprobar."""
+    Y RESOLVER TODO TAMPOCO CIERRA (20-oct). El cierre es un acto, no una consecuencia: lo
+    aprieta quien respondió, y en ese momento se comprueba contra aSa y queda la firma. Lo
+    pidió así el usuario: «una vez marcados todos los Resueltos, aparece opción de CERRAR
+    auditoría». Antes la última barra comprobada la cerraba sola y el auditado nunca
+    firmaba su propio cierre.
+
+    LA ÚNICA QUE SIGUE CERRÁNDOSE SOLA es la que no dejó nada que resolver —todo conforme—:
+    ahí no hay barras que marcar ni botón que apretar, y dejarla «enviada» para siempre
+    sería pedirle a alguien un trámite por un trabajo que no existe.
+
+    `abiertas` son las barras con hallazgo sin resolver más los comentarios de elemento sin
+    responder; `resueltas`, lo ya resuelto. Que las dos sean cero significa que no hubo
+    nada que hacer. `a_mano` es el cierre con firma: el del auditado y la válvula del
+    auditor para lo que no se puede resolver."""
     if a_mano:
         return "cerrada"
     if enviada:
-        return "cerrada" if abiertas <= 0 else "enviada"
+        return "cerrada" if (resueltas + abiertas) <= 0 else "enviada"
     if revisados <= 0:
         return "planificada"
     return "en_curso"
@@ -1201,8 +1212,24 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
                     WHERE (%s = '' OR a.creada_fecha >= %s::date) AND (%s = '' OR a.creada_fecha <= %s::date)""",
                 (desde, desde or None, hasta, hasta or None))
             n_aud, n_cerradas = cur.fetchone()
+            # CUÁNTO SE HA MIRADO, EN CUENTAS Y NO EN PORCENTAJES (20-oct). El usuario sacó
+            # el «% de conformidad»: lo que quiere ver es cuántas auditorías, cuántos
+            # hallazgos, sobre cuántas obras y cuántos cubicadores, y cuánto queda sin
+            # corregir. Las obras y los cubicadores se cuentan sobre lo REVISADO, igual que
+            # el resto: una auditoría creada y sin mirar todavía no auditó a nadie.
+            cur.execute(
+                f"""SELECT COUNT(DISTINCT a.id_proyecto),
+                           COUNT(DISTINCT NULLIF(TRIM(COALESCE(e.cubicado_por, '')), '')) {base}""",
+                params)
+            obras_aud, cubs_aud = cur.fetchone()
+    # EL % DE HALLAZGOS SOBRE LO AUDITADO, que es el único porcentaje que el usuario quiso
+    # dejar: «5 de 30». Tiene un denominador que se entiende —los elementos que se
+    # miraron— y no se mueve solo, que era el problema de los de cobertura.
+    rev = total.get("revisados") or 0
+    total["pct_hallazgos"] = round((total.get("hallazgo") or 0) / rev * 100) if rev else None
     return {"desde": desde, "hasta": hasta, "total": total,
             "auditorias": n_aud, "cerradas": n_cerradas,
+            "obras_auditadas": obras_aud or 0, "cubicadores_auditados": cubs_aud or 0,
             "acciones": {"pendiente": p, "corregida": c, "verificada": v},
             "por_cubicador": por_cubicador, "por_obra": por_obra, "por_mes": por_mes,
             "causas": causas}
@@ -1341,6 +1368,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           (SELECT COUNT(*) FROM auditoria_items i
                             WHERE i.elemento_id = e.id AND i.conforme IS FALSE),
                           e.ref_origen, e.ubicado_por, e.ubicado_el, e.descr_cc,
+                          -- De dónde salió la causa, para que el RCA del comentario de
+                          -- elemento abra la matriz con lo elegido ya marcado.
+                          e.causa_categoria, e.causa_texto,
                           -- EL ESTADO DEL CÓDIGO, HOY. La muestra se sortea entre los que
                           -- NO están despachados, pero el estado cambia después: un
                           -- código Open el lunes sale el jueves y la auditoría ya estaba
@@ -1366,15 +1396,16 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "ubicado_el": e[24].isoformat() if e[24] else None,
                  # El código de control y su descripción son columnas, no parte del nombre.
                  "descr_cc": e[25],
-                 "estado_cc": e[26],
-                 "despacho_cc": e[27].isoformat() if e[27] else None,
-                 "despachado": (e[26] or "") == ESTADO_DESPACHADO,
+                 "causa_categoria": e[26], "causa_texto": e[27],
+                 "estado_cc": e[28],
+                 "despacho_cc": e[29].isoformat() if e[29] else None,
+                 "despachado": (e[28] or "") == ESTADO_DESPACHADO,
                  # EN FABRICACIÓN: lo urgente. Un código Processed con una barra mal es el
                  # único caso del módulo que no puede esperar al flujo.
-                 "fabricando": (e[26] or "") == ESTADO_FABRICANDO,
+                 "fabricando": (e[28] or "") == ESTADO_FABRICANDO,
                  # La gravedad del hallazgo, calculada: no se le pregunta a nadie.
-                 "gravedad": gravedad_de(e[10], e[26]),
-                 "gravedad_txt": GRAVEDAD.get(gravedad_de(e[10], e[26]) or "", ""),
+                 "gravedad": gravedad_de(e[10], e[28]),
+                 "gravedad_txt": GRAVEDAD.get(gravedad_de(e[10], e[28]) or "", ""),
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
@@ -1463,12 +1494,24 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             aud["puedo_cerrar"] = bool(aud.get("enviada") and aud.get("estado") != "cerrada"
                                        and (todas or sueltos)
                                        and not pendientes and not sueltos_pend and tengo_barras)
-    # La cobertura de la OBRA (todas sus auditorías), no sólo la de ésta: es lo que
-    # responde «qué falta por mirar».
-    try:
-        aud["cobertura"] = cobertura(aud["id_proyecto"], aud.get("origen") or "armahub", user)
-    except HTTPException:
-        aud["cobertura"] = None
+    # TRES CUENTAS EN VEZ DE LA COBERTURA (20-oct). Acá iba «cobertura de la obra», con
+    # porcentajes sobre dos denominadores que se movían solos —lo auditable cambia cada vez
+    # que un código se despacha— y que el usuario no podía interpretar: «están un poco
+    # raros los indicadores y no se entiende sobre qué se están tomando los porcentajes…
+    # mejor mostrar cantidad de elementos auditados, cantidad de ítems auditados, cantidad
+    # de hallazgos». Las tres salen de lo que el detalle ya tiene en la mano: ni una
+    # consulta más, y se fue la que pedía la obra entera código a código.
+    elementos = aud.get("elementos") or []
+    con_veredicto = [e for e in elementos if e.get("hallazgo")]
+    aud["resumen"] = {
+        "elementos_auditados": len(con_veredicto),
+        "elementos": len(elementos),
+        "items_auditados": sum(int(e.get("items") or 0) for e in elementos),
+        # Un hallazgo es una barra marcada; el comentario que no es de ninguna barra cuenta
+        # como uno, porque es una cosa que hay que resolver igual que una barra.
+        "hallazgos": sum(int(e.get("items_malos") or 0) for e in elementos)
+                     + len([e for e in elementos if e.get("comentario_suelto")]),
+    }
     return aud
 
 
@@ -2006,18 +2049,35 @@ def _recalcular(cur, auditoria_id: int) -> bool:
         """SELECT COUNT(*), COUNT(*) FILTER (WHERE hallazgo IS NOT NULL)
              FROM auditoria_elementos WHERE auditoria_id = %s""", (auditoria_id,))
     total, revisados = cur.fetchone()
-    # LO QUE FALTA RESOLVER, barra por barra. Una barra está resuelta de dos maneras: el
-    # sistema comprobó contra aSa que ya no está mal, o el auditado la desestimó con su
-    # motivo. Declararla corregida NO alcanza: eso es un dicho, y el cierre tiene que
-    # apoyarse en algo comprobado o en alguien que firmó por qué no corresponde.
+    # LO QUE FALTA RESOLVER, barra por barra.
+    #
+    # LO RESUELVE QUIEN LO HIZO (20-oct). Antes una barra sólo contaba como resuelta si el
+    # sistema la había comprobado contra aSa, y eso tenía dos problemas: la barra rehecha
+    # en otro código no se puede comprobar nunca, y el auditado quedaba esperando un
+    # barrido para ver avanzar su propio trabajo. El usuario: «vamos a reemplazar la
+    # revisión automática por un botón que el usuario marque como resuelto, es menos
+    # engorroso… una vez marcados todos los Resueltos, aparece opción de CERRAR».
+    #
+    # La comprobación no se fue: se corrió al CIERRE, que es el momento en que importa, y
+    # avisa sin bloquear. Así el botón sirve para trazar el avance —que es para lo que
+    # está— y el registro igual queda con lo que aSa decía al cerrar.
     cur.execute(
-        """SELECT COUNT(*) FILTER (WHERE i.desestimado OR i.verificado = 'ok'),
-                  COUNT(*) FILTER (WHERE NOT i.desestimado
-                                     AND COALESCE(i.verificado, '') <> 'ok')
+        """SELECT COUNT(*) FILTER (WHERE i.desestimado OR i.corregido),
+                  COUNT(*) FILTER (WHERE NOT i.desestimado AND NOT i.corregido)
              FROM auditoria_items i
              JOIN auditoria_elementos e ON e.id = i.elemento_id
             WHERE e.auditoria_id = %s AND i.conforme IS FALSE""", (auditoria_id,))
     resueltas, abiertas = cur.fetchone()
+    # Los comentarios de elemento sin barras cuentan igual: son trabajo del auditado.
+    cur.execute(
+        """SELECT COUNT(*) FILTER (WHERE COALESCE(e.accion_estado, 'pendiente') = 'pendiente')
+             FROM auditoria_elementos e
+            WHERE e.auditoria_id = %s AND e.hallazgo = %s
+              AND TRIM(COALESCE(e.texto, '')) <> ''
+              AND NOT EXISTS (SELECT 1 FROM auditoria_items i
+                               WHERE i.elemento_id = e.id AND i.conforme IS FALSE)""",
+        (auditoria_id, HALLAZGO_ABRE_ACCION))
+    abiertas = (abiertas or 0) + (cur.fetchone()[0] or 0)
     estado = estado_de(revisados, total, enviada, resueltas or 0, abiertas or 0, a_mano)
     cur.execute(
         """UPDATE auditorias
@@ -2147,18 +2207,66 @@ def reabrir(auditoria_id: int, body: ReaperturaBody, user=Depends(get_current_us
     return detalle(auditoria_id, user)
 
 
+def _chequear_lo_resuelto(cur, auditoria_id: int) -> dict:
+    """LE PREGUNTA A aSa POR CADA BARRA QUE SE DECLARÓ RESUELTA, y devuelve en qué quedó.
+
+    Tres montones, y los tres importan:
+      cumplen       aSa ya dice lo que tiene que decir.
+      siguen_igual  aSa dice todavía lo que decía cuando se auditó. Es lo que se avisa.
+      sin_leer      no se pudo saber: la barra se rehízo en otro código, el código no
+                    contestó, la obra no es de aSa. No se cuenta como incumplimiento —
+                    acusar por una caída de red sería lo peor que podría hacer esto.
+
+    Guarda el resultado en cada barra (`verificado`), así que el chequeo también sirve de
+    registro: después se puede mirar qué dijo aSa en el momento del cierre."""
+    cur.execute(
+        """SELECT i.id, i.ref FROM auditoria_items i
+             JOIN auditoria_elementos e ON e.id = i.elemento_id
+            WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+              AND i.corregido AND NOT i.desestimado
+            ORDER BY i.id""", (auditoria_id,))
+    barras = cur.fetchall()
+    out = {"cuando": datetime.now(timezone.utc).isoformat(), "miradas": len(barras),
+           "cumplen": [], "siguen_igual": [], "sin_leer": []}
+    for item_id, ref in barras:
+        try:
+            r = comprobar_item(cur, item_id)
+        except Exception as exc:          # aSa caído, un código raro: no bloquea el cierre
+            out["sin_leer"].append({"ref": ref, "porque": str(exc)[:160]})
+            continue
+        fila = {"ref": ref, "porque": r.get("porque") or ""}
+        if r.get("resultado") == "ok":
+            out["cumplen"].append(fila)
+        elif r.get("resultado") == "sigue_igual":
+            out["siguen_igual"].append(fila)
+        else:
+            out["sin_leer"].append(fila)
+    return out
+
+
 @router.post("/auditorias/{auditoria_id}/cerrar-resueltas")
-def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_current_user)):
+def cerrar_resueltas(auditoria_id: int, request: Request, confirmar: bool = False,
+                     user=Depends(get_current_user)):
     """EL AUDITADO CIERRA, cuando ya no le queda ninguna barra pendiente.
 
     Lo pidió el usuario (13-oct): «debe haber un botón de cerrar, que sólo se puede
     presionar una vez cerradas todas las barras», y que lo apriete el auditado.
 
-    POR QUÉ UN BOTÓN Y NO SÓLO EL CIERRE AUTOMÁTICO. La auditoría ya se cierra sola cuando
-    el sistema comprueba la última barra contra aSa, y eso no cambia. Pero una barra puede
-    quedarse esperando esa comprobación —se rehízo en otro código, aSa todavía no refresca,
-    la barra ya no existe— y entonces el trabajo está hecho y el registro dice que no. Esto
-    es la firma de quien lo hizo: «terminé lo mío».
+    POR QUÉ UN BOTÓN Y NO EL CIERRE AUTOMÁTICO (20-oct). Antes la auditoría se cerraba sola
+    cuando el sistema comprobaba la última barra contra aSa. Eso dejaba dos agujeros: la
+    barra rehecha en otro código no se puede comprobar nunca, así que el trabajo estaba
+    hecho y el registro decía que no; y el auditado nunca firmaba su propio cierre. Ahora
+    él marca «Resuelto» a medida que avanza y cierra cuando terminó: esto es la firma.
+
+    Y ACÁ SE COMPRUEBA, QUE ES CUANDO IMPORTA. Al cerrar se le vuelve a preguntar a aSa por
+    cada barra que se declaró resuelta. Si alguna sigue como estaba, se avisa y NO se
+    bloquea: el usuario fue explícito —«se le da un warning al cubicador… en ese warning
+    igual el cubicador puede confirmar y queda trazabilidad»—. Lo que aSa dijo en ese
+    momento queda guardado en la auditoría, así que cerrar con algo pendiente es una
+    decisión firmada y no un descuido invisible.
+
+    La lectura va a la API de aSa en vivo, sin pasar por nuestra copia (`_items_de` →
+    `asa.consultar`), que es lo que hace que el aviso signifique algo.
 
     LO QUE NO PERMITE es cerrar con algo pendiente. La condición se comprueba acá y no sólo
     escondiendo el botón: la pantalla se puede quedar abierta de antes, y entre que se pinta
@@ -2221,16 +2329,44 @@ def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_curre
                     status_code=400,
                     detail="Todavía quedan %s sin resolver: cada uno tiene que quedar "
                            "corregido o sin efecto antes de cerrar." % " y ".join(falta))
+            # LO QUE DICE aSa AHORA MISMO sobre lo que se declaró resuelto. Es una lectura
+            # por código (1 a 2 segundos cada uno) y se hace una sola vez en la vida de la
+            # auditoría: acá.
+            chequeo = _chequear_lo_resuelto(cur, auditoria_id)
+            if chequeo["siguen_igual"] and not confirmar:
+                # 409 Y NO 400: no es que la petición esté mal, es que falta decidir. El
+                # detalle lleva la lista para que la pantalla pueda decir cuáles son.
+                raise HTTPException(
+                    status_code=409,
+                    detail={"motivo": "sigue_igual",
+                            "mensaje": "En aSa %d barra(s) siguen como estaban. Revísalo en "
+                                       "aSa: si ya lo cambiaste y acá no se ve, puedes cerrar "
+                                       "igual y queda registrado."
+                                       % len(chequeo["siguen_igual"]),
+                            "barras": chequeo["siguen_igual"]})
+            motivo = "Cerrada por quien respondió: las %d barra(s) quedaron resueltas." % (total or 0)
+            if chequeo["siguen_igual"]:
+                motivo += (" Confirmó el cierre con %d barra(s) que en aSa seguían como "
+                           "estaban: %s." % (len(chequeo["siguen_igual"]),
+                                             ", ".join(b["ref"] for b in chequeo["siguen_igual"][:8])))
+            if chequeo["cumplen"]:
+                motivo += " aSa confirmó %d." % len(chequeo["cumplen"])
+            if chequeo["sin_leer"]:
+                # No es culpa de nadie y no bloquea, pero el registro tiene que decirlo: un
+                # cierre «comprobado» con cero barras leídas no está comprobado.
+                motivo += (" %d no se pudieron comprobar (rehechas en otro código, sin "
+                           "registro de cómo estaban, o aSa no contestó)." % len(chequeo["sin_leer"]))
             cur.execute(
                 """UPDATE auditorias
-                      SET cerrada_a_mano = TRUE, cerrada_por = %s,
-                          cerrada_motivo = %s
+                      SET cerrada_a_mano = TRUE, cerrada_por = %s, cerrada_motivo = %s,
+                          cierre_tipo = 'auditado', cierre_chequeo = %s
                     WHERE id = %s""",
-                (email, "Cerrada por quien respondió: las %d barra(s) quedaron resueltas."
-                        % (total or 0), auditoria_id))
+                (email, motivo, _json(chequeo), auditoria_id))
             cerro = _recalcular(cur, auditoria_id)
             audit(email, "auditoria_cerrada_auditado",
-                  "%s: %d barra(s) resueltas" % (codigo, total or 0),
+                  "%s: %d barra(s) resueltas · aSa: %d ya cumplen, %d siguen igual, %d no se "
+                  "pudieron leer" % (codigo, total or 0, len(chequeo["cumplen"]),
+                                     len(chequeo["siguen_igual"]), len(chequeo["sin_leer"])),
                   "auditoria", str(auditoria_id))
     aud = detalle(auditoria_id, user)
     # EL MISMO AVISO QUE LOS OTROS DOS CIERRES. Un cierre es un cierre venga de donde
@@ -2909,6 +3045,14 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                                         detail="Si no aplica, di por qué: sin motivo esto "
                                                "es borrar el hallazgo.")
                 estado = "desestimada"
+                # EL RCA SE VA (20-oct). Lo pidió el usuario: «al presionar no aplica no se
+                # debe ingresar RCA, este se borra o queda sin efecto, para que no
+                # distorsione data». Y tiene razón de fondo: el Pareto de causas cuenta por
+                # qué pasaron los errores, y un hallazgo que no correspondía no es un error
+                # —dejarle su causa le daría peso a una causa que nunca existió—. Cuál era
+                # queda en el registro, abajo, así que no se pierde el rastro.
+                causa = None
+                body.causa_categoria = body.causa_texto = None
             elif body.corregido:
                 if not causa:
                     raise HTTPException(
@@ -2927,7 +3071,10 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                  (body.causa_texto or "").strip() or None, estado, nota, email, elemento_id))
             _recalcular(cur, auditoria_id)
             audit(email, "auditoria_resolucion",
-                  "%s · %s: %s%s" % (codigo, nombre, estado, (" (%s)" % causa) if causa else ""),
+                  "%s · %s: %s%s" % (codigo, nombre, estado,
+                                     (" (%s)" % causa) if causa else
+                                     (" — se quitó el RCA %s" % causa_hoy) if causa_hoy and not body.aplica
+                                     else ""),
                   "auditoria", str(auditoria_id))
     if estado in ("corregida", "desestimada") and auditor:
         _avisar(auditor, "Auditoría %s: %s — el comentario del elemento quedó %s."
@@ -3097,17 +3244,29 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
             # Volver a descartar después de una objeción la limpia: si no, la barra
             # quedaría mostrando a la vez «descartada» y «el auditor no lo aceptó», que no
             # es el estado en que está. Lo que pasó queda en el registro de auditoría.
+            #
+            # Y SE VA EL RCA (20-oct). El usuario: «al presionar no aplica no se debe
+            # ingresar RCA, este se borra o queda sin efecto, para que no distorsione
+            # data». El Pareto cuenta por qué pasaron los errores, y un hallazgo que no
+            # correspondía no es un error: dejarle su causa le daría peso a una causa que
+            # nunca existió. Cuál era queda en el registro de auditoría, abajo.
+            quitado = None
             if body.desestimado:
+                cur.execute("SELECT causa FROM auditoria_items WHERE id = %s", (item_id,))
+                quitado = (cur.fetchone() or [None])[0]
                 cur.execute("""UPDATE auditoria_items
-                                  SET objecion = NULL, objecion_por = NULL, objecion_el = NULL
+                                  SET objecion = NULL, objecion_por = NULL, objecion_el = NULL,
+                                      causa = NULL, causa_categoria = NULL, causa_texto = NULL,
+                                      causa_por = NULL, causa_el = NULL
                                 WHERE id = %s""", (item_id,))
             accion = _accion_de_items(cur, elemento_id)
             cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
                         (accion, elemento_id))
             _recalcular(cur, auditoria_id)
             audit(email, "auditoria_desestimada",
-                  "%s · %s · %s: %s" % (codigo, nombre, ref,
-                                        motivo if body.desestimado else "vuelta a abrir"),
+                  "%s · %s · %s: %s%s" % (codigo, nombre, ref,
+                                          motivo if body.desestimado else "vuelta a abrir",
+                                          (" — se quitó el RCA %s" % quitado) if quitado else ""),
                   "auditoria", str(auditoria_id))
     if body.desestimado and auditor:
         _avisar(auditor, "Auditoría %s: %s · %s fue DESESTIMADA por quien cubicó. %s"
