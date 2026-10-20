@@ -47,7 +47,13 @@
     if (!res.ok) {
       var det = data && data.detail;
       if (Array.isArray(det)) det = det.map(function (d) { return (d.loc || []).slice(-1) + ': ' + d.msg; }).join(' · ');
-      throw new Error((det && (det.msg || det)) || ('Error ' + res.status));
+      // El detalle puede ser un objeto (el 409 del cierre trae {motivo, mensaje, barras}):
+      // el mensaje legible va en `message` y el objeto entero en `detalle`, con el status.
+      var err = new Error((det && (det.mensaje || det.msg || (typeof det === 'string' ? det : null)))
+                          || ('Error ' + res.status));
+      err.status = res.status;
+      err.detalle = det;
+      throw err;
     }
     return data;
   }
@@ -119,8 +125,10 @@
   // revisión, porque entonces lo de aSa puede haber cambiado.
   var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '',
                figs: {}, anio: null, total: {} };
-  var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Corregida (por verificar)',
-                     corregir: 'Corregida (por verificar)', corregida: 'Verificada',
+  // TODO LO RESUELTO DICE «RESUELTO» (20-oct), igual que en la auditoría: lo que dijo quien
+  // lo hizo. Que aSa lo haya confirmado al cerrar se agrega, no es otro estado.
+  var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Resuelto',
+                     corregir: 'Resuelto', corregida: 'Resuelto · aSa lo confirmó',
                      aceptada: 'No aplica' };
 
   function _fechaHora(iso) {
@@ -463,22 +471,37 @@
   function _pintarAcc() {
     var n = Object.keys(REVS.sel_items).length;
     var faltan = _ccsSinFigura().length;
+    // CUÁNTO HAY MARCADO RESUELTO Y SIN CERRAR: es lo que el botón de cerrar va a llevar a
+    // aSa. Se cuenta sobre lo visible (lo mío, o lo filtrado si soy admin).
+    var porCerrar = itemsVisibles().filter(function (i) {
+      return i.estado === 'declarada' || i.estado === 'corregir'; }).length;
     $('revItemsAcc').innerHTML =
-      '<b>' + (n ? n + ' barra(s) marcada(s)' : 'Marca con el check las barras que ya corregiste') + '</b>' +
+      '<b>' + (n ? n + ' barra(s) marcada(s)' : 'Marca con el check para resolver varias de una vez') + '</b>' +
       (faltan ? '<button class="audmini" id="revAccFiguras" title="Lee los ' + faltan +
                 ' código(s) en aSa y dibuja cada barra. Va de a uno para no colgarse.">' +
                 'Ver las figuras (' + faltan + ')</button>' : '') +
       '<div style="flex:1"></div>' +
-      // «NO APLICA» DE A MUCHAS. Lo pidió el usuario para los casos que la regla marca y
-      // son correctos —un cabezal φ12 es inusual pero legítimo—: marcar los checks,
-      // explicar UNA vez y que valga para todos. Sin esto, cien barras correctas son cien
-      // explicaciones iguales, y lo que pasa entonces es que nadie explica nada.
-      '<button class="audmini" id="revAccNoAplica"' + (n ? '' : ' disabled') +
-        ' title="Deja sin efecto las barras marcadas, con una sola explicación para todas">' +
-        'No aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
-      '<button class="audmini ver" id="revAccVerificar"' + (n ? '' : ' disabled') +
-        ' title="Lee en aSa SÓLO los códigos de lo que marcaste y comprueba si el cambio está hecho">' +
-        'Verificar en aSa' + (n ? ' (' + n + ')' : '') + '</button>' +
+      // LOS TRES VERBOS, DE A MUCHAS (20-oct). «Muchas veces el hallazgo es el mismo para
+      // más de un ítem»: se marcan los checks y lo que se hace se replica. «No aplica»
+      // pide la explicación UNA vez y vale para todas; «Resuelto» y «Aplica» van directo.
+      '<div class="revseg">' +
+        '<button data-lote="abierta"' + (n ? '' : ' disabled') +
+          ' title="Las marcadas vuelven a quedar por resolver">Aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
+        '<button data-lote="aceptada" id="revAccNoAplica"' + (n ? '' : ' disabled') +
+          ' title="Deja sin efecto las marcadas, con una sola explicación para todas">' +
+          'No aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
+      '</div>' +
+      '<button class="audres" data-lote="declarada"' + (n ? '' : ' disabled') +
+        ' title="Marca las barras marcadas como resueltas: ya hiciste el cambio en aSa. Al cerrar ' +
+        'se comprueba contra aSa y, si algo sigue igual, te avisa.">Resuelto' + (n ? ' (' + n + ')' : '') + '</button>' +
+      // CERRAR VA A aSa: comprueba todo lo que está marcado resuelto y avisa, sin bloquear,
+      // lo que allá sigue como estaba. Mismo flujo que la auditoría.
+      '<button class="audenviar" id="revAccCerrar"' + (porCerrar ? '' : ' disabled') +
+        ' title="' + (porCerrar
+          ? 'Comprueba en aSa las ' + porCerrar + ' barra(s) resueltas y las da por cerradas. Si alguna ' +
+            'sigue como estaba, te lo dice antes.'
+          : 'No hay barras resueltas por cerrar.') + '">Cerrar lo resuelto' +
+        (porCerrar ? ' (' + porCerrar + ')' : '') + '</button>' +
       '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>' +
       // El formulario del «no aplica» de lote: el mismo motivo y la misma explicación que
       // pide una barra suelta, porque el registro vale lo mismo para una que para cien.
@@ -490,8 +513,12 @@
       '</div>';
     var f = $('revAccFiguras');
     if (f) f.addEventListener('click', function () { cargarTodasLasFiguras(f); });
-    var ver = $('revAccVerificar');
-    if (ver) ver.addEventListener('click', verificarMarcados);
+    var lr = document.querySelector('#revItemsAcc button[data-lote="declarada"]');
+    if (lr) lr.addEventListener('click', function () { loteMarcadas('declarada', lr); });
+    var la = document.querySelector('#revItemsAcc button[data-lote="abierta"]');
+    if (la) la.addEventListener('click', function () { loteMarcadas('abierta', la); });
+    var cz = $('revAccCerrar');
+    if (cz) cz.addEventListener('click', function () { cerrarResueltos(false); });
     var na = $('revAccNoAplica');
     // Mismo trato que el de la fila: el botón queda marcado mientras se escribe el motivo.
     if (na) na.addEventListener('click', function () {
@@ -713,32 +740,41 @@
   function filaItem(i) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
     var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
+    var resuelto = hecho || i.estado === 'declarada' || i.estado === 'corregir';
     var firma = '';
     if (nap) {
       firma = '<div class="muted" style="font-size:10px">' + esc(i.nota || '') +
               (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</div>';
-    } else if (i.estado === 'declarada' && i.declarada_por) {
-      firma = '<div class="muted" style="font-size:10px">declarada por ' +
-              esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') + '</div>';
+    } else if (resuelto && i.declarada_por) {
+      firma = '<div class="muted" style="font-size:10px">resuelto por ' +
+              esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') +
+              (hecho ? ' · aSa lo confirmó' : '') + '</div>';
     }
-    // LOS BOTONES VAN EN LA FILA. «Aplica» es el estado normal del hallazgo —el par está
-    // ahí para poder VOLVER— y «No aplica» abre el campo de explicación debajo, sin sacar
-    // a nadie de la hoja. Una barra ya verificada no se discute: no lleva botones.
-    var acc = hecho ? '<span class="muted">verificada</span>'
+    // LOS BOTONES VAN EN LA FILA, los mismos tres que en la auditoría (20-oct): Aplica | No
+    // aplica, y «Resuelto», verde cuando está marcado, que se aprieta cuando el cambio ya se
+    // hizo en aSa y se vuelve a apretar para deshacerlo. Una barra que aSa ya confirmó no
+    // se discute: no lleva botones.
+    var acc = hecho ? '<span class="muted">confirmada</span>'
       : '<div class="revseg">' +
           '<button class="' + (nap ? '' : 'on') + '" data-aplica="' + i.id + '"' +
             (nap ? '' : ' disabled') + ' title="El hallazgo es válido y hay que corregirlo">Aplica</button>' +
           '<button class="' + (nap ? 'on' : '') + '" data-noaplica="' + i.id + '"' +
             ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
-        '</div>';
+        '</div>' +
+        (nap ? '' : (resuelto
+          ? '<button class="audres on" data-deshacer="' + i.id + '" title="Marcada como resuelta. ' +
+            'Vuelve a apretar si todavía no está cambiada en aSa.">✓ Resuelto</button>'
+          : '<button class="audres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
+            'hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, ' +
+            'te avisa.">Resuelto</button>'));
     var cols = 7;
     // LA FILA MUESTRA LA BARRA, NO LA DESCRIBE. El texto entero de la señal queda en el
     // `title`: no se pierde, pero deja de ocupar dos renglones por fila para decir lo
     // que `D 90` en rojo dice de un vistazo.
     return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
-      '<td style="width:22px">' + (hecho || nap ? (hecho ? '✓' : '–') :
+      '<td style="width:22px">' + (hecho ? '✓' :
         '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
-        ' title="Ya la corregí">') + '</td>' +
+        ' title="Marcar para resolver varias de una vez">') + '</td>' +
       '<td class="revm" style="width:84px"><span class="audref" data-ver="' + i.id +
         '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
       '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '">' +
@@ -805,6 +841,13 @@
     });
     caja.querySelectorAll('button[data-aplica]').forEach(function (b) {
       b.addEventListener('click', function () { declararUno(b.dataset.aplica, 'abierta'); });
+    });
+    // «Resuelto» por fila, y su vuelta atrás.
+    caja.querySelectorAll('button[data-resuelto]').forEach(function (b) {
+      b.addEventListener('click', function () { declararUno(b.dataset.resuelto, 'declarada', null, null, false, b); });
+    });
+    caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
+      b.addEventListener('click', function () { declararUno(b.dataset.deshacer, 'abierta', null, null, false, b); });
     });
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
       b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });
@@ -888,7 +931,7 @@
                           nota: nota || null, patron: !!patron });
       ok(estado === 'aceptada'
          ? 'Hallazgo dejado sin efecto' + (r.afectadas > 1 ? ' (' + r.afectadas + ' iguales)' : '')
-         : 'El hallazgo vuelve a quedar por corregir');
+         : estado === 'declarada' ? 'Resuelto' : 'Vuelve a quedar por resolver');
       delete REVS.sel_items[id];
       // LO QUE YA SE SABE SE PINTA AL TIRO. El servidor confirmó; el refresco de abajo es
       // para los contadores y para las iguales que pudo arrastrar el patrón. Si ese
@@ -912,36 +955,85 @@
     }
   }
 
-  // EL BOTON DEL MODAL: declara lo marcado y lo lee en aSa, en un paso. Siguen siendo dos
-  // hechos distintos en el registro —quién dijo que lo corrigió y qué encontró el sistema,
-  // que es lo que separa la ISO 9001 §10.2— pero para quien trabaja es un solo gesto.
-  async function verificarMarcados() {
+  // DE A MUCHAS (20-oct): lo marcado con los checks recibe el mismo verbo de una vez —
+  // «Resuelto» o «Aplica»—. «No aplica» de a muchas va por su propio formulario, porque
+  // pide la explicación. «Muchas veces el hallazgo es el mismo para más de un ítem».
+  async function loteMarcadas(estado, boton) {
     var ids = _marcados();
     if (!ids.length) return;
-    var b = $('revAccVerificar'), msg = $('revAccMsg');
-    b.disabled = true; b.textContent = 'Declarando…';
+    var txt = boton ? boton.textContent : '';
+    if (boton) { boton.disabled = true; boton.classList.add('audwait'); }
     try {
-      await req('PUT', '/chequeos/declarar', { ids: ids, estado: 'declarada' });
-    } catch (e) { aviso(e.message); b.disabled = false; b.textContent = 'Verificar en aSa'; return; }
-    b.textContent = 'Leyendo aSa…';
-    var vueltas = 0;
-    try {
-      while (vueltas < 12) {
-        var r = await req('POST', '/chequeos/comprobar-lote', { ids: ids });
-        vueltas++;
-        msg.textContent = r.corregidas + ' de ' + ids.length + ' ya cumplen' +
-          (r.faltan_ccs ? ' · quedan ' + r.faltan_ccs + ' código(s) por leer…' : '');
-        if (!r.faltan_ccs) break;
-      }
-      // LO DIBUJADO DE ESOS CÓDIGOS YA NO VALE: se acaba de leer aSa y la barra pudo
-      // cambiar —es justamente lo que se fue a comprobar—. Se tira sólo lo de esos
-      // códigos, no todo, y se vuelve a pedir cuando alguien lo mire.
-      _olvidarFiguras(ids);
+      var r = await req('PUT', '/chequeos/declarar', { ids: ids, estado: estado });
+      ok((estado === 'declarada' ? 'Resueltas: ' : 'Vuelven a quedar por resolver: ') +
+         (r.afectadas || ids.length));
+      ((REVS.detalle || {}).items || []).forEach(function (i) {
+        if (ids.indexOf(Number(i.id)) !== -1) i.estado = estado;
+      });
       REVS.sel_items = {};
+      if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
       await refrescarRevision();
-      ok('Verificación terminada');
-    } catch (e) { aviso(e.message); msg.textContent = e.message; }
-    b.disabled = false; b.textContent = 'Verificar en aSa';
+    } catch (e) {
+      aviso(e.message);
+      if (boton) { boton.disabled = false; boton.classList.remove('audwait'); boton.textContent = txt; }
+    }
+  }
+
+  // CERRAR LO RESUELTO VA A aSa (20-oct). Mismo flujo que la auditoría: el servidor le
+  // pregunta a aSa en vivo por cada barra marcada resuelta; la que cumple queda confirmada,
+  // y si alguna sigue como estaba contesta 409 con la lista. Acá se muestra y quien cierra
+  // decide: volver a revisar, o cerrar igual —y entonces queda firmado que lo confirmó él—.
+  async function cerrarResueltos(confirmar) {
+    var b = $('revAccCerrar'), msg = $('revAccMsg');
+    var ids = itemsVisibles().filter(function (i) {
+      return i.estado === 'declarada' || i.estado === 'corregir'; }).map(function (i) { return Number(i.id); });
+    if (!ids.length) return;
+    if (b) { b.disabled = true; b.classList.add('audwait'); b.textContent = confirmar ? 'Cerrando…' : 'Comprobando en aSa…'; }
+    try {
+      var r = await req('POST', '/chequeos/cerrar-resueltas', { ids: ids, confirmar: !!confirmar });
+      // Lo dibujado de esos códigos ya no vale: se acaba de leer aSa y la barra pudo cambiar.
+      _olvidarFiguras(ids);
+      ok('Cerrado: aSa confirmó ' + (r.cumplen || []).length + ' de ' + ids.length +
+         ((r.siguen_igual || []).length ? ' · ' + r.siguen_igual.length + ' cerradas bajo tu confirmación' : ''));
+      if (msg) msg.textContent = '';
+      await refrescarRevision();
+    } catch (e) {
+      var det = e.detalle || null;
+      if (e.status === 409 && det && det.motivo === 'sigue_igual') {
+        _avisoCierreRev(det);
+      } else {
+        aviso(e.message);
+        if (msg) msg.textContent = e.message;
+      }
+      if (b) { b.disabled = false; b.classList.remove('audwait'); }
+      _pintarAcc();
+    }
+  }
+
+  function _avisoCierreRev(det) {
+    var viejo = $('revCierreAviso');
+    if (viejo) viejo.remove();
+    var div = document.createElement('div');
+    div.id = 'revCierreAviso';
+    div.className = 'audnota audcierre';
+    div.innerHTML = '<b>' + esc(det.mensaje) + '</b>' +
+      (det.cumplen ? '<div class="muted" style="font-size:10.5px">aSa confirmó ' + det.cumplen + '.</div>' : '') +
+      '<ul>' + (det.barras || []).map(function (x) {
+        return '<li><b>' + esc(x.cc || '') + '</b> · <span class="audref">' + esc(x.ref) + '</span></li>';
+      }).join('') + '</ul>' +
+      ((det.sin_leer || []).length
+        ? '<div class="muted" style="font-size:10.5px">' + det.sin_leer.length +
+          ' código(s) no se pudieron leer en aSa: no cuentan como incumplidos.</div>' : '') +
+      '<div class="audenviop">' +
+        '<button class="audmini" id="revCierreNo">Volver a revisar</button>' +
+        '<button class="audenviar" id="revCierreSi" title="Cierra igual. Queda registrado qué barras ' +
+        'seguían como estaban en aSa y que lo confirmaste tú.">Cerrar igual</button>' +
+      '</div>';
+    var acc = $('revItemsAcc');
+    acc.parentNode.insertBefore(div, acc.nextSibling);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('revCierreNo').addEventListener('click', function () { div.remove(); });
+    $('revCierreSi').addEventListener('click', function () { div.remove(); cerrarResueltos(true); });
   }
 
   async function refrescarRevision() {

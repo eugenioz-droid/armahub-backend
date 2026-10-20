@@ -395,6 +395,86 @@ def cerrar_revision(revision_id: int, body: Optional[CierreRevision] = None,
     return {"ok": True}
 
 
+class CerrarResueltasBody(BaseModel):
+    """Lo que el cubicador marcó «Resuelto» y quiere dar por cerrado. Sin ids, todo lo suyo."""
+    ids: List[int] = []
+    confirmar: bool = False
+
+
+@router.post("/chequeos/cerrar-resueltas")
+def cerrar_resueltas(body: CerrarResueltasBody, user=Depends(get_current_user)):
+    """EL CUBICADOR CIERRA LO QUE MARCÓ RESUELTO, y ahí se comprueba contra aSa (20-oct).
+
+    El mismo flujo que la auditoría, porque el usuario pidió armonizarlos: «Resuelto» lo
+    marca quien lo hizo, para trazar su avance sin esperar a nadie; y al CERRAR se le
+    pregunta a aSa en vivo por cada barra. La que aSa confirma pasa a `corregida`. La que
+    sigue como estaba se AVISA Y NO SE BLOQUEA: «se le da un warning al cubicador… en ese
+    warning igual el cubicador puede confirmar y queda trazabilidad». Si confirma, la
+    señal queda con su firma y la fecha en `cierre_confirmado_*`, y sigue diciendo
+    «Resuelto» porque eso es lo que él declaró.
+
+    La lectura es la de siempre (`revisar_cc` → aSa en vivo), sin pasar por nuestra copia.
+    Comprobar cuesta una lectura por código, así que se comprueba todo de una vez acá y no
+    en cada clic."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if body.ids:
+                cur.execute("""SELECT id, cubico FROM chequeo_senales
+                                WHERE id = ANY(%s) AND estado IN ('declarada', 'corregir')""",
+                            (list(dict.fromkeys(body.ids)),))
+            else:
+                mios = alias_cubicador(cur, email)
+                cur.execute("""SELECT id, cubico FROM chequeo_senales
+                                WHERE estado IN ('declarada', 'corregir')
+                                  AND (%s OR TRIM(COALESCE(cubico, '')) = ANY(%s))""",
+                            (user.get("role") in ROLES_ADMINISTRAN, mios))
+            filas = cur.fetchall()
+            if not filas:
+                raise HTTPException(status_code=400,
+                                    detail="No hay nada marcado como resuelto que cerrar.")
+            if user.get("role") not in ROLES_ADMINISTRAN:
+                mios = set(alias_cubicador(cur, email))
+                ajenas = {f[1] for f in filas if (f[1] or "").strip() and (f[1] or "").strip() not in mios}
+                if ajenas:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Hay barras que cubicó otra persona (%s): cierra lo suyo quien lo hizo."
+                               % ", ".join(sorted(ajenas)[:3]))
+            ids = [f[0] for f in filas]
+    # A aSa, código por código. Sin tope: cerrar es una vez, y lo que se cierra tiene que
+    # quedar comprobado entero o dicho que no se pudo.
+    r = comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=30), user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, ref, cc, estado FROM chequeo_senales WHERE id = ANY(%s)
+                            ORDER BY cc, ref""", (ids,))
+            despues = cur.fetchall()
+            cumplen = [{"id": s[0], "ref": s[1], "cc": s[2]} for s in despues if s[3] == "corregida"]
+            siguen = [{"id": s[0], "ref": s[1], "cc": s[2]} for s in despues if s[3] in ("declarada", "corregir")]
+            sin_leer = [{"cc": e["cc"], "porque": e.get("error") or ""} for e in r.get("errores", [])]
+            if siguen and not body.confirmar:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"motivo": "sigue_igual",
+                            "mensaje": "En aSa %d barra(s) siguen como estaban. Revísalo en aSa: "
+                                       "si ya lo cambiaste y acá no se ve, puedes cerrar igual y "
+                                       "queda registrado." % len(siguen),
+                            "barras": siguen, "cumplen": len(cumplen), "sin_leer": sin_leer})
+            if siguen:
+                cur.execute("""UPDATE chequeo_senales
+                                  SET cierre_confirmado_por = %s, cierre_confirmado_el = now()
+                                WHERE id = ANY(%s)""", (email, [s["id"] for s in siguen]))
+    audit(email, "chequeo_cerrar_resueltas",
+          "%d barra(s): aSa confirmó %d, %d siguen igual%s, %d código(s) sin leer"
+          % (len(ids), len(cumplen), len(siguen), " (cerradas igual, confirmadas)" if siguen else "",
+             len(sin_leer)),
+          "chequeo", "lote")
+    return {"cumplen": cumplen, "siguen_igual": siguen, "sin_leer": sin_leer,
+            "confirmado": bool(siguen)}
+
+
 @router.get("/chequeos")
 def senales(job: str = "", estado: str = "", regla: str = "", cubico: str = "",
             revision: int = 0, busca: str = "",
@@ -821,8 +901,12 @@ def comprobar_senal(senal_id: int, user=Depends(get_current_user)):
 # ISO 9001 §10.2 separa la CORRECCIÓN de la VERIFICACIÓN de su eficacia, y acá son dos
 # actos de dos actores: la corrección la declara una persona, la eficacia la comprueba el
 # sistema leyendo aSa. Que alguien pudiera marcar «verificada» sería firmar su propia tarea.
-ESTADO_TXT = {"abierta": "Abierta", "declarada": "Corregida (por verificar)",
-              "corregida": "Verificada", "aceptada": "No aplica", "corregir": "Corregida (por verificar)"}
+#
+# TODO LO RESUELTO DICE «RESUELTO» (20-oct), igual que en la auditoría: lo que dijo quien lo
+# hizo. Que aSa lo haya confirmado al cerrar es un dato que se agrega, no otro estado.
+ESTADO_TXT = {"abierta": "Abierta", "declarada": "Resuelto",
+              "corregida": "Resuelto · aSa lo confirmó", "aceptada": "No aplica",
+              "corregir": "Resuelto"}
 # Los motivos por los que un hallazgo NO aplica. El usuario acotó cuándo es legítimo, y
 # categorizarlo permite leer lo que el texto libre esconde: si muchos marcan «la regla no
 # aplica a esta figura», el problema está en la REGLA.
@@ -1010,7 +1094,9 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
         elif i["estado"] == "aceptada":
             c["no_aplica"] += 1; c["resueltas"] += 1
         elif i["estado"] in ("declarada", "corregir"):
-            c["declaradas"] += 1
+            # Resuelto es lo que dijo quien lo hizo (20-oct): cuenta como resuelta. Que aSa
+            # la haya confirmado es `verificadas`, un dato más, no otro avance.
+            c["declaradas"] += 1; c["resueltas"] += 1
         else:
             c["abiertas"] += 1
     for c in por_cub.values():
@@ -1261,7 +1347,10 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 """SELECT r.id, r.id_proyecto, r.obra, r.lanzada_por, r.arrancada, r.terminada,
                           r.ccs, r.ccs_error, r.barras, r.senales_nuevas, r.senales_vistas,
                           COUNT(s.id),
-                          COUNT(s.id) FILTER (WHERE s.estado = 'corregida'),
+                          -- RESUELTO ES LO QUE DIJO QUIEN LO HIZO (20-oct), igual que en la
+                          -- auditoría: la declarada cuenta como resuelta; que aSa la
+                          -- confirme (corregida) es un dato más, no otro estado de avance.
+                          COUNT(s.id) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir')),
                           COUNT(s.id) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
                           COUNT(DISTINCT s.cubico) FILTER (WHERE s.cubico IS NOT NULL),
                           -- LO QUE NO APLICA SALE DEL DENOMINADOR (14-oct). El avance se
@@ -1284,7 +1373,7 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
             cur.execute(
                 """SELECT s.revision_id, NULLIF(TRIM(s.cubico), ''),
                           COUNT(*), COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
-                          COUNT(*) FILTER (WHERE s.estado = 'corregida')
+                          COUNT(*) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir'))
                      FROM chequeo_senales s
                     WHERE s.revision_id IS NOT NULL
                     GROUP BY 1, 2""")
@@ -1298,7 +1387,7 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
             # todo hasta que se elige una revisión.
             cur.execute(
                 """SELECT COUNT(*), COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
-                          COUNT(*) FILTER (WHERE s.estado = 'corregida'),
+                          COUNT(*) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir')),
                           COUNT(*) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
                           COUNT(DISTINCT s.id_proyecto), COUNT(DISTINCT (s.id_proyecto, s.cc))
                      FROM chequeo_senales s

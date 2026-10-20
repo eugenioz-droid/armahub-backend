@@ -454,9 +454,12 @@ check("el listado de revisiones trae el avance de cada una, contado sobre SUS se
 check("el detalle de una revisión resume por cubicador, con kilos y códigos",
       '@router.get("/chequeos/revision/{revision_id}")' in API and '"por_cubicador"' in API
       and '"ccs_con_hallazgo"' in API and "unnest(%s::text[], %s::text[])" in API)
-check("el ciclo tiene los nombres de la norma: declarar ≠ verificar",
-      'ESTADO_TXT = {"abierta": "Abierta", "declarada": "Corregida (por verificar)"' in API
-      and '"corregida": "Verificada"' in API and '"aceptada": "No aplica"' in API)
+# TODO LO RESUELTO DICE «RESUELTO» (20-oct), como en la auditoría: lo que dijo quien lo
+# hizo. Que aSa lo confirme al cerrar se agrega al texto, no es otro estado de avance.
+check("declarar y que aSa confirme siguen siendo dos hechos, pero los dos dicen «Resuelto»",
+      'ESTADO_TXT = {"abierta": "Abierta", "declarada": "Resuelto"' in API
+      and '"corregida": "Resuelto · aSa lo confirmó"' in API and '"aceptada": "No aplica"' in API
+      and "declarada: 'Resuelto'" in JS)
 check("...y verificar lo hace el SISTEMA, no una persona",
       '@router.put("/chequeos/declarar")' in API
       and 'body.estado not in ("declarada", "aceptada", "abierta")' in API)
@@ -465,10 +468,13 @@ check("sólo declara quien cubicó (o administración)",
 check("«no aplica» exige MOTIVO en categorías y explicación",
       "MOTIVOS_NO_APLICA" in API and "Elige por qué no aplica." in API
       and "motivo_tipo" in MIG6)
-check("el segundo check lee en aSa SÓLO los códigos de lo marcado",
+# LA LECTURA DE aSa CORRE AL CERRAR (20-oct), no en un botón aparte: comprobar-lote queda
+# como la pieza que lee, y la llama el cierre.
+check("la lectura de aSa sigue siendo por código, y la dispara el cierre",
       '@router.post("/chequeos/comprobar-lote")' in API
       and "una lectura de aSa por código, no por" in API
-      and "function verificarMarcados(" in JS)
+      and "r = comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=30), user)" in API
+      and "function verificarMarcados(" not in JS and 'id="revAccVerificar"' not in JS)
 check("el alias del cubicador sale de aSa y no de las auditorías (si no, el dueño no podía declarar)",
       "UNION SELECT detail_person FROM asa_pedidos" in AUD)
 # EL ESTADO VA ARRIBA Y ES GLOBAL (14-oct). Era un segundo cuadro debajo que repetia lo
@@ -530,10 +536,39 @@ check("«no aplica» pide motivo y explicación EN la fila, sin prompt del naveg
       and "¿Por qué NO aplica? Escribe el número" not in JS)
 check("...y sigue exigiendo los dos",
       "Elige por qué no aplica." in JS and "nota.length < 10" in JS)
-check("el check es «ya la corregí» y UN botón cierra ese ciclo: declara y lee aSa",
-      'title="Ya la corregí"' in JS and JS.count('id="revAccVerificar"') == 1
-      and "{ ids: ids, estado: 'declarada' }" in JS
-      and "revAccDecl" not in JS)
+# EL MISMO FLUJO QUE LA AUDITORÍA (20-oct). El usuario pidió armonizarlos: «Resuelto» por
+# fila —verde cuando está marcado, se vuelve a apretar para deshacerlo—; con los checks,
+# los tres verbos de a muchas («muchas veces el hallazgo es el mismo para más de un
+# ítem»); y CERRAR va a aSa, avisa lo que sigue igual y no bloquea.
+check("«Resuelto» por fila, verde, y su vuelta atrás",
+      'class="audres" data-resuelto=' in JS and 'class="audres on" data-deshacer=' in JS
+      and "declararUno(b.dataset.resuelto, 'declarada'" in JS
+      and "declararUno(b.dataset.deshacer, 'abierta'" in JS and 'title="Ya la corregí"' not in JS)
+check("con los checks, los tres verbos de a muchas: Aplica · No aplica · Resuelto",
+      'data-lote="abierta"' in JS and 'data-lote="aceptada" id="revAccNoAplica"' in JS
+      and 'data-lote="declarada"' in JS and "async function loteMarcadas(estado, boton)" in JS
+      and "{ ids: ids, estado: estado }" in JS)
+check("cerrar lo resuelto le pregunta a aSa y devuelve qué cumple, qué sigue igual y qué no se pudo leer",
+      '@router.post("/chequeos/cerrar-resueltas")' in API and 'class CerrarResueltasBody' in API
+      and '"cumplen": cumplen, "siguen_igual": siguen, "sin_leer": sin_leer' in API)
+check("...si algo sigue igual, 409 con la lista y SIN tocar nada",
+      "status_code=409" in API.split("def cerrar_resueltas(")[1][:4000]
+      and '"motivo": "sigue_igual"' in API.split("def cerrar_resueltas(")[1][:4000]
+      and "if siguen and not body.confirmar:" in API)
+check("...y si quien cierra confirma, queda su firma en la señal",
+      "cierre_confirmado_por = %s, cierre_confirmado_el = now()" in API
+      and "cierre_confirmado_por" in open(os.path.join(ROOT, "armahub", "migrations",
+                                                        "158_revision_cierre_confirmado.sql"),
+                                           encoding="utf-8").read())
+check("...cierra lo suyo quien lo hizo; administración, todo",
+      "cierra lo suyo quien lo hizo" in API)
+check("la pantalla tiene el botón de cerrar, muestra el aviso con dos salidas y reintenta confirmando",
+      'id="revAccCerrar"' in JS and "async function cerrarResueltos(confirmar)" in JS
+      and "function _avisoCierreRev(" in JS and "Cerrar igual" in JS
+      and "confirmar: !!confirmar" in JS and "e.status === 409" in JS and "err.detalle = det;" in JS)
+check("resuelto es lo que dijo quien lo hizo: la declarada cuenta como resuelta en los contadores",
+      API.count("s.estado IN ('corregida', 'declarada', 'corregir')") == 3
+      and 'c["declaradas"] += 1; c["resueltas"] += 1' in API)
 # «NO APLICA» DE A MUCHAS VOLVIO, con una razon nueva: la regla del cabezal marca 70
 # barras de las que la mayoria son correctas. El usuario: «con los check que pusiste, el
 # usuario pueda ponerle No aplica masivamente, marca checks, contesta y eso se hace
