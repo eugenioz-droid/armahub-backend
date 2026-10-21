@@ -1600,6 +1600,7 @@
     });
     var enviada = !!(AUD.enviada || AUD.enviada_el);
     var faltan = AUD.barras_pendientes || 0;
+    var nsel = Object.keys(SEL_AUD).length;
     caja.innerHTML = '<div class="audh">Resumen Hallazgos ' +
       '<span class="muted">' + total + ' línea(s) · ' + resueltas + ' resuelta(s)' +
       (mias ? ' · <b style="color:#c62828">' + mias + ' tuya(s) por resolver</b>' : '') +
@@ -1625,7 +1626,32 @@
           'puede accionar sobre estas barras.</div>'
         : (mias ? '' : '<div class="audnota">Acá se ve todo lo que salió. Puedes resolver también lo de otro ' +
                        'cubicador si no está: le llega aviso y queda escrito quién lo hizo.</div>')) +
-      '<table class="audt audacct"><thead><tr><th>Barra</th><th>Figura</th>' +
+      // DE A MUCHAS (21-oct), como en la revisión: «muchas veces el hallazgo es el mismo
+      // para más de un ítem». Los checks marcan; lo que se hace se replica. «No aplica»
+      // pide motivo y explicación UNA vez para todas.
+      (enviada && AUD.estado !== 'cerrada' && AUD.puedo_actuar
+        ? '<div class="audlote" id="audLote">' +
+            '<b>' + (nsel ? nsel + ' barra(s) marcada(s)' : 'Marca con el check para resolver varias de una vez') + '</b>' +
+            '<div style="flex:1"></div>' +
+            '<div class="revseg">' +
+              '<button data-alote="aplica"' + (nsel ? '' : ' disabled') +
+                ' title="Las marcadas vuelven a quedar por resolver">Aplica' + (nsel ? ' (' + nsel + ')' : '') + '</button>' +
+              '<button data-alote="no_aplica"' + (nsel ? '' : ' disabled') +
+                ' title="Deja sin efecto las marcadas, con un motivo y una explicación para todas">No aplica' +
+                (nsel ? ' (' + nsel + ')' : '') + '</button>' +
+            '</div>' +
+            '<button class="audbres" data-alote="resuelto"' + (nsel ? '' : ' disabled') +
+              ' title="Marca las marcadas como resueltas: ya hiciste el cambio en aSa. Todas necesitan RCA.">' +
+              'Resuelto' + (nsel ? ' (' + nsel + ')' : '') + '</button>' +
+            '<div class="revnapcaja" id="audLoteNap" style="display:none; width:100%; margin-top:6px;">' +
+              '<select id="audLoteMot">' + _opcionesMotivoAud() + '</select>' +
+              '<input type="text" id="audLoteNota" placeholder="Explica por qué no aplican — lo lee quien auditó y queda en el informe">' +
+              '<button class="audmini ver" id="audLoteOk">Guardar</button>' +
+              '<button class="audmini" id="audLoteNo">Cancelar</button>' +
+            '</div>' +
+          '</div>'
+        : '') +
+      '<table class="audt audacct"><thead><tr><th style="width:22px"></th><th>Barra</th><th>Figura</th>' +
       '<th>Elemento</th><th>Cubicó</th>' +
       '<th title="Lo que el auditor anotó en esta barra.">Qué se encontró</th>' +
       '<th title="Lo que la barra debería decir, como lo dejó el auditor. De esto vive la ' +
@@ -1633,11 +1659,33 @@
       '<th title="Por qué pasó. Se elige en la matriz Ishikawa, y es POR BARRA: dos barras ' +
       'del mismo eje pueden estar mal por razones distintas.">Por qué pasó</th>' +
       '<th>Estado</th><th></th></tr></thead><tbody>' +
-      acc.map(function (e) {
-        var malas = (e.barras_malas || []);
-        if (!malas.length) return filaComentario(e, enviada);
-        return malas.map(function (b) { return filaAccion(e, b, enviada); }).join('');
-      }).join('') + '</tbody></table>';
+      // AGRUPADO POR CÓDIGO (21-oct), como la revisión: es como se corrige —se abre un CC
+      // en aSa y se arregla lo de ahí— y la cabecera dice cuánto queda de ese código.
+      (function () {
+        var grupos = [], ix = {};
+        acc.forEach(function (e) {
+          var k = e.cc || '(sin código)';
+          if (!ix[k]) { ix[k] = { cc: e.cc, descr: e.descr_cc, cubico: e.cubicado_por, els: [] }; grupos.push(ix[k]); }
+          ix[k].els.push(e);
+        });
+        return grupos.map(function (g) {
+          var lineas = 0, listas = 0;
+          g.els.forEach(function (e) {
+            (e.barras_malas || []).forEach(function (b) { lineas++; if (b.corregido || b.desestimado) listas++; });
+            if (e.comentario_suelto) { lineas++; if ((e.accion_estado || 'pendiente') !== 'pendiente') listas++; }
+          });
+          return '<tr class="audgrupo"><td colspan="10">' +
+            '<label><input type="checkbox" data-agrupo="' + esc(g.cc || '') + '" title="Marcar todas las de este código"> ' +
+            '<b>' + esc(g.cc || '—') + '</b></label> <span class="muted">' + esc(g.descr || '') + '</span>' +
+            (g.cubico ? '<span class="revquien">' + esc(String(g.cubico).split('@')[0]) + '</span>' : '') +
+            '<span class="muted" style="float:right">' + listas + ' de ' + lineas + ' resuelta(s)</span></td></tr>' +
+            g.els.map(function (e) {
+              var malas = (e.barras_malas || []);
+              if (!malas.length) return filaComentario(e, enviada);
+              return malas.map(function (b) { return filaAccion(e, b, enviada); }).join('');
+            }).join('');
+        }).join('');
+      })() + '</tbody></table>';
     _bindAcciones(caja);
   }
 
@@ -1704,6 +1752,7 @@
               'resuelto.">RCA</button>'
             : '<span class="muted">sin RCA</span>');
     return '<tr' + (est === 'desestimada' ? ' class="audeses"' : '') + '>' +
+      '<td></td>' +
       '<td><span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
         'del elemento.">elemento</span></td>' +
       '<td></td>' +
@@ -1714,7 +1763,7 @@
       '<td>' + estado + '</td>' +
       '<td>' + acc + '</td></tr>' +
       '<tr class="audnapform" data-eform="' + e.id + '" style="display:none">' +
-        '<td colspan="9"><div class="revnapcaja">' +
+        '<td colspan="10"><div class="revnapcaja">' +
           '<input type="text" data-emotivo="' + e.id + '" ' +
             'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
           '<button class="audmini ver" data-enapok="' + e.id + '">Guardar</button>' +
@@ -1784,8 +1833,12 @@
               '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar la ' +
               'barra por resuelta.">RCA</button>'
             : '<span class="muted">sin RCA</span>');
-    var cols = 9;
+    var cols = 10;
     return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
+      '<td>' + (puede && !b.corregido && !b.desestimado
+        ? '<input type="checkbox" data-aitem="' + b.item_id + '" data-acc="' + esc(e.cc || '') + '"' +
+          (SEL_AUD[b.item_id] ? ' checked' : '') + ' title="Marcar para resolver varias de una vez">'
+        : '') + '</td>' +
       '<td><span class="audref">' + esc(b.ref || b.marca || '') + '</span></td>' +
       '<td class="revfig" data-afig="' + esc(b.ref || '') + '" data-acc="' + esc(e.cc || '') + '">' +
         _figAud(e.cc, b.ref) + '</td>' +
@@ -1802,6 +1855,7 @@
       '<td class="audacc2">' + acc + '</td></tr>' +
       '<tr class="audnapform" data-form="' + b.item_id + '" style="display:none">' +
         '<td colspan="' + cols + '"><div class="revnapcaja">' +
+          '<select data-mot="' + b.item_id + '">' + _opcionesMotivoAud() + '</select>' +
           '<input type="text" data-motivo="' + b.item_id + '" ' +
             'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
           '<button class="audmini ver" data-napok="' + b.item_id + '">Guardar</button>' +
@@ -1813,6 +1867,8 @@
   // CÓDIGO —una lectura sirve a todas sus barras— y sólo cuando alguien las pide, porque
   // cada una son un par de segundos contra aSa.
   var AFIGS = {};
+  // Las barras marcadas con el check para resolverlas de a muchas (21-oct).
+  var SEL_AUD = {};
   function _figAud(cc, ref) {
     var c = AFIGS[cc];
     if (!c) return '';
@@ -1857,7 +1913,35 @@
     if (f) f.addEventListener('click', function () { cargarFigurasAud(f); });
     if (global.audChipsTam) global.audChipsTam('audTam', pintarAcciones);
     var cz = $('audBtnCerrarOk');
-    if (cz) cz.addEventListener('click', cerrarResueltas);
+    // Sin el evento como argumento: `cerrarResueltas(confirmar)` lo leía como «confirmar».
+    if (cz) cz.addEventListener('click', function () { cerrarResueltas(false); });
+    caja.querySelectorAll('input[data-aitem]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        if (c.checked) SEL_AUD[c.dataset.aitem] = true; else delete SEL_AUD[c.dataset.aitem];
+        pintarAcciones();
+      });
+    });
+    caja.querySelectorAll('input[data-agrupo]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        caja.querySelectorAll('input[data-aitem][data-acc="' + c.dataset.agrupo + '"]').forEach(function (x) {
+          if (c.checked) SEL_AUD[x.dataset.aitem] = true; else delete SEL_AUD[x.dataset.aitem];
+        });
+        pintarAcciones();
+      });
+    });
+    caja.querySelectorAll('button[data-alote]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (b.dataset.alote === 'no_aplica') {
+          $('audLoteNap').style.display = 'flex'; b.classList.add('eligiendo'); $('audLoteNota').focus();
+        } else { loteAuditoria(b.dataset.alote); }
+      });
+    });
+    var lno = $('audLoteNo');
+    if (lno) lno.addEventListener('click', function () { $('audLoteNap').style.display = 'none'; });
+    var lok = $('audLoteOk');
+    if (lok) lok.addEventListener('click', function () { loteAuditoria('no_aplica'); });
+    var lnota = $('audLoteNota');
+    if (lnota) lnota.addEventListener('keydown', function (e) { if (e.key === 'Enter') loteAuditoria('no_aplica'); });
     caja.querySelectorAll('button[data-objetar]').forEach(function (b) {
       b.addEventListener('click', function () { objetar(b.dataset.objetar); });
     });
@@ -1922,6 +2006,34 @@
     });
   }
 
+  function _opcionesMotivoAud() {
+    var m = (AUD && AUD.motivos) || {};
+    return '<option value="">¿Por qué no aplica?</option>' +
+      Object.keys(m).map(function (k) { return '<option value="' + esc(k) + '">' + esc(m[k]) + '</option>'; }).join('');
+  }
+
+  // VARIAS BARRAS, UN VERBO (21-oct). Un solo viaje y un solo detalle al final.
+  async function loteAuditoria(accion) {
+    var ids = Object.keys(SEL_AUD).map(Number);
+    if (!ids.length) return;
+    var cuerpo = { ids: ids, accion: accion };
+    if (accion === 'no_aplica') {
+      cuerpo.motivo_tipo = $('audLoteMot').value;
+      cuerpo.nota = ($('audLoteNota').value || '').trim();
+      if (!cuerpo.motivo_tipo) { aviso('Elige por qué no aplican.'); return; }
+      if (cuerpo.nota.length < 10) { aviso('Hace falta la explicación: la lee quien auditó.'); return; }
+    }
+    var b = document.querySelector('#audLote button[data-alote="' + accion + '"]');
+    _ocupado(b, true);
+    try {
+      AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/lote', cuerpo);
+      ok({ resuelto: 'Resueltas', no_aplica: 'Sin efecto', aplica: 'Vuelven a quedar por resolver' }[accion] +
+         ': ' + ids.length);
+      SEL_AUD = {};
+      await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
+    } catch (e) { aviso(e.message); _ocupado(b, false); }
+  }
+
   function _formNap(itemId, abrir) {
     var f = document.querySelector('tr[data-form="' + itemId + '"]');
     if (!f) return;
@@ -1935,9 +2047,12 @@
   function _guardarNap(itemId) {
     var f = document.querySelector('tr[data-form="' + itemId + '"]');
     if (!f) return;
+    var sel = f.querySelector('select[data-mot]');
+    var tipo = sel ? sel.value : '';
     var m = (f.querySelector('input[data-motivo]').value || '').trim();
+    if (!tipo) { aviso('Elige por qué no aplica.'); return; }
     if (m.length < 10) { aviso('Di por qué no corresponde: lo va a leer quien auditó.'); return; }
-    desestimarItem(itemId, true, m);
+    desestimarItem(itemId, true, m, tipo);
   }
 
   // DEJAR SIN EFECTO UNA BARRA, o volverla a dejar válida. El motivo es obligatorio y es
@@ -1953,12 +2068,13 @@
 
   function _botonDe(sel) { return document.querySelector(sel); }
 
-  async function desestimarItem(itemId, desestimar, motivo) {
+  async function desestimarItem(itemId, desestimar, motivo, motivoTipo) {
     var bt = _botonDe('[data-' + (desestimar ? 'noaplica' : 'aplica') + '="' + itemId + '"]');
     _ocupado(bt, true);
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/desestimar',
-                      { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.' });
+                      { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.',
+                        motivo_tipo: motivoTipo || null });
       ok(desestimar ? 'Barra dejada sin efecto' : 'La barra vuelve a quedar por corregir');
       await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) { aviso(e.message); _ocupado(bt, false); }

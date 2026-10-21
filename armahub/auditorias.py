@@ -1433,7 +1433,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           i.causa, i.causa_texto, i.esperado, i.verificado,
                           i.desestimado, i.desestimado_motivo, i.desestimado_por,
                           i.tipo_correccion, i.cc_nuevo, i.item_nuevo, i.nota_correccion,
-                          i.id, i.objecion, i.causa_categoria, i.corregido_por, i.causa_por
+                          i.id, i.objecion, i.causa_categoria, i.corregido_por, i.causa_por,
+                          i.desestimado_tipo
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE
@@ -1442,7 +1443,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             for fila_b in cur.fetchall():
                 (eid, ref, marca, obs, corr, ca, ca_txt, esp, ver,
                  des, des_mot, des_por, tipo_c, cc_n, item_n, nota_c,
-                 item_id_b, objec, ca_cat, corr_por, ca_por) = fila_b
+                 item_id_b, objec, ca_cat, corr_por, ca_por, des_tipo) = fila_b
                 por_elemento.setdefault(eid, []).append(
                     {"ref": ref, "marca": marca, "observacion": obs,
                      "corregido": bool(corr), "causa": ca, "causa_texto": ca_txt,
@@ -1455,7 +1456,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                      "item_id": item_id_b, "objecion": objec,
                      # La categoría viaja para que el modal del Ishikawa abra con la
                      # causa ya elegida marcada, en vez de en blanco.
-                     "causa_categoria": ca_cat, "corregido_por": corr_por, "causa_por": ca_por})
+                     "causa_categoria": ca_cat, "corregido_por": corr_por, "causa_por": ca_por,
+                     "desestimado_tipo": des_tipo})
             # QUIÉN PUEDE QUÉ, DICHO POR EL BACKEND. El front no puede deducirlo: saber si
             # una barra es «mía» exige comparar el login de aSa de quien cubicó con mi
             # correo, y esa equivalencia la resuelve `alias_cubicador` acá. Deducirla en el
@@ -1472,6 +1474,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # CUALQUIER CUBICADOR PUEDE RESOLVER (21-oct); al dueño le llega aviso. Sólo
             # el cliente externo queda fuera, que no resuelve nada de nadie.
             aud["puedo_actuar"] = user.get("role") != "cliente"
+            aud["motivos"] = MOTIVOS_NO_APLICA_AUD
             # QUIÉN LO RESOLVIÓ EN LUGAR DEL DUEÑO, para que la fila lo diga. El dueño es un
             # login de aSa y quien actuó es un correo: se cruzan con `alias_cubicador`, una
             # vez por persona que actuó, no por barra.
@@ -3265,10 +3268,24 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
     return detalle(auditoria_id, user)
 
 
+# LOS MOTIVOS POR LOS QUE UN HALLAZGO DE AUDITORÍA NO APLICA (21-oct). Mismo mecanismo
+# que en la revisión de barras —una lista y una explicación— para poder leer después lo que
+# el texto libre esconde: si muchos marcan «criterio acordado con el auditor», el problema
+# está en el criterio. Son las razones de ESTE módulo —acá lo marcó una persona mirando la
+# barra, no una regla—, y las palabras las fija el usuario.
+MOTIVOS_NO_APLICA_AUD = {
+    "correcto": "Lo observado era correcto",
+    "ya_corregido": "Ya estaba corregido antes de la auditoría",
+    "acordado": "Criterio acordado con el auditor",
+    "otro": "Otro (explicar)",
+}
+
+
 class DesestimarBody(BaseModel):
-    """El auditado dice que lo observado no corresponde."""
+    """El auditado dice que lo observado no corresponde: por qué (lista) y la explicación."""
     motivo: str
     desestimado: bool = True
+    motivo_tipo: Optional[str] = None
 
 
 @router.put("/auditorias/{auditoria_id}/items/{item_id}/desestimar")
@@ -3294,6 +3311,8 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
     _puede_ver(user)
     email = user.get("email", "?")
     motivo = (body.motivo or "").strip()
+    if body.desestimado and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
+        raise HTTPException(status_code=400, detail="Elige por qué no aplica.")
     if body.desestimado and len(motivo) < 10:
         raise HTTPException(
             status_code=400,
@@ -3307,11 +3326,12 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
                 """UPDATE auditoria_items
                       SET desestimado = %s,
                           desestimado_motivo = %s,
+                          desestimado_tipo = CASE WHEN %s THEN %s END,
                           desestimado_por = CASE WHEN %s THEN %s END,
                           desestimado_el = CASE WHEN %s THEN now() END
                     WHERE id = %s""",
-                (body.desestimado, motivo or None, body.desestimado, email,
-                 body.desestimado, item_id))
+                (body.desestimado, motivo or None, body.desestimado, body.motivo_tipo,
+                 body.desestimado, email, body.desestimado, item_id))
             # Volver a descartar después de una objeción la limpia: si no, la barra
             # quedaría mostrando a la vez «descartada» y «el auditor no lo aceptó», que no
             # es el estado en que está. Lo que pasó queda en el registro de auditoría.
@@ -3346,6 +3366,97 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
     _avisar_si_ajeno(user, cubico, "Auditoría %s · %s · %s: %s la dejó %s en tu lugar. %s"
                      % (codigo, nombre, ref, email.split("@")[0],
                         "sin efecto" if body.desestimado else "abierta otra vez", motivo[:120]))
+    return detalle(auditoria_id, user)
+
+
+class LoteBody(BaseModel):
+    """Varias barras marcadas, un solo verbo: aplica | no_aplica | resuelto."""
+    ids: List[int]
+    accion: str
+    motivo_tipo: Optional[str] = None
+    nota: Optional[str] = None
+
+
+@router.put("/auditorias/{auditoria_id}/items/lote")
+def lote_items(auditoria_id: int, body: LoteBody, user=Depends(get_current_user)):
+    """DE A MUCHAS (21-oct), como en la revisión de barras: «muchas veces el hallazgo es el
+    mismo para más de un ítem». Las mismas reglas que de a una —RCA antes de resolver,
+    motivo y explicación para dejar sin efecto, y el RCA se va con el «no aplica»—, en una
+    sola escritura y un solo detalle al final. Al dueño de cada barra ajena, UN aviso."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    if body.accion not in ("aplica", "no_aplica", "resuelto"):
+        raise HTTPException(status_code=422, detail="Acción no válida: aplica / no_aplica / resuelto.")
+    nota = (body.nota or "").strip()
+    if body.accion == "no_aplica":
+        if body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
+            raise HTTPException(status_code=400, detail="Elige por qué no aplica.")
+        if len(nota) < 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Di por qué no corresponde: el auditor lo va a leer y queda en el informe.")
+    ids = list(dict.fromkeys(body.ids or []))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No marcaste ninguna barra.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _solo_si_enviada(cur, auditoria_id)
+            cur.execute(
+                """SELECT i.id, i.ref, i.causa, i.elemento_id, e.cubicado_por, e.nombre,
+                          a.codigo, a.auditor, a.estado
+                     FROM auditoria_items i
+                     JOIN auditoria_elementos e ON e.id = i.elemento_id
+                     JOIN auditorias a ON a.id = e.auditoria_id
+                    WHERE i.id = ANY(%s) AND e.auditoria_id = %s AND i.conforme IS FALSE""",
+                (ids, auditoria_id))
+            filas = cur.fetchall()
+            if not filas:
+                raise HTTPException(status_code=404, detail="Esas barras no son de esta auditoría.")
+            if filas[0][8] == "cerrada":
+                raise HTTPException(status_code=400, detail="Esta auditoría ya está cerrada.")
+            codigo, auditor = filas[0][6], filas[0][7]
+            sel = [f[0] for f in filas]
+            if body.accion == "resuelto":
+                sin_rca = [f[1] for f in filas if not f[2]]
+                if sin_rca:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Antes de darlas por resueltas, clasifica por qué pasó (RCA) en: %s."
+                               % ", ".join(sin_rca[:6]))
+                cur.execute("""UPDATE auditoria_items
+                                  SET corregido = TRUE, corregido_por = %s, corregido_el = now(),
+                                      desestimado = FALSE, tipo_correccion = 'item'
+                                WHERE id = ANY(%s)""", (email, sel))
+            elif body.accion == "no_aplica":
+                # El RCA se va con el «no aplica», igual que de a una: un hallazgo que no
+                # correspondía no es un error que clasificar.
+                cur.execute("""UPDATE auditoria_items
+                                  SET desestimado = TRUE, desestimado_motivo = %s, desestimado_tipo = %s,
+                                      desestimado_por = %s, desestimado_el = now(), corregido = FALSE,
+                                      objecion = NULL, objecion_por = NULL, objecion_el = NULL,
+                                      causa = NULL, causa_categoria = NULL, causa_texto = NULL,
+                                      causa_por = NULL, causa_el = NULL
+                                WHERE id = ANY(%s)""", (nota, body.motivo_tipo, email, sel))
+            else:
+                cur.execute("""UPDATE auditoria_items SET desestimado = FALSE, corregido = FALSE
+                                WHERE id = ANY(%s)""", (sel,))
+            for eid in {f[3] for f in filas}:
+                cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                            (_accion_de_items(cur, eid), eid))
+            _recalcular(cur, auditoria_id)
+            audit(email, "auditoria_lote", "%s: %d barra(s) → %s" % (codigo, len(filas), body.accion),
+                  "auditoria", str(auditoria_id))
+    verbo = {"resuelto": "marcó resueltas", "no_aplica": "dejó sin efecto",
+             "aplica": "volvió a abrir"}[body.accion]
+    if auditor and body.accion != "aplica":
+        _avisar(auditor, "Auditoría %s: %s %s %d barra(s). %s"
+                % (codigo, email.split("@")[0], verbo, len(filas), nota[:100]))
+    duenos = {}
+    for f in filas:
+        duenos.setdefault((f[4] or "").strip(), []).append(f[1])
+    for cubico, refs in duenos.items():
+        _avisar_si_ajeno(user, cubico, "Auditoría %s: %s %s %d barra(s) tuyas en tu lugar (%s). %s"
+                         % (codigo, email.split("@")[0], verbo, len(refs), ", ".join(refs[:5]), nota[:100]))
     return detalle(auditoria_id, user)
 
 

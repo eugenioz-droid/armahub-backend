@@ -1353,5 +1353,36 @@ check("cierra también quien resolvió algo acá en lugar del dueño",
 check("los indicadores del RCA se dicen internos: no es el Pareto de los reclamos",
       "NO es el Pareto de los reclamos" in SRC and "NO es el Pareto de los reclamos" in JS)
 
+
+print("\nEL MISMO FORMATO QUE LA REVISIÓN: AGRUPADO, DE A MUCHAS, MOTIVO DE LISTA (21-oct)")
+# El usuario: «compares las auditorías y las revisiones de barras y armonices, debieran ser
+# flujos y formatos muy similares». Lo que a la auditoría le faltaba de la revisión.
+MIG160 = open(os.path.join(ROOT, "armahub", "migrations", "160_no_aplica_con_motivo_de_lista.sql"),
+              encoding="utf-8").read()
+check("el Resumen Hallazgos agrupa por código de control, con cabecera y avance por código",
+      '<tr class="audgrupo">' in JS and "data-agrupo=" in JS and "resuelta(s)</span></td></tr>" in JS
+      and ".audacct tr.audgrupo td{" in HTM)
+check("hay checks por barra y los tres verbos de a muchas: Aplica · No aplica · Resuelto",
+      "data-aitem=" in JS and 'data-alote="aplica"' in JS and 'data-alote="no_aplica"' in JS
+      and 'data-alote="resuelto"' in JS and "async function loteAuditoria(" in JS)
+check("...contra un lote del backend con las mismas reglas que de a una",
+      '@router.put("/auditorias/{auditoria_id}/items/lote")' in SRC and "class LoteBody" in SRC
+      and "Antes de darlas por resueltas, clasifica por qué pasó (RCA)" in SRC
+      and SRC.count("causa = NULL, causa_categoria = NULL, causa_texto = NULL") >= 2)
+check("...que avisa al auditor y al dueño de cada barra ajena, una vez por persona",
+      "duenos.setdefault(" in SRC and "en tu lugar (%s)" in SRC)
+check("«no aplica» pide motivo de lista más explicación, como la revisión",
+      "MOTIVOS_NO_APLICA_AUD = {" in SRC and "motivo_tipo: Optional[str] = None" in SRC
+      and "desestimado_tipo" in MIG160 and 'aud["motivos"] = MOTIVOS_NO_APLICA_AUD' in SRC
+      and "<select data-mot=" in JS and "function _opcionesMotivoAud(" in JS
+      and "Elige por qué no aplica." in SRC)
+check("...y el motivo viaja en cada barra del detalle",
+      '"desestimado_tipo": des_tipo' in SRC)
+# EL BUG DEL CIERRE: `addEventListener('click', cerrarResueltas)` le pasaba el MouseEvent
+# como `confirmar`, y «confirmar» verdadero cierra SIN el chequeo en aSa.
+check("cerrar no recibe el evento del clic como «confirmar»: sin eso se saltaba el chequeo en aSa",
+      "cz.addEventListener('click', function () { cerrarResueltas(false); });" in JS
+      and "cz.addEventListener('click', cerrarResueltas);" not in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
