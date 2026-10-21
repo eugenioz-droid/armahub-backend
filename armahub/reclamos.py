@@ -772,6 +772,11 @@ def reclamos_kpi_causas(user=Depends(get_current_user)):
                 FROM reclamos
                 WHERE tipo_origen = 'externo' AND estado IN ('cerrado', 'rechazado')
                   AND categoria_ishikawa IS NOT NULL AND categoria_ishikawa <> ''
+                  -- EL MISMO UNIVERSO QUE EL ROTULO (21-oct). Acá faltaba este filtro: la
+                  -- lista sumaba los 46 históricos con causa y el denominador los
+                  -- excluía, así que el Pareto decía 45% + 39% + 33%… sobre 49 reclamos
+                  -- cuando eran 95 causas. El usuario: «los porcentajes no me suman».
+                  AND NOT historico
                 GROUP BY 1, 2
                 ORDER BY 1, 3 DESC, 2""")
             arbol, idx = [], {}

@@ -200,9 +200,11 @@
     <!-- Sub-panel: KPIs -->
     <div id="dashSubKpis" style="display:none;">
       <div class="card" style="border-top:3px solid #00897b;">
-        <h3 style="margin:0 0 4px 0; color:#00897b;">📌 Causas de los reclamos cerrados</h3>
+        <!-- El nombre lo fijó el usuario (21-oct). Y se dice de qué es y de qué NO: los
+             hallazgos de las auditorías tienen su propio RCA y no entran acá. -->
+        <h3 style="margin:0 0 4px 0; color:#00897b;">📌 RCA - Cubicaciones - Reclamos Clientes</h3>
         <div class="muted" style="font-size:11px; margin-bottom:12px;">
-          Solo reclamos de clientes <b>cerrados</b> y <b>con causa asignada</b>. Pareto: ordenado por ocurrencia, con el corte del 80% acumulado.
+          Solo reclamos de clientes <b>cerrados</b> y <b>con causa asignada</b>; no incluye los hallazgos de auditorías. Pareto: ordenado por ocurrencia, con el corte del 80%.
           <span id="dashKpiUniverso" style="margin-left:8px; color:#37474f;"></span>
         </div>
         <div id="dashKpiArbol" style="font-size:12px;">

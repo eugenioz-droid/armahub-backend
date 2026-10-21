@@ -1530,11 +1530,11 @@ async function loadDashKpis() {
   var acum = 0, corte = -1;
   filas.forEach(function (f, k) { acum += f.n; f.acum = Math.round(100 * acum / total); if (corte < 0 && acum >= 0.8 * total) corte = k; });
   // El % parcial va en SU columna (usuario 21-sep): pegado al conteo quedaba
-  // desalineado entre filas de una y dos cifras. Cuatro numericas alineadas a la
-  // derecha: Reclamos · % · Acum.
-  var COLS = 'minmax(220px, 30%) 150px 1fr 56px 48px 56px';
+  // desalineado entre filas de una y dos cifras. SIN la columna Acum. (21-oct, a pedido
+  // del usuario): el acumulado se lee en la línea del corte, no hace falta por fila.
+  var COLS = 'minmax(220px, 30%) 150px 1fr 56px 48px';
   var html = '<div style="display:grid; grid-template-columns:' + COLS + '; gap:10px; padding:2px 0 6px; font-size:10px; color:#78909c; text-transform:uppercase; letter-spacing:.4px;">' +
-    '<div>Sub-causa</div><div>Categoría</div><div></div><div style="text-align:right;">Reclamos</div><div style="text-align:right;">%</div><div style="text-align:right;">Acum.</div></div>';
+    '<div>Sub-causa</div><div>Categoría</div><div></div><div style="text-align:right;">Reclamos</div><div style="text-align:right;">%</div></div>';
   filas.forEach(function (f, k) {
     var col = colores[f.causa] || '#546e7a';
     var pct = Math.max(2, Math.round(100 * f.n / max));
@@ -1549,8 +1549,7 @@ async function loadDashKpis() {
       '<div style="height:18px; background:#f1f3f4; border-radius:3px;">' +
         '<div style="width:' + pct + '%; height:100%; background:' + col + '; border-radius:3px; opacity:.85;"></div></div>' +
       '<div style="text-align:right; color:#263238; font-weight:700;" title="' + f.n + ' de ' + total + ' con causa">' + f.n + '</div>' +
-      '<div style="text-align:right; color:#78909c;">' + share + '%</div>' +
-      '<div style="text-align:right; font-weight:' + (vital ? '700' : '400') + '; color:' + (vital ? '#2e7d32' : '#90a4ae') + ';">' + f.acum + '%</div>' +
+      '<div style="text-align:right; color:' + (vital ? '#2e7d32' : '#78909c') + '; font-weight:' + (vital ? '700' : '400') + ';">' + share + '%</div>' +
       '</div>';
     if (k === corte) {
       html += '<div style="display:flex; align-items:center; gap:8px; margin:4px 0 6px; color:#2e7d32; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">' +
