@@ -1389,9 +1389,9 @@ check("cerrar no recibe el evento del clic como «confirmar»: sin eso se saltab
 print("\nLA MUESTRA ES DEL AUDITOR; AL AUDITADO LE LLEGA CUANDO SE ENVÍA (21-oct)")
 # El usuario, viendo el formulario del auditor abierto en una auditoría sin enviar: «esto
 # confunde al auditado… el auditado debe ver sólo lo de abajo una vez enviada».
-check("una auditoría no enviada no existe para el auditado: ni en la lista ni en el detalle",
-      "(a.enviada_el IS NOT NULL OR a.auditor = %s OR a.creada_por = %s)" in SRC
-      and "Te llega cuando la mande." in SRC)
+check("la lista es para todo el equipo; antes del envío, quien no audita no recibe los hallazgos",
+      "(a.enviada_el IS NOT NULL OR a.auditor = %s OR a.creada_por = %s)" not in SRC
+      and 'por_elemento.get(e["id"], []) if ve_hallazgos else []' in SRC)
 check("la muestra del auditor no se le pinta a quien no audita",
       "La muestra la revisa el auditor. Lo tuyo está abajo" in JS)
 check("el check de grupo sale sólo cuando hay algo que marcar, y la última columna tiene nombre",
