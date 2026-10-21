@@ -1087,7 +1087,7 @@ check("sin RCA no se puede dar una barra por corregida, y lo rechaza el BACKEND"
       "clasifica por qué pasó (RCA)" in SRC
       and "SELECT causa FROM auditoria_items WHERE id = %s" in SRC)
 check("...y la pantalla apaga el botón en vez de dejar que salte el error",
-      "var sinRca = !b.causa;" in JS and "audres' + (sinRca ? ' off' : '')" in JS)
+      "var sinRca = !b.causa;" in JS and "audbres' + (sinRca ? ' off' : '')" in JS)
 check("...pero «no aplica» NO lo pide: ahí no hubo error que explicar",
       "Dejar sin efecto NO la pide" in SRC
       and "if body.corregido:" in SRC.split("clasifica por qué pasó")[0][-700:])
@@ -1097,7 +1097,7 @@ check("«Clasificar» pasa a llamarse RCA", ">RCA</button>" in JS and "sin RCA" 
 check("«Corregido en aSa» pasa a ser el botón «Resuelto», verde, con su hover",
       "function _btnResuelto(" in JS and "> Corregido en aSa</label>" not in JS
       and 'type="checkbox" data-corregi=' not in JS
-      and ">✓ Resuelto</button>" in JS and ".audres.on{background:#2e7d32" in HTM
+      and ">✓ Resuelto</button>" in JS and ".audbres.on{background:#2e7d32" in HTM
       and "cuando ya hayas hecho el cambio en aSa" in JS)
 # El usuario: «al presionar los botones no funciona la animacion, quedan pegados».
 check("los botones dan señal mientras el servidor responde",

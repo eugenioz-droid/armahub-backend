@@ -491,7 +491,7 @@
           ' title="Deja sin efecto las marcadas, con una sola explicación para todas">' +
           'No aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
       '</div>' +
-      '<button class="audres" data-lote="declarada"' + (n ? '' : ' disabled') +
+      '<button class="audbres" data-lote="declarada"' + (n ? '' : ' disabled') +
         ' title="Marca las barras marcadas como resueltas: ya hiciste el cambio en aSa. Al cerrar ' +
         'se comprueba contra aSa y, si algo sigue igual, te avisa.">Resuelto' + (n ? ' (' + n + ')' : '') + '</button>' +
       // CERRAR VA A aSa: comprueba todo lo que está marcado resuelto y avisa, sin bloquear,
@@ -716,7 +716,12 @@
         if (!e.isIntersecting) return;
         var cc = e.target.dataset.grupocc;
         _mirando.unobserve(e.target);
-        if (cc && !REVS.figs[cc] && cola.indexOf(cc) === -1) { cola.push(cc); vaciar(); }
+        if (!cc) return;
+        // DIBUJAR ES CARO (21-oct): un SVG por barra, y con «Todos» eran 375 de golpe cada
+        // vez que se repintaba la hoja —por eso se abría tan lento—. El grupo se dibuja
+        // cuando entra a la vista, ya esté la figura cargada o haya que ir a buscarla.
+        if (REVS.figs[cc] && REVS.figs[cc].estado !== 'cargando') { _pintarFiguras(cc); return; }
+        if (!REVS.figs[cc] && cola.indexOf(cc) === -1) { cola.push(cc); vaciar(); }
       });
     }, { root: $('revItemsModal'), rootMargin: '200px' });
     var caja = $('revItemsCuerpo');
@@ -762,9 +767,9 @@
             ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
         '</div>' +
         (nap ? '' : (resuelto
-          ? '<button class="audres on" data-deshacer="' + i.id + '" title="Marcada como resuelta. ' +
+          ? '<button class="audbres on" data-deshacer="' + i.id + '" title="Marcada como resuelta. ' +
             'Vuelve a apretar si todavía no está cambiada en aSa.">✓ Resuelto</button>'
-          : '<button class="audres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
+          : '<button class="audbres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
             'hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, ' +
             'te avisa.">Resuelto</button>'));
     var cols = 7;
@@ -777,8 +782,7 @@
         ' title="Marcar para resolver varias de una vez">') + '</td>' +
       '<td class="revm" style="width:84px"><span class="audref" data-ver="' + i.id +
         '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
-      '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '">' +
-        _celda(i.cc, i.ref) + '</td>' +
+      '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '"></td>' +
       '<td class="revlados" title="' + esc(det.texto || '') + '">' + _ladosCelda(i) + firma + '</td>' +
       '<td style="width:104px"><span class="revreg" title="' + esc(r.porque || r.nombre || '') + '">' +
         esc(r.corto || r.nombre) + '</span></td>' +

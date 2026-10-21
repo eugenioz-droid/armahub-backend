@@ -541,7 +541,7 @@ check("...y sigue exigiendo los dos",
 # los tres verbos de a muchas («muchas veces el hallazgo es el mismo para más de un
 # ítem»); y CERRAR va a aSa, avisa lo que sigue igual y no bloquea.
 check("«Resuelto» por fila, verde, y su vuelta atrás",
-      'class="audres" data-resuelto=' in JS and 'class="audres on" data-deshacer=' in JS
+      'class="audbres" data-resuelto=' in JS and 'class="audbres on" data-deshacer=' in JS
       and "declararUno(b.dataset.resuelto, 'declarada'" in JS
       and "declararUno(b.dataset.deshacer, 'abierta'" in JS and 'title="Ya la corregí"' not in JS)
 check("con los checks, los tres verbos de a muchas: Aplica · No aplica · Resuelto",

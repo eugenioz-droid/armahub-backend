@@ -3047,10 +3047,11 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                 estado = "desestimada"
                 # EL RCA SE VA (20-oct). Lo pidió el usuario: «al presionar no aplica no se
                 # debe ingresar RCA, este se borra o queda sin efecto, para que no
-                # distorsione data». Y tiene razón de fondo: el Pareto de causas cuenta por
-                # qué pasaron los errores, y un hallazgo que no correspondía no es un error
-                # —dejarle su causa le daría peso a una causa que nunca existió—. Cuál era
-                # queda en el registro, abajo, así que no se pierde el rastro.
+                # distorsione data». Y tiene razón de fondo: el indicador de causas de la
+                # auditoría —interno de este módulo; NO es el Pareto de los reclamos y no se
+                # mezcla con él— cuenta por qué pasaron los errores, y un hallazgo que no
+                # correspondía no es un error: dejarle su causa le daría peso a una causa que
+                # nunca existió. Cuál era queda en el registro, abajo.
                 causa = None
                 body.causa_categoria = body.causa_texto = None
             elif body.corregido:
@@ -3247,9 +3248,10 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
             #
             # Y SE VA EL RCA (20-oct). El usuario: «al presionar no aplica no se debe
             # ingresar RCA, este se borra o queda sin efecto, para que no distorsione
-            # data». El Pareto cuenta por qué pasaron los errores, y un hallazgo que no
-            # correspondía no es un error: dejarle su causa le daría peso a una causa que
-            # nunca existió. Cuál era queda en el registro de auditoría, abajo.
+            # data». El indicador de causas de la auditoría —interno de este módulo; NO es
+            # el Pareto de los reclamos y no se mezcla con él— cuenta por qué pasaron los
+            # errores, y un hallazgo que no correspondía no es un error: dejarle su causa le
+            # daría peso a una causa que nunca existió. Cuál era queda en el registro, abajo.
             quitado = None
             if body.desestimado:
                 cur.execute("SELECT causa FROM auditoria_items WHERE id = %s", (item_id,))

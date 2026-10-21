@@ -290,9 +290,11 @@
       if (!_bound) { _bound = true; bind(); }
       if ($('audForm').style.display === 'none') _formEnBlanco();
       pintarForm();
-      await cargarLista();
-      await cargarMisAcciones();
-      await cargarIndicadores();
+      // EN PARALELO (21-oct). Eran cuatro viajes en fila —obras, lista, mis acciones,
+      // indicadores— de uno a tres segundos cada uno: siete segundos mirando una pantalla
+      // vacía. Las obras van primero porque la lista las necesita para nombrar el alcance;
+      // las otras tres no se necesitan entre sí.
+      await Promise.all([cargarLista(), cargarMisAcciones(), cargarIndicadores()]);
       var delEnlace = auditoriaDelEnlace();
       if (delEnlace) await abrir(delEnlace);
     } catch (e) { aviso(e.message); }
@@ -712,7 +714,7 @@
         AUD = await req('POST', '/auditorias/' + AUD.id + '/enviar', {});
         caja.style.display = 'none';
         ok('Auditoría enviada');
-        await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+        await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
       } catch (e) { aviso(e.message); b.disabled = false; }
     });
   }
@@ -736,7 +738,7 @@
     try {
       AUD = await req('POST', '/auditorias/' + AUD.id + '/reabrir', { motivo: m });
       ok('Auditoría reabierta');
-      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+      await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) { aviso(e.message); }
   }
 
@@ -1647,10 +1649,10 @@
   // apaga y se dice por qué, en vez de dejar que lo aprieten y les salte un error.
   function _btnResuelto(resuelto, sinRca, attr, id) {
     if (resuelto) {
-      return '<button class="audres on" ' + attr + '="' + id + '" title="Marcado como resuelto. ' +
+      return '<button class="audbres on" ' + attr + '="' + id + '" title="Marcado como resuelto. ' +
              'Vuelve a apretar si todavía no está cambiado en aSa.">✓ Resuelto</button>';
     }
-    return '<button class="audres' + (sinRca ? ' off' : '') + '" ' + attr + '="' + id + '"' +
+    return '<button class="audbres' + (sinRca ? ' off' : '') + '" ' + attr + '="' + id + '"' +
            (sinRca ? ' disabled' : '') + ' title="' +
            (sinRca ? 'Primero clasifica por qué pasó (RCA).'
                    : 'Márcalo cuando ya hayas hecho el cambio en aSa. Al cerrar la auditoría ' +
@@ -1688,7 +1690,7 @@
             (nap ? '' : _btnResuelto(resuelto, sinRca, resuelto ? 'data-edeshacer' : 'data-ecorregi', e.id));
     }
     // EL RCA SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa
-    // que clasificar, y si la tenía el backend la quitó para que no pese en el Pareto.
+    // que clasificar, y si la tenía el backend la quitó para que no pese en el indicador de causas de la auditoría (que es interno: NO es el Pareto de los reclamos y no se mezcla con él).
     var causa = nap
       ? '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>'
       : e.causa
@@ -1759,7 +1761,7 @@
     // norma; «Clasificar» no decía qué se estaba clasificando.
     //
     // Y SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa
-    // que clasificar, y si la tenía el backend la quitó para que no pese en el Pareto.
+    // que clasificar, y si la tenía el backend la quitó para que no pese en el indicador de causas de la auditoría (que es interno: NO es el Pareto de los reclamos y no se mezcla con él).
     var causa = b.desestimado
       ? '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>'
       : b.causa
@@ -1947,7 +1949,7 @@
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/desestimar',
                       { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.' });
       ok(desestimar ? 'Barra dejada sin efecto' : 'La barra vuelve a quedar por corregir');
-      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+      await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) { aviso(e.message); _ocupado(bt, false); }
   }
 
@@ -1965,7 +1967,7 @@
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/correccion',
                       { corregido: !!corregido, tipo: 'item' });
       ok(corregido ? 'Resuelto' : 'Vuelve a quedar por resolver');
-      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+      await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) {
       aviso(e.message);
       _ocupado(control, false);
@@ -1986,7 +1988,7 @@
       AUD = await req('POST', '/auditorias/' + AUD.id + '/cerrar-resueltas' +
                               (confirmar ? '?confirmar=true' : ''), {});
       ok('Auditoría cerrada');
-      await cargarLista(); await cargarMisAcciones(); await cargarIndicadores(); pintarDetalle();
+      await Promise.all([cargarLista(), cargarMisAcciones()]); await cargarIndicadores(); pintarDetalle();
     } catch (e) {
       var det = e.detalle || e.detail || null;
       if (e.status === 409 && det && det.motivo === 'sigue_igual') {
@@ -2056,7 +2058,7 @@
       ok(cuerpo.aplica === false ? 'Comentario dejado sin efecto'
                                  : (cuerpo.corregido ? 'Comentario dado por resuelto'
                                                      : 'Vuelve a quedar por resolver'));
-      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+      await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) {
       aviso(e.message);
       if (control && control.type === 'checkbox') control.checked = !cuerpo.corregido;
@@ -2105,7 +2107,7 @@
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/objecion',
                       { motivo: m });
       ok('Descarte no aceptado: la barra vuelve a estar abierta');
-      await cargarLista(); await cargarMisAcciones(); pintarDetalle();
+      await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) { aviso(e.message); }
   }
 

@@ -842,13 +842,15 @@
   .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
           border:1px solid #ef9a9a; border-radius:4px;}
   .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
-  /* EL BOTÓN «RESUELTO» (20-oct). Reemplaza el check «Corregido en aSa»: verde cuando está
+  /* EL BOTÓN «RESUELTO» (20-oct). Se llama audBres y no audres porque .audres ya era la
+     barrita de 10px de los indicadores (línea de arriba): con el mismo nombre el botón
+     salía como un óvalo sin texto. Reemplaza el check «Corregido en aSa»: verde cuando está
      marcado, apagado mientras falte el RCA, y se vuelve a apretar para deshacerlo. */
-  .audres{border:1px solid #a5d6a7; background:#fff; color:#2e7d32; font-size:10px; font-weight:700;
+  .audbres{border:1px solid #a5d6a7; background:#fff; color:#2e7d32; font-size:10px; font-weight:700;
           padding:3px 9px; border-radius:5px; cursor:pointer; white-space:nowrap; margin-left:6px;}
-  .audres:hover:not(:disabled){background:#e8f5e9;}
-  .audres.on{background:#2e7d32; border-color:#2e7d32; color:#fff;}
-  .audres.off{opacity:.45; cursor:not-allowed;}
+  .audbres:hover:not(:disabled){background:#e8f5e9;}
+  .audbres.on{background:#2e7d32; border-color:#2e7d32; color:#fff;}
+  .audbres.off{opacity:.45; cursor:not-allowed;}
   /* Las tres cuentas del detalle, en vez de la cobertura. */
   .audres3{margin-top:8px;}
   .audres3 .audkpi b{font-size:18px;}

@@ -108,6 +108,38 @@ def cliente_puede(metodo: str, ruta: str) -> bool:
     return any(m == metodo and rx.match(ruta) for m, rx in _CLIENTE_PUEDE_RE)
 
 
+# Cuánto se recuerda el rol de un correo antes de volver a preguntárselo a la base. Un
+# minuto: lo bastante para que una pantalla entera (diez llamadas) pague una sola ida, y
+# lo bastante poco para que quitarle el acceso a alguien se note enseguida.
+ROL_CACHE_SEG = 60
+_ROLES: dict = {}          # email -> (rol, vence_en_monotonic)
+
+
+def _rol_actual(email: str):
+    """El rol de la base para este correo, recordado ROL_CACHE_SEG segundos. Devuelve None
+    si el correo no existe en `users` (y también lo recuerda, para no insistir)."""
+    import time
+    ahora = time.monotonic()
+    hit = _ROLES.get(email)
+    if hit and hit[1] > ahora:
+        return hit[0]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT role FROM users WHERE email = %s", (email,))
+            row = cur.fetchone()
+    rol = row[0] if row else None
+    _ROLES[email] = (rol, ahora + ROL_CACHE_SEG)
+    return rol
+
+
+def olvidar_rol(email: str = None) -> None:
+    """Para quien cambia roles (administración): que el cambio valga ya, no en un minuto."""
+    if email is None:
+        _ROLES.clear()
+    else:
+        _ROLES.pop(email, None)
+
+
 def get_current_user(request: Request,
                      credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
     token = credentials.credentials
@@ -118,15 +150,17 @@ def get_current_user(request: Request,
         raise HTTPException(status_code=401, detail="Sesión expirada. Vuelve a iniciar sesión.")
     except Exception:
         raise HTTPException(status_code=401, detail="Token inválido")
-    # Always read fresh role from DB to avoid JWT/BD desync
+    # EL ROL SE LEE DE LA BASE, NO DEL TOKEN —para que cambiar el rol de alguien valga sin
+    # esperar a que su sesión venza—, PERO NO EN CADA PETICIÓN (21-oct). Esta consulta
+    # corría en todas las llamadas de la API y cada ida a Supabase cuesta 0,15–0,3 s:
+    # abrir la pestaña de auditorías son diez llamadas, o sea tres segundos sólo en
+    # preguntar diez veces el mismo rol. Se recuerda por correo durante ROL_CACHE_SEG; un
+    # cambio de rol tarda a lo más eso en notarse, que es lo que vale la pena pagar.
     email = payload.get("email")
     if email:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT role FROM users WHERE email = %s", (email,))
-                row = cur.fetchone()
-                if row:
-                    payload["role"] = row[0]
+        rol = _rol_actual(email)
+        if rol:
+            payload["role"] = rol
     # EL CERROJO DEL CLIENTE: después de leer el rol real, antes de devolver nada.
     if payload.get("role") == ROL_CLIENTE and not cliente_puede(request.method, request.url.path):
         logger.warning("cliente %s intentó %s %s: negado", email, request.method, request.url.path)
@@ -452,6 +486,8 @@ def admin_change_role(user_id: int, role: str, admin=Depends(require_admin_or_ad
             if admin_role != "admin" and role in ("admin", "admin_calidad"):
                 raise HTTPException(status_code=403, detail="Admin Calidad no puede asignar rol admin o admin_calidad")
             cur.execute("UPDATE users SET role = %s WHERE id = %s", (role, user_id))
+    # Que el cambio valga ya, no cuando venza el caché del rol.
+    olvidar_rol()
     audit(admin_email, "cambiar_rol", f"{row[1]}: {role}", "usuario", str(user_id))
     return {"ok": True, "id": user_id, "role": role}
 
