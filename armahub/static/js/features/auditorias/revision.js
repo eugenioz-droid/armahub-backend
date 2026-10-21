@@ -458,7 +458,7 @@
             (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                            '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
             '<span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
-            '<table>' + g.items.map(filaItem).join('') + '</table></div>';
+            _tablaGrupo(g) + '</div>';
         }).join('');
     _bindItems();
     // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la hoja.
@@ -597,44 +597,6 @@
   // aSa. Salen de la misma lectura que trae el dibujo —`dims` de la barra normalizada—
   // así que no cuesta una llamada más. Mientras no se hayan pedido las figuras se
   // muestra sólo el lado del hallazgo, que es el dato que la señal ya trae.
-  function _ladosCelda(i) {
-    var det = i.detalle || {};
-    var malos = {};
-    (det.lados || []).forEach(function (L) { malos[L] = 1; });
-    var b = _barraDe(i.cc, i.ref);
-    var f = null;
-    if (b && global.audBarraNormalizada) {
-      try { f = global.audBarraNormalizada(b, 'asa'); } catch (e) { f = null; }
-    }
-    // QUÉ SIGNIFICA EL `esperado` DE CADA REGLA, en un solo lugar: en el lado corto es un
-    // PISO (puede medir más y estar bien) y en los opuestos es la medida exacta que
-    // debería tener. Decir «debería 100» en el primero sería pedir que mida 100 justo.
-    //
-    // Y VA EN CENTÍMETROS. La regla lo guarda en milímetros, que es como vienen de aSa,
-    // pero la grilla de al lado está en cm (lo convierte `normalizarBarra`) y el dibujo
-    // también: mostrarlos juntos sin convertir ponía «55» al lado de «mín 160».
-    var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
-    var esp = det.esperado != null
-      ? '<span class="revesp">' + (i.regla === 'lado_corto' ? 'mín ' : 'debería ') +
-        cm(det.esperado / 10) + ' cm</span>' : '';
-    if (!f || !f.dims) {
-      // Sin la figura leída: el lado del hallazgo y su medida, que es lo que hay.
-      var ns = Object.keys(malos);
-      if (!ns.length) return '<span class="muted">—</span>';
-      return ns.map(function (L) {
-        return '<b class="revmal">' + esc(L) + ' ' +
-               (det.valor != null ? cm(det.valor / 10) : '?') + '</b>';
-      }).join(' · ') + ' ' + esp;
-    }
-    // LA FIGURA COMPLETA: todas sus letras y, entre lado y lado, el ángulo con el que
-    // dobla. Con eso la barra se verifica acá y no hay que abrir aSa, que es lo que el
-    // usuario pidió. Los ángulos vienen de aSa como el giro de cada lado CONTRA EL
-    // ANTERIOR, así que el primero no tiene y van intercalados.
-    // LA MISMA GRILLA QUE EL RESUMEN DE LA AUDITORÍA. Vive en index.js y se usa acá: las
-    // dos pantallas muestran la misma barra y no tienen por qué pintarla distinto.
-    if (!global.audGrillaLados) return '<span class="muted">—</span>';
-    return global.audGrillaLados(f, malos, esc) + esp;
-  }
 
   function _celda(cc, ref) {
     var c = REVS.figs[cc];
@@ -651,25 +613,19 @@
 
   // Se escribe SOBRE las celdas, sin repintar la hoja: lo que ya está marcado sigue
   // marcado y los formularios abiertos no se cierran.
+
+  // Olvida lo leído de los códigos a los que pertenecen esas señales.
+  // LA FIGURA, CUANDO LLEGA. Sólo el dibujo: los lados ya están en la fila, salidos de la
+  // señal, y no cambian con la lectura.
   function _pintarFiguras(cc) {
     var caja = $('revItemsCuerpo');
     if (!caja) return;
-    var porRef = {};
-    itemsVisibles().forEach(function (i) { porRef[(i.cc || '') + '|' + i.ref] = i; });
     caja.querySelectorAll('td[data-fig]').forEach(function (td) {
       if (cc && td.dataset.cc !== cc) return;
       td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);
-      // Los lados salen de la misma lectura, así que se llenan en el mismo paso.
-      var lad = td.parentNode && td.parentNode.querySelector('td.revlados');
-      var it = porRef[td.dataset.cc + '|' + td.dataset.fig];
-      if (lad && it) {
-        var firma = lad.querySelector('div');
-        lad.innerHTML = _ladosCelda(it) + (firma ? firma.outerHTML : '');
-      }
     });
   }
 
-  // Olvida lo leído de los códigos a los que pertenecen esas señales.
   function _olvidarFiguras(ids) {
     var m = {};
     ids.forEach(function (x) { m[String(x)] = 1; });
@@ -749,10 +705,45 @@
     _pintarAcc();
   }
 
-  function filaItem(i) {
+
+  // UN SOLO ENCABEZADO POR CÓDIGO (21-oct, lo pidió el usuario: «estamos repitiendo A, B y
+  // C muchas veces»): Marca · Figura · A B C… · α1 α2… · Esperado · Regla · Estado. Las
+  // letras y los ángulos salen de la señal (`detalle.lados_all`, guardado al detectar), así
+  // que no dependen de haber leído aSa; la figura sólo dibuja. Las señales de antes de hoy
+  // traen sólo los lados marcados hasta la próxima revisión, que las rellena.
+  function _colsGrupo(items) {
+    var letras = [], vistas = {}, nang = 0;
+    items.forEach(function (i) {
+      var det = i.detalle || {}, la = det.lados_all || [];
+      la.forEach(function (l, k) {
+        if (!vistas[l[0]]) { vistas[l[0]] = 1; letras.push(l[0]); }
+        if (k > 0 && l[2] != null) nang = Math.max(nang, k);
+      });
+      if (!la.length) (det.lados || []).forEach(function (L) { if (!vistas[L]) { vistas[L] = 1; letras.push(L); } });
+    });
+    letras.sort();
+    return { letras: letras, nang: nang };
+  }
+
+  function _tablaGrupo(g) {
+    var c = _colsGrupo(g.items), ang = '';
+    for (var k = 1; k <= c.nang; k++) ang += '<th class="revn reva">α' + k + '</th>';
+    return '<table><tr class="revhead"><th style="width:22px"></th><th>Marca</th><th>Figura</th>' +
+      c.letras.map(function (L) { return '<th class="revn">' + esc(L) + '</th>'; }).join('') + ang +
+      '<th class="revn" title="Lo que la regla pide: un mínimo en el lado corto, la medida exacta en los opuestos">Esperado</th>' +
+      '<th>Regla</th><th>Estado</th><th></th></tr>' +
+      g.items.map(function (i) { return filaItem(i, c); }).join('') + '</table>';
+  }
+
+  function filaItem(i, c) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
     var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
     var resuelto = hecho || i.estado === 'declarada' || i.estado === 'corregir';
+    var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
+    var malos = {}, porL = {}, angs = [];
+    (det.lados || []).forEach(function (L) { malos[L] = 1; });
+    (det.lados_all || []).forEach(function (l, k) { porL[l[0]] = l[1]; if (k > 0) angs[k - 1] = l[2]; });
+    if (!(det.lados_all || []).length) (det.lados || []).forEach(function (L) { porL[L] = det.valor; });
     var firma = '';
     if (nap) {
       firma = '<div class="muted" style="font-size:10px">' + esc(i.nota || '') +
@@ -762,46 +753,46 @@
               esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') +
               (hecho ? ' · aSa lo confirmó' : '') + '</div>';
     }
-    // LOS BOTONES VAN EN LA FILA, los mismos tres que en la auditoría (20-oct): Aplica | No
-    // aplica, y «Resuelto», verde cuando está marcado, que se aprieta cuando el cambio ya se
-    // hizo en aSa y se vuelve a apretar para deshacerlo. Una barra que aSa ya confirmó no
-    // se discute: no lleva botones.
+    // LOS BOTONES, EN LÍNEA: Aplica | No aplica, y Resuelto a continuación con una
+    // separación chica (lo pidió el usuario). Una barra que aSa ya confirmó no lleva.
+    // «No aplica» ES resolver: la fila queda verde al guardar, sin otro clic.
     var acc = hecho ? '<span class="muted">confirmada</span>'
-      : '<div class="revseg">' +
+      : '<div class="revaccs"><div class="revseg">' +
           '<button class="' + (nap ? '' : 'on') + '" data-aplica="' + i.id + '"' +
             (nap ? '' : ' disabled') + ' title="El hallazgo es válido y hay que corregirlo">Aplica</button>' +
           '<button class="' + (nap ? 'on' : '') + '" data-noaplica="' + i.id + '"' +
-            ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
+            ' title="Dejar sin efecto, con explicación firmada. Queda resuelta.">No aplica</button>' +
         '</div>' +
         (nap ? '' : (resuelto
           ? '<button class="audbres on" data-deshacer="' + i.id + '" title="Marcada como resuelta. ' +
             'Vuelve a apretar si todavía no está cambiada en aSa.">✓ Resuelto</button>'
           : '<button class="audbres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
             'hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, ' +
-            'te avisa.">Resuelto</button>'));
-    var cols = 7;
-    // LA FILA MUESTRA LA BARRA, NO LA DESCRIBE. El texto entero de la señal queda en el
-    // `title`: no se pierde, pero deja de ocupar dos renglones por fila para decir lo
-    // que `D 90` en rojo dice de un vistazo.
+            'te avisa.">Resuelto</button>')) + '</div>';
+    var cols = 7 + c.letras.length + c.nang, angTd = '';
+    for (var k = 0; k < c.nang; k++) {
+      angTd += '<td class="revn reva">' + (angs[k] != null ? Math.abs(Math.round(angs[k])) + '°' : '') + '</td>';
+    }
+    var esp = det.esperado != null ? (i.regla === 'lado_corto' ? 'mín ' : '') + cm(det.esperado / 10) : '';
     return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
       '<td style="width:22px">' + (hecho ? '✓' :
         '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
         ' title="Marcar para resolver varias de una vez">') + '</td>' +
-      '<td class="revm" style="width:84px"><span class="audref" data-ver="' + i.id +
-        '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
+      '<td class="revm"><span class="audref" data-ver="' + i.id +
+        '" title="Ver la barra en grande">' + esc(i.ref) + '</span>' + firma + '</td>' +
       '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '"></td>' +
-      '<td class="revlados" title="' + esc(det.texto || '') + '">' + _ladosCelda(i) + firma + '</td>' +
-      '<td style="width:104px"><span class="revreg" title="' + esc(r.porque || r.nombre || '') + '">' +
+      c.letras.map(function (L) {
+        return '<td class="revn' + (malos[L] ? ' mal' : '') + '">' + (porL[L] != null ? cm(porL[L] / 10) : '') + '</td>';
+      }).join('') + angTd +
+      '<td class="revn revesp">' + esc(esp) + '</td>' +
+      '<td><span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +
         esc(r.corto || r.nombre) + '</span></td>' +
-      '<td style="width:112px"><span class="revi ' + esc(i.estado) + '">' +
-        esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
-      '<td class="revacc" style="width:132px">' + acc + '</td></tr>' +
+      '<td><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
+      '<td class="revacc">' + acc + '</td></tr>' +
       '<tr class="revnapform" data-form="' + i.id + '" style="display:none"><td colspan="' + cols +
         '"><div class="revnapcaja">' +
         '<select data-mot="' + i.id + '">' + _opcionesMotivo() + '</select>' +
         '<input type="text" data-nota="' + i.id + '" placeholder="Explica por qué no aplica — lo lee quien audita y queda firmado">' +
-        // «Y TODAS LAS IGUALES»: una figura que la regla marca siempre sale decenas de
-        // veces en la misma obra. Explicarlo treinta veces es como no tenerlo.
         '<label title="Aplica esta misma explicación a las barras iguales de esta obra que sigan abiertas">' +
         '<input type="checkbox" data-pat="' + i.id + '"> y todas las iguales</label>' +
         '<button class="audmini ver" data-napok="' + i.id + '">Guardar</button>' +

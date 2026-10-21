@@ -1161,8 +1161,8 @@ check("el lado que no cumple se marca en la grilla, no en medio del texto",
       "mal[L] ? ' class=\"mal\"' : ''" in JS and ".audgl td.mal" in HTM)
 # UNA SOLA GRILLA PARA LAS DOS PANTALLAS: la revision de barras y el resumen de la
 # auditoria muestran la misma barra y no tienen por que pintarla distinto.
-check("la grilla se escribe una vez y la usan las dos pantallas",
-      "audGrillaLados(f, malos, esc)" in REVJS and "function audGrillaLados" not in REVJS)
+check("la grilla por fila es de la auditoría; la revisión pasó a un encabezado por código (21-oct)",
+      "audGrillaLados" not in REVJS and "function _tablaGrupo(" in REVJS)
 # EL BUG DE LAS UNIDADES, que no se ve hasta que alguien lo mira: `normalizarBarra` trae
 # lo de aSa en CENTIMETROS (k=0,1) y el render rotula cm, pero la REGLA guarda su valor y
 # su esperado en MILIMETROS. La grilla mostraba los dos juntos —«55» al lado de «min
@@ -1171,7 +1171,8 @@ check("la grilla va en CENTIMETROS, que es lo que ya rotula el dibujo",
       "fila('v', 'cm'," in JS and "fila('v', 'mm'," not in JS
       and "global.audNumCm" in JS)
 check("...y el esperado de la regla se convierte: lo guarda en milimetros",
-      "cm(det.esperado / 10)" in REVJS and "cm(det.valor / 10)" in REVJS)
+      "cm(det.esperado / 10)" in REVJS and "cm(porL[L] / 10)" in REVJS
+      and "porL[L] = det.valor" in REVJS)
 check("...con un decimal solo cuando hace falta: 1,5 se lee, 55,0 es ruido",
       "Math.abs(r - Math.round(r)) < 0.05" in JS and "replace('.', ',')" in JS)
 # «La grilla se desordena, dejala fija»: sin ancho fijo cada columna se estira con su

@@ -637,7 +637,24 @@
   .revfig svg{display:block; margin:0 auto; height:auto;}
   .revcc2 tr.hecho td{background:#f1f8e9;}
   .revcc2 tr.hecho td.revm{color:#558b2f;}
-  .revcc2 tr.nap td{background:#fafafa; color:#90a4ae;}
+  /* «NO APLICA» ES RESOLVER (21-oct): la fila queda verde al guardar, como una resuelta. */
+  .revcc2 tr.nap td{background:#f1f8e9;}
+  /* UN SOLO ENCABEZADO POR CÓDIGO (21-oct): Marca · Figura · A B C… · α1 α2… · Esperado ·
+     Regla · Estado. Los lados van compactos y centrados; el malo en rojo. */
+  .revcc2 th{font-size:9.5px; color:#78909c; text-transform:uppercase; letter-spacing:.3px;
+             font-weight:600; text-align:left; padding:4px 6px; background:#fafbfc;
+             border-bottom:1px solid #e3e8ef; white-space:nowrap;}
+  .revcc2 td{padding:4px 6px;}
+  .revcc2 th.revn, .revcc2 td.revn{text-align:center; padding-left:3px; padding-right:3px;
+                                   min-width:30px; font-variant-numeric:tabular-nums;}
+  .revcc2 td.revn{font-weight:600; color:#37474f; vertical-align:middle;}
+  .revcc2 td.revn.mal{background:#ffebee; color:#c62828;}
+  .revcc2 th.reva, .revcc2 td.reva{color:#90a4ae; font-weight:400; font-size:10px;}
+  .revcc2 td.revesp{color:#8d6e00; font-weight:600;}
+  .revcc2 td.revacc{white-space:nowrap;}
+  /* Aplica | No aplica, y Resuelto a continuación con una separación chica. */
+  .revaccs{display:inline-flex; align-items:center; gap:8px; white-space:nowrap;}
+  .revaccs .audbres{margin-left:0;}
   .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
   .revi.abierta{background:#fff8e1; color:#8d6e00;} .revi.declarada{background:#e3f2fd; color:#1565C0;}
   .revi.corregida{background:#e8f5e9; color:#2e7d32;} .revi.aceptada{background:#efebe9; color:#5d4037;}

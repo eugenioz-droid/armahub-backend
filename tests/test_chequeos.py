@@ -656,20 +656,21 @@ print("\n18. La fila muestra la barra, no la describe")
 # y los lados que tiene la figura, resaltar en rojo el que no cumple. Eso es mejor que
 # todo ese texto. Además así el usuario verifica acá sin tener que ir a aSa».
 check("los lados de la figura están en la fila, con el que falla en rojo",
-      "function _ladosCelda(" in JS and 'class="revmal"' in JS
-      and ".revlados .revmal" in HTM and "color:#c62828" in HTM)
-check("...salen de la misma lectura que el dibujo: no cuesta una llamada más",
-      "global.audBarraNormalizada(b, 'asa')" in JS.split("function _ladosCelda(")[1][:900]
-      and "f.dims" in JS)
-check("...y mientras no se pidan las figuras, al menos se ve el lado del hallazgo",
-      "Sin la figura leída" in JS and "det.valor" in JS)
+      "function _colsGrupo(" in JS and "malos[L] ? ' mal' : ''" in JS
+      and ".revcc2 td.revn.mal{" in HTM and "color:#c62828" in HTM)
+# DESDE LA SEÑAL, NO DESDE aSa (21-oct): todos los lados se guardan al detectar, en su
+# orden y con su ángulo, y la hoja los pinta sin leer nada. La figura sólo dibuja.
+check("...y salen de la señal misma, guardados al detectar: no cuesta leer aSa",
+      '"lados_all": [[l["nombre"], l["largo"], l.get("angulo")]' in SRC and "det.lados_all" in JS)
+check("...y una señal de antes de hoy (sin todos los lados) muestra al menos el del hallazgo",
+      "porL[L] = det.valor" in JS)
 check("el esperado se rotula según lo que significa en cada regla, no «debería» siempre",
-      "i.regla === 'lado_corto' ? 'mín ' : 'debería '" in JS)
+      "i.regla === 'lado_corto' ? 'mín ' : ''" in JS and 'title="Lo que la regla pide' in JS)
 check("el hallazgo va como etiqueta corta, no como párrafo",
       "r.corto || r.nombre" in JS and 'class="revreg"' in JS
       and "esc(det.texto || '') + firma" not in JS)
 check("...y el texto entero no se pierde: queda en el title de la celda",
-      'class="revlados" title="\' + esc(det.texto' in JS)
+      'class="revreg" title="\' + esc(det.texto' in JS)
 check("el cubicador se dice una vez por código, no en cada fila",
       "revquien" in JS and "revquien" in HTM)
 # El usuario, viendo la columna vacia: «falto el renderizado». Una columna vacia no se
@@ -684,11 +685,14 @@ check("...y al cerrar el modal se deja de mirar",
 # EL CHURRO SE FUE: iba en un renglon, en orden de recorrido, con los angulos
 # intercalados en chico y con signo. El usuario: «la forma de presentar esto esta media
 # sucia... por que no los pones claros, A = 15, B = XX, con encabezados».
-check("la figura va completa, en la grilla con encabezados que vive en index.js",
-      "global.audGrillaLados(f, malos, esc)" in JS and "revang" not in JS
-      and ".audgl" in HTM)
-check("...y la grilla no se copia aca: es la misma que usa el resumen de la auditoria",
-      "function audGrillaLados" not in JS and "audGrillaLados" in AUDJS)
+# UN SOLO ENCABEZADO POR CÓDIGO (21-oct). El usuario: «estamos repitiendo A, B y C muchas
+# veces. Haz 1 solo encabezado para todo: Marca | Figura | A | B | C | … | Ang1 | Ang2».
+check("un solo encabezado por código: Marca · Figura · A B C… · α1 α2… · Esperado · Regla · Estado",
+      "function _tablaGrupo(" in JS and "<th>Marca</th><th>Figura</th>" in JS
+      and "'<th class=\"revn reva\">α' + k + '</th>'" in JS and "revang" not in JS
+      and ".revcc2 th.revn, .revcc2 td.revn{" in HTM)
+check("...y la grilla por fila se fue de acá: la auditoría conserva la suya en index.js",
+      "function _ladosCelda(" not in JS and "audGrillaLados" not in JS and "audGrillaLados" in AUDJS)
 # El usuario: «establecer un color especifico para las figuras que vienen de aSa».
 check("las barras de aSa se dibujan con su propia tinta",
       "TINTA_ASA" in DIS and "#4a148c" in DIS and "TINTA_ASA: TINTA_ASA" in DIS
@@ -711,6 +715,16 @@ check("en la hoja todos ven todo; el chip filtra y al abrir queda en el propio",
       "function _miChip(" in JS and "REVS.filtro_cub = _miChip();" in JS
       and "'Tus ' + items.length" not in JS
       and "if (!_esAdmin()) { cubs.innerHTML = ''; }" not in JS)
+
+
+print("\nLA HOJA, ARMONIZADA CON LA AUDITORÍA (21-oct)")
+check("Resuelto va en línea, a continuación de No aplica, con una separación chica",
+      'class="revaccs"' in JS and ".revaccs{display:inline-flex" in HTM and ".revaccs .audbres{margin-left:0;}" in HTM)
+check("«no aplica» ES resolver: la fila queda verde al guardar, sin otro clic",
+      ".revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." in JS)
+check("la figura, cuando llega, sólo dibuja: los lados ya están en la fila",
+      "td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);" in JS
+      and "lad.innerHTML = _ladosCelda" not in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

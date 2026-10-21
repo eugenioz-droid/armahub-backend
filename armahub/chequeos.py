@@ -430,7 +430,14 @@ def correr(barras, reglas=None) -> list:
                     "elemento": b.get("elemento"), "marca": b.get("marca"),
                     "figura": b.get("figura"), "diam": b.get("diam"),
                     "detalle": {"texto": h.get("texto"), "lados": h.get("lados") or [],
-                                "valor": h.get("valor"), "esperado": h.get("esperado")},
+                                "valor": h.get("valor"), "esperado": h.get("esperado"),
+                                # TODOS LOS LADOS, EN SU ORDEN (21-oct): [nombre, mm, ángulo
+                                # con el anterior]. Con esto la hoja arma un solo encabezado
+                                # por código —A B C… α1 α2…— sin tener que leer aSa; la
+                                # figura queda sólo para el dibujo. Va como lista y no como
+                                # dict porque jsonb no respeta el orden de las llaves.
+                                "lados_all": [[l["nombre"], l["largo"], l.get("angulo")]
+                                              for l in (b.get("lados") or [])]},
                     # Esta barra de este código. Con ella, revisar dos veces no duplica.
                     "firma": _firma(r["codigo"], b.get("cc"), b.get("elemento"), b["ref"], *clave),
                     # La FORMA del problema, sin la barra ni el código: aceptar una apaga
