@@ -824,7 +824,13 @@
             : '') + '</td>' +
         '<td>' + (e.accion_estado ? '<span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' : '') + '</td></tr>';
     });
-    $('audDetElems').innerHTML = html + '</tbody>';
+    // LA MUESTRA ES DEL AUDITOR (21-oct). Al auditado —y a cualquiera que no audite— no se
+    // le pinta: «esto confunde al auditado, porque esto es lo que hizo el auditor; acá es
+    // donde el auditado modifica y queda la embarrada». Lo suyo está abajo.
+    $('audDetElems').innerHTML = AUD.soy_auditor
+      ? html + '</tbody>'
+      : '<tbody><tr><td class="audvacio">La muestra la revisa el auditor. Lo tuyo está abajo, en ' +
+        'Resumen Hallazgos.</td></tr></tbody>';
     $('audDetElems').querySelectorAll('tr.fila').forEach(function (tr) {
       tr.addEventListener('click', function () {
         var e = (AUD.elementos || []).filter(function (x) { return x.id === Number(tr.dataset.id); })[0];
@@ -1147,9 +1153,10 @@
   // (hay un cuarto, 'xl', que acá no entra: la figura vive en una celda de tabla).
   // Se recuerda por navegador: quien trabaja con figuras chicas las quiere chicas
   // siempre, y volver a elegirlo en cada pantalla es trabajo que no paga.
-  var FIG_TAM = 'm';
-  try { FIG_TAM = global.localStorage.getItem('armahub_fig_tam') || 'm'; } catch (e) {}
-  if (['s', 'm', 'l'].indexOf(FIG_TAM) === -1) FIG_TAM = 'm';
+  // S POR DEFECTO (21-oct) y el último que eligió la persona, si lo hay.
+  var FIG_TAM = 's';
+  try { FIG_TAM = global.localStorage.getItem('armahub_fig_tam') || 's'; } catch (e) {}
+  if (['s', 'm', 'l'].indexOf(FIG_TAM) === -1) FIG_TAM = 's';
 
   global.audFigTam = function (t) {
     if (t && ['s', 'm', 'l'].indexOf(t) !== -1) {
@@ -1182,8 +1189,9 @@
   // parecidas en una miniatura son la misma.
   function _conNombre(svg, f) {
     if (!svg || !f || !f.figura) return svg;
-    return svg + '<div class="audfign" title="Figura del catálogo de aSa">' +
-           esc(f.figura) + '</div>';
+    // AL LADO, NO DEBAJO (21-oct): el usuario quería las filas más compactas.
+    return '<span class="audfigw">' + svg + '<span class="audfign" title="Figura del catálogo de aSa">' +
+           esc(f.figura) + '</span></span>';
   }
 
   function celdaFigura(f) {
@@ -1658,7 +1666,7 @@
       'comprobación automática contra aSa.">Debería decir</th>' +
       '<th title="Por qué pasó. Se elige en la matriz Ishikawa, y es POR BARRA: dos barras ' +
       'del mismo eje pueden estar mal por razones distintas.">Por qué pasó</th>' +
-      '<th>Estado</th><th></th></tr></thead><tbody>' +
+      '<th>Estado</th><th class="audaccth">' + (enviada && AUD.estado !== 'cerrada' ? 'Acción' : '') + '</th></tr></thead><tbody>' +
       // AGRUPADO POR CÓDIGO (21-oct), como la revisión: es como se corrige —se abre un CC
       // en aSa y se arregla lo de ahí— y la cabecera dice cuánto queda de ese código.
       (function () {
@@ -1674,9 +1682,15 @@
             (e.barras_malas || []).forEach(function (b) { lineas++; if (b.corregido || b.desestimado) listas++; });
             if (e.comentario_suelto) { lineas++; if ((e.accion_estado || 'pendiente') !== 'pendiente') listas++; }
           });
+          var marcables = enviada && AUD.estado !== 'cerrada' && AUD.puedo_actuar && g.els.some(function (e) {
+            return (e.barras_malas || []).some(function (b) { return !b.corregido && !b.desestimado; });
+          });
           return '<tr class="audgrupo"><td colspan="10">' +
-            '<label><input type="checkbox" data-agrupo="' + esc(g.cc || '') + '" title="Marcar todas las de este código"> ' +
-            '<b>' + esc(g.cc || '—') + '</b></label> <span class="muted">' + esc(g.descr || '') + '</span>' +
+            (marcables
+              ? '<label><input type="checkbox" data-agrupo="' + esc(g.cc || '') + '" title="Marcar todas las de este código"> ' +
+                '<b>' + esc(g.cc || '—') + '</b></label>'
+              : '<b>' + esc(g.cc || '—') + '</b>') +
+            ' <span class="muted">' + esc(g.descr || '') + '</span>' +
             (g.cubico ? '<span class="revquien">' + esc(String(g.cubico).split('@')[0]) + '</span>' : '') +
             '<span class="muted" style="float:right">' + listas + ' de ' + lineas + ' resuelta(s)</span></td></tr>' +
             g.els.map(function (e) {

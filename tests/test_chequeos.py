@@ -726,5 +726,18 @@ check("la figura, cuando llega, sólo dibuja: los lados ya están en la fila",
       "td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);" in JS
       and "lad.innerHTML = _ladosCelda" not in JS)
 
+
+print("\nLA HOJA PARTE POR LOS CÓDIGOS (21-oct)")
+# «Mejor separar: un listado con los CC y cantidad de hallazgos; luego click y se abre el
+# modal con las barras de ese CC».
+check("primero un listado de códigos con hallazgos y resueltos; el código se abre aparte",
+      "REVS.cc_abierto" in JS and 'class="revlista"' in JS and "data-abrircc=" in JS
+      and "data-volvercc=" in JS and ".revlista tr.revccfila" in HTM)
+check("...y volver a la lista o cambiar de cubicador limpia lo marcado, que era de otro código",
+      "REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();" in JS
+      and "REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();" in JS)
+check("resuelto, para los contadores de la hoja, incluye lo declarado",
+      "var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

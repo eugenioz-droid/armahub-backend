@@ -1083,6 +1083,14 @@ def listar(id_proyecto: str = "", auditor: str = "", estado: str = "", limite: i
     en la base, no en el navegador: es lo que se mira sin abrir nada."""
     _puede_ver(user)
     where, params = ["1=1"], []
+    # UNA AUDITORÍA NO ENVIADA NO EXISTE PARA EL AUDITADO (21-oct). Antes la lista se la
+    # mostraba «en curso» y al abrirla veía la muestra del auditor a medio revisar: el
+    # usuario, «esto confunde al auditado… el auditado debe ver sólo lo de abajo una vez
+    # enviada la auditoría». La ven su auditor, quien la creó y administración; el resto,
+    # desde el envío.
+    if user.get("role") not in ROLES_ADMINISTRAN:
+        where.append("(a.enviada_el IS NOT NULL OR a.auditor = %s OR a.creada_por = %s)")
+        params += [user.get("email", "?"), user.get("email", "?")]
     for col, valor in (("a.id_proyecto", id_proyecto), ("a.auditor", auditor), ("a.estado", estado)):
         if valor:
             where.append(f"{col} = %s")
@@ -1374,6 +1382,15 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             aud["notas"] = r[31]
             aud["creada_por"] = r[32]
             aud["cerrada_por"] = r[33]
+            # Igual que la lista: mientras no se envíe, sólo la ven quien la audita, quien
+            # la creó y administración. Al auditado le llega cuando el auditor la manda.
+            _yo = user.get("email", "?")
+            if (user.get("role") not in ROLES_ADMINISTRAN and _yo != aud.get("auditor")
+                    and _yo != aud.get("creada_por") and not aud.get("enviada")):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Esta auditoría todavía no se envió: el auditor la está revisando. "
+                           "Te llega cuando la mande.")
             cur.execute(
                 """SELECT e.id, e.sector, e.piso, e.ciclo, e.eje, e.nombre, e.estructura, e.barras,
                           e.kg, e.cubicado_por, e.hallazgo, e.texto, e.causa, e.revisado_por,

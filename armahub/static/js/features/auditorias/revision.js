@@ -391,6 +391,7 @@
 
   async function abrirItems(conFiltro) {
     REVS.sel_items = {};
+    if (!conFiltro) REVS.cc_abierto = null;
     // Sin revisión elegida se abren TODAS: el estado de arriba es global, así que el
     // botón y los chips de cubicador tienen que poder entrar a todo.
     if (!REVS.detalle || (REVS.sel && REVS.detalle.revision.id !== REVS.sel)
@@ -412,8 +413,10 @@
     var d = REVS.detalle, r = d.revision, items = itemsVisibles();
     $('revItemsTit').textContent = 'Revisión #' + r.id + ' · ' +
       (REVS.filtro_cub ? items.length + ' de ' + r.items + ' hallazgos · ' + REVS.filtro_cub
-                       : r.items + ' hallazgos');
-    var hechos = items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
+                       : r.items + ' hallazgos') + (REVS.cc_abierto ? ' · ' + REVS.cc_abierto : '');
+    var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };
+    function _resueltos(lista) { return lista.filter(function (i) { return RES[i.estado]; }).length; }
+    var hechos = _resueltos(items);
     var pct = items.length ? Math.round(hechos / items.length * 100) : 0;
     $('revItemsAvance').innerHTML = '<span>' + hechos + ' de ' + items.length + ' resueltos</span>' +
       '<div class="revbar2"><i style="width:' + pct + '%"></i></div><b>' + pct + '%</b>';
@@ -428,7 +431,7 @@
         }).join('');
       cubs.querySelectorAll('button[data-cub]').forEach(function (b) {
         b.addEventListener('click', function () {
-          REVS.filtro_cub = b.dataset.cub; REVS.sel_items = {}; pintarItems();
+          REVS.filtro_cub = b.dataset.cub; REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();
         });
       });
     }
@@ -441,25 +444,42 @@
       if (!grupos[k]) { grupos[k] = { cc: i.cc, obra: i.obra, job: i.job, items: [] }; orden.push(k); }
       grupos[k].items.push(i);
     });
+    // PRIMERO LOS CÓDIGOS, DESPUÉS LAS BARRAS (21-oct). El usuario: «mejor separar: un
+    // listado con los CC y cantidad de hallazgos; luego click y se abre el modal con las
+    // barras de ese CC». Es como se corrige —un código a la vez— y la hoja deja de ser
+    // una sola tira de 233 filas.
+    var abierto = REVS.cc_abierto && grupos[REVS.cc_abierto] ? grupos[REVS.cc_abierto] : null;
+    if (REVS.cc_abierto && !abierto) REVS.cc_abierto = null;
     $('revItemsCuerpo').innerHTML = !items.length
       ? '<div class="revvacio">No hay hallazgos tuyos en esta revisión.</div>'
-      : orden.map(function (k) {
-          var g = grupos[k];
-          var ok = g.items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
-          var fg = REVS.figs[g.cc];
-          var quienes = {};
-          g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
-          return '<div class="revcc2" data-grupocc="' + esc(g.cc || '') + '"><h5>' +
-            '<input type="checkbox" data-grupo="' + esc(k) + '"> ' +
-            '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
-            (Object.keys(quienes).length
-              ? '<span class="revquien">' + esc(Object.keys(quienes).join(', ')) + '</span>' : '') +
-            '<div style="flex:1"></div>' +
-            (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
-                           '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
-            '<span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
-            _tablaGrupo(g) + '</div>';
-        }).join('');
+      : (!abierto
+        ? '<table class="revlista"><tr class="revhead"><th>Código</th><th>Obra</th><th>Cubicó</th>' +
+          '<th class="revn">Hallazgos</th><th class="revn">Resueltos</th><th></th></tr>' +
+          orden.map(function (k) {
+            var g = grupos[k], ok = _resueltos(g.items), quienes = {};
+            g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
+            return '<tr class="revccfila' + (ok >= g.items.length ? ' hecho' : '') + '" data-abrircc="' + esc(k) +
+              '" title="Abrir las barras de este código">' +
+              '<td><b>' + esc(g.cc || '—') + '</b></td><td class="muted">' + esc(g.obra || '') + '</td>' +
+              '<td>' + esc(Object.keys(quienes).join(', ')) + '</td>' +
+              '<td class="revn">' + g.items.length + '</td><td class="revn">' + ok + '</td>' +
+              '<td style="text-align:right"><span class="audmini">Abrir ›</span></td></tr>';
+          }).join('') + '</table>'
+        : (function () {
+            var g = abierto, k = REVS.cc_abierto, ok = _resueltos(g.items), fg = REVS.figs[g.cc], quienes = {};
+            g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
+            return '<div class="revvolver"><button class="audmini" data-volvercc="1">‹ Todos los códigos</button></div>' +
+              '<div class="revcc2" data-grupocc="' + esc(g.cc || '') + '"><h5>' +
+              '<input type="checkbox" data-grupo="' + esc(k) + '"> ' +
+              '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
+              (Object.keys(quienes).length
+                ? '<span class="revquien">' + esc(Object.keys(quienes).join(', ')) + '</span>' : '') +
+              '<div style="flex:1"></div>' +
+              (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
+                             '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
+              '<span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
+              _tablaGrupo(g) + '</div>';
+          })());
     _bindItems();
     // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la hoja.
     if (global.audChipsTam) global.audChipsTam('revTam', pintarItems);
@@ -810,6 +830,13 @@
 
   function _bindItems() {
     var caja = $('revItemsCuerpo');
+    // Abrir un código, y volver a la lista. Las dos limpian lo marcado: era de otro código.
+    caja.querySelectorAll('[data-abrircc]').forEach(function (b) {
+      b.addEventListener('click', function () { REVS.cc_abierto = b.dataset.abrircc; REVS.sel_items = {}; pintarItems(); });
+    });
+    caja.querySelectorAll('[data-volvercc]').forEach(function (b) {
+      b.addEventListener('click', function () { REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems(); });
+    });
     caja.querySelectorAll('input[data-item]').forEach(function (c) {
       c.addEventListener('change', function () {
         if (c.checked) REVS.sel_items[c.dataset.item] = true; else delete REVS.sel_items[c.dataset.item];

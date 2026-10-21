@@ -1385,5 +1385,20 @@ check("cerrar no recibe el evento del clic como «confirmar»: sin eso se saltab
       "cz.addEventListener('click', function () { cerrarResueltas(false); });" in JS
       and "cz.addEventListener('click', cerrarResueltas);" not in JS)
 
+
+print("\nLA MUESTRA ES DEL AUDITOR; AL AUDITADO LE LLEGA CUANDO SE ENVÍA (21-oct)")
+# El usuario, viendo el formulario del auditor abierto en una auditoría sin enviar: «esto
+# confunde al auditado… el auditado debe ver sólo lo de abajo una vez enviada».
+check("una auditoría no enviada no existe para el auditado: ni en la lista ni en el detalle",
+      "(a.enviada_el IS NOT NULL OR a.auditor = %s OR a.creada_por = %s)" in SRC
+      and "Te llega cuando la mande." in SRC)
+check("la muestra del auditor no se le pinta a quien no audita",
+      "La muestra la revisa el auditor. Lo tuyo está abajo" in JS)
+check("el check de grupo sale sólo cuando hay algo que marcar, y la última columna tiene nombre",
+      "var marcables = enviada" in JS and 'class="audaccth"' in JS
+      and ".audacct th.audaccth:not(:empty)" in HTM)
+check("el nombre de la figura va al lado del dibujo, y el tamaño por defecto es S",
+      'class="audfigw"' in JS and "var FIG_TAM = 's';" in JS and ".audfigw{" in HTM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
