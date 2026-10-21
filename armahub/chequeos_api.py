@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .asa import AsaError
-from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_de, alias_cubicador,
+from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_de, alias_cubicador, correo_de_login,
                          _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
@@ -434,14 +434,13 @@ def cerrar_resueltas(body: CerrarResueltasBody, user=Depends(get_current_user)):
             if not filas:
                 raise HTTPException(status_code=400,
                                     detail="No hay nada marcado como resuelto que cerrar.")
-            if user.get("role") not in ROLES_ADMINISTRAN:
-                mios = set(alias_cubicador(cur, email))
-                ajenas = {f[1] for f in filas if (f[1] or "").strip() and (f[1] or "").strip() not in mios}
-                if ajenas:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Hay barras que cubicó otra persona (%s): cierra lo suyo quien lo hizo."
-                               % ", ".join(sorted(ajenas)[:3]))
+            # Cerrar lo ajeno también se puede (21-oct); al dueño le llega aviso al final.
+            mios = set(alias_cubicador(cur, email))
+            ajenas = {}
+            for f in filas:
+                q = (f[1] or "").strip()
+                if q and q not in mios:
+                    ajenas[q] = ajenas.get(q, 0) + 1
             ids = [f[0] for f in filas]
     # A aSa, código por código. Sin tope: cerrar es una vez, y lo que se cierra tiene que
     # quedar comprobado entero o dicho que no se pudo.
@@ -466,6 +465,10 @@ def cerrar_resueltas(body: CerrarResueltasBody, user=Depends(get_current_user)):
                 cur.execute("""UPDATE chequeo_senales
                                   SET cierre_confirmado_por = %s, cierre_confirmado_el = now()
                                 WHERE id = ANY(%s)""", (email, [s["id"] for s in siguen]))
+    for q, k in ajenas.items():
+        _avisar(q, "Revisión de barras: %s cerró %d barra(s) tuyas marcadas resueltas "
+                   "(aSa confirmó %d; %d seguían igual)."
+                   % (email.split("@")[0], k, len(cumplen), len(siguen)))
     audit(email, "chequeo_cerrar_resueltas",
           "%d barra(s): aSa confirmó %d, %d siguen igual%s, %d código(s) sin leer"
           % (len(ids), len(cumplen), len(siguen), " (cerradas igual, confirmadas)" if siguen else "",
@@ -563,15 +566,9 @@ class ResolverVariasBody(BaseModel):
 
 
 def _email_de_login(cur, login: str) -> Optional[str]:
-    """El correo del cubicador que en aSa se llama `login`. La misma regla que usan las
-    auditorías (`alias_de`): el login es la inicial del nombre pegada al apellido."""
-    if not login:
-        return None
-    cur.execute("SELECT email, nombre, apellido FROM users WHERE COALESCE(activo, TRUE)")
-    for email, nombre, apellido in cur.fetchall():
-        if alias_de(nombre or "", apellido or "", login):
-            return email
-    return None
+    """El correo del cubicador que en aSa se llama `login`. Es la misma regla de las
+    auditorías, y desde el 21-oct es la misma función: `correo_de_login`."""
+    return correo_de_login(cur, login)
 
 
 def _avisar_por_corregir(cur, ids: list) -> int:
@@ -964,14 +961,16 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
             if not filas:
                 raise HTTPException(status_code=400,
                                     detail="Esas barras ya están verificadas: no hay nada que declarar.")
-            if user.get("role") not in ROLES_ADMINISTRAN:
-                mios = set(alias_cubicador(cur, email))
-                ajenas = {f[1] for f in filas if (f[1] or "").strip() and (f[1] or "").strip() not in mios}
-                if ajenas:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Hay barras que cubicó otra persona (%s): sólo puede declararlas quien las hizo."
-                               % ", ".join(sorted(ajenas)[:3]))
+            # CUALQUIER CUBICADOR PUEDE RESOLVER LO AJENO, CON AVISO (21-oct). Antes un 403;
+            # el usuario: «a veces un cubicador no está disponible y otro debe resolver…
+            # cualquier cubicador puede resolver pero debe dar aviso». Quién lo hizo queda
+            # en la señal (`declarada_por` / `resuelto_por`); al dueño se le avisa abajo.
+            mios = set(alias_cubicador(cur, email))
+            ajenas = {}
+            for f in filas:
+                q = (f[1] or "").strip()
+                if q and q not in mios:
+                    ajenas[q] = ajenas.get(q, 0) + 1
             ids = [f[0] for f in filas]
             # «Y TODAS LAS IGUALES»: se suman las señales de la misma obra con la misma
             # regla y la misma firma —la figura que la regla marca siempre— que todavía
@@ -995,6 +994,14 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
                         (del_patron, list(mios)))
                     del_patron = [r[0] for r in cur.fetchall()]
                 ids = sorted(set(ids) | set(del_patron))
+            # El aviso al dueño: una vez por persona, con cuántas, en qué códigos y qué se hizo.
+            verbo = {"declarada": "marcó resueltas", "aceptada": "dejó sin efecto",
+                     "abierta": "volvió a abrir"}[body.estado]
+            for q, k in ajenas.items():
+                _avisar(q, "Revisión de barras: %s %s %d barra(s) tuyas (%s). %s"
+                           % (email.split("@")[0], verbo, k,
+                              ", ".join(sorted({(f[2] or "") for f in filas if (f[1] or "").strip() == q})[:4]),
+                              nota[:100]))
             if body.estado == "declarada":
                 cur.execute(
                     """UPDATE chequeo_senales

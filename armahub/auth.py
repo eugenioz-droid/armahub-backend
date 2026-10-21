@@ -118,7 +118,6 @@ _ROLES: dict = {}          # email -> (rol, vence_en_monotonic)
 def _rol_actual(email: str):
     """El rol de la base para este correo, recordado ROL_CACHE_SEG segundos. Devuelve None
     si el correo no existe en `users` (y también lo recuerda, para no insistir)."""
-    import time
     ahora = time.monotonic()
     hit = _ROLES.get(email)
     if hit and hit[1] > ahora:

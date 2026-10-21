@@ -1623,8 +1623,8 @@
       (!enviada
         ? '<div class="audnota">Todavía no se envía: hasta que el auditor la mande, nadie ' +
           'puede accionar sobre estas barras.</div>'
-        : (mias ? '' : '<div class="audnota">Acá se ve todo lo que salió. Los botones ' +
-                       'aparecen en las barras que cubicaste tú.</div>')) +
+        : (mias ? '' : '<div class="audnota">Acá se ve todo lo que salió. Puedes resolver también lo de otro ' +
+                       'cubicador si no está: le llega aviso y queda escrito quién lo hizo.</div>')) +
       '<table class="audt audacct"><thead><tr><th>Barra</th><th>Figura</th>' +
       '<th>Elemento</th><th>Cubicó</th>' +
       '<th title="Lo que el auditor anotó en esta barra.">Qué se encontró</th>' +
@@ -1671,13 +1671,14 @@
     var suelto = !!e.comentario_suelto;
     var resuelto = est === 'corregida' || est === 'verificada';
     var nap = est === 'desestimada';
-    var puede = !!(suelto && e.mio && enviada && AUD.estado !== 'cerrada');
+    var puede = !!(suelto && AUD.puedo_actuar && enviada && AUD.estado !== 'cerrada');
     var sinRca = !e.causa;
     var estado = nap
       ? '<span class="auddes" title="' + esc(e.accion_nota || '') + '">No aplica</span>'
       : resuelto
         ? '<span class="audacc1 corregida">Resuelto</span>'
         : '<span class="audacc1 pendiente">Por resolver</span>';
+    estado += _porOtro(e.resuelto_por_otro);
     var acc = '';
     if (puede) {
       acc = '<div class="revseg">' +
@@ -1729,9 +1730,18 @@
   //   Por qué pasó         — abre la matriz Ishikawa de esta barra, no del elemento.
   //   Ya la corregí        — la declara corregida. Comprobarlo es del sistema, que vuelve
   //                          a pedirle la barra a aSa: nadie marca «verificada» a mano.
+  // QUIÉN LO RESOLVIÓ EN LUGAR DEL DUEÑO (21-oct). Cualquier cubicador puede resolver lo
+  // ajeno —el dueño recibe aviso—, y la fila lo dice para que el rastro esté a la vista.
+  function _porOtro(correo) {
+    if (!correo) return '';
+    return ' <span class="audporotro" title="Lo resolvió otra persona en lugar de quien cubicó; ' +
+           'a quien cubicó le llegó aviso.">por ' + esc(correo.split('@')[0]) + '</span>';
+  }
+
   function filaAccion(e, b, enviada) {
     var cerrada = AUD.estado === 'cerrada';
-    var puede = !!(e.mio && enviada && !cerrada);
+    // Cualquier cubicador puede resolver (21-oct); al dueño le llega aviso. Lo dice el backend.
+    var puede = !!(AUD.puedo_actuar && enviada && !cerrada);
     var estado = b.desestimado
       ? '<span class="auddes" title="' + esc(b.desestimado_motivo || '') + '">No aplica</span>'
       : b.objecion
@@ -1739,6 +1749,7 @@
         : b.corregido
           ? '<span class="audacc1 corregida">Resuelto</span>'
           : '<span class="audacc1 pendiente">Por resolver</span>';
+    estado += _porOtro(b.resuelto_por_otro);
     var acc = '';
     if (puede) {
       var sinRca = !b.causa;

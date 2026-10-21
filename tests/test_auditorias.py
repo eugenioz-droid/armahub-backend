@@ -575,8 +575,9 @@ print("\n7c0. El flujo: el auditado corrige, el sistema comprueba")
 check("la corrección es por ITEM, igual que el hallazgo",
       '@router.put("/auditorias/{auditoria_id}/items/{item_id}/correccion")' in SRC
       and '@router.get("/auditorias/mias/items")' in SRC)
-check("...la declara quien cubicó, y nadie más",
-      "Esta corrección es de quien cubicó el elemento." in SRC)
+check("...la declara cualquier cubicador; si no es el dueño, al dueño le llega aviso (21-oct)",
+      "Esta corrección es de quien cubicó el elemento." not in SRC
+      and "_avisar_si_ajeno(user, cubico," in SRC)
 check("...con un comentario para cuando lo hecho no calza exacto con lo observado",
       "consideración mixta entre lo" in SRC and "nota_correccion" in SRC)
 check("decir «hice uno nuevo» obliga a decir CUÁL",
@@ -1073,8 +1074,8 @@ check("marcar resuelto es un clic: ya no pregunta cómo se corrigió",
       "function corregirItem(" in JS and "cuerpo.tipo = 'nuevo'" not in JS
       and "global.confirm(" not in JS.split("async function corregirItem(")[1][:900]
       and "/correccion'" in JS)
-check("los botones salen sólo en las barras propias, sólo si está enviada y no cerrada",
-      "var puede = !!(e.mio && enviada && !cerrada);" in JS)
+check("los botones salen para cualquier cubicador, sólo si está enviada y no cerrada",
+      "var puede = !!(AUD.puedo_actuar && enviada && !cerrada);" in JS)
 check("el auditor conserva su derecho a réplica sobre un descarte",
       "data-objetar=" in JS and "AUD.soy_auditor" in JS)
 
@@ -1113,8 +1114,8 @@ check("hay un cierre del auditado, aparte del «cerrar a mano» del auditor",
 check("...que exige que no quede NINGUNA barra pendiente",
       "Todavía quedan %s sin resolver" in SRC
       and "COUNT(*) FILTER (WHERE NOT i.corregido AND NOT i.desestimado)" in SRC)
-check("...y que lo cierre quien tuvo barras acá, no cualquiera",
-      "Cierra quien tuvo barras que corregir en esta auditoría." in SRC)
+check("...y que lo cierre quien tuvo barras acá o quien las resolvió, no cualquiera",
+      "Cierra quien tuvo barras que corregir en esta auditoría, o quien las resolvió." in SRC)
 check("la condición la dice el backend, para no ofrecer un botón que iba a dar 400",
       '"puedo_cerrar"' in SRC and '"barras_pendientes"' in SRC and "AUD.puedo_cerrar" in JS)
 # EL INFORME ES DE UNA AUDITORIA TERMINADA: a medio camino dice una cosa hoy y otra
@@ -1325,6 +1326,32 @@ check("...más el único porcentaje que quedó: hallazgos sobre elementos audita
       'total["pct_hallazgos"]' in SRC and "de hallazgos sobre" in JS)
 check("...y las tablas por cubicador y por obra ya no gradúan conformidad",
       'Conformidad</th>' not in JS and 'Hallazgos</th>' in JS)
+
+
+print("\nCUALQUIER CUBICADOR RESUELVE, EL DUEÑO SE ENTERA, Y LOS AVISOS LLEGAN (21-oct)")
+# El usuario eligió la opción A: «cualquier cubicador puede resolver pero debe dar aviso».
+# Y de paso salió que 37 de 48 avisos de auditoría iban al LOGIN de aSa («HMONDACA») en
+# vez del correo, y la campana busca por correo: nunca le llegaron a nadie.
+MIG159 = open(os.path.join(ROOT, "armahub", "migrations", "159_avisos_al_correo.sql"),
+              encoding="utf-8").read()
+check("las puertas del auditado ya no dan 403 por no ser el dueño",
+      'detail="Esta corrección es de quien cubicó el elemento."' not in SRC
+      and 'detail="Este comentario es de quien cubicó el elemento."' not in SRC
+      and "def _avisar_si_ajeno(" in SRC)
+check("...y en los cuatro verbos al dueño le llega aviso si lo hizo otro",
+      SRC.count("_avisar_si_ajeno(user,") >= 4 and "en tu lugar" in SRC)
+check("los avisos van al correo: si llega un login de aSa, se resuelve",
+      "def correo_de_login(" in SRC and "correo_de_login(cur, destinatario)" in SRC)
+check("...y los 37 que ya salieron al login se re-dirigen al correo",
+      "UPDATE notificaciones" in MIG159 and "NOT LIKE '%@%'" in MIG159)
+check("el detalle dice quién resolvió en lugar del dueño, y que cualquiera puede actuar",
+      '"resuelto_por_otro"' in SRC and 'aud["puedo_actuar"]' in SRC
+      and "function _porOtro(" in JS and "AUD.puedo_actuar && enviada" in JS
+      and ".audporotro{" in HTM)
+check("cierra también quien resolvió algo acá en lugar del dueño",
+      "o quien las resolvió." in SRC and "resolvi = cur.fetchone()[0]" in SRC)
+check("los indicadores del RCA se dicen internos: no es el Pareto de los reclamos",
+      "NO es el Pareto de los reclamos" in SRC and "NO es el Pareto de los reclamos" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

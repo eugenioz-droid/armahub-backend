@@ -553,6 +553,20 @@ def alias_cubicador(cur, email: str) -> list:
     return nombres
 
 
+def correo_de_login(cur, login: str) -> Optional[str]:
+    """El correo de quien en aSa se llama `login` («HMONDACA»). La regla inversa de
+    `alias_cubicador`: el login es la inicial del nombre pegada al apellido (`alias_de`).
+    None si nadie calza —un cubicador externo que ya no está, por ejemplo—."""
+    login = (login or "").strip()
+    if not login:
+        return None
+    cur.execute("SELECT email, nombre, apellido FROM users WHERE COALESCE(activo, TRUE)")
+    for email, nombre, apellido in cur.fetchall():
+        if alias_de(nombre or "", apellido or "", login):
+            return email
+    return None
+
+
 def _json(d):
     """Un dict a JSONB. Se escribe acá y no se importa `json` en cada sitio."""
     import json
@@ -1419,7 +1433,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           i.causa, i.causa_texto, i.esperado, i.verificado,
                           i.desestimado, i.desestimado_motivo, i.desestimado_por,
                           i.tipo_correccion, i.cc_nuevo, i.item_nuevo, i.nota_correccion,
-                          i.id, i.objecion, i.causa_categoria
+                          i.id, i.objecion, i.causa_categoria, i.corregido_por, i.causa_por
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE
@@ -1428,7 +1442,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             for fila_b in cur.fetchall():
                 (eid, ref, marca, obs, corr, ca, ca_txt, esp, ver,
                  des, des_mot, des_por, tipo_c, cc_n, item_n, nota_c,
-                 item_id_b, objec, ca_cat) = fila_b
+                 item_id_b, objec, ca_cat, corr_por, ca_por) = fila_b
                 por_elemento.setdefault(eid, []).append(
                     {"ref": ref, "marca": marca, "observacion": obs,
                      "corregido": bool(corr), "causa": ca, "causa_texto": ca_txt,
@@ -1441,7 +1455,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                      "item_id": item_id_b, "objecion": objec,
                      # La categoría viaja para que el modal del Ishikawa abra con la
                      # causa ya elegida marcada, en vez de en blanco.
-                     "causa_categoria": ca_cat})
+                     "causa_categoria": ca_cat, "corregido_por": corr_por, "causa_por": ca_por})
             # QUIÉN PUEDE QUÉ, DICHO POR EL BACKEND. El front no puede deducirlo: saber si
             # una barra es «mía» exige comparar el login de aSa de quien cubicó con mi
             # correo, y esa equivalencia la resuelve `alias_cubicador` acá. Deducirla en el
@@ -1455,6 +1469,21 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # `enviada_el`: con el nombre equivocado esto daba True sobre una auditoría ya
             # enviada, la pantalla abría el formulario y el guardado moría en un 409.
             aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada"))
+            # CUALQUIER CUBICADOR PUEDE RESOLVER (21-oct); al dueño le llega aviso. Sólo
+            # el cliente externo queda fuera, que no resuelve nada de nadie.
+            aud["puedo_actuar"] = user.get("role") != "cliente"
+            # QUIÉN LO RESOLVIÓ EN LUGAR DEL DUEÑO, para que la fila lo diga. El dueño es un
+            # login de aSa y quien actuó es un correo: se cruzan con `alias_cubicador`, una
+            # vez por persona que actuó, no por barra.
+            _logins_de = {}
+
+            def _es_ajeno(actor, dueno):
+                d = (dueno or "").strip()
+                if not actor or not d:
+                    return False
+                if actor not in _logins_de:
+                    _logins_de[actor] = set(alias_cubicador(cur, actor))
+                return d not in _logins_de[actor]
             tengo_barras = False
             cur.execute("SELECT email FROM users WHERE role IN ('admin', 'admin_calidad')")
             admins = {r[0] for r in cur.fetchall()}
@@ -1478,6 +1507,13 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                 e["comentario_suelto"] = bool(e.get("hallazgo") == HALLAZGO_ABRE_ACCION
                                               and (e.get("texto") or "").strip()
                                               and not e["barras_malas"])
+                for b in e["barras_malas"]:
+                    actor = b.get("corregido_por") or b.get("desestimado_por") or b.get("causa_por")
+                    b["resuelto_por_otro"] = actor if _es_ajeno(actor, e.get("cubicado_por")) else None
+                e["resuelto_por_otro"] = (e.get("accion_por")
+                                          if e["comentario_suelto"]
+                                          and _es_ajeno(e.get("accion_por"), e.get("cubicado_por"))
+                                          else None)
                 if (e["barras_malas"] or e["comentario_suelto"]) and (e["mio"] or soy_admin):
                     tengo_barras = True
             # PUEDO CERRAR: lo dice el backend con la misma regla que valida el endpoint,
@@ -1982,12 +2018,38 @@ def _avisar(destinatario: str, mensaje: str):
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
+                # AL CORREO, NO AL LOGIN (21-oct). Varios avisos salían con el login de aSa
+                # («HMONDACA») como destinatario y la campana busca por correo: 37 de 48
+                # avisos de auditoría —incluido el «tienes 24 horas» del envío— no le
+                # llegaron nunca a nadie. Si viene un login, se resuelve acá; si no calza
+                # con ningún usuario (un externo que ya no está), no hay a quién avisar.
+                quien = destinatario if "@" in (destinatario or "") else correo_de_login(cur, destinatario)
+                if not quien:
+                    return
                 cur.execute(
                     """INSERT INTO notificaciones (destinatario, tipo_evento, reclamo_id, mensaje, fecha)
                        VALUES (%s, 'auditoria_accion', NULL, %s, %s)""",
-                    (destinatario, mensaje, datetime.now(timezone.utc).isoformat()))
+                    (quien, mensaje, datetime.now(timezone.utc).isoformat()))
     except Exception:
         pass
+
+
+def _avisar_si_ajeno(user, cubico: Optional[str], mensaje: str) -> bool:
+    """CUALQUIER CUBICADOR PUEDE RESOLVER LO AJENO, PERO EL DUEÑO SE ENTERA (21-oct).
+
+    El usuario: «a veces puede que un cubicador no esté disponible y otro deba resolver…
+    cualquier cubicador puede resolver pero debe dar aviso». Quién lo hizo ya queda en la
+    barra (`corregido_por`, `desestimado_por`, `causa_por`); esto es el aviso al dueño,
+    sólo cuando quien actúa no es él. Devuelve si era ajeno."""
+    c = (cubico or "").strip()
+    if not c:
+        return False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if c in alias_cubicador(cur, user.get("email", "?")):
+                return False
+    _avisar(c, mensaje)
+    return True
 
 
 def _accion_de_items(cur, elemento_id: int) -> Optional[str]:
@@ -2315,10 +2377,17 @@ def cerrar_resueltas(auditoria_id: int, request: Request, confirmar: bool = Fals
                 (mios, auditoria_id, HALLAZGO_ABRE_ACCION))
             sueltos_pend, sueltos, sueltos_mios = cur.fetchone()
             total = (total or 0) + (sueltos or 0)
-            if user.get("role") not in ROLES_ADMINISTRAN and not mias and not sueltos_mios:
+            # También cierra quien resolvió algo acá en lugar del dueño (21-oct): si pudo
+            # resolver, puede firmar que terminó. El registro guarda quién cerró.
+            cur.execute(
+                """SELECT COUNT(*) FROM auditoria_items i JOIN auditoria_elementos e ON e.id = i.elemento_id
+                    WHERE e.auditoria_id = %s AND (i.corregido_por = %s OR i.desestimado_por = %s)""",
+                (auditoria_id, email, email))
+            resolvi = cur.fetchone()[0]
+            if user.get("role") not in ROLES_ADMINISTRAN and not mias and not sueltos_mios and not resolvi:
                 raise HTTPException(
                     status_code=403,
-                    detail="Cierra quien tuvo barras que corregir en esta auditoría.")
+                    detail="Cierra quien tuvo barras que corregir en esta auditoría, o quien las resolvió.")
             if pendientes or sueltos_pend:
                 falta = []
                 if pendientes:
@@ -2957,12 +3026,9 @@ def _barra_del_auditado(cur, auditoria_id: int, item_id: int, user) -> tuple:
         raise HTTPException(status_code=404, detail="Esa barra no es de esta auditoría.")
     if fila[1] is not False:
         raise HTTPException(status_code=400, detail="Esa barra no tiene nada que corregir.")
-    email = user.get("email", "?")
-    cubico = fila[3]
-    if user.get("role") not in ROLES_ADMINISTRAN and cubico \
-            and (cubico or "").strip() not in alias_cubicador(cur, email):
-        raise HTTPException(status_code=403,
-                            detail="Esta corrección es de quien cubicó el elemento.")
+    # YA NO EXIGE SER EL DUEÑO (21-oct): cualquier cubicador puede resolverla, y si no es
+    # la suya, al dueño le llega aviso (`_avisar_si_ajeno`, desde quien llama). Lo pidió
+    # el usuario: hay que poder avanzar cuando el que cubicó no está.
     return fila
 
 
@@ -3000,11 +3066,7 @@ def _elemento_del_auditado(cur, auditoria_id: int, elemento_id: int, user) -> tu
     if not (texto or "").strip():
         raise HTTPException(status_code=400,
                             detail="Ese elemento no tiene comentario que resolver.")
-    email = user.get("email", "?")
-    if user.get("role") not in ROLES_ADMINISTRAN and cubico \
-            and (cubico or "").strip() not in alias_cubicador(cur, email):
-        raise HTTPException(status_code=403,
-                            detail="Este comentario es de quien cubicó el elemento.")
+    # Igual que la barra (21-oct): cualquiera lo resuelve; al dueño, aviso.
     return fila
 
 
@@ -3079,7 +3141,10 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                   "auditoria", str(auditoria_id))
     if estado in ("corregida", "desestimada") and auditor:
         _avisar(auditor, "Auditoría %s: %s — el comentario del elemento quedó %s."
-                % (codigo, nombre, "sin efecto" if estado == "desestimada" else "corregido"))
+                % (codigo, nombre, "sin efecto" if estado == "desestimada" else "resuelto"))
+    _avisar_si_ajeno(user, fila[0], "Auditoría %s · %s: %s dejó el comentario del elemento %s en tu lugar."
+                     % (codigo, nombre, email.split("@")[0],
+                        {"corregida": "resuelto", "desestimada": "sin efecto"}.get(estado, "por resolver")))
     return detalle(auditoria_id, user)
 
 
@@ -3115,7 +3180,7 @@ def clasificar_item(auditoria_id: int, item_id: int, body: CausaBody,
         raise HTTPException(status_code=400, detail="Elige una causa.")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            _, _, ref, _, nombre, codigo, _ = _barra_del_auditado(cur, auditoria_id, item_id, user)
+            _, _, ref, cubico, nombre, codigo, _ = _barra_del_auditado(cur, auditoria_id, item_id, user)
             _solo_si_enviada(cur, auditoria_id)
             cur.execute(
                 """UPDATE auditoria_items
@@ -3127,6 +3192,8 @@ def clasificar_item(auditoria_id: int, item_id: int, body: CausaBody,
             audit(email, "auditoria_causa",
                   "%s · %s · %s: %s" % (codigo, nombre, ref, codigo_causa),
                   "auditoria", str(auditoria_id))
+    _avisar_si_ajeno(user, cubico, "Auditoría %s · %s · %s: %s clasificó la causa (%s) en tu lugar."
+                     % (codigo, nombre, ref, email.split("@")[0], codigo_causa))
     return detalle(auditoria_id, user)
 
 
@@ -3191,7 +3258,10 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                                         "corregida" if body.corregido else "reabierta"),
                   "auditoria", str(auditoria_id))
     if body.corregido and auditor:
-        _avisar(auditor, "Auditoría %s: %s · %s quedó corregida." % (codigo, nombre, ref))
+        _avisar(auditor, "Auditoría %s: %s · %s quedó resuelta." % (codigo, nombre, ref))
+    _avisar_si_ajeno(user, cubico, "Auditoría %s · %s · %s: %s la marcó %s en tu lugar."
+                     % (codigo, nombre, ref, email.split("@")[0],
+                        "resuelta" if body.corregido else "por resolver otra vez"))
     return detalle(auditoria_id, user)
 
 
@@ -3230,7 +3300,7 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
             detail="Di por qué no corresponde: el auditor lo va a leer y queda en el informe.")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            elemento_id, _c, ref, _cub, nombre, codigo, auditor = \
+            elemento_id, _c, ref, cubico, nombre, codigo, auditor = \
                 _barra_del_auditado(cur, auditoria_id, item_id, user)
             _solo_si_enviada(cur, auditoria_id)
             cur.execute(
@@ -3271,8 +3341,11 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
                                           (" — se quitó el RCA %s" % quitado) if quitado else ""),
                   "auditoria", str(auditoria_id))
     if body.desestimado and auditor:
-        _avisar(auditor, "Auditoría %s: %s · %s fue DESESTIMADA por quien cubicó. %s"
-                         % (codigo, nombre, ref, motivo[:120]))
+        _avisar(auditor, "Auditoría %s: %s · %s quedó SIN EFECTO (%s). %s"
+                         % (codigo, nombre, ref, email.split("@")[0], motivo[:120]))
+    _avisar_si_ajeno(user, cubico, "Auditoría %s · %s · %s: %s la dejó %s en tu lugar. %s"
+                     % (codigo, nombre, ref, email.split("@")[0],
+                        "sin efecto" if body.desestimado else "abierta otra vez", motivo[:120]))
     return detalle(auditoria_id, user)
 
 

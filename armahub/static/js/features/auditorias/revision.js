@@ -380,10 +380,10 @@
 
   function itemsVisibles() {
     var items = (REVS.detalle || {}).items || [];
-    if (!_esAdmin()) {
-      var mio = _misLogins();
-      items = items.filter(function (i) { return mio(i.cubico); });
-    } else if (REVS.filtro_cub) {
+    // TODOS VEN TODO (21-oct). Antes el cubicador veía sólo lo suyo; el usuario: «no quiero
+    // que no puedan ver las observaciones de los otros». El chip filtra, para cualquiera;
+    // al abrir queda puesto en el propio, que es por donde se empieza (`_miChip`).
+    if (REVS.filtro_cub) {
       items = items.filter(function (i) { return (i.cubico || '(sin dato)') === REVS.filtro_cub; });
     }
     return items;
@@ -391,7 +391,6 @@
 
   async function abrirItems(conFiltro) {
     REVS.sel_items = {};
-    if (!conFiltro) REVS.filtro_cub = '';
     // Sin revisión elegida se abren TODAS: el estado de arriba es global, así que el
     // botón y los chips de cubicador tienen que poder entrar a todo.
     if (!REVS.detalle || (REVS.sel && REVS.detalle.revision.id !== REVS.sel)
@@ -400,6 +399,7 @@
         REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0));
       } catch (e) { aviso(e.message); return; }
     }
+    if (!conFiltro) REVS.filtro_cub = _miChip();
     $('revItemsModal').style.display = '';
     pintarItems();
   }
@@ -410,17 +410,17 @@
 
   function pintarItems() {
     var d = REVS.detalle, r = d.revision, items = itemsVisibles();
-    $('revItemsTit').textContent = _esAdmin()
-      ? 'Revisión #' + r.id + ' · ' + r.items + ' hallazgos'
-      : 'Tus ' + items.length + ' hallazgos de la revisión #' + r.id;
+    $('revItemsTit').textContent = 'Revisión #' + r.id + ' · ' +
+      (REVS.filtro_cub ? items.length + ' de ' + r.items + ' hallazgos · ' + REVS.filtro_cub
+                       : r.items + ' hallazgos');
     var hechos = items.filter(function (i) { return i.estado === 'corregida' || i.estado === 'aceptada'; }).length;
     var pct = items.length ? Math.round(hechos / items.length * 100) : 0;
     $('revItemsAvance').innerHTML = '<span>' + hechos + ' de ' + items.length + ' resueltos</span>' +
       '<div class="revbar2"><i style="width:' + pct + '%"></i></div><b>' + pct + '%</b>';
     // Filtro rápido por cubicador: sólo para quien ve a todos.
     var cubs = $('revItemsCubs');
-    if (!_esAdmin()) { cubs.innerHTML = ''; }
-    else {
+    // Los chips de cubicador son para todos (21-oct): el propio viene puesto, «Todos» abre.
+    {
       cubs.innerHTML = '<button data-cub="" class="' + (REVS.filtro_cub ? '' : 'on') + '">Todos ' + r.items + '</button>' +
         r.por_cubicador.map(function (c) {
           return '<button data-cub="' + esc(c.cubico) + '" class="' + (REVS.filtro_cub === c.cubico ? 'on' : '') + '">' +
@@ -574,6 +574,13 @@
     });
     return out;
   }
+  // El chip con el que se abre la hoja: el propio si tengo hallazgos acá; si no, «Todos».
+  function _miChip() {
+    var mio = _misLogins(), r = (REVS.detalle || {}).revision || {};
+    var c = (r.por_cubicador || []).filter(function (x) { return mio(x.cubico); })[0];
+    return c ? c.cubico : '';
+  }
+
   function _ccsSinFigura() {
     return _ccsVisibles().filter(function (g) { return !REVS.figs[g.cc]; });
   }

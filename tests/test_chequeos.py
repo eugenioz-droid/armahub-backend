@@ -392,7 +392,8 @@ check("...y lo ya corregido por el sistema no se pisa a mano",
 check("marcar «corregir» le AVISA al cubicador, uno por persona, con sus códigos",
       "def _avisar_por_corregir(" in API and "def _email_de_login(" in API
       and API.count("_avisar_por_corregir(cur, hechas)") == 2)
-check("...resolviendo el login de aSa con la misma regla que las auditorías", "alias_de(" in API)
+check("...resolviendo el login de aSa con la misma regla que las auditorías",
+      "correo_de_login(cur, login)" in API)
 # LA BANDEJA SE FUE (13-oct): era una bolsa de 540 señales acumuladas donde no se podía
 # preguntar «¿qué salió hoy?». La reemplaza la REVISIÓN como unidad — ver la sección 14.
 check("ya no hay bandeja: ni su HTML, ni su estado, ni sus funciones",
@@ -463,8 +464,9 @@ check("declarar y que aSa confirme siguen siendo dos hechos, pero los dos dicen 
 check("...y verificar lo hace el SISTEMA, no una persona",
       '@router.put("/chequeos/declarar")' in API
       and 'body.estado not in ("declarada", "aceptada", "abierta")' in API)
-check("sólo declara quien cubicó (o administración)",
-      "sólo puede declararlas quien las hizo" in API and "alias_cubicador(cur, email)" in API)
+check("declara cualquier cubicador; al dueño le llega aviso si lo hizo otro (21-oct)",
+      "sólo puede declararlas quien las hizo" not in API and "alias_cubicador(cur, email)" in API
+      and '"marcó resueltas"' in API)
 check("«no aplica» exige MOTIVO en categorías y explicación",
       "MOTIVOS_NO_APLICA" in API and "Elige por qué no aplica." in API
       and "motivo_tipo" in MIG6)
@@ -560,8 +562,8 @@ check("...y si quien cierra confirma, queda su firma en la señal",
       and "cierre_confirmado_por" in open(os.path.join(ROOT, "armahub", "migrations",
                                                         "158_revision_cierre_confirmado.sql"),
                                            encoding="utf-8").read())
-check("...cierra lo suyo quien lo hizo; administración, todo",
-      "cierra lo suyo quien lo hizo" in API)
+check("...cierra cualquiera lo resuelto; al dueño le llega aviso",
+      "cierra lo suyo quien lo hizo" not in API and "cerró %d barra(s) tuyas" in API)
 check("la pantalla tiene el botón de cerrar, muestra el aviso con dos salidas y reintenta confirmando",
       'id="revAccCerrar"' in JS and "async function cerrarResueltos(confirmar)" in JS
       and "function _avisoCierreRev(" in JS and "Cerrar igual" in JS
@@ -693,6 +695,22 @@ check("las barras de aSa se dibujan con su propia tinta",
       and "b.de_asa" in BM and "de_asa: origen === 'asa'" in AUDJS)
 check("...y la decide quien llama, no el dibujante",
       "M.TINTA_ASA || M.TINTA" in BM)
+
+
+print("\nTODOS VEN TODO Y CUALQUIERA RESUELVE, CON AVISO (21-oct)")
+# Armonizado con la auditoría, como pidió el usuario: «no quiero que no puedan ver las
+# observaciones de los otros» y «cualquier cubicador puede resolver pero debe dar aviso».
+check("declarar ya no rechaza lo ajeno: avisa al dueño, con cuántas y en qué códigos",
+      "sólo puede declararlas quien las hizo." not in API and '"marcó resueltas"' in API
+      and "barra(s) tuyas" in API)
+check("...y cerrar lo resuelto tampoco: avisa al dueño qué confirmó aSa",
+      "cierra lo suyo quien lo hizo." not in API and "cerró %d barra(s) tuyas" in API)
+check("el login de aSa se resuelve a correo con UNA función, la de las auditorías",
+      "return correo_de_login(cur, login)" in API and "correo_de_login," in API)
+check("en la hoja todos ven todo; el chip filtra y al abrir queda en el propio",
+      "function _miChip(" in JS and "REVS.filtro_cub = _miChip();" in JS
+      and "'Tus ' + items.length" not in JS
+      and "if (!_esAdmin()) { cubs.innerHTML = ''; }" not in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
