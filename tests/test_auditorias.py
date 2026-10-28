@@ -1406,5 +1406,23 @@ check("el check de grupo sale sólo cuando hay algo que marcar, y la última col
 check("el nombre de la figura va al lado del dibujo, y el tamaño por defecto es S",
       'class="audfigw"' in JS and "var FIG_TAM = 's';" in JS and ".audfigw{" in HTM)
 
+
+print("\nLA PANTALLA DEL AUDITOR, DESPEJADA (28-oct)")
+# «Depuremos esto, todavia esta enredado»: la muestra son diez filas con quince columnas y
+# es la herramienta del AUDITOR; el auditado trabaja abajo, en Resumen Hallazgos.
+check("los tres numeros son la barra, y la muestra se despliega desde ahi",
+      'id="audResBarra"' in JS and 'id="audVerMuestra"' in JS and "MUESTRA_ABIERTA" in JS
+      and "Ver la muestra (" in JS)
+check("...arranca cerrada y se abre sola si hay un elemento en revision",
+      "var MUESTRA_ABIERTA = false;" in JS
+      and "(AUD.soy_auditor && (MUESTRA_ABIERTA || ELEM)) ? '' : 'none'" in JS)
+check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
+      ".audacc{margin-top:10px; padding:10px 12px; background:#fffdf5" not in HTM
+      and ".audacc{margin-top:10px; padding:12px 14px; background:#fff;" in HTM
+      and "border-top:3px solid #ffb300" in HTM)
+check("...y ninguna columna queda cortada contra el borde",
+      'class="audbdacc"' in JS and ".audacc .audbdacc{overflow-x:auto;}" in HTM
+      and ".audt.audacct{table-layout:auto; min-width:980px;}" in HTM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
