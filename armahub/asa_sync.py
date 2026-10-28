@@ -61,10 +61,25 @@ DIMS_PEDIDOS = ["ControlCode", "JobID", "JobName", "Descr", "DetailPerson",
                 "OrderDate", "PromisedDeliveryDate", "Status", "LastModified"]
 
 # Cuántos días hacia atrás mira el incremental si nunca hubo una corrida buena, y cuánto se
-# solapa con la anterior. El solape no es paranoia: si un pedido se modificó justo mientras
-# corría la sincronización anterior, sin solape no lo vería nunca más.
+# solapa con la anterior.
+#
+# EL SOLAPE ES DE DÍAS Y NO DE MINUTOS, Y ESO NO ES UN DETALLE (28-oct). `LastModified` de
+# aSa trae SÓLO LA FECHA: todo lo modificado hoy llega marcado «hoy a las 00:00». Con un
+# corte a la hora exacta —«el fin de la corrida anterior menos 30 minutos»— pasaba esto:
+#
+#   · las corridas de las 14:00 y las 17:00 pedían «LastModified ≥ hoy 08:30» y traían CERO
+#     filas siempre, porque todo lo de hoy está marcado a las 00:00;
+#   · pero igual avanzaban la marca de agua, así que la corrida del día siguiente pedía
+#     «≥ ayer 16:30» y lo modificado ayer (marca ayer 00:00) ya no entraba NUNCA.
+#
+# Resultado medido el 28-oct: 404 códigos de control de 2026 que nunca llegaron, 2.513.959
+# kg. Lo Aguirre mostraba 396.921 kg contra 853.982 en aSa, y así toda la planta.
+#
+# Con el corte a la MEDIANOCHE de hace SOLAPE_DIAS, cada corrida pide los últimos tres días
+# completos. Son decenas de filas y aSa las devuelve en un segundo: repetir lo de ayer sale
+# gratis y es lo único que garantiza que no se pierda nada.
 DIAS_SIN_HISTORIA = 7
-SOLAPE_MINUTOS = 30
+SOLAPE_DIAS = 2
 
 
 def _ahora() -> datetime:
@@ -344,18 +359,21 @@ def sincronizar_planta(lanzado_por: str = "sistema") -> dict:
 
 
 def _desde_cuando() -> datetime:
-    """El corte del incremental: cuándo terminó la última sincronización buena, menos un
-    solape. El solape no es paranoia — si un pedido se modificó justo mientras corría la
-    corrida anterior, sin solape no lo veríamos nunca más."""
+    """El corte del incremental: la MEDIANOCHE de hace `SOLAPE_DIAS` desde la última
+    sincronización buena.
+
+    A medianoche porque `LastModified` de aSa trae sólo la fecha (ver SOLAPE_DIAS): un
+    corte a la hora exacta deja fuera todo lo del propio día, que llega marcado a las
+    00:00. Esto se comió 404 códigos de 2026 antes de que alguien lo notara mirando una
+    obra que en aSa pesaba el doble."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT MAX(fin) FROM asa_sync
                     WHERE ok AND endpoint LIKE 'getOrderSummary%%' AND fin IS NOT NULL""")
             ultimo = cur.fetchone()[0]
-    if not ultimo:
-        return _ahora() - timedelta(days=DIAS_SIN_HISTORIA)
-    return ultimo - timedelta(minutes=SOLAPE_MINUTOS)
+    base = ultimo or (_ahora() - timedelta(days=DIAS_SIN_HISTORIA))
+    return (base - timedelta(days=SOLAPE_DIAS)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def sincronizar_incremental(lanzado_por: str = "sistema") -> dict:

@@ -318,8 +318,13 @@ check("si no puede comprobarlo, prefiere NO sincronizar", "return True" in RELOJ
 check("iniciar() es idempotente: no crea dos hilos", "_hilo.is_alive()" in RELOJ)
 check("el reloj usa el refresco INCREMENTAL, no la carga completa",
       "sincronizar_incremental" in RELOJ and "sincronizar_pedidos(" not in RELOJ)
-check("el incremental corta por LastModified y se solapa con la corrida anterior",
-      "LastModified ge" in SYNC and "SOLAPE_MINUTOS" in SYNC)
+# EL SOLAPE ES DE DÍAS, NO DE MINUTOS (28-oct). `LastModified` de aSa trae sólo la fecha:
+# todo lo de hoy llega marcado «hoy 00:00». Con el corte a la hora exacta, las corridas de
+# las 14 y las 17 traían CERO siempre y encima avanzaban la marca de agua, así que lo
+# modificado ayer no entraba nunca. Medido: 404 códigos de 2026 perdidos, 2.513.959 kg.
+check("el incremental corta por LastModified, a la MEDIANOCHE y con solape de días",
+      "LastModified ge" in SYNC and "SOLAPE_DIAS" in SYNC and "SOLAPE_MINUTOS" not in SYNC
+      and "replace(hour=0, minute=0, second=0, microsecond=0)" in SYNC)
 check("...y si nunca hubo una corrida buena, mira unos días atrás",
       "DIAS_SIN_HISTORIA" in SYNC)
 check("el backend manda el estado del reloj", '"reloj"' in PROG and "def estado()" in RELOJ)
