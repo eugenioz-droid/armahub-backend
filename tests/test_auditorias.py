@@ -532,9 +532,12 @@ check("...y el clic en un campo no vuelve a abrir el elemento",
 check("...diciendo por qué están vacíos", "aSa no trae tipo, piso ni ciclo" in JS)
 check("el tipo se ofrece de la lista del backend, no de una copia en el navegador",
       "BASE.sectores" in JS)
-check("con un elemento abierto y pantalla ancha, la lista se comprime a un lado y las barras van al otro",
-      'id="audCols"' in HTM and ".audcols.abierta{display:grid;" in HTM
-      and "function mostrarRevision(" in JS and "classList.toggle('abierta'" in JS)
+# EL DETALLE VA DEBAJO, A LO ANCHO (28-oct). Las dos columnas comprimian la muestra con los
+# ejes cortados; el usuario: «el detalle segun lo que seleccione, en el mismo cuadro pero
+# abajo».
+check("con un elemento abierto, el detalle va DEBAJO de la muestra, a lo ancho: nada de dos columnas",
+      'id="audCols"' in HTM and ".audcols.abierta{display:grid;" not in HTM
+      and "function mostrarRevision(" in JS and "classList.toggle('abierta'" not in JS)
 
 print("\n7d. El código de control es una columna, no parte del nombre")
 # «Es mejor poner encabezado para el CC, para Descr del CC y separarlo del nombre del
@@ -1410,12 +1413,16 @@ check("el nombre de la figura va al lado del dibujo, y el tamaño por defecto es
 print("\nLA PANTALLA DEL AUDITOR, DESPEJADA (28-oct)")
 # «Depuremos esto, todavia esta enredado»: la muestra son diez filas con quince columnas y
 # es la herramienta del AUDITOR; el auditado trabaja abajo, en Resumen Hallazgos.
-check("los tres numeros son la barra, y la muestra se despliega desde ahi",
-      'id="audResBarra"' in JS and 'id="audVerMuestra"' in JS and "MUESTRA_ABIERTA" in JS
-      and "Ver la muestra (" in JS)
-check("...arranca cerrada y se abre sola si hay un elemento en revision",
-      "var MUESTRA_ABIERTA = false;" in JS
-      and "(AUD.soy_auditor && (MUESTRA_ABIERTA || ELEM)) ? '' : 'none'" in JS)
+# UNA PANTALLA POR ETAPA, NO POR ROL (28-oct). El usuario corrigio lo de ocultar la
+# muestra: «yo como admin deberia poder ver todas las etapas... es un error ocultar la
+# muestra aca». Antes del envio la muestra esta siempre (es la herramienta del auditor);
+# despues queda plegada, porque lo que se trabaja es el Resumen Hallazgos.
+check("la franja va a lo ancho: elementos, items, hallazgos, observaciones y a quien le toca cuanto",
+      'id="audResBarra"' in JS and "'observaciones'" in JS
+      and "'barras por corregir, por cubicador'" in JS)
+check("antes del envio la muestra esta siempre; despues queda plegada para quien audita",
+      "(AUD.soy_auditor && (!enviadaYa || MUESTRA_ABIERTA || ELEM)) ? '' : 'none'" in JS
+      and "enviadaYa && AUD.soy_auditor" in JS and "Ver la muestra del auditor (" in JS)
 check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
       ".audacc{margin-top:10px; padding:10px 12px; background:#fffdf5" not in HTM
       and ".audacc{margin-top:10px; padding:12px 14px; background:#fff;" in HTM
@@ -1423,6 +1430,24 @@ check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
 check("...y ninguna columna queda cortada contra el borde",
       'class="audbdacc"' in JS and ".audacc .audbdacc{overflow-x:auto;}" in HTM
       and ".audt.audacct{table-layout:auto; min-width:980px;}" in HTM)
+
+
+print("\nEL DISEÑO APROBADO (28-oct): el auditor audita y envia; el auditado resuelve")
+check("la observacion es POR BARRA y va a la derecha de la barra, siempre",
+      'class="audobsth"' in JS and 'class="audobstd"' in JS and "Observación de la barra" in JS
+      and "Elemento / nota" not in JS and ".audt td.audobstd" in HTM)
+check("...y la nota del elemento se llama por lo que es: lo que no es de ninguna barra",
+      'for="audRevTexto"' in HTM and "Nota del elemento" in HTM and "falta trabas" in HTM)
+check("el Resumen Hallazgos existe desde el envio, no mientras se revisa",
+      "if (!acc.length || !enviadaAhora)" in JS and "Todavía no se envía" not in JS)
+check("...sin la columna Cubico por fila: esta en la cabecera de cada codigo",
+      "'<th>Elemento</th><th>Cubicó</th>'" not in JS and '<tr class="audgrupo"><td colspan="9">' in JS)
+check("el auditor no resuelve lo que el mismo marco: juez y parte",
+      'user.get("email", "?") != aud.get("auditor")' in SRC.split('aud["puedo_actuar"]')[1][:200]
+      and "No lo acepto" in JS)
+check("la auditoria cerrada dice lo que aSa confirmo al cerrar",
+      'aud["cierre_chequeo"] = r[34]' in SRC and "a.cierre_chequeo, a.cierre_tipo" in SRC
+      and 'class="audnota audcerrada"' in JS and "aSa confirmó <b>" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

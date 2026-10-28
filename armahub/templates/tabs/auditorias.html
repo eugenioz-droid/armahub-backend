@@ -205,7 +205,12 @@
           <span class="muted" style="font-size:10px;">la causa raíz la clasifica quien respondió,
             barra por barra: él sabe por qué pasó.</span>
         </div>
-        <textarea id="audRevTexto" rows="2" placeholder="Nota general del elemento (opcional: lo que encontraste ya va en cada barra)."></textarea>
+        <!-- LA NOTA DEL ELEMENTO es para lo que NO es de ninguna barra: lo que es de una
+             barra va en su columna, a la derecha de la barra. Separados a propósito: juntos
+             se mezclaban en un solo texto y el auditado no sabía qué era de qué. -->
+        <label class="audlbl" for="audRevTexto" style="display:block; margin:8px 0 3px;">Nota del elemento
+          <span class="muted" style="font-weight:400;">— lo que no es de una barra: «falta trabas», «confirmar si es de contención»</span></label>
+        <textarea id="audRevTexto" rows="2" placeholder="Opcional. Lo que encontraste en cada barra ya va en su columna."></textarea>
         <div style="display:flex; gap:10px; align-items:center;">
           <button id="audRevGuardar" class="audbtn">Guardar revisión</button>
           <span class="muted" id="audRevMsg" style="font-size:11px;"></span>
@@ -827,9 +832,9 @@
      las dos a la vista sin que la lista se coma la pantalla (6-oct). Más angosto, una
      bajo la otra como siempre. */
   @media (min-width:1500px){
-    .audcols.abierta{display:grid; grid-template-columns:minmax(540px, 42%) minmax(0, 1fr); gap:12px; align-items:start;}
-    .audcols.abierta > .audbd{max-height:74vh;}
-    .audcols.abierta .audrev{margin-top:0;}
+    /* EL DETALLE VA DEBAJO DE LA MUESTRA, A LO ANCHO (28-oct). Acá vivía la grilla de dos
+       columnas que comprimía la muestra a la izquierda con los ejes cortados. El usuario:
+       «el detalle según lo que seleccione, en el mismo cuadro actual pero abajo». */
   }
   .audrev textarea{width:100%; box-sizing:border-box; font-size:11.5px; padding:6px 8px; border:1px solid #cfd8dc; border-radius:4px;
                    margin-bottom:8px; resize:vertical; font-family:inherit;}
@@ -876,6 +881,12 @@
      pantalla es angosta, la tabla scrollea sola en vez de empujar las últimas columnas
      fuera de la caja. */
   .audacc .audbdacc{overflow-x:auto;}
+  /* La observación de la barra, a la derecha de la barra (28-oct). */
+  .audt th.audobsth{min-width:240px;}
+  .audt td.audobstd{min-width:240px; padding:2px 6px;}
+  .audt td.audobstd .audobs{width:100%; box-sizing:border-box;}
+  /* Lo que dijo aSa al cerrar, en la pantalla de la auditoría cerrada. */
+  .audnota.audcerrada{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32;}
   .audt.audacct{table-layout:auto; min-width:980px;}
   .audacct td.audqse{min-width:240px;}
   .audacct th:last-child, .audacct td:last-child{white-space:nowrap;}

@@ -1365,7 +1365,10 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
                              AND i.desestimado),
-                          a.notas, a.creada_por, a.cerrada_por
+                          a.notas, a.creada_por, a.cerrada_por,
+                          -- 34-35: lo que aSa dijo al cerrar y quién cerró, para la
+                          -- pantalla de la auditoría cerrada.
+                          a.cierre_chequeo, a.cierre_tipo
                      FROM auditorias a
                      LEFT JOIN auditoria_elementos e ON e.auditoria_id = a.id
                     WHERE a.id = %s GROUP BY a.id""", (auditoria_id,))
@@ -1376,6 +1379,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             aud["notas"] = r[31]
             aud["creada_por"] = r[32]
             aud["cerrada_por"] = r[33]
+            aud["cierre_chequeo"] = r[34]
+            aud["cierre_tipo"] = r[35]
             # ANTES DEL ENVÍO, LOS HALLAZGOS SON DEL AUDITOR (21-oct). Quien no audita puede
             # abrirla —la lista es para todo el equipo— y ve el encabezado y las cuentas,
             # pero no las barras ni los comentarios: están a medio revisar y el auditado
@@ -1482,7 +1487,11 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             aud["puedo_editar"] = bool(soy_auditor and not aud.get("enviada"))
             # CUALQUIER CUBICADOR PUEDE RESOLVER (21-oct); al dueño le llega aviso. Sólo
             # el cliente externo queda fuera, que no resuelve nada de nadie.
-            aud["puedo_actuar"] = user.get("role") != "cliente"
+            # ...PERO NO EL AUDITOR SOBRE LO QUE ÉL MISMO MARCÓ (28-oct): sería juez y parte.
+            # Él ve el Resumen como lo va resolviendo el auditado y conserva su réplica —«No
+            # lo acepto»— sobre un descarte. Administración sí puede, porque ya era auditor.
+            aud["puedo_actuar"] = (user.get("role") != "cliente"
+                                   and (soy_admin or user.get("email", "?") != aud.get("auditor")))
             aud["motivos"] = MOTIVOS_NO_APLICA_AUD
             # QUIÉN LO RESOLVIÓ EN LUGAR DEL DUEÑO, para que la fila lo diga. El dueño es un
             # login de aSa y quien actuó es un correo: se cruzan con `alias_cubicador`, una

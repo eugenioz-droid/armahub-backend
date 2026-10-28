@@ -734,15 +734,31 @@
     // se despliega y ahí aparece todo lo de abajo». La muestra es la herramienta del
     // auditor —diez filas con quince columnas— y hasta que no se abre un elemento no hace
     // falta tenerla delante.
-    var rs = AUD.resumen || {};
+    // LA FRANJA, A LO ANCHO (28-oct): lo que salió de la auditoría en una línea —elementos,
+    // ítems, hallazgos, observaciones y a quién le toca cuánto—. Una pantalla por ETAPA, no
+    // por rol: antes del envío debajo va la muestra (la herramienta del auditor); después
+    // va el Resumen Hallazgos, y la muestra queda plegada para quien audita.
+    var rs = AUD.resumen || {}, enviadaYa = !!(AUD.enviada || AUD.enviada_el);
+    var obsN = (AUD.elementos || []).filter(function (e) { return e.hallazgo === 'observacion'; }).length;
+    var porcub = {};
+    (AUD.elementos || []).forEach(function (el) {
+      (el.barras_malas || []).forEach(function () {
+        var q = (el.cubicado_por || '(sin dato)').trim();
+        porcub[q] = (porcub[q] || 0) + 1;
+      });
+    });
+    var quien = Object.keys(porcub).sort().map(function (q) {
+      return esc(q.split('@')[0]) + ': ' + porcub[q]; }).join(' · ');
     $('audDetInfo').innerHTML += '<div class="audkpis audres3" id="audResBarra">' +
       caj(rs.elementos_auditados || 0, 'elementos auditados' +
           (rs.elementos && rs.elementos !== rs.elementos_auditados ? ' de ' + rs.elementos : '')) +
       caj(rs.items_auditados || 0, 'ítems auditados') +
       caj(rs.hallazgos || 0, 'hallazgos', rs.hallazgos ? 'mal' : 'bien') +
-      (AUD.soy_auditor
+      caj(obsN, 'observaciones') +
+      caj(quien || '—', 'barras por corregir, por cubicador') +
+      (enviadaYa && AUD.soy_auditor
         ? '<button class="audmini auddespl" id="audVerMuestra">' +
-          (MUESTRA_ABIERTA ? '▾ Ocultar la muestra' : '▸ Ver la muestra (' + (AUD.n || 0) + ')') + '</button>'
+          (MUESTRA_ABIERTA ? '▾ Ocultar la muestra' : '▸ Ver la muestra del auditor (' + (AUD.n || 0) + ')') + '</button>'
         : '') +
       '</div>';
     var conflicto = (AUD.elementos || []).filter(function (e) { return e.conflicto; }).length;
@@ -830,10 +846,10 @@
                         : 'El informe se emite con la auditoría cerrada: hasta entonces ' +
                           'lo que dice todavía puede cambiar.';
     }
-    // La muestra arranca cerrada; se abre sola si hay un elemento en revisión, porque ahí
-    // es donde se elige el siguiente.
+    // ANTES DEL ENVÍO la muestra está siempre, es la herramienta del auditor. DESPUÉS queda
+    // plegada: lo que se trabaja es el Resumen Hallazgos. Quien no audita no la ve nunca.
     var cols = $('audCols');
-    if (cols) cols.style.display = (AUD.soy_auditor && (MUESTRA_ABIERTA || ELEM)) ? '' : 'none';
+    if (cols) cols.style.display = (AUD.soy_auditor && (!enviadaYa || MUESTRA_ABIERTA || ELEM)) ? '' : 'none';
     var vm = $('audVerMuestra');
     if (vm) vm.addEventListener('click', function () { MUESTRA_ABIERTA = !MUESTRA_ABIERTA; pintarDetalle(); });
     pintarAcciones();
@@ -846,10 +862,12 @@
   // El panel de revisión se ve (o no), y con él la lista se comprime a un lado en las
   // pantallas anchas (ver .audcols.abierta en el HTML): la muestra a la izquierda, las
   // barras a la derecha, las dos a la vista.
+  // EL DETALLE DEL ELEMENTO VA DEBAJO DE LA MUESTRA, A LO ANCHO (28-oct). Antes la pantalla
+  // se partía en dos columnas y la muestra quedaba comprimida a la izquierda con los ejes
+  // cortados; el usuario: «el detalle según lo que seleccione, en el mismo cuadro pero
+  // abajo».
   function mostrarRevision(visible) {
     $('audRev').style.display = visible ? '' : 'none';
-    var cols = $('audCols');
-    if (cols) cols.classList.toggle('abierta', !!visible);
   }
 
   // El elemento nombrado ENTERO, para cuando se lee fuera de la tabla —el título de la
@@ -926,7 +944,7 @@
     var letras = letrasUsadas(filas);
     var nAng = filas.reduce(function (m, f) { return Math.max(m, f.angulos.length); }, 0);
     var conRadio = filas.some(function (f) { return f.radio > 0; });
-    var nCols = 9 + letras.length + nAng + (conRadio ? 1 : 0);
+    var nCols = 10 + letras.length + nAng + (conRadio ? 1 : 0);
     var html = '<thead><tr><th style="width:124px">Veredicto</th><th>Marca</th><th class="num">φ</th>' +
       '<th>Figura</th><th>Render</th>' +
       letras.map(function (L) { return '<th class="num g">' + esc(L) + '</th>'; }).join('') +
@@ -935,7 +953,13 @@
       '<th class="num" title="Suma de los largos parciales, como los suma la plataforma. ' +
       'No es el largo de corte de aSa, que descuenta el doblez.">Largo</th>' +
       '<th class="num">Cant</th><th class="num">Peso</th>' +
-      '<th>' + (AUD.origen === 'asa' ? 'Elemento / nota' : 'Plano') + '</th></tr></thead><tbody>';
+      '<th>' + (AUD.origen === 'asa' ? 'Elemento' : 'Plano') + '</th>' +
+      // LA OBSERVACIÓN ES DE LA BARRA Y VA A LA DERECHA, SIEMPRE (28-oct). Antes aparecía
+      // como una fila extra debajo al marcar «Hallazgo», y la nota del elemento abajo del
+      // todo: el usuario veía las dos cosas mezcladas en un solo texto. Columna propia.
+      '<th class="audobsth" title="Qué tiene ESTA barra. Es lo que le llega a quien cubicó, ' +
+      'barra por barra. Lo que no es de ninguna barra va en la nota del elemento, abajo.">' +
+      'Observación de la barra</th></tr></thead><tbody>';
     BARRAS.forEach(function (b, i) {
       var f = filas[i], v = VERED[b.ref];
       var clase = v ? (v.conforme ? ' class="bueno"' : ' class="malo"') : '';
@@ -958,12 +982,12 @@
         celdaEd(b, v, 'cant', (b.cant_total != null ? b.cant_total : (b.cant || '')), 'num') +
         '<td class="num">' + kg0(b.peso_total) + '</td>' +
         '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
-          esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td></tr>';
-      if (v && v.conforme === false) {
-        html += '<tr class="malo"><td></td><td colspan="' + (nCols - 1) + '">' +
-          '<input type="text" class="audobs" data-obs="' + esc(b.ref) + '" placeholder="Qué tiene esta barra (obligatorio)" value="' +
-          esc(v.observacion || '') + '"></td></tr>';
-      }
+          esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td>' +
+        '<td class="audobstd">' +
+          (v && v.conforme === false
+            ? '<input type="text" class="audobs" data-obs="' + esc(b.ref) + '" placeholder="Qué tiene esta barra (obligatorio)" value="' +
+              esc(v.observacion || '') + '">'
+            : '') + '</td></tr>';
     });
     $('audRevBarras').innerHTML = html + '</tbody>';
     $('audRevBarras').querySelectorAll('button[data-v]').forEach(function (b) {
@@ -1571,7 +1595,11 @@
   function pintarAcciones() {
     var caja = $('audAcciones');
     var acc = (AUD.elementos || []).filter(function (e) { return e.accion_estado; });
-    if (!acc.length) { caja.style.display = 'none'; return; }
+    // EL RESUMEN EXISTE DESDE EL ENVÍO (28-oct). Antes aparecía mientras el auditor todavía
+    // revisaba, con un cartel de «todavía no se envía»: era ruido para él y, para el
+    // auditado, hallazgos a medio hacer. Una pantalla por etapa.
+    var enviadaAhora = !!(AUD.enviada || AUD.enviada_el);
+    if (!acc.length || !enviadaAhora) { caja.style.display = 'none'; return; }
     caja.style.display = '';
     var total = 0, resueltas = 0, mias = 0;
     acc.forEach(function (e) {
@@ -1612,11 +1640,24 @@
             ? '<span class="muted" style="font-size:10.5px">quedan ' + faltan +
               ' por resolver para poder cerrar</span>' : '')) +
       '</div>' +
-      (!enviada
-        ? '<div class="audnota">Todavía no se envía: hasta que el auditor la mande, nadie ' +
-          'puede accionar sobre estas barras.</div>'
-        : (mias ? '' : '<div class="audnota">Acá se ve todo lo que salió. Puedes resolver también lo de otro ' +
-                       'cubicador si no está: le llega aviso y queda escrito quién lo hizo.</div>')) +
+      // CERRADA: lo que dijo aSa al cerrar, que es lo que vale como comprobación.
+      (AUD.estado === 'cerrada' && AUD.cierre_chequeo
+        ? '<div class="audnota audcerrada">Cerrada' +
+          (AUD.cerrada_por ? ' por <b>' + esc(String(AUD.cerrada_por).split('@')[0]) + '</b>' : '') +
+          ' · aSa confirmó <b>' + ((AUD.cierre_chequeo.cumplen || []).length) + '</b>' +
+          ((AUD.cierre_chequeo.siguen_igual || []).length
+            ? ' · <b>' + AUD.cierre_chequeo.siguen_igual.length + '</b> seguían igual en aSa, cerradas bajo su confirmación (' +
+              esc(AUD.cierre_chequeo.siguen_igual.map(function (x) { return x.ref; }).join(', ')) + ')'
+            : '') +
+          ((AUD.cierre_chequeo.sin_leer || []).length
+            ? ' · ' + AUD.cierre_chequeo.sin_leer.length + ' no se pudieron comprobar' : '') +
+          '</div>'
+        : (AUD.estado === 'cerrada' ? '' :
+          (mias ? '' : (AUD.puedo_actuar
+            ? '<div class="audnota">Acá se ve todo lo que salió. Puedes resolver también lo de otro ' +
+              'cubicador si no está: le llega aviso y queda escrito quién lo hizo.</div>'
+            : '<div class="audnota">Lo que marcaste, como lo está resolviendo quien cubicó. Si no ' +
+              'aceptas un descarte, «No lo acepto» lo vuelve a abrir.</div>')))) +
       // DE A MUCHAS (21-oct), como en la revisión: «muchas veces el hallazgo es el mismo
       // para más de un ítem». Los checks marcan; lo que se hace se replica. «No aplica»
       // pide motivo y explicación UNA vez para todas.
@@ -1643,7 +1684,7 @@
           '</div>'
         : '') +
       '<div class="audbdacc"><table class="audt audacct"><thead><tr><th style="width:22px"></th><th>Barra</th><th>Figura</th>' +
-      '<th>Elemento</th><th>Cubicó</th>' +
+      '<th>Elemento</th>' +
       '<th title="Lo que el auditor anotó en esta barra.">Qué se encontró</th>' +
       '<th title="Lo que la barra debería decir, como lo dejó el auditor. De esto vive la ' +
       'comprobación automática contra aSa.">Debería decir</th>' +
@@ -1668,7 +1709,7 @@
           var marcables = enviada && AUD.estado !== 'cerrada' && AUD.puedo_actuar && g.els.some(function (e) {
             return (e.barras_malas || []).some(function (b) { return !b.corregido && !b.desestimado; });
           });
-          return '<tr class="audgrupo"><td colspan="10">' +
+          return '<tr class="audgrupo"><td colspan="9">' +
             (marcables
               ? '<label><input type="checkbox" data-agrupo="' + esc(g.cc || '') + '" title="Marcar todas las de este código"> ' +
                 '<b>' + esc(g.cc || '—') + '</b></label>'
@@ -1754,13 +1795,12 @@
         'del elemento.">elemento</span></td>' +
       '<td></td>' +
       '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
-      '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
       '<td class="audqse" colspan="2">' + esc(e.texto || '') + '</td>' +
       '<td>' + causa + '</td>' +
       '<td>' + estado + '</td>' +
       '<td>' + acc + '</td></tr>' +
       '<tr class="audnapform" data-eform="' + e.id + '" style="display:none">' +
-        '<td colspan="10"><div class="revnapcaja">' +
+        '<td colspan="9"><div class="revnapcaja">' +
           '<input type="text" data-emotivo="' + e.id + '" ' +
             'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
           '<button class="audmini ver" data-enapok="' + e.id + '">Guardar</button>' +
@@ -1830,7 +1870,7 @@
               '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar la ' +
               'barra por resuelta.">RCA</button>'
             : '<span class="muted">sin RCA</span>');
-    var cols = 10;
+    var cols = 9;
     return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
       '<td>' + (puede && !b.corregido && !b.desestimado
         ? '<input type="checkbox" data-aitem="' + b.item_id + '" data-acc="' + esc(e.cc || '') + '"' +
@@ -1840,7 +1880,6 @@
       '<td class="revfig" data-afig="' + esc(b.ref || '') + '" data-acc="' + esc(e.cc || '') + '">' +
         _figAud(e.cc, b.ref) + '</td>' +
       '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
-      '<td>' + esc((e.cubicado_por || '').split('@')[0]) + '</td>' +
       '<td class="audqse">' + esc(b.observacion || '') +
         (b.desestimado && b.desestimado_motivo
           ? '<div class="muted" style="font-size:10px">no aplica: ' + esc(b.desestimado_motivo) +
@@ -1864,7 +1903,7 @@
   // CÓDIGO —una lectura sirve a todas sus barras— y sólo cuando alguien las pide, porque
   // cada una son un par de segundos contra aSa.
   var AFIGS = {};
-  // Si la muestra del auditor está desplegada. Arranca cerrada: son quince columnas.
+  // Si la muestra del auditor está desplegada DESPUÉS del envío (antes está siempre).
   var MUESTRA_ABIERTA = false;
   // Las barras marcadas con el check para resolverlas de a muchas (21-oct).
   var SEL_AUD = {};
