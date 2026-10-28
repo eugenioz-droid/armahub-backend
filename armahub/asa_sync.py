@@ -220,7 +220,10 @@ def _guardar_pedidos(filas, sync_id: int, anio_por_defecto: int) -> dict:
             if valores:
                 cur.executemany(
                     """
-                    INSERT INTO asa_pedidos (control_code, asa_job_id, job_name, descr,
+                    -- A LA TABLA, NO A LA VISTA: `asa_pedidos` es la vista de lo vivo y
+                    -- Postgres no acepta ON CONFLICT sobre una vista. Acá se escribe todo;
+                    -- la vista decide qué se ve (migración 161).
+                    INSERT INTO asa_pedidos_todos (control_code, asa_job_id, job_name, descr,
                                              detail_person, order_date, promised_date,
                                              estado, kg, anio, ultima_mod, visto_el, sync_id)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), %s)
@@ -230,7 +233,11 @@ def _guardar_pedidos(filas, sync_id: int, anio_por_defecto: int) -> dict:
                            order_date=EXCLUDED.order_date, promised_date=EXCLUDED.promised_date,
                            estado=EXCLUDED.estado, kg=EXCLUDED.kg, anio=EXCLUDED.anio,
                            ultima_mod=EXCLUDED.ultima_mod,
-                           visto_el=now(), sync_id=EXCLUDED.sync_id
+                           visto_el=now(), sync_id=EXCLUDED.sync_id,
+                           -- SI VUELVE A APARECER, REVIVE. Pasa cuando lo que se dio por
+                           -- borrado era en realidad un cambio de fecha o de obra: el dato
+                           -- vuelve y se corrige solo, sin que nadie toque nada.
+                           eliminado_el = NULL
                     """,
                     valores,
                 )
@@ -253,6 +260,33 @@ def _pedir_pedidos(anio: int, desde: str, hasta: str):
     return asa.consultar_agregado(
         "getOrderSummary", DIMS_PEDIDOS, "TotalKgs", alias="Kgs", carga=True,
         filtro="OrderDate ge %d-%s and OrderDate le %d-%s" % (anio, desde, anio, hasta))
+
+
+def _marcar_eliminados(anio: int, sync_id: int) -> int:
+    """Los códigos del año que esta corrida COMPLETA ya no trajo: los borraron en aSa.
+
+    No se borran acá —aSa no guarda que existieron y nosotros sí podemos—: quedan con
+    `eliminado_el` y salen de la vista `asa_pedidos`, así que dejan de sumar kilos en todo
+    el sistema sin que ninguna consulta tenga que acordarse de nada.
+
+    SÓLO DESPUÉS DE UNA CARGA COMPLETA DEL AÑO, nunca del incremental: el incremental trae
+    lo que cambió, así que «no vino» ahí no significa nada. Y si un código cambió de año o
+    de obra en vez de borrarse, la carga del año que le corresponde lo revive sola
+    (`eliminado_el = NULL` en el ON CONFLICT)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE asa_pedidos_todos SET eliminado_el = now()
+                    WHERE anio = %s AND eliminado_el IS NULL
+                      AND sync_id IS DISTINCT FROM %s
+                 RETURNING control_code, kg""", (anio, sync_id))
+            idos = cur.fetchall()
+        conn.commit()
+    if idos:
+        log.warning("aSa %d: %d código(s) ya no están en aSa (%s kg); quedan como eliminados: %s",
+                    anio, len(idos), round(sum(float(r[1] or 0) for r in idos)),
+                    ", ".join(r[0] for r in idos[:10]))
+    return len(idos)
 
 
 def sincronizar_pedidos(anio: int, lanzado_por: str = "sistema") -> dict:
@@ -294,6 +328,8 @@ def sincronizar_pedidos(anio: int, lanzado_por: str = "sistema") -> dict:
             r["incompleto"] = fallos
             return r
     r = _guardar_pedidos(filas, sync_id, anio)
+    # El año vino entero: lo que no apareció es que ya no está en aSa.
+    r["eliminados"] = _marcar_eliminados(anio, sync_id)
     _cerrar_bitacora(sync_id, True, r["filas"], r["nuevas"],
                      detalle="Pedido por trimestres: aSa no pudo con el año entero." if partido else None)
     r["anio"] = anio

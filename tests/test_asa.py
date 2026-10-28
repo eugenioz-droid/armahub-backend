@@ -623,8 +623,8 @@ check("la planta se trae ENTERA, sin filtro de fecha",
 check("...y está escrito por qué, para que nadie le ponga un filtro de vuelta",
       "Unscheduled" in SYNC)
 check("sólo ACTUALIZA: no inventa pedidos que no vinieron de getOrderSummary",
-      "UPDATE asa_pedidos" in SYNC and "INSERT INTO asa_pedidos" in SYNC
-      and SYNC.index("def sincronizar_planta") < SYNC.index("UPDATE asa_pedidos"))
+      "UPDATE asa_pedidos" in SYNC and "INSERT INTO asa_pedidos_todos" in SYNC
+      and SYNC.index("def sincronizar_planta") < SYNC.index("UPDATE asa_pedidos\n"))
 check("el reloj también la sincroniza", "sincronizar_planta" in RELOJ)
 check("...y siempre DESPUÉS de los pedidos, porque sólo actualiza lo que ya existe",
       RELOJ.index("sincronizar_incremental") < RELOJ.index("sincronizar_planta"))
@@ -1090,6 +1090,36 @@ check("encendido se dice a qué hora toca",
       "Se refresca solo a las" in DSH and "la próxima, " in DSH)
 check("...y si está encendido pero el hilo se cayó, también",
       "pero el reloj no está corriendo" in DSH)
+
+
+print("\nLO BORRADO EN aSa DEJA DE SUMAR, PERO QUEDA EL REGISTRO (28-oct)")
+# El usuario: «dejalos como eliminados pero que no sumen kilos, asi queda registro, que es
+# algo que aSa no tiene... que en las distintas secciones no tengamos que llenarnos de
+# excepciones». Medido: 7 codigos de 2026 por 70.529 kg que aSa ya no tiene y aca seguian
+# sumando -SURI, 32 t, era la diferencia de Lo Aguirre-.
+MIG161 = open(os.path.join(ROOT, "armahub", "migrations", "161_pedidos_eliminados_en_asa.sql"),
+              encoding="utf-8").read()
+check("la tabla pasa a `asa_pedidos_todos` y `asa_pedidos` queda como VISTA de lo vivo",
+      "ALTER TABLE asa_pedidos RENAME TO asa_pedidos_todos" in MIG161
+      and "CREATE OR REPLACE VIEW asa_pedidos" in MIG161
+      and "WHERE eliminado_el IS NULL" in MIG161)
+# ESA ES LA DECISION DE DISEÑO: 57 consultas en siete modulos leen `asa_pedidos`. Con una
+# columna mas, basta que una se olvide del filtro para que el kilo fantasma vuelva.
+check("...asi ninguna de las 57 consultas tiene que acordarse de filtrar",
+      "llenarnos de" in MIG161 and "57 consultas" in MIG161)
+check("...y la vista no sirve para saltarse el RLS de la tabla",
+      "security_invoker = true" in MIG161)
+check("el sync escribe en la TABLA, porque Postgres no acepta ON CONFLICT sobre una vista",
+      "INSERT INTO asa_pedidos_todos" in SYNC and "ON CONFLICT (control_code) DO UPDATE" in SYNC)
+check("...y lo que vuelve a aparecer en aSa revive solo",
+      "eliminado_el = NULL" in SYNC)
+check("marcar eliminados es SOLO de la carga completa del año, nunca del incremental",
+      "def _marcar_eliminados(" in SYNC
+      and "sync_id IS DISTINCT FROM %s" in SYNC
+      and "_marcar_eliminados(anio, sync_id)" in SYNC
+      and "_marcar_eliminados" not in SYNC.split("def sincronizar_incremental(")[1])
+check("...y el año que vino a medias no marca nada: sale antes",
+      SYNC.index('r["incompleto"] = fallos') < SYNC.index('r["eliminados"] = _marcar_eliminados'))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
