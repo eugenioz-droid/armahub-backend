@@ -407,14 +407,16 @@ print("\n13. El flujo cierra: tarea al cubicador, detalle con la barra, comproba
 # seguimiento y modificar; por último se hace el check automático que valide esa
 # modificación». Y: «sería bueno tener aquí un texto que indique cuándo fue la última carga
 # de datos de aSa».
-check("el cubicador tiene «mis chequeos»: lo que le marcaron, resuelto por su login de aSa",
+check("«mis chequeos» ya no es una pantalla aparte: el endpoint queda, el formulario es el modal (28-oct)",
       '@router.get("/chequeos/mios")' in API and "alias_cubicador(cur, user.get" in API
-      and "function cargarMios(" in JS and 'id="revMios"' in HTM)
+      and "function cargarMios(" not in JS and 'id="revMios"' not in HTM)
 check("comprobar una señal vuelve a leer aSa en vivo con la MISMA lógica de la revisión",
       '@router.post("/chequeos/senal/{senal_id}/comprobar")' in API
       and "r = revisar_cc(RevisarCc(job=job, cc=cc), user)" in API)
+# La comprobación por fila se fue con la tarjeta (28-oct): lo que aSa dice se mira al CERRAR,
+# y lo que sigue igual se avisa con su lista, sin bloquear.
 check("...y dice si quedó corregida o qué mide hoy", '"texto": (detalle or {}).get("texto")' in API
-      and "Sigue igual en aSa" in JS)
+      and "function _avisoCierreRev(" in JS and "Sigue igual en aSa" not in JS)
 check("cada señal tiene su detalle con la barra dibujada por el motor del auditor",
       "function abrirDetalleSenal(" in JS and "global.audCeldaFigura(" in JS
       and "global.audBarraNormalizada(" in JS and 'id="revSenalModal"' in HTM)
@@ -632,8 +634,13 @@ def _cab(diam, nota="Cb"):
     b = barra([("A", 900, "B", None), ("B", 900, "B", 90)], diam=diam)
     b["tipologia"] = nota
     return b
-check("un cabezal de phi12 se marca", len(C.r_cabezal_delgado(_cab(12.0), [])) == 1)
-check("...y uno de phi16 no", C.r_cabezal_delgado(_cab(16.0), []) == [])
+# «Los cabezales de 12 son super comunes, mejor que el hallazgo se enfoque en los de 10 y
+# 8» (28-oct). Medido: 163 señales de phi12 contra 21 de phi8 y phi10.
+check("un cabezal de phi10 se marca, y uno de phi8 tambien",
+      len(C.r_cabezal_delgado(_cab(10.0), [])) == 1 and len(C.r_cabezal_delgado(_cab(8.0), [])) == 1)
+check("...pero phi12 ya no: es lo habitual (y phi16 tampoco)",
+      C.r_cabezal_delgado(_cab(12.0), []) == [] and C.r_cabezal_delgado(_cab(16.0), []) == []
+      and "CABEZAL_DIAM_MINIMO = 12.0" in SRC)
 check("la tipologia se lee con diccionario, porque la escribe una persona",
       C.tipologia_de("Cb") == "cabezal" and C.tipologia_de("CAB SUP") == "cabezal"
       and C.tipologia_de("MH") == "horizontal" and C.tipologia_de("HORIZ") == "horizontal"
@@ -738,6 +745,21 @@ check("...y volver a la lista o cambiar de cubicador limpia lo marcado, que era 
       and "REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();" in JS)
 check("resuelto, para los contadores de la hoja, incluye lo declarado",
       "var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };" in JS)
+
+
+print("\nUN SOLO FORMULARIO PARA TODOS, Y EL CABEZAL EN φ8 Y φ10 (28-oct)")
+# El cubicador externo entro a ver sus correcciones y le salio «Mis chequeos por corregir»
+# —una lista plana del flujo viejo con «Ya la corregi: comprobar»— encima del panel; al
+# admin nunca, porque no tiene hallazgos propios. El usuario: «no tiene nada que ver con
+# como lo veo yo. El formulario correcto es este [el modal]».
+check("la tarjeta «Mis chequeos por corregir» se fue: el formulario es el modal, para todos",
+      "cargarMios" not in JS and "Mis chequeos por corregir" not in JS
+      and "Ya la corregí: comprobar" not in JS and 'id="revMios"' not in HTM)
+check("...y al abrir, el chip del cubicador viene puesto",
+      "REVS.filtro_cub = _miChip();" in JS)
+# El umbral del cabezal vive en una constante con su historia, no en un numero suelto.
+check("el umbral del cabezal es 12, y esta escrito por que",
+      "CABEZAL_DIAM_MINIMO = 12.0" in SRC and "los cabezales de 12 son" in SRC)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

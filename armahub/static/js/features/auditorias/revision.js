@@ -1074,7 +1074,6 @@
     pintarResumen();
     if ($('revItemsModal').style.display !== 'none') pintarItems();
     await cargarRevisiones();
-    await cargarMios();
   }
 
   // Una revisión nueva, desde el botón de arriba: lo mismo que corre el reloj.
@@ -1099,7 +1098,7 @@
       REVS.sel = ini.revision || REVS.sel;
       await cargarRevisiones();
       if (ini.revision) await abrirRevision(ini.revision);
-      await cargarReporte(); await cargarMios();
+      await cargarReporte();
     } catch (e) { aviso(e.message); $('revNuevaTxt').textContent = e.message; }
     REV.corriendo = false;
     $('revNueva').disabled = false;
@@ -1175,63 +1174,10 @@
     } catch (e) { caja.innerHTML = '<span class="muted">No se pudo dibujar: ' + esc(e.message) + '</span>'; }
   }
 
-  // COMPROBAR UNA SEÑAL EN EL MOMENTO: el sistema vuelve a leer ese código en aSa y
-  // vuelve a correr las reglas. Si la señal ya no salta, queda CORREGIDA; si salta igual,
-  // lo dice, con la medida de hoy.
-  async function comprobarSenal(id, boton, msg) {
-    if (boton) { boton.disabled = true; boton.textContent = 'Leyendo aSa…'; }
-    try {
-      var r = await req('POST', '/chequeos/senal/' + id + '/comprobar', {});
-      var txt = r.estado === 'corregida'
-        ? 'Corregida: la barra ya cumple en aSa.'
-        : 'Sigue igual en aSa' + (r.texto ? ': ' + r.texto : '') + '. Si ya la cambiaste, revisa que se haya guardado en el código ' + (r.cc || '') + '.';
-      if (msg) msg.textContent = txt;
-      ok(r.estado === 'corregida' ? 'Corregida' : 'Sigue igual en aSa');
-      _senalesPorId = {};
-      await Promise.all([refrescarRevision(), cargarReporte(), cargarMios()]);
-      if (r.estado === 'corregida') setTimeout(cerrarDetalleSenal, 900);
-    } catch (e) { aviso(e.message); if (msg) msg.textContent = e.message; }
-    if (boton) { boton.disabled = false; boton.textContent = 'Ya se corrigió: comprobar'; }
-  }
-
   // ══════ MIS CHEQUEOS ══════
   // La tarea del cubicador: lo que le marcaron para corregir, barra por barra, con la
   // comprobación a un clic. Antes el «hay que corregirla» era un aviso en la campana y
   // nada más: no había dónde verlo ni cómo cerrarlo.
-  async function cargarMios() {
-    var caja = $('revMios');
-    if (!caja) return;
-    try {
-      var d = await req('GET', '/chequeos/mios');
-      REV.mios = d.senales || [];
-      if (!REV.mios.length) { caja.style.display = 'none'; return; }
-      caja.style.display = '';
-      caja.innerHTML = '<div class="audh">Mis chequeos por corregir <span class="muted">' + REV.mios.length +
-        ' barra(s) que te marcaron. Arréglalas en aSa y aprieta «comprobar»: el sistema vuelve a leer el código en el momento.</span></div>' +
-        '<table class="audt revmio"><thead><tr><th>Obra</th><th>Código</th><th>Barra</th><th>Qué tiene</th>' +
-        '<th>Desde</th><th></th></tr></thead><tbody>' +
-        REV.mios.map(function (s) {
-          var d2 = s.detalle || {};
-          return '<tr><td class="audnom" title="' + esc(s.obra || '') + '">' + esc(s.obra || s.job) + '</td>' +
-            '<td class="cc">' + esc(s.cc || '') + (s.elemento ? ' <span class="muted">' + esc(s.elemento) + '</span>' : '') + '</td>' +
-            // La referencia abre el render: el detalle sigue a un clic, sin un botón que
-            // compita con la acción que importa.
-            '<td><span class="audref" data-ver="' + s.id + '" title="Ver la barra como está hoy en aSa">' +
-              esc(s.ref) + '</span></td>' +
-            '<td class="revmiotx">' + esc(d2.texto || '') + '</td>' +
-            '<td class="muted" style="font-size:10.5px">' + _fechaHora(s.visto_primero) +
-              (s.estado === 'declarada' ? '<div>declarada, por verificar</div>' : '') + '</td>' +
-            '<td style="white-space:nowrap">' +
-              '<button class="audmini ver" data-cmp="' + s.id + '">Ya la corregí: comprobar</button></td></tr>';
-        }).join('') + '</tbody></table>';
-      caja.querySelectorAll('[data-ver]').forEach(function (b) {
-        b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
-      });
-      caja.querySelectorAll('button[data-cmp]').forEach(function (b) {
-        b.addEventListener('click', function () { comprobarSenal(b.dataset.cmp, b, null); });
-      });
-    } catch (e) { caja.style.display = 'none'; }
-  }
 
   // ── El registro ───────────────────────────────────────────────────────────────────
 
@@ -1317,8 +1263,11 @@
       pintarReglas();
     }
     await cargarReporte();
-    // Lo mío primero y las revisiones: es lo que se viene a resolver.
-    await cargarMios();
+    // UN SOLO FORMULARIO PARA TODOS (28-oct). Acá se cargaba antes «Mis chequeos por
+    // corregir», una lista plana del flujo viejo con un botón de comprobar por fila, que le salía
+    // a quien tenía hallazgos propios —el cubicador externo con 80— encima del panel, y al
+    // admin nunca. El usuario: «no tiene nada que ver con cómo lo veo yo». Lo de cada uno
+    // se trabaja en el modal, que abre con su chip puesto (`_miChip`).
     await cargarRevisiones();
   };
 

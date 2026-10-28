@@ -318,7 +318,13 @@ def r_lados_opuestos(barra, hermanas) -> list:
 # El diámetro desde el que un cabezal es lo habitual. Por debajo NO es necesariamente un
 # error —el usuario: «12 es legítimo en algunos casos, pero es más inusual»— y por eso la
 # señal se levanta para que alguien lo mire, no para afirmar que está mal.
-CABEZAL_DIAM_MINIMO = 16.0
+# φ12 YA NO SE MARCA (28-oct). Arrancó en 16 y la revisión marcó 163 cabezales de φ12
+# contra 21 de φ8 y φ10: el usuario, «los cabezales de 12 son súper comunes, mejor que el
+# hallazgo se enfoque en los de 10 y 8». Un cabezal de φ12 es lo habitual; el aviso es para
+# φ10 y φ8, que sí llaman la atención. Los φ12 que YA saltaron se quedan como están —el
+# usuario: «no migres los que ya saltaron, que aplique de aquí para adelante»—: cada uno
+# lo resuelve quien lo tiene, con «No aplica» si corresponde.
+CABEZAL_DIAM_MINIMO = 12.0
 
 
 def r_cabezal_delgado(barra, hermanas) -> list:
