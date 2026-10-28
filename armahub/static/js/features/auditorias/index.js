@@ -670,11 +670,13 @@
     if (r) r.addEventListener('click', reabrir);
   }
 
-  // ENVIAR COMPROMETE A OTRA PERSONA con un plazo, así que no va con un confirm() pelado:
-  // se muestra a quién le llega, cuánto le llega y hasta cuándo. El plazo se edita acá y
-  // no antes, porque es el momento en que empieza a correr de verdad.
+  // ENVIAR: UNA CONFIRMACIÓN Y LISTO (28-oct). Acá vivía un panel verde que repetía lo
+  // que la pantalla ya dice arriba —elementos revisados, con hallazgo, barras por
+  // corregir— y encima lo mostraba DEBAJO del botón, así que el usuario tenía que bajar a
+  // buscarlo. Él: «al presionar enviar al auditado, creo que debiera pedir confirmación y
+  // listo, no mostrar ese menú verde». Lo que importa decir es a QUIÉN le llega y por
+  // CUÁNTO tiempo queda comprometido, y eso cabe en una línea.
   function pedirEnvio() {
-    var caja = $('audEnvio');
     var porcub = {};
     (AUD.elementos || []).forEach(function (el) {
       (el.barras_malas || []).forEach(function () {
@@ -683,64 +685,31 @@
       });
     });
     var gente = Object.keys(porcub).sort();
-    var hallazgos = (AUD.elementos || []).filter(function (e) { return e.hallazgo === 'hallazgo'; }).length;
-    caja.style.display = '';
-    caja.innerHTML = '<h4>Enviar ' + esc(AUD.codigo) + ' · ' + esc(AUD.obra) + '</h4>' +
-      '<table><tbody>' +
-      '<tr><td>Elementos revisados</td><td class="num">' + AUD.revisados + ' de ' + AUD.n + '</td></tr>' +
-      '<tr><td>Con hallazgo</td><td class="num">' + hallazgos + '</td></tr>' +
-      '<tr><td>Barras por corregir</td><td class="num">' + (AUD.barras_malas || 0) + '</td></tr>' +
-      (gente.length
-        ? gente.map(function (q) {
-            return '<tr><td>Le llega a <b>' + esc(q.split('@')[0]) + '</b></td><td class="num">' +
-                   porcub[q] + ' barra(s)</td></tr>'; }).join('')
-        : '<tr><td colspan="2" class="muted">Sin barras por corregir: no le llega a nadie.</td></tr>') +
-      '</tbody></table>' +
-      // EL PLAZO NO SE PREGUNTA: son 24 horas desde este momento, y es una regla, no algo
-      // que se negocie auditoría por auditoría. Se muestra para que quien envía sepa a qué
-      // está comprometiendo a la otra persona.
-      '<div class="audenviop"><b style="font-size:11px; color:#33691e;">' +
-      'Quien cubicó tendrá 24 horas para corregir</b>' +
-      '<span class="muted" style="font-size:10px;">el plazo arranca al enviar y se registra ' +
-      'para la trazabilidad; todavía no dispara correos</span>' +
-      '<div style="flex:1"></div>' +
-      '<button class="audenviar" id="audEnvioOk">Enviar</button>' +
-      '<button class="audmini" id="audEnvioNo">Cancelar</button></div>';
-    $('audEnvioNo').addEventListener('click', function () { caja.style.display = 'none'; });
-    $('audEnvioOk').addEventListener('click', async function () {
-      var b = $('audEnvioOk');
-      b.disabled = true;
-      try {
-        AUD = await req('POST', '/auditorias/' + AUD.id + '/enviar', {});
-        caja.style.display = 'none';
-        ok('Auditoría enviada');
-        await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
-      } catch (e) { aviso(e.message); b.disabled = false; }
-    });
+    var a_quien = gente.length
+      ? gente.map(function (q) { return q.split('@')[0] + ' (' + porcub[q] + ' barra' + (porcub[q] === 1 ? '' : 's') + ')'; }).join(', ')
+      : 'nadie: no quedaron barras por corregir';
+    if (!global.confirm('Enviar ' + AUD.codigo + ' · ' + AUD.obra + '\n\n' +
+                        'Le llega a: ' + a_quien + '\n' +
+                        'Tendrá 24 horas para corregir, y el plazo arranca ahora.\n\n' +
+                        'Desde este momento lo que marcaste queda firme: para cambiarlo hay que reabrirla.')) return;
+    enviarAuditoria();
   }
 
-  async function cerrarAMano() {
-    var m = global.prompt('¿Por qué se cierra sin resolver todas las barras?\n' +
-                          '(la barra ya no existe, el código se anuló, la obra terminó…)\n' +
-                          'Queda en el informe.');
-    if (m === null) return;
-    if (m.trim().length < 10) { aviso('Hace falta el motivo: queda en el informe.'); return; }
+  async function enviarAuditoria() {
+    var b = $('audBtnEnviar');
+    _ocupado(b, true);
+    if (b) b.textContent = 'Enviando…';
     try {
-      AUD = await req('POST', '/auditorias/' + AUD.id + '/cerrar', { motivo: m });
-      ok('Auditoría cerrada'); await cargarLista(); pintarDetalle();
-    } catch (e) { aviso(e.message); }
-  }
-
-  async function reabrir() {
-    var m = global.prompt('¿Por qué la reabres?\nSale del panel del auditado y queda registrado.');
-    if (m === null) return;
-    if (m.trim().length < 10) { aviso('Hace falta el motivo: reabrir también se audita.'); return; }
-    try {
-      AUD = await req('POST', '/auditorias/' + AUD.id + '/reabrir', { motivo: m });
-      ok('Auditoría reabierta');
+      AUD = await req('POST', '/auditorias/' + AUD.id + '/enviar', {});
+      ok('Auditoría enviada');
       await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
-    } catch (e) { aviso(e.message); }
+    } catch (e) {
+      aviso(e.message);
+      _ocupado(b, false);
+      if (b) b.textContent = 'Enviar al auditado';
+    }
   }
+
 
   function pintarDetalle() {
     var caja = $('audDetalle'), lista = $('audVistaLista');
@@ -760,17 +729,25 @@
     // TRES CUENTAS, NO PORCENTAJES (20-oct). Acá abajo iba la «cobertura de la obra», con
     // porcentajes sobre denominadores que se movían solos y que el usuario no podía leer.
     // Pidió esto en su lugar: elementos auditados, ítems auditados, hallazgos.
+    // LOS TRES NÚMEROS SON LA BARRA, Y LA MUESTRA SE DESPLIEGA DESDE AHÍ (28-oct). El
+    // usuario: «la barra muestra los KPI cards, pero si se quiere ver el detalle, entonces
+    // se despliega y ahí aparece todo lo de abajo». La muestra es la herramienta del
+    // auditor —diez filas con quince columnas— y hasta que no se abre un elemento no hace
+    // falta tenerla delante.
     var rs = AUD.resumen || {};
-    $('audDetInfo').innerHTML += '<div class="audkpis audres3">' +
+    $('audDetInfo').innerHTML += '<div class="audkpis audres3" id="audResBarra">' +
       caj(rs.elementos_auditados || 0, 'elementos auditados' +
           (rs.elementos && rs.elementos !== rs.elementos_auditados ? ' de ' + rs.elementos : '')) +
       caj(rs.items_auditados || 0, 'ítems auditados') +
       caj(rs.hallazgos || 0, 'hallazgos', rs.hallazgos ? 'mal' : 'bien') +
+      (AUD.soy_auditor
+        ? '<button class="audmini auddespl" id="audVerMuestra">' +
+          (MUESTRA_ABIERTA ? '▾ Ocultar la muestra' : '▸ Ver la muestra (' + (AUD.n || 0) + ')') + '</button>'
+        : '') +
       '</div>';
     var conflicto = (AUD.elementos || []).filter(function (e) { return e.conflicto; }).length;
     if (conflicto) $('audDetInfo').innerHTML += ' · <b style="color:#c62828">' + conflicto + ' elemento(s) cubicados por quien audita</b>';
     pintarFlujo();
-    if ($('audEnvio') && AUD.enviada) $('audEnvio').style.display = 'none';
 
     // EN aSa EL ELEMENTO VIVE DENTRO DE UN CÓDIGO DE CONTROL, y son dos cosas distintas:
     // el código con su descripción por un lado, el elemento por otro. Pegados con puntos
@@ -853,6 +830,12 @@
                         : 'El informe se emite con la auditoría cerrada: hasta entonces ' +
                           'lo que dice todavía puede cambiar.';
     }
+    // La muestra arranca cerrada; se abre sola si hay un elemento en revisión, porque ahí
+    // es donde se elige el siguiente.
+    var cols = $('audCols');
+    if (cols) cols.style.display = (AUD.soy_auditor && (MUESTRA_ABIERTA || ELEM)) ? '' : 'none';
+    var vm = $('audVerMuestra');
+    if (vm) vm.addEventListener('click', function () { MUESTRA_ABIERTA = !MUESTRA_ABIERTA; pintarDetalle(); });
     pintarAcciones();
     if (ELEM) {
       var vivo = (AUD.elementos || []).filter(function (x) { return x.id === ELEM.id; })[0];
@@ -1659,7 +1642,7 @@
             '</div>' +
           '</div>'
         : '') +
-      '<table class="audt audacct"><thead><tr><th style="width:22px"></th><th>Barra</th><th>Figura</th>' +
+      '<div class="audbdacc"><table class="audt audacct"><thead><tr><th style="width:22px"></th><th>Barra</th><th>Figura</th>' +
       '<th>Elemento</th><th>Cubicó</th>' +
       '<th title="Lo que el auditor anotó en esta barra.">Qué se encontró</th>' +
       '<th title="Lo que la barra debería decir, como lo dejó el auditor. De esto vive la ' +
@@ -1699,7 +1682,7 @@
               return malas.map(function (b) { return filaAccion(e, b, enviada); }).join('');
             }).join('');
         }).join('');
-      })() + '</tbody></table>';
+      })() + '</tbody></table></div>';
     _bindAcciones(caja);
   }
 
@@ -1881,6 +1864,8 @@
   // CÓDIGO —una lectura sirve a todas sus barras— y sólo cuando alguien las pide, porque
   // cada una son un par de segundos contra aSa.
   var AFIGS = {};
+  // Si la muestra del auditor está desplegada. Arranca cerrada: son quince columnas.
+  var MUESTRA_ABIERTA = false;
   // Las barras marcadas con el check para resolverlas de a muchas (21-oct).
   var SEL_AUD = {};
   function _figAud(cc, ref) {

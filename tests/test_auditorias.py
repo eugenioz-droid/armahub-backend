@@ -684,7 +684,13 @@ check("enviar, reabrir y cerrar son del auditor, en un solo lugar",
 # comprometiendo a la otra persona— pero no lo pregunta.
 check("el plazo del auditado arranca AL ENVIAR y no se negocia",
       "class EnvioBody" in SRC and "audEnvioPlazo" not in JS
-      and "tendrá 24 horas para corregir" in JS)
+      and "Tendrá 24 horas para corregir" in JS)
+# ENVIAR PIDE UNA CONFIRMACIÓN Y LISTO (28-oct). El panel verde repetía lo que la franja de
+# arriba ya dice y salía DEBAJO del botón, así que había que bajar a buscarlo. El usuario:
+# «debiera pedir confirmación y listo, no mostrar ese menú verde».
+check("...y se confirma en una línea: a quién le llega y que lo marcado queda firme",
+      "global.confirm('Enviar '" in JS and "Le llega a: " in JS
+      and "queda firme" in JS and 'id="audEnvio"' not in HTM and "audEnvioOk" not in JS)
 check("...y se muestra cuánto falta, no sólo la fecha: con 24 h el día no dice nada",
       "function _cuantoFalta(" in JS and "vencido" in JS)
 check("un aviso por persona al enviar, no uno por elemento mientras se revisa",

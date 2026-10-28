@@ -171,11 +171,9 @@
         <div class="audflujob" id="audFlujoBotones"></div>
       </div>
 
-      <!-- EL PANEL DE ENVÍO. Enviar compromete a otra persona con un plazo, así que no va
-           con un confirm() pelado: se muestra a quién le llega, cuánto le llega y hasta
-           cuándo, con el plazo editable ahí mismo —es el momento en que empieza a correr
-           de verdad—. -->
-      <div id="audEnvio" class="audenvio" style="display:none;"></div>
+      <!-- EL PANEL DE ENVÍO SE FUE (28-oct): repetía lo que la franja de arriba ya dice y
+           aparecía DEBAJO del botón, así que había que bajar a buscarlo. Ahora enviar pide
+           una confirmación —a quién le llega y por cuánto— y listo. -->
 
       <div class="card audc">
       <div id="audDetInfo" class="muted" style="font-size:11px; margin-bottom:6px;"></div>
@@ -762,16 +760,9 @@
   .audenviar{font-size:11.5px; font-weight:700; padding:6px 16px; border-radius:5px;
              border:1px solid #2e7d32; background:#388e3c; color:#fff; cursor:pointer;}
   .audenviar:disabled{background:#eceff1; color:#b0bec5; border-color:#dfe5ea; cursor:not-allowed;}
-  /* El panel de confirmación del envío. */
-  .audenvio{margin-bottom:10px; padding:12px 14px; background:#f1f8e9;
-            border:1px solid #aed581; border-radius:6px;}
-  .audenvio h4{margin:0 0 8px; font-size:12.5px; color:#33691e;}
-  .audenvio table{width:100%; border-collapse:collapse; margin-bottom:8px;}
-  .audenvio td{font-size:11px; padding:3px 6px; border-bottom:1px solid #dcedc8;}
-  .audenvio td.num{text-align:right; font-variant-numeric:tabular-nums;}
-  .audenvio .audenviop{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .audenvio input[type=date]{font-size:11px; padding:3px 6px; border:1px solid #aed581;
-                             border-radius:4px;}
+  /* La fila de botones de un aviso (el del cierre con cosas sin cambiar en aSa). Era
+     parte del panel de envío, que se fue el 28-oct. */
+  .audenviop{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
   /* Un cartel de borrador: mientras no se envía, el auditado no ve nada. */
   .audborrador{font-size:10px; font-weight:700; color:#e65100; background:#fff3e0;
                border:1px solid #ffcc80; border-radius:99px; padding:2px 9px;}
@@ -872,7 +863,22 @@
              letter-spacing:.3px; cursor:help; vertical-align:middle;}
   .audobs{width:100%; box-sizing:border-box; font-size:10.5px; padding:2px 5px;
           border:1px solid #ef9a9a; border-radius:4px;}
-  .audacc{margin-top:10px; padding:10px 12px; background:#fffdf5; border:1px solid #ffe0b2; border-radius:6px;}
+  /* EL RESUMEN HALLAZGOS ES UNA CAJA MÁS (28-oct). Estaba sobre un amarillo propio que no
+     se parecía a nada del resto de la plataforma; el usuario: «no sé por qué está en ese
+     cuadro amarillo, deberíamos tener algo más estandarizado o parecido a los menús
+     usuales». Misma caja blanca que las demás, con la banda de color arriba —que es cómo
+     se distinguen entre sí— en el ámbar del trabajo pendiente. */
+  .audacc{margin-top:10px; padding:12px 14px; background:#fff; border:1px solid #e8ebef;
+          border-top:3px solid #ffb300; border-radius:8px;
+          box-shadow:0 1px 2px rgba(38,50,56,.06);}
+  /* NINGUNA COLUMNA SE CORTA. La tabla reparte el ancho sobrante en «Qué se encontró» y
+     «Debería decir», que son las que llevan texto; el resto va al contenido. Y si la
+     pantalla es angosta, la tabla scrollea sola en vez de empujar las últimas columnas
+     fuera de la caja. */
+  .audacc .audbdacc{overflow-x:auto;}
+  .audt.audacct{table-layout:auto; min-width:980px;}
+  .audacct td.audqse{min-width:240px;}
+  .audacct th:last-child, .audacct td:last-child{white-space:nowrap;}
   /* EL BOTÓN «RESUELTO» (20-oct). Se llama audBres y no audres porque .audres ya era la
      barrita de 10px de los indicadores (línea de arriba): con el mismo nombre el botón
      salía como un óvalo sin texto. Reemplaza el check «Corregido en aSa»: verde cuando está
