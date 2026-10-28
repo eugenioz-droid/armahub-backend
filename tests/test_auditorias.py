@@ -1445,6 +1445,13 @@ check("...sin la columna Cubico por fila: esta en la cabecera de cada codigo",
 check("el auditor no resuelve lo que el mismo marco: juez y parte",
       'user.get("email", "?") != aud.get("auditor")' in SRC.split('aud["puedo_actuar"]')[1][:200]
       and "No lo acepto" in JS)
+# EL ORIGEN DEL TEXTO PEGADO (28-oct), vivo hasta hoy: el textarea de la nota solo se
+# rellenaba si estaba vacio y nunca se limpiaba al cambiar de elemento, asi que lo escrito
+# en uno se guardaba con el siguiente. Asi quedo la misma nota en cuatro elementos de
+# A-2026-012 y las doce observaciones de 406 REV 1 en tres conformes.
+check("la nota del elemento se vuelve a llenar al CAMBIAR de elemento, no en cada repintado",
+      "ta.dataset.de !== String(ELEM.id)" in JS and "ta.value = ELEM.texto || '';" in JS
+      and "if ($('audRevTexto').value === '' && ELEM.texto)" not in JS)
 check("la auditoria cerrada dice lo que aSa confirmo al cerrar",
       'aud["cierre_chequeo"] = r[34]' in SRC and "a.cierre_chequeo, a.cierre_tipo" in SRC
       and 'class="audnota audcerrada"' in JS and "aSa confirmó <b>" in JS)

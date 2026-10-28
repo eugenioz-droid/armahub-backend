@@ -1505,7 +1505,18 @@
         });
       });
     }
-    if ($('audRevTexto').value === '' && ELEM.texto) $('audRevTexto').value = ELEM.texto;
+    // LA NOTA ES DE ESTE ELEMENTO (28-oct). Acá decía «si el textarea está vacío, poné el
+    // texto del elemento» y nada más: al pasar a otro elemento, lo escrito en el anterior
+    // seguía ahí y se guardaba con el siguiente. Así quedó la misma nota pegada en cuatro
+    // elementos de A-2026-012 y las doce observaciones de 406 REV 1 en tres conformes. El
+    // textarea recuerda PARA QUÉ elemento se llenó y se vuelve a llenar sólo al cambiar de
+    // elemento —no en cada repintado, que es cada clic de OK/Hallazgo y borraría lo que
+    // se está escribiendo—.
+    var ta = $('audRevTexto');
+    if (ta && ta.dataset.de !== String(ELEM.id)) {
+      ta.value = ELEM.texto || '';
+      ta.dataset.de = String(ELEM.id);
+    }
     $('audRevMsg').textContent = ELEM.revisado_el
       ? 'Registrado ' + ddmm(ELEM.revisado_el) + (ELEM.revisado_por ? ' por ' + ELEM.revisado_por.split('@')[0] : '')
       : '';
