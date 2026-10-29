@@ -229,6 +229,7 @@
                ': lo que le FALTA, y en gris lo detectado. Para filtrar por persona, el chip de arriba.">' +
                esc(q) + '</th>'; }).join('') +
       '<th class="num" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
+      '<th class="num" title="Los que una persona miró y descartó con motivo.">No aplican</th>' +
       '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
       'Es contra esto que se mide el avance.">Aplican</th>' +
       '<th>Avance</th><th></th></tr></thead><tbody>' +
@@ -257,8 +258,9 @@
                    '<div class="l2">de ' + c.n + '</div></td>';
           }).join('') +
           '<td class="num">' + t.n + '</td>' +
-          '<td class="num"><b>' + t.apl + '</b>' +
-            (t.nap ? '<div class="l2">' + t.nap + ' no aplica</div>' : '') + '</td>' +
+          // «No aplican» en su columna, no como texto chico bajo «Aplican» (29-oct).
+          '<td class="num">' + (t.nap || '<span class="muted">·</span>') + '</td>' +
+          '<td class="num"><b>' + t.apl + '</b></td>' +
           '<td>' + (!t.apl
             ? '<span class="muted">sin hallazgos</span>'
             : '<div class="revbar2" style="max-width:90px; display:inline-block; vertical-align:middle;">' +
