@@ -123,7 +123,7 @@
   // `figs` es lo leído de aSa, por código: {cc: {estado, barras: {ref: barra}, msg}}. Es
   // caché a propósito —una lectura por código y no por barra— y se vacía al refrescar la
   // revisión, porque entonces lo de aSa puede haber cambiado.
-  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: '',
+  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: undefined,
                figs: {}, anio: null, total: {} };
   // TODO LO RESUELTO DICE «RESUELTO» (20-oct), igual que en la auditoría: lo que dijo quien
   // lo hizo. Que aSa lo haya confirmado al cerrar se agrega, no es otro estado.
@@ -143,6 +143,7 @@
       var d = await req('GET', '/chequeos/revisiones');
       REVS.lista = d.revisiones || [];
       REVS.total = d.total || {};
+      if (REVS.filtro_cub === undefined) REVS.filtro_cub = _esAdmin() ? null : (_miChip() || null);
       pintarRevisiones();
       // NO SE ABRE NINGUNA SOLA. El bloque de arriba arranca mostrando el total de todas,
       // que es lo que se viene a ver; elegir una es FILTRAR, no el punto de partida.
@@ -181,11 +182,24 @@
     return Object.keys(tot).sort(function (a, b) { return tot[b] - tot[a]; });
   }
 
+  // La cuenta de una revisión, entera o de UN cubicador: es lo que cambia con el filtro.
+  function _cuentaDe(r, cub) {
+    if (!cub) {
+      return { n: r.detectados || 0, nap: r.no_aplica || 0, res: r.resueltas || 0,
+               apl: r.aplican || 0, pct: r.pct };
+    }
+    var c = (r.por_cubicador || {})[cub];
+    if (!c) return { n: 0, nap: 0, res: 0, apl: 0, pct: null };
+    var apl = c.n - (c.no_aplica || 0);
+    return { n: c.n, nap: c.no_aplica || 0, res: c.resueltos || 0, apl: apl,
+             pct: apl ? Math.round((c.resueltos || 0) / apl * 100) : null };
+  }
+
   function pintarRevisiones() {
     var el = $('revLista');
     if (!el) return;
     var vis = _visibles();
-    $('revListaN').textContent = vis.length + ' revisión(es)';
+    $('revListaN').textContent = vis.length + ' revisión(es)' + (REVS.filtro_cub ? ' · ' + REVS.filtro_cub : '');
     // El filtro de año sólo aparece cuando hay más de uno: con un año solo es un control
     // que no decide nada.
     var anios = _anios();
@@ -208,65 +222,73 @@
         : 'Todavía no se ha hecho ninguna revisión. Apreta «Nueva revisión».') + '</div>';
       return;
     }
-    var cols = _columnas(vis);
+    var cols = _columnas(vis), F = REVS.filtro_cub || null;
     el.innerHTML = '<table class="audt revmat"><thead><tr><th>Revisión</th>' +
-      cols.map(function (q) { return '<th class="num" title="' + esc(q) + '">' + esc(q) + '</th>'; }).join('') +
-      '<th class="num" title="Lo que la máquina marcó.">Detectados</th>' +
+      cols.map(function (q) {
+        return '<th class="num' + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
+               ': lo que le FALTA, y en gris lo detectado. Clic en una celda = filtrar por esa persona en esa revisión.">' +
+               esc(q) + '</th>'; }).join('') +
+      '<th class="num" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
       '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
       'Es contra esto que se mide el avance.">Aplican</th>' +
       '<th>Avance</th><th></th></tr></thead><tbody>' +
       vis.map(function (r) {
-        var pct = r.pct == null ? 0 : r.pct;
-        var pc = r.por_cubicador || {};
-        return '<tr class="revmatf' + (REVS.sel === r.id ? ' on' : '') + '" data-rev="' + r.id + '">' +
+        var pc = r.por_cubicador || {}, t = _cuentaDe(r, F);
+        var apagada = F && !t.n;
+        return '<tr class="revmatf' + (REVS.sel === r.id ? ' on' : '') + (apagada ? ' apagada' : '') +
+          '" data-rev="' + r.id + '" title="Clic para filtrar el resumen de arriba a esta revisión">' +
           '<td><b>#' + r.id + '</b> ' + _fechaHora(r.arrancada) +
             '<div class="l2">' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
             ' · ' + esc(r.obra || '') + '</div></td>' +
           cols.map(function (q) {
-            var c = pc[q];
-            if (!c || !c.n) return '<td class="num"><span class="muted">·</span></td>';
-            var falta = c.n - c.no_aplica - c.resueltos;
-            return '<td class="num revcel" data-rev="' + r.id + '" data-cub="' + esc(q) +
-                   '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' + c.n +
-                   ' detectado(s)' + (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
-                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') +
-                   '. Clic para ver sólo lo suyo.">' +
-                   '<b>' + c.n + '</b>' +
-                   (falta <= 0 ? ' <span class="revok">✓</span>' : '') + '</td>';
+            var c = pc[q], dim = F && F !== q ? ' dim' : '';
+            if (!c || !c.n) return '<td class="num' + dim + '"><span class="muted">·</span></td>';
+            var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
+            // LO QUE FALTA, EN GRANDE; lo detectado, en gris. Es la pregunta real: a quién
+            // le queda cuánto. Antes decía «113» aunque ya hubiera resuelto cincuenta.
+            return '<td class="num revcel' + dim + (F === q ? ' sel' : '') + '" data-rev="' + r.id +
+                   '" data-cub="' + esc(q) + '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' +
+                   falta + ' por resolver de ' + c.n + ' detectado(s)' +
+                   (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
+                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') + '. Clic para filtrar.">' +
+                   (falta <= 0 ? '<span class="revok">✓</span>' : '<b>' + falta + '</b>') +
+                   '<div class="l2">de ' + c.n + '</div></td>';
           }).join('') +
-          '<td class="num">' + (r.detectados || 0) + '</td>' +
-          '<td class="num"><b>' + (r.aplican || 0) + '</b>' +
-            (r.no_aplica ? '<div class="l2">' + r.no_aplica + ' no aplica</div>' : '') + '</td>' +
-          '<td>' + (!r.aplican
+          '<td class="num">' + t.n + '</td>' +
+          '<td class="num"><b>' + t.apl + '</b>' +
+            (t.nap ? '<div class="l2">' + t.nap + ' no aplica</div>' : '') + '</td>' +
+          '<td>' + (!t.apl
             ? '<span class="muted">sin hallazgos</span>'
             : '<div class="revbar2" style="max-width:90px; display:inline-block; vertical-align:middle;">' +
-              '<i style="width:' + pct + '%"></i></div> ' +
-              (pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : pct + '%')) + '</td>' +
-          // UN BOTÓN POR LÍNEA, que es lo que pidió el usuario: «tal vez sería más
-          // intuitivo un botón por línea, pero sólo si no recarga la UI». No recarga: abre
-          // el modal con lo de esa revisión y la pantalla de atrás no se vuelve a pintar.
-          '<td class="revacc">' + (r.aplican
-            ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir ' + r.aplican + '</button>'
+              '<i style="width:' + (t.pct || 0) + '%"></i></div> ' +
+              (t.pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : (t.pct || 0) + '%')) + '</td>' +
+          // «ABRIR» A SECAS (29-oct): con el número al lado se descuadraban. Entra a la hoja
+          // con los filtros que estén puestos: esta revisión, y el cubicador si lo hay.
+          '<td class="revacc">' + (t.apl
+            ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir</button>'
             : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
-    // La celda abre lo de esa persona; la fila, la revisión entera.
+    // LA CELDA FILTRA (revisión + persona), LA FILA FILTRA (revisión), EL BOTÓN ENTRA.
     el.querySelectorAll('td.revcel').forEach(function (td) {
       td.addEventListener('click', async function (ev) {
         ev.stopPropagation();
+        REVS.filtro_cub = (REVS.filtro_cub === td.dataset.cub && REVS.sel === Number(td.dataset.rev))
+          ? null : td.dataset.cub;
         await abrirRevision(Number(td.dataset.rev));
-        REVS.filtro_cub = td.dataset.cub;
-        abrirItems(true);
       });
     });
     el.querySelectorAll('button[data-abrir]').forEach(function (b) {
       b.addEventListener('click', async function (ev) {
         ev.stopPropagation();
         await abrirRevision(Number(b.dataset.abrir));
-        abrirItems();
+        abrirItems(true);
       });
     });
     el.querySelectorAll('tr.revmatf').forEach(function (tr) {
-      tr.addEventListener('click', function () { abrirRevision(Number(tr.dataset.rev)); });
+      tr.addEventListener('click', function () {
+        if (REVS.sel === Number(tr.dataset.rev)) { REVS.sel = null; REVS.detalle = null; pintarResumen(); pintarRevisiones(); }
+        else abrirRevision(Number(tr.dataset.rev));
+      });
     });
   }
 
@@ -283,76 +305,95 @@
     } catch (e) { $('revResCuerpo').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
-  // EL ESTADO, ARRIBA Y GLOBAL. Mira TODAS las revisiones; al elegir una en la matriz,
-  // se filtra a ella y aparece el botón para entrar a trabajarla. Antes era un segundo
-  // cuadro debajo que sólo sabía de la revisión abierta, y los chips de cubicador sólo
-  // valían para esa: no se podía preguntar «cuánto le queda a Nlopez en total».
+  // EL ESTADO, ARRIBA Y GLOBAL. Mira TODAS las revisiones; elegir una en la matriz lo
+  // filtra a ella, y el chip de cubicador lo filtra a esa persona. Los dos filtros se
+  // componen, y «Abrir» entra a la hoja con los que estén puestos. El usuario (29-oct):
+  // «los cubicadores deben ser filtros no botones... si se presiona uno debe actualizarse
+  // todo, la matriz, y al abrir mostrarle sólo lo de él. Así le damos el énfasis a Abrir».
   function pintarResumen() {
     var sel = REVS.sel && REVS.detalle ? REVS.detalle.revision : null;
-    var T = REVS.total || {};
-    // De una revisión o del total: las dos formas traen los mismos nombres salvo `items`,
-    // que es como se llamaba `detectados` cuando sólo existía la vista por revisión.
-    var det = sel ? (sel.detectados != null ? sel.detectados : sel.items) : (T.detectados || 0);
-    var apl = sel ? (sel.aplican != null ? sel.aplican : det) : (T.aplican || 0);
-    var res = sel ? (sel.resueltas || 0) : (T.resueltas || 0);
-    var nap = sel ? (sel.no_aplica || 0) : (T.no_aplica || 0);
+    var T = REVS.total || {}, F = REVS.filtro_cub || null;
+    // Las personas, con sus cuentas: de la revisión elegida o del total.
     var cubs = sel
       ? (sel.por_cubicador || []).map(function (c) {
-          return { q: c.cubico, n: c.n, no_aplica: c.no_aplica || 0, resueltos: c.resueltas || 0 }; })
+          return { q: c.cubico, n: c.n, no_aplica: c.no_aplica || 0, resueltos: c.resueltas || 0,
+                   viejas: c.viejas || 0, ccs: c.ccs || 0, obras: c.obras || 0 }; })
       : Object.keys(T.por_cubicador || {}).map(function (q) {
           var c = T.por_cubicador[q];
-          return { q: q, n: c.n, no_aplica: c.no_aplica, resueltos: c.resueltos }; });
-    cubs.sort(function (a, b) { return b.n - a.n; });
+          return { q: q, n: c.n, no_aplica: c.no_aplica, resueltos: c.resueltos,
+                   viejas: c.viejas || 0, ccs: c.ccs || 0, obras: c.obras || 0 }; });
+    cubs.sort(function (a, b) { return (b.n - b.no_aplica - b.resueltos) - (a.n - a.no_aplica - a.resueltos) || b.n - a.n; });
+    // Lo que se muestra: el total, la revisión, o esa persona dentro de eso.
+    var base = sel
+      ? { det: sel.detectados != null ? sel.detectados : sel.items, nap: sel.no_aplica || 0, res: sel.resueltas || 0,
+          obras: sel.obras, ccs: sel.ccs_con_hallazgo, kg: sel.kg, viejas: sel.viejas || 0 }
+      : { det: T.detectados || 0, nap: T.no_aplica || 0, res: T.resueltas || 0,
+          obras: T.obras || 0, ccs: T.ccs_con_hallazgo || 0, kg: T.kg || 0, viejas: T.viejas || 0 };
+    // Si esa persona no tiene nada en la revisión elegida, el filtro se QUEDA (lo puso el
+    // usuario) y las tarjetas dicen cero: quitarlo solo sería un cambio sin que nadie lo pida.
+    var mio = F ? (cubs.filter(function (c) { return c.q === F; })[0] ||
+                   { q: F, n: 0, no_aplica: 0, resueltos: 0, obras: 0, ccs: 0, viejas: 0 }) : null;
+    var v = mio
+      ? { det: mio.n, nap: mio.no_aplica, res: mio.resueltos, obras: mio.obras, ccs: mio.ccs, kg: null, viejas: mio.viejas }
+      : base;
+    var apl = Math.max(0, v.det - v.nap);
+    var pct = apl ? Math.round(v.res / apl * 100) : null;
+    // «RESUELTOS» CONTRA LO QUE APLICA, con el mismo porcentaje que la matriz (29-oct).
+    // Antes decía «18 / 233» arriba y «5%» abajo: dos números para lo mismo.
     var kpis = [
-      [det, 'detectados'],
-      [res + ' / ' + apl, 'resueltos'] ,
-      [sel ? sel.obras : (T.obras || 0), 'obra(s)'],
-      [sel ? sel.ccs_con_hallazgo : (T.ccs_con_hallazgo || 0), 'código(s) con hallazgo'],
-      [num(Math.round(sel ? sel.kg : (T.kg || 0))), 'kg en juego'],
-      [num(sel ? sel.barras : (T.barras || 0)), 'barras miradas']
+      [v.det, 'detectados'],
+      [v.res + ' / ' + apl + (pct == null ? '' : ' <small>· ' + pct + '%</small>'), 'resueltos de los que aplican'],
+      [v.nap, 'no aplican'],
+      [v.obras || 0, 'obra(s)'],
+      [v.ccs || 0, 'código(s) con hallazgo'],
+      // LO QUE ENVEJECE SIN QUE NADIE LO VEA, en vez de «barras miradas» (29-oct).
+      [v.viejas || 0, 'abiertas hace más de 7 días']
     ];
-    if (nap) kpis.splice(2, 0, [nap, 'no aplican']);
-    var tit = sel
-      ? 'Revisión #' + sel.id + ' <span class="muted">' + _fechaHora(sel.arrancada) +
+    if (v.kg != null) kpis.splice(5, 0, [num(Math.round(v.kg)), 'kg en juego']);
+    var tit = (sel
+      ? '<span class="revtit">Revisión #' + sel.id + '</span> <span class="muted">' + _fechaHora(sel.arrancada) +
         ' · ' + esc(sel.por === 'reloj' ? 'automática' : (sel.por || '').split('@')[0]) +
         ' · ' + esc(sel.obra || '') + '</span>' +
-        '<button class="audmini" id="revTodo" title="Volver al total de todas las revisiones">' +
-        'Ver todo</button>'
-      : 'Todas las revisiones <span class="muted">' + (T.revisiones || 0) +
-        ' corrida(s) · elige una abajo para filtrar</span>';
-    // SIN BOTÓN DE ABRIR ACÁ. Cada revisión tiene el suyo en su línea, y el usuario lo
-    // dijo: «aparte de feo te quedó de más ahí si ya le pusiste a cada revisión un botón».
-    // Para entrar a TODO están los chips de cubicador, que es como se entra de verdad.
-    // El título y el «ver todo» viven en la barra de acciones, que ya tiene el botón de
-    // correr una revisión nueva: así arriba queda una sola fila de cabecera.
+        '<button class="audmini" id="revTodo" title="Volver al total de todas las revisiones">✕ Ver todas</button>'
+      : '<span class="revtit">Todas las revisiones</span> <span class="muted">' + (T.revisiones || 0) +
+        ' corrida(s) · clic en una fila para filtrar</span>') +
+      (F ? '<button class="revfiltro" id="revQuitaFiltro" title="Filtrado por cubicador. Clic para quitar el filtro.">' + esc(F) + ' ✕</button>' : '') +
+      // EL ÉNFASIS VA EN ABRIR: un solo botón arriba que entra con lo que esté filtrado.
+      (apl ? '<button class="audbtn" id="revAbrir" title="Abrir la hoja con ' +
+             (sel ? 'esta revisión' : 'todas las revisiones') + (F ? ', sólo lo de ' + esc(F) : '') + '">Abrir</button>' : '');
     $('revAccTit').innerHTML = tit;
     $('revResCuerpo').innerHTML =
       '<div class="revkpis">' + kpis.map(function (k) {
         return '<div class="revkpi"><b>' + k[0] + '</b><span>' + k[1] + '</span></div>'; }).join('') + '</div>' +
-      (!det
+      (!base.det
         ? '<div class="revvacio">' + (sel
             ? 'Esta revisión no encontró hallazgos: se miraron ' + (sel.ccs || 0) +
               ' código(s) y todos cumplen. Queda el registro de que se revisó.'
             : 'Todavía no hay hallazgos.') + '</div>'
-        // LOS CUBICADORES, COMO BOTONES PARA ENTRAR. Valen sobre lo que se está mirando:
-        // el total si no hay revisión elegida, o esa revisión si la hay.
+        // LOS CUBICADORES SON FILTROS, no botones de entrar. El chip dice lo que le FALTA.
         : '<div class="dshchips revcubs">' + cubs.map(function (c) {
             var falta = c.n - c.no_aplica - c.resueltos;
-            return '<button data-abrir-cub="' + esc(c.q) + '" class="' +
-                   (falta <= 0 ? 'listo' : '') + '" title="Ver y resolver sólo lo de ' +
-                   esc(c.q) + (sel ? '' : ', en todas las revisiones') + '">' +
-                   esc(c.q) + ' <b>' + c.n + '</b>' +
-                   (falta <= 0 ? ' ✓' : '') + '</button>'; }).join('') + '</div>');
+            return '<button data-filtro-cub="' + esc(c.q) + '" class="' +
+                   (F === c.q ? 'on ' : '') + (falta <= 0 ? 'listo' : '') +
+                   '" title="Filtrar todo por ' + esc(c.q) + ': ' + falta + ' por resolver de ' + c.n + '">' +
+                   esc(c.q) + ' <b>' + (falta <= 0 ? '✓' : falta) + '</b>' +
+                   '<small>de ' + c.n + '</small></button>'; }).join('') + '</div>');
     var vt = $('revTodo');
     if (vt) vt.addEventListener('click', function (e) {
       e.stopPropagation();
       REVS.sel = null; REVS.detalle = null;
       pintarResumen(); pintarRevisiones();
     });
-    $('revResCuerpo').querySelectorAll('button[data-abrir-cub]').forEach(function (x) {
+    var ab = $('revAbrir');
+    if (ab) ab.addEventListener('click', function () { abrirItems(true); });
+    var qf = $('revQuitaFiltro');
+    if (qf) qf.addEventListener('click', function (e) {
+      e.stopPropagation(); REVS.filtro_cub = null; pintarResumen(); pintarRevisiones();
+    });
+    $('revResCuerpo').querySelectorAll('button[data-filtro-cub]').forEach(function (x) {
       x.addEventListener('click', function () {
-        REVS.filtro_cub = x.dataset.abrirCub;
-        abrirItems(true);
+        REVS.filtro_cub = (REVS.filtro_cub === x.dataset.filtroCub) ? null : x.dataset.filtroCub;
+        pintarResumen(); pintarRevisiones();
       });
     });
   }
@@ -391,7 +432,7 @@
 
   async function abrirItems(conFiltro) {
     REVS.sel_items = {};
-    if (!conFiltro) REVS.cc_abierto = null;
+    REVS.cc_abierto = null;
     // Sin revisión elegida se abren TODAS: el estado de arriba es global, así que el
     // botón y los chips de cubicador tienen que poder entrar a todo.
     if (!REVS.detalle || (REVS.sel && REVS.detalle.revision.id !== REVS.sel)
@@ -400,12 +441,14 @@
         REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0));
       } catch (e) { aviso(e.message); return; }
     }
-    if (!conFiltro) REVS.filtro_cub = _miChip();
+    // El filtro de cubicador es el de arriba: la hoja abre con lo que esté puesto.
     $('revItemsModal').style.display = '';
     pintarItems();
   }
   function cerrarItems() {
     $('revItemsModal').style.display = 'none';
+    // El chip del modal y el de arriba son el MISMO filtro: al volver, arriba se repinta.
+    pintarResumen(); pintarRevisiones();
     if (_mirando) { _mirando.disconnect(); _mirando = null; }
   }
 
@@ -431,7 +474,7 @@
         }).join('');
       cubs.querySelectorAll('button[data-cub]').forEach(function (b) {
         b.addEventListener('click', function () {
-          REVS.filtro_cub = b.dataset.cub; REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();
+          REVS.filtro_cub = b.dataset.cub || null; REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();
         });
       });
     }
@@ -594,11 +637,11 @@
     });
     return out;
   }
-  // El chip con el que se abre la hoja: el propio si tengo hallazgos acá; si no, «Todos».
+  // Mi chip en el TOTAL: el cubicador entra a la pestaña con su filtro puesto (es por donde
+  // empieza) y lo puede quitar; el admin entra sin filtro.
   function _miChip() {
-    var mio = _misLogins(), r = (REVS.detalle || {}).revision || {};
-    var c = (r.por_cubicador || []).filter(function (x) { return mio(x.cubico); })[0];
-    return c ? c.cubico : '';
+    var mio = _misLogins(), pc = (REVS.total || {}).por_cubicador || {};
+    return Object.keys(pc).filter(function (q) { return mio(q); })[0] || '';
   }
 
   function _ccsSinFigura() {

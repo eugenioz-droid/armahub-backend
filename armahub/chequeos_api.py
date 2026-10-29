@@ -24,6 +24,7 @@ nombre y fecha. Lo demás sería burocracia.
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -1105,9 +1106,20 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
     for i in items:
         q = (i["cubico"] or "(sin dato)").strip() or "(sin dato)"
         c = por_cub.setdefault(q, {"cubico": q, "n": 0, "resueltas": 0, "declaradas": 0,
-                                   "verificadas": 0, "no_aplica": 0, "abiertas": 0, "ccs": set()})
+                                   "verificadas": 0, "no_aplica": 0, "abiertas": 0, "ccs": set(),
+                                   "obras": set(), "viejas": 0})
         c["n"] += 1
         c["ccs"].add(i["cc"])
+        c["obras"].add(i.get("job"))
+        if i["estado"] == "abierta" and i.get("visto_primero"):
+            try:
+                vp = datetime.fromisoformat(str(i["visto_primero"]).replace("Z", "+00:00"))
+                if vp.tzinfo is None:
+                    vp = vp.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - vp).days >= 7:
+                    c["viejas"] += 1
+            except ValueError:
+                pass
         if i["estado"] == "corregida":
             c["verificadas"] += 1; c["resueltas"] += 1
         elif i["estado"] == "aceptada":
@@ -1120,9 +1132,15 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
             c["abiertas"] += 1
     for c in por_cub.values():
         c["ccs"] = len(c["ccs"])
+        c["obras"] = len(c["obras"])
         c["pct"] = round(c["resueltas"] / c["n"] * 100) if c["n"] else 0
     cab.update({
         "items": len(items),
+        # Los mismos nombres que la lista (`revisiones`), para que el bloque de arriba del
+        # panel lea igual el total, una revisión o una persona dentro de ella.
+        "detectados": len(items),
+        "no_aplica": sum(c["no_aplica"] for c in por_cub.values()),
+        "viejas": sum(c["viejas"] for c in por_cub.values()),
         "resueltas": sum(c["resueltas"] for c in por_cub.values()),
         "obras": len({i["job"] for i in items}),
         "ccs_con_hallazgo": len(ccs), "kg": kg,
@@ -1378,6 +1396,11 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                           -- aunque no quedara nada que hacer. Son dos cosas distintas y
                           -- se dicen las dos: lo que la máquina marcó y lo que aplica.
                           COUNT(s.id) FILTER (WHERE s.estado = 'aceptada'),
+                          -- LO QUE ENVEJECE SIN QUE NADIE LO VEA (29-oct): abiertas hace
+                          -- más de una semana. Es la tarjeta que reemplaza a «barras
+                          -- miradas», que era un dato de la máquina y no del usuario.
+                          COUNT(s.id) FILTER (WHERE s.estado = 'abierta'
+                                                AND s.visto_primero < now() - interval '7 days'),
                           EXTRACT(YEAR FROM r.arrancada)::int
                      FROM chequeo_revisiones r
                      LEFT JOIN chequeo_senales s ON s.revision_id = r.id
@@ -1392,14 +1415,18 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
             cur.execute(
                 """SELECT s.revision_id, NULLIF(TRIM(s.cubico), ''),
                           COUNT(*), COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
-                          COUNT(*) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir'))
+                          COUNT(*) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir')),
+                          COUNT(*) FILTER (WHERE s.estado = 'abierta'
+                                             AND s.visto_primero < now() - interval '7 days'),
+                          COUNT(DISTINCT s.cc), COUNT(DISTINCT s.id_proyecto)
                      FROM chequeo_senales s
                     WHERE s.revision_id IS NOT NULL
                     GROUP BY 1, 2""")
             porcub = {}
-            for rid, quien, n, nap, res in cur.fetchall():
+            for rid, quien, n, nap, res, viejas, ccs_q, obras_q in cur.fetchall():
                 porcub.setdefault(rid, {})[quien or "(sin dato)"] = {
-                    "n": n, "no_aplica": nap, "resueltos": res}
+                    "n": n, "no_aplica": nap, "resueltos": res, "viejas": viejas,
+                    "ccs": ccs_q, "obras": obras_q}
             # EL TOTAL DE TODAS LAS REVISIONES, calculado acá y no sumando las filas: una
             # obra que aparece en dos revisiones es UNA obra, y sumarlas la contaría dos
             # veces. Lo mismo el código. Es el bloque de arriba de la pantalla, que mira
@@ -1408,10 +1435,12 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 """SELECT COUNT(*), COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
                           COUNT(*) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir')),
                           COUNT(*) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
-                          COUNT(DISTINCT s.id_proyecto), COUNT(DISTINCT (s.id_proyecto, s.cc))
+                          COUNT(DISTINCT s.id_proyecto), COUNT(DISTINCT (s.id_proyecto, s.cc)),
+                          COUNT(*) FILTER (WHERE s.estado = 'abierta'
+                                             AND s.visto_primero < now() - interval '7 days')
                      FROM chequeo_senales s
                     WHERE s.revision_id IS NOT NULL""")
-            t = cur.fetchone() or (0, 0, 0, 0, 0, 0)
+            t = cur.fetchone() or (0, 0, 0, 0, 0, 0, 0)
             # Los kilos de los códigos que tienen algún hallazgo: es «cuánto acero está en
             # juego», no la suma de las barras marcadas.
             cur.execute(
@@ -1422,10 +1451,10 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
             kg_total = float((cur.fetchone() or [0])[0] or 0)
             total = {"detectados": t[0], "no_aplica": t[1], "aplican": t[0] - t[1],
                      "resueltas": t[2], "declaradas": t[3],
-                     "obras": t[4], "ccs_con_hallazgo": t[5], "kg": kg_total,
+                     "obras": t[4], "ccs_con_hallazgo": t[5], "kg": kg_total, "viejas": t[6],
                      "pct": round(t[2] / (t[0] - t[1]) * 100) if (t[0] - t[1]) else None}
     def _fila(f):
-        detectados, resueltos, no_aplica = f[11], f[12], f[15]
+        detectados, resueltos, no_aplica, viejas = f[11], f[12], f[15], f[16]
         aplican = detectados - no_aplica
         return {"id": f[0], "job": f[1], "obra": f[2], "por": f[3],
                 "arrancada": f[4].isoformat(), "terminada": f[5].isoformat() if f[5] else None,
@@ -1435,7 +1464,8 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 "items": detectados, "detectados": detectados, "aplican": aplican,
                 "no_aplica": no_aplica,
                 "resueltas": resueltos, "declaradas": f[13], "cubicadores": f[14],
-                "anio": f[16], "por_cubicador": porcub.get(f[0], {}),
+                "viejas": viejas,
+                "anio": f[17], "por_cubicador": porcub.get(f[0], {}),
                 "pct": round(resueltos / aplican * 100) if aplican else None}
     revs = [_fila(f) for f in filas]
     # El desglose por persona de TODO, para que los chips de cubicador del bloque de
@@ -1443,8 +1473,13 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
     cubs = {}
     for r in revs:
         for q, c in (r["por_cubicador"] or {}).items():
-            a = cubs.setdefault(q, {"n": 0, "no_aplica": 0, "resueltos": 0})
+            a = cubs.setdefault(q, {"n": 0, "no_aplica": 0, "resueltos": 0, "viejas": 0,
+                                    "ccs": 0, "obras": 0})
             a["n"] += c["n"]; a["no_aplica"] += c["no_aplica"]; a["resueltos"] += c["resueltos"]
+            # Códigos y obras se SUMAN entre revisiones: un código que salió en dos
+            # revisiones cuenta dos veces acá. Es una aproximación y se dice: el total
+            # exacto por persona está en la hoja; arriba sirve para comparar.
+            a["viejas"] += c.get("viejas", 0); a["ccs"] += c.get("ccs", 0); a["obras"] += c.get("obras", 0)
     total["barras"] = sum(r["barras"] or 0 for r in revs)
     total["ccs"] = sum(r["ccs"] or 0 for r in revs)
     total["revisiones"] = len(revs)

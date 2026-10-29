@@ -565,7 +565,25 @@
   .revmat td.revcel{cursor:pointer;}
   .revmat td.revcel:hover{background:#dcedc8; outline:1px solid #aed581;}
   .revmat .revok{color:#2e7d32;}
+  /* EL FILTRO POR CUBICADOR (29-oct): la columna y el chip elegidos se encienden, el
+     resto se atenúa, y la fila en la que esa persona no tiene nada se apaga. */
+  .revmat th.dim, .revmat td.dim{opacity:.35;}
+  .revmat td.revcel.sel{background:#e8f5e9; outline:1px solid #81c784;}
+  .revmat tbody tr.apagada td{color:#b0bec5;}
+  .revmat tbody tr.apagada td b{color:#b0bec5;}
+  .revcubs button{display:inline-flex; align-items:baseline; gap:4px;}
+  .revcubs button b{font-variant-numeric:tabular-nums;}
+  .revcubs button small{font-size:9.5px; color:#90a4ae; font-weight:400;}
+  .revcubs button.on{background:#1565C0; border-color:#1565C0; color:#fff;}
+  .revcubs button.on small, .revcubs button.on b{color:#fff;}
   .revcubs button.listo{border-color:#81c784; color:#2e7d32;}
+  /* El título de arriba: grande, con sus filtros y UN botón que entra. */
+  #revAccTit{display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .revtit{font-size:16px; font-weight:700; color:#263238;}
+  .revfiltro{background:#e3f2fd; color:#1565C0; border:1px solid #bbdefb; border-radius:99px; padding:2px 9px; font-size:11px; font-weight:600; cursor:pointer;}
+  .revfiltro:hover{background:#bbdefb;}
+  #revAbrir{padding:5px 16px;}
+  .revkpi small{font-size:11px; color:#78909c; font-weight:400;}
   .revfila{padding:7px 9px; border-bottom:1px solid #f2f4f7; cursor:pointer; font-size:11.5px;}
   .revfila:hover{background:#f3f7fc;}
   .revfila.on{background:#e8f1fb; box-shadow:inset 3px 0 0 #1565C0;}

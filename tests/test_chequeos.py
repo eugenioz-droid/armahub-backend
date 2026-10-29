@@ -486,7 +486,7 @@ check("el alias del cubicador sale de aSa y no de las auditorías (si no, el due
 # «cuanto le queda a Nlopez en total».
 check("el bloque de estado va ARRIBA de la matriz y mira TODAS las revisiones",
       HTM.index('id="revResumen"') < HTM.index('id="revListaCard"')
-      and "var T = REVS.total || {};" in JS and "Todas las revisiones" in JS)
+      and "var T = REVS.total || {}, F = REVS.filtro_cub || null;" in JS and "Todas las revisiones" in JS)
 check("...y al elegir una revision se filtra, con un boton para volver al total",
       'id="revTodo"' in JS and "REVS.sel = null; REVS.detalle = null;" in JS)
 check("...el total lo calcula el backend, no se suma fila a fila",
@@ -718,8 +718,8 @@ check("...y cerrar lo resuelto tampoco: avisa al dueño qué confirmó aSa",
       "cierra lo suyo quien lo hizo." not in API and "cerró %d barra(s) tuyas" in API)
 check("el login de aSa se resuelve a correo con UNA función, la de las auditorías",
       "return correo_de_login(cur, login)" in API and "correo_de_login," in API)
-check("en la hoja todos ven todo; el chip filtra y al abrir queda en el propio",
-      "function _miChip(" in JS and "REVS.filtro_cub = _miChip();" in JS
+check("en la hoja todos ven todo; el chip filtra y el cubicador entra con el propio puesto",
+      "function _miChip(" in JS and "_esAdmin() ? null : (_miChip() || null)" in JS
       and "'Tus ' + items.length" not in JS
       and "if (!_esAdmin()) { cubs.innerHTML = ''; }" not in JS)
 
@@ -755,8 +755,8 @@ print("\nUN SOLO FORMULARIO PARA TODOS, Y EL CABEZAL EN φ8 Y φ10 (28-oct)")
 check("la tarjeta «Mis chequeos por corregir» se fue: el formulario es el modal, para todos",
       "cargarMios" not in JS and "Mis chequeos por corregir" not in JS
       and "Ya la corregí: comprobar" not in JS and 'id="revMios"' not in HTM)
-check("...y al abrir, el chip del cubicador viene puesto",
-      "REVS.filtro_cub = _miChip();" in JS)
+check("...y el cubicador llega con su chip puesto; el admin, sin filtro",
+      "REVS.filtro_cub = _esAdmin() ? null : (_miChip() || null)" in JS)
 # El umbral del cabezal vive en una constante con su historia, no en un numero suelto.
 check("el umbral del cabezal es 12, y esta escrito por que",
       "CABEZAL_DIAM_MINIMO = 12.0" in SRC and "los cabezales de 12 son" in SRC)
@@ -775,6 +775,43 @@ check("...y la pantalla de la obra dice lo mismo que la cola, no otra cosa",
 # `ultima_mod`, asi que entra UNA vez mas y despues sale solo.
 check("...y entra una sola vez mas: no se queda dando vueltas",
       "entra una vez más al día siguiente" in API and "sale solo" in API)
+
+
+print("\nEL PANEL: LOS CUBICADORES FILTRAN, ABRIR ENTRA (29-oct)")
+# «Los botones de abrir estan con los totales y se descuadran. Eliminalos. Los cubicadores
+# deben ser filtros no botones: si se presiona uno debe actualizarse todo, la matriz, y al
+# abrir mostrarle solo lo de el. Asi los KPI cards tambien se actualizan, y le damos el
+# enfasis al boton abrir.»
+check("«Abrir» a secas en cada fila y uno solo arriba; el numero ya no va al lado",
+      'data-abrir="\' + r.id + \'">Abrir</button>' in JS and "'Abrir ' + r.aplican" not in JS
+      and 'id="revAbrir"' in JS and "abrirItems(true); });" in JS)
+check("los chips de cubicador son FILTROS: repintan tarjetas y matriz, no abren nada",
+      "data-filtro-cub=" in JS and "data-abrir-cub" not in JS
+      and "REVS.filtro_cub = (REVS.filtro_cub === x.dataset.filtroCub) ? null : x.dataset.filtroCub;" in JS
+      and "pintarResumen(); pintarRevisiones();" in JS)
+check("...y el filtro es UNO, global: la hoja abre con el que este puesto y al volver se repinta arriba",
+      "REVS.filtro_cub = _miChip();" not in JS
+      and "$('revItemsModal').style.display = 'none';\n    // El chip del modal y el de arriba son el MISMO filtro" in JS)
+check("con filtro, la matriz atenua las otras columnas y la fila de quien no tiene nada se apaga",
+      "_cuentaDe(r, F)" in JS and "' dim' : ''" in JS and "' apagada' : ''" in JS
+      and ".revmat th.dim, .revmat td.dim{opacity:.35;}" in HTM)
+check("la celda por cubicador dice lo que FALTA en grande, y lo detectado en gris",
+      "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
+      and "'<div class=\"l2\">de ' + c.n + '</div></td>'" in JS)
+check("arriba parte en «Todas las revisiones», grande; una fila elegida lo dice y tiene su ✕",
+      "Todas las revisiones</span>" in JS and 'class="revtit"' in JS and ".revtit{font-size:16px" in HTM
+      and "✕ Ver todas" in JS)
+check("«resueltos» se mide contra lo que aplica, con el MISMO porcentaje que la matriz",
+      "'resueltos de los que aplican'" in JS and "var pct = apl ? Math.round(v.res / apl * 100) : null;" in JS)
+check("«barras miradas» sale; entra lo que envejece: abiertas hace mas de 7 dias",
+      "'barras miradas'" not in JS and "'abiertas hace más de 7 días'" in JS
+      and "s.visto_primero < now() - interval '7 days'" in API and '"viejas": t[6]' in API)
+check("...y el detalle de UNA revision trae los mismos nombres que la lista, por persona y en total",
+      '"detectados": len(items),' in API and '"viejas": sum(c["viejas"] for c in por_cub.values()),' in API
+      and 'c["obras"].add(i.get("job"))' in API and '"ccs": ccs_q, "obras": obras_q' in API)
+check("clic en la celda = revision + persona; clic en la fila = revision; el boton = entrar",
+      "await abrirRevision(Number(td.dataset.rev));" in JS
+      and "await abrirRevision(Number(b.dataset.abrir));\n        abrirItems(true);" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
