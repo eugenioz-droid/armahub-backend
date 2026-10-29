@@ -300,8 +300,10 @@ check("el estado se guarda y se muestra, para no adoptar una finalizada por acci
 print("\n15. El reloj de sincronización con aSa")
 check("apagado salvo que se encienda a propósito (en el plan gratis el proceso se duerme)",
       'os.getenv("ASA_SYNC_ACTIVO", "")' in RELOJ)
-check("los horarios son configurables y por defecto 06:00, 11:00 y 14:00",
-      'HORAS_POR_DEFECTO = "06:00,11:00,14:00"' in RELOJ and "ASA_SYNC_HORAS" in RELOJ)
+# EL TURNO DE LAS 20:00 ENTRO EL 29-oct: es el de la revision de barras (HORA_REVISION).
+# Sin una corrida a esa hora, la revision no correria nunca.
+check("los horarios son configurables y por defecto 06:00, 11:00, 14:00 y 20:00",
+      'HORAS_POR_DEFECTO = "06:00,11:00,14:00,20:00"' in RELOJ and "ASA_SYNC_HORAS" in RELOJ)
 check("en hora de Chile, no en la del servidor", "America/Santiago" in RELOJ)
 check("un horario mal escrito se ignora en vez de tumbar el reloj",
       "Horario inválido" in RELOJ)
@@ -1015,8 +1017,8 @@ check("el reintento conserva la espera que le pidieron",
       and "return _pedir(url, intento + 1, timeout)" in SRC)
 check("el reporte dice cómo fue el último intento de ESE año",
       '"getOrderSummary/%d" % anio' in PROG and '"ultimo_intento": ({"fin"' in PROG)
-check("y la pantalla dice cuándo se trajo y avisa si lo último falló",
-      "' · traído de aSa el ' + fechaHora(esp.ultima_sync)" in DSH
+check("y la pantalla dice cuándo CAMBIO el dato, aparte de cuándo se miró, y avisa si falló",
+      "' · el último cambio entró el ' + esc(fechaHora(esp.ultima_sync))" in DSH
       and "intento.ok === false" in DSH and "Lo que se ve es de la última vez que sí se pudo" in DSH)
 
 # ── 30. Quién cubicó y cuándo, en la tabla de códigos ─────────────────────
@@ -1120,6 +1122,30 @@ check("marcar eliminados es SOLO de la carga completa del año, nunca del increm
       and "_marcar_eliminados" not in SYNC.split("def sincronizar_incremental(")[1])
 check("...y el año que vino a medias no marca nada: sale antes",
       SYNC.index('r["incompleto"] = fallos') < SYNC.index('r["eliminados"] = _marcar_eliminados'))
+
+
+print("\nLA REVISION DE NOCHE, Y LA CERTEZA DE QUE LA DATA ESTA AL DIA (29-oct)")
+PROG = open(os.path.join(ROOT, "armahub", "programacion.py"), encoding="utf-8").read()
+DSHJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion",
+                          "dashboards.js"), encoding="utf-8").read()
+PRGHTM = open(os.path.join(ROOT, "armahub", "templates", "tabs", "programacion.html"),
+              encoding="utf-8").read()
+# A las 6 de la mañana la revision miraba el trabajo de AYER; a las 20:00 mira el dia que
+# acaba de pasar y el cubicador llega con los hallazgos de lo que hizo.
+check("la revision de barras corre a las 20:00, y hay un turno del reloj a esa hora",
+      'CHEQUEO_HORA", "20"' in RELOJ and "20:00" in RELOJ
+      and RELOJ.count("HORAS_POR_DEFECTO") >= 1)
+# «No tengo certeza de si tenemos o no siempre toda la info bien al dia».
+check("el espejo dice cuando se MIRO aSa, no solo cuando cambio el dato",
+      '"ultima_corrida_ok"' in PROG and '"fallos_desde"' in PROG
+      and "WHERE ok AND endpoint LIKE 'getOrderSummary%' AND fin IS NOT NULL" in PROG)
+check("...y el LIKE va escapado: con parametros, psycopg lee «%\'» como marcador y revienta",
+      "LIKE 'getOrderSummary%%' AND NOT ok" in PROG)
+check("la pantalla lo dice con su color, y explica que «sin cambios» no es «desactualizado»",
+      "function _frescura(" in DSHJS and "al día, revisado " in DSHJS
+      and "no significa que esté desactualizado" in DSHJS and ".dshfresco{" in PRGHTM)
+check("...y los fallos del RELOJ se avisan, no solo los de la carga manual del año",
+      "intento(s) de traer de aSa fallaron" in DSHJS and "esp.fallos_desde" in DSHJS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

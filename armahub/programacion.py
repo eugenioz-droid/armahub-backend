@@ -1044,6 +1044,19 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
                              WHERE endpoint = %s ORDER BY id DESC LIMIT 1""",
                         ("getOrderSummary/%d" % anio,) if not todos else ("getOrderSummary",))
             intento = cur.fetchone()
+            # CUÁNDO SE MIRÓ, QUE NO ES CUÁNDO CAMBIÓ (29-oct). `ultima_sync` sale de la
+            # última fila que cambió: si el reloj corre bien y no hay novedades, esa fecha
+            # no se mueve y el dato se ve viejo sin estarlo. Esto dice cuándo fue la última
+            # corrida BUENA de pedidos —traiga lo que traiga— y cuántas van fallando desde
+            # entonces, que es lo único que responde «¿está al día?».
+            cur.execute("""SELECT MAX(fin) FROM asa_sync
+                            WHERE ok AND endpoint LIKE 'getOrderSummary%' AND fin IS NOT NULL""")
+            ultima_ok = cur.fetchone()[0]
+            # El %% va doble: con parámetros, psycopg lee «%'» como un marcador y revienta.
+            cur.execute("""SELECT COUNT(*), MAX(detalle) FROM asa_sync
+                            WHERE endpoint LIKE 'getOrderSummary%%' AND NOT ok
+                              AND inicio > COALESCE(%s, '-infinity'::timestamptz)""", (ultima_ok,))
+            fallos_desde, ultimo_detalle = cur.fetchone()
 
     return {
         "anio": anio, "meses": lista_meses,
@@ -1063,6 +1076,9 @@ def asa_reporte(anio: Optional[int] = None, meses: str = "",
         "reloj": _estado_reloj(),
         "espejo": {"filas_anio": n_anio or 0,
                    "ultima_sync": ultimo.isoformat() if ultimo else None,
+                   "ultima_corrida_ok": ultima_ok.isoformat() if ultima_ok else None,
+                   "fallos_desde": fallos_desde or 0,
+                   "fallo_detalle": ultimo_detalle,
                    "ultimo_intento": ({"fin": intento[1].isoformat() if intento[1] else None,
                                        "filas": intento[2], "ok": intento[3], "detalle": intento[4]}
                                       if intento else None)},

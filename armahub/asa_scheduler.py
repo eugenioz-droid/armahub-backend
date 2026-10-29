@@ -37,7 +37,9 @@ from datetime import datetime, timedelta, timezone
 
 log = logging.getLogger("armahub.asa_scheduler")
 
-HORAS_POR_DEFECTO = "06:00,11:00,14:00"
+# El último turno es el de la revisión de barras (HORA_REVISION): si no hubiera una
+# corrida a esa hora, la revisión no correría nunca.
+HORAS_POR_DEFECTO = "06:00,11:00,14:00,20:00"
 ZONA_POR_DEFECTO = "America/Santiago"
 # Si ya hubo una sincronización buena hace menos de esto, el turno se salta. Cubre el caso
 # de dos instancias y el de alguien que acaba de apretar el botón a mano.
@@ -147,7 +149,12 @@ def _una_corrida():
 # UNA VEZ AL DÍA Y NO EN LOS TRES TURNOS: sincronizar tarda segundos; revisar barras le
 # pide a aSa los ítems de cada código y tarda minutos. En el turno que no toca, el reloj
 # sigue haciendo lo de siempre y no revisa.
-HORA_REVISION = int(os.getenv("CHEQUEO_HORA", "6") or 6)
+# A LAS 20:00 Y NO A LAS 6:00 (29-oct). A las seis de la mañana la revisión miraba el
+# trabajo de AYER; a las ocho de la noche mira el día que acaba de pasar, así el cubicador
+# llega en la mañana con los hallazgos de lo que hizo —y algo se alcanza a corregir antes
+# de que el código salga a planta—. Es la hora del reloj, no la del sync: sincronizar sigue
+# corriendo en sus tres turnos.
+HORA_REVISION = int(os.getenv("CHEQUEO_HORA", "20") or 20)
 # Cuántas correcciones se comprueban por corrida. Cada una es UNA llamada a aSa por código
 # de control, así que el tope existe para no pasarse del presupuesto de llamadas si alguien
 # declara doscientas correcciones el mismo día. Lo que sobra se comprueba en la corrida

@@ -219,13 +219,36 @@
     return dos(d.getDate()) + '/' + dos(d.getMonth() + 1) + ' ' + dos(d.getHours()) + ':' + dos(d.getMinutes());
   }
 
+  // Cuánto hace que se miró aSa, y si eso es normal o no. El umbral son 26 horas: con
+  // turnos cada día, pasar de un día sin una corrida buena ya es algo que mirar.
+  function _frescura(esp) {
+    if (!esp.ultima_corrida_ok) return '';
+    var horas = (Date.now() - new Date(esp.ultima_corrida_ok).getTime()) / 3600000;
+    var cuanto = horas < 1 ? 'hace ' + Math.max(1, Math.round(horas * 60)) + ' min'
+               : horas < 48 ? 'hace ' + Math.round(horas) + ' h'
+               : 'hace ' + Math.round(horas / 24) + ' días';
+    var mal = horas > 26 || (esp.fallos_desde || 0) > 0;
+    return ' · <span class="dshfresco' + (mal ? ' mal' : '') + '" title="' +
+      (mal ? 'La última vez que se pudo traer de aSa fue el ' + esc(fechaHora(esp.ultima_corrida_ok)) +
+             ((esp.fallos_desde || 0) ? '. Desde entonces fallaron ' + esp.fallos_desde + ' intento(s): ' +
+              esc(esp.fallo_detalle || 'sin detalle') : '')
+           : 'Se revisó aSa el ' + esc(fechaHora(esp.ultima_corrida_ok)) +
+             '. Que no haya cambios nuevos no significa que esté desactualizado.') +
+      '">' + (mal ? '⚠ se revisó ' + cuanto : '✓ al día, revisado ' + cuanto) + '</span>';
+  }
+
   function pintarTodo() {
     var esp = DATA.espejo || {};
     var intento = esp.ultimo_intento;
-    $('dshEspejo').textContent = esp.filas_anio
-      ? esp.filas_anio + ' códigos de control en ' + (DATA.anio ? DATA.anio : 'toda la historia') +
+    // AL DÍA O ATRASADO, DICHO EN LA PANTALLA (29-oct). Antes decía «traído de aSa el …»
+    // con la fecha de la última fila que CAMBIÓ: si el reloj corría bien y no había
+    // novedades, se veía viejo sin estarlo, y el usuario no tenía cómo saber si la info
+    // estaba al día. Son dos cosas y se dicen las dos: cuándo se MIRÓ y cuándo CAMBIÓ.
+    $('dshEspejo').innerHTML = esp.filas_anio
+      ? esc(String(esp.filas_anio)) + ' códigos de control en ' + (DATA.anio ? DATA.anio : 'toda la historia') +
         (DATA.anulados ? ' · ' + DATA.anulados + ' anulados (sólo en la barra por estado de Obras aSa)' : '') +
-        (esp.ultima_sync ? ' · traído de aSa el ' + fechaHora(esp.ultima_sync) : '')
+        _frescura(esp) +
+        (esp.ultima_sync ? ' · el último cambio entró el ' + esc(fechaHora(esp.ultima_sync)) : '')
       : '';
     // EL REFRESCO AUTOMÁTICO, dicho en la pantalla. El reloj existe desde el 29-sep y
     // nunca corrió: vive dentro del proceso web y sólo se enciende con ASA_SYNC_ACTIVO=1
@@ -244,6 +267,14 @@
       elAviso.innerHTML = 'Se refresca solo a las <b>' + esc(reloj.horarios.join(', ')) + '</b>' +
         (reloj.proxima ? ' · la próxima, ' + esc(fechaHora(reloj.proxima)) : '') +
         (reloj.corriendo === false ? ' — <b>pero el reloj no está corriendo</b>: se reinició el servicio.' : '.');
+    }
+    // Los fallos del RELOJ, que antes no se veían: el aviso sólo miraba el último intento
+    // de cargar ese año a mano. Si el refresco diario falla, hay que decirlo igual.
+    if ((esp.fallos_desde || 0) > 0 && esp.ultima_corrida_ok) {
+      $('dshAviso').className = 'prgaviso mal';
+      $('dshAviso').innerHTML = '<b>' + esp.fallos_desde + ' intento(s) de traer de aSa fallaron</b> ' +
+        'desde la última vez que se pudo, el ' + esc(fechaHora(esp.ultima_corrida_ok)) + ': ' +
+        esc(esp.fallo_detalle || 'sin detalle') + '. Lo que se ve es de esa fecha.';
     }
     if (intento && intento.ok === false) {
       $('dshAviso').className = 'prgaviso mal';
