@@ -370,14 +370,14 @@
             ? 'Esta revisión no encontró hallazgos: se miraron ' + (sel.ccs || 0) +
               ' código(s) y todos cumplen. Queda el registro de que se revisó.'
             : 'Todavía no hay hallazgos.') + '</div>'
-        // LOS CUBICADORES SON FILTROS, no botones de entrar. El chip dice lo que le FALTA.
+        // LOS CUBICADORES SON FILTROS, no botones de entrar. Sólo el nombre: los números
+        // van en las tarjetas y en la matriz, no en el chip («que no contabilice ni muestre
+        // los números en el botón de filtro», 29-oct).
         : '<div class="dshchips revcubs">' + cubs.map(function (c) {
             var falta = c.n - c.no_aplica - c.resueltos;
             return '<button data-filtro-cub="' + esc(c.q) + '" class="' +
                    (F === c.q ? 'on ' : '') + (falta <= 0 ? 'listo' : '') +
-                   '" title="Filtrar todo por ' + esc(c.q) + ': ' + falta + ' por resolver de ' + c.n + '">' +
-                   esc(c.q) + ' <b>' + (falta <= 0 ? '✓' : falta) + '</b>' +
-                   '<small>de ' + c.n + '</small></button>'; }).join('') + '</div>');
+                   '" title="Filtrar todo por ' + esc(c.q) + '">' + esc(c.q) + '</button>'; }).join('') + '</div>');
     var vt = $('revTodo');
     if (vt) vt.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -467,10 +467,11 @@
     var cubs = $('revItemsCubs');
     // Los chips de cubicador son para todos (21-oct): el propio viene puesto, «Todos» abre.
     {
-      cubs.innerHTML = '<button data-cub="" class="' + (REVS.filtro_cub ? '' : 'on') + '">Todos ' + r.items + '</button>' +
+      // Sólo el nombre, igual que arriba: la cuenta ya está en «N de M hallazgos».
+      cubs.innerHTML = '<button data-cub="" class="' + (REVS.filtro_cub ? '' : 'on') + '">Todos</button>' +
         r.por_cubicador.map(function (c) {
-          return '<button data-cub="' + esc(c.cubico) + '" class="' + (REVS.filtro_cub === c.cubico ? 'on' : '') + '">' +
-                 esc(c.cubico) + ' ' + c.n + (c.pct === 100 ? ' ✓' : '') + '</button>';
+          return '<button data-cub="' + esc(c.cubico) + '" class="' + (REVS.filtro_cub === c.cubico ? 'on ' : '') +
+                 (c.pct === 100 ? 'listo' : '') + '">' + esc(c.cubico) + '</button>';
         }).join('');
       cubs.querySelectorAll('button[data-cub]').forEach(function (b) {
         b.addEventListener('click', function () {

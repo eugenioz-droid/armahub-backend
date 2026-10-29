@@ -785,6 +785,9 @@ print("\nEL PANEL: LOS CUBICADORES FILTRAN, ABRIR ENTRA (29-oct)")
 check("«Abrir» a secas en cada fila y uno solo arriba; el numero ya no va al lado",
       'data-abrir="\' + r.id + \'">Abrir</button>' in JS and "'Abrir ' + r.aplican" not in JS
       and 'id="revAbrir"' in JS and "abrirItems(true); });" in JS)
+check("...y el chip lleva SOLO el nombre, arriba y en la hoja: los numeros van en tarjetas y matriz",
+      "'\">' + esc(c.q) + '</button>'" in JS and "'\">Todos</button>'" in JS
+      and "esc(c.cubico) + ' ' + c.n" not in JS and "'<small>de ' + c.n" not in JS)
 check("los chips de cubicador son FILTROS: repintan tarjetas y matriz, no abren nada",
       "data-filtro-cub=" in JS and "data-abrir-cub" not in JS
       and "REVS.filtro_cub = (REVS.filtro_cub === x.dataset.filtroCub) ? null : x.dataset.filtroCub;" in JS
