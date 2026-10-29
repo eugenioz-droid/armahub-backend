@@ -510,7 +510,6 @@
             g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
             return '<div class="revvolver"><button class="audmini" data-volvercc="1">‹ Todos los códigos</button></div>' +
               '<div class="revcc2" data-grupocc="' + esc(g.cc || '') + '"><h5>' +
-              '<input type="checkbox" data-grupo="' + esc(k) + '"> ' +
               '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
               (Object.keys(quienes).length
                 ? '<span class="revquien">' + esc(Object.keys(quienes).join(', ')) + '</span>' : '') +
@@ -528,6 +527,12 @@
 
   // LA BARRA DE ACCIONES SE PINTA SOLA. Antes marcar un check repintaba la hoja entera,
   // que con las figuras cargadas serían trescientos SVG rehechos por clic.
+  //
+  // SIN MARCAS NO HAY BARRA (29-oct). Antes la barra de lote estaba siempre, con sus
+  // botones apagados, incluso en la lista de códigos donde no hay nada que marcar; y con
+  // cincuenta barras quedaba fuera de pantalla: se marcaba y «no pasaba nada». Ahora lo
+  // que vale siempre —ver las figuras, cerrar lo resuelto— vive en el encabezado de la
+  // hoja, y la barra aparece recién con la primera marca, pegada arriba, y te sigue.
   function _pintarAcc() {
     var n = Object.keys(REVS.sel_items).length;
     var faltan = _ccsSinFigura().length;
@@ -535,50 +540,59 @@
     // aSa. Se cuenta sobre lo visible (lo mío, o lo filtrado si soy admin).
     var porCerrar = itemsVisibles().filter(function (i) {
       return i.estado === 'declarada' || i.estado === 'corregir'; }).length;
-    $('revItemsAcc').innerHTML =
-      '<b>' + (n ? n + ' barra(s) marcada(s)' : 'Marca con el check para resolver varias de una vez') + '</b>' +
-      (faltan ? '<button class="audmini" id="revAccFiguras" title="Lee los ' + faltan +
-                ' código(s) en aSa y dibuja cada barra. Va de a uno para no colgarse.">' +
-                'Ver las figuras (' + faltan + ')</button>' : '') +
-      '<div style="flex:1"></div>' +
+    var f = $('revAccFiguras');
+    if (f) {
+      f.style.display = faltan ? '' : 'none';
+      if (!f.disabled) f.textContent = 'Ver las figuras (' + faltan + ')';
+      f.title = 'Lee los ' + faltan + ' código(s) en aSa y dibuja cada barra. Va de a uno para no colgarse.';
+      if (!f.dataset.ok) { f.dataset.ok = '1'; f.addEventListener('click', function () { cargarTodasLasFiguras(f); }); }
+    }
+    // CERRAR VA A aSa: comprueba todo lo que está marcado resuelto y avisa, sin bloquear,
+    // lo que allá sigue como estaba. Mismo flujo que la auditoría.
+    var cz = $('revAccCerrar');
+    if (cz) {
+      cz.disabled = !porCerrar;
+      cz.textContent = 'Cerrar lo resuelto' + (porCerrar ? ' (' + porCerrar + ')' : '');
+      cz.title = porCerrar
+        ? 'Comprueba en aSa las ' + porCerrar + ' barra(s) resueltas y las da por cerradas. Si alguna ' +
+          'sigue como estaba, te lo dice antes.'
+        : 'No hay barras resueltas por cerrar.';
+      if (!cz.dataset.ok) { cz.dataset.ok = '1'; cz.addEventListener('click', function () { cerrarResueltos(false); }); }
+    }
+    // O UNA A UNA, O EN LOTE: con marcas, los botones de la fila se atenúan.
+    var cuerpo = $('revItemsCuerpo');
+    if (cuerpo) cuerpo.classList.toggle('lote', n > 0);
+    var acc = $('revItemsAcc');
+    acc.style.display = n ? '' : 'none';
+    if (!n) { acc.innerHTML = ''; return; }
+    acc.innerHTML =
+      '<b>' + n + ' barra(s) marcada(s)</b>' +
       // LOS TRES VERBOS, DE A MUCHAS (20-oct). «Muchas veces el hallazgo es el mismo para
       // más de un ítem»: se marcan los checks y lo que se hace se replica. «No aplica»
       // pide la explicación UNA vez y vale para todas; «Resuelto» y «Aplica» van directo.
       '<div class="revseg">' +
-        '<button data-lote="abierta"' + (n ? '' : ' disabled') +
-          ' title="Las marcadas vuelven a quedar por resolver">Aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
-        '<button data-lote="aceptada" id="revAccNoAplica"' + (n ? '' : ' disabled') +
-          ' title="Deja sin efecto las marcadas, con una sola explicación para todas">' +
-          'No aplica' + (n ? ' (' + n + ')' : '') + '</button>' +
+        '<button data-lote="abierta" title="Las marcadas vuelven a quedar por resolver">Aplica</button>' +
+        '<button data-lote="aceptada" id="revAccNoAplica"' +
+          ' title="Deja sin efecto las marcadas, con una sola explicación para todas">No aplica</button>' +
       '</div>' +
-      '<button class="audbres" data-lote="declarada"' + (n ? '' : ' disabled') +
+      '<button class="audbres" data-lote="declarada"' +
         ' title="Marca las barras marcadas como resueltas: ya hiciste el cambio en aSa. Al cerrar ' +
-        'se comprueba contra aSa y, si algo sigue igual, te avisa.">Resuelto' + (n ? ' (' + n + ')' : '') + '</button>' +
-      // CERRAR VA A aSa: comprueba todo lo que está marcado resuelto y avisa, sin bloquear,
-      // lo que allá sigue como estaba. Mismo flujo que la auditoría.
-      '<button class="audenviar" id="revAccCerrar"' + (porCerrar ? '' : ' disabled') +
-        ' title="' + (porCerrar
-          ? 'Comprueba en aSa las ' + porCerrar + ' barra(s) resueltas y las da por cerradas. Si alguna ' +
-            'sigue como estaba, te lo dice antes.'
-          : 'No hay barras resueltas por cerrar.') + '">Cerrar lo resuelto' +
-        (porCerrar ? ' (' + porCerrar + ')' : '') + '</button>' +
-      '<span class="muted" id="revAccMsg" style="font-size:10.5px"></span>' +
-      // El formulario del «no aplica» de lote: el mismo motivo y la misma explicación que
-      // pide una barra suelta, porque el registro vale lo mismo para una que para cien.
+        'se comprueba contra aSa y, si algo sigue igual, te avisa.">Resuelto</button>' +
+      '<div style="flex:1"></div>' +
+      '<button class="audmini" id="revAccQuitar" title="Desmarcar todo">Quitar selección</button>' +
+      // El formulario del «no aplica» de lote: la misma explicación que pide una barra
+      // suelta, porque el registro vale lo mismo para una que para cien.
       '<div class="revnapcaja" id="revAccNapForm" style="display:none; width:100%; margin-top:6px;">' +
-        '<select id="revAccNapMot">' + _opcionesMotivo() + '</select>' +
         '<input type="text" id="revAccNapNota" placeholder="Explica por qué no aplican — lo lee quien audita y queda firmado">' +
         '<button class="audmini ver" id="revAccNapOk">Guardar</button>' +
         '<button class="audmini" id="revAccNapNo">Cancelar</button>' +
       '</div>';
-    var f = $('revAccFiguras');
-    if (f) f.addEventListener('click', function () { cargarTodasLasFiguras(f); });
     var lr = document.querySelector('#revItemsAcc button[data-lote="declarada"]');
     if (lr) lr.addEventListener('click', function () { loteMarcadas('declarada', lr); });
     var la = document.querySelector('#revItemsAcc button[data-lote="abierta"]');
     if (la) la.addEventListener('click', function () { loteMarcadas('abierta', la); });
-    var cz = $('revAccCerrar');
-    if (cz) cz.addEventListener('click', function () { cerrarResueltos(false); });
+    var q = $('revAccQuitar');
+    if (q) q.addEventListener('click', quitarSeleccion);
     var na = $('revAccNoAplica');
     // Mismo trato que el de la fila: el botón queda marcado mientras se escribe el motivo.
     if (na) na.addEventListener('click', function () {
@@ -599,20 +613,25 @@
     });
   }
 
+  function quitarSeleccion() {
+    REVS.sel_items = {};
+    var caja = $('revItemsCuerpo');
+    if (caja) caja.querySelectorAll('input[data-item], input[data-grupo]').forEach(function (c) { c.checked = false; });
+    _pintarAcc();
+  }
+
   // DEJAR SIN EFECTO LO MARCADO, con UNA explicación para todas. El backend ya recibía
   // varios ids: lo que faltaba era la pantalla.
   async function noAplicaMarcadas() {
     var ids = _marcados();
     if (!ids.length) return;
-    var mot = $('revAccNapMot').value;
     var nota = ($('revAccNapNota').value || '').trim();
-    if (!mot) { aviso('Elige por qué no aplican.'); return; }
     if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
     var b = $('revAccNapOk');
     b.disabled = true; b.textContent = 'Guardando…';
     try {
       var r = await req('PUT', '/chequeos/declarar',
-                        { ids: ids, estado: 'aceptada', motivo_tipo: mot, nota: nota });
+                        { ids: ids, estado: 'aceptada', nota: nota });
       ok((r.afectadas || ids.length) + ' barra(s) dejadas sin efecto');
       REVS.sel_items = {};
       await refrescarRevision();
@@ -788,7 +807,10 @@
   function _tablaGrupo(g) {
     var c = _colsGrupo(g.items), ang = '';
     for (var k = 1; k <= c.nang; k++) ang += '<th class="revn reva">α' + k + '</th>';
-    return '<table><tr class="revhead"><th style="width:22px"></th><th>Marca</th><th>Figura</th>' +
+    // El check «todas» va donde van los checks: en su columna (29-oct). Antes estaba en
+    // el título del código, mezclado con la obra y «Ver figuras».
+    return '<table><tr class="revhead"><th style="width:22px"><input type="checkbox" data-grupo="' +
+      esc(g.cc || '') + '" title="Marcar todas las barras de este código"></th><th>Marca</th><th>Figura</th>' +
       c.letras.map(function (L) { return '<th class="revn">' + esc(L) + '</th>'; }).join('') + ang +
       '<th class="revn" title="Lo que la regla pide: un mínimo en el lado corto, la medida exacta en los opuestos">Esperado</th>' +
       '<th>Regla</th><th>Estado</th><th></th></tr>' +
@@ -851,21 +873,12 @@
       '<td class="revacc">' + acc + '</td></tr>' +
       '<tr class="revnapform" data-form="' + i.id + '" style="display:none"><td colspan="' + cols +
         '"><div class="revnapcaja">' +
-        '<select data-mot="' + i.id + '">' + _opcionesMotivo() + '</select>' +
         '<input type="text" data-nota="' + i.id + '" placeholder="Explica por qué no aplica — lo lee quien audita y queda firmado">' +
         '<label title="Aplica esta misma explicación a las barras iguales de esta obra que sigan abiertas">' +
         '<input type="checkbox" data-pat="' + i.id + '"> y todas las iguales</label>' +
         '<button class="audmini ver" data-napok="' + i.id + '">Guardar</button>' +
         '<button class="audmini" data-napno="' + i.id + '">Cancelar</button>' +
         '</div></td></tr>';
-  }
-
-  function _opcionesMotivo() {
-    var m = (REVS.detalle || {}).motivos || {};
-    return '<option value="">¿Por qué no aplica?</option>' +
-      Object.keys(m).map(function (k) {
-        return '<option value="' + esc(k) + '">' + esc(m[k]) + '</option>';
-      }).join('');
   }
 
   function _bindItems() {
@@ -936,10 +949,9 @@
 
   function _marcados() { return Object.keys(REVS.sel_items).map(Number); }
 
-  // «NO APLICA» PIDE MOTIVO Y EXPLICACIÓN, EN LA PROPIA FILA. El usuario acotó cuándo es
-  // legítimo: confirmado con producción o con el cliente, o la regla no aplica a esa
-  // figura. Categorizarlo permite leer después lo que el texto libre esconde: si muchos
-  // marcan «la regla no aplica», el problema está en la REGLA, no en las barras.
+  // «NO APLICA» PIDE LA EXPLICACIÓN, EN LA PROPIA FILA. Hubo un desplegable con la causa
+  // (figura / producción / cliente / otro); el usuario lo sacó el 29-oct: «basta el
+  // comentario que deja el usuario». La columna queda para lo ya guardado.
   //
   // Antes esto eran dos `prompt()` del navegador, uno pidiendo un NÚMERO. Se hace acá
   // porque la decisión se toma mirando el dato que está en la fila de al lado.
@@ -977,12 +989,10 @@
   async function guardarNoAplica(id) {
     var f = _form(id);
     if (!f) return;
-    var mot = f.querySelector('select[data-mot]').value;
     var nota = (f.querySelector('input[data-nota]').value || '').trim();
     var pat = f.querySelector('input[data-pat]').checked;
-    if (!mot) { aviso('Elige por qué no aplica.'); return; }
     if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
-    await declararUno(id, 'aceptada', mot, nota, pat,
+    await declararUno(id, 'aceptada', null, nota, pat,
                       f.querySelector('button[data-napok]'));
   }
 

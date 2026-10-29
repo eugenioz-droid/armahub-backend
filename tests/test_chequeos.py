@@ -469,9 +469,9 @@ check("...y verificar lo hace el SISTEMA, no una persona",
 check("declara cualquier cubicador; al dueño le llega aviso si lo hizo otro (21-oct)",
       "sólo puede declararlas quien las hizo" not in API and "alias_cubicador(cur, email)" in API
       and '"marcó resueltas"' in API)
-check("«no aplica» exige MOTIVO en categorías y explicación",
-      "MOTIVOS_NO_APLICA" in API and "Elige por qué no aplica." in API
-      and "motivo_tipo" in MIG6)
+check("«no aplica» exige la explicación; la categoría quedó opcional (29-oct: «basta el comentario»)",
+      "body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA" in API
+      and "Explica por qué no aplica" in API and "motivo_tipo" in MIG6)
 # LA LECTURA DE aSa CORRE AL CERRAR (20-oct), no en un botón aparte: comprobar-lote queda
 # como la pieza que lee, y la llama el cierre.
 check("la lectura de aSa sigue siendo por código, y la dispara el cierre",
@@ -535,11 +535,11 @@ check("se fue el botón «Ver»: la decisión está donde está el dato",
       ">Ver</button>" not in JS)
 check("cada fila lleva el par Aplica | No aplica",
       "data-aplica=" in JS and "data-noaplica=" in JS and ".revseg" in HTM)
-check("«no aplica» pide motivo y explicación EN la fila, sin prompt del navegador",
-      "revnapform" in JS and "data-mot=" in JS and "data-nota=" in JS
+check("«no aplica» pide la explicación EN la fila, sin prompt del navegador ni desplegable de causa",
+      "revnapform" in JS and "data-mot=" not in JS and "_opcionesMotivo" not in JS and "data-nota=" in JS
       and "¿Por qué NO aplica? Escribe el número" not in JS)
-check("...y sigue exigiendo los dos",
-      "Elige por qué no aplica." in JS and "nota.length < 10" in JS)
+check("...y la exige",
+      "Elige por qué no aplica." not in JS and "nota.length < 10" in JS)
 # EL MISMO FLUJO QUE LA AUDITORÍA (20-oct). El usuario pidió armonizarlos: «Resuelto» por
 # fila —verde cuando está marcado, se vuelve a apretar para deshacerlo—; con los checks,
 # los tres verbos de a muchas («muchas veces el hallazgo es el mismo para más de un
@@ -567,7 +567,7 @@ check("...y si quien cierra confirma, queda su firma en la señal",
 check("...cierra cualquiera lo resuelto; al dueño le llega aviso",
       "cierra lo suyo quien lo hizo" not in API and "cerró %d barra(s) tuyas" in API)
 check("la pantalla tiene el botón de cerrar, muestra el aviso con dos salidas y reintenta confirmando",
-      'id="revAccCerrar"' in JS and "async function cerrarResueltos(confirmar)" in JS
+      'id="revAccCerrar"' in HTM and "async function cerrarResueltos(confirmar)" in JS
       and "function _avisoCierreRev(" in JS and "Cerrar igual" in JS
       and "confirmar: !!confirmar" in JS and "e.status === 409" in JS and "err.detalle = det;" in JS)
 check("resuelto es lo que dijo quien lo hizo: la declarada cuenta como resuelta en los contadores",
@@ -580,9 +580,9 @@ check("resuelto es lo que dijo quien lo hizo: la declarada cuenta como resuelta 
 # explicaciones iguales: lo que pasa entonces es que nadie explica nada.
 check("...y las marcadas se pueden dejar sin efecto de a muchas, con UNA explicacion",
       'id="revAccNoAplica"' in JS and "async function noAplicaMarcadas(" in JS
-      and "estado: 'aceptada', motivo_tipo: mot, nota: nota" in JS)
-check("...que sigue exigiendo motivo y explicacion, igual que una barra suelta",
-      "Elige por qué no aplican." in JS and "nota.length < 10" in JS)
+      and "estado: 'aceptada', nota: nota" in JS)
+check("...que exige la explicacion, igual que una barra suelta",
+      "Elige por qué no aplican." not in JS and "nota.length < 10" in JS)
 # EL BOTON TIENE QUE DECIR QUE LO APRETASTE (19-oct). El usuario: «al presionar el boton
 # de no aplica en el formulario de las revisiones, no me actualiza los colores de los
 # botones». «No aplica» sólo desplegaba el campo de abajo y el par quedaba igual que
@@ -615,7 +615,7 @@ check("cada fila tiene su celda de dibujo, con el mismo motor que el auditor",
 check("se pide POR CÓDIGO y sólo cuando alguien lo pide, no al abrir el modal",
       "'/auditorias/elemento-asa?cc=' + encodeURIComponent(cc)" in JS
       and "&element=" not in JS.split("async function cargarFiguras(")[1][:900]
-      and "data-figs=" in JS and 'id="revAccFiguras"' in JS)
+      and "data-figs=" in JS and 'id="revAccFiguras"' in HTM)
 check("...y de a uno, no treinta en paralelo",
       "for (var i = 0; i < faltan.length; i++)" in JS and "await cargarFiguras(faltan[i].cc" in JS)
 check("lo leído queda en memoria: marcar un check no vuelve a dibujar nada",
@@ -817,6 +817,26 @@ check("...y el detalle de UNA revision trae los mismos nombres que la lista, por
 check("la celda NO es clicable: la fila elige la revision, el chip filtra la persona, el boton entra",
       "revcel" not in JS and "revcel" not in HTM and "td.dataset.cub" not in JS
       and "await abrirRevision(Number(b.dataset.abrir));\n        abrirItems(true);" in JS)
+
+
+print("\nEL LOTE, LIMPIO (29-oct)")
+# «Tienes una barra arriba pero otro check en la misma linea. ¿Como deberia ser para que sea
+# limpio?» Sin marcas no hay barra; lo permanente va al encabezado; el check «todas» va en su
+# columna; con marcas, la fila se apaga.
+check("sin marcas no hay barra: aparece con la primera y se queda pegada arriba",
+      "acc.style.display = n ? '' : 'none';" in JS and "position:sticky; top:0; z-index:5;" in HTM
+      and "Marca con el check para resolver varias" not in JS)
+check("ver figuras y cerrar lo resuelto viven en el encabezado de la hoja, siempre en el mismo lugar",
+      'id="revAccCerrar" disabled' in HTM and 'id="revAccFiguras"' in HTM
+      and "cz.textContent = 'Cerrar lo resuelto'" in JS)
+check("el check «todas» va en la cabecera de la tabla, no en el titulo del codigo",
+      '<th style="width:22px"><input type="checkbox" data-grupo="' in JS
+      and "<h5>' +\n              '<input type=\"checkbox\" data-grupo=" not in JS)
+check("con marcas, los botones de la fila se apagan; «Quitar seleccion» los devuelve",
+      "cuerpo.classList.toggle('lote', n > 0)" in JS and "#revItemsCuerpo.lote .revcc2 td.revacc button" in HTM
+      and "function quitarSeleccion(" in JS and 'id="revAccQuitar"' in JS)
+check("los botones de lote ya no llevan la cuenta: esta en «n barra(s) marcada(s)»",
+      "'Aplica' + (n ?" not in JS and "'Resuelto' + (n ?" not in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

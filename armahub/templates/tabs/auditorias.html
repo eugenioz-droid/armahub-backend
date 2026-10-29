@@ -303,15 +303,20 @@
            uno marca lo que ya se corrigió, el otro lanza la consulta a aSa SÓLO de eso. -->
       <div id="revItemsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); z-index:9998; overflow-y:auto;">
         <div class="revhoja" id="revHoja">
+          <!-- LO QUE VALE SIEMPRE VA ACÁ (29-oct): ver las figuras y cerrar lo resuelto.
+               La barra de lote aparece recién al marcar, pegada arriba. -->
           <div class="audh"><span id="revItemsTit"></span><div style="flex:1"></div>
+            <button class="audmini" id="revAccFiguras" style="display:none"></button>
+            <button class="audenviar" id="revAccCerrar" disabled>Cerrar lo resuelto</button>
             <button class="audmini" id="revItemsImprimir">Imprimir</button>
             <button class="audmini" id="revItemsCerrar">✕</button></div>
+          <div class="muted" id="revAccMsg" style="font-size:10.5px"></div>
           <div class="revavance" id="revItemsAvance"></div>
           <div class="dshchips" id="revItemsCubs" style="margin-bottom:8px;"></div>
           <!-- El tamaño del dibujo lo elige quien mira: una hoja de cincuenta barras se
                lee distinto que una de tres. Se recuerda por navegador. -->
           <div class="dshchips audtam" id="revTam" title="Tamaño del dibujo"></div>
-          <div class="revcubacc" id="revItemsAcc"></div>
+          <div class="revcubacc" id="revItemsAcc" style="display:none"></div>
           <div id="revItemsCuerpo"></div>
         </div>
       </div>
@@ -602,8 +607,13 @@
   .revavance{display:flex; align-items:center; gap:10px; font-size:11.5px; color:#546e7a; margin-bottom:8px;}
   .revavance .revbar2{flex:1; max-width:340px; height:8px; background:#eceff1; border-radius:99px; overflow:hidden;}
   .revavance .revbar2 i{display:block; height:100%; background:#8BC34A;}
+  /* LA BARRA DE LOTE TE SIGUE (29-oct): pegada arriba del cuerpo mientras bajas por las
+     barras. Sólo existe cuando hay algo marcado. */
   .revcubacc{display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:8px 10px;
-             background:#f1f8e9; border:1px solid #c5e1a5; border-radius:6px; margin-bottom:10px;}
+             background:#f1f8e9; border:1px solid #c5e1a5; border-radius:6px; margin-bottom:10px;
+             position:sticky; top:0; z-index:5; box-shadow:0 2px 6px rgba(0,0,0,.08);}
+  /* Con marcas, lo de la fila se apaga: o una a una, o en lote. */
+  #revItemsCuerpo.lote .revcc2 td.revacc button{opacity:.3; pointer-events:none;}
   .revcc2{margin-bottom:10px; border:1px solid #eceff1; border-radius:6px; overflow:hidden;}
   .revcc2 h5{margin:0; padding:5px 9px; background:#f5f7f8; font-size:11.5px; display:flex;
              align-items:center; gap:8px; font-weight:600;}
@@ -727,7 +737,7 @@
     .header, .audsubs, .audc, .revmas, #audSubAuditorias { display:none !important; }
     #revItemsModal{position:static !important; background:none !important; overflow:visible !important; display:block !important;}
     .revhoja{max-width:none; margin:0; padding:0;}
-    #revItemsImprimir, #revItemsCerrar, .revcubacc, #revItemsCubs,
+    #revItemsImprimir, #revItemsCerrar, #revAccFiguras, #revAccCerrar, #revAccMsg, .revcubacc, #revItemsCubs,
     .revcc2 input[type=checkbox], .revcc2 td.revacc, .revcc2 tr.revnapform { display:none !important; }
     /* La figura SÍ se imprime: es la mitad de para qué sirve la hoja. */
     .revfig, .revfig svg { display:table-cell !important; }

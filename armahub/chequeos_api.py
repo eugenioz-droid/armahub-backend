@@ -957,7 +957,9 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
         raise HTTPException(status_code=422, detail="Estado no válido.")
     nota = (body.nota or "").strip()
     if body.estado == "aceptada":
-        if body.motivo_tipo not in MOTIVOS_NO_APLICA:
+        # La categoría dejó de pedirse en pantalla (29-oct: «basta el comentario»); si
+        # llega, tiene que ser una de las conocidas. Lo que se exige es la explicación.
+        if body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA:
             raise HTTPException(status_code=400, detail="Elige por qué no aplica.")
         if len(nota) < 10:
             raise HTTPException(
