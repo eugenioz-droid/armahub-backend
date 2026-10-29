@@ -761,5 +761,20 @@ check("...y al abrir, el chip del cubicador viene puesto",
 check("el umbral del cabezal es 12, y esta escrito por que",
       "CABEZAL_DIAM_MINIMO = 12.0" in SRC and "los cabezales de 12 son" in SRC)
 
+
+print("\nUN RETOQUE DEL MISMO DIA NO SE PIERDE (29-oct)")
+# aSa marca `LastModified` SOLO con la fecha (medido: todas las horas son 00:00). La cola
+# preguntaba «la marca de aSa es mayor que la que yo tenia», asi que un codigo revisado a
+# las 06:00 y retocado esa tarde conservaba la misma marca y no volvia a mirarse nunca.
+# Medido el 29-oct: 15 codigos en esa situacion.
+check("la cola toma lo que avanzo de marca Y lo que aSa marco el mismo dia de la revision",
+      "p.ultima_mod > c.ultima_mod\n                                    OR p.ultima_mod::date >= c.revisado_el::date" in API)
+check("...y la pantalla de la obra dice lo mismo que la cola, no otra cosa",
+      API.count("OR p.ultima_mod::date >= c.revisado_el::date") == 2)
+# POR QUE NO SE QUEDA PEGADO: al re-revisarlo, `revisado_el` pasa a ser mas nuevo que
+# `ultima_mod`, asi que entra UNA vez mas y despues sale solo.
+check("...y entra una sola vez mas: no se queda dando vueltas",
+      "entra una vez más al día siguiente" in API and "sale solo" in API)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

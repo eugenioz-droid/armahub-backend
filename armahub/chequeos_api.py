@@ -168,8 +168,11 @@ def codigos(job: str, tarde: bool = False, user=Depends(get_current_user)):
             # Cuándo se revisó cada código, y si lo que hay en aSa cambió desde entonces.
             cur.execute(
                 """SELECT c.cc, c.revisado_el, c.revisado_por, c.barras, c.error,
+                          -- La misma regla que la cola de pendientes: o la marca avanzó,
+                          -- o aSa lo marcó el mismo día en que se revisó (ver `pendientes`).
                           (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
-                           AND p.ultima_mod > c.ultima_mod) AS cambio
+                           AND (p.ultima_mod > c.ultima_mod
+                                OR p.ultima_mod::date >= c.revisado_el::date)) AS cambio
                      FROM chequeo_codigos c
                      LEFT JOIN asa_pedidos p ON p.control_code = c.cc
                     WHERE c.id_proyecto = %s""", (job,))
@@ -701,7 +704,16 @@ def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = Fal
                       AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND (c.cc IS NULL
                            OR (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
-                               AND p.ultima_mod > c.ultima_mod))""" + mov + """
+                               -- O LA MARCA AVANZÓ, O aSa LO MARCÓ EL MISMO DÍA EN QUE SE
+                               -- REVISÓ (29-oct). `LastModified` de aSa trae sólo la fecha
+                               -- —medido: todas las horas son 00:00—, así que un código
+                               -- revisado a las 06:00 y retocado esa tarde conserva la
+                               -- misma marca y con un `>` pelado no volvía a mirarse NUNCA.
+                               -- Con esto entra una vez más al día siguiente, cuando ya
+                               -- nadie lo toca, y después sale solo: al re-revisarlo,
+                               -- `revisado_el` queda más nuevo que `ultima_mod`.
+                               AND (p.ultima_mod > c.ultima_mod
+                                    OR p.ultima_mod::date >= c.revisado_el::date)))""" + mov + """
                     GROUP BY p.asa_job_id, p.control_code
                     ORDER BY MAX(p.order_date) DESC NULLS LAST
                     """ + ("LIMIT %s" if limite else ""),
