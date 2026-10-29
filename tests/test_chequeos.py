@@ -812,8 +812,10 @@ check("«barras miradas» sale; entra lo que envejece: abiertas hace mas de 7 di
 check("...y el detalle de UNA revision trae los mismos nombres que la lista, por persona y en total",
       '"detectados": len(items),' in API and '"viejas": sum(c["viejas"] for c in por_cub.values()),' in API
       and 'c["obras"].add(i.get("job"))' in API and '"ccs": ccs_q, "obras": obras_q' in API)
-check("clic en la celda = revision + persona; clic en la fila = revision; el boton = entrar",
-      "await abrirRevision(Number(td.dataset.rev));" in JS
+# «Dejaste las columnas seleccionables, pero al presionar se genera un movimiento raro y se
+# aplica el filtro del cubicador de esa columna. No quedo bien.» La celda solo informa.
+check("la celda NO es clicable: la fila elige la revision, el chip filtra la persona, el boton entra",
+      "revcel" not in JS and "revcel" not in HTM and "td.dataset.cub" not in JS
       and "await abrirRevision(Number(b.dataset.abrir));\n        abrirItems(true);" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")

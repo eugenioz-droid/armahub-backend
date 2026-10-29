@@ -226,7 +226,7 @@
     el.innerHTML = '<table class="audt revmat"><thead><tr><th>Revisión</th>' +
       cols.map(function (q) {
         return '<th class="num' + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
-               ': lo que le FALTA, y en gris lo detectado. Clic en una celda = filtrar por esa persona en esa revisión.">' +
+               ': lo que le FALTA, y en gris lo detectado. Para filtrar por persona, el chip de arriba.">' +
                esc(q) + '</th>'; }).join('') +
       '<th class="num" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
       '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
@@ -236,7 +236,7 @@
         var pc = r.por_cubicador || {}, t = _cuentaDe(r, F);
         var apagada = F && !t.n;
         return '<tr class="revmatf' + (REVS.sel === r.id ? ' on' : '') + (apagada ? ' apagada' : '') +
-          '" data-rev="' + r.id + '" title="Clic para filtrar el resumen de arriba a esta revisión">' +
+          '" data-rev="' + r.id + '" title="Clic: el resumen de arriba se filtra a esta revisión">' +
           '<td><b>#' + r.id + '</b> ' + _fechaHora(r.arrancada) +
             '<div class="l2">' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
             ' · ' + esc(r.obra || '') + '</div></td>' +
@@ -246,11 +246,13 @@
             var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
             // LO QUE FALTA, EN GRANDE; lo detectado, en gris. Es la pregunta real: a quién
             // le queda cuánto. Antes decía «113» aunque ya hubiera resuelto cincuenta.
-            return '<td class="num revcel' + dim + (F === q ? ' sel' : '') + '" data-rev="' + r.id +
-                   '" data-cub="' + esc(q) + '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' +
+            // La celda SOLO informa (29-oct): clicable movía todo y ponía un filtro que
+            // nadie pidió. El filtro de persona vive en los chips de arriba.
+            return '<td class="num' + dim + (F === q ? ' sel' : '') +
+                   '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' +
                    falta + ' por resolver de ' + c.n + ' detectado(s)' +
                    (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
-                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') + '. Clic para filtrar.">' +
+                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') + '">' +
                    (falta <= 0 ? '<span class="revok">✓</span>' : '<b>' + falta + '</b>') +
                    '<div class="l2">de ' + c.n + '</div></td>';
           }).join('') +
@@ -268,15 +270,7 @@
             ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir</button>'
             : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
-    // LA CELDA FILTRA (revisión + persona), LA FILA FILTRA (revisión), EL BOTÓN ENTRA.
-    el.querySelectorAll('td.revcel').forEach(function (td) {
-      td.addEventListener('click', async function (ev) {
-        ev.stopPropagation();
-        REVS.filtro_cub = (REVS.filtro_cub === td.dataset.cub && REVS.sel === Number(td.dataset.rev))
-          ? null : td.dataset.cub;
-        await abrirRevision(Number(td.dataset.rev));
-      });
-    });
+    // LA FILA ELIGE LA REVISIÓN, EL BOTÓN ENTRA. El cubicador se filtra arriba, con los chips.
     el.querySelectorAll('button[data-abrir]').forEach(function (b) {
       b.addEventListener('click', async function (ev) {
         ev.stopPropagation();
