@@ -226,12 +226,15 @@
     el.innerHTML = '<table class="audt revmat"><thead><tr><th>Revisión</th>' +
       cols.map(function (q) {
         return '<th class="num' + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
-               ': lo que le falta por resolver. Para filtrar por persona, el chip de arriba.">' +
+               ': sus hallazgos en esa revisión; ✓ cuando ya resolvió todos. Para filtrar por persona, el chip de arriba.">' +
                esc(q) + '</th>'; }).join('') +
-      '<th class="num" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
+      // TRES SECCIONES, SEPARADAS (30-oct): quiénes · qué salió · en qué va.
+      '<th class="num sec" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
       '<th class="num" title="Los que una persona miró y descartó con motivo.">No aplican</th>' +
       '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
       'Es contra esto que se mide el avance.">Aplican</th>' +
+      '<th class="num sec" title="Marcados como resueltos (incluye lo que aSa ya confirmó).">Resueltos</th>' +
+      '<th class="num" title="Aplican y todavía nadie los resolvió.">Por resolver</th>' +
       '<th>Avance</th><th></th></tr></thead><tbody>' +
       vis.map(function (r) {
         var pc = r.por_cubicador || {}, t = _cuentaDe(r, F);
@@ -245,23 +248,21 @@
             var c = pc[q], dim = F && F !== q ? ' dim' : '';
             if (!c || !c.n) return '<td class="num' + dim + '"><span class="muted">·</span></td>';
             var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
-            // LO QUE FALTA, EN GRANDE; lo detectado, en gris. Es la pregunta real: a quién
-            // le queda cuánto. Antes decía «113» aunque ya hubiera resuelto cincuenta.
-            // La celda SOLO informa (29-oct): clicable movía todo y ponía un filtro que
-            // nadie pidió. El filtro de persona vive en los chips de arriba.
+            // EL TOTAL DE SUS HALLAZGOS, GRANDE, y ✓ al lado cuando ya los resolvió todos
+            // (30-oct). La celda SOLO informa: el filtro de persona vive en los chips.
             return '<td class="num' + dim + (F === q ? ' sel' : '') +
-                   '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' +
-                   falta + ' por resolver de ' + c.n + ' detectado(s)' +
+                   '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' + c.n + ' detectado(s)' +
                    (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
-                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') + '">' +
-                   // SOLO EL NÚMERO, GRANDE (30-oct): el «de n» se fue; el detalle queda
-                   // en el título de la celda.
-                   (falta <= 0 ? '<span class="revok">✓</span>' : '<b class="revh">' + falta + '</b>') + '</td>';
+                   (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') +
+                   (falta > 0 ? ', ' + falta + ' por resolver' : ', nada pendiente') + '">' +
+                   '<b class="revh">' + c.n + '</b>' + (falta <= 0 ? ' <span class="revok">✓</span>' : '') + '</td>';
           }).join('') +
-          '<td class="num">' + t.n + '</td>' +
+          '<td class="num sec">' + t.n + '</td>' +
           // «No aplican» en su columna, no como texto chico bajo «Aplican» (29-oct).
           '<td class="num">' + (t.nap || '<span class="muted">·</span>') + '</td>' +
           '<td class="num"><b>' + t.apl + '</b></td>' +
+          '<td class="num sec">' + (t.res || '<span class="muted">·</span>') + '</td>' +
+          '<td class="num">' + (t.apl - t.res > 0 ? '<b>' + (t.apl - t.res) + '</b>' : '<span class="muted">·</span>') + '</td>' +
           '<td>' + (!t.apl
             ? '<span class="muted">sin hallazgos</span>'
             : '<div class="revbar2" style="max-width:90px; display:inline-block; vertical-align:middle;">' +
