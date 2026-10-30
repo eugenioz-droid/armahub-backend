@@ -226,7 +226,7 @@
     el.innerHTML = '<table class="audt revmat"><thead><tr><th>Revisión</th>' +
       cols.map(function (q) {
         return '<th class="num' + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
-               ': lo que le FALTA, y en gris lo detectado. Para filtrar por persona, el chip de arriba.">' +
+               ': lo que le falta por resolver. Para filtrar por persona, el chip de arriba.">' +
                esc(q) + '</th>'; }).join('') +
       '<th class="num" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
       '<th class="num" title="Los que una persona miró y descartó con motivo.">No aplican</th>' +
@@ -254,8 +254,9 @@
                    falta + ' por resolver de ' + c.n + ' detectado(s)' +
                    (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
                    (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') + '">' +
-                   (falta <= 0 ? '<span class="revok">✓</span>' : '<b>' + falta + '</b>') +
-                   '<div class="l2">de ' + c.n + '</div></td>';
+                   // SOLO EL NÚMERO, GRANDE (30-oct): el «de n» se fue; el detalle queda
+                   // en el título de la celda.
+                   (falta <= 0 ? '<span class="revok">✓</span>' : '<b class="revh">' + falta + '</b>') + '</td>';
           }).join('') +
           '<td class="num">' + t.n + '</td>' +
           // «No aplican» en su columna, no como texto chico bajo «Aplican» (29-oct).

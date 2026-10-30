@@ -798,9 +798,10 @@ check("...y el filtro es UNO, global: la hoja abre con el que este puesto y al v
 check("con filtro, la matriz atenua las otras columnas y la fila de quien no tiene nada se apaga",
       "_cuentaDe(r, F)" in JS and "' dim' : ''" in JS and "' apagada' : ''" in JS
       and ".revmat th.dim, .revmat td.dim{opacity:.35;}" in HTM)
-check("la celda por cubicador dice lo que FALTA en grande, y lo detectado en gris",
+check("la celda por cubicador dice SOLO lo que falta, grande; el detalle va en el title (30-oct)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
-      and "'<div class=\"l2\">de ' + c.n + '</div></td>'" in JS)
+      and "'<b class=\"revh\">' + falta + '</b>'" in JS and "'<div class=\"l2\">de ' + c.n" not in JS
+      and ".revmat b.revh{font-size:15px" in HTM)
 check("arriba parte en «Todas las revisiones», grande; una fila elegida lo dice y tiene su ✕",
       "Todas las revisiones</span>" in JS and 'class="revtit"' in JS and ".revtit{font-size:16px" in HTM
       and "✕ Ver todas" in JS)
