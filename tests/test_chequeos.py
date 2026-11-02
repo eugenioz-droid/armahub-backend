@@ -796,9 +796,16 @@ check("los chips de cubicador son FILTROS: repintan tarjetas y matriz, no abren 
 check("...y el filtro es UNO, global: la hoja abre con el que este puesto y al volver se repinta arriba",
       "REVS.filtro_cub = _miChip();" not in JS
       and "// El chip del modal y el de arriba son el MISMO filtro: al volver, arriba se repinta.\n    pintarResumen(); pintarRevisiones();" in JS.split("function cerrarItems")[1][:900])
-check("con filtro, la matriz muestra SOLO la columna de esa persona, y la fila donde no tiene nada se apaga",
-      "_cuentaDe(r, F)" in JS and "cols = F ? [F] : _columnas(vis)" in JS and "' apagada' : ''" in JS
+# «Se siguen moviendo los nombres de los cubicadores y se genera ese espacio en blanco.
+# Todo debe quedar tal cual, simplemente deben actualizarse los valores.» Dejar sólo la
+# columna del filtrado recolocaba la tabla entera: ahora las columnas son fijas.
+check("la tabla NO cambia de estructura al filtrar: las columnas son siempre las mismas",
+      "_cuentaDe(r, F)" in JS and "cols = _columnas(vis)" in JS and "cols = F ? [F]" not in JS
+      and "var tot = (REVS.total || {}).por_cubicador || {};" in JS
+      and "nomCub(a).localeCompare(nomCub(b), 'es')" in JS
       and "' dim'" not in JS and "td.dim" not in HTM)
+check("...y lo que cambia son los valores: Estado y Hallazgos pasan a ser los de esa persona",
+      "var apagada = !t.n;" in JS and "' apagada' : ''" in JS)
 check("la celda por cubicador dice el TOTAL de sus hallazgos, y se pinta VERDE si ya resolvió todos (2-nov)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS

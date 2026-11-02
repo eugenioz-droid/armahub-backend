@@ -173,14 +173,22 @@
   // Las columnas: las personas con hallazgos en lo que se está mirando, de la que más
   // tiene a la que menos. El orden es el dato, no el alfabeto: la primera columna es
   // donde está el problema.
+  // LAS COLUMNAS SON SIEMPRE LAS MISMAS (2-nov): salen del total y van en el mismo orden
+  // alfabético que los chips de arriba. Antes se armaban con lo que hubiera en pantalla y
+  // ordenadas por volumen, así que filtrar —o que alguien resolviera— movía las columnas
+  // de sitio y la tabla entera se recolocaba. El usuario: «todo debe quedar tal cual,
+  // simplemente deben actualizarse los valores; no mover textos ni cambiar el diseño».
   function _columnas(vis) {
-    var tot = {};
-    vis.forEach(function (r) {
-      Object.keys(r.por_cubicador || {}).forEach(function (q) {
-        tot[q] = (tot[q] || 0) + (r.por_cubicador[q].n || 0);
+    var tot = (REVS.total || {}).por_cubicador || {};
+    var quienes = Object.keys(tot);
+    if (!quienes.length) {
+      vis.forEach(function (r) {
+        Object.keys(r.por_cubicador || {}).forEach(function (q) {
+          if (quienes.indexOf(q) === -1) quienes.push(q);
+        });
       });
-    });
-    return Object.keys(tot).sort(function (a, b) { return tot[b] - tot[a]; });
+    }
+    return quienes.sort(function (a, b) { return nomCub(a).localeCompare(nomCub(b), 'es'); });
   }
 
   // La cuenta de una revisión, entera o de UN cubicador: es lo que cambia con el filtro.
@@ -223,8 +231,10 @@
         : 'Todavía no se ha hecho ninguna revisión. Apreta «Nueva revisión».') + '</div>';
       return;
     }
-    // CON FILTRO, UNA SOLA COLUMNA (2-nov): la de esa persona. Sin tintes ni opacidades.
-    var F = REVS.filtro_cub || null, cols = F ? [F] : _columnas(vis);
+    // LA TABLA NO SE MUEVE: las columnas son siempre las mismas, estés filtrando o no.
+    // Lo que el filtro cambia son los VALORES de Estado y Hallazgos, que pasan a ser los
+    // de esa persona. Llegué a dejar sólo su columna y eso recolocaba la tabla entera.
+    var F = REVS.filtro_cub || null, cols = _columnas(vis);
     // UN SOLO TAMAÑO DE NÚMERO; la jerarquía la dan el peso y el color (2-nov). Dos filas
     // de encabezado: la sección y la columna. La primera columna de cada sección lleva la
     // raya (`sec`). El orden es el del trabajo: quién tiene qué, en qué va, y al final —
@@ -253,7 +263,9 @@
       '<th></th></tr></thead><tbody>' +
       vis.map(function (r) {
         var pc = r.por_cubicador || {}, t = _cuentaDe(r, F);
-        var apagada = (F && !t.n) || !t.n;
+        // Una fila sin nada que mirar —con el filtro puesto o sin él— va en gris. Es un
+        // valor, no una estructura: la fila sigue ahí, con sus mismas columnas.
+        var apagada = !t.n;
         var pend = Math.max(0, t.apl - t.res), lleno = t.apl > 0 && pend === 0;
         return '<tr class="revmatf' + (REVS.sel === r.id ? ' on' : '') + (apagada ? ' apagada' : '') +
           '" data-rev="' + r.id + '" title="Clic: el resumen de arriba se filtra a esta revisión">' +
