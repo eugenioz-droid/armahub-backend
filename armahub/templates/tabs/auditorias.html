@@ -562,22 +562,45 @@
   /* UN PANEL, NO DOS. La matriz de revisiones ocupa el ancho y el resumen de la
      seleccionada va debajo: antes eran dos columnas que decían lo mismo. */
   .audrevs{display:block;}
-  .revmat td{vertical-align:middle;}
-  .revmat .l2{color:#90a4ae; font-size:10px; font-weight:400; margin-top:1px;}
+  /* LA MATRIZ, ARMONIZADA (2-nov). Un solo tamaño de número; el peso y el color dicen qué
+     importa. Dos filas de encabezado: la sección y la columna. */
+  .revmat{font-size:12px;}
+  .revmat td{vertical-align:middle; padding:6px 8px; height:38px; box-sizing:border-box;}
+  .revmat th{padding:6px 8px;}
+  .revmat td.num, .revmat th.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .revmat td b{font-weight:700; color:#263238;}
+  .revmat td .revsuave, .revmat .revvacio2{color:#b0bec5; font-weight:400;}
+  .revmat td .revbien{color:#2e7d32; font-weight:600;}
+  .revmat td b.revpend{color:#e65100;}
+  .revmat .revtick{font-style:normal; color:#2e7d32; font-weight:700; margin-left:4px;}
+  .revmat .revfecha{color:#546e7a;}
+  .revmat .l2{color:#90a4ae; font-size:10.5px; font-weight:400; margin-top:1px;}
+  /* La fila de secciones: mayúsculas chicas, y el nombre pegado a su raya. */
+  .revmat tr.revsecs th{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#78909c;
+                        padding:7px 8px 3px; text-align:left; border-bottom:0; top:0;}
+  .revmat thead tr:nth-child(2) th{top:24px;}
+  /* La raya de cada sección, en encabezado y cuerpo: una sombra interior, que no depende
+     del colapso de bordes y se ve igual en todas las filas. */
+  .revmat th.sec, .revmat td.sec{box-shadow:inset 2px 0 0 #b0bec5; padding-left:16px;}
+  .revmat tr.revsecs th.sec{box-shadow:inset 2px 0 0 #b0bec5;}
+  /* Avance: barra de ancho fijo y porcentaje alineado, siempre en el mismo sitio. */
+  .revmat .revavth{min-width:140px;}
+  .revmat .revav{display:flex; align-items:center; gap:8px;}
+  .revmat .revav .revbar2{width:84px; flex:none; height:6px; background:#eceff1; border-radius:99px; overflow:hidden;}
+  .revmat .revav .revbar2 i{display:block; height:100%; background:#8BC34A;}
+  .revmat .revav span{width:38px; text-align:right; font-variant-numeric:tabular-nums; color:#455a64;}
+  .revmat .revav.lleno span{color:#2e7d32; font-weight:700;}
   .revmat tbody tr{cursor:pointer;}
-  .revmat tbody tr:hover{background:#f3f7fc;}
-  .revmat tbody tr.on{background:#e8f1fb; box-shadow:inset 3px 0 0 #1565C0;}
-  .revmat .revok{color:#2e7d32;}
-  .revmat b.revh{font-size:15px; font-variant-numeric:tabular-nums;}
-  /* TRES SECCIONES (30-oct): cubicadores · detectados/no aplican/aplican · resueltos/por
-     resolver/avance. La primera columna de cada sección lleva la raya. */
-  .revmat th.sec, .revmat td.sec{border-left:2px solid #90a4ae; box-shadow:inset 3px 0 0 #90a4ae; padding-left:16px;}
+  .revmat tbody tr:hover td{background:#f3f7fc;}
+  .revmat tbody tr.on td{background:#e8f1fb;}
+  .revmat tbody tr.on td:first-child{box-shadow:inset 3px 0 0 #1565C0;}
+  .revmat tbody tr.on td.sec{box-shadow:inset 2px 0 0 #1565C0;}
+  .revmat td.revacc{text-align:right; white-space:nowrap;}
   /* EL FILTRO POR CUBICADOR (29-oct): la columna y el chip elegidos se encienden, el
      resto se atenúa, y la fila en la que esa persona no tiene nada se apaga. */
   .revmat th.dim, .revmat td.dim{opacity:.35;}
   .revmat td.sel{background:#e8f5e9;}
-  .revmat tbody tr.apagada td{color:#b0bec5;}
-  .revmat tbody tr.apagada td b{color:#b0bec5;}
+  .revmat tbody tr.apagada td, .revmat tbody tr.apagada td b, .revmat tbody tr.apagada td .revfecha{color:#b0bec5;}
   .revcubs button.on{background:#1565C0; border-color:#1565C0; color:#fff;}
   .revcubs button.listo{border-color:#81c784; color:#2e7d32;}
   /* El título de arriba: grande, con sus filtros y UN botón que entra. */

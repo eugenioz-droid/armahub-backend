@@ -501,7 +501,7 @@ check("...el cubicador ve sólo lo suyo en la hoja; el admin, todo con filtro po
 # Una revisión sin hallazgos ENTRA IGUAL en la matriz: es la constancia de que se miró,
 # que es distinto de no haber mirado. La lista no filtra por tener hallazgos.
 check("una revisión sin hallazgos deja constancia en vez de esconderse",
-      "'<span class=\"muted\">sin hallazgos</span>'" in JS
+      "'<span class=\"revsuave\">sin hallazgos</span>'" in JS
       and "Queda el registro de que se revisó" in JS
       and "function _visibles(" in JS and "r.items > 0" not in JS.split("function _visibles(")[1][:400])
 check("la hoja se imprime", 'id="revItemsImprimir"' in HTM and "@media print" in HTM)
@@ -800,11 +800,23 @@ check("con filtro, la matriz atenua las otras columnas y la fila de quien no tie
       and ".revmat th.dim, .revmat td.dim{opacity:.35;}" in HTM)
 check("la celda por cubicador dice el TOTAL de sus hallazgos, grande, con ✓ si ya resolvió todos (30-oct)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
-      and "'<b class=\"revh\">' + c.n + '</b>' + (falta <= 0 ? ' <span class=\"revok\">✓</span>' : '')" in JS
-      and "'<div class=\"l2\">de ' + c.n" not in JS and ".revmat b.revh{font-size:15px" in HTM)
+      and "'<b>' + c.n + '</b>' + (falta <= 0 ? '<i class=\"revtick\">✓</i>' : '')" in JS
+      and "'<div class=\"l2\">de ' + c.n" not in JS)
 check("...y la matriz va en tres secciones con su raya: quiénes · detectados/no aplican/aplican · resueltos/por resolver/avance",
       '<th class="num sec"' in JS and ">Resueltos</th>" in JS and ">Por resolver</th>" in JS
-      and ".revmat th.sec, .revmat td.sec{border-left:2px solid" in HTM)
+      and ".revmat th.sec, .revmat td.sec{box-shadow:inset 2px 0 0" in HTM)
+# «Dejaste numeros de distintos tamaños. Armoniza el display» (2-nov): un solo tamaño, dos
+# filas de encabezado, el vacio siempre igual, el ✓ siempre en el mismo sitio.
+check("la matriz tiene UN tamaño de numero: la jerarquia va por peso y color, no por tamaño",
+      "font-size:15px" not in HTM.split(".revmat{font-size:12px;}")[1].split("/* EL FILTRO POR CUBICADOR")[0]
+      and "class=\"revh\"" not in JS)
+check("...dos filas de encabezado: la seccion arriba y la columna abajo, con la raya en la primera de cada una",
+      '<tr class="revsecs"><th></th>' in JS and '" class="sec">Cubicadores</th>' in JS
+      and '" class="sec">Hallazgos</th>' in JS and '" class="sec">Estado</th>' in JS
+      and ".revmat thead tr:nth-child(2) th{top:24px;}" in HTM)
+check("...el vacio es siempre el mismo punto, y el avance tiene barra de ancho fijo y porcentaje alineado",
+      "var PUNTO = '<span class=\"revvacio2\">·</span>';" in JS and ".revmat .revav .revbar2{width:84px" in HTM
+      and ".revmat .revav span{width:38px" in HTM)
 check("arriba parte en «Todas las revisiones», grande; una fila elegida lo dice y tiene su ✕",
       "Todas las revisiones</span>" in JS and 'class="revtit"' in JS and ".revtit{font-size:16px" in HTM
       and "✕ Ver todas" in JS)

@@ -223,53 +223,59 @@
       return;
     }
     var cols = _columnas(vis), F = REVS.filtro_cub || null;
-    el.innerHTML = '<table class="audt revmat"><thead><tr><th>Revisión</th>' +
-      cols.map(function (q) {
-        return '<th class="num' + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
+    // UN SOLO TAMAÑO DE NÚMERO; la jerarquía la dan el peso y el color (2-nov). Dos filas
+    // de encabezado: la sección y la columna. La primera columna de cada sección lleva la
+    // raya (`sec`), que es la separación que el usuario pidió ver.
+    var PUNTO = '<span class="revvacio2">·</span>';
+    var n0 = function (v, cls) { return v ? '<span class="' + (cls || '') + '">' + v + '</span>' : PUNTO; };
+    el.innerHTML = '<table class="audt revmat"><thead>' +
+      '<tr class="revsecs"><th></th>' +
+      '<th colspan="' + cols.length + '" class="sec">Cubicadores</th>' +
+      '<th colspan="3" class="sec">Hallazgos</th>' +
+      '<th colspan="3" class="sec">Estado</th><th></th></tr>' +
+      '<tr><th>Revisión</th>' +
+      cols.map(function (q, k) {
+        return '<th class="num' + (k === 0 ? ' sec' : '') + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
                ': sus hallazgos en esa revisión; ✓ cuando ya resolvió todos. Para filtrar por persona, el chip de arriba.">' +
                esc(q) + '</th>'; }).join('') +
-      // TRES SECCIONES, SEPARADAS (30-oct): quiénes · qué salió · en qué va.
       '<th class="num sec" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
       '<th class="num" title="Los que una persona miró y descartó con motivo.">No aplican</th>' +
       '<th class="num" title="Los que quedan después de descartar los que no aplican. ' +
       'Es contra esto que se mide el avance.">Aplican</th>' +
       '<th class="num sec" title="Marcados como resueltos (incluye lo que aSa ya confirmó).">Resueltos</th>' +
       '<th class="num" title="Aplican y todavía nadie los resolvió.">Por resolver</th>' +
-      '<th>Avance</th><th></th></tr></thead><tbody>' +
+      '<th class="revavth">Avance</th><th></th></tr></thead><tbody>' +
       vis.map(function (r) {
         var pc = r.por_cubicador || {}, t = _cuentaDe(r, F);
-        var apagada = F && !t.n;
+        var apagada = (F && !t.n) || !t.n;
+        var pend = Math.max(0, t.apl - t.res);
         return '<tr class="revmatf' + (REVS.sel === r.id ? ' on' : '') + (apagada ? ' apagada' : '') +
           '" data-rev="' + r.id + '" title="Clic: el resumen de arriba se filtra a esta revisión">' +
-          '<td><b>#' + r.id + '</b> ' + _fechaHora(r.arrancada) +
+          '<td><b>#' + r.id + '</b> <span class="revfecha">' + _fechaHora(r.arrancada) + '</span>' +
             '<div class="l2">' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
             ' · ' + esc(r.obra || '') + '</div></td>' +
-          cols.map(function (q) {
-            var c = pc[q], dim = F && F !== q ? ' dim' : '';
-            if (!c || !c.n) return '<td class="num' + dim + '"><span class="muted">·</span></td>';
+          cols.map(function (q, k) {
+            var c = pc[q], cls = 'num' + (k === 0 ? ' sec' : '') + (F && F !== q ? ' dim' : '') + (F === q ? ' sel' : '');
+            if (!c || !c.n) return '<td class="' + cls + '">' + PUNTO + '</td>';
             var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
-            // EL TOTAL DE SUS HALLAZGOS, GRANDE, y ✓ al lado cuando ya los resolvió todos
-            // (30-oct). La celda SOLO informa: el filtro de persona vive en los chips.
-            return '<td class="num' + dim + (F === q ? ' sel' : '') +
-                   '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' + c.n + ' detectado(s)' +
+            // EL TOTAL DE SUS HALLAZGOS y ✓ cuando ya los resolvió todos. La celda SOLO
+            // informa: el filtro de persona vive en los chips de arriba.
+            return '<td class="' + cls + '" title="' + esc(q) + ' en la revisión #' + r.id + ': ' + c.n + ' detectado(s)' +
                    (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
                    (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') +
                    (falta > 0 ? ', ' + falta + ' por resolver' : ', nada pendiente') + '">' +
-                   '<b class="revh">' + c.n + '</b>' + (falta <= 0 ? ' <span class="revok">✓</span>' : '') + '</td>';
+                   '<b>' + c.n + '</b>' + (falta <= 0 ? '<i class="revtick">✓</i>' : '') + '</td>';
           }).join('') +
-          '<td class="num sec">' + t.n + '</td>' +
-          // «No aplican» en su columna, no como texto chico bajo «Aplican» (29-oct).
-          '<td class="num">' + (t.nap || '<span class="muted">·</span>') + '</td>' +
-          '<td class="num"><b>' + t.apl + '</b></td>' +
-          '<td class="num sec">' + (t.res || '<span class="muted">·</span>') + '</td>' +
-          '<td class="num">' + (t.apl - t.res > 0 ? '<b>' + (t.apl - t.res) + '</b>' : '<span class="muted">·</span>') + '</td>' +
-          '<td>' + (!t.apl
-            ? '<span class="muted">sin hallazgos</span>'
-            : '<div class="revbar2" style="max-width:90px; display:inline-block; vertical-align:middle;">' +
-              '<i style="width:' + (t.pct || 0) + '%"></i></div> ' +
-              (t.pct === 100 ? '<b style="color:#2e7d32">100% ✓</b>' : (t.pct || 0) + '%')) + '</td>' +
-          // «ABRIR» A SECAS (29-oct): con el número al lado se descuadraban. Entra a la hoja
-          // con los filtros que estén puestos: esta revisión, y el cubicador si lo hay.
+          '<td class="num sec">' + n0(t.n) + '</td>' +
+          '<td class="num">' + n0(t.nap, 'revsuave') + '</td>' +
+          '<td class="num">' + (t.apl ? '<b>' + t.apl + '</b>' : PUNTO) + '</td>' +
+          '<td class="num sec">' + n0(t.res, 'revbien') + '</td>' +
+          '<td class="num">' + (pend ? '<b class="revpend">' + pend + '</b>' : (t.apl ? '<i class="revtick">✓</i>' : PUNTO)) + '</td>' +
+          '<td class="revavtd">' + (!t.apl
+            ? '<span class="revsuave">sin hallazgos</span>'
+            : '<div class="revav' + (t.pct === 100 ? ' lleno' : '') + '"><div class="revbar2"><i style="width:' + (t.pct || 0) + '%"></i></div>' +
+              '<span>' + (t.pct || 0) + '%</span></div>') + '</td>' +
+          // «ABRIR» A SECAS (29-oct). Entra a la hoja con los filtros que estén puestos.
           '<td class="revacc">' + (t.apl
             ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir</button>'
             : '') + '</td></tr>';
