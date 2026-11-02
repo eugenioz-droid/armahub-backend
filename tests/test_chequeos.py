@@ -936,5 +936,21 @@ check("el contexto —obras, codigos, kilos— baja a una linea: con eso no se d
       "var ctx = [v.obras" in JS and "' kg en juego'" in JS.replace("'kg en juego'", "' kg en juego'")
       and ".revctx{font-size:10.5px" in HTM)
 
+
+print("\nEL MENU NO SE MUEVE, Y LA FILA NO SE QUEDA MUDA (2-nov)")
+# «Al filtrar se modifica visualmente el menu, debe ser estatico, solo editas data.»
+check("los chips salen siempre del total y van en orden alfabetico: el menu no cambia",
+      "var cubs = Object.keys(T.por_cubicador || {}).map(" in JS
+      and "nomCub(a.q).localeCompare(nomCub(b.q), 'es')" in JS
+      and "LA LISTA DE CHIPS SALE SIEMPRE DEL TOTAL" in JS)
+check("...y los numeros de la persona filtrada salen de la revision abierta, si hay una",
+      "var enSel = {};" in JS and "(sel ? enSel[F] : cubs.filter(" in JS)
+# «No puedo corregir masivamente»: los botones de la fila quedaban apagados Y MUDOS, asi
+# que apretarlos no hacia nada y parecia que el masivo no existia.
+check("con barras marcadas, el boton de la fila avisa donde esta la accion en vez de callarse",
+      "function _enLote() {" in JS and "resuélvelas con los botones de arriba" in JS
+      and JS.count("if (_enLote()) return;") == 2 and "if (!_enLote()) abrirNoAplica" in JS
+      and "pointer-events:none" not in HTM.split("#revItemsCuerpo.lote")[1][:160])
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

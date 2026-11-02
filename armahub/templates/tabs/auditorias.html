@@ -632,7 +632,10 @@
              background:#f1f8e9; border:1px solid #c5e1a5; border-radius:6px; margin-bottom:10px;
              position:sticky; top:0; z-index:5; box-shadow:0 2px 6px rgba(0,0,0,.08);}
   /* Con marcas, lo de la fila se apaga: o una a una, o en lote. */
-  #revItemsCuerpo.lote .revcc2 td.revacc button{opacity:.3; pointer-events:none;}
+  /* Con marcas, la fila se apaga —se trabaja en lote— pero el botón SIGUE recibiendo el
+     clic: apagado y mudo, el usuario apretaba y no pasaba nada. Ahora contesta. */
+  #revItemsCuerpo.lote .revcc2 td.revacc button{opacity:.35;}
+  #revItemsCuerpo.lote .revcc2 td.revacc button:hover{opacity:.5; cursor:help;}
   .revcc2{margin-bottom:10px; border:1px solid #eceff1; border-radius:6px; overflow:hidden;}
   .revcc2 h5{margin:0; padding:5px 9px; background:#f5f7f8; font-size:11.5px; display:flex;
              align-items:center; gap:8px; font-weight:600;}

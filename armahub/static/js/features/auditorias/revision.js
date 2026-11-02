@@ -331,15 +331,24 @@
     var sel = REVS.sel && REVS.detalle ? REVS.detalle.revision : null;
     var T = REVS.total || {}, F = REVS.filtro_cub || null;
     // Las personas, con sus cuentas: de la revisión elegida o del total.
-    var cubs = sel
-      ? (sel.por_cubicador || []).map(function (c) {
-          return { q: c.cubico, n: c.n, no_aplica: c.no_aplica || 0, resueltos: c.resueltas || 0,
-                   viejas: c.viejas || 0, ccs: c.ccs || 0, obras: c.obras || 0 }; })
-      : Object.keys(T.por_cubicador || {}).map(function (q) {
-          var c = T.por_cubicador[q];
-          return { q: q, n: c.n, no_aplica: c.no_aplica, resueltos: c.resueltos,
-                   viejas: c.viejas || 0, ccs: c.ccs || 0, obras: c.obras || 0 }; });
-    cubs.sort(function (a, b) { return (b.n - b.no_aplica - b.resueltos) - (a.n - a.no_aplica - a.resueltos) || b.n - a.n; });
+    // LA LISTA DE CHIPS SALE SIEMPRE DEL TOTAL, elijas la revisión que elijas: si saliera
+    // de la revisión abierta, el menú perdería y ganaría botones al moverse por la tabla.
+    var cubs = Object.keys(T.por_cubicador || {}).map(function (q) {
+      var c = T.por_cubicador[q];
+      return { q: q, n: c.n, no_aplica: c.no_aplica, resueltos: c.resueltos,
+               viejas: c.viejas || 0, ccs: c.ccs || 0, obras: c.obras || 0 }; });
+    // Lo que se muestra de una persona sí depende de dónde estés parado: si hay una
+    // revisión abierta, sus números son los de ella.
+    var enSel = {};
+    (sel ? sel.por_cubicador || [] : []).forEach(function (c) {
+      enSel[c.cubico] = { q: c.cubico, n: c.n, no_aplica: c.no_aplica || 0, resueltos: c.resueltas || 0,
+                          viejas: c.viejas || 0, ccs: c.ccs || 0, obras: c.obras || 0 };
+    });
+    // EL MENÚ NO SE MUEVE (2-nov). Estaban ordenados por lo que le falta a cada uno, así
+    // que resolver una barra reordenaba los chips y el que estabas mirando se iba de
+    // lugar. El usuario: «al filtrar se modifica visualmente el menú; debe ser estático,
+    // sólo editas data». Orden alfabético, que no depende de nada que cambie.
+    cubs.sort(function (a, b) { return nomCub(a.q).localeCompare(nomCub(b.q), 'es'); });
     // Lo que se muestra: el total, la revisión, o esa persona dentro de eso.
     var base = sel
       ? { det: sel.detectados != null ? sel.detectados : sel.items, nap: sel.no_aplica || 0, res: sel.resueltas || 0,
@@ -348,7 +357,7 @@
           obras: T.obras || 0, ccs: T.ccs_con_hallazgo || 0, kg: T.kg || 0, viejas: T.viejas || 0 };
     // Si esa persona no tiene nada en la revisión elegida, el filtro se QUEDA (lo puso el
     // usuario) y las tarjetas dicen cero: quitarlo solo sería un cambio sin que nadie lo pida.
-    var mio = F ? (cubs.filter(function (c) { return c.q === F; })[0] ||
+    var mio = F ? ((sel ? enSel[F] : cubs.filter(function (c) { return c.q === F; })[0]) ||
                    { q: F, n: 0, no_aplica: 0, resueltos: 0, obras: 0, ccs: 0, viejas: 0 }) : null;
     var v = mio
       ? { det: mio.n, nap: mio.no_aplica, res: mio.resueltos, obras: mio.obras, ccs: mio.ccs, kg: null, viejas: mio.viejas }
@@ -950,15 +959,33 @@
     caja.querySelectorAll('[data-ver]').forEach(function (b) {
       b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
     });
+    // CON BARRAS MARCADAS, LA FILA NO DECIDE: lo hace el lote. Pero el botón no se queda
+    // mudo —apagado y sin respuesta parecía que la pantalla estaba rota—: dice dónde está
+    // ahora la acción. Se devuelve true cuando el clic era para el lote.
+    function _enLote() {
+      var n = Object.keys(REVS.sel_items).length;
+      if (!n) return false;
+      aviso('Tienes ' + n + ' barra(s) marcada(s): resuélvelas con los botones de arriba, ' +
+            'o aprieta «Quitar selección» para trabajarlas de a una.');
+      var acc = $('revItemsAcc');
+      if (acc) acc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return true;
+    }
     // «Resuelto» por fila, y «Deshacer» para lo decidido.
     caja.querySelectorAll('button[data-resuelto]').forEach(function (b) {
-      b.addEventListener('click', function () { declararUno(b.dataset.resuelto, 'declarada', null, null, false, b); });
+      b.addEventListener('click', function () {
+        if (_enLote()) return;
+        declararUno(b.dataset.resuelto, 'declarada', null, null, false, b);
+      });
     });
     caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
-      b.addEventListener('click', function () { declararUno(b.dataset.deshacer, 'abierta', null, null, false, b); });
+      b.addEventListener('click', function () {
+        if (_enLote()) return;
+        declararUno(b.dataset.deshacer, 'abierta', null, null, false, b);
+      });
     });
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
-      b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });
+      b.addEventListener('click', function () { if (!_enLote()) abrirNoAplica(b.dataset.noaplica); });
     });
     // El campo del «no aplica»: Enter guarda esa barra, Esc lo deja como estaba.
     caja.querySelectorAll('input[data-nota]').forEach(function (c) {
