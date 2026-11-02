@@ -812,8 +812,8 @@ check("la tabla NO cambia de estructura al filtrar: las columnas son siempre las
 check("...y lo que cambia son los valores: con filtro sólo esa columna lleva número, y Estado y Hallazgos son los suyos",
       "var apagada = !t.n;" in JS and "' apagada' : ''" in JS
       and "if (F && F !== q) return '<td class=\"' + cls + '\">' + PUNTO + '</td>';" in JS)
-check("la celda por cubicador dice el TOTAL de sus hallazgos, y se pinta VERDE si ya resolvió todos (2-nov)",
-      "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
+check("la celda por cubicador dice «cerradas de cuántas», y se pinta VERDE si ya no le queda nada",
+      "var cerr = (c.no_aplica || 0) + (c.resueltos || 0), falta = c.n - cerr;" in JS
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
       # «Cerradas de cuántas» también en la matriz: el total solo no decía si alguien lo miraba.
       and "'<b>' + cerr + '</b><span class=\"revde\">/' + c.n + '</span></td>'" in JS
@@ -878,7 +878,7 @@ print("\nLA MATRIZ: VERDE = CERRADO, CENTRADA, Y LOS HALLAZGOS AL FINAL (2-nov)"
 # simetria. Los tickets se van. La seccion de hallazgos va al final y separada: es un dato
 # casi curioso; aca nos interesa que hallazgos tiene quien, que tiene pendiente y el avance.»
 check("celda verde para quien ya resolvio todo lo suyo y para el avance al 100%; sin ✓",
-      ".revmat td.listo{background:#e8f5e9" in HTM and "(lleno ? ' listo' : '')" in JS
+      ".revmat td.listo{background:#e8f5e9" in HTM and "(lleno || (t.n && !t.apl) ? ' listo' : '')" in JS
       and "revtick" not in HTM and "✓" not in JS.split("function pintarRevisiones(")[1].split("function pintarResumen(")[0])
 check("numeros y encabezados centrados, con anchos fijos por seccion",
       "text-align:center; font-variant-numeric:tabular-nums" in HTM and ".revmat th.cub, .revmat td.cub{width:" in HTM
@@ -1017,6 +1017,17 @@ check("la firma va al final de la fila, con la decision que explica, y no bajo l
       and "esc(i.ref) + '</span></td>'" in JS)
 check("...y la columna de la marca se encoge para que el dibujo quede pegado",
       ".revcc2 td.revm, .revcc2 th.revm{width:1%" in HTM and ".revcc2 td.revfig, .revcc2 th.revfig{padding-left:0;}" in HTM)
+
+
+print("\nUNA REVISION CON TODO DESCARTADO ESTA CERRADA, NO VACIA (2-nov)")
+# La #14 tenia 6 hallazgos y los 6 no aplicaban: «aplican» quedaba en 0, la fila decia
+# «sin hallazgos» y no salia el boton de abrir. El usuario: «no me aparece el boton de
+# abrir para esta revision».
+check("se puede abrir cualquier revision que haya encontrado algo, aplique o no",
+      "'<td class=\"revacc\">' + (t.n" in JS
+      and "(v.det ? '<button class=\"audbtn\" id=\"revAbrir\"" in JS)
+check("...y «sin hallazgos» queda solo para la que no encontro nada: si todo se descarto, va al 100%",
+      "(lleno || (t.n && !t.apl) ? ' listo' : '')" in JS and "(t.apl ? (t.pct || 0) : 100)" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

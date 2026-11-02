@@ -292,16 +292,20 @@
           }).join('') +
           '<td class="num est sec">' + n0(t.res, 'revbien') + '</td>' +
           '<td class="num est">' + (pend ? '<b class="revpend">' + pend + '</b>' : PUNTO) + '</td>' +
-          '<td class="revavtd' + (lleno ? ' listo' : '') + '">' + (!t.apl
+          // «Sin hallazgos» es NO HABER ENCONTRADO NADA. Una revisión en la que todo lo
+          // encontrado no aplicaba está cerrada —100%—, no vacía: decía «sin hallazgos»
+          // sobre seis hallazgos descartados.
+          '<td class="revavtd' + (lleno || (t.n && !t.apl) ? ' listo' : '') + '">' + (!t.n
             ? '<span class="revsuave">sin hallazgos</span>'
-            : '<div class="revav"><div class="revbar2"><i style="width:' + (t.pct || 0) + '%"></i></div>' +
-              '<span>' + (t.pct || 0) + '%</span></div>') + '</td>' +
+            : '<div class="revav"><div class="revbar2"><i style="width:' +
+              (t.apl ? (t.pct || 0) : 100) + '%"></i></div>' +
+              '<span>' + (t.apl ? (t.pct || 0) : 100) + '%</span></div>') + '</td>' +
           '<td class="num cur sec curioso">' + n0(t.n) + '</td>' +
           '<td class="num cur curioso">' + n0(t.nap) + '</td>' +
           // Aplican en rojo: de lo detectado, es lo que quedó válido y hay que trabajar.
           '<td class="num cur curioso aplican">' + n0(t.apl) + '</td>' +
           // «ABRIR» A SECAS (29-oct). Entra a la hoja con los filtros que estén puestos.
-          '<td class="revacc">' + (t.apl
+          '<td class="revacc">' + (t.n
             ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir</button>'
             : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
@@ -414,7 +418,7 @@
         ' corrida(s) · clic en una fila para filtrar</span>') +
       (F ? '<button class="revfiltro" id="revQuitaFiltro" title="Filtrado por cubicador. Clic para quitar el filtro.">' + esc(nomCub(F)) + ' ✕</button>' : '') +
       // EL ÉNFASIS VA EN ABRIR: un solo botón arriba que entra con lo que esté filtrado.
-      (apl ? '<button class="audbtn" id="revAbrir" title="Abrir la hoja con ' +
+      (v.det ? '<button class="audbtn" id="revAbrir" title="Abrir la hoja con ' +
              (sel ? 'esta revisión' : 'todas las revisiones') + (F ? ', sólo lo de ' + esc(nomCub(F)) : '') + '">Abrir</button>' : '');
     $('revAccTit').innerHTML = tit;
     // El contexto —obras, códigos, kilos— no es un indicador: no se decide nada con él.
