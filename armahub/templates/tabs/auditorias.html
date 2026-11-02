@@ -637,6 +637,16 @@
   #revItemsCuerpo.lote .revcc2 td.revacc button{opacity:.35;}
   #revItemsCuerpo.lote .revcc2 td.revacc button:hover{opacity:.5; cursor:help;}
   .revcc2{margin-bottom:10px; border:1px solid #eceff1; border-radius:6px; overflow:hidden;}
+  /* El código con todo cerrado se reconoce de lejos, sin tener que leerlo. */
+  .revcc2.listo h5{background:#eef7e8; color:#33691e;}
+  /* LA MARCA Y SU FIGURA, JUNTAS: la columna de la marca se encoge a lo que mide el
+     texto, así el dibujo queda al lado y no al otro extremo de la hoja. */
+  .revcc2 td.revm, .revcc2 th.revm{width:1%; white-space:nowrap; padding-right:4px;}
+  .revcc2 td.revfig, .revcc2 th.revfig{padding-left:0;}
+  /* La explicación firmada, al final de la fila y en chico: acompaña a la decisión. */
+  .revfirma{display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis;
+            white-space:nowrap; vertical-align:middle; margin-right:8px;
+            font-size:10px; color:#90a4ae;}
   .revcc2 h5{margin:0; padding:5px 9px; background:#f5f7f8; font-size:11.5px; display:flex;
              align-items:center; gap:8px; font-weight:600;}
   .revcc2 h5 .muted{font-weight:400;}
@@ -704,23 +714,6 @@
   .audfigw{display:inline-flex; align-items:center; gap:5px; vertical-align:middle;}
   .audfigw .audfign{margin:0;}
   .audacct th.audaccth:not(:empty){min-width:210px;}
-  /* La hoja parte por los códigos; cada uno se abre aparte. */
-  .revlista{width:100%; border-collapse:collapse; font-size:11.5px;}
-  .revlista th{font-size:9.5px; color:#78909c; text-transform:uppercase; letter-spacing:.3px;
-               text-align:left; padding:5px 8px; border-bottom:1px solid #e3e8ef;}
-  .revlista td{padding:7px 8px; border-top:1px solid #f2f4f7;}
-  .revlista tr.revccfila{cursor:pointer;}
-  .revlista tr.revccfila:hover td{background:#f5f7f9;}
-  /* El código terminado se ve terminado, y el empezado se distingue del que no se ha
-     tocado. Sin ✓ ni etiquetas: el color y la cuenta bastan (2-nov). */
-  .revlista tr.hecho td{color:#33691e; background:#eef7e8;}
-  .revlista tr.hecho:hover td{background:#e4f1d9;}
-  .revlista tr.yendo td{background:#fffdf3;}
-  .revlista td.revn{font-variant-numeric:tabular-nums; white-space:nowrap;}
-  .revlista td.revn b{font-size:13px; color:#263238;}
-  .revlista tr.hecho td.revn b{color:#33691e;}
-  .revlista .revde{color:#b0bec5; font-weight:400;}
-  .revvolver{margin:0 0 8px;}
   .revcc2 td{vertical-align:middle;}
   .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
   .revi.abierta{background:#fff8e1; color:#8d6e00;} .revi.declarada{background:#e3f2fd; color:#1565C0;}

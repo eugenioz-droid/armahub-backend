@@ -738,12 +738,17 @@ check("la figura, cuando llega, sólo dibuja: los lados ya están en la fila",
 print("\nLA HOJA PARTE POR LOS CÓDIGOS (21-oct)")
 # «Mejor separar: un listado con los CC y cantidad de hallazgos; luego click y se abre el
 # modal con las barras de ese CC».
-check("primero un listado de códigos con hallazgos y resueltos; el código se abre aparte",
-      "REVS.cc_abierto" in JS and 'class="revlista"' in JS and "data-abrircc=" in JS
-      and "data-volvercc=" in JS and ".revlista tr.revccfila" in HTM)
-check("...y volver a la lista o cambiar de cubicador limpia lo marcado, que era de otro código",
-      "REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();" in JS
-      and "REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems();" in JS)
+# TODOS LOS CODIGOS A LA VISTA (2-nov). Hubo un paso intermedio —lista de códigos y un
+# clic para entrar a cada uno— que venia de cuando la hoja era una tira sin agrupar. Con
+# el codigo agrupado, su cabecera y su boton de cerrar, ese paso sobra: el usuario «en vez
+# de entrar a cada CC en el modal, creo que quedaria mejor que tengamos cada CC agrupado».
+check("la hoja trae TODOS los codigos agrupados, sin lista intermedia ni «abrir»",
+      "cc_abierto" not in JS and "revlista" not in JS and "data-abrircc" not in JS
+      and "data-volvercc" not in JS and "revccfila" not in HTM
+      and "orden.map(function (k) {" in JS and 'data-grupocc="' in JS)
+check("...y cada uno lleva su cabecera, sus barras y su pie; el que esta cerrado se reconoce",
+      "_tablaGrupo(g) + _pieGrupo(g) + '</div>';" in JS
+      and "(ok >= g.items.length ? ' listo' : '')" in JS and ".revcc2.listo h5{" in HTM)
 check("resuelto, para los contadores de la hoja, incluye lo declarado",
       "var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };" in JS)
 
@@ -967,10 +972,8 @@ print("\nUNA PALABRA POR CONCEPTO (2-nov)")
 # nada. La hoja contaba las dos juntas y las llamaba «resueltos», y la matriz no.
 check("en la hoja se cuentan CERRADAS, que es lo que incluye los «no aplica»",
       "' cerradas</span>'" in JS and "' cerradas</span></h5>'" in JS
-      and ">Cerradas</th>" in JS and "' resueltos</span>'" not in JS
-      # Una sola cuenta por código: «10/10», no dos columnas que hay que restar con la vista.
-      and "'<td class=\"revn\"><b>' + ok + '</b><span class=\"revde\">/' + lista + '</span></td>'" in JS
-      and '<th class="revn">Hallazgos</th>' not in JS and ".revlista tr.yendo td{" in HTM)
+      and "' cerradas</span></h5>'" in JS and "' resueltos</span>'" not in JS
+      and "' de ' + g.items.length + ' cerradas</span></h5>'" in JS)
 check("...y «resueltos» queda solo para lo que se corrigio: el boton, la matriz y el desglose",
       ">Resueltos</th>" in JS and "v.res + ' resueltos · ' + v.nap + ' no aplican'" in JS
       and "' corregidos" not in JS and "' descartados" not in JS)
@@ -980,9 +983,10 @@ print("\nCERRAR EL CODIGO: EL FINAL DEL FLUJO (2-nov)")
 # «Presiono no aplica y escribo el texto... el boton guardar al final si nos servia, pero lo
 # llamaria cerrar CC y que sea uno para todas las observaciones del CC. Si no esta todo
 # marcado como resuelto o No aplica con su explicacion, no te debe dejar cerrar.»
-check("el codigo tiene su pie con UN boton que lo cierra entero",
-      "function _pieGrupo(g) {" in JS and 'id="revCerrarCC"' in JS
-      and "_tablaGrupo(g) + _pieGrupo(g)" in JS and ".revccpie{display:flex" in HTM)
+check("cada codigo tiene su pie con UN boton que lo cierra entero",
+      "function _pieGrupo(g) {" in JS and 'data-cerrarcc="' in JS
+      and "_tablaGrupo(g) + _pieGrupo(g)" in JS and ".revccpie{display:flex" in HTM
+      and "async function cerrarCC(cc, boton)" in JS and "function _grupoDe(cc)" in JS)
 check("...que no deja cerrar mientras quede algo sin decidir, y dice cuanto falta",
       "'Faltan ' + e.faltan + ' barra(s) por decidir'" in JS
       and "(e.faltan || !(e.porGuardar || e.porCerrar) ? ' disabled' : '')" in JS
@@ -994,9 +998,20 @@ check("...y lleva a aSa SOLO lo marcado resuelto de ese codigo",
       "await cerrarResueltos(false, decl);" in JS
       and "async function cerrarResueltos(confirmar, soloIds)" in JS
       and "var ids = soloIds || (confirmar && _ultimoCierre) ||" in JS)
-check("una explicacion a medio escribir ya cuenta como decidida: el pie se entera al teclear",
-      "function _notaDe(id) {" in JS and "c.addEventListener('input', _repintarPie);" in JS
-      and "function _repintarPie() {" in JS)
+check("una explicacion a medio escribir ya cuenta como decidida: el pie de ESE codigo se entera al teclear",
+      "function _notaDe(id) {" in JS and "_repintarPie(cc.dataset.grupocc);" in JS
+      and "function _repintarPie(cc) {" in JS)
+
+
+print("\nLA FILA: LA FIGURA PEGADA A LA MARCA Y LA FIRMA AL FINAL (2-nov)")
+# «Esa observacion que se guardo debajo de la marca deberia ir al final, en un texto
+# pequeño, y debieramos pegar figura a marca para aprovechar ese espacio.»
+check("la firma va al final de la fila, con la decision que explica, y no bajo la marca",
+      "'<td class=\"revacc\">' + firma + acc + '</td></tr>';" in JS
+      and 'class="revfirma"' in JS and ".revfirma{display:inline-block" in HTM
+      and "esc(i.ref) + '</span></td>'" in JS)
+check("...y la columna de la marca se encoge para que el dibujo quede pegado",
+      ".revcc2 td.revm, .revcc2 th.revm{width:1%" in HTM and ".revcc2 td.revfig, .revcc2 th.revfig{padding-left:0;}" in HTM)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
