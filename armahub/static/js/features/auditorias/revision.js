@@ -400,9 +400,9 @@
       // EL AVANCE, contra los detectados: corregir y descartar son las dos formas de
       // cerrar, y las dos se ven por separado.
       [pcent(cerr) + '%', 'cerrado', pcent(cerr) === 100 ? 'listo' : '',
-       '<i style="width:' + pcent(cerr) + '%"></i>', v.res + ' corregidos · ' + v.nap + ' descartados'],
+       '<i style="width:' + pcent(cerr) + '%"></i>', v.res + ' resueltos · ' + v.nap + ' no aplican'],
       // LA CALIDAD DE LAS REGLAS: lo que se descarta es lo que la máquina marcó de más.
-      [pcent(v.nap) + '%', 'descartado', '', '', v.nap + ' de ' + v.det + ' no aplicaban']
+      [pcent(v.nap) + '%', 'no aplican', '', '', v.nap + ' de ' + v.det + ' detectado(s)']
     ];
     var tit = (sel
       ? '<span class="revtit">Revisión #' + sel.id + '</span> <span class="muted">' + _fechaHora(sel.arrancada) +
@@ -529,7 +529,9 @@
     function _resueltos(lista) { return lista.filter(function (i) { return RES[i.estado]; }).length; }
     var hechos = _resueltos(items);
     var pct = items.length ? Math.round(hechos / items.length * 100) : 0;
-    $('revItemsAvance').innerHTML = '<span>' + hechos + ' de ' + items.length + ' resueltos</span>' +
+    // CERRADAS, NO «RESUELTAS» (2-nov): acá cuentan también las que no aplican, y
+    // «resuelta» es sólo la que se corrigió en aSa. Una palabra por concepto.
+    $('revItemsAvance').innerHTML = '<span>' + hechos + ' de ' + items.length + ' cerradas</span>' +
       '<div class="revbar2"><i style="width:' + pct + '%"></i></div><b>' + pct + '%</b>';
     // Filtro rápido por cubicador: sólo para quien ve a todos.
     var cubs = $('revItemsCubs');
@@ -566,7 +568,8 @@
       ? '<div class="revvacio">No hay hallazgos tuyos en esta revisión.</div>'
       : (!abierto
         ? '<table class="revlista"><tr class="revhead"><th>Código</th><th>Obra</th><th>Cubicó</th>' +
-          '<th class="revn">Hallazgos</th><th class="revn">Resueltos</th><th></th></tr>' +
+          '<th class="revn">Hallazgos</th><th class="revn" title="Resueltas y no aplican: ' +
+          'las que ya no piden nada.">Cerradas</th><th></th></tr>' +
           orden.map(function (k) {
             var g = grupos[k], ok = _resueltos(g.items), quienes = {};
             g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
@@ -588,7 +591,7 @@
               '<div style="flex:1"></div>' +
               (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                              '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
-              '<span class="muted">' + ok + ' de ' + g.items.length + ' resueltos</span></h5>' +
+              '<span class="muted">' + ok + ' de ' + g.items.length + ' cerradas</span></h5>' +
               _tablaGrupo(g) + '</div>';
           })());
     _bindItems();

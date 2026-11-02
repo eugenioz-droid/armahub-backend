@@ -933,10 +933,10 @@ print("\nLAS TARJETAS: EL DENOMINADOR NO SE MUEVE (2-nov)")
 check("el denominador es DETECTADOS, que ya no cambia; «no aplica» no cuenta como corregido",
       "var pcent = function (x) { return v.det ? Math.round(x / v.det * 100) : 0; };" in JS
       and "'resueltos de los que aplican'" not in JS
-      and "v.res + ' corregidos · ' + v.nap + ' descartados'" in JS)
-check("cuatro tarjetas: lo que falta, lo que envejece, lo cerrado y lo descartado",
+      and "v.res + ' resueltos · ' + v.nap + ' no aplican'" in JS)
+check("cuatro tarjetas: lo que falta, lo que envejece, lo cerrado y lo que no aplica",
       "'por resolver'" in JS and "'abiertas hace más de 7 días'" in JS
-      and "'cerrado'" in JS and "'descartado'" in JS)
+      and "'cerrado'" in JS and "'no aplican'" in JS)
 check("...lo accionable se ve: ambar lo que falta, rojo lo que lleva mas de una semana",
       ".revkpi.ocupa b{color:#e65100;}" in HTM and ".revkpi.urge b{color:#c62828;}" in HTM
       and ".revkbar i{display:block" in HTM)
@@ -959,6 +959,18 @@ check("con barras marcadas, el boton de la fila avisa donde esta la accion en ve
       "function _enLote() {" in JS and "resuélvelas con los botones de arriba" in JS
       and JS.count("if (_enLote()) return;") == 2 and "if (!_enLote()) abrirNoAplica" in JS
       and "pointer-events:none" not in HTM.split("#revItemsCuerpo.lote")[1][:160])
+
+
+print("\nUNA PALABRA POR CONCEPTO (2-nov)")
+# «¿Habiamos definido que los No Aplican se manejaban como resueltos o no? Falta afinar la
+# terminologia.» Resuelta = se corrigio en aSa. Cerrada = resuelta o no aplica: ya no pide
+# nada. La hoja contaba las dos juntas y las llamaba «resueltos», y la matriz no.
+check("en la hoja se cuentan CERRADAS, que es lo que incluye los «no aplica»",
+      "' cerradas</span>'" in JS and "' cerradas</span></h5>'" in JS
+      and ">Cerradas</th>" in JS and "' resueltos</span>'" not in JS)
+check("...y «resueltos» queda solo para lo que se corrigio: el boton, la matriz y el desglose",
+      ">Resueltos</th>" in JS and "v.res + ' resueltos · ' + v.nap + ' no aplican'" in JS
+      and "' corregidos" not in JS and "' descartados" not in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
