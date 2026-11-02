@@ -246,7 +246,7 @@
         var c = pc[q];
         if (!c) return;
         suma[q].n += c.n || 0;
-        suma[q].cerr += (c.no_aplica || 0) + (c.resueltos || 0);
+        suma[q].cerr += c.cerrados != null ? c.cerrados : (c.no_aplica || 0) + (c.resueltos || 0);
       });
     });
     // UN SOLO TAMAÑO DE NÚMERO; la jerarquía la dan el peso y el color (2-nov). Dos filas
@@ -298,7 +298,10 @@
             // en Hallazgos. Estás mirando a una persona, no a todas.
             if (F && F !== q) return '<td class="' + cls + '">' + PUNTO + '</td>';
             if (!c || !c.n) return '<td class="' + cls + '">' + PUNTO + '</td>';
-            var cerr = (c.no_aplica || 0) + (c.resueltos || 0), falta = c.n - cerr;
+            // Cerradas: las que pasaron por el cierre. Lo declarado sin cerrar no cuenta
+            // —es alguien diciendo «ya está», y aSa todavía no lo ha confirmado—.
+            var cerr = c.cerrados != null ? c.cerrados : (c.no_aplica || 0) + (c.resueltos || 0);
+            var falta = c.n - cerr;
             // CERRADAS DE CUÁNTAS, como en la hoja (2-nov): «15/46» dice en qué va esa
             // persona en esa revisión; el total solo no decía si alguien lo estaba
             // mirando. En verde cuando ya no le queda nada.
@@ -556,8 +559,10 @@
     $('revItemsTit').textContent = 'Revisión #' + r.id + ' · ' +
       (REVS.filtro_cub ? items.length + ' de ' + r.items + ' hallazgos · ' + nomCub(REVS.filtro_cub)
                        : r.items + ' hallazgos') + ' · ' + orden.length + ' código(s)';
-    var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };
-    function _resueltos(lista) { return lista.filter(function (i) { return RES[i.estado]; }).length; }
+    // CERRADA ES LA QUE PASÓ POR EL CIERRE (2-nov), igual que en la matriz: «declarada»
+    // es alguien diciendo «ya la corregí» y aSa todavía no lo confirmó. Lo decidido sin
+    // cerrar se ve en el pie del código, que es quien lo cierra.
+    function _resueltos(lista) { return lista.filter(_cerrada).length; }
     var hechos = _resueltos(items);
     var pct = items.length ? Math.round(hechos / items.length * 100) : 0;
     // CERRADAS, NO «RESUELTAS» (2-nov): acá cuentan también las que no aplican, y
@@ -944,8 +949,8 @@
   function _estadoCC(g) {
     var faltan = 0, porGuardar = 0, porCerrar = 0, cerradas = 0;
     (g.items || []).forEach(function (i) {
-      if (i.estado === 'declarada' || i.estado === 'corregir') { porCerrar++; cerradas++; return; }
-      if (i.estado === 'corregida' || i.estado === 'aceptada') { cerradas++; return; }
+      if (_cerrada(i)) { cerradas++; return; }
+      if (i.estado === 'declarada' || i.estado === 'corregir') { porCerrar++; return; }
       if (_notaDe(i.id).length >= 10) porGuardar++;
       else faltan++;
     });
@@ -953,6 +958,12 @@
   }
 
   // Lo escrito en el campo del «no aplica» de esa fila, si está abierto.
+  // Cerrada: no aplica, aSa la confirmó, o se cerró bajo la firma de quien lo decidió.
+  function _cerrada(i) {
+    return i.estado === 'aceptada' || i.estado === 'corregida' ||
+           ((i.estado === 'declarada' || i.estado === 'corregir') && !!i.cerrada_el);
+  }
+
   function _notaDe(id) {
     var i = document.querySelector('input[data-nota="' + id + '"]');
     return (i && i.style.display !== 'none' && (i.value || '').trim()) || '';

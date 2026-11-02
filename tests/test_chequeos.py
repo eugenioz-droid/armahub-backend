@@ -749,8 +749,9 @@ check("la hoja trae TODOS los codigos agrupados, sin lista intermedia ni «abrir
 check("...y cada uno lleva su cabecera, sus barras y su pie; el que esta cerrado se reconoce",
       "_tablaGrupo(g) + _pieGrupo(g) + '</div>';" in JS
       and "(ok >= g.items.length ? ' listo' : '')" in JS and ".revcc2.listo h5{" in HTM)
-check("resuelto, para los contadores de la hoja, incluye lo declarado",
-      "var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };" in JS)
+check("cerrada, para los contadores de la hoja, es la que paso por el cierre",
+      "var RES = {" not in JS and "function _cerrada(i) {" in JS
+      and "(i.estado === 'declarada' || i.estado === 'corregir') && !!i.cerrada_el" in JS)
 
 
 print("\nUN SOLO FORMULARIO PARA TODOS, Y EL CABEZAL EN φ8 Y φ10 (28-oct)")
@@ -813,7 +814,7 @@ check("...y lo que cambia son los valores: con filtro sólo esa columna lleva n�
       "var apagada = !t.n;" in JS and "' apagada' : ''" in JS
       and "if (F && F !== q) return '<td class=\"' + cls + '\">' + PUNTO + '</td>';" in JS)
 check("la celda por cubicador dice «cerradas de cuántas», y se pinta VERDE si ya no le queda nada",
-      "var cerr = (c.no_aplica || 0) + (c.resueltos || 0), falta = c.n - cerr;" in JS
+      "var cerr = c.cerrados != null ? c.cerrados : (c.no_aplica || 0) + (c.resueltos || 0);" in JS
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
       # «Cerradas de cuántas» también en la matriz: el total solo no decía si alguien lo miraba.
       and "'<b>' + cerr + '</b><span class=\"revde\">/' + c.n + '</span></td>'" in JS
@@ -1034,7 +1035,7 @@ print("\nEL ESTADO DE CADA CUBICADOR, BAJO SU NOMBRE (2-nov)")
 # «Podrias ademas abajo del nombre del cubicador agregar una linea adicional que entregue
 # la suma. Con esto tengo inmediatamente el estado por cubicador.»
 check("el encabezado de cada cubicador lleva su suma sobre lo que esta a la vista",
-      "var suma = {};" in JS and "suma[q].cerr += (c.no_aplica || 0) + (c.resueltos || 0);" in JS
+      "var suma = {};" in JS and "suma[q].cerr += c.cerrados != null ? c.cerrados" in JS
       and "'<div class=\"revsum\">'" in JS and ".revmat th .revsum{" in HTM)
 check("...y con filtro puesto, solo esa persona muestra su suma",
       "var t = suma[q] || { n: 0, cerr: 0 }, mio = !F || F === q;" in JS and "(mio && t.n" in JS)
@@ -1042,6 +1043,25 @@ check("...y con filtro puesto, solo esa persona muestra su suma",
 check("los dos numeros de «3/118» pesan igual",
       ".revmat .revde{color:#263238; font-weight:700;}" in HTM
       and ".revmat .revde{color:#b0bec5" not in HTM)
+
+
+print("\nCERRADA ES LA QUE PASO POR EL CIERRE (2-nov)")
+# El usuario, viendo «25/25» en una revision con barras sin cerrar: «aca hay algunos
+# codigos que no estan marcados como cerrados... creo que el cerrado es el que actualiza
+# estos puntos». «Declarada» es alguien diciendo «ya la corregi»: nadie lo confirmo.
+check("el backend cuenta aparte lo cerrado: no aplica, lo que aSa confirmo, y lo cerrado bajo firma",
+      "s.estado = 'aceptada' OR s.estado = 'corregida'" in API
+      and "AND s.cierre_confirmado_el IS NOT NULL))" in API
+      and '"cerrados": cerr}' in API and '"cerradas": t[7],' in API)
+check("...y la fila de la lista trae su total de cerradas",
+      'cerradas = sum(c.get("cerrados", 0) for c in porcub.get(f[0], {}).values())' in API
+      and '"viejas": viejas, "cerradas": cerradas,' in API)
+check("la celda de la matriz y la suma del encabezado usan ese dato, no la suma de resueltos",
+      "var cerr = c.cerrados != null ? c.cerrados :" in JS
+      and "suma[q].cerr += c.cerrados != null ? c.cerrados :" in JS)
+check("en la hoja, la barra sabe si paso por el cierre: el item trae `cerrada_el`",
+      '"cerrada_el": f[23].isoformat() if f[23] else None' in API
+      and "s.cierre_confirmado_el\n                     FROM chequeo_senales s" in API)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

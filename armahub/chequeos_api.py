@@ -1081,15 +1081,19 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
                        "ccs": r[6], "ccs_error": r[7], "barras": r[8], "nuevas": r[9],
                        "nota": r[10], "todas": False}
             cur.execute(
-                "SELECT " + _COLS_SENAL + """, s.motivo_tipo, s.declarada_por, s.declarada_el
+                "SELECT " + _COLS_SENAL + """, s.motivo_tipo, s.declarada_por, s.declarada_el,
+                          s.cierre_confirmado_el
                      FROM chequeo_senales s
                     WHERE (%s AND s.revision_id IS NOT NULL) OR s.revision_id = %s
                     ORDER BY s.obra, s.cc, s.regla, s.ref""", (todas, revision_id))
             items = []
             for f in cur.fetchall():
                 d = _fila_senal(f)
+                # `cerrada_el` dice si la barra pasó por el cierre: una «declarada» es
+                # alguien diciendo «ya la corregí», y hasta cerrarla nadie lo confirmó.
                 d.update({"motivo_tipo": f[20], "declarada_por": f[21],
-                          "declarada_el": f[22].isoformat() if f[22] else None})
+                          "declarada_el": f[22].isoformat() if f[22] else None,
+                          "cerrada_el": f[23].isoformat() if f[23] else None})
                 items.append(d)
             # Los kilos de los códigos tocados: el tamaño de lo que está en juego.
             ccs = sorted({(i["job"], i["cc"]) for i in items if i["cc"]})
@@ -1109,7 +1113,7 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
         q = (i["cubico"] or "(sin dato)").strip() or "(sin dato)"
         c = por_cub.setdefault(q, {"cubico": q, "n": 0, "resueltas": 0, "declaradas": 0,
                                    "verificadas": 0, "no_aplica": 0, "abiertas": 0, "ccs": set(),
-                                   "obras": set(), "viejas": 0})
+                                   "obras": set(), "viejas": 0, "cerradas": 0})
         c["n"] += 1
         c["ccs"].add(i["cc"])
         c["obras"].add(i.get("job"))
@@ -1420,15 +1424,21 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                           COUNT(*) FILTER (WHERE s.estado IN ('corregida', 'declarada', 'corregir')),
                           COUNT(*) FILTER (WHERE s.estado = 'abierta'
                                              AND s.visto_primero < now() - interval '7 days'),
-                          COUNT(DISTINCT s.cc), COUNT(DISTINCT s.id_proyecto)
+                          COUNT(DISTINCT s.cc), COUNT(DISTINCT s.id_proyecto),
+                          -- CERRADA ES LA QUE PASÓ POR EL CIERRE (2-nov). «Declarada» es
+                          -- alguien diciendo «ya lo corregí»: hasta que no se cierra, aSa
+                          -- no lo ha confirmado y nadie lo firmó.
+                          COUNT(*) FILTER (WHERE (s.estado = 'aceptada' OR s.estado = 'corregida'
+                                  OR (s.estado IN ('declarada', 'corregir')
+                                      AND s.cierre_confirmado_el IS NOT NULL)))
                      FROM chequeo_senales s
                     WHERE s.revision_id IS NOT NULL
                     GROUP BY 1, 2""")
             porcub = {}
-            for rid, quien, n, nap, res, viejas, ccs_q, obras_q in cur.fetchall():
+            for rid, quien, n, nap, res, viejas, ccs_q, obras_q, cerr in cur.fetchall():
                 porcub.setdefault(rid, {})[quien or "(sin dato)"] = {
                     "n": n, "no_aplica": nap, "resueltos": res, "viejas": viejas,
-                    "ccs": ccs_q, "obras": obras_q}
+                    "ccs": ccs_q, "obras": obras_q, "cerrados": cerr}
             # EL TOTAL DE TODAS LAS REVISIONES, calculado acá y no sumando las filas: una
             # obra que aparece en dos revisiones es UNA obra, y sumarlas la contaría dos
             # veces. Lo mismo el código. Es el bloque de arriba de la pantalla, que mira
@@ -1439,10 +1449,13 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                           COUNT(*) FILTER (WHERE s.estado IN ('declarada', 'corregir')),
                           COUNT(DISTINCT s.id_proyecto), COUNT(DISTINCT (s.id_proyecto, s.cc)),
                           COUNT(*) FILTER (WHERE s.estado = 'abierta'
-                                             AND s.visto_primero < now() - interval '7 days')
+                                             AND s.visto_primero < now() - interval '7 days'),
+                          COUNT(*) FILTER (WHERE (s.estado = 'aceptada' OR s.estado = 'corregida'
+                                  OR (s.estado IN ('declarada', 'corregir')
+                                      AND s.cierre_confirmado_el IS NOT NULL)))
                      FROM chequeo_senales s
                     WHERE s.revision_id IS NOT NULL""")
-            t = cur.fetchone() or (0, 0, 0, 0, 0, 0, 0)
+            t = cur.fetchone() or (0, 0, 0, 0, 0, 0, 0, 0)
             # Los kilos de los códigos que tienen algún hallazgo: es «cuánto acero está en
             # juego», no la suma de las barras marcadas.
             cur.execute(
@@ -1454,9 +1467,11 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
             total = {"detectados": t[0], "no_aplica": t[1], "aplican": t[0] - t[1],
                      "resueltas": t[2], "declaradas": t[3],
                      "obras": t[4], "ccs_con_hallazgo": t[5], "kg": kg_total, "viejas": t[6],
+                     "cerradas": t[7],
                      "pct": round(t[2] / (t[0] - t[1]) * 100) if (t[0] - t[1]) else None}
     def _fila(f):
         detectados, resueltos, no_aplica, viejas = f[11], f[12], f[15], f[16]
+        cerradas = sum(c.get("cerrados", 0) for c in porcub.get(f[0], {}).values())
         aplican = detectados - no_aplica
         return {"id": f[0], "job": f[1], "obra": f[2], "por": f[3],
                 "arrancada": f[4].isoformat(), "terminada": f[5].isoformat() if f[5] else None,
@@ -1466,7 +1481,7 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 "items": detectados, "detectados": detectados, "aplican": aplican,
                 "no_aplica": no_aplica,
                 "resueltas": resueltos, "declaradas": f[13], "cubicadores": f[14],
-                "viejas": viejas,
+                "viejas": viejas, "cerradas": cerradas,
                 "anio": f[17], "por_cubicador": porcub.get(f[0], {}),
                 "pct": round(resueltos / aplican * 100) if aplican else None}
     revs = [_fila(f) for f in filas]
@@ -1476,8 +1491,9 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
     for r in revs:
         for q, c in (r["por_cubicador"] or {}).items():
             a = cubs.setdefault(q, {"n": 0, "no_aplica": 0, "resueltos": 0, "viejas": 0,
-                                    "ccs": 0, "obras": 0})
+                                    "ccs": 0, "obras": 0, "cerrados": 0})
             a["n"] += c["n"]; a["no_aplica"] += c["no_aplica"]; a["resueltos"] += c["resueltos"]
+            a["cerrados"] += c.get("cerrados", 0)
             # Códigos y obras se SUMAN entre revisiones: un código que salió en dos
             # revisiones cuenta dos veces acá. Es una aproximación y se dice: el total
             # exacto por persona está en la hoja; arriba sirve para comparar.
