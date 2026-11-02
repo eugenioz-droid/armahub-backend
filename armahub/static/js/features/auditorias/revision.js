@@ -274,6 +274,10 @@
             ' · ' + esc(r.obra || '') + '</div></td>' +
           cols.map(function (q, k) {
             var c = pc[q], cls = 'num cub' + (k === 0 ? ' sec' : '');
+            // CON FILTRO, LOS DEMÁS NO TIENEN DATO QUE MOSTRAR (2-nov): la columna se
+            // queda —la tabla no se mueve— pero el número se va, igual que en Estado y
+            // en Hallazgos. Estás mirando a una persona, no a todas.
+            if (F && F !== q) return '<td class="' + cls + '">' + PUNTO + '</td>';
             if (!c || !c.n) return '<td class="' + cls + '">' + PUNTO + '</td>';
             var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
             // EL TOTAL DE SUS HALLAZGOS; la celda en verde cuando ya los resolvió todos.

@@ -804,8 +804,9 @@ check("la tabla NO cambia de estructura al filtrar: las columnas son siempre las
       and "var tot = (REVS.total || {}).por_cubicador || {};" in JS
       and "nomCub(a).localeCompare(nomCub(b), 'es')" in JS
       and "' dim'" not in JS and "td.dim" not in HTM)
-check("...y lo que cambia son los valores: Estado y Hallazgos pasan a ser los de esa persona",
-      "var apagada = !t.n;" in JS and "' apagada' : ''" in JS)
+check("...y lo que cambia son los valores: con filtro sólo esa columna lleva número, y Estado y Hallazgos son los suyos",
+      "var apagada = !t.n;" in JS and "' apagada' : ''" in JS
+      and "if (F && F !== q) return '<td class=\"' + cls + '\">' + PUNTO + '</td>';" in JS)
 check("la celda por cubicador dice el TOTAL de sus hallazgos, y se pinta VERDE si ya resolvió todos (2-nov)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
