@@ -589,12 +589,8 @@
   .revmat tbody tr.on td:first-child{box-shadow:inset 3px 0 0 #1565C0;}
   .revmat tbody tr.on td.sec{box-shadow:inset 2px 0 0 #1565C0;}
   .revmat td.revacc{text-align:right; white-space:nowrap;}
-  /* EL FILTRO POR CUBICADOR (29-oct): la columna y el chip elegidos se encienden, el
-     resto se atenúa, y la fila en la que esa persona no tiene nada se apaga. */
-  .revmat th.dim, .revmat td.dim{opacity:.35;}
-  /* La columna del cubicador filtrado va en AZUL (el color del filtro): el verde es
-     sólo «cerrado», y con el mismo tono el cubicador veía cerrado lo pendiente. */
-  .revmat td.sel{background:#eef4fb;}
+  /* EL FILTRO POR CUBICADOR: la matriz muestra sólo la columna de esa persona (sin
+     tintes ni opacidades), y la fila en la que no tiene nada se apaga. */
   .revmat tbody tr.apagada td, .revmat tbody tr.apagada td b, .revmat tbody tr.apagada td .revfecha{color:#b0bec5;}
   .revcubs button.on{background:#1565C0; border-color:#1565C0; color:#fff;}
   .revcubs button.listo{border-color:#81c784; color:#2e7d32;}

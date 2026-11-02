@@ -222,7 +222,8 @@
         : 'Todavía no se ha hecho ninguna revisión. Apreta «Nueva revisión».') + '</div>';
       return;
     }
-    var cols = _columnas(vis), F = REVS.filtro_cub || null;
+    // CON FILTRO, UNA SOLA COLUMNA (2-nov): la de esa persona. Sin tintes ni opacidades.
+    var F = REVS.filtro_cub || null, cols = F ? [F] : _columnas(vis);
     // UN SOLO TAMAÑO DE NÚMERO; la jerarquía la dan el peso y el color (2-nov). Dos filas
     // de encabezado: la sección y la columna. La primera columna de cada sección lleva la
     // raya (`sec`). El orden es el del trabajo: quién tiene qué, en qué va, y al final —
@@ -238,7 +239,7 @@
       '<th colspan="3" class="sec curioso">Hallazgos</th><th></th></tr>' +
       '<tr><th>Revisión</th>' +
       cols.map(function (q, k) {
-        return '<th class="num cub' + (k === 0 ? ' sec' : '') + (F && F !== q ? ' dim' : '') + '" title="' + esc(q) +
+        return '<th class="num cub' + (k === 0 ? ' sec' : '') + '" title="' + esc(q) +
                ': sus hallazgos en esa revisión; en verde cuando ya resolvió todos. Para filtrar por persona, el chip de arriba.">' +
                esc(q) + '</th>'; }).join('') +
       '<th class="num est sec" title="Marcados como resueltos (incluye lo que aSa ya confirmó).">Resueltos</th>' +
@@ -259,7 +260,7 @@
             '<div class="l2">' + esc(r.por === 'reloj' ? 'automática' : (r.por || '').split('@')[0]) +
             ' · ' + esc(r.obra || '') + '</div></td>' +
           cols.map(function (q, k) {
-            var c = pc[q], cls = 'num cub' + (k === 0 ? ' sec' : '') + (F && F !== q ? ' dim' : '') + (F === q ? ' sel' : '');
+            var c = pc[q], cls = 'num cub' + (k === 0 ? ' sec' : '');
             if (!c || !c.n) return '<td class="' + cls + '">' + PUNTO + '</td>';
             var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
             // EL TOTAL DE SUS HALLAZGOS; la celda en verde cuando ya los resolvió todos.

@@ -795,9 +795,9 @@ check("los chips de cubicador son FILTROS: repintan tarjetas y matriz, no abren 
 check("...y el filtro es UNO, global: la hoja abre con el que este puesto y al volver se repinta arriba",
       "REVS.filtro_cub = _miChip();" not in JS
       and "$('revItemsModal').style.display = 'none';\n    // El chip del modal y el de arriba son el MISMO filtro" in JS)
-check("con filtro, la matriz atenua las otras columnas y la fila de quien no tiene nada se apaga",
-      "_cuentaDe(r, F)" in JS and "' dim' : ''" in JS and "' apagada' : ''" in JS
-      and ".revmat th.dim, .revmat td.dim{opacity:.35;}" in HTM)
+check("con filtro, la matriz muestra SOLO la columna de esa persona, y la fila donde no tiene nada se apaga",
+      "_cuentaDe(r, F)" in JS and "cols = F ? [F] : _columnas(vis)" in JS and "' apagada' : ''" in JS
+      and "' dim'" not in JS and "td.dim" not in HTM)
 check("la celda por cubicador dice el TOTAL de sus hallazgos, y se pinta VERDE si ya resolvió todos (2-nov)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
@@ -869,7 +869,7 @@ check("numeros y encabezados centrados, con anchos fijos por seccion",
 # El cubicador veia VERDES celdas con pendientes: la columna filtrada se resaltaba con el
 # mismo verde que «cerrado». Ahora el filtro es azul; el verde es solo cerrado.
 check("la columna del cubicador filtrado se resalta en azul, no en el verde de cerrado",
-      ".revmat td.sel{background:#eef4fb;}" in HTM and ".revmat td.sel{background:#e8f5e9" not in HTM)
+      "td.sel" not in HTM and "' sel'" not in JS)
 check("Aplican, en la seccion de hallazgos, va en rojo",
       'class="num cur curioso aplican"' in JS and ".revmat td.curioso.aplican span{color:#c62828" in HTM)
 check("el CSS no arrastra clases que ya nadie pinta",
