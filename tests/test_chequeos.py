@@ -817,7 +817,7 @@ check("la celda por cubicador dice «cerradas de cuántas», y se pinta VERDE si
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
       # «Cerradas de cuántas» también en la matriz: el total solo no decía si alguien lo miraba.
       and "'<b>' + cerr + '</b><span class=\"revde\">/' + c.n + '</span></td>'" in JS
-      and ".revmat .revde{color:#b0bec5" in HTM
+      and ".revmat .revde{color:#263238; font-weight:700;}" in HTM
       and "'<div class=\"l2\">de ' + c.n" not in JS)
 check("...y la matriz va en tres secciones con su raya: quiénes · detectados/no aplican/aplican · resueltos/por resolver/avance",
       '<th class="num est sec"' in JS and ">Resueltos</th>" in JS and ">Por resolver</th>" in JS
@@ -923,7 +923,7 @@ check("los chips de cubicador no se pintan de verde: el color es solo del filtro
       "revcubs button.listo" not in HTM
       and "(falta <= 0 ? 'listo' : '')" not in JS and "(c.pct === 100 ? 'listo' : '')" not in JS)
 check("los chips, la matriz y la hoja escriben el NOMBRE, no el login de aSa",
-      "esc(nomCub(c.q))" in JS and "esc(nomCub(q)) + '</th>'" in JS
+      "esc(nomCub(c.q))" in JS and "esc(nomCub(q)) +\n               '<div class=\"revsum\">'" in JS
       and "esc(nomCub(c.cubico))" in JS and "nomCub(REVS.filtro_cub)" in JS
       and "Object.keys(quienes).map(nomCub)" in JS)
 check("...y el mapa se pide antes de pintar; el valor que filtra sigue siendo el login",
@@ -1028,6 +1028,20 @@ check("se puede abrir cualquier revision que haya encontrado algo, aplique o no"
       and "(v.det ? '<button class=\"audbtn\" id=\"revAbrir\"" in JS)
 check("...y «sin hallazgos» queda solo para la que no encontro nada: si todo se descarto, va al 100%",
       "(lleno || (t.n && !t.apl) ? ' listo' : '')" in JS and "(t.apl ? (t.pct || 0) : 100)" in JS)
+
+
+print("\nEL ESTADO DE CADA CUBICADOR, BAJO SU NOMBRE (2-nov)")
+# «Podrias ademas abajo del nombre del cubicador agregar una linea adicional que entregue
+# la suma. Con esto tengo inmediatamente el estado por cubicador.»
+check("el encabezado de cada cubicador lleva su suma sobre lo que esta a la vista",
+      "var suma = {};" in JS and "suma[q].cerr += (c.no_aplica || 0) + (c.resueltos || 0);" in JS
+      and "'<div class=\"revsum\">'" in JS and ".revmat th .revsum{" in HTM)
+check("...y con filtro puesto, solo esa persona muestra su suma",
+      "var t = suma[q] || { n: 0, cerr: 0 }, mio = !F || F === q;" in JS and "(mio && t.n" in JS)
+# «El numero de la derecha deberia ser mas notorio; dejalos iguales.»
+check("los dos numeros de «3/118» pesan igual",
+      ".revmat .revde{color:#263238; font-weight:700;}" in HTM
+      and ".revmat .revde{color:#b0bec5" not in HTM)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
