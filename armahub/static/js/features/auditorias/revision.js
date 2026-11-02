@@ -235,6 +235,20 @@
     // Lo que el filtro cambia son los VALORES de Estado y Hallazgos, que pasan a ser los
     // de esa persona. Llegué a dejar sólo su columna y eso recolocaba la tabla entera.
     var F = REVS.filtro_cub || null, cols = _columnas(vis);
+    // LA SUMA DE CADA CUBICADOR, BAJO SU NOMBRE (2-nov): «con esto tengo inmediatamente el
+    // estado por cubicador», sin ir fila por fila sumando de memoria. Cuenta lo que está a
+    // la vista, que es lo que el filtro de año deja ver.
+    var suma = {};
+    cols.forEach(function (q) { suma[q] = { n: 0, cerr: 0 }; });
+    vis.forEach(function (r) {
+      var pc = r.por_cubicador || {};
+      cols.forEach(function (q) {
+        var c = pc[q];
+        if (!c) return;
+        suma[q].n += c.n || 0;
+        suma[q].cerr += (c.no_aplica || 0) + (c.resueltos || 0);
+      });
+    });
     // UN SOLO TAMAÑO DE NÚMERO; la jerarquía la dan el peso y el color (2-nov). Dos filas
     // de encabezado: la sección y la columna. La primera columna de cada sección lleva la
     // raya (`sec`). El orden es el del trabajo: quién tiene qué, en qué va, y al final —
@@ -250,9 +264,14 @@
       '<th colspan="3" class="sec curioso">Hallazgos</th><th></th></tr>' +
       '<tr><th>Revisión</th>' +
       cols.map(function (q, k) {
+        var t = suma[q] || { n: 0, cerr: 0 }, mio = !F || F === q;
         return '<th class="num cub' + (k === 0 ? ' sec' : '') + '" title="' + esc(nomCub(q)) +
-               ': sus hallazgos en esa revisión; en verde cuando ya resolvió todos. Para filtrar por persona, el chip de arriba.">' +
-               esc(nomCub(q)) + '</th>'; }).join('') +
+               ': cerradas de cuántas, por revisión. En total lleva ' + t.cerr + ' de ' + t.n +
+               '. Para filtrar por esta persona, el chip de arriba.">' +
+               esc(nomCub(q)) +
+               '<div class="revsum">' + (mio && t.n
+                 ? '<b>' + t.cerr + '</b>/' + t.n
+                 : '<span class="revvacio2">·</span>') + '</div></th>'; }).join('') +
       '<th class="num est sec" title="Marcados como resueltos (incluye lo que aSa ya confirmó).">Resueltos</th>' +
       '<th class="num est" title="Aplican y todavía nadie los resolvió.">Por resolver</th>' +
       '<th class="revavth">Avance</th>' +
