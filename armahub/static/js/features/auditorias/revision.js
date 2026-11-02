@@ -291,7 +291,12 @@
     el.querySelectorAll('button[data-abrir]').forEach(function (b) {
       b.addEventListener('click', async function (ev) {
         ev.stopPropagation();
+        // «Abrir» desde la fila elige esa revisión sólo para abrirla: al cerrar la hoja se
+        // vuelve a lo que había (el usuario: «no marqué filtro; al salir no debiera
+        // dejarme nada seleccionado»).
+        var antes = { sel: REVS.sel, detalle: REVS.detalle };
         await abrirRevision(Number(b.dataset.abrir));
+        REVS.antes = antes;
         abrirItems(true);
       });
     });
@@ -458,6 +463,8 @@
   }
   function cerrarItems() {
     $('revItemsModal').style.display = 'none';
+    // Si se entró con el «Abrir» de una fila, se vuelve a lo que había antes.
+    if (REVS.antes) { REVS.sel = REVS.antes.sel; REVS.detalle = REVS.antes.detalle; REVS.antes = null; }
     // El chip del modal y el de arriba son el MISMO filtro: al volver, arriba se repinta.
     pintarResumen(); pintarRevisiones();
     if (_mirando) { _mirando.disconnect(); _mirando = null; }
@@ -585,46 +592,34 @@
       // LOS TRES VERBOS, DE A MUCHAS (20-oct). «Muchas veces el hallazgo es el mismo para
       // más de un ítem»: se marcan los checks y lo que se hace se replica. «No aplica»
       // pide la explicación UNA vez y vale para todas; «Resuelto» y «Aplica» van directo.
-      '<div class="revseg">' +
-        '<button data-lote="abierta" title="Las marcadas vuelven a quedar por resolver">Aplica</button>' +
-        '<button data-lote="aceptada" id="revAccNoAplica"' +
-          ' title="Deja sin efecto las marcadas, con una sola explicación para todas">No aplica</button>' +
-      '</div>' +
+      // Los mismos verbos que la fila, de a muchas: Resuelto · No aplica (campo al lado,
+      // una explicación para todas, Enter) · Deshacer.
       '<button class="audbres" data-lote="declarada"' +
         ' title="Marca las barras marcadas como resueltas: ya hiciste el cambio en aSa. Al cerrar ' +
         'se comprueba contra aSa y, si algo sigue igual, te avisa.">Resuelto</button>' +
+      '<button class="revnapbtn" data-lote="aceptada" id="revAccNoAplica"' +
+        ' title="Deja sin efecto las marcadas, con una sola explicación para todas">No aplica</button>' +
+      '<input type="text" class="revnapin" id="revAccNapNota" style="display:none"' +
+        ' placeholder="¿por qué no aplican? … y Enter" title="Una explicación para todas las marcadas. Enter guarda; Esc deja.">' +
+      '<button class="audmini" data-lote="abierta" title="Las marcadas vuelven a quedar abiertas">Deshacer</button>' +
       '<div style="flex:1"></div>' +
-      '<button class="audmini" id="revAccQuitar" title="Desmarcar todo">Quitar selección</button>' +
-      // El formulario del «no aplica» de lote: la misma explicación que pide una barra
-      // suelta, porque el registro vale lo mismo para una que para cien.
-      '<div class="revnapcaja" id="revAccNapForm" style="display:none; width:100%; margin-top:6px;">' +
-        '<input type="text" id="revAccNapNota" placeholder="Explica por qué no aplican — lo lee quien audita y queda firmado">' +
-        '<button class="audmini ver" id="revAccNapOk">Guardar</button>' +
-        '<button class="audmini" id="revAccNapNo">Cancelar</button>' +
-      '</div>';
+      '<button class="audmini" id="revAccQuitar" title="Desmarcar todo">Quitar selección</button>';
     var lr = document.querySelector('#revItemsAcc button[data-lote="declarada"]');
     if (lr) lr.addEventListener('click', function () { loteMarcadas('declarada', lr); });
     var la = document.querySelector('#revItemsAcc button[data-lote="abierta"]');
     if (la) la.addEventListener('click', function () { loteMarcadas('abierta', la); });
     var q = $('revAccQuitar');
     if (q) q.addEventListener('click', quitarSeleccion);
-    var na = $('revAccNoAplica');
-    // Mismo trato que el de la fila: el botón queda marcado mientras se escribe el motivo.
+    var na = $('revAccNoAplica'), nota = $('revAccNapNota');
+    // Mismo trato que el de la fila: el botón queda encendido mientras se escribe.
     if (na) na.addEventListener('click', function () {
-      $('revAccNapForm').style.display = 'flex';
+      nota.style.display = '';
       na.classList.add('eligiendo');
-      $('revAccNapNota').focus();
+      nota.focus();
     });
-    var no = $('revAccNapNo');
-    if (no) no.addEventListener('click', function () {
-      $('revAccNapForm').style.display = 'none';
-      if (na) na.classList.remove('eligiendo');
-    });
-    var si = $('revAccNapOk');
-    if (si) si.addEventListener('click', noAplicaMarcadas);
-    var nota = $('revAccNapNota');
     if (nota) nota.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') noAplicaMarcadas();
+      if (e.key === 'Escape') { nota.style.display = 'none'; nota.value = ''; na.classList.remove('eligiendo'); }
     });
   }
 
@@ -642,7 +637,7 @@
     if (!ids.length) return;
     var nota = ($('revAccNapNota').value || '').trim();
     if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
-    var b = $('revAccNapOk');
+    var b = $('revAccNoAplica');
     b.disabled = true; b.textContent = 'Guardando…';
     try {
       var r = await req('PUT', '/chequeos/declarar',
@@ -652,7 +647,7 @@
       await refrescarRevision();
     } catch (e) {
       aviso(e.message);
-      b.disabled = false; b.textContent = 'Guardar';
+      b.disabled = false; b.textContent = 'No aplica';
     }
   }
 
@@ -850,23 +845,25 @@
               esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') +
               (hecho ? ' · aSa lo confirmó' : '') + '</div>';
     }
-    // LOS BOTONES, EN LÍNEA: Aplica | No aplica, y Resuelto a continuación con una
-    // separación chica (lo pidió el usuario). Una barra que aSa ya confirmó no lleva.
-    // «No aplica» ES resolver: la fila queda verde al guardar, sin otro clic.
+    // UNA FILA, UNA DECISIÓN, DOS SALIDAS (2-nov). Abierta: «Resuelto» cierra con un clic;
+    // «No aplica» se enciende y abre AL LADO un campo corto —explicación y Enter; Esc lo
+    // deja—. Decidida: un solo «Deshacer». Sin Aplica, sin Guardar, sin Cancelar: todo es
+    // por barra y se guarda al instante; el modal no tiene un «guardar» general. El
+    // usuario: «si presiono No aplica igual puedo presionar Resuelto, ¿entonces cómo
+    // cierro?». Ahora: No aplica cierra con Enter; Resuelto cierra con Resuelto.
     var acc = hecho ? '<span class="muted">confirmada</span>'
-      : '<div class="revaccs"><div class="revseg">' +
-          '<button class="' + (nap ? '' : 'on') + '" data-aplica="' + i.id + '"' +
-            (nap ? '' : ' disabled') + ' title="El hallazgo es válido y hay que corregirlo">Aplica</button>' +
-          '<button class="' + (nap ? 'on' : '') + '" data-noaplica="' + i.id + '"' +
-            ' title="Dejar sin efecto, con explicación firmada. Queda resuelta.">No aplica</button>' +
-        '</div>' +
-        (nap ? '' : (resuelto
-          ? '<button class="audbres on" data-deshacer="' + i.id + '" title="Marcada como resuelta. ' +
-            'Vuelve a apretar si todavía no está cambiada en aSa.">✓ Resuelto</button>'
-          : '<button class="audbres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
-            'hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, ' +
-            'te avisa.">Resuelto</button>')) + '</div>';
-    var cols = 7 + c.letras.length + c.nang, angTd = '';
+      : (resuelto || nap)
+        ? '<button class="audmini" data-deshacer="' + i.id + '" title="Vuelve a dejarla abierta">Deshacer</button>'
+        : '<div class="revaccs">' +
+            '<button class="audbres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
+              'hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, ' +
+              'te avisa.">Resuelto</button>' +
+            '<button class="revnapbtn" data-noaplica="' + i.id +
+              '" title="Dejar sin efecto, con una explicación firmada. Queda resuelta.">No aplica</button>' +
+            '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
+              ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">' +
+          '</div>';
+    var angTd = '';
     for (var k = 0; k < c.nang; k++) {
       angTd += '<td class="revn reva">' + (angs[k] != null ? Math.abs(Math.round(angs[k])) + '°' : '') + '</td>';
     }
@@ -885,15 +882,7 @@
       '<td><span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +
         esc(r.corto || r.nombre) + '</span></td>' +
       '<td><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
-      '<td class="revacc">' + acc + '</td></tr>' +
-      '<tr class="revnapform" data-form="' + i.id + '" style="display:none"><td colspan="' + cols +
-        '"><div class="revnapcaja">' +
-        '<input type="text" data-nota="' + i.id + '" placeholder="Explica por qué no aplica — lo lee quien audita y queda firmado">' +
-        '<label title="Aplica esta misma explicación a las barras iguales de esta obra que sigan abiertas">' +
-        '<input type="checkbox" data-pat="' + i.id + '"> y todas las iguales</label>' +
-        '<button class="audmini ver" data-napok="' + i.id + '">Guardar</button>' +
-        '<button class="audmini" data-napno="' + i.id + '">Cancelar</button>' +
-        '</div></td></tr>';
+      '<td class="revacc">' + acc + '</td></tr>';
   }
 
   function _bindItems() {
@@ -936,10 +925,7 @@
     caja.querySelectorAll('[data-ver]').forEach(function (b) {
       b.addEventListener('click', function () { abrirDetalleSenal(b.dataset.ver); });
     });
-    caja.querySelectorAll('button[data-aplica]').forEach(function (b) {
-      b.addEventListener('click', function () { declararUno(b.dataset.aplica, 'abierta'); });
-    });
-    // «Resuelto» por fila, y su vuelta atrás.
+    // «Resuelto» por fila, y «Deshacer» para lo decidido.
     caja.querySelectorAll('button[data-resuelto]').forEach(function (b) {
       b.addEventListener('click', function () { declararUno(b.dataset.resuelto, 'declarada', null, null, false, b); });
     });
@@ -949,15 +935,11 @@
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
       b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });
     });
-    caja.querySelectorAll('button[data-napno]').forEach(function (b) {
-      b.addEventListener('click', function () { cerrarNoAplica(b.dataset.napno); });
-    });
-    caja.querySelectorAll('button[data-napok]').forEach(function (b) {
-      b.addEventListener('click', function () { guardarNoAplica(b.dataset.napok); });
-    });
+    // El campo del «no aplica»: Enter guarda esa barra, Esc lo deja como estaba.
     caja.querySelectorAll('input[data-nota]').forEach(function (c) {
       c.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') guardarNoAplica(c.dataset.nota);
+        if (e.key === 'Escape') cerrarNoAplica(c.dataset.nota);
       });
     });
   }
@@ -970,45 +952,35 @@
   //
   // Antes esto eran dos `prompt()` del navegador, uno pidiendo un NÚMERO. Se hace acá
   // porque la decisión se toma mirando el dato que está en la fila de al lado.
-  function _form(id) { return document.querySelector('tr[data-form="' + id + '"]'); }
-
   function _botones(id) {
-    return { ap: document.querySelector('button[data-aplica="' + id + '"]'),
-             na: document.querySelector('button[data-noaplica="' + id + '"]') };
+    var f = document.querySelector('tr[data-fila="' + id + '"]');
+    var q = function (sel) { return f ? f.querySelector(sel) : null; };
+    return { re: q('button[data-resuelto]'), na: q('button[data-noaplica]'),
+             des: q('button[data-deshacer]'), nota: q('input[data-nota]') };
   }
 
-  // EL BOTÓN TIENE QUE DECIR QUE LO APRETASTE (19-oct). «No aplica» sólo desplegaba el
-  // campo de abajo y el par de botones quedaba igual que antes: el usuario apretaba y nada
-  // cambiaba de color, así que parecía que el clic no había entrado. Mientras se está
-  // escribiendo el motivo, el botón queda marcado como lo que estás eligiendo —y se
-  // distingue del decidido, que es el que queda firme al guardar—.
+  // EL BOTÓN TIENE QUE DECIR QUE LO APRETASTE (19-oct): mientras se escribe la explicación,
+  // «No aplica» queda encendido y el campo abierto al lado. Nada está decidido hasta Enter.
   function abrirNoAplica(id) {
-    var f = _form(id);
-    if (!f) return;
-    f.style.display = '';
     var b = _botones(id);
+    if (!b.nota) return;
+    b.nota.style.display = '';
     if (b.na) b.na.classList.add('eligiendo');
-    if (b.ap) { b.ap.classList.remove('on'); b.ap.disabled = false; }
-    var n = f.querySelector('input[data-nota]');
-    if (n) n.focus();
+    b.nota.focus();
   }
   function cerrarNoAplica(id) {
-    var f = _form(id);
-    if (f) f.style.display = 'none';
-    // Vuelve a como estaba: nada se decidió.
     var b = _botones(id);
+    // Vuelve a como estaba: nada se decidió.
+    if (b.nota) { b.nota.style.display = 'none'; b.nota.value = ''; }
     if (b.na) b.na.classList.remove('eligiendo');
-    if (b.ap) { b.ap.classList.add('on'); b.ap.disabled = true; }
   }
 
   async function guardarNoAplica(id) {
-    var f = _form(id);
-    if (!f) return;
-    var nota = (f.querySelector('input[data-nota]').value || '').trim();
-    var pat = f.querySelector('input[data-pat]').checked;
-    if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
-    await declararUno(id, 'aceptada', null, nota, pat,
-                      f.querySelector('button[data-napok]'));
+    var b = _botones(id);
+    if (!b.nota) return;
+    var nota = (b.nota.value || '').trim();
+    if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); b.nota.focus(); return; }
+    await declararUno(id, 'aceptada', null, nota, false, b.na);
   }
 
   // Una barra, una decisión: así se resuelve en la fila. El lote quedó sólo para el check
@@ -1017,7 +989,7 @@
     // MIENTRAS EL SERVIDOR RESPONDE, SE VE. Son dos viajes (declarar y volver a leer la
     // revisión): sin esto el botón se queda mudo un segundo largo y se vuelve a apretar.
     var b = _botones(id);
-    var tocados = [boton, b.ap, b.na].filter(Boolean);
+    var tocados = [boton, b.re, b.na, b.des].filter(Boolean);
     tocados.forEach(function (x) { x.disabled = true; x.classList.add('audwait'); });
     try {
       var r = await req('PUT', '/chequeos/declarar',

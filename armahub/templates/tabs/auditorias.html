@@ -696,31 +696,26 @@
   .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
   .revi.abierta{background:#fff8e1; color:#8d6e00;} .revi.declarada{background:#e3f2fd; color:#1565C0;}
   .revi.corregida{background:#e8f5e9; color:#2e7d32;} .revi.aceptada{background:#efebe9; color:#5d4037;}
-  /* LA DECISIÓN, EN LA FILA. El par Aplica|No aplica se lee como un interruptor: lo que
-     está encendido es lo que vale hoy. */
+  /* LA DECISIÓN, EN LA FILA (2-nov): «Resuelto» · «No aplica», y al apretar No aplica se
+     abre AL LADO un campo corto. El campo no es para explicaciones largas: una línea, y
+     el texto corre con el cursor. */
   .revseg{display:inline-flex; border:1px solid #cfd8dc; border-radius:5px; overflow:hidden;}
   .revseg button{border:none; background:#fff; color:#546e7a; font-size:10px; font-weight:600;
                  padding:3px 8px; cursor:pointer; white-space:nowrap;}
   .revseg button + button{border-left:1px solid #cfd8dc;}
   .revseg button:hover:not(:disabled){background:#eceff1;}
   .revseg button.on{background:#1565C0; color:#fff;}
-  .revseg button.on:disabled{cursor:default; opacity:1;}
-  .revseg button[data-noaplica].on{background:#6d4c41;}
-  /* MIENTRAS SE ESCRIBE EL MOTIVO (19-oct). «No aplica» abre el campo de abajo y hasta
-     guardar no hay nada decidido, pero el botón tiene que decir que se apretó: antes el
-     par quedaba igual que antes del clic y parecía que no había entrado. Tenue a
-     propósito —lo firme es el `.on` café— y con el borde del lado del campo abierto. */
-  .revseg button[data-noaplica].eligiendo{background:#efebe9; color:#4e342e;
+  .revnapbtn{border:1px solid #cfd8dc; background:#fff; color:#546e7a; font-size:10px; font-weight:600;
+             padding:3px 8px; border-radius:5px; cursor:pointer; white-space:nowrap;}
+  .revnapbtn:hover:not(:disabled){background:#eceff1;}
+  /* MIENTRAS SE ESCRIBE (19-oct): el botón tiene que decir que se apretó. Café tenue, y
+     el campo abierto del mismo tono: se leen como una sola cosa. */
+  .revnapbtn.eligiendo, .audmini.eligiendo{background:#efebe9; color:#4e342e; border-color:#a1887f;
                  box-shadow:inset 0 -2px 0 #6d4c41;}
-  .audmini.eligiendo{background:#efebe9; color:#4e342e; border-color:#a1887f;
-                 box-shadow:inset 0 -2px 0 #6d4c41;}
+  .revnapin{width:240px; font-size:11px; padding:3px 7px; border:1px solid #a1887f; border-radius:4px;
+            background:#fff8e1; color:#3e2723;}
+  .revnapin:focus{outline:2px solid #d7ccc8; outline-offset:-1px;}
   .revcc2 .audref{cursor:pointer; text-decoration:underline dotted #b0bec5;}
-  .revnapcaja{display:flex; gap:6px; align-items:center; padding:2px 0 4px 22px;}
-  .revnapcaja select{font-size:11px; padding:3px 5px; border:1px solid #cfd8dc; border-radius:4px;}
-  .revnapcaja input[type=text]{flex:1; font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px;}
-  .revnapcaja label{display:flex; align-items:center; gap:4px; font-size:10.5px; color:#6d4c41;
-                    white-space:nowrap; cursor:pointer;}
-  .revcc2 tr.revnapform td{background:#fff8e1; border-top:none;}
   /* Las reglas: una línea cada una, sin tarjetas. */
   .revreglasc ul{margin:0; padding:0 0 0 16px; list-style:disc;}
   .revreglasc li{font-size:11.5px; color:#37474f; padding:2px 0;}
@@ -737,7 +732,7 @@
     #revItemsModal{position:static !important; background:none !important; overflow:visible !important; display:block !important;}
     .revhoja{max-width:none; margin:0; padding:0;}
     #revItemsImprimir, #revItemsCerrar, #revAccFiguras, #revAccCerrar, #revAccMsg, .revcubacc, #revItemsCubs,
-    .revcc2 input[type=checkbox], .revcc2 td.revacc, .revcc2 tr.revnapform { display:none !important; }
+    .revcc2 input[type=checkbox], .revcc2 td.revacc { display:none !important; }
     /* La figura SÍ se imprime: es la mitad de para qué sirve la hoja. */
     .revfig, .revfig svg { display:table-cell !important; }
     .revcc2 tr { break-inside:avoid; }

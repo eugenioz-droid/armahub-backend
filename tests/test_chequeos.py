@@ -237,10 +237,10 @@ check("...y se puede detener sin perder lo ya revisado",
 check("dejar un hallazgo sin efecto EXIGE el motivo: sin él, nadie puede revisarlo después",
       "una señal aceptada sin motivo" in API
       and "Explica por qué no aplica" in API and "Hace falta la explicación" in JS)
-check("se puede dejar sin efecto el PATRÓN completo, no de a una",
-      "firma_patron = %s" in API and "data-pat=" in JS
-      and "patron: bool = False" in API and "o.firma_patron = s.firma_patron" in API
-      and "y todas las iguales" in JS)
+check("el PATRÓN sigue en el backend; la pantalla ya no lo ofrece por fila (2-nov: confundía)",
+      "firma_patron = %s" in API and "patron: bool = False" in API
+      and "o.firma_patron = s.firma_patron" in API
+      and "data-pat=" not in JS and "y todas las iguales" not in JS)
 check("...pero el patrón no se lleva por delante lo ajeno ni lo ya resuelto",
       "s.estado IN ('abierta', 'declarada')" in API
       and "Las del patrón que cubicó otra persona no entran" in API)
@@ -533,10 +533,11 @@ check("la barra la muestra y avisa si está vieja",
 print("\n16. La corrección se hace en la fila, no en otra pantalla")
 check("se fue el botón «Ver»: la decisión está donde está el dato",
       ">Ver</button>" not in JS)
-check("cada fila lleva el par Aplica | No aplica",
-      "data-aplica=" in JS and "data-noaplica=" in JS and ".revseg" in HTM)
+check("cada fila abierta lleva Resuelto · No aplica; el «Aplica» se fue (sólo servía para deshacer)",
+      "data-aplica=" not in JS and "data-noaplica=" in JS and 'class="audbres" data-resuelto=' in JS)
 check("«no aplica» pide la explicación EN la fila, sin prompt del navegador ni desplegable de causa",
-      "revnapform" in JS and "data-mot=" not in JS and "_opcionesMotivo" not in JS and "data-nota=" in JS
+      "revnapform" not in JS and "data-mot=" not in JS and "_opcionesMotivo" not in JS
+      and 'class="revnapin" data-nota=' in JS
       and "¿Por qué NO aplica? Escribe el número" not in JS)
 check("...y la exige",
       "Elige por qué no aplica." not in JS and "nota.length < 10" in JS)
@@ -544,8 +545,8 @@ check("...y la exige",
 # fila —verde cuando está marcado, se vuelve a apretar para deshacerlo—; con los checks,
 # los tres verbos de a muchas («muchas veces el hallazgo es el mismo para más de un
 # ítem»); y CERRAR va a aSa, avisa lo que sigue igual y no bloquea.
-check("«Resuelto» por fila, verde, y su vuelta atrás",
-      'class="audbres" data-resuelto=' in JS and 'class="audbres on" data-deshacer=' in JS
+check("«Resuelto» por fila, verde; lo decidido lleva un solo «Deshacer»",
+      'class="audbres" data-resuelto=' in JS and 'data-deshacer="\' + i.id + \'" title="Vuelve a dejarla abierta">Deshacer' in JS
       and "declararUno(b.dataset.resuelto, 'declarada'" in JS
       and "declararUno(b.dataset.deshacer, 'abierta'" in JS and 'title="Ya la corregí"' not in JS)
 check("con los checks, los tres verbos de a muchas: Aplica · No aplica · Resuelto",
@@ -688,7 +689,7 @@ check("las figuras se piden solas cuando el codigo entra en pantalla",
 check("...de a una y en cola, no cuarenta y ocho de golpe",
       "cola.shift()" in JS and "await cargarFiguras(cc)" in JS)
 check("...y al cerrar el modal se deja de mirar",
-      "_mirando.disconnect()" in JS.split("function cerrarItems")[1][:300])
+      "_mirando.disconnect()" in JS.split("function cerrarItems")[1][:600])
 # EL CHURRO SE FUE: iba en un renglon, en orden de recorrido, con los angulos
 # intercalados en chico y con signo. El usuario: «la forma de presentar esto esta media
 # sucia... por que no los pones claros, A = 15, B = XX, con encabezados».
@@ -794,7 +795,7 @@ check("los chips de cubicador son FILTROS: repintan tarjetas y matriz, no abren 
       and "pintarResumen(); pintarRevisiones();" in JS)
 check("...y el filtro es UNO, global: la hoja abre con el que este puesto y al volver se repinta arriba",
       "REVS.filtro_cub = _miChip();" not in JS
-      and "$('revItemsModal').style.display = 'none';\n    // El chip del modal y el de arriba son el MISMO filtro" in JS)
+      and "// El chip del modal y el de arriba son el MISMO filtro: al volver, arriba se repinta.\n    pintarResumen(); pintarRevisiones();" in JS.split("function cerrarItems")[1][:900])
 check("con filtro, la matriz muestra SOLO la columna de esa persona, y la fila donde no tiene nada se apaga",
       "_cuentaDe(r, F)" in JS and "cols = F ? [F] : _columnas(vis)" in JS and "' apagada' : ''" in JS
       and "' dim'" not in JS and "td.dim" not in HTM)
@@ -833,7 +834,7 @@ check("...y el detalle de UNA revision trae los mismos nombres que la lista, por
 # aplica el filtro del cubicador de esa columna. No quedo bien.» La celda solo informa.
 check("la celda NO es clicable: la fila elige la revision, el chip filtra la persona, el boton entra",
       "revcel" not in JS and "revcel" not in HTM and "td.dataset.cub" not in JS
-      and "await abrirRevision(Number(b.dataset.abrir));\n        abrirItems(true);" in JS)
+      and "await abrirRevision(Number(b.dataset.abrir));\n        REVS.antes = antes;\n        abrirItems(true);" in JS)
 
 
 print("\nEL LOTE, LIMPIO (29-oct)")
@@ -878,6 +879,25 @@ check("el CSS no arrastra clases que ya nadie pinta",
 check("el orden es el del trabajo: cubicadores · estado · hallazgos, y los hallazgos van atenuados",
       ".revmat th.curioso, .revmat td.curioso{color:#90a4ae" in HTM
       and JS.index(">Por resolver</th>") < JS.index(">Detectados</th>"))
+
+
+print("\nUNA FILA, UNA DECISION, DOS SALIDAS (2-nov)")
+# «Si presiono No aplica igual puedo presionar Resuelto, ¿entonces como cierro? Cancelar no
+# me suma. Guardar me confunde: ¿guardamos por barra o el formulario completo?» Todo es por
+# barra y al instante: No aplica cierra con Enter, Resuelto con Resuelto. Sin Guardar ni
+# Cancelar ni «y todas las iguales».
+check("el campo del «no aplica» va AL LADO, corto, y se guarda con Enter; Esc lo deja",
+      'class="revnapin" data-nota=' in JS and "if (e.key === 'Enter') guardarNoAplica(c.dataset.nota);" in JS
+      and "if (e.key === 'Escape') cerrarNoAplica(c.dataset.nota);" in JS and ".revnapin{width:240px" in HTM)
+check("...sin Guardar, sin Cancelar, sin fila adicional, sin «y todas las iguales»",
+      "data-napok" not in JS and "data-napno" not in JS and "revnapform" not in JS and "data-pat" not in JS
+      and ">Guardar</button>" not in JS and ">Cancelar</button>" not in JS)
+check("el lote tiene los mismos verbos: Resuelto · No aplica (campo al lado, Enter) · Deshacer",
+      'id="revAccNapNota" style="display:none"' in JS and "revAccNapOk" not in JS and "revAccNapForm" not in JS
+      and 'data-lote="abierta" title="Las marcadas vuelven a quedar abiertas">Deshacer' in JS)
+check("la hoja no deja huella: «Abrir» desde la fila elige para abrir, y al cerrar vuelve lo que habia",
+      "var antes = { sel: REVS.sel, detalle: REVS.detalle };" in JS and "REVS.antes = antes;" in JS
+      and "if (REVS.antes) { REVS.sel = REVS.antes.sel; REVS.detalle = REVS.antes.detalle; REVS.antes = null; }" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
