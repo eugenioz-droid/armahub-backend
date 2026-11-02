@@ -376,23 +376,9 @@
             border-radius:6px; padding:8px 10px;}
   .revregla b{font-size:11.5px; color:#263238;}
   .revregla div{font-size:10.5px; color:#78909c; margin-top:3px; line-height:1.45;}
-  .revobras{max-height:34vh; overflow:auto; border:1px solid #e3e8ef; border-radius:5px; background:#fff;}
-  .revobra{display:flex; align-items:center; gap:10px; padding:5px 9px; font-size:11.5px;
-           border-bottom:1px solid #f2f4f7; cursor:pointer;}
-  .revobra:hover{background:#f3f7fc;}
-  .revobra.on{background:#e8f1fb;}
-  .revobra .n{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; color:#263238;}
-  .revobra .c{flex:none; width:96px; color:#78909c; font-variant-numeric:tabular-nums;}
-  .revobra .u{flex:none; width:150px; color:#90a4ae; font-size:10.5px;}
-  .revobra .s{flex:none; font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px;}
-  .revobra .s.hay{background:#fff3e0; color:#e65100;}
-  .revobra .s.cero{background:#f1f8e9; color:#558b2f;}
   .revprog{margin:6px 0 10px;}
   .revbar{height:8px; background:#eceff1; border-radius:3px; overflow:hidden;}
   .revbar i{display:block; height:100%; width:0; background:#1565C0; transition:width .2s;}
-  /* Una señal: lo que encontró la máquina, esperando que alguien decida. */
-  .revgrupo{margin-top:10px;}
-  .revgrupo h4{margin:0 0 5px; font-size:11.5px; color:#37474f;}
   .revsen{display:flex; align-items:center; gap:9px; padding:5px 8px; font-size:11.5px;
           border:1px solid #e3e8ef; border-radius:5px; background:#fff; margin-bottom:4px;}
   .revsen.corregir{border-color:#ef9a9a; background:#fffafa;}
@@ -406,9 +392,6 @@
   .revsen .est.corregir{background:#ffebee; color:#c62828;}
   .revsen .est.aceptada{background:#eceff1; color:#607d8b;}
   .revvacio{color:#90a4ae; font-size:11.5px; padding:14px 6px; text-align:center;}
-  /* Los códigos de la obra abierta: cuándo se revisó cada uno y si cambió desde entonces. */
-  .revccs{max-height:26vh; overflow:auto; border:1px solid #e3e8ef; border-radius:5px;
-          background:#fff; margin-bottom:10px;}
   .revcc{display:flex; align-items:center; gap:9px; padding:4px 9px; font-size:11px;
          border-bottom:1px solid #f4f6f8;}
   .revcc .k{font-family:ui-monospace,Consolas,monospace; color:#1565C0; flex:none; width:58px;}
@@ -553,7 +536,6 @@
   .audenviar:active:not(:disabled){transform:translateY(1px);}
   .revseg button:active:not(:disabled){transform:translateY(1px);}
   .audlados{font-size:9.5px; color:#78909c; margin-top:2px; line-height:1.4;}
-  .audlados .revang{color:#b0bec5; font-style:normal; font-size:9px;}
   .audacct td.revfig{width:124px; text-align:center;}
   .audacct td.revfig svg{display:block; margin:0 auto; max-width:116px; height:auto;}
   .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
@@ -579,6 +561,7 @@
   /* LOS HALLAZGOS, AL FINAL Y ATENUADOS: es el dato curioso, no el que manda. */
   .revmat th.curioso, .revmat td.curioso{color:#90a4ae; font-weight:400;}
   .revmat td.curioso span{color:#90a4ae;}
+  .revmat td.curioso.aplican span{color:#c62828; font-weight:600;}
   .revmat td b{font-weight:700; color:#263238;}
   .revmat td .revsuave, .revmat .revvacio2{color:#b0bec5; font-weight:400;}
   .revmat td .revbien{color:#2e7d32; font-weight:600;}
@@ -609,7 +592,9 @@
   /* EL FILTRO POR CUBICADOR (29-oct): la columna y el chip elegidos se encienden, el
      resto se atenúa, y la fila en la que esa persona no tiene nada se apaga. */
   .revmat th.dim, .revmat td.dim{opacity:.35;}
-  .revmat td.sel{background:#e8f5e9;}
+  /* La columna del cubicador filtrado va en AZUL (el color del filtro): el verde es
+     sólo «cerrado», y con el mismo tono el cubicador veía cerrado lo pendiente. */
+  .revmat td.sel{background:#eef4fb;}
   .revmat tbody tr.apagada td, .revmat tbody tr.apagada td b, .revmat tbody tr.apagada td .revfecha{color:#b0bec5;}
   .revcubs button.on{background:#1565C0; border-color:#1565C0; color:#fff;}
   .revcubs button.listo{border-color:#81c784; color:#2e7d32;}
@@ -620,16 +605,6 @@
   .revfiltro:hover{background:#bbdefb;}
   #revAbrir{padding:5px 16px;}
   .revkpi small{font-size:11px; color:#78909c; font-weight:400;}
-  .revfila{padding:7px 9px; border-bottom:1px solid #f2f4f7; cursor:pointer; font-size:11.5px;}
-  .revfila:hover{background:#f3f7fc;}
-  .revfila.on{background:#e8f1fb; box-shadow:inset 3px 0 0 #1565C0;}
-  .revfila .l1{display:flex; align-items:center; gap:6px;}
-  .revfila .l1 b{color:#263238;}
-  .revfila .l2{color:#90a4ae; font-size:10.5px; margin-top:2px;}
-  .revfila .barra{height:5px; background:#eceff1; border-radius:99px; overflow:hidden; margin-top:4px;}
-  .revfila .barra i{display:block; height:100%; background:#8BC34A;}
-  .revfila .barra i.cero{background:#ef9a9a;}
-  .revfila .vacia{color:#b0bec5;}
   .revkpis{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
   .revkpi{flex:1; min-width:96px; background:#f7f9fb; border:1px solid #e3e8ef; border-radius:6px; padding:7px 10px;}
   .revkpi b{display:block; font-size:17px; color:#263238; font-variant-numeric:tabular-nums;}
@@ -657,11 +632,6 @@
   .revcc2 h5 .muted{font-weight:400;}
   .revcc2 table{width:100%; border-collapse:collapse; font-size:11px;}
   .revcc2 td{padding:4px 9px; border-top:1px solid #f2f4f7; vertical-align:top;}
-  /* LOS LADOS DE LA FIGURA, con el que no cumple en rojo. Es lo que reemplaza al
-     párrafo: «D 90» dice de un vistazo lo que un renglón y medio de texto. */
-  .revlados{font-size:11px; color:#546e7a; line-height:1.5;}
-  .revlados span{white-space:nowrap;}
-  /* El ángulo entre lado y lado: se lee, pero no compite con las medidas. */
   /* LA GRILLA DE LADOS: una columna por lado, con sus encabezados. Compacta, porque
      vive dentro de una celda de tabla y al lado del dibujo. */
   /* ANCHO FIJO. Sin esto cada columna se estira con su contenido y la grilla se
@@ -677,10 +647,6 @@
   .audgl tr.a td{color:#90a4ae; font-size:9px;}
   .audgl td.mal{background:#ffebee; color:#c62828;}
   .audgl tr.v td.mal{font-weight:700;}
-  .revlados .revmal{color:#c62828; background:#ffebee; border-radius:3px; padding:0 4px;
-                    white-space:nowrap;}
-  .revlados .revesp{color:#8d6e00; background:#fff8e1; border-radius:3px; padding:0 4px;
-                    font-size:10px; white-space:nowrap;}
   .revreg{font-size:10px; color:#546e7a; background:#eceff1; border-radius:3px;
           padding:1px 6px; white-space:nowrap;}
   .revquien{font-size:10px; color:#78909c; font-weight:400;}
@@ -782,24 +748,13 @@
   }
   /* ══════ EL FLUJO DE CHEQUEOS (13-oct) ══════ */
   .revcarga{font-size:10px; color:#546e7a; background:#eceff1; border-radius:99px; padding:1px 8px; margin-left:8px;}
-  .audt tr.revrepfila{cursor:pointer;} .audt tr.revrepfila:hover td{background:#f1f8e9;}
   .revsend{display:grid; grid-template-columns:1fr 1fr; gap:14px; font-size:11.5px;}
   .revsend .revsenfig{grid-column:1 / -1; text-align:center; padding:8px; background:#fafafa; border:1px solid #eceff1; border-radius:6px;}
   .revsend dl{margin:0;} .revsend dt{font-size:10px; color:#90a4ae; text-transform:uppercase; letter-spacing:.3px;}
   .revsend dd{margin:0 0 6px;}
   .revsenq{grid-column:1 / -1; padding:8px 10px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px;}
   .revsenacc{grid-column:1 / -1; display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
-  .revmio td.revmiotx{white-space:normal; max-width:420px;}
   /* ══════ LA BANDEJA DE HALLAZGOS (chequeos) ══════ */
-  .revtot{display:inline-flex; gap:6px; margin-left:8px;}
-  .revtot span{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
-  .revtot .abierta{background:#fff8e1; color:#8d6e00;} .revtot .corregir{background:#ffebee; color:#c62828;}
-  .revtot .aceptada{background:#e8f5e9; color:#2e7d32;} .revtot .corregida{background:#e3f2fd; color:#1565C0;}
-  .revbansel{font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px; max-width:240px;}
-  .revbanchk{font-size:11px; color:#546e7a; display:flex; align-items:center; gap:4px;}
-  .revlote{display:flex; align-items:center; gap:8px; padding:6px 10px; margin-bottom:6px;
-           background:#e8eaf6; border:1px solid #c5cae9; border-radius:5px; font-size:11px;}
-  .audt td.revbtx{white-space:normal; max-width:360px;}
   .audt tr.corregir td{background:#fff6f6;} .audt tr.aceptada td{color:#78909c;}
   .audt tr.corregida td{color:#78909c; background:#f4f8fc;}
   /* ══════ EL FLUJO DE LA AUDITORÍA ══════

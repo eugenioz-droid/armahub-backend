@@ -866,6 +866,15 @@ check("celda verde para quien ya resolvio todo lo suyo y para el avance al 100%;
 check("numeros y encabezados centrados, con anchos fijos por seccion",
       "text-align:center; font-variant-numeric:tabular-nums" in HTM and ".revmat th.cub, .revmat td.cub{width:" in HTM
       and ".revmat th.est, .revmat td.est{width:" in HTM and ".revmat th.cur, .revmat td.cur{width:" in HTM)
+# El cubicador veia VERDES celdas con pendientes: la columna filtrada se resaltaba con el
+# mismo verde que «cerrado». Ahora el filtro es azul; el verde es solo cerrado.
+check("la columna del cubicador filtrado se resalta en azul, no en el verde de cerrado",
+      ".revmat td.sel{background:#eef4fb;}" in HTM and ".revmat td.sel{background:#e8f5e9" not in HTM)
+check("Aplican, en la seccion de hallazgos, va en rojo",
+      'class="num cur curioso aplican"' in JS and ".revmat td.curioso.aplican span{color:#c62828" in HTM)
+check("el CSS no arrastra clases que ya nadie pinta",
+      all(("." + c + "{") not in HTM and ("." + c + " ") not in HTM
+          for c in ("revfila", "revobra", "revlados", "revtot", "revlote", "revmio", "revrepfila", "revccs")))
 check("el orden es el del trabajo: cubicadores · estado · hallazgos, y los hallazgos van atenuados",
       ".revmat th.curioso, .revmat td.curioso{color:#90a4ae" in HTM
       and JS.index(">Por resolver</th>") < JS.index(">Detectados</th>"))

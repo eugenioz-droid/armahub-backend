@@ -279,7 +279,8 @@
               '<span>' + (t.pct || 0) + '%</span></div>') + '</td>' +
           '<td class="num cur sec curioso">' + n0(t.n) + '</td>' +
           '<td class="num cur curioso">' + n0(t.nap) + '</td>' +
-          '<td class="num cur curioso">' + n0(t.apl) + '</td>' +
+          // Aplican en rojo: de lo detectado, es lo que quedó válido y hay que trabajar.
+          '<td class="num cur curioso aplican">' + n0(t.apl) + '</td>' +
           // «ABRIR» A SECAS (29-oct). Entra a la hoja con los filtros que estén puestos.
           '<td class="revacc">' + (t.apl
             ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir</button>'
