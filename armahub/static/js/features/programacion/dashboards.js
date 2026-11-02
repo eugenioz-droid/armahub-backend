@@ -183,6 +183,7 @@
     // esto, el clic en el año parecía no hacer nada durante uno o dos segundos.
     $('dshEspejo').textContent = 'Cargando…';
     try {
+      await global.cargarNomCub();
       DATA = await req('GET', '/programacion/asa/reporte' + qs({ anio: ANIO, meses: MESES }));
       if (!DATA) return;
       ANIO = DATA.anio;
@@ -402,12 +403,13 @@
     var todas = DATA.personas || [];
     var presentes = valoresDe('persona', 'persona', PERSONAS);
     var visibles = presentes.filter(function (p) { return !DET.length || DET.indexOf(p) !== -1; });
+    // El chip dice el nombre; el valor que filtra sigue siendo el login de aSa.
     chips($('dshPersonas'), visibles, PERSONAS, function (p, ev) {
       alternar(PERSONAS, p, ev);
       // pintarChips() TAMBIÉN: sin esto el chip no cambia de color y parece que el
       // clic no hizo nada, aunque el filtro sí se aplicó. Pasó.
       repintarTodo();
-    });
+    }, nomCub);
     // Segmento y tipo: los valores del backend más «(sin)», siempre todos —son pocos y
     // ver el chip vacío también informa.
     var repintar = repintarTodo;
@@ -425,7 +427,7 @@
     if (!ELIGIENDO) return;
     lista.innerHTML = todas.map(function (p) {
       return '<label><input type="checkbox" data-det="' + esc(p) + '"' +
-             (DET.indexOf(p) !== -1 ? ' checked' : '') + '>' + esc(p) + '</label>';
+             (DET.indexOf(p) !== -1 ? ' checked' : '') + '>' + esc(nomCub(p)) + '</label>';
     }).join('');
     lista.querySelectorAll('input[data-det]').forEach(function (c) {
       c.addEventListener('change', function () {
@@ -613,6 +615,7 @@
 
   async function cargarCub() {
     try {
+      await global.cargarNomCub();
       CUB = await req('GET', '/programacion/asa/cubicador' + qs({ meses: CUB_MESES }));
     } catch (e) { aviso(e.message); CUB = null; }
   }

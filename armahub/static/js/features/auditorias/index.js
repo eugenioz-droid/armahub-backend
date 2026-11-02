@@ -283,6 +283,7 @@
   }
 
   global.loadAuditorias = async function () {
+    global.cargarNomCub();   // el mapa de nombres, una vez; si tarda se pinta el login
     if (!$('tab-auditorias')) return;
     try {
       BASE = await req('GET', '/auditorias/obras');
@@ -348,6 +349,14 @@
   // INDICADORES: lo que la auditoria deja. Se cuentan en la base y sobre lo REVISADO: un
   // elemento pendiente no es ni conforme ni no conforme, y meterlo en el denominador
   // castigaria a quien todavia no termina.
+  // CÓMO SE ESCRIBE QUIEN CUBICÓ (2-nov). `cubicado_por` es un login de aSa («jrodriguez»)
+  // o un correo, según de dónde venga el elemento. El login lo traduce `nomCub`, que sabe
+  // quién es usuario de la plataforma; el correo se corta en el @, como siempre.
+  function quien(x) {
+    var s = String(x == null ? '' : x).trim();
+    return s.indexOf('@') !== -1 ? s.split('@')[0] : nomCub(s);
+  }
+
   async function cargarIndicadores() {
     var caja = $('audKpi');
     if (!caja) return;
@@ -371,7 +380,7 @@
             'de hallazgos sobre ' + (t.revisados || 0) + ' elementos auditados',
             t.pct_hallazgos == null ? '' : (t.pct_hallazgos > 30 ? 'mal' : (t.pct_hallazgos <= 10 ? 'bien' : '')));
       $('audKpiCub').innerHTML = tabla(k.por_cubicador, 'cubicador', function (x) {
-        return esc((x.cubicador || '').split('@')[0]); });
+        return esc(quien(x.cubicador)); });
       $('audKpiCausa').innerHTML = k.causas.length
         ? '<thead><tr><th>Causa</th><th class="num" title="Barras no conformes con esa causa. ' +
           'La clasifica quien respondió, barra por barra.">Barras</th><th></th></tr></thead><tbody>' +
@@ -798,7 +807,7 @@
           (e.items ? '<b>' + e.items + '</b>/' : '') + e.barras + '</td>' +
         '<td class="num">' + kg0(e.kg) + '</td>' +
         '<td' + (e.conflicto ? ' class="indep" title="Lo cubicó quien audita: habría que cambiar este elemento"' : '') + '>' +
-          esc((e.cubicado_por || '').split('@')[0]) + (e.conflicto ? ' ⚠' : '') + '</td>' +
+          esc(quien(e.cubicado_por)) + (e.conflicto ? ' ⚠' : '') + '</td>' +
         // EL VEREDICTO, SIN EL TEXTO AL LADO. Arrastrar acá 36 caracteres de lo que se
         // encontró empujaba la tabla fuera del ancho y la columna de la acción —la última—
         // quedaba cortada contra el borde. Lo que se encontró se lee entero más abajo, en
@@ -1726,7 +1735,7 @@
                 '<b>' + esc(g.cc || '—') + '</b></label>'
               : '<b>' + esc(g.cc || '—') + '</b>') +
             ' <span class="muted">' + esc(g.descr || '') + '</span>' +
-            (g.cubico ? '<span class="revquien">' + esc(String(g.cubico).split('@')[0]) + '</span>' : '') +
+            (g.cubico ? '<span class="revquien">' + esc(quien(g.cubico)) + '</span>' : '') +
             '<span class="muted" style="float:right">' + listas + ' de ' + lineas + ' resuelta(s)</span></td></tr>' +
             g.els.map(function (e) {
               var malas = (e.barras_malas || []);

@@ -567,6 +567,58 @@ def correo_de_login(cur, login: str) -> Optional[str]:
     return None
 
 
+def nombre_visible(nombre: str, apellido: str) -> str:
+    """Cómo se escribe una persona en pantalla: «J Rodriguez». Inicial del nombre y el
+    apellido, que es como se la nombra en la planta y lo que cabe en un chip."""
+    n, a = (nombre or "").strip(), (apellido or "").strip()
+    if a.isupper():
+        a = a.title()
+    return ("%s %s" % (n[:1].upper(), a)).strip() if a else n
+
+
+def nombres_asa(cur) -> dict:
+    """Los logins de aSa que SÍ son alguien de la plataforma, y cómo se escriben.
+
+    El usuario (2-nov): «me gustaría estandarizar para que a todos los filtros les pongas
+    el nombre real del cubicador: jrodriguez → J Rodriguez, HMONDACA → H Mondaca», y
+    «revisa los filtros activos para no ponerle nombre a todo el mundo». Por eso el mapa
+    sólo trae a quien es usuario: a los demás —externos que ya no están, `RMC`, `aSaAdmin`—
+    la pantalla los deja con su login, que es el único nombre que de verdad tenemos.
+
+    Dos formas de login, las dos medidas sobre los datos reales:
+      · inicial del nombre + apellido — `jrodriguez`, `HMONDACA` —, la de `alias_de`;
+      · nombre entero + inicial del apellido — `EugenioZ` —, que es la misma regla dada
+        vuelta y aparece en los logins viejos.
+    """
+    cur.execute("SELECT nombre, apellido FROM users WHERE COALESCE(activo, TRUE)")
+    gente = [(n or "", a or "") for n, a in cur.fetchall()]
+    cur.execute("""SELECT DISTINCT NULLIF(TRIM(quien), '') FROM (
+                       SELECT cubicado_por quien FROM auditoria_elementos
+                       UNION SELECT cubico FROM chequeo_senales
+                       UNION SELECT detail_person FROM asa_pedidos
+                   ) t WHERE quien IS NOT NULL""")
+    out = {}
+    for (login,) in cur.fetchall():
+        l = _sin_tildes(login)
+        for nombre, apellido in gente:
+            n, a = _sin_tildes(nombre), _sin_tildes(apellido)
+            if not (n and a):
+                continue
+            if alias_de(nombre, apellido, login) or l == n + a[:1]:
+                out[login] = nombre_visible(nombre, apellido)
+                break
+    return out
+
+
+@router.get("/cubicadores/nombres")
+def cubicadores_nombres(user=Depends(get_current_user)):
+    """El mapa login de aSa → nombre, para que toda la plataforma escriba igual a la misma
+    persona. Lo pide el front una vez y lo guarda."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            return {"nombres": nombres_asa(cur)}
+
+
 def _json(d):
     """Un dict a JSONB. Se escribe acá y no se importa `json` en cada sitio."""
     import json

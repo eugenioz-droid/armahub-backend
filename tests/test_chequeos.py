@@ -787,7 +787,7 @@ check("«Abrir» a secas en cada fila y uno solo arriba; el numero ya no va al l
       'data-abrir="\' + r.id + \'">Abrir</button>' in JS and "'Abrir ' + r.aplican" not in JS
       and 'id="revAbrir"' in JS and "abrirItems(true); });" in JS)
 check("...y el chip lleva SOLO el nombre, arriba y en la hoja: los numeros van en tarjetas y matriz",
-      "'\">' + esc(c.q) + '</button>'" in JS and "'\">Todos</button>'" in JS
+      "esc(nomCub(c.q)) + '</button>'" in JS and "'\">Todos</button>'" in JS
       and "esc(c.cubico) + ' ' + c.n" not in JS and "'<small>de ' + c.n" not in JS)
 check("los chips de cubicador son FILTROS: repintan tarjetas y matriz, no abren nada",
       "data-filtro-cub=" in JS and "data-abrir-cub" not in JS
@@ -898,6 +898,25 @@ check("el lote tiene los mismos verbos: Resuelto · No aplica (campo al lado, En
 check("la hoja no deja huella: «Abrir» desde la fila elige para abrir, y al cerrar vuelve lo que habia",
       "var antes = { sel: REVS.sel, detalle: REVS.detalle };" in JS and "REVS.antes = antes;" in JS
       and "if (REVS.antes) { REVS.sel = REVS.antes.sel; REVS.detalle = REVS.antes.detalle; REVS.antes = null; }" in JS)
+
+
+print("\nEL NOMBRE DEL CUBICADOR EN LA REVISION, Y LOS CHIPS SIN VERDE (2-nov)")
+# «Aca hay 2 filtros pintados en verde»: el verde era «ya resolvio todo lo suyo» y se leia
+# como «filtro puesto». El unico color de un chip es el azul del que esta activo.
+check("los chips de cubicador no se pintan de verde: el color es solo del filtro puesto",
+      "revcubs button.listo" not in HTM
+      and "(falta <= 0 ? 'listo' : '')" not in JS and "(c.pct === 100 ? 'listo' : '')" not in JS)
+check("los chips, la matriz y la hoja escriben el NOMBRE, no el login de aSa",
+      "esc(nomCub(c.q))" in JS and "esc(nomCub(q)) + '</th>'" in JS
+      and "esc(nomCub(c.cubico))" in JS and "nomCub(REVS.filtro_cub)" in JS
+      and "Object.keys(quienes).map(nomCub)" in JS)
+check("...y el mapa se pide antes de pintar; el valor que filtra sigue siendo el login",
+      "await global.cargarNomCub();" in JS and 'data-filtro-cub="\' + esc(c.q) + \'"' in JS
+      and 'data-cub="\' + esc(c.cubico) + \'"' in JS)
+PRGJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programacion",
+                          "dashboards.js"), encoding="utf-8").read()
+check("en los dashboards de programacion, los chips de persona tambien",
+      "}, nomCub);" in PRGJS and "esc(nomCub(p))" in PRGJS and "await global.cargarNomCub();" in PRGJS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

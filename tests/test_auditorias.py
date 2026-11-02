@@ -1456,5 +1456,32 @@ check("la auditoria cerrada dice lo que aSa confirmo al cerrar",
       'aud["cierre_chequeo"] = r[34]' in SRC and "a.cierre_chequeo, a.cierre_tipo" in SRC
       and 'class="audnota audcerrada"' in JS and "aSa confirmó <b>" in JS)
 
+
+print("\nEL NOMBRE DEL CUBICADOR, UNO SOLO EN TODA LA PLATAFORMA (2-nov)")
+# «Los usuarios los tienes como vienen en aSa; me gustaria estandarizar para que a todos los
+# filtros les pongas el nombre real: jrodriguez → J Rodriguez, HMONDACA → H Mondaca.»
+sys.path.insert(0, ROOT)
+os.environ.setdefault("JWT_SECRET", "x" * 40)
+os.environ.setdefault("DATABASE_URL", "postgresql://x/x")
+from armahub.auditorias import nombre_visible, alias_de        # noqa: E402
+check("el nombre se escribe inicial + apellido, y un apellido en MAYUSCULAS se arregla",
+      nombre_visible("Jose", "Rodriguez") == "J Rodriguez"
+      and nombre_visible("Hans", "MONDACA") == "H Mondaca"
+      and nombre_visible("Matías", "Díaz") == "M Díaz")
+check("...y sin apellido no inventa nada",
+      nombre_visible("cubicador", "") == "cubicador" and nombre_visible("", "") == "")
+check("el mapa sale de los logins REALES cruzados con los usuarios, con las dos formas de login",
+      "def nombres_asa(" in SRC and "alias_de(nombre, apellido, login) or l == n + a[:1]" in SRC
+      and 'UNION SELECT detail_person FROM asa_pedidos' in SRC.split("def nombres_asa(")[1][:2400])
+check("...y lo entrega un endpoint que el front pide una vez",
+      '@router.get("/cubicadores/nombres")' in SRC and '"nombres": nombres_asa(cur)' in SRC
+      and "shared/cubicadores.js" in APP)
+check("a quien NO es usuario no se le inventa nombre: se muestra su login",
+      "NO SE LE INVENTA NOMBRE" in open(os.path.join(
+          ROOT, "armahub", "static", "js", "shared", "cubicadores.js"), encoding="utf-8").read())
+check("en las auditorias, quien cubico se escribe igual: login traducido, correo cortado en el @",
+      "function quien(x) {" in JS and "esc(quien(e.cubicado_por))" in JS
+      and "esc(quien(x.cubicador))" in JS and "global.cargarNomCub();" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

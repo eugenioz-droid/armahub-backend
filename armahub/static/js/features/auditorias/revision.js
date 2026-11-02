@@ -141,6 +141,7 @@
   async function cargarRevisiones() {
     try {
       var d = await req('GET', '/chequeos/revisiones');
+      await global.cargarNomCub();
       REVS.lista = d.revisiones || [];
       REVS.total = d.total || {};
       if (REVS.filtro_cub === undefined) REVS.filtro_cub = _esAdmin() ? null : (_miChip() || null);
@@ -199,7 +200,7 @@
     var el = $('revLista');
     if (!el) return;
     var vis = _visibles();
-    $('revListaN').textContent = vis.length + ' revisión(es)' + (REVS.filtro_cub ? ' · ' + REVS.filtro_cub : '');
+    $('revListaN').textContent = vis.length + ' revisión(es)' + (REVS.filtro_cub ? ' · ' + nomCub(REVS.filtro_cub) : '');
     // El filtro de año sólo aparece cuando hay más de uno: con un año solo es un control
     // que no decide nada.
     var anios = _anios();
@@ -239,13 +240,13 @@
       '<th colspan="3" class="sec curioso">Hallazgos</th><th></th></tr>' +
       '<tr><th>Revisión</th>' +
       cols.map(function (q, k) {
-        return '<th class="num cub' + (k === 0 ? ' sec' : '') + '" title="' + esc(q) +
+        return '<th class="num cub' + (k === 0 ? ' sec' : '') + '" title="' + esc(nomCub(q)) +
                ': sus hallazgos en esa revisión; en verde cuando ya resolvió todos. Para filtrar por persona, el chip de arriba.">' +
-               esc(q) + '</th>'; }).join('') +
+               esc(nomCub(q)) + '</th>'; }).join('') +
       '<th class="num est sec" title="Marcados como resueltos (incluye lo que aSa ya confirmó).">Resueltos</th>' +
       '<th class="num est" title="Aplican y todavía nadie los resolvió.">Por resolver</th>' +
       '<th class="revavth">Avance</th>' +
-      '<th class="num cur sec curioso" title="Lo que la máquina marcó' + (F ? ' a ' + esc(F) : '') + '.">Detectados</th>' +
+      '<th class="num cur sec curioso" title="Lo que la máquina marcó' + (F ? ' a ' + esc(nomCub(F)) : '') + '.">Detectados</th>' +
       '<th class="num cur curioso" title="Los que una persona miró y descartó con motivo.">No aplican</th>' +
       '<th class="num cur curioso" title="Los que quedan después de descartar los que no aplican. ' +
       'Es contra esto que se mide el avance.">Aplican</th>' +
@@ -265,7 +266,7 @@
             var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
             // EL TOTAL DE SUS HALLAZGOS; la celda en verde cuando ya los resolvió todos.
             // La celda SOLO informa: el filtro de persona vive en los chips de arriba.
-            return '<td class="' + cls + (falta <= 0 ? ' listo' : '') + '" title="' + esc(q) + ' en la revisión #' + r.id +
+            return '<td class="' + cls + (falta <= 0 ? ' listo' : '') + '" title="' + esc(nomCub(q)) + ' en la revisión #' + r.id +
                    ': ' + c.n + ' detectado(s)' +
                    (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
                    (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') +
@@ -373,10 +374,10 @@
         '<button class="audmini" id="revTodo" title="Volver al total de todas las revisiones">✕ Ver todas</button>'
       : '<span class="revtit">Todas las revisiones</span> <span class="muted">' + (T.revisiones || 0) +
         ' corrida(s) · clic en una fila para filtrar</span>') +
-      (F ? '<button class="revfiltro" id="revQuitaFiltro" title="Filtrado por cubicador. Clic para quitar el filtro.">' + esc(F) + ' ✕</button>' : '') +
+      (F ? '<button class="revfiltro" id="revQuitaFiltro" title="Filtrado por cubicador. Clic para quitar el filtro.">' + esc(nomCub(F)) + ' ✕</button>' : '') +
       // EL ÉNFASIS VA EN ABRIR: un solo botón arriba que entra con lo que esté filtrado.
       (apl ? '<button class="audbtn" id="revAbrir" title="Abrir la hoja con ' +
-             (sel ? 'esta revisión' : 'todas las revisiones') + (F ? ', sólo lo de ' + esc(F) : '') + '">Abrir</button>' : '');
+             (sel ? 'esta revisión' : 'todas las revisiones') + (F ? ', sólo lo de ' + esc(nomCub(F)) : '') + '">Abrir</button>' : '');
     $('revAccTit').innerHTML = tit;
     $('revResCuerpo').innerHTML =
       '<div class="revkpis">' + kpis.map(function (k) {
@@ -391,9 +392,13 @@
         // los números en el botón de filtro», 29-oct).
         : '<div class="dshchips revcubs">' + cubs.map(function (c) {
             var falta = c.n - c.no_aplica - c.resueltos;
-            return '<button data-filtro-cub="' + esc(c.q) + '" class="' +
-                   (F === c.q ? 'on ' : '') + (falta <= 0 ? 'listo' : '') +
-                   '" title="Filtrar todo por ' + esc(c.q) + '">' + esc(c.q) + '</button>'; }).join('') + '</div>');
+            // SIN el verde de «ya resolvió todo» (2-nov): el usuario lo leía como «filtro
+            // puesto» —«acá hay 2 filtros pintados en verde»—. El único color de un chip es
+            // el azul del que está puesto; lo resuelto se ve en la matriz.
+            return '<button data-filtro-cub="' + esc(c.q) + '" class="' + (F === c.q ? 'on' : '') +
+                   '" title="Filtrar todo por ' + esc(nomCub(c.q)) +
+                   (falta <= 0 ? ': ya resolvió todo lo suyo' : ': le faltan ' + falta) + '">' +
+                   esc(nomCub(c.q)) + '</button>'; }).join('') + '</div>');
     var vt = $('revTodo');
     if (vt) vt.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -473,7 +478,7 @@
   function pintarItems() {
     var d = REVS.detalle, r = d.revision, items = itemsVisibles();
     $('revItemsTit').textContent = 'Revisión #' + r.id + ' · ' +
-      (REVS.filtro_cub ? items.length + ' de ' + r.items + ' hallazgos · ' + REVS.filtro_cub
+      (REVS.filtro_cub ? items.length + ' de ' + r.items + ' hallazgos · ' + nomCub(REVS.filtro_cub)
                        : r.items + ' hallazgos') + (REVS.cc_abierto ? ' · ' + REVS.cc_abierto : '');
     var RES = { corregida: 1, aceptada: 1, declarada: 1, corregir: 1 };
     function _resueltos(lista) { return lista.filter(function (i) { return RES[i.estado]; }).length; }
@@ -488,8 +493,8 @@
       // Sólo el nombre, igual que arriba: la cuenta ya está en «N de M hallazgos».
       cubs.innerHTML = '<button data-cub="" class="' + (REVS.filtro_cub ? '' : 'on') + '">Todos</button>' +
         r.por_cubicador.map(function (c) {
-          return '<button data-cub="' + esc(c.cubico) + '" class="' + (REVS.filtro_cub === c.cubico ? 'on ' : '') +
-                 (c.pct === 100 ? 'listo' : '') + '">' + esc(c.cubico) + '</button>';
+          return '<button data-cub="' + esc(c.cubico) + '" class="' + (REVS.filtro_cub === c.cubico ? 'on' : '') +
+                 '">' + esc(nomCub(c.cubico)) + '</button>';
         }).join('');
       cubs.querySelectorAll('button[data-cub]').forEach(function (b) {
         b.addEventListener('click', function () {
@@ -523,7 +528,7 @@
             return '<tr class="revccfila' + (ok >= g.items.length ? ' hecho' : '') + '" data-abrircc="' + esc(k) +
               '" title="Abrir las barras de este código">' +
               '<td><b>' + esc(g.cc || '—') + '</b></td><td class="muted">' + esc(g.obra || '') + '</td>' +
-              '<td>' + esc(Object.keys(quienes).join(', ')) + '</td>' +
+              '<td>' + esc(Object.keys(quienes).map(nomCub).join(', ')) + '</td>' +
               '<td class="revn">' + g.items.length + '</td><td class="revn">' + ok + '</td>' +
               '<td style="text-align:right"><span class="audmini">Abrir ›</span></td></tr>';
           }).join('') + '</table>'
@@ -534,7 +539,7 @@
               '<div class="revcc2" data-grupocc="' + esc(g.cc || '') + '"><h5>' +
               '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.obra || '') + '</span>' +
               (Object.keys(quienes).length
-                ? '<span class="revquien">' + esc(Object.keys(quienes).join(', ')) + '</span>' : '') +
+                ? '<span class="revquien">' + esc(Object.keys(quienes).map(nomCub).join(', ')) + '</span>' : '') +
               '<div style="flex:1"></div>' +
               (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                              '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
@@ -1248,7 +1253,7 @@
           return '<tr>' +
             '<td class="audnom" title="' + esc(o.obra) + '">' + esc(o.obra) + '</td>' +
             '<td class="audnom" title="' + esc(o.cubico || '') + '">' +
-              esc((o.quienes && o.quienes.length ? o.quienes : (o.cubico || '').split(', '))
+              esc((o.quienes && o.quienes.length ? o.quienes : (o.cubico || '').split(', ')).map(nomCub)
                   .filter(Boolean).join(', ')) + '</td>' +
             '<td class="num">' + o.ccs + '</td>' +
             '<td class="num">' + (o.revisados
