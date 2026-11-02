@@ -279,15 +279,16 @@
             // en Hallazgos. Estás mirando a una persona, no a todas.
             if (F && F !== q) return '<td class="' + cls + '">' + PUNTO + '</td>';
             if (!c || !c.n) return '<td class="' + cls + '">' + PUNTO + '</td>';
-            var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);
-            // EL TOTAL DE SUS HALLAZGOS; la celda en verde cuando ya los resolvió todos.
-            // La celda SOLO informa: el filtro de persona vive en los chips de arriba.
+            var cerr = (c.no_aplica || 0) + (c.resueltos || 0), falta = c.n - cerr;
+            // CERRADAS DE CUÁNTAS, como en la hoja (2-nov): «15/46» dice en qué va esa
+            // persona en esa revisión; el total solo no decía si alguien lo estaba
+            // mirando. En verde cuando ya no le queda nada.
             return '<td class="' + cls + (falta <= 0 ? ' listo' : '') + '" title="' + esc(nomCub(q)) + ' en la revisión #' + r.id +
                    ': ' + c.n + ' detectado(s)' +
                    (c.no_aplica ? ', ' + c.no_aplica + ' no aplica(n)' : '') +
                    (c.resueltos ? ', ' + c.resueltos + ' resuelto(s)' : '') +
                    (falta > 0 ? ', ' + falta + ' por resolver' : ', nada pendiente') + '">' +
-                   '<b>' + c.n + '</b></td>';
+                   '<b>' + cerr + '</b><span class="revde">/' + c.n + '</span></td>';
           }).join('') +
           '<td class="num est sec">' + n0(t.res, 'revbien') + '</td>' +
           '<td class="num est">' + (pend ? '<b class="revpend">' + pend + '</b>' : PUNTO) + '</td>' +
@@ -575,7 +576,10 @@
             '<div style="flex:1"></div>' +
             (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                            '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
-            '<span class="muted">' + ok + ' de ' + g.items.length + ' cerradas</span></h5>' +
+            // EL AVANCE DEL CÓDIGO, COMPACTO Y A LA DERECHA: «3/10» se lee bajando por la
+            // hoja sin tener que leer una frase en cada cabecera.
+            '<span class="revcuenta" title="Cerradas: resueltas y no aplican, sobre los ' +
+            'hallazgos del código."><b>' + ok + '</b>/' + g.items.length + '</span></h5>' +
             _tablaGrupo(g) + _pieGrupo(g) + '</div>';
         }).join('');
     _bindItems();
@@ -902,6 +906,8 @@
         : e.porGuardar ? 'Guarda las explicaciones escritas y da el código por cerrado.'
                        : 'Este código ya está cerrado: no queda nada que decidir.';
     return '<div class="revccpie">' +
+      '<div class="revbar2"><i style="width:' +
+        (g.items.length ? Math.round((e.cerradas + e.porGuardar) / g.items.length * 100) : 0) + '%"></i></div>' +
       '<span class="muted">' + (e.cerradas + e.porGuardar) + ' de ' + g.items.length + ' cerradas</span>' +
       '<div style="flex:1"></div>' +
       '<button class="audenviar" data-cerrarcc="' + esc(g.cc || '') + '"' +

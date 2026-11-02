@@ -815,6 +815,9 @@ check("...y lo que cambia son los valores: con filtro sólo esa columna lleva n�
 check("la celda por cubicador dice el TOTAL de sus hallazgos, y se pinta VERDE si ya resolvió todos (2-nov)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
       and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
+      # «Cerradas de cuántas» también en la matriz: el total solo no decía si alguien lo miraba.
+      and "'<b>' + cerr + '</b><span class=\"revde\">/' + c.n + '</span></td>'" in JS
+      and ".revmat .revde{color:#b0bec5" in HTM
       and "'<div class=\"l2\">de ' + c.n" not in JS)
 check("...y la matriz va en tres secciones con su raya: quiénes · detectados/no aplican/aplican · resueltos/por resolver/avance",
       '<th class="num est sec"' in JS and ">Resueltos</th>" in JS and ">Por resolver</th>" in JS
@@ -971,9 +974,11 @@ print("\nUNA PALABRA POR CONCEPTO (2-nov)")
 # terminologia.» Resuelta = se corrigio en aSa. Cerrada = resuelta o no aplica: ya no pide
 # nada. La hoja contaba las dos juntas y las llamaba «resueltos», y la matriz no.
 check("en la hoja se cuentan CERRADAS, que es lo que incluye los «no aplica»",
-      "' cerradas</span>'" in JS and "' cerradas</span></h5>'" in JS
-      and "' cerradas</span></h5>'" in JS and "' resueltos</span>'" not in JS
-      and "' de ' + g.items.length + ' cerradas</span></h5>'" in JS)
+      "' cerradas</span>'" in JS and "' resueltos</span>'" not in JS
+      # El avance de cada código, compacto en su cabecera: «3/10».
+      and "><b>' + ok + '</b>/' + g.items.length + '</span></h5>'" in JS
+      and ".revcuenta b{font-size:13px" in HTM
+      and "' de ' + g.items.length + ' cerradas</span>'" in JS)
 check("...y «resueltos» queda solo para lo que se corrigio: el boton, la matriz y el desglose",
       ">Resueltos</th>" in JS and "v.res + ' resueltos · ' + v.nap + ' no aplican'" in JS
       and "' corregidos" not in JS and "' descartados" not in JS)
