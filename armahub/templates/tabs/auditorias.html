@@ -567,17 +567,27 @@
   .revmat{font-size:12px;}
   .revmat td{vertical-align:middle; padding:6px 8px; height:38px; box-sizing:border-box;}
   .revmat th{padding:6px 8px;}
-  .revmat td.num, .revmat th.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  /* Centrado y con anchos fijos por sección, para que haya simetría (2-nov). */
+  .revmat td.num, .revmat th.num{text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .revmat th.cub, .revmat td.cub{width:82px;}
+  .revmat th.est, .revmat td.est{width:96px;}
+  .revmat th.cur, .revmat td.cur{width:88px;}
+  /* VERDE = CERRADO. La persona que ya resolvió todo lo suyo, y el avance al 100%. */
+  .revmat td.listo{background:#e8f5e9 !important;}
+  .revmat td.listo b, .revmat td.listo .revav span{color:#1b5e20;}
+  .revmat td.listo .revav .revbar2 i{background:#43a047;}
+  /* LOS HALLAZGOS, AL FINAL Y ATENUADOS: es el dato curioso, no el que manda. */
+  .revmat th.curioso, .revmat td.curioso{color:#90a4ae; font-weight:400;}
+  .revmat td.curioso span{color:#90a4ae;}
   .revmat td b{font-weight:700; color:#263238;}
   .revmat td .revsuave, .revmat .revvacio2{color:#b0bec5; font-weight:400;}
   .revmat td .revbien{color:#2e7d32; font-weight:600;}
   .revmat td b.revpend{color:#e65100;}
-  .revmat .revtick{font-style:normal; color:#2e7d32; font-weight:700; margin-left:4px;}
   .revmat .revfecha{color:#546e7a;}
   .revmat .l2{color:#90a4ae; font-size:10.5px; font-weight:400; margin-top:1px;}
   /* La fila de secciones: mayúsculas chicas, y el nombre pegado a su raya. */
   .revmat tr.revsecs th{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#78909c;
-                        padding:7px 8px 3px; text-align:left; border-bottom:0; top:0;}
+                        padding:7px 8px 3px; text-align:center; border-bottom:0; top:0;}
   .revmat thead tr:nth-child(2) th{top:24px;}
   /* La raya de cada sección, en encabezado y cuerpo: una sombra interior, que no depende
      del colapso de bordes y se ve igual en todas las filas. */
@@ -585,14 +595,14 @@
   .revmat tr.revsecs th.sec{box-shadow:inset 2px 0 0 #b0bec5;}
   /* Avance: barra de ancho fijo y porcentaje alineado, siempre en el mismo sitio. */
   .revmat .revavth{min-width:140px;}
-  .revmat .revav{display:flex; align-items:center; gap:8px;}
+  .revmat .revav{display:flex; align-items:center; justify-content:center; gap:8px;}
   .revmat .revav .revbar2{width:84px; flex:none; height:6px; background:#eceff1; border-radius:99px; overflow:hidden;}
   .revmat .revav .revbar2 i{display:block; height:100%; background:#8BC34A;}
   .revmat .revav span{width:38px; text-align:right; font-variant-numeric:tabular-nums; color:#455a64;}
-  .revmat .revav.lleno span{color:#2e7d32; font-weight:700;}
   .revmat tbody tr{cursor:pointer;}
   .revmat tbody tr:hover td{background:#f3f7fc;}
   .revmat tbody tr.on td{background:#e8f1fb;}
+  .revmat tbody tr.on td.listo{background:#dcedc8 !important;}
   .revmat tbody tr.on td:first-child{box-shadow:inset 3px 0 0 #1565C0;}
   .revmat tbody tr.on td.sec{box-shadow:inset 2px 0 0 #1565C0;}
   .revmat td.revacc{text-align:right; white-space:nowrap;}

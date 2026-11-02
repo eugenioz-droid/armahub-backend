@@ -798,12 +798,12 @@ check("...y el filtro es UNO, global: la hoja abre con el que este puesto y al v
 check("con filtro, la matriz atenua las otras columnas y la fila de quien no tiene nada se apaga",
       "_cuentaDe(r, F)" in JS and "' dim' : ''" in JS and "' apagada' : ''" in JS
       and ".revmat th.dim, .revmat td.dim{opacity:.35;}" in HTM)
-check("la celda por cubicador dice el TOTAL de sus hallazgos, grande, con ✓ si ya resolvió todos (30-oct)",
+check("la celda por cubicador dice el TOTAL de sus hallazgos, y se pinta VERDE si ya resolvió todos (2-nov)",
       "var falta = c.n - (c.no_aplica || 0) - (c.resueltos || 0);" in JS
-      and "'<b>' + c.n + '</b>' + (falta <= 0 ? '<i class=\"revtick\">✓</i>' : '')" in JS
+      and "(falta <= 0 ? ' listo' : '')" in JS and "revtick" not in JS and "✓</i>" not in JS
       and "'<div class=\"l2\">de ' + c.n" not in JS)
 check("...y la matriz va en tres secciones con su raya: quiénes · detectados/no aplican/aplican · resueltos/por resolver/avance",
-      '<th class="num sec"' in JS and ">Resueltos</th>" in JS and ">Por resolver</th>" in JS
+      '<th class="num est sec"' in JS and ">Resueltos</th>" in JS and ">Por resolver</th>" in JS
       and ".revmat th.sec, .revmat td.sec{box-shadow:inset 2px 0 0" in HTM)
 # «Dejaste numeros de distintos tamaños. Armoniza el display» (2-nov): un solo tamaño, dos
 # filas de encabezado, el vacio siempre igual, el ✓ siempre en el mismo sitio.
@@ -812,7 +812,8 @@ check("la matriz tiene UN tamaño de numero: la jerarquia va por peso y color, n
       and "class=\"revh\"" not in JS)
 check("...dos filas de encabezado: la seccion arriba y la columna abajo, con la raya en la primera de cada una",
       '<tr class="revsecs"><th></th>' in JS and '" class="sec">Cubicadores</th>' in JS
-      and '" class="sec">Hallazgos</th>' in JS and '" class="sec">Estado</th>' in JS
+      and '" class="sec curioso">Hallazgos</th>' in JS and '" class="sec">Estado</th>' in JS
+      and JS.index('class="sec">Estado</th>') < JS.index('class="sec curioso">Hallazgos</th>')
       and ".revmat thead tr:nth-child(2) th{top:24px;}" in HTM)
 check("...el vacio es siempre el mismo punto, y el avance tiene barra de ancho fijo y porcentaje alineado",
       "var PUNTO = '<span class=\"revvacio2\">·</span>';" in JS and ".revmat .revav .revbar2{width:84px" in HTM
@@ -853,6 +854,21 @@ check("con marcas, los botones de la fila se apagan; «Quitar seleccion» los de
       and "function quitarSeleccion(" in JS and 'id="revAccQuitar"' in JS)
 check("los botones de lote ya no llevan la cuenta: esta en «n barra(s) marcada(s)»",
       "'Aplica' + (n ?" not in JS and "'Resuelto' + (n ?" not in JS)
+
+
+print("\nLA MATRIZ: VERDE = CERRADO, CENTRADA, Y LOS HALLAZGOS AL FINAL (2-nov)")
+# «Vamos con celda verde, centra los numeros y encabezados, ajusta los tamaños para que haya
+# simetria. Los tickets se van. La seccion de hallazgos va al final y separada: es un dato
+# casi curioso; aca nos interesa que hallazgos tiene quien, que tiene pendiente y el avance.»
+check("celda verde para quien ya resolvio todo lo suyo y para el avance al 100%; sin ✓",
+      ".revmat td.listo{background:#e8f5e9" in HTM and "(lleno ? ' listo' : '')" in JS
+      and "revtick" not in HTM and "✓" not in JS.split("function pintarRevisiones(")[1].split("function pintarResumen(")[0])
+check("numeros y encabezados centrados, con anchos fijos por seccion",
+      "text-align:center; font-variant-numeric:tabular-nums" in HTM and ".revmat th.cub, .revmat td.cub{width:" in HTM
+      and ".revmat th.est, .revmat td.est{width:" in HTM and ".revmat th.cur, .revmat td.cur{width:" in HTM)
+check("el orden es el del trabajo: cubicadores · estado · hallazgos, y los hallazgos van atenuados",
+      ".revmat th.curioso, .revmat td.curioso{color:#90a4ae" in HTM
+      and JS.index(">Por resolver</th>") < JS.index(">Detectados</th>"))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
