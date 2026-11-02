@@ -576,6 +576,36 @@ def nombre_visible(nombre: str, apellido: str) -> str:
     return ("%s %s" % (n[:1].upper(), a)).strip() if a else n
 
 
+# Quien no es usuario de la plataforma pero sí aparece en los filtros. El login se escribe
+# como se lee; lo único que NO se puede derivar es un apellido que no está en el login, y
+# por eso las excepciones se escriben a mano, con nombre y fecha de quien las dio.
+NOMBRES_A_MANO = {
+    "MarioP": "M Puyo",        # el usuario, 2-nov: externo que ya no trabaja acá
+}
+# Lo que no es el login de una persona: una sigla, una cuenta de sistema. Se deja igual.
+LOGINS_TAL_CUAL = {"rmc", "admin", "asaadmin"}
+
+
+def nombre_de_login(login: str) -> str:
+    """El login de aSa, escrito como se lee: `jsanchez` → «J Sanchez», `Turtubia` →
+    «T Urtubia», `FiorellaB` → «Fiorella B». Esto NO inventa datos: sólo separa lo que ya
+    está pegado en el login. Un apellido que no esté ahí no se adivina —para eso están las
+    excepciones a mano—, y lo que no parece el nombre de una persona se deja igual."""
+    l = (login or "").strip()
+    if l in NOMBRES_A_MANO:
+        return NOMBRES_A_MANO[l]
+    if not l or "@" in l or " " in l or l.lower() in LOGINS_TAL_CUAL or not l.isalpha():
+        return l
+    # Una mayúscula en medio parte el login: `CManriquez`, `FiorellaB`, `MDIAZ` no.
+    corte = next((i for i in range(1, len(l)) if l[i].isupper() and not l[i - 1].isupper()), 0)
+    if corte:
+        a, b = l[:corte], l[corte:]
+        return "%s %s" % (a.title() if len(a) > 1 else a.upper(),
+                          b.title() if len(b) > 1 else b.upper())
+    # Sin corte: la primera letra es la inicial y el resto el apellido.
+    return "%s %s" % (l[0].upper(), l[1:].title())
+
+
 def nombres_asa(cur) -> dict:
     """Los logins de aSa que SÍ son alguien de la plataforma, y cómo se escriben.
 
@@ -607,6 +637,12 @@ def nombres_asa(cur) -> dict:
             if alias_de(nombre, apellido, login) or l == n + a[:1]:
                 out[login] = nombre_visible(nombre, apellido)
                 break
+        else:
+            # No es usuario: no hay nombre real que poner, pero el login se escribe como se
+            # lee. Lo que no parece el nombre de una persona sale igual que como entró.
+            bonito = nombre_de_login(login)
+            if bonito != login:
+                out[login] = bonito
     return out
 
 

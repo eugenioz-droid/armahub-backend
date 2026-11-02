@@ -1483,5 +1483,18 @@ check("en las auditorias, quien cubico se escribe igual: login traducido, correo
       "function quien(x) {" in JS and "esc(quien(e.cubicado_por))" in JS
       and "esc(quien(x.cubicador))" in JS and "global.cargarNomCub();" in JS)
 
+
+print("\nEL LOGIN DE QUIEN NO ES USUARIO, TAMBIEN SE ESCRIBE BIEN (2-nov)")
+from armahub.auditorias import nombre_de_login        # noqa: E402
+check("el login se separa como se lee, sin inventar nada",
+      nombre_de_login("Jsanchez") == "J Sanchez" and nombre_de_login("Turtubia") == "T Urtubia"
+      and nombre_de_login("CManriquez") == "C Manriquez" and nombre_de_login("FiorellaB") == "Fiorella B")
+check("...lo que no es el nombre de una persona se deja igual: siglas, cuentas, correos",
+      nombre_de_login("RMC") == "RMC" and nombre_de_login("admin") == "admin"
+      and nombre_de_login("aSaAdmin") == "aSaAdmin" and nombre_de_login("x@y.cl") == "x@y.cl")
+check("...y un apellido que no esta en el login se escribe a mano, con su porque",
+      nombre_de_login("MarioP") == "M Puyo" and "NOMBRES_A_MANO = {" in SRC
+      and "externo que ya no trabaja" in SRC)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

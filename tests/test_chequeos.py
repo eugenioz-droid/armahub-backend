@@ -822,8 +822,8 @@ check("...el vacio es siempre el mismo punto, y el avance tiene barra de ancho f
 check("arriba parte en «Todas las revisiones», grande; una fila elegida lo dice y tiene su ✕",
       "Todas las revisiones</span>" in JS and 'class="revtit"' in JS and ".revtit{font-size:16px" in HTM
       and "✕ Ver todas" in JS)
-check("«resueltos» se mide contra lo que aplica, con el MISMO porcentaje que la matriz",
-      "'resueltos de los que aplican'" in JS and "var pct = apl ? Math.round(v.res / apl * 100) : null;" in JS)
+check("«cerrado» se mide contra los detectados: corregir y descartar son las dos salidas",
+      "var pend = Math.max(0, apl - v.res), cerr = v.nap + v.res;" in JS and "pcent(cerr)" in JS)
 check("«barras miradas» sale; entra lo que envejece: abiertas hace mas de 7 dias",
       "'barras miradas'" not in JS and "'abiertas hace más de 7 días'" in JS
       and "s.visto_primero < now() - interval '7 days'" in API and '"viejas": t[6]' in API)
@@ -917,6 +917,24 @@ PRGJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "programa
                           "dashboards.js"), encoding="utf-8").read()
 check("en los dashboards de programacion, los chips de persona tambien",
       "}, nomCub);" in PRGJS and "esc(nomCub(p))" in PRGJS and "await global.cargarNomCub();" in PRGJS)
+
+
+print("\nLAS TARJETAS: EL DENOMINADOR NO SE MUEVE (2-nov)")
+# «166 / 277 resueltos de los que aplican» se veia sucio y era movil: al marcar un «no
+# aplica» bajaba el denominador y el % subia solo, sin que nadie corrigiera nada.
+check("el denominador es DETECTADOS, que ya no cambia; «no aplica» no cuenta como corregido",
+      "var pcent = function (x) { return v.det ? Math.round(x / v.det * 100) : 0; };" in JS
+      and "'resueltos de los que aplican'" not in JS
+      and "v.res + ' corregidos · ' + v.nap + ' descartados'" in JS)
+check("cuatro tarjetas: lo que falta, lo que envejece, lo cerrado y lo descartado",
+      "'por resolver'" in JS and "'abiertas hace más de 7 días'" in JS
+      and "'cerrado'" in JS and "'descartado'" in JS)
+check("...lo accionable se ve: ambar lo que falta, rojo lo que lleva mas de una semana",
+      ".revkpi.ocupa b{color:#e65100;}" in HTM and ".revkpi.urge b{color:#c62828;}" in HTM
+      and ".revkbar i{display:block" in HTM)
+check("el contexto —obras, codigos, kilos— baja a una linea: con eso no se decide nada",
+      "var ctx = [v.obras" in JS and "' kg en juego'" in JS.replace("'kg en juego'", "' kg en juego'")
+      and ".revctx{font-size:10.5px" in HTM)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

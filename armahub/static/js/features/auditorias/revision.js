@@ -353,20 +353,32 @@
     var v = mio
       ? { det: mio.n, nap: mio.no_aplica, res: mio.resueltos, obras: mio.obras, ccs: mio.ccs, kg: null, viejas: mio.viejas }
       : base;
+    // EL DENOMINADOR NO SE PUEDE MOVER (2-nov). Decía «166 / 277 resueltos de los que
+    // aplican»: «aplican» es detectados menos los descartados, así que marcar un «no
+    // aplica» bajaba el denominador y el porcentaje subía SOLO, sin que nadie corrigiera
+    // nada. Un indicador que mejora sin trabajo está roto. Ahora todo se mide contra los
+    // detectados, que es un número que ya no cambia.
+    //
+    // Y «no aplica» NO cuenta como resuelto: una corrigió la barra en aSa y la otra
+    // descartó el hallazgo. Son dos disposiciones distintas y la norma pide poder
+    // distinguirlas; además la tasa de descarte es el termómetro de las reglas —si se
+    // descarta el 60%, el problema está en la regla, no en las barras—, y metida dentro
+    // de «resuelto» no se vería nunca.
     var apl = Math.max(0, v.det - v.nap);
-    var pct = apl ? Math.round(v.res / apl * 100) : null;
-    // «RESUELTOS» CONTRA LO QUE APLICA, con el mismo porcentaje que la matriz (29-oct).
-    // Antes decía «18 / 233» arriba y «5%» abajo: dos números para lo mismo.
+    var pend = Math.max(0, apl - v.res), cerr = v.nap + v.res;
+    var pcent = function (x) { return v.det ? Math.round(x / v.det * 100) : 0; };
     var kpis = [
-      [v.det, 'detectados'],
-      [v.res + ' / ' + apl + (pct == null ? '' : ' <small>· ' + pct + '%</small>'), 'resueltos de los que aplican'],
-      [v.nap, 'no aplican'],
-      [v.obras || 0, 'obra(s)'],
-      [v.ccs || 0, 'código(s) con hallazgo'],
-      // LO QUE ENVEJECE SIN QUE NADIE LO VEA, en vez de «barras miradas» (29-oct).
-      [v.viejas || 0, 'abiertas hace más de 7 días']
+      // LO ÚNICO ACCIONABLE, PRIMERO Y EN ÁMBAR.
+      [pend, 'por resolver', pend ? 'ocupa' : '', v.det ? 'de ' + v.det + ' detectado(s)' : ''],
+      // EL PLAZO: cuántas llevan más de una semana sin que nadie las mire.
+      [v.viejas || 0, 'abiertas hace más de 7 días', v.viejas ? 'urge' : '', ''],
+      // EL AVANCE, contra los detectados: corregir y descartar son las dos formas de
+      // cerrar, y las dos se ven por separado.
+      [pcent(cerr) + '%', 'cerrado', pcent(cerr) === 100 ? 'listo' : '',
+       '<i style="width:' + pcent(cerr) + '%"></i>', v.res + ' corregidos · ' + v.nap + ' descartados'],
+      // LA CALIDAD DE LAS REGLAS: lo que se descarta es lo que la máquina marcó de más.
+      [pcent(v.nap) + '%', 'descartado', '', '', v.nap + ' de ' + v.det + ' no aplicaban']
     ];
-    if (v.kg != null) kpis.splice(5, 0, [num(Math.round(v.kg)), 'kg en juego']);
     var tit = (sel
       ? '<span class="revtit">Revisión #' + sel.id + '</span> <span class="muted">' + _fechaHora(sel.arrancada) +
         ' · ' + esc(sel.por === 'reloj' ? 'automática' : (sel.por || '').split('@')[0]) +
@@ -379,9 +391,17 @@
       (apl ? '<button class="audbtn" id="revAbrir" title="Abrir la hoja con ' +
              (sel ? 'esta revisión' : 'todas las revisiones') + (F ? ', sólo lo de ' + esc(nomCub(F)) : '') + '">Abrir</button>' : '');
     $('revAccTit').innerHTML = tit;
+    // El contexto —obras, códigos, kilos— no es un indicador: no se decide nada con él.
+    // Va en una línea, no en tarjetas del mismo peso que lo que hay que hacer.
+    var ctx = [v.obras ? v.obras + ' obra(s)' : '', v.ccs ? v.ccs + ' código(s) con hallazgo' : '',
+               v.kg ? num(Math.round(v.kg)) + ' kg en juego' : ''].filter(Boolean).join(' · ');
     $('revResCuerpo').innerHTML =
       '<div class="revkpis">' + kpis.map(function (k) {
-        return '<div class="revkpi"><b>' + k[0] + '</b><span>' + k[1] + '</span></div>'; }).join('') + '</div>' +
+        return '<div class="revkpi ' + (k[2] || '') + '"><b>' + k[0] + '</b><span>' + k[1] + '</span>' +
+               (k[3] ? (k[3].indexOf('<i') === 0 ? '<div class="revkbar">' + k[3] + '</div>'
+                                                 : '<em>' + k[3] + '</em>') : '') +
+               (k[4] ? '<em>' + k[4] + '</em>' : '') + '</div>'; }).join('') + '</div>' +
+      (ctx ? '<div class="revctx">' + ctx + '</div>' : '') +
       (!base.det
         ? '<div class="revvacio">' + (sel
             ? 'Esta revisión no encontró hallazgos: se miraron ' + (sel.ccs || 0) +

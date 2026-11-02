@@ -599,11 +599,23 @@
   .revfiltro{background:#e3f2fd; color:#1565C0; border:1px solid #bbdefb; border-radius:99px; padding:2px 9px; font-size:11px; font-weight:600; cursor:pointer;}
   .revfiltro:hover{background:#bbdefb;}
   #revAbrir{padding:5px 16px;}
-  .revkpi small{font-size:11px; color:#78909c; font-weight:400;}
-  .revkpis{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
-  .revkpi{flex:1; min-width:96px; background:#f7f9fb; border:1px solid #e3e8ef; border-radius:6px; padding:7px 10px;}
-  .revkpi b{display:block; font-size:17px; color:#263238; font-variant-numeric:tabular-nums;}
-  .revkpi span{font-size:10px; color:#78909c;}
+  /* CUATRO PREGUNTAS, CUATRO TARJETAS (2-nov): qué falta, hace cuánto, cuánto se cerró y
+     si las reglas sirven. Lo accionable manda: ámbar lo que falta, rojo lo que envejece. */
+  .revkpis{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;}
+  .revkpi{flex:1; min-width:150px; background:#f7f9fb; border:1px solid #e3e8ef; border-radius:6px; padding:8px 11px;}
+  .revkpi b{display:block; font-size:22px; line-height:1.1; color:#263238; font-variant-numeric:tabular-nums;}
+  .revkpi span{display:block; font-size:10.5px; color:#78909c; margin-top:1px;}
+  .revkpi em{display:block; font-style:normal; font-size:10px; color:#90a4ae; margin-top:3px;}
+  .revkpi.ocupa{background:#fff8e1; border-color:#ffe082;}
+  .revkpi.ocupa b{color:#e65100;}
+  .revkpi.urge{background:#ffebee; border-color:#ffcdd2;}
+  .revkpi.urge b{color:#c62828;}
+  .revkpi.listo{background:#e8f5e9; border-color:#c8e6c9;}
+  .revkpi.listo b{color:#1b5e20;}
+  .revkbar{height:5px; background:#eceff1; border-radius:99px; overflow:hidden; margin-top:6px;}
+  .revkbar i{display:block; height:100%; background:#8BC34A;}
+  .revkpi.listo .revkbar i{background:#43a047;}
+  .revctx{font-size:10.5px; color:#90a4ae; margin-bottom:10px;}
   /* ══════ LA HOJA DE TRABAJO ══════ */
   /* EL ANCHO DE LA HOJA. 1040 → 1180 al entrar la figura; ahora al 96% de la pantalla
      porque el usuario la vio chica: «igual las barras están pequeñas, no se ven, agranda
