@@ -568,7 +568,7 @@ check("...y si quien cierra confirma, queda su firma en la señal",
 check("...cierra cualquiera lo resuelto; al dueño le llega aviso",
       "cierra lo suyo quien lo hizo" not in API and "cerró %d barra(s) tuyas" in API)
 check("la pantalla tiene el botón de cerrar, muestra el aviso con dos salidas y reintenta confirmando",
-      'id="revAccCerrar"' in HTM and "async function cerrarResueltos(confirmar)" in JS
+      'id="revAccCerrar"' in HTM and "async function cerrarResueltos(confirmar, soloIds)" in JS
       and "function _avisoCierreRev(" in JS and "Cerrar igual" in JS
       and "confirmar: !!confirmar" in JS and "e.status === 409" in JS and "err.detalle = det;" in JS)
 check("resuelto es lo que dijo quien lo hizo: la declarada cuenta como resuelta en los contadores",
@@ -974,6 +974,29 @@ check("en la hoja se cuentan CERRADAS, que es lo que incluye los «no aplica»",
 check("...y «resueltos» queda solo para lo que se corrigio: el boton, la matriz y el desglose",
       ">Resueltos</th>" in JS and "v.res + ' resueltos · ' + v.nap + ' no aplican'" in JS
       and "' corregidos" not in JS and "' descartados" not in JS)
+
+
+print("\nCERRAR EL CODIGO: EL FINAL DEL FLUJO (2-nov)")
+# «Presiono no aplica y escribo el texto... el boton guardar al final si nos servia, pero lo
+# llamaria cerrar CC y que sea uno para todas las observaciones del CC. Si no esta todo
+# marcado como resuelto o No aplica con su explicacion, no te debe dejar cerrar.»
+check("el codigo tiene su pie con UN boton que lo cierra entero",
+      "function _pieGrupo(g) {" in JS and 'id="revCerrarCC"' in JS
+      and "_tablaGrupo(g) + _pieGrupo(g)" in JS and ".revccpie{display:flex" in HTM)
+check("...que no deja cerrar mientras quede algo sin decidir, y dice cuanto falta",
+      "'Faltan ' + e.faltan + ' barra(s) por decidir'" in JS
+      and "(e.faltan || !(e.porGuardar || e.porCerrar) ? ' disabled' : '')" in JS
+      and "function _marcarPendientes(" in JS and ".revcc2 tr.falta td{" in HTM)
+check("...guarda de una vez las explicaciones escritas, agrupando las iguales",
+      "var porNota = {};" in JS and "estado: 'aceptada', nota: nota });" in JS
+      and "(porNota[n] = porNota[n] || []).push(Number(i.id));" in JS)
+check("...y lleva a aSa SOLO lo marcado resuelto de ese codigo",
+      "await cerrarResueltos(false, decl);" in JS
+      and "async function cerrarResueltos(confirmar, soloIds)" in JS
+      and "var ids = soloIds || (confirmar && _ultimoCierre) ||" in JS)
+check("una explicacion a medio escribir ya cuenta como decidida: el pie se entera al teclear",
+      "function _notaDe(id) {" in JS and "c.addEventListener('input', _repintarPie);" in JS
+      and "function _repintarPie() {" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

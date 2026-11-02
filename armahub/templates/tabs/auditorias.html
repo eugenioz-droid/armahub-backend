@@ -690,6 +690,13 @@
   .revcc2 th.reva, .revcc2 td.reva{color:#90a4ae; font-weight:400; font-size:10px;}
   .revcc2 td.revesp{color:#8d6e00; font-weight:600;}
   .revcc2 td.revacc{white-space:nowrap;}
+  /* EL PIE DEL CÓDIGO (2-nov): el botón que cierra el CC, y la cuenta de cómo va. */
+  .revccpie{display:flex; align-items:center; gap:10px; padding:8px 10px; background:#f7f9fb;
+            border-top:1px solid #eceff1; font-size:11px;}
+  .revccpie .audenviar{padding:5px 16px;}
+  /* La barra que todavía no tiene decisión, cuando se intenta cerrar sin ella. */
+  .revcc2 tr.falta td{background:#fff3e0;}
+  .revcc2 tr.falta td:first-child{box-shadow:inset 3px 0 0 #e65100;}
   /* Aplica | No aplica, y Resuelto a continuación con una separación chica. */
   .revaccs{display:inline-flex; align-items:center; gap:8px; white-space:nowrap;}
   .revaccs .audbres{margin-left:0;}

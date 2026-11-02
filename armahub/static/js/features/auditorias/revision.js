@@ -597,7 +597,7 @@
               (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                              '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
               '<span class="muted">' + ok + ' de ' + g.items.length + ' cerradas</span></h5>' +
-              _tablaGrupo(g) + '</div>';
+              _tablaGrupo(g) + _pieGrupo(g) + '</div>';
           })());
     _bindItems();
     // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la hoja.
@@ -679,6 +679,19 @@
       if (e.key === 'Enter') noAplicaMarcadas();
       if (e.key === 'Escape') { nota.style.display = 'none'; nota.value = ''; na.classList.remove('eligiendo'); }
     });
+  }
+
+  // Sólo el pie, que es lo único que cambia al escribir: repintar la hoja entera por cada
+  // tecla sería rehacer trescientos SVG.
+  function _repintarPie() {
+    var pie = document.querySelector('.revccpie');
+    var g = _grupoAbierto();
+    if (!pie || !g) return;
+    var nuevo = document.createElement('div');
+    nuevo.innerHTML = _pieGrupo(g);
+    pie.innerHTML = nuevo.firstChild.innerHTML;
+    var cc = pie.querySelector('#revCerrarCC');
+    if (cc) cc.addEventListener('click', function () { cerrarCC(cc); });
   }
 
   function quitarSeleccion() {
@@ -885,6 +898,51 @@
       g.items.map(function (i) { return filaItem(i, c); }).join('') + '</table>';
   }
 
+  // EL PIE DEL CÓDIGO: un solo botón que cierra todo lo de este CC. Dice lo que falta
+  // mientras falte, y recién cuando no queda nada por decidir deja cerrar.
+  function _pieGrupo(g) {
+    var e = _estadoCC(g);
+    var txt = e.faltan
+      ? 'Faltan ' + e.faltan + ' barra(s) por decidir'
+      : (e.porGuardar || e.porCerrar)
+        ? 'Cerrar código' + (e.porCerrar ? ' (' + e.porCerrar + ')' : '')
+        : 'Código cerrado';
+    var ayuda = e.faltan
+      ? 'Cada barra tiene que quedar como Resuelto, o como No aplica con su explicación. ' +
+        'Faltan ' + e.faltan + '.'
+      : e.porCerrar
+        ? 'Guarda lo escrito y comprueba en aSa las ' + e.porCerrar + ' barra(s) resueltas. ' +
+          'Si alguna sigue como estaba, te lo dice antes de cerrar.'
+        : e.porGuardar ? 'Guarda las explicaciones escritas y da el código por cerrado.'
+                       : 'Este código ya está cerrado: no queda nada que decidir.';
+    return '<div class="revccpie">' +
+      '<span class="muted">' + (e.cerradas + e.porGuardar) + ' de ' + g.items.length + ' cerradas</span>' +
+      '<div style="flex:1"></div>' +
+      '<button class="audenviar" id="revCerrarCC"' +
+        (e.faltan || !(e.porGuardar || e.porCerrar) ? ' disabled' : '') +
+        ' title="' + esc(ayuda) + '">' + txt + '</button></div>';
+  }
+
+  // EN QUÉ VA EL CÓDIGO. `porGuardar` son las explicaciones escritas y todavía no
+  // mandadas: cuentan como decididas —el usuario ya tomó la decisión, sólo falta
+  // guardarla— y por eso no bloquean el cierre.
+  function _estadoCC(g) {
+    var faltan = 0, porGuardar = 0, porCerrar = 0, cerradas = 0;
+    (g.items || []).forEach(function (i) {
+      if (i.estado === 'declarada' || i.estado === 'corregir') { porCerrar++; cerradas++; return; }
+      if (i.estado === 'corregida' || i.estado === 'aceptada') { cerradas++; return; }
+      if (_notaDe(i.id).length >= 10) porGuardar++;
+      else faltan++;
+    });
+    return { faltan: faltan, porGuardar: porGuardar, porCerrar: porCerrar, cerradas: cerradas };
+  }
+
+  // Lo escrito en el campo del «no aplica» de esa fila, si está abierto.
+  function _notaDe(id) {
+    var i = document.querySelector('input[data-nota="' + id + '"]');
+    return (i && i.style.display !== 'none' && (i.value || '').trim()) || '';
+  }
+
   function filaItem(i, c) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
     var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
@@ -948,6 +1006,13 @@
     // Abrir un código, y volver a la lista. Las dos limpian lo marcado: era de otro código.
     caja.querySelectorAll('[data-abrircc]').forEach(function (b) {
       b.addEventListener('click', function () { REVS.cc_abierto = b.dataset.abrircc; REVS.sel_items = {}; pintarItems(); });
+    });
+    var cc = caja.querySelector('#revCerrarCC');
+    if (cc) cc.addEventListener('click', function () { cerrarCC(cc); });
+    // Mientras se escribe la explicación, el botón del pie se entera: pasa de «faltan 3»
+    // a «cerrar código» sin que haya que apretar nada antes.
+    caja.querySelectorAll('input[data-nota]').forEach(function (c) {
+      c.addEventListener('input', _repintarPie);
     });
     caja.querySelectorAll('[data-volvercc]').forEach(function (b) {
       b.addEventListener('click', function () { REVS.cc_abierto = null; REVS.sel_items = {}; pintarItems(); });
@@ -1059,6 +1124,74 @@
     await declararUno(id, 'aceptada', null, nota, false, b.na);
   }
 
+  // CERRAR EL CÓDIGO: guarda de una vez las explicaciones escritas y lleva a aSa lo que
+  // está marcado resuelto. Es el final del flujo: se entra a un código, se decide barra
+  // por barra y se cierra. No deja cerrar con algo sin decidir.
+  async function cerrarCC(boton) {
+    var g = _grupoAbierto();
+    if (!g) return;
+    var e = _estadoCC(g);
+    if (e.faltan) {
+      aviso('Faltan ' + e.faltan + ' barra(s) por decidir: cada una tiene que quedar como ' +
+            'Resuelto, o como No aplica con su explicación.');
+      _marcarPendientes(g);
+      return;
+    }
+    var txt = boton ? boton.textContent : '';
+    if (boton) { boton.disabled = true; boton.classList.add('audwait'); boton.textContent = 'Guardando…'; }
+    try {
+      // Las explicaciones iguales van juntas: en un código suelen ser la misma razón.
+      var porNota = {};
+      (g.items || []).forEach(function (i) {
+        if (i.estado !== 'abierta') return;
+        var n = _notaDe(i.id);
+        if (n.length >= 10) (porNota[n] = porNota[n] || []).push(Number(i.id));
+      });
+      for (var nota in porNota) {
+        if (!Object.prototype.hasOwnProperty.call(porNota, nota)) continue;
+        await req('PUT', '/chequeos/declarar', { ids: porNota[nota], estado: 'aceptada', nota: nota });
+        porNota[nota].forEach(function (id) {
+          (((REVS.detalle || {}).items) || []).forEach(function (x) {
+            if (Number(x.id) === id) { x.estado = 'aceptada'; x.nota = nota; }
+          });
+        });
+      }
+      // Lo marcado resuelto se comprueba en aSa; lo que no aplica no tiene nada que ir a ver.
+      var decl = (g.items || []).filter(function (i) {
+        return i.estado === 'declarada' || i.estado === 'corregir'; }).map(function (i) { return Number(i.id); });
+      if (decl.length) {
+        await cerrarResueltos(false, decl);
+      } else {
+        ok('Código cerrado');
+        await refrescarRevision();
+      }
+    } catch (err) {
+      aviso(err.message);
+    }
+    if (boton) { boton.disabled = false; boton.classList.remove('audwait'); boton.textContent = txt; }
+  }
+
+  function _grupoAbierto() {
+    if (!REVS.cc_abierto) return null;
+    var g = { items: itemsVisibles().filter(function (i) { return (i.cc || '') === REVS.cc_abierto; }) };
+    return g.items.length ? g : null;
+  }
+
+  // Las que todavía no tienen decisión se señalan: con veinte barras, «faltan 3» sin decir
+  // cuáles es mandar a buscar.
+  function _marcarPendientes(g) {
+    var primera = null;
+    (g.items || []).forEach(function (i) {
+      if (i.estado !== 'abierta' || _notaDe(i.id).length >= 10) return;
+      var tr = document.querySelector('tr[data-fila="' + i.id + '"]');
+      if (!tr) return;
+      tr.classList.add('falta');
+      setTimeout(function () { tr.classList.remove('falta'); }, 4000);
+      if (!primera) primera = tr;
+    });
+    if (primera) primera.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   // Una barra, una decisión: así se resuelve en la fila. El lote quedó sólo para el check
   // de «ya la corregí», que es lo único que se hace de a muchas.
   async function declararUno(id, estado, motivo, nota, patron, boton) {
@@ -1125,11 +1258,15 @@
   // pregunta a aSa en vivo por cada barra marcada resuelta; la que cumple queda confirmada,
   // y si alguna sigue como estaba contesta 409 con la lista. Acá se muestra y quien cierra
   // decide: volver a revisar, o cerrar igual —y entonces queda firmado que lo confirmó él—.
-  async function cerrarResueltos(confirmar) {
+  // `soloIds` cierra un subconjunto —las barras de UN código— en vez de todo lo visible.
+  // Se recuerda para el «cerrar igual» del aviso, que reintenta lo mismo confirmando.
+  var _ultimoCierre = null;
+  async function cerrarResueltos(confirmar, soloIds) {
     var b = $('revAccCerrar'), msg = $('revAccMsg');
-    var ids = itemsVisibles().filter(function (i) {
+    var ids = soloIds || (confirmar && _ultimoCierre) || itemsVisibles().filter(function (i) {
       return i.estado === 'declarada' || i.estado === 'corregir'; }).map(function (i) { return Number(i.id); });
     if (!ids.length) return;
+    _ultimoCierre = ids;
     if (b) { b.disabled = true; b.classList.add('audwait'); b.textContent = confirmar ? 'Cerrando…' : 'Comprobando en aSa…'; }
     try {
       var r = await req('POST', '/chequeos/cerrar-resueltas', { ids: ids, confirmar: !!confirmar });
