@@ -704,7 +704,15 @@
   .revlista td{padding:7px 8px; border-top:1px solid #f2f4f7;}
   .revlista tr.revccfila{cursor:pointer;}
   .revlista tr.revccfila:hover td{background:#f5f7f9;}
-  .revlista tr.hecho td{color:#558b2f; background:#f9fbf6;}
+  /* El código terminado se ve terminado, y el empezado se distingue del que no se ha
+     tocado. Sin ✓ ni etiquetas: el color y la cuenta bastan (2-nov). */
+  .revlista tr.hecho td{color:#33691e; background:#eef7e8;}
+  .revlista tr.hecho:hover td{background:#e4f1d9;}
+  .revlista tr.yendo td{background:#fffdf3;}
+  .revlista td.revn{font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .revlista td.revn b{font-size:13px; color:#263238;}
+  .revlista tr.hecho td.revn b{color:#33691e;}
+  .revlista .revde{color:#b0bec5; font-weight:400;}
   .revvolver{margin:0 0 8px;}
   .revcc2 td{vertical-align:middle;}
   .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}

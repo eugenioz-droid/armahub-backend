@@ -967,7 +967,10 @@ print("\nUNA PALABRA POR CONCEPTO (2-nov)")
 # nada. La hoja contaba las dos juntas y las llamaba «resueltos», y la matriz no.
 check("en la hoja se cuentan CERRADAS, que es lo que incluye los «no aplica»",
       "' cerradas</span>'" in JS and "' cerradas</span></h5>'" in JS
-      and ">Cerradas</th>" in JS and "' resueltos</span>'" not in JS)
+      and ">Cerradas</th>" in JS and "' resueltos</span>'" not in JS
+      # Una sola cuenta por código: «10/10», no dos columnas que hay que restar con la vista.
+      and "'<td class=\"revn\"><b>' + ok + '</b><span class=\"revde\">/' + lista + '</span></td>'" in JS
+      and '<th class="revn">Hallazgos</th>' not in JS and ".revlista tr.yendo td{" in HTM)
 check("...y «resueltos» queda solo para lo que se corrigio: el boton, la matriz y el desglose",
       ">Resueltos</th>" in JS and "v.res + ' resueltos · ' + v.nap + ' no aplican'" in JS
       and "' corregidos" not in JS and "' descartados" not in JS)

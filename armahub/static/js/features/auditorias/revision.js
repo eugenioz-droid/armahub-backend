@@ -567,17 +567,22 @@
     $('revItemsCuerpo').innerHTML = !items.length
       ? '<div class="revvacio">No hay hallazgos tuyos en esta revisión.</div>'
       : (!abierto
+        // UNA SOLA CUENTA, «CERRADAS DE CUÁNTAS» (2-nov). Eran dos columnas —hallazgos y
+        // cerradas— y había que restarlas con la vista para saber en qué iba cada código:
+        // «hay hartas cosas resueltas pero la pantalla no lo refleja, da la sensación de
+        // que no se está mirando». Juntas en «10/10» el avance se lee de una, y la fila
+        // completa se pinta, sin ✓ ni etiquetas de más.
         ? '<table class="revlista"><tr class="revhead"><th>Código</th><th>Obra</th><th>Cubicó</th>' +
-          '<th class="revn">Hallazgos</th><th class="revn" title="Resueltas y no aplican: ' +
-          'las que ya no piden nada.">Cerradas</th><th></th></tr>' +
+          '<th class="revn" title="Cerradas de cuántas: resueltas y no aplican sobre los ' +
+          'hallazgos del código.">Cerradas</th><th></th></tr>' +
           orden.map(function (k) {
-            var g = grupos[k], ok = _resueltos(g.items), quienes = {};
+            var g = grupos[k], ok = _resueltos(g.items), quienes = {}, lista = g.items.length;
             g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
-            return '<tr class="revccfila' + (ok >= g.items.length ? ' hecho' : '') + '" data-abrircc="' + esc(k) +
+            return '<tr class="revccfila' + (ok >= lista ? ' hecho' : ok ? ' yendo' : '') + '" data-abrircc="' + esc(k) +
               '" title="Abrir las barras de este código">' +
               '<td><b>' + esc(g.cc || '—') + '</b></td><td class="muted">' + esc(g.obra || '') + '</td>' +
               '<td>' + esc(Object.keys(quienes).map(nomCub).join(', ')) + '</td>' +
-              '<td class="revn">' + g.items.length + '</td><td class="revn">' + ok + '</td>' +
+              '<td class="revn"><b>' + ok + '</b><span class="revde">/' + lista + '</span></td>' +
               '<td style="text-align:right"><span class="audmini">Abrir ›</span></td></tr>';
           }).join('') + '</table>'
         : (function () {
