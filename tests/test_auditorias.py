@@ -1505,5 +1505,10 @@ check("el contador de barras pendientes mira solo los elementos que son hallazgo
       "WHERE e.auditoria_id = %s AND i.conforme IS FALSE AND e.hallazgo = %s" in SRC
       and "(auditoria_id, HALLAZGO_ABRE_ACCION))\n    resueltas, abiertas = cur.fetchone()" in SRC)
 
+check("...y el detalle, la lista, los indicadores y el desglose por cubicador cuentan lo mismo que el panel",
+      'todas = [b for e in aud["elementos"] if e.get("accion_estado") for b in e["barras_malas"]]' in SRC
+      and SRC.count("AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'") == 6
+      and JS.count("if (!el.accion_estado) return;") == 2)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -1197,14 +1197,14 @@ def listar(id_proyecto: str = "", auditor: str = "", estado: str = "", limite: i
                            -- consulta es el ELEMENTO y contar barras ahí las multiplicaría.
                            (SELECT COUNT(*) FROM auditoria_items i
                              JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
-                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE),
+                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'),
                            (SELECT COUNT(*) FROM auditoria_items i
                              JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
-                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'
                               AND (i.desestimado OR i.verificado = 'ok')),
                            (SELECT COUNT(*) FROM auditoria_items i
                              JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
-                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                            WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'
                               AND i.desestimado)
                       FROM auditorias a
                       LEFT JOIN auditoria_elementos e ON e.auditoria_id = a.id
@@ -1444,14 +1444,14 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           a.enviada_el, a.enviada_por, a.cerrada_a_mano, a.cerrada_motivo,
                           (SELECT COUNT(*) FROM auditoria_items i
                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
-                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE),
+                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'),
                           (SELECT COUNT(*) FROM auditoria_items i
                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
-                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'
                              AND (i.desestimado OR i.verificado = 'ok')),
                           (SELECT COUNT(*) FROM auditoria_items i
                             JOIN auditoria_elementos e2 ON e2.id = i.elemento_id
-                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE
+                           WHERE e2.auditoria_id = a.id AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'
                              AND i.desestimado),
                           a.notas, a.creada_por, a.cerrada_por,
                           -- 34-35: lo que aSa dijo al cerrar y quién cerró, para la
@@ -1630,7 +1630,10 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # PUEDO CERRAR: lo dice el backend con la misma regla que valida el endpoint,
             # para que el botón no ofrezca algo que va a dar 400. Cierra quien respondió,
             # y sólo cuando no queda ninguna barra pendiente.
-            todas = [b for e in aud["elementos"] for b in e["barras_malas"]]
+            # SÓLO LO QUE ABRE ACCIÓN (3-nov): una barra no conforme en un elemento marcado
+            # observación no es trabajo del auditado ni sale en el panel. Contarla acá
+            # dejaba un «quedan N» imposible de bajar y la auditoría no cerraba.
+            todas = [b for e in aud["elementos"] if e.get("accion_estado") for b in e["barras_malas"]]
             pendientes = [b for b in todas if not b["corregido"] and not b["desestimado"]]
             # Los comentarios sueltos cuentan igual que una barra: son trabajo del auditado
             # y, si quedan pendientes, la auditoría no está resuelta.

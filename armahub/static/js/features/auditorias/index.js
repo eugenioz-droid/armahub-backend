@@ -687,7 +687,9 @@
   // CUÁNTO tiempo queda comprometido, y eso cabe en una línea.
   function pedirEnvio() {
     var porcub = {};
+    // Sólo los elementos con acción: es lo que el auditado tiene que trabajar (3-nov).
     (AUD.elementos || []).forEach(function (el) {
+      if (!el.accion_estado) return;
       (el.barras_malas || []).forEach(function () {
         var q = (el.cubicado_por || '(sin dato)').trim();
         porcub[q] = (porcub[q] || 0) + 1;
@@ -750,7 +752,9 @@
     var rs = AUD.resumen || {}, enviadaYa = !!(AUD.enviada || AUD.enviada_el);
     var obsN = (AUD.elementos || []).filter(function (e) { return e.hallazgo === 'observacion'; }).length;
     var porcub = {};
+    // Sólo los elementos con acción: es lo que el auditado tiene que trabajar (3-nov).
     (AUD.elementos || []).forEach(function (el) {
+      if (!el.accion_estado) return;
       (el.barras_malas || []).forEach(function () {
         var q = (el.cubicado_por || '(sin dato)').trim();
         porcub[q] = (porcub[q] || 0) + 1;
