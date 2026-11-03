@@ -331,6 +331,11 @@
             ? '<button class="audmini ver" data-abrir="' + r.id + '">Abrir</button>'
             : '') + '</td></tr>';
       }).join('') + '</tbody></table>';
+    // LOS DOS ENCABEZADOS QUEDAN FIJOS AL BAJAR (3-nov). La fila de columnas se pega justo
+    // debajo de la de secciones: su alto se mide acá, porque creció con la suma por
+    // cubicador y un número fijo en el CSS quedaba corto.
+    var secs = el.querySelector('tr.revsecs');
+    if (secs && secs.offsetHeight) el.style.setProperty('--revsec', secs.offsetHeight + 'px');
     // LA FILA ELIGE LA REVISIÓN, EL BOTÓN ENTRA. El cubicador se filtra arriba, con los chips.
     el.querySelectorAll('button[data-abrir]').forEach(function (b) {
       b.addEventListener('click', async function (ev) {

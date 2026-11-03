@@ -575,9 +575,15 @@
   .revmat .revfecha{color:#546e7a;}
   .revmat .l2{color:#90a4ae; font-size:10.5px; font-weight:400; margin-top:1px;}
   /* La fila de secciones: mayúsculas chicas, y el nombre pegado a su raya. */
+  /* LOS DOS ENCABEZADOS, FIJOS (3-nov). La segunda fila creció con la suma por cubicador y
+     el «top» de 24px quedó corto: al bajar, la fila de columnas se metía bajo la de
+     secciones. El alto real de la primera fila lo mide el JS al pintar y lo deja en
+     `--revsec`; acá sólo se usa. */
+  .revmat thead th{position:sticky; z-index:4; background:#fafbfc;}
   .revmat tr.revsecs th{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#78909c;
-                        padding:7px 8px 3px; text-align:center; border-bottom:0; top:0;}
-  .revmat thead tr:nth-child(2) th{top:24px;}
+                        padding:7px 8px 3px; text-align:center; border-bottom:0; top:0; z-index:5;}
+  .revmat thead tr:nth-child(2) th{top:var(--revsec, 24px); box-shadow:0 1px 0 #e3e8ef, inset 0 1px 0 #fafbfc;}
+  .revmat thead tr:nth-child(2) th.sec{box-shadow:0 1px 0 #e3e8ef, inset 2px 0 0 #b0bec5;}
   /* La raya de cada sección, en encabezado y cuerpo: una sombra interior, que no depende
      del colapso de bordes y se ve igual en todas las filas. */
   .revmat th.sec, .revmat td.sec{box-shadow:inset 2px 0 0 #b0bec5; padding-left:16px;}

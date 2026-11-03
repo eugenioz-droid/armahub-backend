@@ -838,7 +838,10 @@ check("...dos filas de encabezado: la seccion arriba y la columna abajo, con la 
       '<tr class="revsecs"><th></th>' in JS and '" class="sec">Cubicadores</th>' in JS
       and '" class="sec curioso">Hallazgos</th>' in JS and '" class="sec">Estado</th>' in JS
       and JS.index('class="sec">Estado</th>') < JS.index('class="sec curioso">Hallazgos</th>')
-      and ".revmat thead tr:nth-child(2) th{top:24px;}" in HTM)
+      # Los dos encabezados fijos: la segunda fila se pega bajo la primera, cuyo alto mide el JS.
+      and ".revmat thead th{position:sticky; z-index:4;" in HTM
+      and ".revmat thead tr:nth-child(2) th{top:var(--revsec, 24px);" in HTM
+      and "el.style.setProperty('--revsec', secs.offsetHeight + 'px');" in JS)
 check("...el vacio es siempre el mismo punto, y el avance tiene barra de ancho fijo y porcentaje alineado",
       "var PUNTO = '<span class=\"revvacio2\">·</span>';" in JS and ".revmat .revav .revbar2{width:84px" in HTM
       and ".revmat .revav span{width:38px" in HTM)
