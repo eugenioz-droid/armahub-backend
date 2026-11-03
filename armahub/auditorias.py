@@ -2234,12 +2234,17 @@ def _recalcular(cur, auditoria_id: int) -> bool:
     # La comprobación no se fue: se corrió al CIERRE, que es el momento en que importa, y
     # avisa sin bloquear. Así el botón sirve para trazar el avance —que es para lo que
     # está— y el registro igual queda con lo que aSa decía al cerrar.
+    # SÓLO LAS BARRAS DE LOS HALLAZGOS (3-nov). Una barra no conforme dentro de un elemento
+    # marcado OBSERVACIÓN no abre acción —esa es la regla, HALLAZGO_ABRE_ACCION— y no sale
+    # en el panel; contarla acá dejaba un «quedan 9» que nadie podía resolver y la
+    # auditoría no cerraba nunca. El contador y el panel cuentan lo mismo.
     cur.execute(
         """SELECT COUNT(*) FILTER (WHERE i.desestimado OR i.corregido),
                   COUNT(*) FILTER (WHERE NOT i.desestimado AND NOT i.corregido)
              FROM auditoria_items i
              JOIN auditoria_elementos e ON e.id = i.elemento_id
-            WHERE e.auditoria_id = %s AND i.conforme IS FALSE""", (auditoria_id,))
+            WHERE e.auditoria_id = %s AND i.conforme IS FALSE AND e.hallazgo = %s""",
+        (auditoria_id, HALLAZGO_ABRE_ACCION))
     resueltas, abiertas = cur.fetchone()
     # Los comentarios de elemento sin barras cuentan igual: son trabajo del auditado.
     cur.execute(

@@ -1496,5 +1496,14 @@ check("...y un apellido que no esta en el login se escribe a mano, con su porque
       nombre_de_login("MarioP") == "M Puyo" and "NOMBRES_A_MANO = {" in SRC
       and "externo que ya no trabaja" in SRC)
 
+
+print("\nLAS BARRAS POR CORREGIR SON LAS DE LOS HALLAZGOS (3-nov)")
+# La A-2026-012 decia «quedan 36» y el panel listaba 27: las otras 9 eran de elementos
+# marcados OBSERVACION, que no abren accion y no salen en el panel, pero el contador las
+# sumaba. Nunca se llegaba a cero. «Me meto y no puedo hacer nada.»
+check("el contador de barras pendientes mira solo los elementos que son hallazgo, como el panel",
+      "WHERE e.auditoria_id = %s AND i.conforme IS FALSE AND e.hallazgo = %s" in SRC
+      and "(auditoria_id, HALLAZGO_ABRE_ACCION))\n    resueltas, abiertas = cur.fetchone()" in SRC)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
