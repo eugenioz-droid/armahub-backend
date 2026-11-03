@@ -1129,30 +1129,39 @@
     // CON BARRAS MARCADAS, LA FILA NO DECIDE: lo hace el lote. Pero el botón no se queda
     // mudo —apagado y sin respuesta parecía que la pantalla estaba rota—: dice dónde está
     // ahora la acción. Se devuelve true cuando el clic era para el lote.
-    function _enLote() {
+    // CON BARRAS MARCADAS, EL BOTÓN DE LA FILA ACTÚA SOBRE TODAS (3-nov). Antes se apagaba
+    // y mandaba «a los botones de arriba»; el usuario marcó siete y apretó Deshacer en una
+    // fila: «no me deja deshacerlas en forma masiva». El check selecciona, el botón ejecuta
+    // sobre la selección. Se confirma antes, porque siete no es una.
+    function _enLote(estado, boton) {
       var n = Object.keys(REVS.sel_items).length;
       if (!n) return false;
-      aviso('Tienes ' + n + ' barra(s) marcada(s): resuélvelas con los botones de arriba, ' +
-            'o aprieta «Quitar selección» para trabajarlas de a una.');
-      var acc = $('revItemsAcc');
-      if (acc) acc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (estado === 'aceptada') {
+        // «No aplica» de a muchas pide UNA explicación: la pide la barra de arriba.
+        var na = $('revAccNoAplica');
+        if (na) { na.click(); na.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+        return true;
+      }
+      var verbo = estado === 'declarada' ? 'Marcar como resueltas' : 'Volver a dejar abiertas';
+      if (!confirm(verbo + ' las ' + n + ' barra(s) marcada(s)?')) return true;
+      loteMarcadas(estado, boton);
       return true;
     }
     // «Resuelto» por fila, y «Deshacer» para lo decidido.
     caja.querySelectorAll('button[data-resuelto]').forEach(function (b) {
       b.addEventListener('click', function () {
-        if (_enLote()) return;
+        if (_enLote('declarada', b)) return;
         declararUno(b.dataset.resuelto, 'declarada', null, null, false, b);
       });
     });
     caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
       b.addEventListener('click', function () {
-        if (_enLote()) return;
+        if (_enLote('abierta', b)) return;
         declararUno(b.dataset.deshacer, 'abierta', null, null, false, b);
       });
     });
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
-      b.addEventListener('click', function () { if (!_enLote()) abrirNoAplica(b.dataset.noaplica); });
+      b.addEventListener('click', function () { if (!_enLote('aceptada', b)) abrirNoAplica(b.dataset.noaplica); });
     });
     // El campo del «no aplica»: Enter guarda esa barra, Esc lo deja como estaba.
     caja.querySelectorAll('input[data-nota]').forEach(function (c) {
