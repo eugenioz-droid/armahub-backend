@@ -730,6 +730,12 @@ check("Resuelto va en línea, a continuación de No aplica, con una separación 
       'class="revaccs"' in JS and ".revaccs{display:inline-flex" in HTM and ".revaccs .audbres{margin-left:0;}" in HTM)
 check("«no aplica» ES resolver: la fila queda verde al guardar, sin otro clic",
       ".revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." in JS)
+# «¿Por que el render muestra ganchos de 10 y los parametros A y G muestran 8?» Porque la
+# columna es la medida de cuando salto y el dibujo es aSa de ahora: medido en SU2N, la
+# señal guarda A=80/G=80 del 29-oct y aSa hoy devuelve A=100/G=100. Ya esta corregida.
+check("la cabecera dice que las medidas son del momento del hallazgo, no de ahora",
+      'title="Medida del lado ' in JS and "cuando se detectó el " in JS
+      and "'barra ya se corrigió" in JS)
 check("la figura, cuando llega, sólo dibuja: los lados ya están en la fila",
       "td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);" in JS
       and "lad.innerHTML = _ladosCelda" not in JS)

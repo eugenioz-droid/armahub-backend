@@ -916,7 +916,14 @@
     // el título del código, mezclado con la obra y «Ver figuras».
     return '<table><tr class="revhead"><th style="width:22px"><input type="checkbox" data-grupo="' +
       esc(g.cc || '') + '" title="Marcar todas las barras de este código"></th><th>Marca</th><th>Figura</th>' +
-      c.letras.map(function (L) { return '<th class="revn">' + esc(L) + '</th>'; }).join('') + ang +
+      // LAS MEDIDAS SON LAS DEL MOMENTO EN QUE SALTÓ (3-nov). El dibujo, en cambio, se lee
+      // de aSa cuando se aprieta «Ver figuras»: si alguien ya corrigió la barra, el dibujo
+      // muestra la medida nueva y la columna la vieja, y parecen contradecirse. Son dos
+      // cosas distintas y la cabecera lo dice.
+      c.letras.map(function (L) {
+        return '<th class="revn" title="Medida del lado ' + esc(L) + ' cuando se detectó el ' +
+               'hallazgo. El dibujo es lo que hay en aSa ahora: si no calzan, es que la ' +
+               'barra ya se corrigió.">' + esc(L) + '</th>'; }).join('') + ang +
       '<th class="revn" title="Lo que la regla pide: un mínimo en el lado corto, la medida exacta en los opuestos">Esperado</th>' +
       '<th>Regla</th><th>Estado</th><th></th></tr>' +
       g.items.map(function (i) { return filaItem(i, c); }).join('') + '</table>';
