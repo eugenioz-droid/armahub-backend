@@ -876,8 +876,8 @@ check("ver figuras y cerrar lo resuelto viven en el encabezado de la hoja, siemp
 check("el check «todas» va en la cabecera de la tabla, no en el titulo del codigo",
       '<th style="width:22px"><input type="checkbox" data-grupo="' in JS
       and "<h5>' +\n              '<input type=\"checkbox\" data-grupo=" not in JS)
-check("con marcas, los botones de la fila se apagan; «Quitar seleccion» los devuelve",
-      "cuerpo.classList.toggle('lote', n > 0)" in JS and "#revItemsCuerpo.lote .revcc2 td.revacc button" in HTM
+check("con marcas, los botones de la fila NO cambian de aspecto: hacen lo mismo sobre todas; «Quitar seleccion» desmarca",
+      "cuerpo.classList.toggle('lote', n > 0)" in JS and "#revItemsCuerpo.lote .revcc2 td.revacc button{" not in HTM
       and "function quitarSeleccion(" in JS and 'id="revAccQuitar"' in JS)
 check("los botones de lote ya no llevan la cuenta: esta en «n barra(s) marcada(s)»",
       "'Aplica' + (n ?" not in JS and "'Resuelto' + (n ?" not in JS)
@@ -978,7 +978,12 @@ check("con barras marcadas, el boton de la fila actua sobre TODAS, confirmando a
       and "if (_enLote('declarada', b)) return;" in JS and "if (_enLote('abierta', b)) return;" in JS
       and "if (!_enLote('aceptada', b)) abrirNoAplica" in JS
       and "las ' + n + ' barra(s) marcada(s)?'" in JS
-      and "pointer-events:none" not in HTM.split("#revItemsCuerpo.lote")[1][:160])
+      # «No aplica» con marcas: el campo se abre EN LA FILA y la explicación vale para todas.
+      and "if (estado === 'aceptada') return false;" in JS
+      and "if (ids.indexOf(Number(id)) === -1) ids.push(Number(id));" in JS
+      and "barra(s) marcada(s) con esta explicación?'" in JS
+      and "#revItemsCuerpo.lote .revcc2 td.revacc button{opacity" not in HTM
+      and "pointer-events:none" not in HTM.split(".revcc2 td.revacc{")[1][:300])
 
 
 print("\nUNA PALABRA POR CONCEPTO (2-nov)")

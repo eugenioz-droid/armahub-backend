@@ -1136,12 +1136,10 @@
     function _enLote(estado, boton) {
       var n = Object.keys(REVS.sel_items).length;
       if (!n) return false;
-      if (estado === 'aceptada') {
-        // «No aplica» de a muchas pide UNA explicación: la pide la barra de arriba.
-        var na = $('revAccNoAplica');
-        if (na) { na.click(); na.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-        return true;
-      }
+      // «No aplica» abre el campo EN LA FILA aunque haya marcas: al guardar, la misma
+      // explicación vale para todas las marcadas (lo resuelve `guardarNoAplica`). Mandarlo
+      // al campo de arriba lo dejaba fuera de la vista: «no me deja seleccionar aplica».
+      if (estado === 'aceptada') return false;
       var verbo = estado === 'declarada' ? 'Marcar como resueltas' : 'Volver a dejar abiertas';
       if (!confirm(verbo + ' las ' + n + ' barra(s) marcada(s)?')) return true;
       loteMarcadas(estado, boton);
@@ -1192,6 +1190,8 @@
   function abrirNoAplica(id) {
     var b = _botones(id);
     if (!b.nota) return;
+    var n = Object.keys(REVS.sel_items).length;
+    b.nota.placeholder = n > 1 ? '¿por qué no aplican las ' + n + ' marcadas? … y Enter' : '¿por qué? … y Enter';
     b.nota.style.display = '';
     if (b.na) b.na.classList.add('eligiendo');
     b.nota.focus();
@@ -1208,6 +1208,28 @@
     if (!b.nota) return;
     var nota = (b.nota.value || '').trim();
     if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); b.nota.focus(); return; }
+    // CON BARRAS MARCADAS, LA EXPLICACIÓN VALE PARA TODAS (3-nov): el check selecciona, la
+    // fila ejecuta. La fila donde se escribió entra aunque no estuviera marcada.
+    var ids = _marcados();
+    if (ids.length) {
+      if (ids.indexOf(Number(id)) === -1) ids.push(Number(id));
+      if (ids.length > 1 && !confirm('¿Dejar sin efecto las ' + ids.length + ' barra(s) marcada(s) con esta explicación?')) return;
+      if (b.na) { b.na.disabled = true; b.na.classList.add('audwait'); }
+      try {
+        var r = await req('PUT', '/chequeos/declarar', { ids: ids, estado: 'aceptada', nota: nota });
+        ok((r.afectadas || ids.length) + ' barra(s) dejadas sin efecto');
+        (((REVS.detalle || {}).items) || []).forEach(function (x) {
+          if (ids.indexOf(Number(x.id)) !== -1) { x.estado = 'aceptada'; x.nota = nota; }
+        });
+        REVS.sel_items = {};
+        if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
+        await refrescarRevision();
+      } catch (e) {
+        aviso(e.message);
+        if (b.na) { b.na.disabled = false; b.na.classList.remove('audwait'); }
+      }
+      return;
+    }
     await declararUno(id, 'aceptada', null, nota, false, b.na);
   }
 
