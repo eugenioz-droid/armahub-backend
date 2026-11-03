@@ -1080,5 +1080,17 @@ check("el codigo que ya salio se dice en la hoja: lo que se encuentre es registr
       'i["cc_ido"] = i["cc_estado"] in ESTADOS_RECIEN_IDO' in API
       and "g.items[0].cc_ido" in JS and ">ya despachado</span>" in JS and ".revido{" in HTM)
 
+
+print("\nLA QUE SE DIJO RESUELTA Y YA NO SALTA, SE CIERRA SOLA (3-nov)")
+# El auto-cierre («ya no aparece al revisar de nuevo, luego alguien lo arreglo») miraba
+# solo las `abierta`: una barra marcada Resuelto quedaba fuera, y al cerrar se le decia
+# «sigue como estaba» a algo ya corregido. De 63 cerradas, 48 se cerraron a la fuerza.
+check("el auto-cierre incluye lo declarado, no solo lo abierto",
+      'SE_CIERRAN_SOLAS = ABIERTAS + ("declarada",)' in API
+      and "list(SE_CIERRAN_SOLAS), vivas))" in API
+      and "se cerraron a la fuerza" in API)
+check("...y no toca lo que no aplica: eso lo decidio una persona, no aSa",
+      "aceptada" not in API.split("SE_CIERRAN_SOLAS = ")[1][:160])
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
