@@ -1063,5 +1063,22 @@ check("en la hoja, la barra sabe si paso por el cierre: el item trae `cerrada_el
       '"cerrada_el": f[23].isoformat() if f[23] else None' in API
       and "s.cierre_confirmado_el\n                     FROM chequeo_senales s" in API)
 
+
+print("\nLO RECIEN DESPACHADO TAMBIEN SE MIRA (3-nov)")
+# Llego un correo de produccion con una barra mal cubicada —un gancho de 9 cm en φ10, que
+# la regla del lado corto marca— y la revision nunca la vio: su codigo ya estaba Shipped.
+# Medido: de 170 codigos Shipped nacidos desde que esto existe, 160 nunca se revisaron.
+# El usuario: «¿tenemos como incluir los CC que se hayan despachado hace 2 o 3 semanas?».
+check("la cola incluye lo despachado hace poco, con una ventana corta y su porque",
+      'ESTADOS_RECIEN_IDO = ("Processed", "Shipped")' in API and "DIAS_RECIEN_IDO = 21" in API
+      and "539" in API and "tarde para corregirlo" in API)
+check("...y la consulta lo filtra por la fecha de despacho, no por el estado a secas",
+      "COALESCE(p.proj_ship_date, p.ultima_mod::date, p.order_date)" in API
+      and ">= CURRENT_DATE - %s))" in API
+      and "list(ESTADOS_RECIEN_IDO), DIAS_RECIEN_IDO," in API)
+check("el codigo que ya salio se dice en la hoja: lo que se encuentre es registro, no tarea",
+      'i["cc_ido"] = i["cc_estado"] in ESTADOS_RECIEN_IDO' in API
+      and "g.items[0].cc_ido" in JS and ">ya despachado</span>" in JS and ".revido{" in HTM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -58,6 +58,17 @@ router = APIRouter(prefix="/api/v1", tags=["chequeos"])
 ESTADOS_CON_MARGEN = ("Open",)
 ESTADOS_TARDE = ("Processed",)
 ESTADOS_VIVOS = ESTADOS_CON_MARGEN + ESTADOS_TARDE
+# LO QUE SE FUE HACE POCO TAMBIÉN SE MIRA (3-nov). Un código puede pasar de Open a
+# despachado entre una corrida y la siguiente, y entonces no lo revisa nadie: de los 170
+# códigos Shipped nacidos desde que esto existe, 160 nunca pasaron por la revisión —539
+# toneladas—. Por eso el error de una barra llegó por un correo de producción y no por el
+# sistema: su código ya estaba Shipped.
+#
+# Corregirlo ya no se puede; saberlo sí, y es lo que evita que el mismo error vuelva. La
+# ventana es corta a propósito: pasadas tres semanas el dato ya no cambia nada, y revisar
+# los 4.700 despachados del año serían horas de aSa.
+ESTADOS_RECIEN_IDO = ("Processed", "Shipped")
+DIAS_RECIEN_IDO = 21
 
 
 def _estados(incluir_tarde: bool) -> list:
@@ -701,7 +712,12 @@ def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = Fal
                      FROM asa_pedidos p
                      LEFT JOIN chequeo_codigos c
                             ON c.id_proyecto = p.asa_job_id AND c.cc = p.control_code
-                    WHERE COALESCE(p.estado,'') = ANY(%s)
+                    WHERE (COALESCE(p.estado,'') = ANY(%s)
+                           -- Lo despachado hace poco entra igual: tarde para corregirlo,
+                           -- a tiempo para saberlo. Ver ESTADOS_RECIEN_IDO.
+                           OR (COALESCE(p.estado,'') = ANY(%s)
+                               AND COALESCE(p.proj_ship_date, p.ultima_mod::date, p.order_date)
+                                   >= CURRENT_DATE - %s))
                       AND p.job_name !~* %s AND p.asa_job_id NOT IN (SELECT asa_job_id FROM asa_obras WHERE excluida)
                       AND (c.cc IS NULL
                            OR (p.ultima_mod IS NOT NULL AND c.ultima_mod IS NOT NULL
@@ -718,7 +734,8 @@ def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = Fal
                     GROUP BY p.asa_job_id, p.control_code
                     ORDER BY MAX(p.order_date) DESC NULLS LAST
                     """ + ("LIMIT %s" if limite else ""),
-                (_estados(tarde), PATRON_OBRAS_FUERA) + arg + ((limite,) if limite else ()))
+                (_estados(tarde), list(ESTADOS_RECIEN_IDO), DIAS_RECIEN_IDO,
+                 PATRON_OBRAS_FUERA) + arg + ((limite,) if limite else ()))
             return [{"job": r[0], "cc": r[1], "obra": r[2]} for r in cur.fetchall()]
 
 
@@ -1095,8 +1112,24 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
                           "declarada_el": f[22].isoformat() if f[22] else None,
                           "cerrada_el": f[23].isoformat() if f[23] else None})
                 items.append(d)
-            # Los kilos de los códigos tocados: el tamaño de lo que está en juego.
+            # SI EL CÓDIGO YA SE FUE, QUE SE VEA (3-nov). Desde que la revisión mira
+            # también lo despachado hace poco, en la hoja conviven dos cosas distintas:
+            # lo que se puede corregir y lo que ya salió. Sin decirlo, el cubicador
+            # perdería el tiempo buscando en aSa algo que ya está en la obra.
             ccs = sorted({(i["job"], i["cc"]) for i in items if i["cc"]})
+            if ccs:
+                cur.execute(
+                    """SELECT p.asa_job_id, p.control_code, MAX(COALESCE(p.estado, ''))
+                         FROM asa_pedidos p
+                         JOIN unnest(%s::text[], %s::text[]) AS t(job, cc)
+                           ON t.job = p.asa_job_id AND t.cc = p.control_code
+                        GROUP BY 1, 2""",
+                    ([c[0] for c in ccs], [c[1] for c in ccs]))
+                est = {(j, c): e for j, c, e in cur.fetchall()}
+                for i in items:
+                    i["cc_estado"] = est.get((i["job"], i["cc"]), "")
+                    i["cc_ido"] = i["cc_estado"] in ESTADOS_RECIEN_IDO
+            # Los kilos de los códigos tocados: el tamaño de lo que está en juego.
             kg = 0.0
             if ccs:
                 # Los pares (job, código) van como dos arrays y se cruzan con `unnest`:

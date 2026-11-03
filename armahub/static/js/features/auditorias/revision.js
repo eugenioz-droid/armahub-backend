@@ -602,6 +602,12 @@
             (Object.keys(quienes).length
               ? '<span class="revquien">' + esc(Object.keys(quienes).map(nomCub).join(', ')) + '</span>' : '') +
             '<div style="flex:1"></div>' +
+            // El código que ya salió a la obra se dice: lo que se encuentre acá es
+            // registro, no tarea. Corregirlo en aSa no cambia el fierro que ya se fue.
+            (g.items[0] && g.items[0].cc_ido
+              ? '<span class="revido" title="Este código está ' + esc(g.items[0].cc_estado || '') +
+                ' en aSa: el fierro ya salió. El hallazgo queda registrado, pero corregirlo ' +
+                'acá no cambia lo despachado.">ya despachado</span>' : '') +
             (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
                            '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
             // EL AVANCE DEL CÓDIGO, COMPACTO Y A LA DERECHA: «3/10» se lee bajando por la
