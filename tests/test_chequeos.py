@@ -737,7 +737,7 @@ check("la cabecera dice que las medidas son del momento del hallazgo, no de ahor
       'title="Medida del lado ' in JS and "cuando se detectó el " in JS
       and "'barra ya se corrigió" in JS)
 check("la figura, cuando llega, sólo dibuja: los lados ya están en la fila",
-      "td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);" in JS
+      "td.innerHTML = _celda(td.dataset.cc, td.dataset.fig, td.dataset.sen);" in JS
       and "lad.innerHTML = _ladosCelda" not in JS)
 
 
@@ -1097,6 +1097,31 @@ check("el auto-cierre incluye lo declarado, no solo lo abierto",
       and "se cerraron a la fuerza" in API)
 check("...y no toca lo que no aplica: eso lo decidio una persona, no aSa",
       "aceptada" not in API.split("SE_CIERRAN_SOLAS = ")[1][:160])
+
+
+print("\nEL SELLO «CORREGIDO» BAJO LA FIGURA (3-nov)")
+# «¿Por que el render muestra ganchos de 10 y A y G muestran 8?» La columna es la medida
+# de cuando salto; el dibujo es aSa de ahora. «Tal vez ayudaria que bajo la figura diga
+# corregido en verde. Asi ademas veo claramente que se resolvio.»
+check("la celda de la figura sabe de que señal es, y compara el lado marcado con lo que aSa devuelve hoy",
+      '" data-sen="\' + i.id + \'"' in JS and "_celda(td.dataset.cc, td.dataset.fig, td.dataset.sen)" in JS
+      and "function _selloCorregido(sen, b) {" in JS and "return v > 0 && v >= esp - 0.01;" in JS)
+check("...y solo lo dice cuando puede: sin lados y minimo en la señal, no inventa nada",
+      "if (!(esp > 0) || !malos.length || !b.dims) return '';" in JS
+      and "if (!i || i.estado === 'aceptada') return '';" in JS)
+check("la barra que ya no esta en aSa tambien se dice corregida, que es lo que mira el cierre",
+      '<div class="revcorr" title="La barra ya no está en este código en aSa' in JS
+      and ".revcorr{display:inline-block" in HTM and ">ya no está</span>" not in JS)
+
+print("\nEL AVISO DE CIERRE ES DE UN INTENTO, NO DE LA HOJA (3-nov)")
+# Quedaba arriba despues de que el usuario pasara la barra a «no aplica»: ofrecia «cerrar
+# igual» algo que ya no estaba por cerrar. «Hay que arreglar lo que ocurre aqui en la pantalla.»
+check("cualquier repintado de la hoja borra el aviso de cierre",
+      "var avisoViejo = $('revCierreAviso');" in JS and "if (avisoViejo) avisoViejo.remove();" in JS
+      and JS.index("avisoViejo.remove()") < JS.index("$('revItemsTit').textContent = 'Revisión #'"))
+check("...y el aviso va dentro del bloque del codigo que se intento cerrar, encima de su boton",
+      "bloque.insertBefore(div, bloque.querySelector('.revccpie'));" in JS
+      and "var unico = Object.keys(ccs).length === 1 ? Object.keys(ccs)[0] : null;" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -548,6 +548,11 @@
 
   function pintarItems() {
     var d = REVS.detalle, r = d.revision, items = itemsVisibles();
+    // EL AVISO DE CIERRE ES DE UN INTENTO, NO DE LA HOJA (3-nov). Quedaba arriba después de
+    // que el usuario cambiara la barra a «no aplica»: ofrecía «cerrar igual» algo que ya no
+    // estaba por cerrar. Cualquier cambio en la hoja lo deja sin efecto.
+    var avisoViejo = $('revCierreAviso');
+    if (avisoViejo) avisoViejo.remove();
     // Agrupado por código: es como se corrige (se abre un CC en aSa y se arregla lo de
     // ahí) y es como se comprueba (una lectura por código, no por barra).
     var grupos = {}, orden = [];
@@ -782,17 +787,47 @@
   // así que no cuesta una llamada más. Mientras no se hayan pedido las figuras se
   // muestra sólo el lado del hallazgo, que es el dato que la señal ya trae.
 
-  function _celda(cc, ref) {
+  function _celda(cc, ref, sen) {
     var c = REVS.figs[cc];
     if (!c) return '';
     if (c.estado === 'cargando') return '<span class="muted">…</span>';
     if (c.estado === 'error') return '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
     var b = _barraDe(cc, ref);
-    if (!b) return '<span class="muted" title="La barra ya no está en este código en aSa">ya no está</span>';
+    // LA BARRA QUE YA NO ESTÁ ESTÁ CORREGIDA: alguien la cambió o la sacó del código, y
+    // es lo mismo que mira el sistema para cerrarla sola.
+    if (!b) return '<div class="revcorr" title="La barra ya no está en este código en aSa: ' +
+                   'alguien la cambió o la sacó.">corregido</div>';
     if (!global.audBarraNormalizada || !global.audCeldaFigura) return '';
     try {
-      return global.audCeldaFigura(global.audBarraNormalizada(b, 'asa'));
+      // EL SELLO, DEBAJO DEL DIBUJO. El dibujo es aSa de ahora; si el lado que motivó el
+      // hallazgo ya cumple, se dice con todas las letras en vez de dejar que el usuario
+      // compare contra la columna —que es la medida vieja— y crea que algo está mal.
+      return global.audCeldaFigura(global.audBarraNormalizada(b, 'asa')) + _selloCorregido(sen, b);
     } catch (e) { return '<span class="muted">—</span>'; }
+  }
+
+  // ¿Lo que motivó el hallazgo ya está arreglado en lo que acabamos de leer de aSa? Se
+  // compara el lado marcado contra el mínimo que pedía la regla. Si la señal no trae
+  // lados y mínimo —hay reglas que miran otra cosa— no se dice nada: inventar un
+  // «corregido» sería peor que no decirlo.
+  function _selloCorregido(sen, b) {
+    var i = _senalDe(sen);
+    if (!i || i.estado === 'aceptada') return '';
+    var det = i.detalle || {}, esp = Number(det.esperado);
+    var malos = det.lados || [];
+    if (!(esp > 0) || !malos.length || !b.dims) return '';
+    var ok = malos.every(function (L) {
+      var v = Number(b.dims[String(L).toUpperCase()] || b.dims[L]);
+      return v > 0 && v >= esp - 0.01;
+    });
+    return ok ? '<div class="revcorr" title="El lado que motivó el hallazgo ya cumple en aSa: ' +
+                'mide lo que pide la regla. Al cerrar el código queda confirmado.">corregido</div>' : '';
+  }
+
+  function _senalDe(id) {
+    var items = (REVS.detalle || {}).items || [];
+    for (var k = 0; k < items.length; k++) if (String(items[k].id) === String(id)) return items[k];
+    return null;
   }
 
   // Se escribe SOBRE las celdas, sin repintar la hoja: lo que ya está marcado sigue
@@ -806,7 +841,7 @@
     if (!caja) return;
     caja.querySelectorAll('td[data-fig]').forEach(function (td) {
       if (cc && td.dataset.cc !== cc) return;
-      td.innerHTML = _celda(td.dataset.cc, td.dataset.fig);
+      td.innerHTML = _celda(td.dataset.cc, td.dataset.fig, td.dataset.sen);
     });
   }
 
@@ -1031,7 +1066,8 @@
         ' title="Marcar para resolver varias de una vez">') + '</td>' +
       '<td class="revm"><span class="audref" data-ver="' + i.id +
         '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
-      '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '"></td>' +
+      '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') +
+        '" data-sen="' + i.id + '"></td>' +
       c.letras.map(function (L) {
         return '<td class="revn' + (malos[L] ? ' mal' : '') + '">' + (porL[L] != null ? cm(porL[L] / 10) : '') + '</td>';
       }).join('') + angTd +
@@ -1344,8 +1380,17 @@
         '<button class="audenviar" id="revCierreSi" title="Cierra igual. Queda registrado qué barras ' +
         'seguían como estaban en aSa y que lo confirmaste tú.">Cerrar igual</button>' +
       '</div>';
-    var acc = $('revItemsAcc');
-    acc.parentNode.insertBefore(div, acc.nextSibling);
+    var ccs = {};
+    (det.barras || []).forEach(function (x) { if (x.cc) ccs[x.cc] = 1; });
+    var unico = Object.keys(ccs).length === 1 ? Object.keys(ccs)[0] : null;
+    var bloque = unico ? document.querySelector('.revcc2[data-grupocc="' + unico.replace(/"/g, '') + '"]') : null;
+    if (bloque && bloque.querySelector('.revccpie')) {
+      // Dentro del bloque del código, justo encima de su botón de cerrar: ahí se decidió.
+      bloque.insertBefore(div, bloque.querySelector('.revccpie'));
+    } else {
+      var acc = $('revItemsAcc');
+      acc.parentNode.insertBefore(div, acc.nextSibling);
+    }
     div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     $('revCierreNo').addEventListener('click', function () { div.remove(); });
     $('revCierreSi').addEventListener('click', function () { div.remove(); cerrarResueltos(true); });
