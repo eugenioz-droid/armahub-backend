@@ -980,8 +980,10 @@ check("con barras marcadas, el boton de la fila actua sobre TODAS, confirmando a
       and "if (_enLote('declarada', b)) return;" in JS and "if (_enLote('abierta', b)) return;" in JS
       and "if (!_enLote('aceptada', b)) abrirNoAplica" in JS
       and "las ' + n + ' barra(s) marcada(s)?'" in JS
-      # «No aplica» con marcas: el campo se abre EN LA FILA y la explicación vale para todas.
+      # «No aplica» con marcas: el campo se abre EN CADA FILA MARCADA, lo escrito se espeja y vale para todas.
       and "if (estado === 'aceptada') return false;" in JS
+      and "function _idsNoAplica(id) {" in JS and "b.nota.dataset.espejo = n > 1 ? '1' : '';" in JS
+      and "if (o !== c) o.value = c.value;" in JS
       and "if (ids.indexOf(Number(id)) === -1) ids.push(Number(id));" in JS
       and "barra(s) marcada(s) con esta explicación?'" in JS
       and "#revItemsCuerpo.lote .revcc2 td.revacc button{opacity" not in HTM
@@ -1023,7 +1025,7 @@ check("...y lleva a aSa SOLO lo marcado resuelto de ese codigo",
       and "async function cerrarResueltos(confirmar, soloIds)" in JS
       and "var ids = soloIds || (confirmar && _ultimoCierre) ||" in JS)
 check("una explicacion a medio escribir ya cuenta como decidida: el pie de ESE codigo se entera al teclear",
-      "function _notaDe(id) {" in JS and "_repintarPie(cc.dataset.grupocc);" in JS
+      "function _notaDe(id) {" in JS and "Object.keys(pies).forEach(_repintarPie);" in JS
       and "function _repintarPie(cc) {" in JS)
 
 

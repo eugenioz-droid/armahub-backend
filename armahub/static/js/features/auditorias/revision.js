@@ -1063,8 +1063,16 @@
     // a «cerrar código» sin que haya que apretar nada antes.
     caja.querySelectorAll('input[data-nota]').forEach(function (c) {
       c.addEventListener('input', function () {
+        var pies = {};
+        if (c.dataset.espejo === '1') {
+          caja.querySelectorAll('input[data-nota][data-espejo="1"]').forEach(function (o) {
+            if (o !== c) o.value = c.value;
+            var b = o.closest('.revcc2'); if (b) pies[b.dataset.grupocc] = 1;
+          });
+        }
         var cc = c.closest('.revcc2');
-        if (cc) _repintarPie(cc.dataset.grupocc);
+        if (cc) pies[cc.dataset.grupocc] = 1;
+        Object.keys(pies).forEach(_repintarPie);
       });
     });
     caja.querySelectorAll('input[data-item]').forEach(function (c) {
@@ -1159,20 +1167,34 @@
 
   // EL BOTÓN TIENE QUE DECIR QUE LO APRETASTE (19-oct): mientras se escribe la explicación,
   // «No aplica» queda encendido y el campo abierto al lado. Nada está decidido hasta Enter.
+  // Con barras marcadas, el campo se abre EN CADA FILA MARCADA y lo que se escribe en una
+  // se escribe en todas (3-nov): «así visualmente el usuario está viendo y entendiendo lo
+  // que ocurre». Enter en cualquiera guarda las N; Esc en cualquiera cierra todas.
+  function _idsNoAplica(id) {
+    var ids = _marcados();
+    if (ids.indexOf(Number(id)) === -1) ids.push(Number(id));
+    return ids;
+  }
   function abrirNoAplica(id) {
-    var b = _botones(id);
-    if (!b.nota) return;
-    var n = Object.keys(REVS.sel_items).length;
-    b.nota.placeholder = n > 1 ? '¿por qué no aplican las ' + n + ' marcadas? … y Enter' : '¿por qué? … y Enter';
-    b.nota.style.display = '';
-    if (b.na) b.na.classList.add('eligiendo');
-    b.nota.focus();
+    var ids = _idsNoAplica(id), n = ids.length;
+    ids.forEach(function (k) {
+      var b = _botones(k);
+      if (!b.nota) return;
+      b.nota.placeholder = n > 1 ? '¿por qué no aplican las ' + n + ' marcadas? … y Enter' : '¿por qué? … y Enter';
+      b.nota.dataset.espejo = n > 1 ? '1' : '';
+      b.nota.style.display = '';
+      if (b.na) b.na.classList.add('eligiendo');
+    });
+    var mio = _botones(id);
+    if (mio.nota) mio.nota.focus();
   }
   function cerrarNoAplica(id) {
-    var b = _botones(id);
-    // Vuelve a como estaba: nada se decidió.
-    if (b.nota) { b.nota.style.display = 'none'; b.nota.value = ''; }
-    if (b.na) b.na.classList.remove('eligiendo');
+    _idsNoAplica(id).forEach(function (k) {
+      var b = _botones(k);
+      // Vuelve a como estaba: nada se decidió.
+      if (b.nota) { b.nota.style.display = 'none'; b.nota.value = ''; b.nota.dataset.espejo = ''; }
+      if (b.na) b.na.classList.remove('eligiendo');
+    });
   }
 
   async function guardarNoAplica(id) {
