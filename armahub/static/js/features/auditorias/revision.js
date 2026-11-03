@@ -548,7 +548,6 @@
     if (REVS.antes) { REVS.sel = REVS.antes.sel; REVS.detalle = REVS.antes.detalle; REVS.antes = null; }
     // El chip del modal y el de arriba son el MISMO filtro: al volver, arriba se repinta.
     pintarResumen(); pintarRevisiones();
-    if (_mirando) { _mirando.disconnect(); _mirando = null; }
   }
 
   function pintarItems() {
@@ -629,7 +628,6 @@
     _bindItems();
     // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la hoja.
     if (global.audChipsTam) global.audChipsTam('revTam', pintarItems);
-    _observarFiguras();
   }
 
   // LA BARRA DE ACCIONES SE PINTA SOLA. Antes marcar un check repintaba la hoja entera,
@@ -882,38 +880,12 @@
   // «apretá acá», se lee como que está rota —el usuario lo dijo: «faltó el renderizado»—
   // y pedir los cuarenta y ocho códigos al abrir serían dos minutos y medio de espera.
   // Con el observer, bajar por la hoja va pidiendo lo que aparece, de a uno y en orden.
-  var _mirando = null;
-  function _observarFiguras() {
-    if (_mirando) { _mirando.disconnect(); _mirando = null; }
-    if (typeof global.IntersectionObserver !== 'function') return;
-    var cola = [], corriendo = false;
-    async function vaciar() {
-      if (corriendo) return;
-      corriendo = true;
-      while (cola.length) {
-        var cc = cola.shift();
-        if ($('revItemsModal').style.display === 'none') break;
-        await cargarFiguras(cc);
-        _pintarAcc();
-      }
-      corriendo = false;
-    }
-    _mirando = new global.IntersectionObserver(function (entradas) {
-      entradas.forEach(function (e) {
-        if (!e.isIntersecting) return;
-        var cc = e.target.dataset.grupocc;
-        _mirando.unobserve(e.target);
-        if (!cc) return;
-        // DIBUJAR ES CARO (21-oct): un SVG por barra, y con «Todos» eran 375 de golpe cada
-        // vez que se repintaba la hoja —por eso se abría tan lento—. El grupo se dibuja
-        // cuando entra a la vista, ya esté la figura cargada o haya que ir a buscarla.
-        if (REVS.figs[cc] && REVS.figs[cc].estado !== 'cargando') { _pintarFiguras(cc); return; }
-        if (!REVS.figs[cc] && cola.indexOf(cc) === -1) { cola.push(cc); vaciar(); }
-      });
-    }, { root: $('revItemsModal'), rootMargin: '200px' });
-    var caja = $('revItemsCuerpo');
-    if (caja) caja.querySelectorAll('[data-grupocc]').forEach(function (d) { _mirando.observe(d); });
-  }
+  // LAS FIGURAS SE PIDEN, NO LLEGAN SOLAS (3-nov). Hubo un observador de scroll que pedía a
+  // aSa las barras de cada código al entrar en pantalla, ~2-3 s por código y en serie: con
+  // treinta códigos a la vista, bajar por la hoja era encolar lecturas, y la hoja se ponía
+  // cada vez más lenta. El usuario: «mejor que las figuras se muestren sólo si el usuario
+  // presiona Ver figuras para ese CC en específico». El botón del código pide ese código;
+  // el de arriba, todos los que falten.
 
   // DE A UNO Y CON CUENTA. Treinta códigos en paralelo tumban la sesión de aSa; en serie
   // se ve avanzar y se puede cerrar el modal sin dejar nada a medias.

@@ -684,12 +684,14 @@ check("el cubicador se dice una vez por código, no en cada fila",
 # El usuario, viendo la columna vacia: «falto el renderizado». Una columna vacia no se
 # lee como «apreta aca»: se lee como que esta rota.
 check("las figuras se piden solas cuando el codigo entra en pantalla",
-      "function _observarFiguras(" in JS and "IntersectionObserver" in JS
-      and "data-grupocc=" in JS and "rootMargin" in JS)
-check("...de a una y en cola, no cuarenta y ocho de golpe",
-      "cola.shift()" in JS and "await cargarFiguras(cc)" in JS)
-check("...y al cerrar el modal se deja de mirar",
-      "_mirando.disconnect()" in JS.split("function cerrarItems")[1][:600])
+      # (3-nov) El observador de scroll se fue: cargaba aSa al bajar y la hoja se arrastraba.
+      "_observarFiguras" not in JS and "IntersectionObserver" not in JS
+      and "data-grupocc=" in JS and "data-figs=" in JS and 'id="revAccFiguras"' in HTM)
+check("...y «ver las figuras» de arriba las pide de a una, en serie: treinta en paralelo tumban la sesión de aSa",
+      "for (var i = 0; i < faltan.length; i++) {" in JS
+      and "await cargarFiguras(faltan[i].cc, faltan[i].job);" in JS)
+check("...y nada las pide solo: ni al abrir la hoja ni al bajar por ella (3-nov)",
+      "_mirando" not in JS and "cola.shift()" not in JS)
 # EL CHURRO SE FUE: iba en un renglon, en orden de recorrido, con los angulos
 # intercalados en chico y con signo. El usuario: «la forma de presentar esto esta media
 # sucia... por que no los pones claros, A = 15, B = XX, con encabezados».
