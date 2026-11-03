@@ -75,6 +75,12 @@ def _estados(incluir_tarde: bool) -> list:
     return list(ESTADOS_VIVOS if incluir_tarde else ESTADOS_CON_MARGEN)
 # Los estados en que una señal está esperando a alguien.
 ABIERTAS = ("abierta", "corregir")
+# LO QUE SE CIERRA SOLO CUANDO aSa YA NO LO MARCA (3-nov). «Declarada» es quien dijo «ya la
+# corregí»: si al volver a leer el código el problema no aparece, está corregida igual que
+# si hubiera estado abierta. Antes quedaba fuera, así que al cerrar se le decía «sigue como
+# estaba» a una barra ya arreglada y había que forzar el cierre: de 63 barras cerradas, 48
+# se cerraron a la fuerza y sólo 15 quedaron confirmadas por aSa.
+SE_CIERRAN_SOLAS = ABIERTAS + ("declarada",)
 # OBRA EN PRODUCCIÓN = TUVO MOVIMIENTO EN LOS ÚLTIMOS N MESES. Es el mismo criterio que usa
 # el tab de Stock Cubicaciones (`programacion.asa_cubicador`), y se reusa a propósito: dos
 # definiciones distintas de «obra activa» conviviendo terminan diciendo cosas distintas.
@@ -326,7 +332,7 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
                     WHERE id_proyecto = %s AND cc = %s AND estado = ANY(%s)
                       AND NOT (firma = ANY(%s))
                 RETURNING id""",
-                (body.job, body.cc, list(ABIERTAS), vivas))
+                (body.job, body.cc, list(SE_CIERRAN_SOLAS), vivas))
             corregidas = len(cur.fetchall())
 
     # QUE UN CÓDIGO ESTÉ LIMPIO TAMBIÉN ES UN RESULTADO. Si sólo se guardaran las señales,
