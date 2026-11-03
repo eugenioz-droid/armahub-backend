@@ -1111,7 +1111,10 @@ check("...y solo lo dice cuando puede: sin lados y minimo en la señal, no inven
       and "if (!i || i.estado === 'aceptada') return '';" in JS)
 check("la barra que ya no esta en aSa tambien se dice corregida, que es lo que mira el cierre",
       '<div class="revcorr" title="La barra ya no está en este código en aSa' in JS
-      and ".revcorr{display:inline-block" in HTM and ">ya no está</span>" not in JS)
+      and ".revcorr{display:inline-block" in HTM and ">ya no está</span>" not in JS
+      # El sello va en azul, separado del dibujo; la figura, a la izquierda y con su nombre primero.
+      and "background:#e3f2fd; color:#0d47a1;" in HTM and ".revcc2 td.revfig{text-align:left;" in HTM
+      and ".revcc2 .audfigw .audfign{order:-1;" in HTM)
 
 print("\nEL AVISO DE CIERRE ES DE UN INTENTO, NO DE LA HOJA (3-nov)")
 # Quedaba arriba despues de que el usuario pasara la barra a «no aplica»: ofrecia «cerrar

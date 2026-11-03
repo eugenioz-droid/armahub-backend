@@ -687,9 +687,16 @@
           border-radius:99px; padding:1px 8px; white-space:nowrap;}
   /* «CORREGIDO» BAJO LA FIGURA (3-nov): el dibujo es aSa de ahora y la columna es la
      medida de cuando saltó. Cuando ya no coinciden porque alguien lo arregló, se dice. */
-  .revcorr{display:inline-block; margin-top:2px; font-size:9.5px; font-weight:700;
-           background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;
+  .revcorr{display:inline-block; margin-left:8px; font-size:9.5px; font-weight:700;
+           background:#e3f2fd; color:#0d47a1; border:1px solid #90caf9; vertical-align:middle;
            border-radius:99px; padding:1px 9px; white-space:nowrap;}
+  /* LA FIGURA, BAJO SU ENCABEZADO (3-nov). La celda venía centrada y la columna es ancha,
+     así que el dibujo flotaba al medio, lejos de «Figura». Ahora va a la izquierda: primero
+     el nombre de la figura, alineado con el encabezado, y después el dibujo. El sello
+     «corregido» en azul, para que no se confunda con el verde de la fila cerrada. */
+  .revcc2 td.revfig{text-align:left; padding-left:4px !important;}
+  .revcc2 .audfigw{gap:7px;}
+  .revcc2 .audfigw .audfign{order:-1; min-width:28px; text-align:left;}
   /* Los chips del tamaño: chiquitos, que son un ajuste y no una acción. */
   .audtam{display:inline-flex; gap:0; margin-left:6px; vertical-align:middle;}
   .audtam button{font-size:9.5px; padding:2px 7px; min-width:0; border:1px solid #cfd8dc;
