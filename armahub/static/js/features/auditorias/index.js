@@ -706,6 +706,32 @@
     enviarAuditoria();
   }
 
+  // CERRAR A MANO Y REABRIR (restauradas 4-nov). El commit del 28-oct que despejó la
+  // pantalla del auditor las borró y dejó los botones y su enganche: abrir una auditoría
+  // enviada como auditor lanzaba un error de referencia. Las dos piden motivo porque
+  // quedan en el informe y en el registro.
+  async function cerrarAMano() {
+    var m = global.prompt('¿Por qué se cierra sin resolver todas las barras?\n' +
+                          '(la barra ya no existe, el código se anuló, la obra terminó…)\n' +
+                          'Queda en el informe.');
+    if (m === null) return;
+    if (m.trim().length < 10) { aviso('Hace falta el motivo: queda en el informe.'); return; }
+    try {
+      AUD = await req('POST', '/auditorias/' + AUD.id + '/cerrar', { motivo: m });
+      ok('Auditoría cerrada'); await cargarLista(); pintarDetalle();
+    } catch (e) { aviso(e.message); }
+  }
+
+  async function reabrir() {
+    var m = global.prompt('¿Por qué la reabres?\nSale del panel del auditado y queda registrado.');
+    if (m === null) return;
+    if (m.trim().length < 10) { aviso('Hace falta el motivo: reabrir también se audita.'); return; }
+    try {
+      AUD = await req('POST', '/auditorias/' + AUD.id + '/reabrir', { motivo: m });
+      ok('Auditoría reabierta'); await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
+    } catch (e) { aviso(e.message); }
+  }
+
   async function enviarAuditoria() {
     var b = $('audBtnEnviar');
     _ocupado(b, true);

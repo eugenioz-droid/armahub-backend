@@ -1531,5 +1531,15 @@ check("...y no queda ninguna cuenta de barras por corregir sin el filtro de hall
 for m in _sueltas:
     print("      " + m[:100].replace("\n", " "))
 
+print("\nLOS BOTONES DEL AUDITOR TIENEN SU FUNCION (4-nov)")
+IDX = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
+import re as _re2  # noqa: E402
+_enganchados = set(_re2.findall(r"addEventListener\('click', (\w+)\)", IDX))
+_definidas = set(_re2.findall(r"(?:async )?function (\w+)\s*\(", IDX)) | set(_re2.findall(r"var (\w+) = (?:async )?function", IDX))
+check("toda funcion enganchada por nombre a un click existe (el 28-oct se borraron cerrarAMano y reabrir y quedaron los botones)",
+      _enganchados <= _definidas and {"cerrarAMano", "reabrir"} <= _definidas)
+for f in sorted(_enganchados - _definidas):
+    print("      sin definir: " + f)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
