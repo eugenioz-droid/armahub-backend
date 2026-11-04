@@ -1240,5 +1240,16 @@ check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figur
       and "var cosa = REVS.nivel === 'elemento' ? 'hallazgo(s)' : 'barra(s)';" in JS
       and 'def _items_cacheados(cc: str, revision_id=None) -> list:' in API)
 
+print("\nLAS RUTAS ESTAN EN LAS FUNCIONES QUE CORRESPONDEN (4-nov)")
+# El 4-nov la pantalla decia «n: Field required»: el decorador de /chequeos/revisiones habia
+# quedado pegado a la auxiliar _nivel(n), asi que FastAPI servia la auxiliar y exigia su
+# parametro. Ninguna ruta puede caer sobre una funcion privada.
+from armahub.chequeos_api import router as _ROUTER  # noqa: E402
+_rutas = {r.path: r.endpoint.__name__ for r in _ROUTER.routes}
+check("ninguna ruta de chequeos apunta a una funcion privada",
+      not [p for p, f in _rutas.items() if f.startswith("_")])
+check("/chequeos/revisiones la sirve revisiones(), que no exige n",
+      [f for p, f in _rutas.items() if p.endswith("/chequeos/revisiones")] == ["revisiones"])
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

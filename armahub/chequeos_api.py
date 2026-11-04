@@ -1519,12 +1519,12 @@ def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
                       "corregidas": sum(o["corregidas"] for o in filas)}}
 
 
-@router.get("/chequeos/revisiones")
 def _nivel(n) -> str:
     # Dos niveles y nada más: cualquier otra cosa es barra, que es lo que siempre fue.
     return "elemento" if n == "elemento" else "barra"
 
 
+@router.get("/chequeos/revisiones")
 def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_user)):
     """El registro de las revisiones: quién, cuándo y qué salió. Se escribe solo."""
     _puede_ver(user)
