@@ -233,12 +233,12 @@ check("la evidencia no se pierde: toda barra no conforme sigue obligada a decir 
       and 'if hallazgo != "conforme" and not texto and not malas:' in SRC)
 check("...y el correo y el informe muestran las dos cosas, no sólo el campo general",
       "que_se_encontro(e, 200)" in SRC and "que_se_encontro(e)), new_x" in SRC)
-# CADA UNA CON SU FORMA. La observación del elemento es una frase; lo de las barras es una
-# lista, una por barra y con el nombre de la barra adelante. Ocho observaciones metidas en
-# un párrafo no se leen, que es justo lo que el usuario vio en el resumen.
-check("la pantalla las muestra separadas: la general como frase, las barras como lista",
-      "function celdaQueSeEncontro(" in JS and "audobsgen" in JS and "audobsb" in JS
-      and ".audobsb li b{" in HTM)
+# En pantalla lo que se encontró se lee en la tabla de acciones, barra por barra (filaAccion)
+# y el comentario del elemento en su fila (filaComentario). La celda que lo juntaba en un
+# párrafo con lista (celdaQueSeEncontro) quedó sin llamadores y se fue (4-nov).
+check("la pantalla lo muestra barra por barra en la tabla de acciones; la celda vieja ya no existe",
+      "function celdaQueSeEncontro(" not in JS and "audobsgen" not in JS and "audobsb" not in HTM
+      and "function filaComentario(" in JS and "function filaAccion(" in JS)
 check("...y en la tabla de acciones el texto NO se corta: ahí es donde se trabaja",
       ".audt.audacct td{white-space:normal" in HTM and "audacct" in JS)
 
@@ -1287,7 +1287,7 @@ check("...y el detalle los suma a lo que falta por resolver",
       'aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)' in SRC)
 check("la pantalla le pone sus controles al comentario, en vez de dejarlo como texto muerto",
       "function filaComentario(" in JS and "'data-ecorregi'" in JS and "data-enoaplica=" in JS
-      and "data-ecausa=" in JS)
+      and "'data-ecausa'" in JS and "function _celdaCausa(" in JS and "function _filaFormNap(" in JS)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
       and "/resolucion" in JS.split("global.audCausaElegida")[1][:800])

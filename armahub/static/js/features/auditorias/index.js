@@ -1584,23 +1584,6 @@
     return p.join(' · ');
   }
 
-  // Y ACÁ CON SU FORMA, que es como se lee de verdad: la observación general como frase, y
-  // lo de cada barra como lista, cada una con el nombre de SU barra adelante. Una lista de
-  // ocho barras metida en un párrafo no se lee; en ocho renglones, sí.
-  function celdaQueSeEncontro(e) {
-    var html = '';
-    if ((e.texto || '').trim()) {
-      html += '<div class="audobsgen">' + esc(e.texto.trim()) + '</div>';
-    }
-    var malas = (e.barras_malas || []).filter(function (b) { return (b.observacion || '').trim(); });
-    if (malas.length) {
-      html += '<ul class="audobsb">' + malas.map(function (b) {
-        return '<li><b>' + esc(b.ref || b.marca || 'barra') + '</b> ' + esc(b.observacion.trim()) + '</li>';
-      }).join('') + '</ul>';
-    }
-    return html || '<span class="muted">—</span>';
-  }
-
   // LO QUE SALIÓ DE LA AUDITORÍA, BARRA POR BARRA Y CON LA ACCIÓN AL LADO (13-oct).
   //
   // El usuario: «el auditado no tiene acciones… debe poder generar la acción sobre cada
@@ -1770,6 +1753,42 @@
            '">Resuelto</button>';
   }
 
+  // LA CELDA DEL RCA, igual para la barra y para el comentario del elemento. RCA = análisis
+  // de causa raíz: el usuario lo llama así y es como se llama en la norma; «Clasificar» no
+  // decía qué se estaba clasificando.
+  //
+  // SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa que
+  // clasificar, y si la tenía el backend la quitó para que no pese en el indicador de causas
+  // de la auditoría (que es interno: NO es el Pareto de los reclamos y no se mezcla con él).
+  // `x` trae causa y causa_texto; `editable` es si se puede cambiar la ya puesta; `puede`
+  // si se puede poner una; `sinEsto` completa «Sin esto no se puede …».
+  function _celdaCausa(x, nap, attr, id, editable, puede, sinEsto) {
+    if (nap) return '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>';
+    if (x.causa) {
+      return '<button class="audmini" ' + attr + '="' + id + '"' + (editable ? '' : ' disabled') +
+             ' title="' + esc(x.causa + (x.causa_texto ? ' · ' + x.causa_texto : '')) + '">' +
+             esc(x.causa) + (editable ? ' ✎' : '') + '</button>';
+    }
+    return puede
+      ? '<button class="audmini sinc" ' + attr + '="' + id + '" title="Por qué pasó, en la matriz ' +
+        'Ishikawa. Sin esto no se puede ' + sinEsto + '.">RCA</button>'
+      : '<span class="muted">sin RCA</span>';
+  }
+
+  // LA FILA ESCONDIDA DEL «NO APLICA», que se abre bajo la barra o el comentario. `pref` es
+  // la letra que distingue los data-* del comentario ('e') de los de la barra (''); la
+  // barra además elige el motivo de una lista.
+  function _filaFormNap(pref, id, conMotivo, cols) {
+    return '<tr class="audnapform" data-' + pref + 'form="' + id + '" style="display:none">' +
+      '<td colspan="' + cols + '"><div class="revnapcaja">' +
+        (conMotivo ? '<select data-mot="' + id + '">' + _opcionesMotivoAud() + '</select>' : '') +
+        '<input type="text" data-' + pref + 'motivo="' + id + '" ' +
+          'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
+        '<button class="audmini ver" data-' + pref + 'napok="' + id + '">Guardar</button>' +
+        '<button class="audmini" data-' + pref + 'napno="' + id + '">Cancelar</button>' +
+      '</div></td></tr>';
+  }
+
   // EL COMENTARIO DEL ELEMENTO, cuando el hallazgo no es de ninguna barra.
   //
   // «Falta trabas de muro» no se puede colgar de una barra: la barra que falta no está. El
@@ -1800,19 +1819,7 @@
             '</div>' +
             (nap ? '' : _btnResuelto(resuelto, sinRca, resuelto ? 'data-edeshacer' : 'data-ecorregi', e.id));
     }
-    // EL RCA SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa
-    // que clasificar, y si la tenía el backend la quitó para que no pese en el indicador de causas de la auditoría (que es interno: NO es el Pareto de los reclamos y no se mezcla con él).
-    var causa = nap
-      ? '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>'
-      : e.causa
-        ? '<button class="audmini" data-ecausa="' + e.id + '"' + (puede ? '' : ' disabled') +
-          ' title="' + esc(e.causa + (e.causa_texto ? ' · ' + e.causa_texto : '')) + '">' +
-          esc(e.causa) + (puede ? ' ✎' : '') + '</button>'
-        : (puede
-            ? '<button class="audmini sinc" data-ecausa="' + e.id +
-              '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar por ' +
-              'resuelto.">RCA</button>'
-            : '<span class="muted">sin RCA</span>');
+    var causa = _celdaCausa(e, nap, 'data-ecausa', e.id, puede, puede, 'dar por resuelto');
     return '<tr' + (est === 'desestimada' ? ' class="audeses"' : '') + '>' +
       '<td></td>' +
       '<td><span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
@@ -1823,13 +1830,7 @@
       '<td>' + causa + '</td>' +
       '<td>' + estado + '</td>' +
       '<td>' + acc + '</td></tr>' +
-      '<tr class="audnapform" data-eform="' + e.id + '" style="display:none">' +
-        '<td colspan="9"><div class="revnapcaja">' +
-          '<input type="text" data-emotivo="' + e.id + '" ' +
-            'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
-          '<button class="audmini ver" data-enapok="' + e.id + '">Guardar</button>' +
-          '<button class="audmini" data-enapno="' + e.id + '">Cancelar</button>' +
-        '</div></td></tr>';
+      _filaFormNap('e', e.id, false, 9);
   }
 
   // UNA BARRA DE LA AUDITORÍA, con lo que se puede hacer con ella.
@@ -1878,22 +1879,8 @@
       acc = '<button class="audmini" data-objetar="' + b.item_id + '" title="Reabre esta ' +
             'barra: el descarte no se acepta. Queda registrado y le llega a quien cubicó.">No lo acepto</button>';
     }
-    // RCA = análisis de causa raíz. El usuario lo llama así y es como se llama en la
-    // norma; «Clasificar» no decía qué se estaba clasificando.
-    //
-    // Y SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa
-    // que clasificar, y si la tenía el backend la quitó para que no pese en el indicador de causas de la auditoría (que es interno: NO es el Pareto de los reclamos y no se mezcla con él).
-    var causa = b.desestimado
-      ? '<span class="muted" title="Sin efecto: no lleva RCA.">—</span>'
-      : b.causa
-        ? '<button class="audmini" data-causa="' + b.item_id + '"' + (puede && !b.corregido ? '' : ' disabled') +
-          ' title="' + esc(b.causa + (b.causa_texto ? ' · ' + b.causa_texto : '')) + '">' +
-          esc(b.causa) + (puede && !b.corregido ? ' ✎' : '') + '</button>'
-        : (puede
-            ? '<button class="audmini sinc" data-causa="' + b.item_id +
-              '" title="Por qué pasó, en la matriz Ishikawa. Sin esto no se puede dar la ' +
-              'barra por resuelta.">RCA</button>'
-            : '<span class="muted">sin RCA</span>');
+    var causa = _celdaCausa(b, !!b.desestimado, 'data-causa', b.item_id, puede && !b.corregido, puede,
+                            'dar la barra por resuelta');
     var cols = 9;
     return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
       '<td>' + (puede && !b.corregido && !b.desestimado
@@ -1913,14 +1900,7 @@
       '<td class="audcausa">' + causa + '</td>' +
       '<td>' + estado + '</td>' +
       '<td class="audacc2">' + acc + '</td></tr>' +
-      '<tr class="audnapform" data-form="' + b.item_id + '" style="display:none">' +
-        '<td colspan="' + cols + '"><div class="revnapcaja">' +
-          '<select data-mot="' + b.item_id + '">' + _opcionesMotivoAud() + '</select>' +
-          '<input type="text" data-motivo="' + b.item_id + '" ' +
-            'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
-          '<button class="audmini ver" data-napok="' + b.item_id + '">Guardar</button>' +
-          '<button class="audmini" data-napno="' + b.item_id + '">Cancelar</button>' +
-        '</div></td></tr>';
+      _filaFormNap('', b.item_id, true, cols);
   }
 
   // LAS FIGURAS DE LA AUDITORÍA. Mismo trato que en la revisión de barras: se piden POR

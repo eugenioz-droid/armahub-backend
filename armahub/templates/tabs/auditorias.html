@@ -372,37 +372,10 @@
           border-bottom:2px solid transparent; color:#aaa; cursor:pointer;}
   .audsub.on{border-bottom-color:#1565C0; color:#1565C0;}
   /* Las reglas, a la vista: una regla que nadie entiende es una regla que se ignora. */
-  .revreglas{display:flex; gap:10px; flex-wrap:wrap;}
-  .revregla{flex:1; min-width:280px; background:#f7f9fb; border:1px solid #e3e8ef;
-            border-radius:6px; padding:8px 10px;}
-  .revregla b{font-size:11.5px; color:#263238;}
-  .revregla div{font-size:10.5px; color:#78909c; margin-top:3px; line-height:1.45;}
   .revprog{margin:6px 0 10px;}
   .revbar{height:8px; background:#eceff1; border-radius:3px; overflow:hidden;}
   .revbar i{display:block; height:100%; width:0; background:#1565C0; transition:width .2s;}
-  .revsen{display:flex; align-items:center; gap:9px; padding:5px 8px; font-size:11.5px;
-          border:1px solid #e3e8ef; border-radius:5px; background:#fff; margin-bottom:4px;}
-  .revsen.corregir{border-color:#ef9a9a; background:#fffafa;}
-  .revsen.aceptada{opacity:.6;}
-  .revsen .cc{font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:#1565C0; flex:none; width:58px;}
-  .revsen .ref{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#37474f;
-               background:#eceff1; border-radius:3px; padding:0 5px; flex:none;}
-  .revsen .tx{flex:1; min-width:0; color:#455a64;}
-  .revsen .ve{flex:none; font-size:9.5px; color:#90a4ae;}
-  .revsen .est{flex:none; font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px;}
-  .revsen .est.corregir{background:#ffebee; color:#c62828;}
-  .revsen .est.aceptada{background:#eceff1; color:#607d8b;}
   .revvacio{color:#90a4ae; font-size:11.5px; padding:14px 6px; text-align:center;}
-  .revcc{display:flex; align-items:center; gap:9px; padding:4px 9px; font-size:11px;
-         border-bottom:1px solid #f4f6f8;}
-  .revcc .k{font-family:ui-monospace,Consolas,monospace; color:#1565C0; flex:none; width:58px;}
-  .revcc .d{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; color:#546e7a;}
-  .revcc .r{flex:none; width:190px; color:#90a4ae; font-size:10.5px;}
-  .revcc .m{flex:none; font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px;}
-  .revcc .m.no{background:#eceff1; color:#90a4ae;}
-  .revcc .m.ok{background:#f1f8e9; color:#558b2f;}
-  .revcc .m.hay{background:#fff3e0; color:#e65100;}
-  .revcc .m.cambio{background:#e3f2fd; color:#1565C0;}
   .audc{padding:10px 12px; margin:0 0 12px;}
   .audh{font-size:12px; font-weight:700; color:#263238; margin-bottom:8px; display:flex; align-items:center; gap:8px;}
   .audh .muted{font-weight:400; font-size:10.5px;}
@@ -427,14 +400,8 @@
   .audchips{display:flex; flex-wrap:wrap; gap:4px;}
   .audchips button{font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:4px; cursor:pointer;
                    border:1px solid #dfe5ea; background:#fff; color:#607d8b;}
-  /* El contador de cada chip, en su propia pastilla: pegado al nombre se leía como
-     parte del nombre y nadie entendía qué era ese número. */
-  .audchips button i{font-style:normal; font-weight:700; font-size:9px; margin-left:5px; padding:0 4px;
-                     border-radius:99px; background:#eceff1; color:#78909c;}
   .audchips button:hover{border-color:#90caf9;}
   .audchips button.on{background:#1565C0; border-color:#0d47a1; color:#fff;}
-  .audchips button.on i{background:rgba(255,255,255,.25); color:#fff;}
-  .audchips button.todos{border-style:dashed;}
   .audbtn{font-size:12px; font-weight:700; padding:6px 14px; background:#1565C0; color:#fff; border:none; border-radius:5px; cursor:pointer;}
   .audbtn:disabled{background:#b0bec5; cursor:not-allowed;}
   /* El botón que abre el formulario: tiene que verse desde la puerta. */
@@ -492,14 +459,6 @@
      hay que poder leerlo entero, así que esa fila crece hacia abajo en vez de a lo ancho. */
   .audt.audacct td{white-space:normal; overflow:visible;}
   .audt td.audqse{min-width:260px; max-width:520px;}
-  /* La observación del elemento entero: una frase. */
-  .audobsgen{color:#37474f;}
-  /* Lo que se encontró en cada barra: una línea por barra, con su nombre adelante. Metido
-     todo en un párrafo no se lee; en renglones, sí. */
-  .audobsb{margin:2px 0 0; padding-left:0; list-style:none;}
-  .audobsb li{color:#546e7a; font-size:10.5px; line-height:1.5;}
-  .audobsb li b{font-family:ui-monospace,Consolas,monospace; color:#37474f; font-size:10px;
-                background:#eceff1; border-radius:3px; padding:0 4px; margin-right:4px;}
   /* La barra, en el panel del auditado: lo primero que busca para ir a arreglarla. */
   .audref{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#37474f;
           background:#eceff1; border-radius:3px; padding:1px 5px;}
@@ -515,17 +474,11 @@
   .audcandado{background:#fff8e1; border:1px solid #ffe082; color:#8d6e00; font-size:11.5px;
               padding:7px 10px; border-radius:6px; margin-bottom:8px;}
   .audsololeer #audRevBarras{opacity:.75;}
-  .audsololeer #audRevBarras .audv, .audsololeer #audRevBarras input,
+  .audsololeer #audRevBarras .audvb, .audsololeer #audRevBarras input,
   .audsololeer #audRevBarras select, .audsololeer #audRevChips{pointer-events:none;}
   .audnota{background:#f7f9fb; border:1px solid #e3e8ef; color:#607d8b; font-size:11px;
            padding:6px 9px; border-radius:5px; margin-bottom:8px;}
   .audacc2{white-space:nowrap; display:flex; gap:4px; align-items:center;}
-  /* EL CHECK ES EL ESTADO, no una orden: marcado = la barra ya está cambiada en aSa. */
-  .audchk{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:#37474f;
-          background:#f1f8e9; border:1px solid #c5e1a5; border-radius:5px; padding:2px 7px;
-          cursor:pointer; white-space:nowrap;}
-  .audchk.on{background:#e8f5e9; border-color:#81c784; color:#2e7d32; font-weight:600;}
-  .audchk.off{background:#fafafa; border-color:#e0e0e0; color:#b0bec5; cursor:not-allowed;}
   /* LA SEÑAL DE QUE SE APRETÓ. Sin esto los botones quedaban «pegados»: el clic no
      cambiaba nada a la vista mientras el servidor respondía, y se apretaba de nuevo. */
   .audwait{opacity:.55; cursor:progress !important; position:relative;}
@@ -536,15 +489,11 @@
   .audmini:active:not(:disabled), .audbtn:active:not(:disabled),
   .audenviar:active:not(:disabled){transform:translateY(1px);}
   .revseg button:active:not(:disabled){transform:translateY(1px);}
-  .audlados{font-size:9.5px; color:#78909c; margin-top:2px; line-height:1.4;}
   .audacct td.revfig{width:124px; text-align:center;}
   .audacct td.revfig svg{display:block; margin:0 auto; max-width:116px; height:auto;}
   .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
   .audacct tr.audnapform td{background:#fff8e1;}
   /* ══════ LAS REVISIONES ══════ */
-  /* UN PANEL, NO DOS. La matriz de revisiones ocupa el ancho y el resumen de la
-     seleccionada va debajo: antes eran dos columnas que decían lo mismo. */
-  .audrevs{display:block;}
   /* LA MATRIZ, ARMONIZADA (2-nov). Un solo tamaño de número; el peso y el color dicen qué
      importa. Dos filas de encabezado: la sección y la columna. */
   .revmat{font-size:12px;}
@@ -838,9 +787,6 @@
   .revsend dd{margin:0 0 6px;}
   .revsenq{grid-column:1 / -1; padding:8px 10px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px;}
   .revsenacc{grid-column:1 / -1; display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
-  /* ══════ LA BANDEJA DE HALLAZGOS (chequeos) ══════ */
-  .audt tr.corregir td{background:#fff6f6;} .audt tr.aceptada td{color:#78909c;}
-  .audt tr.corregida td{color:#78909c; background:#f4f8fc;}
   /* ══════ EL FLUJO DE LA AUDITORÍA ══════
      Cuatro pasos en una franja. El paso en que va se pinta; los anteriores quedan
      apagados pero visibles, porque saber de dónde viene es parte de entender dónde está. */
@@ -925,20 +871,11 @@
   .audt td.audesc.desp{color:#c62828; font-weight:700;}
   .audub{width:100%; min-width:46px; box-sizing:border-box; font-size:11px; padding:2px 5px;
          border:1px solid #90caf9; border-radius:4px; background:#fff; color:#263238;}
-  /* LA MUESTRA Y LA REVISIÓN LADO A LADO en pantallas anchas, cuando hay un elemento
-     abierto: la lista se comprime a la izquierda y la grilla de barras queda a la derecha,
-     las dos a la vista sin que la lista se coma la pantalla (6-oct). Más angosto, una
-     bajo la otra como siempre. */
-  @media (min-width:1500px){
-    /* EL DETALLE VA DEBAJO DE LA MUESTRA, A LO ANCHO (28-oct). Acá vivía la grilla de dos
-       columnas que comprimía la muestra a la izquierda con los ejes cortados. El usuario:
-       «el detalle según lo que seleccione, en el mismo cuadro actual pero abajo». */
-  }
   .audrev textarea{width:100%; box-sizing:border-box; font-size:11.5px; padding:6px 8px; border:1px solid #cfd8dc; border-radius:4px;
                    margin-bottom:8px; resize:vertical; font-family:inherit;}
-  /* Los cuatro hallazgos, cada uno con su color cuando está encendido. */
+  /* Los dos hallazgos que se eligen con chip (observación y hallazgo), cada uno con su
+     color cuando está encendido. */
   .audchips button.hz.on{border-color:transparent; color:#fff;}
-  .audchips button.hz.conforme.on{background:#8BC34A;}
   .audchips button.hz.observacion.on{background:#ffb74d;}
   .audchips button.hz.hallazgo.on{background:#c62828;}
   .audhz{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap; color:#fff;}
