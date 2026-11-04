@@ -1287,5 +1287,113 @@ check("ninguna ruta de chequeos apunta a una funcion privada",
 check("/chequeos/revisiones la sirve revisiones(), que no exige n",
       [f for p, f in _rutas.items() if p.endswith("/chequeos/revisiones")] == ["revisiones"])
 
+print("\nLAS CONSULTAS SE EJECUTAN: MARCADORES = PARAMETROS (4-nov)")
+# El 4-nov la pantalla decia «Error interno del servidor»: la consulta de /chequeos/revisiones
+# tenia tres %s y recibia dos parametros. Los tests de arriba miran el TEXTO del archivo y eso
+# no lo atrapa. Esto EJECUTA cada endpoint de lectura contra un cursor falso que cuenta los
+# marcadores de cada consulta contra los parametros que le pasan, y devuelve filas vacias.
+import contextlib  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
+from armahub import chequeos_api as _A  # noqa: E402
+
+
+class _MarcadorError(AssertionError):
+    pass
+
+
+def _columnas(sql):
+    """Cuantas columnas pide el ultimo SELECT de arriba (comas de primer nivel entre SELECT
+    y FROM), para que fetchone devuelva una fila del largo que el codigo va a desempacar."""
+    u = sql.upper()
+    i = u.find("SELECT")
+    if i < 0:
+        return 1
+    j = u.find(" FROM", i)
+    cuerpo = u[i + 6:j if j > 0 else None]
+    prof, n = 0, 1
+    for ch in cuerpo:
+        if ch == "(":
+            prof += 1
+        elif ch == ")":
+            prof -= 1
+        elif prof == 0 and ch == ",":
+            n += 1
+    return n
+
+
+class _CursorContable:
+    def __init__(self, bitacora):
+        self.b = bitacora
+        self.ultima = ""
+
+    def execute(self, sql, params=None):
+        esperados = sql.count("%s") - 2 * sql.count("%%s")
+        dados = 0 if params is None else len(params)
+        self.b.append((sql.strip().split("\n")[0][:60], esperados, dados))
+        if esperados != dados:
+            raise _MarcadorError("%d marcadores, %d parametros: %s" % (esperados, dados, sql.strip()[:90]))
+        self.ultima = sql
+
+    def fetchone(self):
+        return tuple([None] * _columnas(self.ultima))
+
+    def fetchall(self):
+        return []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _ConnContable:
+    def __init__(self, bitacora):
+        self.b = bitacora
+
+    def cursor(self):
+        return _CursorContable(self.b)
+
+    def commit(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+_bit = []
+_u = {"role": "admin", "rol": "admin", "email": "test@x", "sub": "test@x"}
+_llamadas = [
+    ("revisiones barra", lambda: _A.revisiones(job="", nivel="barra", user=_u)),
+    ("revisiones elemento, por obra", lambda: _A.revisiones(job="2010136", nivel="elemento", user=_u)),
+    ("detalle_revision", lambda: _A.detalle_revision(revision_id=5, nivel="barra", user=_u)),
+    ("detalle_revision todas", lambda: _A.detalle_revision(revision_id=0, nivel="elemento", user=_u)),
+    ("senales", lambda: _A.senales(job="x", estado="abierta", regla="r", cubico="c", user=_u)),
+    ("codigos", lambda: _A.codigos(job="x", user=_u)),
+    ("reporte", lambda: _A.reporte(user=_u)),
+]
+_malas = []
+_real = _A.get_conn
+_A.get_conn = lambda *a, **k: _ConnContable(_bit)
+try:
+    for nombre, fn in _llamadas:
+        try:
+            fn()
+        except _MarcadorError as e:
+            _malas.append("%s: %s" % (nombre, e))
+        except HTTPException:
+            pass            # 404 por fila vacia: la consulta ya corrio
+        except Exception:   # noqa: BLE001 — una fila de None rompe mas adelante; lo que importa es lo ejecutado
+            pass
+finally:
+    _A.get_conn = _real
+check("cada consulta de los endpoints de lectura recibe tantos parametros como marcadores tiene (%d consultas ejecutadas)" % len(_bit),
+      not _malas and len(_bit) >= 8)
+for m in _malas:
+    print("      " + m)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

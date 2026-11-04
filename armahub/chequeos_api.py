@@ -1567,7 +1567,7 @@ def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_use
                      LEFT JOIN chequeo_senales s ON s.revision_id = r.id AND s.nivel = %s
                     WHERE (%s = '' OR r.id_proyecto = %s)
                     GROUP BY r.id
-                    ORDER BY r.arrancada DESC LIMIT 60""", (job, job))
+                    ORDER BY r.arrancada DESC LIMIT 60""", (_nivel(nivel), job, job))
             filas = cur.fetchall()
             # EL DESGLOSE POR CUBICADOR, para la matriz: una columna por persona, y las
             # personas salen del dato, no de una lista. Si mañana aparece alguien nuevo,
