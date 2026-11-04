@@ -1140,5 +1140,81 @@ check("...y el aviso va dentro del bloque del codigo que se intento cerrar, enci
       "bloque.insertBefore(div, bloque.querySelector('.revccpie'));" in JS
       and "var unico = Object.keys(ccs).length === 1 ? Object.keys(ccs)[0] : null;" in JS)
 
+
+print("\nREVISION DE ELEMENTOS: EL CODIGO CONTRA EL PISO ANTERIOR (4-nov)")
+sys.path.insert(0, ROOT)
+os.environ.setdefault("JWT_SECRET", "x" * 40); os.environ.setdefault("DATABASE_URL", "postgresql://x/x")
+from armahub.chequeos_elementos import (parsear_descr, nombre_elemento, pares_de_obra,   # noqa: E402
+                                        resumir, correr_elemento, REGLAS_ELEMENTO)
+MIG162 = open(os.path.join(ROOT, "armahub", "migrations", "162_senales_por_nivel.sql"), encoding="utf-8").read()
+ELEM = open(os.path.join(ROOT, "armahub", "chequeos_elementos.py"), encoding="utf-8").read()
+check("las señales tienen nivel, y lo que ya existia es barra",
+      "ADD COLUMN IF NOT EXISTS nivel TEXT NOT NULL DEFAULT 'barra'" in MIG162)
+# El nombre del codigo, en sus dos formas, y lo que no se compara.
+check("el nombre del codigo se entiende en sus dos formas: «ELEV P3 C7» y «ELEV. 3°P (CICLO 7)»",
+      parsear_descr("ELEV P3 C7") == {"sector": "ELEV", "piso": 3, "ciclo": 7, "frente": 0, "rango": False}
+      and parsear_descr("ELEV. 3°P (CICLO 7) FRENTE 1")["frente"] == 1
+      and parsear_descr("LOSAS C 10°P (CICLO 2)") == {"sector": "LC", "piso": 10, "ciclo": 2, "frente": 0, "rango": False}
+      and parsear_descr("Losa Cielo P9 C1")["sector"] == "LC" and parsear_descr("VC- P2 C3")["sector"] == "VC")
+check("...los subterraneos quedan bajo cero, y lo que no es edificacion no entra",
+      parsear_descr("LOSAS C-2S (CICLO 6)")["piso"] == -2
+      and parsear_descr("BARRAS STOCK") is None and parsear_descr("PR - PILOTE - P3") is None)
+check("...y los rangos y las partes se reconocen: existen, pero no se comparan piso a piso",
+      parsear_descr("Vigas Cielo P6@P9 C1")["rango"] and parsear_descr("ELEV P2 CICLO 3_PARTE 2")["rango"]
+      and not parsear_descr("ELEV P2 C3")["rango"])
+check("el mismo muro un piso mas arriba se reconoce por el nombre sin el numero de piso ni el plano",
+      nombre_elemento("EJE L4/16 PL-338 Rev-C") == "EJE L4/#" == nombre_elemento("EJE L4/17 PL-338 Rev-C"))
+# El emparejador.
+ped = [("A1", "ELEV P1 C1", 1000), ("A2", "ELEV P2 C1", 1000), ("A3", "ELEV P3 C1", 1000),
+       ("A4", "ELEV P4 C1", 1000), ("A4b", "ELEV P4 C1", 1000), ("R", "ELEV P5@P8 C1", 4000), ("X", "BARRAS STOCK", 50)]
+P = pares_de_obra(ped)
+check("el par es piso N-1 → N, mismo sector y ciclo, desde el piso tipo; el ultimo conocido se marca",
+      P["A4"]["anterior"][0] == "A3" and P["A3"]["anterior"][0] == "A2" and P["A2"]["anterior"] is None
+      and P["A4"]["ultimo"] and not P["A3"]["ultimo"] and "X" not in P)
+check("...dos codigos del mismo piso y ciclo son candidatos a duplicado; el rango no se compara",
+      [d[0] for d in P["A4"]["duplicados"]] == ["A4b"] and P["R"]["anterior"] is None and P["R"]["duplicados"] == [])
+# Las reglas, sobre resumenes armados a mano.
+def _it(eid, desc, n=4, qty=10):
+    return [{"ElementID": eid, "ElementDesc": desc, "TotalQty": qty}] * n
+ant = resumir("A3", _it("01", "EJE A/3") + _it("02", "EJE B/3") + _it("03", "EJE C/3"), 1000, "ELEV P3 C1")
+act = resumir("A4", _it("01", "EJE A/4") + _it("03", "EJE C/4"), 700, "ELEV P4 C1")
+s = correr_elemento(act, parsear_descr("ELEV P4 C1"), ant, [])
+check("ELEVACIONES: menos elementos que el piso anterior salta, y dice cual falta",
+      [x["regla"] for x in s] == ["faltan_elementos"] and s[0]["detalle"]["diferencia"] == {"que": "Faltan", "valor": 1}
+      and s[0]["detalle"]["lista"] == [{"texto": "EJE B/#", "tipo": "falta"}] and s[0]["detalle"]["grupo"] == "edificacion")
+igual = resumir("A4", _it("01", "EJE A/4") + _it("02", "EJE B/4") + _it("03", "EJE C/4"), 650, "ELEV P4 C1")
+check("...pero en elevaciones los kilos no mandan: mismos elementos con menos kilos no salta",
+      correr_elemento(igual, parsear_descr("ELEV P4 C1"), ant, []) == [])
+losa_ant = resumir("L3", _it("01", "LOSA/3"), 3000, "LC P3 C1"); losa_act = resumir("L4", _it("01", "LOSA/4"), 1200, "LC P4 C1")
+s = correr_elemento(losa_act, parsear_descr("LC P4 C1"), losa_ant, [])
+check("LOSAS: los kilos si mandan (lo normal es repetirse): bajo 0,5× salta aunque los elementos esten",
+      [x["regla"] for x in s] == ["faltan_elementos"] and s[0]["detalle"]["diferencia"]["que"] == "Queda en")
+disp = resumir("L4", _it("01", "LOSA/4", qty=100), 9900, "LC P4 C1")
+s = correr_elemento(disp, parsear_descr("LC P4 C1"), losa_ant, [])
+check("CODIGO DISPARADO: ×3 en kilos con los mismos elementos, y dice que elemento subio de unidades",
+      [x["regla"] for x in s] == ["codigo_disparado"] and s[0]["detalle"]["grupo"] == "todas"
+      and s[0]["detalle"]["lista"] == [{"texto": "LOSA/#: 400 unidades (antes 40)", "tipo": "sube"}])
+dup = resumir("A4b", _it("01", "EJE A/4") + _it("03", "EJE C/4"), 700, "ELEV P4 C1")
+s = correr_elemento(act, parsear_descr("ELEV P4 C1"), None, [dup])
+check("CODIGO DUPLICADO: mismos elementos barra por barra y mismos kilos; con otros kilos no",
+      [x["regla"] for x in s] == ["codigo_duplicado"]
+      and correr_elemento(act, parsear_descr("ELEV P4 C1"), None, [resumir("A4b", dup and _it("01", "EJE A/4") + _it("03", "EJE C/4"), 900, "ELEV P4 C1")]) == [])
+# El enganche en la API.
+check("el paso de elementos corre al final de revisar_cc con los mismos items, y si falla no tumba las barras",
+      "elementos = revisar_elementos_cc(body.job, body.cc, body.revision, items, email, cubico, obra)" in API
+      and 'elementos = {"senales": 0, "error": str(e)[:160]}' in API and "def _items_cacheados(cc: str)" in API)
+check("...guarda con nivel elemento y cierra solo lo de elemento que ya no salta",
+      "VALUES (%s,'asa',%s,%s,%s,NULL,%s,%s,%s,%s,%s,'abierta',%s,'elemento')" in API
+      and "WHERE id_proyecto = %s AND cc = %s AND nivel = 'elemento'" in API)
+check("el tab de barras solo ve, y solo cierra, señales de barra",
+      "AND nivel = 'barra' AND NOT (firma = ANY(%s))" in API
+      and "LEFT JOIN chequeo_senales s ON s.revision_id = r.id AND s.nivel = %s" in API
+      and API.count("AND s.nivel = %s") >= 4 and "def _nivel(n) -> str:" in API)
+check("las dos pantallas piden lo suyo con ?nivel=, y las reglas de elemento tienen su endpoint con grupo y umbral",
+      'def revisiones(job: str = "", nivel: str = "barra"' in API
+      and 'def detalle_revision(revision_id: int, nivel: str = "barra"' in API
+      and '@router.get("/chequeos/reglas-elemento")' in API
+      and all(r["grupo"] in ("todas", "edificacion") and r["umbral"] for r in REGLAS_ELEMENTO))
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

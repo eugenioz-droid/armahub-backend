@@ -33,6 +33,8 @@ from pydantic import BaseModel
 from .asa import AsaError
 from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_de, alias_cubicador, correo_de_login,
                          _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
+from .chequeos_elementos import (REGLAS_ELEMENTO, correr_elemento, firma_elemento, pares_de_obra,
+                                 resumir)
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
 from .db import audit, get_conn
@@ -330,7 +332,7 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
                           nota = COALESCE(nota || ' · ', '') ||
                                  'Ya no aparece al revisar de nuevo el código.'
                     WHERE id_proyecto = %s AND cc = %s AND estado = ANY(%s)
-                      AND NOT (firma = ANY(%s))
+                      AND nivel = 'barra' AND NOT (firma = ANY(%s))
                 RETURNING id""",
                 (body.job, body.cc, list(SE_CIERRAN_SOLAS), vivas))
             corregidas = len(cur.fetchall())
@@ -340,10 +342,104 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
     _marcar_codigo(body.job, body.cc, email, len(barras), len(senales), None)
     _sumar_revision(body.revision, ccs=1, barras=len(barras), nuevas=nuevas,
                     vistas=vistas, corregidas=corregidas)
+    # EL PASO DE ELEMENTOS (4-nov), con los mismos ítems ya leídos: el código contra el
+    # mismo ciclo del piso anterior. Si falla, la revisión de barras ya quedó guardada.
+    try:
+        elementos = revisar_elementos_cc(body.job, body.cc, body.revision, items, email, cubico, obra)
+    except Exception as e:  # noqa: BLE001 — se informa, no se tumba la revisión de barras
+        elementos = {"senales": 0, "error": str(e)[:160]}
     return {"cc": body.cc, "barras": len(barras), "nuevas": nuevas, "vistas": vistas,
-            "corregidas": corregidas,
+            "corregidas": corregidas, "elementos": elementos,
             "senales": [{"regla": s["regla"], "ref": s["ref"], "texto": s["detalle"]["texto"]}
                         for s in senales]}
+
+
+# Los ítems de los códigos con que se compara, leídos una vez por corrida: el piso anterior
+# de un código es el actual del siguiente, y treinta lecturas repetidas a aSa son minutos.
+_ITEMS_CACHE: dict = {}
+
+
+def _items_cacheados(cc: str) -> list:
+    if cc not in _ITEMS_CACHE:
+        if len(_ITEMS_CACHE) > 400:
+            _ITEMS_CACHE.clear()
+        _ITEMS_CACHE[cc] = [it for it in _items_de(cc) if _es_barra(it)]
+    return _ITEMS_CACHE[cc]
+
+
+def revisar_elementos_cc(job: str, cc: str, revision_id, items: list, email: str,
+                         cubico=None, obra=None, dry: bool = False) -> dict:
+    """EL CÓDIGO CONTRA EL MISMO CICLO DEL PISO ANTERIOR (4-nov). Ver chequeos_elementos.
+
+    Sólo entra lo que se nombra como edificación (sector + piso + ciclo); lo demás devuelve
+    «no es edificación» y no deja rastro. Con `dry` corre las reglas y no guarda nada: es
+    como se mide una regla antes de encenderla."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT control_code, MAX(descr), MAX(COALESCE(kg, 0))
+                             FROM asa_pedidos WHERE asa_job_id = %s
+                              AND COALESCE(estado, '') <> 'Cancelled'
+                            GROUP BY control_code""", (job,))
+            pedidos = cur.fetchall()
+    pares = pares_de_obra(pedidos)
+    r = pares.get(cc)
+    if not r:
+        return {"senales": 0, "motivo": "no es edificación"}
+    por_cc = {p[0]: p for p in pedidos}
+    act = resumir(cc, items, por_cc[cc][2], por_cc[cc][1])
+    anterior = None
+    if r["anterior"]:
+        a_cc, a_descr, a_kg = r["anterior"]
+        anterior = resumir(a_cc, _items_cacheados(a_cc), a_kg, a_descr)
+    duplicados = [resumir(d_cc, _items_cacheados(d_cc), d_kg, d_descr)
+                  for d_cc, d_descr, d_kg in r["duplicados"][:3]]
+    senales = correr_elemento(act, r["p"], anterior, duplicados)
+    for s in senales:
+        s["firma"] = firma_elemento(s["regla"], job, cc, s["contra"])
+        # El último piso conocido suele ser distinto: la señal se marca, no se calla.
+        if r["ultimo"]:
+            s["detalle"]["posible_ultimo_piso"] = True
+    if dry:
+        return {"senales": len(senales), "detalle": senales, "p": r["p"], "anterior": r["anterior"],
+                "duplicados": [d[0] for d in r["duplicados"]], "ultimo": r["ultimo"]}
+    nuevas = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for s in senales:
+                cur.execute(
+                    """INSERT INTO chequeo_senales
+                           (regla, origen, id_proyecto, obra, cc, elemento, ref, cubico, detalle,
+                            firma, firma_patron, estado, revision_id, nivel)
+                       VALUES (%s,'asa',%s,%s,%s,NULL,%s,%s,%s,%s,%s,'abierta',%s,'elemento')
+                       ON CONFLICT (firma) DO UPDATE
+                          SET veces = chequeo_senales.veces + 1, visto_ultimo = now(),
+                              detalle = EXCLUDED.detalle, cubico = EXCLUDED.cubico
+                       RETURNING (xmax = 0) AS insertada""",
+                    (s["regla"], job, obra, cc, cc, cubico, _json(s["detalle"]), s["firma"], s["firma"],
+                     revision_id))
+                if cur.fetchone()[0]:
+                    nuevas += 1
+            # Lo que ya no salta se cierra solo, igual que en barras: el muro apareció, el
+            # código ya no está duplicado.
+            cur.execute(
+                """UPDATE chequeo_senales
+                      SET estado = 'corregida', resuelto_el = now(),
+                          nota = COALESCE(nota || ' · ', '') || 'Ya no aparece al revisar de nuevo el código.'
+                    WHERE id_proyecto = %s AND cc = %s AND nivel = 'elemento'
+                      AND estado = ANY(%s) AND NOT (firma = ANY(%s))
+                RETURNING id""",
+                (job, cc, list(SE_CIERRAN_SOLAS), [s["firma"] for s in senales]))
+            corregidas = len(cur.fetchall())
+    return {"senales": len(senales), "nuevas": nuevas, "corregidas": corregidas}
+
+
+@router.get("/chequeos/reglas-elemento")
+def reglas_elemento(user=Depends(get_current_user)):
+    """Los criterios del tab de elementos, en sus dos grupos: lo que vale para todas las
+    obras y lo que sólo tiene sentido en edificación."""
+    _puede_ver(user)
+    return {"reglas": [{k: r[k] for k in ("codigo", "grupo", "corto", "nombre", "porque", "umbral")}
+                       for r in REGLAS_ELEMENTO]}
 
 
 def _marcar_codigo(job: str, cc: str, por: str, barras: int, senales: int,
@@ -1067,7 +1163,7 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
 # ══════ LAS REVISIONES SON LA UNIDAD ══════
 
 @router.get("/chequeos/revision/{revision_id}")
-def detalle_revision(revision_id: int, user=Depends(get_current_user)):
+def detalle_revision(revision_id: int, nivel: str = "barra", user=Depends(get_current_user)):
     """LO QUE ENCONTRÓ UNA REVISIÓN, y en qué va. Todos ven todo acá: el reparto por persona
     es lo que hace falta para saber dónde está parado el trabajo.
 
@@ -1107,8 +1203,9 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
                 "SELECT " + _COLS_SENAL + """, s.motivo_tipo, s.declarada_por, s.declarada_el,
                           s.cierre_confirmado_el
                      FROM chequeo_senales s
-                    WHERE (%s AND s.revision_id IS NOT NULL) OR s.revision_id = %s
-                    ORDER BY s.obra, s.cc, s.regla, s.ref""", (todas, revision_id))
+                    WHERE ((%s AND s.revision_id IS NOT NULL) OR s.revision_id = %s)
+                      AND s.nivel = %s
+                    ORDER BY s.obra, s.cc, s.regla, s.ref""", (todas, revision_id, _nivel(nivel)))
             items = []
             for f in cur.fetchall():
                 d = _fila_senal(f)
@@ -1193,7 +1290,9 @@ def detalle_revision(revision_id: int, user=Depends(get_current_user)):
     })
     return {"revision": cab, "items": items,
             "estados": ESTADO_TXT, "motivos": MOTIVOS_NO_APLICA,
-            "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"]} for r in REGLAS}}
+            "reglas": {r["codigo"]: {"nombre": r["nombre"], "porque": r["porque"], "corto": r.get("corto"),
+                                     "grupo": r.get("grupo")}
+                       for r in (REGLAS_ELEMENTO if _nivel(nivel) == "elemento" else REGLAS)}}
 
 
 @router.get("/chequeos/por-cubicador")
@@ -1417,7 +1516,12 @@ def reporte(meses: int = MESES_MOVIMIENTO, tarde: bool = False,
 
 
 @router.get("/chequeos/revisiones")
-def revisiones(job: str = "", user=Depends(get_current_user)):
+def _nivel(n) -> str:
+    # Dos niveles y nada más: cualquier otra cosa es barra, que es lo que siempre fue.
+    return "elemento" if n == "elemento" else "barra"
+
+
+def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_user)):
     """El registro de las revisiones: quién, cuándo y qué salió. Se escribe solo."""
     _puede_ver(user)
     with get_conn() as conn:
@@ -1448,7 +1552,7 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                                                 AND s.visto_primero < now() - interval '7 days'),
                           EXTRACT(YEAR FROM r.arrancada)::int
                      FROM chequeo_revisiones r
-                     LEFT JOIN chequeo_senales s ON s.revision_id = r.id
+                     LEFT JOIN chequeo_senales s ON s.revision_id = r.id AND s.nivel = %s
                     WHERE (%s = '' OR r.id_proyecto = %s)
                     GROUP BY r.id
                     ORDER BY r.arrancada DESC LIMIT 60""", (job, job))
@@ -1471,8 +1575,8 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                                   OR (s.estado IN ('declarada', 'corregir')
                                       AND s.cierre_confirmado_el IS NOT NULL)))
                      FROM chequeo_senales s
-                    WHERE s.revision_id IS NOT NULL
-                    GROUP BY 1, 2""")
+                    WHERE s.revision_id IS NOT NULL AND s.nivel = %s
+                    GROUP BY 1, 2""", (_nivel(nivel),))
             porcub = {}
             for rid, quien, n, nap, res, viejas, ccs_q, obras_q, cerr in cur.fetchall():
                 porcub.setdefault(rid, {})[quien or "(sin dato)"] = {
@@ -1493,7 +1597,7 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                                   OR (s.estado IN ('declarada', 'corregir')
                                       AND s.cierre_confirmado_el IS NOT NULL)))
                      FROM chequeo_senales s
-                    WHERE s.revision_id IS NOT NULL""")
+                    WHERE s.revision_id IS NOT NULL AND s.nivel = %s""", (_nivel(nivel),))
             t = cur.fetchone() or (0, 0, 0, 0, 0, 0, 0, 0)
             # Los kilos de los códigos que tienen algún hallazgo: es «cuánto acero está en
             # juego», no la suma de las barras marcadas.
@@ -1501,7 +1605,8 @@ def revisiones(job: str = "", user=Depends(get_current_user)):
                 """SELECT COALESCE(SUM(p.kg), 0) FROM asa_pedidos p
                     WHERE (p.asa_job_id, p.control_code) IN
                           (SELECT DISTINCT s.id_proyecto, s.cc FROM chequeo_senales s
-                            WHERE s.revision_id IS NOT NULL AND s.cc <> '')""")
+                            WHERE s.revision_id IS NOT NULL AND s.cc <> '' AND s.nivel = %s)""",
+                (_nivel(nivel),))
             kg_total = float((cur.fetchone() or [0])[0] or 0)
             total = {"detectados": t[0], "no_aplica": t[1], "aplican": t[0] - t[1],
                      "resueltas": t[2], "declaradas": t[3],
