@@ -1276,6 +1276,11 @@ check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figur
       and "var cosa = REVS.nivel === 'elemento' ? 'hallazgo(s)' : 'barra(s)';" in JS
       and 'def _items_cacheados(cc: str, revision_id=None) -> list:' in API)
 
+print("\n«NO APLICA» CIERRA PERO NO ES RESUELTO, TAMBIEN EN EL DETALLE (4-nov)")
+check("el detalle no suma la aceptada a resueltas (la tarjeta «cerrado» la contaba dos veces), y el pct por cubicador va sobre los que aplican",
+      'c["no_aplica"] += 1; c["resueltas"] += 1' not in API
+      and 'aplican = c["n"] - c["no_aplica"]' in API)
+
 print("\nLAS RUTAS ESTAN EN LAS FUNCIONES QUE CORRESPONDEN (4-nov)")
 # El 4-nov la pantalla decia «n: Field required»: el decorador de /chequeos/revisiones habia
 # quedado pegado a la auxiliar _nivel(n), asi que FastAPI servia la auxiliar y exigia su
