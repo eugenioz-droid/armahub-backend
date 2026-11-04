@@ -23,8 +23,7 @@
   // `meses` y `tarde` siguen siendo la ventana con la que se piden los datos —el reporte
   // por obra la usa— pero ya no son un control: 3 meses es la ventana de producción y los
   // Processed se incluyen desde el botón de arriba, que es donde importa.
-  var REV = { reglas: {}, corriendo: false, parar: false, meses: 3, tarde: false,
-              senales: [], mios: [], reporte: [] };
+  var REV = { reglas: {}, corriendo: false, parar: false, meses: 3, tarde: false };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -64,8 +63,10 @@
   // Las reglas son del nivel: se piden cada vez que se entra, porque cambian con el tab.
   async function cargarReglas() {
     REV.reglas = {};
+    var mi = _gen;
     try {
       var r = await req('GET', REVS.nivel === 'elemento' ? '/chequeos/reglas-elemento' : '/chequeos/reglas');
+      if (mi !== _gen) return;
       (r.reglas || []).forEach(function (x) { REV.reglas[x.codigo] = x; });
     } catch (e) { /* las reglas son texto: si fallan, la pantalla sigue sirviendo */ }
     pintarReglas();
@@ -149,17 +150,36 @@
   // salió hoy?», y por eso el trabajo no avanzaba: nadie sabe por dónde empezar una lista
   // de 540. Una revisión sin resolver NO se arrastra a la siguiente: la suya queda abierta.
   // `figs` es lo leído de aSa, por código: {cc: {estado, barras: {ref: barra}, msg}}. Es
-  // caché a propósito —una lectura por código y no por barra— y se vacía al refrescar la
-  // revisión, porque entonces lo de aSa puede haber cambiado.
+  // caché a propósito —una lectura por código y no por barra— y se vacía al abrir OTRA
+  // revisión y cuando el cierre dice que aSa cambió; refrescar la misma no la toca.
   // EL NIVEL (4-nov): 'barra' o 'elemento'. Es la misma pantalla; cambia lo que se pide al
   // servidor y la fila de la hoja. Ver chequeos_elementos.py.
+  // `antes` guarda lo elegido cuando se entra con el «Abrir» de una fila, para volver a eso al
+  // cerrar la hoja.
   var REVS = { nivel: 'barra', lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: undefined,
-               figs: {}, anio: null, total: {} };
+               figs: {}, anio: null, total: {}, antes: null };
   // TODO LO RESUELTO DICE «RESUELTO» (20-oct), igual que en la auditoría: lo que dijo quien
   // lo hizo. Que aSa lo haya confirmado al cerrar se agrega, no es otro estado.
   var ESTADO_TXT = { abierta: 'Abierta', declarada: 'Resuelto',
                      corregir: 'Resuelto', corregida: 'Resuelto · aSa lo confirmó',
                      aceptada: 'No aplica' };
+  // UNA PALABRA POR CONCEPTO, también acá: los estados que manda el servidor y los tres
+  // predicados con que la pantalla los lee. Ningún otro sitio compara el string del estado.
+  // `corregir` es un estado del flujo viejo que todavía puede venir en filas antiguas; se
+  // lee igual que «declarada».
+  var EST = { ABIERTA: 'abierta', DECLARADA: 'declarada', CORREGIR: 'corregir',
+              CORREGIDA: 'corregida', ACEPTADA: 'aceptada' };
+  // Por cerrar: alguien dijo «ya la corregí» y el cierre todavía no pasó por aSa.
+  function _porCerrar(i) { return i.estado === EST.DECLARADA || i.estado === EST.CORREGIR; }
+  function _noAplica(i) { return i.estado === EST.ACEPTADA; }
+  function _confirmada(i) { return i.estado === EST.CORREGIDA; }
+  // Cerrada: no aplica, aSa la confirmó, o se cerró bajo la firma de quien lo decidió.
+  function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_porCerrar(i) && !!i.cerrada_el); }
+  // La hoja de trabajo (el modal) está a la vista.
+  function hojaAbierta() { var m = $('revItemsModal'); return !!m && m.style.display !== 'none'; }
+  // Un valor dentro de un selector de atributo entre comillas dobles: sólo las comillas y la
+  // barra invertida necesitan escape. Un código con «]» o «\» rompía el querySelector.
+  function _attr(v) { return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
 
   function _fechaHora(iso) {
     var d = new Date(iso);
@@ -168,14 +188,27 @@
            ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
+  // CADA ENTRADA AL TAB ES UNA GENERACIÓN. Cambiar de barras a elementos mientras lo
+  // anterior todavía carga dejaba dos cargas en vuelo, y la vieja podía pintar después con
+  // el nivel ya cambiado. Lo que vuelve de una generación vieja se descarta.
+  var _gen = 0;
+
+  // LA LISTA Y EL TOTAL, sin tocar lo elegido: es lo que se vuelve a pedir después de cada
+  // acción, porque los contadores cambian y las figuras leídas no.
+  async function cargarLista() {
+    var mi = _gen;
+    var d = await req('GET', '/chequeos/revisiones?nivel=' + REVS.nivel);
+    await global.cargarNomCub();
+    if (mi !== _gen) return;
+    REVS.lista = d.revisiones || [];
+    REVS.total = d.total || {};
+    if (REVS.filtro_cub === undefined) REVS.filtro_cub = _esAdmin() ? null : (_miChip() || null);
+    pintarRevisiones();
+  }
+
   async function cargarRevisiones() {
     try {
-      var d = await req('GET', '/chequeos/revisiones?nivel=' + REVS.nivel);
-      await global.cargarNomCub();
-      REVS.lista = d.revisiones || [];
-      REVS.total = d.total || {};
-      if (REVS.filtro_cub === undefined) REVS.filtro_cub = _esAdmin() ? null : (_miChip() || null);
-      pintarRevisiones();
+      await cargarLista();
       // NO SE ABRE NINGUNA SOLA. El bloque de arriba arranca mostrando el total de todas,
       // que es lo que se viene a ver; elegir una es FILTRAR, no el punto de partida.
       if (REVS.sel) await abrirRevision(REVS.sel); else pintarResumen();
@@ -387,13 +420,17 @@
     });
   }
 
+  // ABRIR es elegir otra revisión: lo dibujado de la anterior ya no sirve.
   async function abrirRevision(id) {
     REVS.figs = {};
     REVS.sel = id;
     pintarRevisiones();
     $('revResCuerpo').innerHTML = '<div class="revvacio">Cargando…</div>';
     try {
-      REVS.detalle = await req('GET', '/chequeos/revision/' + id + '?nivel=' + REVS.nivel);
+      var mi = _gen;
+      var det = await req('GET', '/chequeos/revision/' + id + '?nivel=' + REVS.nivel);
+      if (mi !== _gen) return;
+      REVS.detalle = det;
       REV.reglas = {};
       Object.keys(REVS.detalle.reglas || {}).forEach(function (k) { REV.reglas[k] = REVS.detalle.reglas[k]; });
       pintarResumen();
@@ -595,7 +632,7 @@
       if (!grupos[k]) { grupos[k] = { cc: i.cc, obra: i.obra, job: i.job, items: [] }; orden.push(k); }
       grupos[k].items.push(i);
     });
-    $('revItemsTit').textContent = 'Revisión #' + r.id + ' · ' +
+    $('revItemsTit').textContent = (r.todas ? 'Todas las revisiones' : 'Revisión #' + r.id) + ' · ' +
       (REVS.filtro_cub ? items.length + ' de ' + r.items + ' hallazgos · ' + nomCub(REVS.filtro_cub)
                        : r.items + ' hallazgos') + ' · ' + orden.length + ' código(s)';
     // CERRADA ES LA QUE PASÓ POR EL CIERRE (2-nov), igual que en la matriz: «declarada»
@@ -631,7 +668,8 @@
     // ese paso sobra: se baja y se va cerrando. Las figuras siguen siendo perezosas, así
     // que tener treinta bloques en pantalla no cuesta más que tener uno.
     $('revItemsCuerpo').innerHTML = !items.length
-      ? '<div class="revvacio">No hay hallazgos tuyos en esta revisión.</div>'
+      ? '<div class="revvacio">No hay hallazgos' + (REVS.filtro_cub ? ' de ' + esc(nomCub(REVS.filtro_cub)) : '') +
+        (r.todas ? '.' : ' en esta revisión.') + '</div>'
       : orden.map(function (k) {
           var g = grupos[k], ok = _resueltos(g.items), fg = REVS.figs[g.cc], quienes = {};
           g.items.forEach(function (x) { if (x.cubico) quienes[x.cubico] = 1; });
@@ -673,8 +711,7 @@
     var faltan = _ccsSinFigura().length;
     // CUÁNTO HAY MARCADO RESUELTO Y SIN CERRAR: es lo que el botón de cerrar va a llevar a
     // aSa. Se cuenta sobre lo visible (lo mío, o lo filtrado si soy admin).
-    var porCerrar = itemsVisibles().filter(function (i) {
-      return i.estado === 'declarada' || i.estado === 'corregir'; }).length;
+    var porCerrar = itemsVisibles().filter(_porCerrar).length;
     var f = $('revAccFiguras');
     if (f) {
       f.style.display = faltan ? '' : 'none';
@@ -739,7 +776,7 @@
   // Sólo el pie, que es lo único que cambia al escribir: repintar la hoja entera por cada
   // tecla sería rehacer trescientos SVG.
   function _repintarPie(cc) {
-    var caja = document.querySelector('.revcc2[data-grupocc="' + (cc || '').replace(/"/g, '') + '"]');
+    var caja = document.querySelector('.revcc2[data-grupocc="' + _attr(cc) + '"]');
     var g = _grupoDe(cc);
     if (!caja || !g) return;
     var pie = caja.querySelector('.revccpie');
@@ -846,7 +883,7 @@
   // «corregido» sería peor que no decirlo.
   function _selloCorregido(sen, b) {
     var i = _senalDe(sen);
-    if (!i || i.estado === 'aceptada') return '';
+    if (!i || _noAplica(i)) return '';
     var det = i.detalle || {}, esp = Number(det.esperado);
     var malos = det.lados || [];
     if (!(esp > 0) || !malos.length || !b.dims) return '';
@@ -925,7 +962,7 @@
     if (!faltan.length) return;
     if (boton) boton.disabled = true;
     for (var i = 0; i < faltan.length; i++) {
-      if (!$('revItemsModal') || $('revItemsModal').style.display === 'none') break;
+      if (!hojaAbierta()) break;
       if (boton) boton.textContent = 'Leyendo aSa… ' + (i + 1) + ' de ' + faltan.length;
       await cargarFiguras(faltan[i].cc, faltan[i].job);
     }
@@ -1008,7 +1045,7 @@
     var faltan = 0, porGuardar = 0, porCerrar = 0, cerradas = 0;
     (g.items || []).forEach(function (i) {
       if (_cerrada(i)) { cerradas++; return; }
-      if (i.estado === 'declarada' || i.estado === 'corregir') { porCerrar++; return; }
+      if (_porCerrar(i)) { porCerrar++; return; }
       if (_notaDe(i.id).length >= 10) porGuardar++;
       else faltan++;
     });
@@ -1016,14 +1053,8 @@
   }
 
   // Lo escrito en el campo del «no aplica» de esa fila, si está abierto.
-  // Cerrada: no aplica, aSa la confirmó, o se cerró bajo la firma de quien lo decidió.
-  function _cerrada(i) {
-    return i.estado === 'aceptada' || i.estado === 'corregida' ||
-           ((i.estado === 'declarada' || i.estado === 'corregir') && !!i.cerrada_el);
-  }
-
   function _notaDe(id) {
-    var i = document.querySelector('input[data-nota="' + id + '"]');
+    var i = document.querySelector('input[data-nota="' + _attr(id) + '"]');
     return (i && i.style.display !== 'none' && (i.value || '').trim()) || '';
   }
 
@@ -1039,31 +1070,64 @@
       g.items.map(_filaElemento).join('') + '</table>';
   }
 
+  // LA FIRMA, LOS BOTONES Y EL CHECK SON LOS MISMOS EN LAS DOS FILAS (barra y elemento): lo
+  // único que cambia es el género de los textos, que vienen en `t`.
+  var TXT_BARRA = {
+    deshacer: 'Vuelve a dejarla abierta', marcar: 'Marcar para resolver varias de una vez',
+    resuelto: 'Márcala cuando ya hayas hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, te avisa.',
+    noaplica: 'Dejar sin efecto, con una explicación firmada.' };
+  var TXT_ELEMENTO = {
+    deshacer: 'Vuelve a dejarlo abierto', marcar: 'Marcar para resolver varios de una vez',
+    resuelto: 'Márcalo cuando ya lo hayas corregido en aSa. Al cerrar el código se vuelve a comparar y, si sigue igual, te avisa.',
+    noaplica: 'Dejar sin efecto, con una explicación firmada.' };
+
+  // LA FIRMA VA AL FINAL DE LA FILA (2-nov), no debajo de la marca: ahí empujaba la
+  // columna y separaba la marca de su figura. Acompaña a la decisión que explica.
+  function _firmaDe(i) {
+    if (_noAplica(i)) {
+      return '<span class="revfirma">' + esc(i.nota || '') +
+             (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
+    }
+    if ((_confirmada(i) || _porCerrar(i)) && i.declarada_por) {
+      return '<span class="revfirma">resuelto por ' + esc(i.declarada_por.split('@')[0]) +
+             (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') +
+             (_confirmada(i) ? ' · aSa lo confirmó' : '') + '</span>';
+    }
+    return '';
+  }
+
+  // UNA FILA, UNA DECISIÓN, DOS SALIDAS (2-nov). Abierta: «Resuelto» cierra con un clic;
+  // «No aplica» se enciende y abre AL LADO un campo corto —explicación y Enter; Esc lo
+  // deja—. Decidida: un solo «Deshacer». Sin Aplica, sin Guardar, sin Cancelar: todo es
+  // por barra y se guarda al instante; el modal no tiene un «guardar» general. El
+  // usuario: «si presiono No aplica igual puedo presionar Resuelto, ¿entonces cómo
+  // cierro?». Ahora: No aplica cierra con Enter; Resuelto cierra con Resuelto.
+  function _accionesDe(i, t) {
+    if (_confirmada(i)) return '<span class="muted">confirmada</span>';
+    if (_porCerrar(i) || _noAplica(i)) {
+      return '<button class="audmini" data-deshacer="' + i.id + '" title="' + t.deshacer + '">Deshacer</button>';
+    }
+    return '<div class="revaccs">' +
+      '<button class="audbres" data-resuelto="' + i.id + '" title="' + t.resuelto + '">Resuelto</button>' +
+      '<button class="revnapbtn" data-noaplica="' + i.id + '" title="' + t.noaplica + '">No aplica</button>' +
+      '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
+        ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">' +
+      '</div>';
+  }
+
+  function _checkDe(i, t) {
+    return _confirmada(i) ? '✓'
+      : '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
+        ' title="' + t.marcar + '">';
+  }
+
   function _filaElemento(i) {
     var d = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla, grupo: d.grupo };
-    var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
-    var resuelto = hecho || i.estado === 'declarada' || i.estado === 'corregir';
+    var hecho = _confirmada(i), nap = _noAplica(i);
     var grupo = r.grupo || d.grupo || 'todas';
     var act = d.actual || { cc: i.cc, descr: '', kg: null }, con = d.contra || {};
     var igual = i.regla === 'codigo_duplicado' || i.regla === 'mismo_pedido';
     var otro = i.regla === 'mismo_pedido' ? 'el otro código, con otro nombre' : 'el otro código';
-    var firma = '';
-    if (nap) {
-      firma = '<span class="revfirma">' + esc(i.nota || '') + (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
-    } else if (resuelto && i.declarada_por) {
-      firma = '<span class="revfirma">resuelto por ' + esc(i.declarada_por.split('@')[0]) +
-              (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') + (hecho ? ' · aSa lo confirmó' : '') + '</span>';
-    }
-    var acc = hecho ? '<span class="muted">confirmada</span>'
-      : (resuelto || nap)
-        ? '<button class="audmini" data-deshacer="' + i.id + '" title="Vuelve a dejarlo abierto">Deshacer</button>'
-        : '<div class="revaccs">' +
-            '<button class="audbres" data-resuelto="' + i.id + '" title="Márcalo cuando ya lo hayas corregido en aSa. ' +
-              'Al cerrar el código se vuelve a comparar y, si sigue igual, te avisa.">Resuelto</button>' +
-            '<button class="revnapbtn" data-noaplica="' + i.id + '" title="Dejar sin efecto, con una explicación firmada.">No aplica</button>' +
-            '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
-              ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">' +
-          '</div>';
     var cod = function (c, sub) {
       return '<div><b>' + esc(c.cc || '') + '</b><span class="muted">' + esc(c.descr || '') +
              (c.kg != null ? ' · ' + num(c.kg) + ' kg' : '') + (sub ? '<br>' + sub : '') + '</span></div>'; };
@@ -1074,9 +1138,7 @@
     var lista = (d.lista || []).map(function (x) { return '<span class="' + esc(x.tipo || '') + '">' + esc(x.texto) + '</span>'; });
     if (d.posible_ultimo_piso) lista.push('<span class="aviso">posible último piso: suele ser distinto</span>');
     return '<tr class="elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '" data-fila="' + i.id + '">' +
-      '<td style="width:22px; vertical-align:top; padding-top:12px">' + (hecho ? '✓' :
-        '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
-        ' title="Marcar para resolver varios de una vez">') + '</td>' +
+      '<td style="width:22px; vertical-align:top; padding-top:12px">' + _checkDe(i, TXT_ELEMENTO) + '</td>' +
       '<td class="elcel"><div class="elh">' +
         '<div><span class="elregla ' + esc(grupo) + '">' + esc(r.corto || r.nombre) +
           '<small>' + (grupo === 'edificacion' ? 'sólo edificación' : 'todas las obras') + '</small></span>' +
@@ -1086,57 +1148,25 @@
           '<div class="elmed">' + medidas + '</div>' +
           (lista.length ? '<div class="ellista">' + lista.join('') + '</div>' : '') + '</div>' +
         '<div class="elacc"><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>' +
-          firma + acc + '</div>' +
+          _firmaDe(i) + _accionesDe(i, TXT_ELEMENTO) + '</div>' +
       '</div></td></tr>';
   }
 
   function filaItem(i, c) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
-    var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
-    var resuelto = hecho || i.estado === 'declarada' || i.estado === 'corregir';
+    var hecho = _confirmada(i), nap = _noAplica(i);
     var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
     var malos = {}, porL = {}, angs = [];
     (det.lados || []).forEach(function (L) { malos[L] = 1; });
     (det.lados_all || []).forEach(function (l, k) { porL[l[0]] = l[1]; if (k > 0) angs[k - 1] = l[2]; });
     if (!(det.lados_all || []).length) (det.lados || []).forEach(function (L) { porL[L] = det.valor; });
-    // LA FIRMA VA AL FINAL DE LA FILA (2-nov), no debajo de la marca: ahí empujaba la
-    // columna y separaba la marca de su figura. Acá acompaña a la decisión que explica.
-    var firma = '';
-    if (nap) {
-      firma = '<span class="revfirma">' + esc(i.nota || '') +
-              (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
-    } else if (resuelto && i.declarada_por) {
-      firma = '<span class="revfirma">resuelto por ' +
-              esc(i.declarada_por.split('@')[0]) + (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') +
-              (hecho ? ' · aSa lo confirmó' : '') + '</span>';
-    }
-    // UNA FILA, UNA DECISIÓN, DOS SALIDAS (2-nov). Abierta: «Resuelto» cierra con un clic;
-    // «No aplica» se enciende y abre AL LADO un campo corto —explicación y Enter; Esc lo
-    // deja—. Decidida: un solo «Deshacer». Sin Aplica, sin Guardar, sin Cancelar: todo es
-    // por barra y se guarda al instante; el modal no tiene un «guardar» general. El
-    // usuario: «si presiono No aplica igual puedo presionar Resuelto, ¿entonces cómo
-    // cierro?». Ahora: No aplica cierra con Enter; Resuelto cierra con Resuelto.
-    var acc = hecho ? '<span class="muted">confirmada</span>'
-      : (resuelto || nap)
-        ? '<button class="audmini" data-deshacer="' + i.id + '" title="Vuelve a dejarla abierta">Deshacer</button>'
-        : '<div class="revaccs">' +
-            '<button class="audbres" data-resuelto="' + i.id + '" title="Márcala cuando ya hayas ' +
-              'hecho el cambio en aSa. Al cerrar se comprueba contra aSa y, si algo sigue igual, ' +
-              'te avisa.">Resuelto</button>' +
-            '<button class="revnapbtn" data-noaplica="' + i.id +
-              '" title="Dejar sin efecto, con una explicación firmada. Queda resuelta.">No aplica</button>' +
-            '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
-              ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">' +
-          '</div>';
     var angTd = '';
     for (var k = 0; k < c.nang; k++) {
       angTd += '<td class="revn reva">' + (angs[k] != null ? Math.abs(Math.round(angs[k])) + '°' : '') + '</td>';
     }
     var esp = det.esperado != null ? (i.regla === 'lado_corto' ? 'mín ' : '') + cm(det.esperado / 10) : '';
     return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
-      '<td style="width:22px">' + (hecho ? '✓' :
-        '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
-        ' title="Marcar para resolver varias de una vez">') + '</td>' +
+      '<td style="width:22px">' + _checkDe(i, TXT_BARRA) + '</td>' +
       '<td class="revm"><span class="audref" data-ver="' + i.id +
         '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
       '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') +
@@ -1148,7 +1178,7 @@
       '<td><span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +
         esc(r.corto || r.nombre) + '</span></td>' +
       '<td><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
-      '<td class="revacc">' + firma + acc + '</td></tr>';
+      '<td class="revacc">' + _firmaDe(i) + _accionesDe(i, TXT_BARRA) + '</td></tr>';
   }
 
   function _bindItems() {
@@ -1212,10 +1242,6 @@
     function _enLote(estado, boton) {
       var n = Object.keys(REVS.sel_items).length;
       if (!n) return false;
-      // «No aplica» abre el campo EN LA FILA aunque haya marcas: al guardar, la misma
-      // explicación vale para todas las marcadas (lo resuelve `guardarNoAplica`). Mandarlo
-      // al campo de arriba lo dejaba fuera de la vista: «no me deja seleccionar aplica».
-      if (estado === 'aceptada') return false;
       var verbo = estado === 'declarada' ? 'Marcar como resueltas' : 'Volver a dejar abiertas';
       if (!confirm(verbo + ' las ' + n + ' barra(s) marcada(s)?')) return true;
       loteMarcadas(estado, boton);
@@ -1225,17 +1251,20 @@
     caja.querySelectorAll('button[data-resuelto]').forEach(function (b) {
       b.addEventListener('click', function () {
         if (_enLote('declarada', b)) return;
-        declararUno(b.dataset.resuelto, 'declarada', null, null, false, b);
+        declararUno(b.dataset.resuelto, 'declarada', null, b);
       });
     });
     caja.querySelectorAll('button[data-deshacer]').forEach(function (b) {
       b.addEventListener('click', function () {
         if (_enLote('abierta', b)) return;
-        declararUno(b.dataset.deshacer, 'abierta', null, null, false, b);
+        declararUno(b.dataset.deshacer, 'abierta', null, b);
       });
     });
+    // «No aplica» abre el campo EN LA FILA aunque haya marcas: al guardar, la misma
+    // explicación vale para todas las marcadas (lo resuelve `guardarNoAplica`). Mandarlo
+    // al campo de arriba lo dejaba fuera de la vista: «no me deja seleccionar aplica».
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
-      b.addEventListener('click', function () { if (!_enLote('aceptada', b)) abrirNoAplica(b.dataset.noaplica); });
+      b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });
     });
     // El campo del «no aplica»: Enter guarda esa barra, Esc lo deja como estaba.
     caja.querySelectorAll('input[data-nota]').forEach(function (c) {
@@ -1255,7 +1284,7 @@
   // Antes esto eran dos `prompt()` del navegador, uno pidiendo un NÚMERO. Se hace acá
   // porque la decisión se toma mirando el dato que está en la fila de al lado.
   function _botones(id) {
-    var f = document.querySelector('tr[data-fila="' + id + '"]');
+    var f = document.querySelector('tr[data-fila="' + _attr(id) + '"]');
     var q = function (sel) { return f ? f.querySelector(sel) : null; };
     return { re: q('button[data-resuelto]'), na: q('button[data-noaplica]'),
              des: q('button[data-deshacer]'), nota: q('input[data-nota]') };
@@ -1312,7 +1341,7 @@
           if (ids.indexOf(Number(x.id)) !== -1) { x.estado = 'aceptada'; x.nota = nota; }
         });
         REVS.sel_items = {};
-        if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
+        if (hojaAbierta()) pintarItems();
         await refrescarRevision();
       } catch (e) {
         aviso(e.message);
@@ -1320,7 +1349,7 @@
       }
       return;
     }
-    await declararUno(id, 'aceptada', null, nota, false, b.na);
+    await declararUno(id, 'aceptada', nota, b.na);
   }
 
   // CERRAR EL CÓDIGO: guarda de una vez las explicaciones escritas y lleva a aSa lo que
@@ -1342,7 +1371,7 @@
       // Las explicaciones iguales van juntas: en un código suelen ser la misma razón.
       var porNota = {};
       (g.items || []).forEach(function (i) {
-        if (i.estado !== 'abierta') return;
+        if (i.estado !== EST.ABIERTA) return;
         var n = _notaDe(i.id);
         if (n.length >= 10) (porNota[n] = porNota[n] || []).push(Number(i.id));
       });
@@ -1356,8 +1385,7 @@
         });
       }
       // Lo marcado resuelto se comprueba en aSa; lo que no aplica no tiene nada que ir a ver.
-      var decl = (g.items || []).filter(function (i) {
-        return i.estado === 'declarada' || i.estado === 'corregir'; }).map(function (i) { return Number(i.id); });
+      var decl = (g.items || []).filter(_porCerrar).map(function (i) { return Number(i.id); });
       if (decl.length) {
         await cerrarResueltos(false, decl);
       } else {
@@ -1380,8 +1408,8 @@
   function _marcarPendientes(g) {
     var primera = null;
     (g.items || []).forEach(function (i) {
-      if (i.estado !== 'abierta' || _notaDe(i.id).length >= 10) return;
-      var tr = document.querySelector('tr[data-fila="' + i.id + '"]');
+      if (i.estado !== EST.ABIERTA || _notaDe(i.id).length >= 10) return;
+      var tr = document.querySelector('tr[data-fila="' + _attr(i.id) + '"]');
       if (!tr) return;
       tr.classList.add('falta');
       setTimeout(function () { tr.classList.remove('falta'); }, 4000);
@@ -1392,39 +1420,34 @@
 
   // Una barra, una decisión: así se resuelve en la fila. El lote quedó sólo para el check
   // de «ya la corregí», que es lo único que se hace de a muchas.
-  async function declararUno(id, estado, motivo, nota, patron, boton) {
+  async function declararUno(id, estado, nota, boton) {
     // MIENTRAS EL SERVIDOR RESPONDE, SE VE. Son dos viajes (declarar y volver a leer la
     // revisión): sin esto el botón se queda mudo un segundo largo y se vuelve a apretar.
     var b = _botones(id);
     var tocados = [boton, b.re, b.na, b.des].filter(Boolean);
     tocados.forEach(function (x) { x.disabled = true; x.classList.add('audwait'); });
     try {
-      var r = await req('PUT', '/chequeos/declarar',
-                        { ids: [Number(id)], estado: estado, motivo_tipo: motivo || null,
-                          nota: nota || null, patron: !!patron });
-      ok(estado === 'aceptada'
-         ? 'Hallazgo dejado sin efecto' + (r.afectadas > 1 ? ' (' + r.afectadas + ' iguales)' : '')
-         : estado === 'declarada' ? 'Resuelto' : 'Vuelve a quedar por resolver');
+      await req('PUT', '/chequeos/declarar', { ids: [Number(id)], estado: estado, nota: nota || null });
+      ok(estado === EST.ACEPTADA ? 'Hallazgo dejado sin efecto'
+         : estado === EST.DECLARADA ? 'Resuelto' : 'Vuelve a quedar por resolver');
       delete REVS.sel_items[id];
       // LO QUE YA SE SABE SE PINTA AL TIRO. El servidor confirmó; el refresco de abajo es
-      // para los contadores y para las iguales que pudo arrastrar el patrón. Si ese
-      // refresco no corre —el modal se abrió sin revisión elegida, la lista llegó de otra
-      // pantalla—, la fila igual queda como quedó, que es lo que el usuario estaba
-      // esperando ver.
+      // para los contadores. Si ese refresco no corre —el modal se abrió sin revisión
+      // elegida—, la fila igual queda como quedó, que es lo que el usuario esperaba ver.
       ((REVS.detalle || {}).items || []).forEach(function (i) {
         if (String(i.id) === String(id)) {
           i.estado = estado;
-          if (estado === 'aceptada') { i.nota = nota || i.nota; i.motivo_tipo = motivo || i.motivo_tipo; }
+          if (estado === EST.ACEPTADA) i.nota = nota || i.nota;
         }
       });
-      if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
+      if (hojaAbierta()) pintarItems();
       await refrescarRevision();
     } catch (e) {
       aviso(e.message);
       tocados.forEach(function (x) { x.classList.remove('audwait'); });
       // Se repinta en vez de rehabilitar a mano: el par Aplica|No aplica tiene un botón
       // apagado a propósito según el estado, y devolverlo «a mano» lo dejaba al revés.
-      if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
+      if (hojaAbierta()) pintarItems();
     }
   }
 
@@ -1444,7 +1467,7 @@
         if (ids.indexOf(Number(i.id)) !== -1) i.estado = estado;
       });
       REVS.sel_items = {};
-      if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();
+      if (hojaAbierta()) pintarItems();
       await refrescarRevision();
     } catch (e) {
       aviso(e.message);
@@ -1461,8 +1484,8 @@
   var _ultimoCierre = null;
   async function cerrarResueltos(confirmar, soloIds) {
     var b = $('revAccCerrar'), msg = $('revAccMsg');
-    var ids = soloIds || (confirmar && _ultimoCierre) || itemsVisibles().filter(function (i) {
-      return i.estado === 'declarada' || i.estado === 'corregir'; }).map(function (i) { return Number(i.id); });
+    var ids = soloIds || (confirmar && _ultimoCierre) ||
+              itemsVisibles().filter(_porCerrar).map(function (i) { return Number(i.id); });
     if (!ids.length) return;
     _ultimoCierre = ids;
     if (b) { b.disabled = true; b.classList.add('audwait'); b.textContent = confirmar ? 'Cerrando…' : 'Comprobando en aSa…'; }
@@ -1509,7 +1532,7 @@
     var ccs = {};
     (det.barras || []).forEach(function (x) { if (x.cc) ccs[x.cc] = 1; });
     var unico = Object.keys(ccs).length === 1 ? Object.keys(ccs)[0] : null;
-    var bloque = unico ? document.querySelector('.revcc2[data-grupocc="' + unico.replace(/"/g, '') + '"]') : null;
+    var bloque = unico ? document.querySelector('.revcc2[data-grupocc="' + _attr(unico) + '"]') : null;
     if (bloque && bloque.querySelector('.revccpie')) {
       // Dentro del bloque del código, justo encima de su botón de cerrar: ahí se decidió.
       bloque.insertBefore(div, bloque.querySelector('.revccpie'));
@@ -1526,11 +1549,13 @@
     if (!REVS.sel && !(REVS.detalle && REVS.detalle.revision.todas)) return;
     // Las figuras leídas NO se tiran acá: lo que cambia es el estado del hallazgo, no la
     // barra, y volver a leer treinta códigos en cada clic es justo lo que hay que evitar.
-    // Se tiran al abrir otra revisión y cuando una verificación dice que aSa cambió.
+    // Se tiran al abrir otra revisión y cuando una verificación dice que aSa cambió. Por
+    // eso se recarga la LISTA y no se vuelve a «abrir» la revisión (4-nov): abrirla tiraba
+    // las figuras y pedía el detalle dos veces por cada clic.
     REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0) + '?nivel=' + REVS.nivel);
     pintarResumen();
-    if ($('revItemsModal').style.display !== 'none') pintarItems();
-    await cargarRevisiones();
+    if (hojaAbierta()) pintarItems();
+    await cargarLista();
   }
 
   // Una revisión nueva, desde el botón de arriba: lo mismo que corre el reloj.
@@ -1552,9 +1577,9 @@
         await recorrer(ini.ccs, ini.revision,
                        { txt: $('revNuevaTxt'), barra: $('revNuevaBarra') }, ini.total);
       }
+      // `cargarRevisiones` abre la elegida: la nueva, si la hubo.
       REVS.sel = ini.revision || REVS.sel;
       await cargarRevisiones();
-      if (ini.revision) await abrirRevision(ini.revision);
       await cargarReporte();
     } catch (e) { aviso(e.message); $('revNuevaTxt').textContent = e.message; }
     REV.corriendo = false;
@@ -1566,17 +1591,8 @@
   // La misma barra que ve el auditor, con el mismo motor (las piezas las expone
   // auditorias/index.js). Se pide el elemento a aSa en vivo y se busca la barra por su
   // referencia: así lo que se dibuja es lo que aSa tiene HOY, no la foto de la señal.
-  var _senalesPorId = {};
-  function _senal(id) {
-    var s = _senalesPorId[String(id)];
-    if (s) return s;
-    var todas = ((REVS.detalle || {}).items || []).concat(REV.senales || [], REV.mios || []);
-    todas.forEach(function (x) { _senalesPorId[String(x.id)] = x; });
-    return _senalesPorId[String(id)];
-  }
-
   async function abrirDetalleSenal(id) {
-    var s = _senal(id);
+    var s = _senalDe(id);
     if (!s) { aviso('No encuentro esa señal en pantalla; recarga la bandeja.'); return; }
     var r = (REV.reglas || {})[s.regla] || { nombre: s.regla, porque: '' };
     var d = s.detalle || {};
@@ -1631,14 +1647,6 @@
     } catch (e) { caja.innerHTML = '<span class="muted">No se pudo dibujar: ' + esc(e.message) + '</span>'; }
   }
 
-  // ══════ MIS CHEQUEOS ══════
-  // La tarea del cubicador: lo que le marcaron para corregir, barra por barra, con la
-  // comprobación a un clic. Antes el «hay que corregirla» era un aviso en la campana y
-  // nada más: no había dónde verlo ni cómo cerrarlo.
-
-  // ── El registro ───────────────────────────────────────────────────────────────────
-
-
   // ── El reporte por obra ───────────────────────────────────────────────────────────
   // UNA OBRA CON CERO SEÑALES Y CERO CÓDIGOS REVISADOS NO ESTÁ LIMPIA, ESTÁ SIN REVISAR.
   // Leerlas igual sería el peor error que puede cometer un reporte así, por eso la columna
@@ -1647,7 +1655,6 @@
     try {
       var d = await req('GET', '/chequeos/reporte?meses=' + REV.meses + '&tarde=' + REV.tarde);
       var t = d.total || {}, obras = d.obras || [];
-      REV.reporte = obras;
       $('revRepTxt').textContent = t.obras + ' obra(s) · ' + t.revisados + ' de ' + t.ccs +
         ' código(s) revisados · ' + num(t.barras) + ' barras miradas · ' +
         t.abiertas + ' señal(es) esperando · ' + t.corregidas + ' ya corregida(s)';
@@ -1685,13 +1692,6 @@
     } catch (e) { $('revRep').innerHTML = '<div class="revvacio">' + esc(e.message) + '</div>'; }
   }
 
-  function _fechaHora(iso) {
-    var d = new Date(iso);
-    if (isNaN(d)) return iso;
-    return ('0' + d.getDate()).slice(-2) + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' +
-           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-  }
-
   var _listo = false;
   global.loadRevisionBarras = async function () {
     if (!$('audSubRevision')) return;
@@ -1714,8 +1714,11 @@
         await cargarReporte();
       });
     }
+    var mi = ++_gen;
     await cargarReglas();
+    if (mi !== _gen) return;
     await cargarReporte();
+    if (mi !== _gen) return;
     // UN SOLO FORMULARIO PARA TODOS (28-oct). Acá se cargaba antes «Mis chequeos por
     // corregir», una lista plana del flujo viejo con un botón de comprobar por fila, que le salía
     // a quien tenía hallazgos propios —el cubicador externo con 80— encima del panel, y al

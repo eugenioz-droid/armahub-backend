@@ -546,7 +546,8 @@ check("...y la exige",
 # los tres verbos de a muchas («muchas veces el hallazgo es el mismo para más de un
 # ítem»); y CERRAR va a aSa, avisa lo que sigue igual y no bloquea.
 check("«Resuelto» por fila, verde; lo decidido lleva un solo «Deshacer»",
-      'class="audbres" data-resuelto=' in JS and 'data-deshacer="\' + i.id + \'" title="Vuelve a dejarla abierta">Deshacer' in JS
+      'class="audbres" data-resuelto=' in JS and 'data-deshacer="\' + i.id + \'" title="\' + t.deshacer + \'">Deshacer' in JS
+      and "deshacer: 'Vuelve a dejarla abierta'" in JS
       and "declararUno(b.dataset.resuelto, 'declarada'" in JS
       and "declararUno(b.dataset.deshacer, 'abierta'" in JS and 'title="Ya la corregí"' not in JS)
 check("con los checks, los tres verbos de a muchas: Aplica · No aplica · Resuelto",
@@ -598,7 +599,7 @@ check("...y vuelve a como estaba si se cancela: nada se decidio",
 # el refresco no corre en todos los caminos (el modal abierto sin revision elegida).
 check("al guardar, la fila queda como quedo aunque el refresco no corra",
       "i.estado = estado;" in JS
-      and "if ($('revItemsModal') && $('revItemsModal').style.display !== 'none') pintarItems();" in JS)
+      and "if (hojaAbierta()) pintarItems();" in JS)
 check("...y mientras el servidor responde, el boton lo dice",
       "x.classList.add('audwait')" in JS.split("async function declararUno(")[1][:1400])
 check("la referencia abre el render: el detalle no se perdió",
@@ -730,8 +731,10 @@ check("en la hoja todos ven todo; el chip filtra y el cubicador entra con el pro
 print("\nLA HOJA, ARMONIZADA CON LA AUDITORÍA (21-oct)")
 check("Resuelto va en línea, a continuación de No aplica, con una separación chica",
       'class="revaccs"' in JS and ".revaccs{display:inline-flex" in HTM and ".revaccs .audbres{margin-left:0;}" in HTM)
-check("«no aplica» ES resolver: la fila queda verde al guardar, sin otro clic",
-      ".revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." in JS)
+# «No aplica» CIERRA pero no es resuelto (vocabulario del 2-nov): la fila queda verde al
+# guardar, sin otro clic, y el texto del boton ya no dice «queda resuelta».
+check("«no aplica» cierra la fila al guardar, sin otro clic, y no se llama resuelta",
+      ".revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." not in JS)
 # «¿Por que el render muestra ganchos de 10 y los parametros A y G muestran 8?» Porque la
 # columna es la medida de cuando salto y el dibujo es aSa de ahora: medido en SU2N, la
 # señal guarda A=80/G=80 del 29-oct y aSa hoy devuelve A=100/G=100. Ya esta corregida.
@@ -759,7 +762,7 @@ check("...y cada uno lleva su cabecera, sus barras y su pie; el que esta cerrado
       and "(ok >= g.items.length ? ' listo' : '')" in JS and ".revcc2.listo h5{" in HTM)
 check("cerrada, para los contadores de la hoja, es la que paso por el cierre",
       "var RES = {" not in JS and "function _cerrada(i) {" in JS
-      and "(i.estado === 'declarada' || i.estado === 'corregir') && !!i.cerrada_el" in JS)
+      and "function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_porCerrar(i) && !!i.cerrada_el); }" in JS)
 
 
 print("\nUN SOLO FORMULARIO PARA TODOS, Y EL CABEZAL EN φ8 Y φ10 (28-oct)")
@@ -978,10 +981,10 @@ check("...y los numeros de la persona filtrada salen de la revision abierta, si 
 check("con barras marcadas, el boton de la fila actua sobre TODAS, confirmando antes (3-nov)",
       "function _enLote(estado, boton) {" in JS and "loteMarcadas(estado, boton);" in JS
       and "if (_enLote('declarada', b)) return;" in JS and "if (_enLote('abierta', b)) return;" in JS
-      and "if (!_enLote('aceptada', b)) abrirNoAplica" in JS
+      and "b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });" in JS
       and "las ' + n + ' barra(s) marcada(s)?'" in JS
       # «No aplica» con marcas: el campo se abre EN CADA FILA MARCADA, lo escrito se espeja y vale para todas.
-      and "if (estado === 'aceptada') return false;" in JS
+      and "_enLote('aceptada'" not in JS
       and "function _idsNoAplica(id) {" in JS and "b.nota.dataset.espejo = n > 1 ? '1' : '';" in JS
       and "if (o !== c) o.value = c.value;" in JS
       and "if (ids.indexOf(Number(id)) === -1) ids.push(Number(id));" in JS
@@ -1033,7 +1036,7 @@ print("\nLA FILA: LA FIGURA PEGADA A LA MARCA Y LA FIRMA AL FINAL (2-nov)")
 # «Esa observacion que se guardo debajo de la marca deberia ir al final, en un texto
 # pequeño, y debieramos pegar figura a marca para aprovechar ese espacio.»
 check("la firma va al final de la fila, con la decision que explica, y no bajo la marca",
-      "'<td class=\"revacc\">' + firma + acc + '</td></tr>';" in JS
+      "'<td class=\"revacc\">' + _firmaDe(i) + _accionesDe(i, TXT_BARRA) + '</td></tr>';" in JS
       and 'class="revfirma"' in JS and ".revfirma{display:inline-block" in HTM
       and "esc(i.ref) + '</span></td>'" in JS)
 check("...y la columna de la marca se encoge para que el dibujo quede pegado",
@@ -1122,7 +1125,7 @@ check("la celda de la figura sabe de que señal es, y compara el lado marcado co
       and "function _selloCorregido(sen, b) {" in JS and "return v > 0 && v >= esp - 0.01;" in JS)
 check("...y solo lo dice cuando puede: sin lados y minimo en la señal, no inventa nada",
       "if (!(esp > 0) || !malos.length || !b.dims) return '';" in JS
-      and "if (!i || i.estado === 'aceptada') return '';" in JS)
+      and "if (!i || _noAplica(i)) return '';" in JS)
 check("la barra que ya no esta en aSa tambien se dice corregida, que es lo que mira el cierre",
       '<div class="revcorr" title="La barra ya no está en este código en aSa' in JS
       and ".revcorr{display:inline-block" in HTM and ">ya no está</span>" not in JS
@@ -1135,7 +1138,7 @@ print("\nEL AVISO DE CIERRE ES DE UN INTENTO, NO DE LA HOJA (3-nov)")
 # igual» algo que ya no estaba por cerrar. «Hay que arreglar lo que ocurre aqui en la pantalla.»
 check("cualquier repintado de la hoja borra el aviso de cierre",
       "var avisoViejo = $('revCierreAviso');" in JS and "if (avisoViejo) avisoViejo.remove();" in JS
-      and JS.index("avisoViejo.remove()") < JS.index("$('revItemsTit').textContent = 'Revisión #'"))
+      and JS.index("avisoViejo.remove()") < JS.index("$('revItemsTit').textContent = (r.todas"))
 check("...y el aviso va dentro del bloque del codigo que se intento cerrar, encima de su boton",
       "bloque.insertBefore(div, bloque.querySelector('.revccpie'));" in JS
       and "var unico = Object.keys(ccs).length === 1 ? Object.keys(ccs)[0] : null;" in JS)
@@ -1268,8 +1271,9 @@ check("la fila de la hoja es la tarjeta estandar: regla y grupo, los dos codigos
       and "posible último piso: suele ser distinto" in JS and ".elh{display:grid; grid-template-columns:150px 1fr 330px" in HTM)
 check("...y es una fila de la misma tabla, con los mismos data-*: el lote, el espejo, el pie y Cerrar codigo sirven igual",
       "'<tr class=\"elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '\" data-fila=\"' + i.id + '\">'" in JS
-      and "data-resuelto=\"' + i.id + '\"" in JS.split("function _filaElemento(i) {")[1][:4000]
-      and "data-nota=\"' + i.id + '\"" in JS.split("function _filaElemento(i) {")[1][:4000])
+      and "_accionesDe(i, TXT_ELEMENTO)" in JS.split("function _filaElemento(i) {")[1][:4000]
+      and "data-resuelto=\"' + i.id + '\"" in JS.split("function _accionesDe(i, t) {")[1][:1200]
+      and "data-nota=\"' + i.id + '\"" in JS.split("function _accionesDe(i, t) {")[1][:1200])
 check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figuras no se ofrecen",
       "el.className = 'elcrit';" in JS and "'Todas las obras' : 'Sólo edificación'" in JS
       and "if (REVS.nivel === 'elemento') return [];" in JS and "&& REVS.nivel === 'barra' ? '<button class=\"audmini\" data-figs=" in JS
