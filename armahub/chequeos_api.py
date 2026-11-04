@@ -1277,7 +1277,10 @@ def detalle_revision(revision_id: int, nivel: str = "barra", user=Depends(get_cu
         if i["estado"] == "corregida":
             c["verificadas"] += 1; c["resueltas"] += 1
         elif i["estado"] == "aceptada":
-            c["no_aplica"] += 1; c["resueltas"] += 1
+            # «No aplica» cierra pero NO es resuelto (2-nov): la lista y el total ya lo
+            # cuentan aparte; el detalle lo sumaba a las dos y la tarjeta «cerrado» lo
+            # contaba dos veces al elegir una revisión (4-nov).
+            c["no_aplica"] += 1
         elif i["estado"] in ("declarada", "corregir"):
             # Resuelto es lo que dijo quien lo hizo (20-oct): cuenta como resuelta. Que aSa
             # la haya confirmado es `verificadas`, un dato más, no otro avance.
@@ -1287,7 +1290,8 @@ def detalle_revision(revision_id: int, nivel: str = "barra", user=Depends(get_cu
     for c in por_cub.values():
         c["ccs"] = len(c["ccs"])
         c["obras"] = len(c["obras"])
-        c["pct"] = round(c["resueltas"] / c["n"] * 100) if c["n"] else 0
+        aplican = c["n"] - c["no_aplica"]
+        c["pct"] = round(c["resueltas"] / aplican * 100) if aplican else 0
     cab.update({
         "items": len(items),
         # Los mismos nombres que la lista (`revisiones`), para que el bloque de arriba del
