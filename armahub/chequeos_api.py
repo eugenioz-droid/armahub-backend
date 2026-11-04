@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from .asa import AsaError
 from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_de, alias_cubicador, correo_de_login,
                          _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
-from .chequeos_elementos import (REGLAS_ELEMENTO, correr_elemento, firma_elemento, pares_de_obra,
+from .chequeos_elementos import (REGLAS_ELEMENTO, correr_elemento, firma_elemento, gemelos_de, pares_de_obra,
                                  resumir)
 from .auth import get_current_user
 from .chequeos import REGLAS, correr, normalizar_asa
@@ -375,37 +375,45 @@ def revisar_elementos_cc(job: str, cc: str, revision_id, items: list, email: str
                          cubico=None, obra=None, dry: bool = False) -> dict:
     """EL CÓDIGO CONTRA EL MISMO CICLO DEL PISO ANTERIOR (4-nov). Ver chequeos_elementos.
 
-    Sólo entra lo que se nombra como edificación (sector + piso + ciclo); lo demás devuelve
-    «no es edificación» y no deja rastro. Con `dry` corre las reglas y no guarda nada: es
-    como se mide una regla antes de encenderla."""
+    Las reglas de piso y ciclo sólo entran con nombre de edificación (sector + piso +
+    ciclo); la del mismo pedido con otro nombre entra siempre, porque mira el contenido y
+    no el nombre. Con `dry` corre las reglas y no guarda nada: es como se mide una regla
+    antes de encenderla."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT control_code, MAX(descr), MAX(COALESCE(kg, 0))
+            cur.execute("""SELECT control_code, MAX(descr), MAX(COALESCE(kg, 0)), MIN(order_date)
                              FROM asa_pedidos WHERE asa_job_id = %s
                               AND COALESCE(estado, '') <> 'Cancelled'
                             GROUP BY control_code""", (job,))
             pedidos = cur.fetchall()
-    pares = pares_de_obra(pedidos)
-    r = pares.get(cc)
-    if not r:
-        return {"senales": 0, "motivo": "no es edificación"}
     por_cc = {p[0]: p for p in pedidos}
+    if cc not in por_cc:
+        return {"senales": 0, "motivo": "el código no está en los pedidos de la obra"}
+    pares = pares_de_obra([(c, d, k) for c, d, k, _ in pedidos])
+    r = pares.get(cc)
     act = resumir(cc, items, por_cc[cc][2], por_cc[cc][1])
     anterior = None
-    if r["anterior"]:
+    duplicados = []
+    if r and r["anterior"]:
         a_cc, a_descr, a_kg = r["anterior"]
         anterior = resumir(a_cc, _items_cacheados(a_cc, revision_id), a_kg, a_descr)
-    duplicados = [resumir(d_cc, _items_cacheados(d_cc, revision_id), d_kg, d_descr)
-                  for d_cc, d_descr, d_kg in r["duplicados"][:3]]
-    senales = correr_elemento(act, r["p"], anterior, duplicados)
+    if r:
+        duplicados = [resumir(d_cc, _items_cacheados(d_cc, revision_id), d_kg, d_descr)
+                      for d_cc, d_descr, d_kg in r["duplicados"][:3]]
+    # Los gemelos por kilos salen de la tabla, sin ir a aSa; sólo a esos se les leen las barras.
+    gemelos = [resumir(g_cc, _items_cacheados(g_cc, revision_id), g_kg, g_descr)
+               for g_cc, g_descr, g_kg in gemelos_de(pedidos, cc)[:3]]
+    senales = correr_elemento(act, r["p"] if r else None, anterior, duplicados, gemelos=gemelos)
     for s in senales:
         s["firma"] = firma_elemento(s["regla"], job, cc, s["contra"])
         # El último piso conocido suele ser distinto: la señal se marca, no se calla.
-        if r["ultimo"]:
+        if r and r["ultimo"] and s["regla"] != "mismo_pedido":
             s["detalle"]["posible_ultimo_piso"] = True
     if dry:
-        return {"senales": len(senales), "detalle": senales, "p": r["p"], "anterior": r["anterior"],
-                "duplicados": [d[0] for d in r["duplicados"]], "ultimo": r["ultimo"]}
+        return {"senales": len(senales), "detalle": senales, "p": r["p"] if r else None,
+                "anterior": r["anterior"] if r else None,
+                "duplicados": [d[0] for d in r["duplicados"]] if r else [],
+                "gemelos": [g["cc"] for g in gemelos], "ultimo": bool(r and r["ultimo"])}
     nuevas = 0
     with get_conn() as conn:
         with conn.cursor() as cur:

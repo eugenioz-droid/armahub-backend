@@ -1045,7 +1045,8 @@
     var resuelto = hecho || i.estado === 'declarada' || i.estado === 'corregir';
     var grupo = r.grupo || d.grupo || 'todas';
     var act = d.actual || { cc: i.cc, descr: '', kg: null }, con = d.contra || {};
-    var igual = i.regla === 'codigo_duplicado';
+    var igual = i.regla === 'codigo_duplicado' || i.regla === 'mismo_pedido';
+    var otro = i.regla === 'mismo_pedido' ? 'el otro código, con otro nombre' : 'el otro código';
     var firma = '';
     if (nap) {
       firma = '<span class="revfirma">' + esc(i.nota || '') + (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
@@ -1081,7 +1082,7 @@
           '<small>' + (grupo === 'edificacion' ? 'sólo edificación' : 'todas las obras') + '</small></span>' +
           '<div class="l2" style="margin-top:6px" title="' + esc(d.texto || '') + '">' + esc(r.nombre || '') + '</div></div>' +
         '<div class="elcomp"><div class="vs">' + cod(act) + '<span class="flecha">' + (igual ? '=' : '←') + '</span>' +
-          cod(con, igual ? 'el otro código' : 'piso anterior, mismo ciclo') + '</div>' +
+          cod(con, igual ? otro : 'piso anterior, mismo ciclo') + '</div>' +
           '<div class="elmed">' + medidas + '</div>' +
           (lista.length ? '<div class="ellista">' + lista.join('') + '</div>' : '') + '</div>' +
         '<div class="elacc"><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>' +

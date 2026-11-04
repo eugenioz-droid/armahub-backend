@@ -20,7 +20,14 @@ caídas. Si el nombre no trae sector, piso y ciclo, el código no entra: esto es
 edificación y lo dice.
 
 DOS GRUPOS DE REGLAS, y la pantalla los separa: las que valen para TODAS las obras
-(duplicado, disparado) y las que sólo tienen sentido en EDIFICACIÓN (faltan elementos).
+(duplicado, disparado, mismo pedido con otro nombre) y las que sólo tienen sentido en
+EDIFICACIÓN (faltan elementos).
+
+EL MISMO PEDIDO CON OTRO NOMBRE (4-nov, lo pidió el usuario): el duplicado de arriba sólo
+mira códigos que se LLAMAN igual, porque compara elementos sin el número de piso y dos pisos
+tipo idénticos dispararían falso. Para el ciclo mandado dos veces con otro nombre se compara
+el contenido EXACTO, barra por barra, entre códigos de la obra con los mismos kilos: la
+tabla de pedidos filtra los candidatos sin ir a aSa, y sólo a esos se les leen las barras.
 """
 import re
 import hashlib
@@ -72,9 +79,21 @@ def nombre_elemento(desc: Optional[str]) -> str:
     return s.strip() or "(sin nombre)"
 
 
+def huella(items: list) -> tuple:
+    """El contenido exacto de un código, barra por barra y en orden fijo: nombre del
+    elemento tal cual (con su número de piso), marca, diámetro, figura, dimensiones, largo
+    y cantidad. Dos códigos con la misma huella son el mismo pedido, se llamen como se
+    llamen."""
+    def _n(v):
+        return re.sub(r"\s+", " ", str(v if v is not None else "")).strip().upper()
+    return tuple(sorted((_n(it.get("ElementDesc")), _n(it.get("BarMark")), _n(it.get("BarSizeDescr")),
+                         _n(it.get("ShpNameID")), _n(it.get("ShapeDims")), _n(it.get("LengthCut")),
+                         _n(it.get("TotalQty"))) for it in items))
+
+
 def resumir(cc: str, items: list, kg: float, descr: str) -> dict:
     """Lo que de un código importa para comparar: sus elementos (por ElementID) con cuántas
-    barras tiene cada uno, y los kilos del pedido."""
+    barras tiene cada uno, los kilos del pedido y la huella exacta de sus barras."""
     elems = {}
     for it in items:
         eid = str(it.get("ElementID") or "").strip() or "?"
@@ -84,7 +103,7 @@ def resumir(cc: str, items: list, kg: float, descr: str) -> dict:
             e["qty"] += int(float(it.get("TotalQty") or 0))
         except (TypeError, ValueError):
             pass
-    return {"cc": cc, "descr": descr or "", "kg": float(kg or 0), "elems": elems}
+    return {"cc": cc, "descr": descr or "", "kg": float(kg or 0), "elems": elems, "huella": huella(items)}
 
 
 # ── Las reglas. Cada una recibe el código actual y el de comparación ────────────────────
@@ -149,6 +168,20 @@ def r_codigo_duplicado(act: dict, otro: dict, p: dict) -> Optional[dict]:
             "lista": [{"texto": nombre_elemento(e["desc"]), "tipo": "igual"} for e in list(act["elems"].values())[:12]]}
 
 
+def r_mismo_pedido(act: dict, otro: dict, p) -> Optional[dict]:
+    """Las mismas barras, una por una, en un código que se llama distinto: el pedido
+    mandado dos veces con otro nombre. Los kilos ya son iguales (así se eligió el gemelo)."""
+    if not act["huella"] or act["huella"] != otro["huella"]:
+        return None
+    return {"texto": "El %s y el %s tienen exactamente las mismas barras aunque se llamen distinto: «%s» y «%s»."
+                     % (act["cc"], otro["cc"], act["descr"], otro["descr"]),
+            "medidas": [{"que": "Barras", "encontrado": len(act["huella"]), "esperado": len(otro["huella"])},
+                        {"que": "Elementos", "encontrado": len(act["elems"]), "esperado": len(otro["elems"])},
+                        {"que": "Kilos", "encontrado": round(act["kg"]), "esperado": round(otro["kg"])}],
+            "diferencia": {"que": "Idénticos", "valor": "="},
+            "lista": [{"texto": e["desc"] or e["id"], "tipo": "igual"} for e in list(act["elems"].values())[:12]]}
+
+
 def _mas_pesados(act, ant):
     """Qué elementos subieron de barras: ahí suele estar el cero de más."""
     por_ant = {nombre_elemento(e["desc"]): e for e in ant["elems"].values()}
@@ -171,6 +204,12 @@ REGLAS_ELEMENTO = [
                "el ciclo mandado dos veces.",
      "umbral": "mismos elementos, barra por barra, y mismos kilos (±2%)",
      "contra": "duplicado", "fn": r_codigo_duplicado},
+    {"codigo": "mismo_pedido", "grupo": "todas", "corto": "Mismo pedido",
+     "nombre": "Mismo pedido con otro nombre",
+     "porque": "Otro código de la misma obra con exactamente las mismas barras —elemento, marca, diámetro, "
+               "figura, largo y cantidad— pero con otro nombre: el pedido mandado dos veces sin que se note.",
+     "umbral": "mismos kilos al centavo y las mismas barras, una por una · otro nombre que no sea sólo otro piso de lo mismo",
+     "contra": "gemelo", "fn": r_mismo_pedido},
     {"codigo": "codigo_disparado", "grupo": "todas", "corto": "Disparado",
      "nombre": "Código disparado",
      "porque": "Pesa tres veces lo que el mismo ciclo del piso anterior con los mismos elementos: "
@@ -219,15 +258,72 @@ def pares_de_obra(pedidos: list) -> dict:
     return out
 
 
+def _descr_norm(d) -> str:
+    return re.sub(r"\s+", " ", (d or "").upper().replace("-", " ").replace(".", " ").replace("_", " ")).strip()
+
+
+def _sin_numeros(d) -> str:
+    return re.sub(r"[^A-Z]+", " ", (d or "").upper()).strip()
+
+
+def _otro_piso_de_lo_mismo(a_descr, b_descr) -> bool:
+    """La misma cosa en otro piso o en otra posición NO es un gemelo: en piso tipo lo normal
+    es que las losas del 11 y del 12 sean idénticas barra por barra (medido 4-nov: «LC P12
+    C6» = «LC P11 C6», «VIGAS C 14° PISO» = «VIGAS C 12° PISO»). Se reconoce de dos formas:
+    los nombres quedan iguales al quitarles los números («PR - PILOTE - P25» / «P20»), o
+    los dos se leen como el mismo sector, ciclo y frente en pisos distintos («VIGAS C 7°P
+    (CICLO 3)» / «Vigas Cielo P6 C3»)."""
+    if _sin_numeros(a_descr) == _sin_numeros(b_descr):
+        return True
+    a, b = parsear_descr(a_descr), parsear_descr(b_descr)
+    return bool(a and b and (a["sector"], a["ciclo"], a["frente"]) == (b["sector"], b["ciclo"], b["frente"])
+                and a["piso"] != b["piso"])
+
+
+def gemelos_de(pedidos: list, cc: str) -> list:
+    """Los códigos de la obra con los MISMOS KILOS que `cc` (al centavo: el mismo pedido pesa
+    lo mismo) y OTRO NOMBRE que no sea sólo otro piso de lo mismo: candidatos a ser el mismo
+    pedido. `pedidos`: filas (cc, descr, kg) o (cc, descr, kg, fecha). La señal va en el
+    código más nuevo —por fecha, y a igual fecha por código— para que el par salga una vez
+    y no una en cada lado. Devuelve [(cc, descr, kg)...], los más viejos que `cc`.
+    Medido sobre 6.006 códigos de 2026: 514 pares candidatos; sin estas exclusiones, 4.866."""
+    def _f(row):
+        return row[3] if len(row) > 3 and row[3] is not None else ""
+    mio = next((r for r in pedidos if r[0] == cc), None)
+    if not mio or float(mio[2] or 0) <= 0:
+        return []
+    kg, nombre, clave = float(mio[2]), _descr_norm(mio[1]), (str(_f(mio)), str(cc))
+    out = []
+    for r in pedidos:
+        if r[0] == cc or float(r[2] or 0) <= 0 or _descr_norm(r[1]) == nombre:
+            continue
+        if abs(float(r[2]) - kg) >= 0.01 or _otro_piso_de_lo_mismo(mio[1], r[1]):
+            continue
+        if (str(_f(r)), str(r[0])) < clave:
+            out.append((r[0], r[1], float(r[2])))
+    return out
+
+
 def firma_elemento(regla: str, job: str, cc: str, contra: str) -> str:
     return hashlib.sha1("|".join(("elemento", regla, str(job), str(cc), str(contra))).encode("utf-8")).hexdigest()
 
 
-def correr_elemento(act: dict, p: dict, anterior: Optional[dict], duplicados: list, reglas=None) -> list:
-    """Corre las reglas de elemento sobre un código ya resumido. Devuelve las señales."""
+def correr_elemento(act: dict, p: Optional[dict], anterior: Optional[dict], duplicados: list, reglas=None,
+                    gemelos=None) -> list:
+    """Corre las reglas de elemento sobre un código ya resumido. Devuelve las señales. `p`
+    es None cuando el nombre no es de edificación: entonces sólo corren las reglas que no
+    necesitan piso ni ciclo (el gemelo con otro nombre)."""
     out = []
+    donde = {"sector": p["sector"], "piso": p["piso"], "ciclo": p["ciclo"]} if p else {}
     for r in (reglas or REGLAS_ELEMENTO):
-        if r["contra"] == "anterior":
+        if r["contra"] == "gemelo":
+            for o in (gemelos or []):
+                d = r["fn"](act, o, p)
+                if d:
+                    out.append({"regla": r["codigo"], "contra": o["cc"], "detalle": dict(
+                        d, grupo=r["grupo"], contra={"cc": o["cc"], "descr": o["descr"], "kg": round(o["kg"])},
+                        actual={"cc": act["cc"], "descr": act["descr"], "kg": round(act["kg"])}, **donde)})
+        elif r["contra"] == "anterior":
             if not anterior:
                 continue
             d = r["fn"](act, anterior, p)

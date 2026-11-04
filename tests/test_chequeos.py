@@ -1145,7 +1145,7 @@ print("\nREVISION DE ELEMENTOS: EL CODIGO CONTRA EL PISO ANTERIOR (4-nov)")
 sys.path.insert(0, ROOT)
 os.environ.setdefault("JWT_SECRET", "x" * 40); os.environ.setdefault("DATABASE_URL", "postgresql://x/x")
 from armahub.chequeos_elementos import (parsear_descr, nombre_elemento, pares_de_obra,   # noqa: E402
-                                        resumir, correr_elemento, REGLAS_ELEMENTO)
+                                        resumir, correr_elemento, REGLAS_ELEMENTO, gemelos_de, huella)
 MIG162 = open(os.path.join(ROOT, "armahub", "migrations", "162_senales_por_nivel.sql"), encoding="utf-8").read()
 ELEM = open(os.path.join(ROOT, "armahub", "chequeos_elementos.py"), encoding="utf-8").read()
 check("las señales tienen nivel, y lo que ya existia es barra",
@@ -1199,6 +1199,42 @@ s = correr_elemento(act, parsear_descr("ELEV P4 C1"), None, [dup])
 check("CODIGO DUPLICADO: mismos elementos barra por barra y mismos kilos; con otros kilos no",
       [x["regla"] for x in s] == ["codigo_duplicado"]
       and correr_elemento(act, parsear_descr("ELEV P4 C1"), None, [resumir("A4b", dup and _it("01", "EJE A/4") + _it("03", "EJE C/4"), 900, "ELEV P4 C1")]) == [])
+# EL MISMO PEDIDO CON OTRO NOMBRE (4-nov): el duplicado de arriba exige el mismo nombre; esto
+# compara el contenido exacto entre codigos con los mismos kilos, se llamen como se llamen.
+def _b(eid, desc, marca, diam, largo, qty):
+    return {"ElementID": eid, "ElementDesc": desc, "BarMark": marca, "BarSizeDescr": diam,
+            "ShpNameID": "L", "ShapeDims": "100x200", "LengthCut": largo, "TotalQty": qty}
+b1 = [_b("01", "EJE A/4", "1", "10", 350, 12), _b("01", "EJE A/4", "2", "12", 480, 6), _b("02", "EJE B/4", "3", "8", 120, 40)]
+g_act = resumir("SVZZ", b1, 812, "ELEV P4 C1 FRENTE 2")
+g_otro = resumir("SVAA", list(reversed(b1)), 812, "ELEVACIONES PISO 4 (REPOSICION)")
+g_casi = resumir("SVAB", b1[:2] + [_b("02", "EJE B/4", "3", "8", 120, 41)], 812, "OTRA COSA")
+check("la huella es el contenido exacto sin importar el orden; una cantidad distinta la cambia",
+      huella(b1) == huella(list(reversed(b1))) and huella(b1) != g_casi["huella"] and huella([]) == ())
+s = correr_elemento(g_act, None, None, [], gemelos=[g_otro, g_casi])
+check("MISMO PEDIDO: las mismas barras con otro nombre salta una vez, en grupo «todas», aunque el nombre no sea de edificacion",
+      [(x["regla"], x["contra"]) for x in s] == [("mismo_pedido", "SVAA")] and s[0]["detalle"]["grupo"] == "todas"
+      and s[0]["detalle"]["diferencia"] == {"que": "Idénticos", "valor": "="} and "piso" not in s[0]["detalle"])
+check("...y un codigo con una sola barra distinta no es el mismo pedido",
+      correr_elemento(g_act, None, None, [], gemelos=[g_casi]) == [])
+ped_g = [("SVAA", "ELEVACIONES PISO 4 (REPOSICION)", 812, "2026-10-01"), ("SVZZ", "ELEV P4 C1 FRENTE 2", 812, "2026-10-20"),
+         ("SVAB", "OTRA COSA", 812.004, "2026-10-05"), ("SVAC", "ELEV P4 C1 FRENTE 2", 812, "2026-11-01"),
+         ("SVAD", "LC P4 C1", 2000, "2026-10-02"), ("SVAE", "VACIO", 0, "2026-10-02"),
+         ("SVAF", "Elev P5 C1 Frente 2", 812, "2026-10-02"), ("SVAG", "ELEV P4 C1 FRENTE 2", 812.9, "2026-10-02")]
+check("los gemelos salen por kilos iguales AL CENTAVO y OTRO nombre; el del mismo nombre es del duplicado, no de aca",
+      sorted(g[0] for g in gemelos_de(ped_g, "SVZZ")) == ["SVAA", "SVAB"])
+check("...la misma cosa en otro piso no es gemelo (piso tipo: las losas del 11 y del 12 son identicas), ni por nombre sin numeros ni por ciclo",
+      gemelos_de([("P25", "PR - PILOTE - P25", 4545, "2026-10-02"), ("P20", "PR - PILOTE - P20", 4545, "2026-10-01")], "P25") == []
+      and gemelos_de([("V7", "VIGAS C 7°P (CICLO 3)", 670, "2026-10-02"), ("V6", "Vigas Cielo P6 C3", 670, "2026-10-01")], "V7") == []
+      and [g[0] for g in gemelos_de([("V7", "VIGAS C 7°P (CICLO 3)", 670, "2026-10-02"), ("V6", "Vigas Cielo P7 C4", 670, "2026-10-01")], "V7")] == ["V6"])
+check("...y la señal va en el codigo mas nuevo: el viejo no ve al nuevo como gemelo",
+      gemelos_de(ped_g, "SVAA") == [] and gemelos_de(ped_g, "SVAE") == [])
+check("la API arma los gemelos desde la tabla de pedidos (con fecha) y corre aunque el nombre no sea de edificacion",
+      "MIN(order_date)" in API and "for g_cc, g_descr, g_kg in gemelos_de(pedidos, cc)[:3]]" in API
+      and 'senales = correr_elemento(act, r["p"] if r else None, anterior, duplicados, gemelos=gemelos)' in API
+      and '"motivo": "no es edificación"}' not in API)
+check("la pantalla dibuja el mismo pedido como el duplicado: con «=» y diciendo que el otro tiene otro nombre",
+      "var igual = i.regla === 'codigo_duplicado' || i.regla === 'mismo_pedido';" in JS
+      and "'el otro código, con otro nombre'" in JS)
 # El enganche en la API.
 check("el paso de elementos corre al final de revisar_cc con los mismos items, y si falla no tumba las barras",
       "elementos = revisar_elementos_cc(body.job, body.cc, body.revision, items, email, cubico, obra)" in API
