@@ -27,6 +27,7 @@
     <div class="audsubs">
       <button id="audSubBtnAud" class="audsub on" onclick="switchAudSub('auditorias')">Auditorías</button>
       <button id="audSubBtnRev" class="audsub" onclick="switchAudSub('revision')">Revisión de barras</button>
+      <button id="audSubBtnEl" class="audsub" onclick="switchAudSub('elementos')">Revisión de elementos</button>
     </div>
 
     <div id="audSubAuditorias">
@@ -628,6 +629,45 @@
   .revkbar i{display:block; height:100%; background:#8BC34A;}
   .revkpi.listo .revkbar i{background:#43a047;}
   .revctx{font-size:10.5px; color:#90a4ae; margin-bottom:10px;}
+  /* ══════ LA TARJETA DEL HALLAZGO DE ELEMENTO (4-nov) ══════
+     Una sola forma para todos los chequeos de elemento, para que leer uno sea leer todos:
+     regla y grupo · los dos códigos comparados · encontrado ← esperado · la diferencia ·
+     la lista de lo que falta o sobra · estado y botones. Cambia el número, no el formato. */
+  .revcc2 tr.elfila td.elcel{padding:10px 12px; vertical-align:top;}
+  .elh{display:grid; grid-template-columns:150px 1fr 330px; gap:14px; align-items:start;}
+  .elregla{font-size:10px; font-weight:700; border-radius:99px; padding:2px 9px; display:inline-block; white-space:nowrap;}
+  .elregla.todas{background:#e8eaf6; color:#283593;}
+  .elregla.edificacion{background:#fff3e0; color:#e65100;}
+  .elregla small{display:block; font-weight:400; color:#78909c; margin-top:3px; white-space:normal; font-size:10px;}
+  .elcomp{font-size:11.5px;}
+  .elcomp .vs{display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center;}
+  .elcomp .vs b{font-size:12px; color:#263238;}
+  .elcomp .vs .muted{display:block; font-size:10.5px;}
+  .elcomp .vs .flecha{color:#b0bec5; font-size:16px;}
+  .elmed{display:flex; gap:18px; margin-top:7px; align-items:baseline; flex-wrap:wrap;}
+  .elmed .m{font-variant-numeric:tabular-nums;}
+  .elmed .m b{font-size:17px; font-weight:700;}
+  .elmed .m span{font-size:10.5px; color:#78909c; display:block;}
+  .elmed .m i{font-style:normal; color:#90a4ae;}
+  .elmed .m.mal b{color:#c62828;}
+  .elmed .m.dif b{color:#e65100;}
+  .ellista{margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;}
+  .ellista span{font-size:10.5px; background:#ffebee; color:#c62828; border-radius:4px; padding:1px 7px; font-variant-numeric:tabular-nums;}
+  .ellista span.igual{background:#eceff1; color:#546e7a;}
+  .ellista span.sube{background:#fff3e0; color:#e65100;}
+  .ellista span.aviso{background:#e3f2fd; color:#1565C0;}
+  .elacc{display:flex; align-items:center; gap:8px; justify-content:flex-end; flex-wrap:wrap;}
+  .elacc .revfirma{max-width:200px;}
+  /* «Qué se revisa», en dos grupos cuando se miran elementos. */
+  .elcrit{display:grid; grid-template-columns:1fr 1fr; gap:14px; list-style:none; padding:0; margin:6px 0 0;}
+  .elcrit h4{margin:0 0 8px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#78909c; display:flex; align-items:center; gap:8px;}
+  .elcrit h4 i{font-style:normal; font-size:10px; font-weight:700; border-radius:99px; padding:1px 8px;}
+  .elcrit h4 i.todas{background:#e8eaf6; color:#283593;} .elcrit h4 i.edificacion{background:#fff3e0; color:#e65100;}
+  .elcrit h4 em{font-style:normal; font-weight:400; text-transform:none; letter-spacing:0;}
+  .elrule{border:1px solid #e3e8ef; border-radius:6px; padding:8px 10px; margin-bottom:6px;}
+  .elrule b{font-size:12px;}
+  .elrule p{margin:3px 0 0; font-size:11px; color:#546e7a; line-height:1.4;}
+  .elrule .umb{display:inline-block; margin-top:5px; font-size:10.5px; color:#455a64; background:#f7f9fb; border-radius:4px; padding:2px 7px; font-variant-numeric:tabular-nums;}
   /* ══════ LA HOJA DE TRABAJO ══════ */
   /* EL ANCHO DE LA HOJA. 1040 → 1180 al entrar la figura; ahora al 96% de la pantalla
      porque el usuario la vio chica: «igual las barras están pequeñas, no se ven, agranda

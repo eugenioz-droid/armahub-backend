@@ -1216,5 +1216,27 @@ check("las dos pantallas piden lo suyo con ?nivel=, y las reglas de elemento tie
       and '@router.get("/chequeos/reglas-elemento")' in API
       and all(r["grupo"] in ("todas", "edificacion") and r["umbral"] for r in REGLAS_ELEMENTO))
 
+
+print("\nEL TAB «REVISION DE ELEMENTOS»: LA MISMA PANTALLA, OTRA FILA (4-nov)")
+check("hay un tercer sub-tab, y barras y elementos comparten el panel con un nivel en el estado",
+      'id="audSubBtnEl" class="audsub" onclick="switchAudSub(\'elementos\')"' in HTM
+      and "var REVS = { nivel: 'barra'," in JS and "elementos: 'audSubRevision'" in JS
+      and "REVS.nivel = nivel; REVS.sel = null; REVS.detalle = null;" in JS)
+check("...y todo lo que se pide al servidor lleva el nivel",
+      "'/chequeos/revisiones?nivel=' + REVS.nivel" in JS
+      and JS.count("'?nivel=' + REVS.nivel") == 3
+      and "REVS.nivel === 'elemento' ? '/chequeos/reglas-elemento' : '/chequeos/reglas'" in JS)
+check("la fila de la hoja es la tarjeta estandar: regla y grupo, los dos codigos, encontrado ← esperado, diferencia, lista, estado",
+      "function _filaElemento(i) {" in JS and "if (REVS.nivel === 'elemento') return _tablaElementos(g);" in JS
+      and '<span class="elregla ' in JS and "'<span class=\"flecha\">' + (igual ? '=' : '←') + '</span>'" in JS
+      and "posible último piso: suele ser distinto" in JS and ".elh{display:grid; grid-template-columns:150px 1fr 330px" in HTM)
+check("...y es una fila de la misma tabla, con los mismos data-*: el lote, el espejo, el pie y Cerrar codigo sirven igual",
+      "'<tr class=\"elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '\" data-fila=\"' + i.id + '\">'" in JS
+      and "data-resuelto=\"' + i.id + '\"" in JS.split("function _filaElemento(i) {")[1][:4000]
+      and "data-nota=\"' + i.id + '\"" in JS.split("function _filaElemento(i) {")[1][:4000])
+check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figuras no se ofrecen",
+      "el.className = 'elcrit';" in JS and "'Todas las obras' : 'Sólo edificación'" in JS
+      and "if (REVS.nivel === 'elemento') return [];" in JS and "&& REVS.nivel === 'barra' ? '<button class=\"audmini\" data-figs=" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

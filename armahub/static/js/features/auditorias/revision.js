@@ -61,10 +61,38 @@
   function ok(m) { if (global.showToast) global.showToast(m, 'success'); }
 
   // ── Las reglas, a la vista ────────────────────────────────────────────────────────
+  // Las reglas son del nivel: se piden cada vez que se entra, porque cambian con el tab.
+  async function cargarReglas() {
+    REV.reglas = {};
+    try {
+      var r = await req('GET', REVS.nivel === 'elemento' ? '/chequeos/reglas-elemento' : '/chequeos/reglas');
+      (r.reglas || []).forEach(function (x) { REV.reglas[x.codigo] = x; });
+    } catch (e) { /* las reglas son texto: si fallan, la pantalla sigue sirviendo */ }
+    pintarReglas();
+  }
+
   function pintarReglas() {
     var el = $('revReglas');
     if (!el) return;
     var ks = Object.keys(REV.reglas);
+    if (REVS.nivel === 'elemento') {
+      // EN DOS GRUPOS (4-nov): lo que vale para todas las obras y lo que sólo tiene
+      // sentido en edificación. El usuario: «separa las reglas que valdría la pena
+      // aplicar a todas las obras vs sólo las de edificación, así no mezclamos».
+      $('revReglasN').textContent = ks.length + ' criterio(s) · la máquina marca, la decisión es de quien mira';
+      el.className = 'elcrit';
+      el.innerHTML = ['todas', 'edificacion'].map(function (g) {
+        return '<li><h4><i class="' + g + '">' + (g === 'todas' ? 'Todas las obras' : 'Sólo edificación') + '</i>' +
+          (g === 'edificacion' ? '<em>se reconoce por el nombre del código: ELEV / LC / VC + piso + ciclo</em>' : '') + '</h4>' +
+          ks.filter(function (k) { return REV.reglas[k].grupo === g; }).map(function (k) {
+            var r = REV.reglas[k];
+            return '<div class="elrule"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p>' +
+              (r.umbral ? '<span class="umb">' + esc(r.umbral) + '</span>' : '') + '</div>';
+          }).join('') + '</li>';
+      }).join('');
+      return;
+    }
+    el.className = '';
     $('revReglasN').textContent = ks.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
     el.innerHTML = ks.map(function (k) {
       var r = REV.reglas[k];
@@ -123,7 +151,9 @@
   // `figs` es lo leído de aSa, por código: {cc: {estado, barras: {ref: barra}, msg}}. Es
   // caché a propósito —una lectura por código y no por barra— y se vacía al refrescar la
   // revisión, porque entonces lo de aSa puede haber cambiado.
-  var REVS = { lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: undefined,
+  // EL NIVEL (4-nov): 'barra' o 'elemento'. Es la misma pantalla; cambia lo que se pide al
+  // servidor y la fila de la hoja. Ver chequeos_elementos.py.
+  var REVS = { nivel: 'barra', lista: [], sel: null, detalle: null, sel_items: {}, filtro_cub: undefined,
                figs: {}, anio: null, total: {} };
   // TODO LO RESUELTO DICE «RESUELTO» (20-oct), igual que en la auditoría: lo que dijo quien
   // lo hizo. Que aSa lo haya confirmado al cerrar se agrega, no es otro estado.
@@ -140,7 +170,7 @@
 
   async function cargarRevisiones() {
     try {
-      var d = await req('GET', '/chequeos/revisiones');
+      var d = await req('GET', '/chequeos/revisiones?nivel=' + REVS.nivel);
       await global.cargarNomCub();
       REVS.lista = d.revisiones || [];
       REVS.total = d.total || {};
@@ -363,7 +393,7 @@
     pintarRevisiones();
     $('revResCuerpo').innerHTML = '<div class="revvacio">Cargando…</div>';
     try {
-      REVS.detalle = await req('GET', '/chequeos/revision/' + id);
+      REVS.detalle = await req('GET', '/chequeos/revision/' + id + '?nivel=' + REVS.nivel);
       REV.reglas = {};
       Object.keys(REVS.detalle.reglas || {}).forEach(function (k) { REV.reglas[k] = REVS.detalle.reglas[k]; });
       pintarResumen();
@@ -535,7 +565,7 @@
     if (!REVS.detalle || (REVS.sel && REVS.detalle.revision.id !== REVS.sel)
         || (!REVS.sel && !REVS.detalle.revision.todas)) {
       try {
-        REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0));
+        REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0) + '?nivel=' + REVS.nivel);
       } catch (e) { aviso(e.message); return; }
     }
     // El filtro de cubicador es el de arriba: la hoja abre con lo que esté puesto.
@@ -617,7 +647,7 @@
               ? '<span class="revido" title="Este código está ' + esc(g.items[0].cc_estado || '') +
                 ' en aSa: el fierro ya salió. El hallazgo queda registrado, pero corregirlo ' +
                 'acá no cambia lo despachado.">ya despachado</span>' : '') +
-            (g.cc && !fg ? '<button class="audmini" data-figs="' + esc(g.cc) +
+            (g.cc && !fg && REVS.nivel === 'barra' ? '<button class="audmini" data-figs="' + esc(g.cc) +
                            '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
             // EL AVANCE DEL CÓDIGO, COMPACTO Y A LA DERECHA: «3/10» se lee bajando por la
             // hoja sin tener que leer una frase en cada cabecera.
@@ -774,6 +804,7 @@
   }
 
   function _ccsSinFigura() {
+    if (REVS.nivel === 'elemento') return [];
     return _ccsVisibles().filter(function (g) { return !REVS.figs[g.cc]; });
   }
 
@@ -922,6 +953,7 @@
   }
 
   function _tablaGrupo(g) {
+    if (REVS.nivel === 'elemento') return _tablaElementos(g);
     var c = _colsGrupo(g.items), ang = '';
     for (var k = 1; k <= c.nang; k++) ang += '<th class="revn reva">α' + k + '</th>';
     // El check «todas» va donde van los checks: en su columna (29-oct). Antes estaba en
@@ -992,6 +1024,68 @@
   function _notaDe(id) {
     var i = document.querySelector('input[data-nota="' + id + '"]');
     return (i && i.style.display !== 'none' && (i.value || '').trim()) || '';
+  }
+
+  // LA TARJETA ESTÁNDAR DEL HALLAZGO DE ELEMENTO (4-nov). Es una fila de la misma tabla
+  // —`tr[data-fila]`, el check, data-resuelto / data-noaplica / data-nota / data-deshacer—
+  // para que el lote, el espejo, el pie y «Cerrar código» funcionen sin tocar nada. Lo que
+  // cambia es lo que hay adentro: regla y grupo · los dos códigos · encontrado ← esperado ·
+  // la diferencia · la lista de lo que falta o sobra · estado y botones.
+  function _tablaElementos(g) {
+    return '<table><tr class="revhead"><th style="width:22px"><input type="checkbox" data-grupo="' +
+      esc(g.cc || '') + '" title="Marcar todos los hallazgos de este código"></th>' +
+      '<th>Hallazgo · comparación · estado</th></tr>' +
+      g.items.map(_filaElemento).join('') + '</table>';
+  }
+
+  function _filaElemento(i) {
+    var d = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla, grupo: d.grupo };
+    var hecho = i.estado === 'corregida', nap = i.estado === 'aceptada';
+    var resuelto = hecho || i.estado === 'declarada' || i.estado === 'corregir';
+    var grupo = r.grupo || d.grupo || 'todas';
+    var act = d.actual || { cc: i.cc, descr: '', kg: null }, con = d.contra || {};
+    var igual = i.regla === 'codigo_duplicado';
+    var firma = '';
+    if (nap) {
+      firma = '<span class="revfirma">' + esc(i.nota || '') + (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
+    } else if (resuelto && i.declarada_por) {
+      firma = '<span class="revfirma">resuelto por ' + esc(i.declarada_por.split('@')[0]) +
+              (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') + (hecho ? ' · aSa lo confirmó' : '') + '</span>';
+    }
+    var acc = hecho ? '<span class="muted">confirmada</span>'
+      : (resuelto || nap)
+        ? '<button class="audmini" data-deshacer="' + i.id + '" title="Vuelve a dejarlo abierto">Deshacer</button>'
+        : '<div class="revaccs">' +
+            '<button class="audbres" data-resuelto="' + i.id + '" title="Márcalo cuando ya lo hayas corregido en aSa. ' +
+              'Al cerrar el código se vuelve a comparar y, si sigue igual, te avisa.">Resuelto</button>' +
+            '<button class="revnapbtn" data-noaplica="' + i.id + '" title="Dejar sin efecto, con una explicación firmada.">No aplica</button>' +
+            '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
+              ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">' +
+          '</div>';
+    var cod = function (c, sub) {
+      return '<div><b>' + esc(c.cc || '') + '</b><span class="muted">' + esc(c.descr || '') +
+             (c.kg != null ? ' · ' + num(c.kg) + ' kg' : '') + (sub ? '<br>' + sub : '') + '</span></div>'; };
+    var medidas = (d.medidas || []).map(function (m) {
+      return '<div class="m' + (m.encontrado !== m.esperado ? ' mal' : '') + '"><b>' + esc(num(m.encontrado)) + '</b>' +
+             (m.esperado != null ? ' <i>← ' + esc(num(m.esperado)) + '</i>' : '') + '<span>' + esc(m.que) + '</span></div>'; }).join('') +
+      (d.diferencia ? '<div class="m dif"><b>' + esc(d.diferencia.valor) + '</b><span>' + esc(d.diferencia.que) + '</span></div>' : '');
+    var lista = (d.lista || []).map(function (x) { return '<span class="' + esc(x.tipo || '') + '">' + esc(x.texto) + '</span>'; });
+    if (d.posible_ultimo_piso) lista.push('<span class="aviso">posible último piso: suele ser distinto</span>');
+    return '<tr class="elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '" data-fila="' + i.id + '">' +
+      '<td style="width:22px; vertical-align:top; padding-top:12px">' + (hecho ? '✓' :
+        '<input type="checkbox" data-item="' + i.id + '"' + (REVS.sel_items[i.id] ? ' checked' : '') +
+        ' title="Marcar para resolver varios de una vez">') + '</td>' +
+      '<td class="elcel"><div class="elh">' +
+        '<div><span class="elregla ' + esc(grupo) + '">' + esc(r.corto || r.nombre) +
+          '<small>' + (grupo === 'edificacion' ? 'sólo edificación' : 'todas las obras') + '</small></span>' +
+          '<div class="l2" style="margin-top:6px" title="' + esc(d.texto || '') + '">' + esc(r.nombre || '') + '</div></div>' +
+        '<div class="elcomp"><div class="vs">' + cod(act) + '<span class="flecha">' + (igual ? '=' : '←') + '</span>' +
+          cod(con, igual ? 'el otro código' : 'piso anterior, mismo ciclo') + '</div>' +
+          '<div class="elmed">' + medidas + '</div>' +
+          (lista.length ? '<div class="ellista">' + lista.join('') + '</div>' : '') + '</div>' +
+        '<div class="elacc"><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>' +
+          firma + acc + '</div>' +
+      '</div></td></tr>';
   }
 
   function filaItem(i, c) {
@@ -1431,7 +1525,7 @@
     // Las figuras leídas NO se tiran acá: lo que cambia es el estado del hallazgo, no la
     // barra, y volver a leer treinta códigos en cada clic es justo lo que hay que evitar.
     // Se tiran al abrir otra revisión y cuando una verificación dice que aSa cambió.
-    REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0));
+    REVS.detalle = await req('GET', '/chequeos/revision/' + (REVS.sel || 0) + '?nivel=' + REVS.nivel);
     pintarResumen();
     if ($('revItemsModal').style.display !== 'none') pintarItems();
     await cargarRevisiones();
@@ -1617,12 +1711,8 @@
         this.classList.toggle('on', REV.tarde);
         await cargarReporte();
       });
-      try {
-        var r = await req('GET', '/chequeos/reglas');
-        (r.reglas || []).forEach(function (x) { REV.reglas[x.codigo] = x; });
-      } catch (e) { /* las reglas son texto: si fallan, la pantalla sigue sirviendo */ }
-      pintarReglas();
     }
+    await cargarReglas();
     await cargarReporte();
     // UN SOLO FORMULARIO PARA TODOS (28-oct). Acá se cargaba antes «Mis chequeos por
     // corregir», una lista plana del flujo viejo con un botón de comprobar por fila, que le salía
@@ -1634,20 +1724,38 @@
 
   // Las dos líneas del tab. La revisión se carga la primera vez que se entra, no al abrir
   // Auditorías: son cientos de obras y nadie las pide hasta que mira este lado.
+  // LAS TRES LÍNEAS DEL TAB (4-nov). Barras y elementos comparten el panel: es la misma
+  // pantalla con otro nivel; lo que cambia es lo que se pide y la fila de la hoja.
   global.switchAudSub = function (sub) {
-    var hay = { auditorias: 'audSubAuditorias', revision: 'audSubRevision' };
-    var bts = { auditorias: 'audSubBtnAud', revision: 'audSubBtnRev' };
-    Object.keys(hay).forEach(function (k) {
-      var p = $(hay[k]), b = $(bts[k]);
-      if (p) p.style.display = (k === sub) ? '' : 'none';
+    var panel = { auditorias: 'audSubAuditorias', revision: 'audSubRevision', elementos: 'audSubRevision' };
+    var bts = { auditorias: 'audSubBtnAud', revision: 'audSubBtnRev', elementos: 'audSubBtnEl' };
+    Object.keys(bts).forEach(function (k) {
+      var b = $(bts[k]);
       if (b) b.classList.toggle('on', k === sub);
     });
+    ['audSubAuditorias', 'audSubRevision'].forEach(function (id) {
+      var p = $(id);
+      if (p) p.style.display = (panel[sub] === id) ? '' : 'none';
+    });
+    var textos = {
+      auditorias: ['🔎 Auditorías de cubicación',
+                   'Se revisa una muestra al azar de elementos constructivos; cada hallazgo le queda como acción a quien cubicó.'],
+      revision: ['🔎 Revisión de barras',
+                 'La máquina lee todas las barras de los códigos abiertos y marca lo que no calza. La señal sugiere; la decisión es de quien mira.'],
+      elementos: ['🔎 Revisión de elementos',
+                  'Cada código se compara con el mismo ciclo del piso anterior: muros que faltan, kilos que se disparan, códigos repetidos. La señal sugiere; la decisión es de quien mira.']
+    };
     var t = $('audTitulo'), ba = $('audBajada');
-    if (t) t.textContent = sub === 'revision' ? '🔎 Revisión de barras' : '🔎 Auditorías de cubicación';
-    if (ba) ba.textContent = sub === 'revision'
-      ? 'La máquina lee todas las barras de los códigos abiertos y marca lo que no calza. La señal sugiere; la decisión es de quien mira.'
-      : 'Se revisa una muestra al azar de elementos constructivos; cada hallazgo le queda como acción a quien cubicó.';
-    if (sub === 'revision') global.loadRevisionBarras();
+    if (t) t.textContent = textos[sub][0];
+    if (ba) ba.textContent = textos[sub][1];
+    if (sub === 'revision' || sub === 'elementos') {
+      var nivel = sub === 'elementos' ? 'elemento' : 'barra';
+      if (nivel !== REVS.nivel) {
+        // Cambiar de nivel es cambiar de datos: lo elegido en el otro no vale acá.
+        REVS.nivel = nivel; REVS.sel = null; REVS.detalle = null; REVS.sel_items = {}; REVS.figs = {};
+      }
+      global.loadRevisionBarras();
+    }
   };
 
   global.__revisionTest = { REV: REV, estadoTxt: ESTADO_TXT };
