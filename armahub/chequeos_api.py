@@ -356,15 +356,19 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
 
 # Los ítems de los códigos con que se compara, leídos una vez por corrida: el piso anterior
 # de un código es el actual del siguiente, y treinta lecturas repetidas a aSa son minutos.
-_ITEMS_CACHE: dict = {}
+_ITEMS_CACHE: dict = {"rev": None, "items": {}}
 
 
-def _items_cacheados(cc: str) -> list:
-    if cc not in _ITEMS_CACHE:
-        if len(_ITEMS_CACHE) > 400:
-            _ITEMS_CACHE.clear()
-        _ITEMS_CACHE[cc] = [it for it in _items_de(cc) if _es_barra(it)]
-    return _ITEMS_CACHE[cc]
+def _items_cacheados(cc: str, revision_id=None) -> list:
+    """Dura UNA corrida: al cambiar de revisión se vacía. Si durara más, mañana el piso
+    anterior se compararía contra la lectura de hoy y no contra lo que hay en aSa."""
+    if _ITEMS_CACHE["rev"] != revision_id or len(_ITEMS_CACHE["items"]) > 400:
+        _ITEMS_CACHE["rev"] = revision_id
+        _ITEMS_CACHE["items"] = {}
+    c = _ITEMS_CACHE["items"]
+    if cc not in c:
+        c[cc] = [it for it in _items_de(cc) if _es_barra(it)]
+    return c[cc]
 
 
 def revisar_elementos_cc(job: str, cc: str, revision_id, items: list, email: str,
@@ -390,8 +394,8 @@ def revisar_elementos_cc(job: str, cc: str, revision_id, items: list, email: str
     anterior = None
     if r["anterior"]:
         a_cc, a_descr, a_kg = r["anterior"]
-        anterior = resumir(a_cc, _items_cacheados(a_cc), a_kg, a_descr)
-    duplicados = [resumir(d_cc, _items_cacheados(d_cc), d_kg, d_descr)
+        anterior = resumir(a_cc, _items_cacheados(a_cc, revision_id), a_kg, a_descr)
+    duplicados = [resumir(d_cc, _items_cacheados(d_cc, revision_id), d_kg, d_descr)
                   for d_cc, d_descr, d_kg in r["duplicados"][:3]]
     senales = correr_elemento(act, r["p"], anterior, duplicados)
     for s in senales:

@@ -977,14 +977,15 @@
   // mientras falte, y recién cuando no queda nada por decidir deja cerrar.
   function _pieGrupo(g) {
     var e = _estadoCC(g);
+    var cosa = REVS.nivel === 'elemento' ? 'hallazgo(s)' : 'barra(s)';
     var txt = e.faltan
-      ? 'Faltan ' + e.faltan + ' barra(s) por decidir'
+      ? 'Faltan ' + e.faltan + ' ' + cosa + ' por decidir'
       : (e.porGuardar || e.porCerrar)
         ? 'Cerrar código' + (e.porCerrar ? ' (' + e.porCerrar + ')' : '')
         : 'Código cerrado';
     var ayuda = e.faltan
-      ? 'Cada barra tiene que quedar como Resuelto, o como No aplica con su explicación. ' +
-        'Faltan ' + e.faltan + '.'
+      ? 'Cada ' + (REVS.nivel === 'elemento' ? 'hallazgo' : 'barra') + ' tiene que quedar como Resuelto, ' +
+        'o como No aplica con su explicación. Faltan ' + e.faltan + '.'
       : e.porCerrar
         ? 'Guarda lo escrito y comprueba en aSa las ' + e.porCerrar + ' barra(s) resueltas. ' +
           'Si alguna sigue como estaba, te lo dice antes de cerrar.'

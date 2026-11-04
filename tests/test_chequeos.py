@@ -1014,7 +1014,7 @@ check("cada codigo tiene su pie con UN boton que lo cierra entero",
       and "_tablaGrupo(g) + _pieGrupo(g)" in JS and ".revccpie{display:flex" in HTM
       and "async function cerrarCC(cc, boton)" in JS and "function _grupoDe(cc)" in JS)
 check("...que no deja cerrar mientras quede algo sin decidir, y dice cuanto falta",
-      "'Faltan ' + e.faltan + ' barra(s) por decidir'" in JS
+      "'Faltan ' + e.faltan + ' ' + cosa + ' por decidir'" in JS
       and "(e.faltan || !(e.porGuardar || e.porCerrar) ? ' disabled' : '')" in JS
       and "function _marcarPendientes(" in JS and ".revcc2 tr.falta td{" in HTM)
 check("...guarda de una vez las explicaciones escritas, agrupando las iguales",
@@ -1202,7 +1202,7 @@ check("CODIGO DUPLICADO: mismos elementos barra por barra y mismos kilos; con ot
 # El enganche en la API.
 check("el paso de elementos corre al final de revisar_cc con los mismos items, y si falla no tumba las barras",
       "elementos = revisar_elementos_cc(body.job, body.cc, body.revision, items, email, cubico, obra)" in API
-      and 'elementos = {"senales": 0, "error": str(e)[:160]}' in API and "def _items_cacheados(cc: str)" in API)
+      and 'elementos = {"senales": 0, "error": str(e)[:160]}' in API and "def _items_cacheados(cc: str, revision_id=None)" in API)
 check("...guarda con nivel elemento y cierra solo lo de elemento que ya no salta",
       "VALUES (%s,'asa',%s,%s,%s,NULL,%s,%s,%s,%s,%s,'abierta',%s,'elemento')" in API
       and "WHERE id_proyecto = %s AND cc = %s AND nivel = 'elemento'" in API)
@@ -1236,7 +1236,9 @@ check("...y es una fila de la misma tabla, con los mismos data-*: el lote, el es
       and "data-nota=\"' + i.id + '\"" in JS.split("function _filaElemento(i) {")[1][:4000])
 check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figuras no se ofrecen",
       "el.className = 'elcrit';" in JS and "'Todas las obras' : 'Sólo edificación'" in JS
-      and "if (REVS.nivel === 'elemento') return [];" in JS and "&& REVS.nivel === 'barra' ? '<button class=\"audmini\" data-figs=" in JS)
+      and "if (REVS.nivel === 'elemento') return [];" in JS and "&& REVS.nivel === 'barra' ? '<button class=\"audmini\" data-figs=" in JS
+      and "var cosa = REVS.nivel === 'elemento' ? 'hallazgo(s)' : 'barra(s)';" in JS
+      and 'def _items_cacheados(cc: str, revision_id=None) -> list:' in API)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
