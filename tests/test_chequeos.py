@@ -477,7 +477,7 @@ check("«no aplica» exige la explicación; la categoría quedó opcional (29-oc
 check("la lectura de aSa sigue siendo por código, y la dispara el cierre",
       '@router.post("/chequeos/comprobar-lote")' in API
       and "una lectura de aSa por código, no por" in API
-      and "r = comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=30), user)" in API
+      and "r = comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=0), user)" in API
       and "function verificarMarcados(" not in JS and 'id="revAccVerificar"' not in JS)
 check("el alias del cubicador sale de aSa y no de las auditorías (si no, el dueño no podía declarar)",
       "UNION SELECT detail_person FROM asa_pedidos" in AUD)
@@ -1275,6 +1275,14 @@ check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figur
       and "if (REVS.nivel === 'elemento') return [];" in JS and "&& REVS.nivel === 'barra' ? '<button class=\"audmini\" data-figs=" in JS
       and "var cosa = REVS.nivel === 'elemento' ? 'hallazgo(s)' : 'barra(s)';" in JS
       and 'def _items_cacheados(cc: str, revision_id=None) -> list:' in API)
+
+print("\nEL CIERRE LEE TODO O DICE QUE NO PUDO (4-nov)")
+check("un codigo que aSa no deja leer se cuenta como error y no tumba la revision ni el cierre (_items_de ya lanza 502)",
+      "except (AsaError, HTTPException) as e:" in API and 'porque = str(getattr(e, "detail", None) or e)' in API)
+check("el cierre comprueba SIN tope, y lo que no se pudo leer no se confirma como cerrado",
+      "comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=0), user)" in API
+      and 'tope = len(ccs) if body.tope_ccs == 0 else max(1, min(int(body.tope_ccs), 30))' in API
+      and 'and s[2] not in no_leidos]' in API)
 
 print("\n«NO APLICA» CIERRA PERO NO ES RESUELTO, TAMBIEN EN EL DETALLE (4-nov)")
 check("el detalle no suma la aceptada a resueltas (la tarjeta «cerrado» la contaba dos veces), y el pct por cubicador va sobre los que aplican",

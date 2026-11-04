@@ -258,11 +258,15 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
     email = user.get("email", "?")
     try:
         items = [it for it in _items_de(body.cc) if _es_barra(it)]
-    except AsaError as e:
+    except (AsaError, HTTPException) as e:
         # Un código que falla no bota la revisión: se cuenta y se sigue con el siguiente.
+        # `_items_de` ya envuelve el error de aSa en un 502 (4-nov): atrapar sólo AsaError
+        # dejaba esta rama muerta, ccs_error siempre en cero y un código caído tumbaba
+        # el cierre entero del lote.
+        porque = str(getattr(e, "detail", None) or e)
         _sumar_revision(body.revision, ccs=1, errores=1)
-        _marcar_codigo(body.job, body.cc, email, 0, 0, str(e))
-        return {"cc": body.cc, "error": str(e), "barras": 0,
+        _marcar_codigo(body.job, body.cc, email, 0, 0, porque)
+        return {"cc": body.cc, "error": porque, "barras": 0,
                 "nuevas": 0, "vistas": 0, "corregidas": 0, "senales": []}
     # LA MISMA REFERENCIA QUE USA LA AUDITORÍA, con la misma función: así una señal y un
     # hallazgo sobre la misma barra se pueden cruzar y se puede medir si la regla acierta.
@@ -571,16 +575,19 @@ def cerrar_resueltas(body: CerrarResueltasBody, user=Depends(get_current_user)):
                 if q and q not in mios:
                     ajenas[q] = ajenas.get(q, 0) + 1
             ids = [f[0] for f in filas]
-    # A aSa, código por código. Sin tope: cerrar es una vez, y lo que se cierra tiene que
-    # quedar comprobado entero o dicho que no se pudo.
-    r = comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=30), user)
+    # A aSa, código por código. SIN TOPE DE VERDAD (4-nov: decía sin tope y pasaba 30):
+    # cerrar es una vez, y lo que se cierra tiene que quedar comprobado entero o dicho que
+    # no se pudo. Lo que aSa no dejó leer NO se confirma: no pasó por el cierre.
+    r = comprobar_lote(ComprobarLoteBody(ids=ids, tope_ccs=0), user)
+    no_leidos = {e["cc"] for e in r.get("errores", [])}
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT id, ref, cc, estado FROM chequeo_senales WHERE id = ANY(%s)
                             ORDER BY cc, ref""", (ids,))
             despues = cur.fetchall()
             cumplen = [{"id": s[0], "ref": s[1], "cc": s[2]} for s in despues if s[3] == "corregida"]
-            siguen = [{"id": s[0], "ref": s[1], "cc": s[2]} for s in despues if s[3] in ("declarada", "corregir")]
+            siguen = [{"id": s[0], "ref": s[1], "cc": s[2]} for s in despues
+                      if s[3] in ("declarada", "corregir") and s[2] not in no_leidos]
             sin_leer = [{"cc": e["cc"], "porque": e.get("error") or ""} for e in r.get("errores", [])]
             if siguen and not body.confirmar:
                 raise HTTPException(
@@ -1404,6 +1411,7 @@ class ComprobarLoteBody(BaseModel):
     # Tope de CÓDIGOS por llamada. Comprobar cuesta una lectura de aSa por código, no por
     # barra: 47 barras en 9 códigos son 9 lecturas. El tope existe para que una hoja con
     # treinta códigos no deje la pantalla colgada; lo que sobra vuelve en la siguiente.
+    # Cero es sin tope: lo usa el cierre, que tiene que leerlo todo o decir que no pudo.
     tope_ccs: int = 12
 
 
@@ -1423,7 +1431,7 @@ def comprobar_lote(body: ComprobarLoteBody, user=Depends(get_current_user)):
                     WHERE id = ANY(%s) AND estado <> 'corregida' AND cc IS NOT NULL
                     ORDER BY 1, 2""", (ids,))
             ccs = cur.fetchall()
-    tope = max(1, min(int(body.tope_ccs or 12), 30))
+    tope = len(ccs) if body.tope_ccs == 0 else max(1, min(int(body.tope_ccs), 30))
     hechos, errores = [], []
     for job, cc in ccs[:tope]:
         r = revisar_cc(RevisarCc(job=job, cc=cc), user)
