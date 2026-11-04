@@ -74,6 +74,13 @@ ESTADOS = ("planificada", "en_curso", "enviada", "cerrada")
 HALLAZGOS = ("conforme", "observacion", "hallazgo")
 # El que abre una acción para quien cubicó. Los otros dos no.
 HALLAZGO_ABRE_ACCION = "hallazgo"
+# LA ÚNICA DEFINICIÓN SQL DE «BARRA CON ACCIÓN» (4-nov). El 3-nov se corrigió que una barra
+# no conforme dentro de un elemento marcado OBSERVACIÓN no cuenta como pendiente —la regla
+# es HALLAZGO_ABRE_ACCION— pero sólo en el contador del panel; el cierre, el aviso al enviar,
+# el panel del auditado, la comprobación y el aviso a fábrica seguían contándola. Era un fix
+# a medias. Toda consulta que cuente barras por corregir usa este fragmento (alias i, e).
+SQL_ELEMENTO_CON_ACCION = "e.hallazgo = '%s'" % HALLAZGO_ABRE_ACCION
+SQL_BARRA_CON_ACCION = "i.conforme IS FALSE AND " + SQL_ELEMENTO_CON_ACCION
 # El área cuyo Ishikawa da las causas de una no conformidad (tabla `areas`).
 AREA_CUBICACIONES = "Cubicaciones"
 # De dónde sale la muestra. 'armahub' = las barras de acá; 'asa' = los ítems de aSa, para
@@ -2336,7 +2343,7 @@ def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(ge
                 """SELECT TRIM(e.cubicado_por), COUNT(*)
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
-                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+                    WHERE e.auditoria_id = %s AND """ + SQL_BARRA_CON_ACCION + """
                       AND COALESCE(TRIM(e.cubicado_por), '') <> ''
                     GROUP BY 1""", (auditoria_id,))
             porcub = cur.fetchall()
@@ -2403,7 +2410,7 @@ def _chequear_lo_resuelto(cur, auditoria_id: int) -> dict:
     cur.execute(
         """SELECT i.id, i.ref FROM auditoria_items i
              JOIN auditoria_elementos e ON e.id = i.elemento_id
-            WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+            WHERE e.auditoria_id = %s AND """ + SQL_BARRA_CON_ACCION + """
               AND i.corregido AND NOT i.desestimado
             ORDER BY i.id""", (auditoria_id,))
     barras = cur.fetchall()
@@ -2478,7 +2485,7 @@ def cerrar_resueltas(auditoria_id: int, request: Request, confirmar: bool = Fals
                           COUNT(*) FILTER (WHERE TRIM(COALESCE(e.cubicado_por, '')) = ANY(%s))
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
-                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE""",
+                    WHERE e.auditoria_id = %s AND """ + SQL_BARRA_CON_ACCION + """""",
                 (mios, auditoria_id))
             pendientes, total, mias = cur.fetchone()
             # LOS COMENTARIOS SUELTOS CUENTAN IGUAL (15-oct). Un hallazgo que no es de
@@ -2645,7 +2652,7 @@ def avisar_fabricacion(cur) -> list:
              JOIN auditorias a ON a.id = e.auditoria_id
              JOIN auditoria_items i ON i.elemento_id = e.id
              JOIN asa_pedidos p ON p.control_code = e.cc
-            WHERE e.aviso_fabrica_el IS NULL
+            WHERE e.aviso_fabrica_el IS NULL AND """ + SQL_ELEMENTO_CON_ACCION + """
               AND COALESCE(p.estado, '') = %s
               AND e.cc IS NOT NULL
             GROUP BY e.id, e.cc, a.codigo, a.obra, a.auditor, e.cubicado_por, e.nombre
@@ -2873,7 +2880,7 @@ def comprobar(auditoria_id: int, user=Depends(get_current_user)):
             cur.execute(
                 """SELECT i.id FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
-                    WHERE e.auditoria_id = %s AND i.conforme IS FALSE
+                    WHERE e.auditoria_id = %s AND """ + SQL_BARRA_CON_ACCION + """
                       AND i.corregido AND NOT i.desestimado
                     ORDER BY i.id""", (auditoria_id,))
             ids = [r[0] for r in cur.fetchall()]
@@ -3667,7 +3674,7 @@ def mis_items(user=Depends(get_current_user)):
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                      JOIN auditorias a ON a.id = e.auditoria_id
                      LEFT JOIN asa_pedidos p ON p.control_code = e.cc
-                    WHERE i.conforme IS FALSE AND TRIM(e.cubicado_por) = ANY(%s)
+                    WHERE """ + SQL_BARRA_CON_ACCION + """ AND TRIM(e.cubicado_por) = ANY(%s)
                       -- SÓLO LAS ENVIADAS. Una auditoría en curso es un borrador del
                       -- auditor: mostrar sus barras acá le adelantaba al auditado un
                       -- resultado que todavía podía cambiar, y lo dejaba corriendo detrás

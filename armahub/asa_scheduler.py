@@ -199,7 +199,8 @@ def _auditorias_al_dia():
     Las dos cosas tienen que poder fallar sin tumbar el reloj, igual que todo lo de acá."""
     from .db import get_conn
     try:
-        from .auditorias import avisar_fabricacion, comprobar_item, _accion_de_items, _recalcular
+        from .auditorias import (avisar_fabricacion, comprobar_item, _accion_de_items, _recalcular,
+                                 SQL_BARRA_CON_ACCION)
         with get_conn() as conn:
             with conn.cursor() as cur:
                 # LO QUE SE DECLARÓ CORREGIDO Y NO SE HA PODIDO COMPROBAR. Se reintenta lo
@@ -210,7 +211,7 @@ def _auditorias_al_dia():
                     """SELECT i.id, e.auditoria_id, i.elemento_id
                          FROM auditoria_items i
                          JOIN auditoria_elementos e ON e.id = i.elemento_id
-                        WHERE i.conforme IS FALSE AND i.corregido AND NOT i.desestimado
+                        WHERE """ + SQL_BARRA_CON_ACCION + """ AND i.corregido AND NOT i.desestimado
                           AND COALESCE(i.verificado, '') NOT IN ('ok', 'sigue_igual')
                         ORDER BY i.id LIMIT %s""", (TOPE_COMPROBAR,))
                 pend = cur.fetchall()

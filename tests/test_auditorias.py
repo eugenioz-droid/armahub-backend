@@ -1510,5 +1510,19 @@ check("...y el detalle, la lista, los indicadores y el desglose por cubicador cu
       and SRC.count("AND i.conforme IS FALSE AND e2.hallazgo = 'hallazgo'") == 6
       and JS.count("if (!el.accion_estado) return;") == 2)
 
+print("\nUNA SOLA DEFINICION DE «BARRA CON ACCION», EN TODAS LAS CUENTAS (4-nov)")
+import re as _re  # noqa: E402
+SCHED = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
+# Las cuentas de barras por corregir que NO llevan el filtro de hallazgo: cualquier
+# «i.conforme IS FALSE» seguido de corregido/desestimado/cubicado_por sin el fragmento.
+_sueltas = [m.group(0) for m in _re.finditer(
+    r"(?<!FILTER \(WHERE )i\.conforme IS FALSE(?!\s+AND e(2)?\.hallazgo)[^;]{0,80}(corregido|desestimado|cubicado_por)", SRC + SCHED)]
+check("el cierre, el envio, el panel del auditado, la comprobacion, el aviso a fabrica y el reloj cuentan con SQL_BARRA_CON_ACCION",
+      SRC.count("SQL_BARRA_CON_ACCION") >= 6 and SRC.count("SQL_ELEMENTO_CON_ACCION") >= 2
+      and SCHED.count("SQL_BARRA_CON_ACCION") == 2)
+check("...y no queda ninguna cuenta de barras por corregir sin el filtro de hallazgo", not _sueltas)
+for m in _sueltas:
+    print("      " + m[:100].replace("\n", " "))
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
