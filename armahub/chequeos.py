@@ -201,15 +201,15 @@ def r_lado_corto(barra, hermanas) -> list:
     nombres = [l["nombre"] for l in cortos]
     if len(cortos) == 1:
         l = cortos[0]
-        texto = ("el %s %s mide %d mm y el mínimo de fabricación es %d (10 × φ%g)"
+        texto = ("el %s %s mide %d mm y el mínimo de fabricación es %d (%g × φ%g)"
                  % ("gancho" if l["gancho"] else "lado", l["nombre"],
-                    round(l["largo"]), round(minimo), diam))
+                    round(l["largo"]), round(minimo), GANCHO_FABRICACION["factor"], diam))
     else:
         # Cada lado con SU medida al lado: «A (90) y E (90)» se lee; «A y E miden 90 y 90»
         # obliga a emparejar dos listas de memoria, y con tres lados ya no se puede.
-        texto = ("los lados %s miden menos que el mínimo de fabricación, %d mm (10 × φ%g)"
+        texto = ("los lados %s miden menos que el mínimo de fabricación, %d mm (%g × φ%g)"
                  % (_y(["%s (%d)" % (l["nombre"], round(l["largo"])) for l in cortos]),
-                    round(minimo), diam))
+                    round(minimo), GANCHO_FABRICACION["factor"], diam))
     return [{
         "texto": texto,
         "lados": nombres,
@@ -219,14 +219,6 @@ def r_lado_corto(barra, hermanas) -> list:
         # los mande: si no, la misma barra generaría señales distintas entre corridas.
         "clave": tuple(sorted(nombres)) + (round(min(l["largo"] for l in cortos)),),
     }]
-
-
-def _es_estribo(barra) -> bool:
-    """Un estribo: lleva gancho sísmico de 135° o cierra sobre sí mismo."""
-    if any(l["tipo"] == "H3" for l in barra["lados"]):
-        return True
-    giros = [abs(l["angulo"] or 0) for l in barra["lados"][1:]]
-    return len(barra["lados"]) >= 4 and 340 <= sum(giros) <= 380
 
 
 # CERO. Los lados opuestos de un estribo tienen que medir lo MISMO, y lo fijó el usuario
@@ -362,7 +354,7 @@ REGLAS = [
      "corto": "Lado corto",
      "nombre": "Lado más corto que 10 diámetros",
      "porque": "La planta dobla a 10 veces el diámetro. Menos que eso no se puede fabricar "
-               "ni anclar. Los ganchos no cuentan: son cortos por norma.",
+               "ni anclar. Ningún lado se excluye, tampoco los ganchos.",
      "necesita": ("lados", "diam"),
      "fn": r_lado_corto},
     {"codigo": "lados_opuestos",
@@ -380,9 +372,6 @@ REGLAS = [
      "necesita": ("diam",),
      "fn": r_cabezal_delgado},
 ]
-
-REGLAS_POR_CODIGO = {r["codigo"]: r for r in REGLAS}
-
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

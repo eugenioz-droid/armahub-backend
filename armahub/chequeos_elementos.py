@@ -47,7 +47,7 @@ def parsear_descr(descr: Optional[str]) -> Optional[dict]:
     ciclo, frente. None si no es un código de edificación nombrado así. `rango` marca los
     que cubren varios pisos o ciclos («P6@P9», «C1@C4») o un pedazo («PARTE 2»): existen,
     pero no se comparan piso a piso."""
-    u = re.sub(r"\s+", " ", (descr or "").upper().replace("-", " ").replace(".", " ").replace("_", " ")).strip()
+    u = _descr_norm(descr)
     m = re.match(r"^(ELEVACIONES|ELEVACION|ELEV|LOSAS|LOSA|LC|VIGAS|VIGA|VC|FUND)\b", u)
     if not m:
         return None
@@ -223,9 +223,6 @@ REGLAS_ELEMENTO = [
      "umbral": "ELEV: menos elementos · LC/VC: menos elementos o kilos < 0,5×",
      "contra": "anterior", "fn": r_faltan_elementos},
 ]
-REGLAS_ELEMENTO_POR_CODIGO = {r["codigo"]: r for r in REGLAS_ELEMENTO}
-
-
 # ── El emparejador: con quién se compara cada código ──────────────────────────────────
 def pares_de_obra(pedidos: list) -> dict:
     """`pedidos`: filas (cc, descr, kg) de UNA obra. Devuelve, por código, contra quién se
@@ -313,31 +310,16 @@ def correr_elemento(act: dict, p: Optional[dict], anterior: Optional[dict], dupl
     """Corre las reglas de elemento sobre un código ya resumido. Devuelve las señales. `p`
     es None cuando el nombre no es de edificación: entonces sólo corren las reglas que no
     necesitan piso ni ciclo (el gemelo con otro nombre)."""
-    out = []
     donde = {"sector": p["sector"], "piso": p["piso"], "ciclo": p["ciclo"]} if p else {}
+    # Contra quién corre cada regla: una lista por tipo de comparación, y una sola forma de
+    # armar la señal para las tres.
+    contra = {"anterior": [anterior] if anterior else [], "duplicado": duplicados or [], "gemelo": gemelos or []}
+    out = []
     for r in (reglas or REGLAS_ELEMENTO):
-        if r["contra"] == "gemelo":
-            for o in (gemelos or []):
-                d = r["fn"](act, o, p)
-                if d:
-                    out.append({"regla": r["codigo"], "contra": o["cc"], "detalle": dict(
-                        d, grupo=r["grupo"], contra={"cc": o["cc"], "descr": o["descr"], "kg": round(o["kg"])},
-                        actual={"cc": act["cc"], "descr": act["descr"], "kg": round(act["kg"])}, **donde)})
-        elif r["contra"] == "anterior":
-            if not anterior:
-                continue
-            d = r["fn"](act, anterior, p)
+        for o in contra.get(r["contra"], []):
+            d = r["fn"](act, o, p)
             if d:
-                out.append({"regla": r["codigo"], "contra": anterior["cc"], "detalle": dict(
-                    d, grupo=r["grupo"], contra={"cc": anterior["cc"], "descr": anterior["descr"], "kg": round(anterior["kg"])},
-                    actual={"cc": act["cc"], "descr": act["descr"], "kg": round(act["kg"])},
-                    sector=p["sector"], piso=p["piso"], ciclo=p["ciclo"])})
-        else:
-            for o in duplicados:
-                d = r["fn"](act, o, p)
-                if d:
-                    out.append({"regla": r["codigo"], "contra": o["cc"], "detalle": dict(
-                        d, grupo=r["grupo"], contra={"cc": o["cc"], "descr": o["descr"], "kg": round(o["kg"])},
-                        actual={"cc": act["cc"], "descr": act["descr"], "kg": round(act["kg"])},
-                        sector=p["sector"], piso=p["piso"], ciclo=p["ciclo"])})
+                out.append({"regla": r["codigo"], "contra": o["cc"], "detalle": dict(
+                    d, grupo=r["grupo"], contra={"cc": o["cc"], "descr": o["descr"], "kg": round(o["kg"])},
+                    actual={"cc": act["cc"], "descr": act["descr"], "kg": round(act["kg"])}, **donde)})
     return out

@@ -1483,6 +1483,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             _yo = user.get("email", "?")
             ve_hallazgos = bool(aud.get("enviada") or user.get("role") in ROLES_ADMINISTRAN
                                 or _yo == aud.get("auditor") or _yo == aud.get("creada_por"))
+            # INDEPENDENCIA (4-nov): el auditor es un correo y quien cubicó es un login de
+            # aSa; compararlos directo nunca daba conflicto. Se pasa por los alias.
+            auditor_alias = set(alias_cubicador(cur, aud.get("auditor") or ""))
             cur.execute(
                 """SELECT e.id, e.sector, e.piso, e.ciclo, e.eje, e.nombre, e.estructura, e.barras,
                           e.kg, e.cubicado_por, e.hallazgo, e.texto, e.causa, e.revisado_por,
@@ -1531,7 +1534,7 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "gravedad_txt": GRAVEDAD.get(gravedad_de(e[10], e[28]) or "", ""),
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
-                 "conflicto": bool(e[9] and aud["auditor"] and aud["auditor"] in (e[9] or ""))}
+                 "conflicto": (e[9] or "").strip() in auditor_alias}
                 for e in cur.fetchall()]
             # LO QUE SE ENCONTRÓ EN CADA BARRA, por su nombre. Va aparte de `texto` —que es
             # la observación del elemento entero— porque son dos cosas distintas y
@@ -2115,9 +2118,8 @@ def _avisar_auditoria_cerrada(aud: dict, request=None) -> dict:
         "Auditado: <b>%s</b>" % (", ".join(_quien(x, nombres) for x in auditados) or "—"),
         "Fecha de cierre: <b>%s</b>" % _fecha_larga(aud.get("cierre")),
         "Resultado: <b>%d</b> elemento(s) revisados · <b>%d%%</b> de conformidad." % (len(revisados), pct),
-        "Conformes: <b>%d</b> · Observaciones: <b>%d</b> · No conformidades menores: <b>%d</b> · "
-        "mayores: <b>%d</b>." % (conformes, int(res.get("observacion") or 0),
-                                 int(res.get("hallazgo") or 0), int(res.get("hallazgo") or 0)),
+        "Conformes: <b>%d</b> · Observaciones: <b>%d</b> · Hallazgos: <b>%d</b>."
+        % (conformes, int(res.get("observacion") or 0), int(res.get("hallazgo") or 0)),
     ]
     if no_conformes:
         lineas.append("Elementos con hallazgo:%s" % detalle_nc)
@@ -2942,7 +2944,7 @@ def severidad_derivada(items, severidad: Optional[str]) -> str:
         return severidad or "conforme"
     if all(getattr(i, "conforme", None) if not isinstance(i, dict) else i.get("conforme") for i in items):
         return "conforme"
-    if severidad in ("observacion", "hallazgo", "hallazgo"):
+    if severidad in ("observacion", "hallazgo"):
         return severidad
     return "hallazgo"
 
@@ -3766,10 +3768,8 @@ class _InformePDF:
     y muestra), qué se encontró (hallazgos), qué hay que hacer (acciones) y la conclusión.
     Mismo motor que el informe de reclamos (fpdf2, fuentes integradas)."""
 
-    COLOR = {"conforme": (139, 195, 74), "observacion": (255, 183, 77),
-             "hallazgo": (239, 154, 154), "hallazgo": (198, 40, 40)}
-    NOMBRE = {"conforme": "Conforme", "observacion": "Observacion",
-              "hallazgo": "No conformidad menor", "hallazgo": "No conformidad mayor"}
+    COLOR = {"conforme": (139, 195, 74), "observacion": (255, 183, 77), "hallazgo": (198, 40, 40)}
+    NOMBRE = {"conforme": "Conforme", "observacion": "Observacion", "hallazgo": "Hallazgo"}
 
     def __init__(self, aud):
         from fpdf import FPDF
@@ -3868,11 +3868,11 @@ class _InformePDF:
         if not rev:
             p.cell(0, 5, self._s("Sin elementos revisados todavia."), new_x="LMARGIN", new_y="NEXT")
             return
-        for k in ("conforme", "observacion", "hallazgo", "hallazgo"):
+        for k in ("conforme", "observacion", "hallazgo"):
             n = r.get(k) or 0
             p.set_fill_color(*self.COLOR[k])
             p.cell(4, 5, "", fill=True, border=0)
-            p.set_font("Helvetica", "B" if k.startswith("nc") and n else "", 9)
+            p.set_font("Helvetica", "B" if k == HALLAZGO_ABRE_ACCION and n else "", 9)
             p.cell(52, 5, self._s("  " + self.NOMBRE[k]), border=0)
             p.cell(16, 5, self._s("%d" % n), border=0, align="R")
             p.cell(16, 5, self._s("%d%%" % round(n / rev * 100)), border=0, align="R")
@@ -3989,7 +3989,7 @@ class _InformePDF:
         if not rev:
             texto = "La auditoria esta planificada y todavia no se revisa ningun elemento."
         else:
-            nc = (r.get("hallazgo") or 0) + (r.get("hallazgo") or 0)
+            nc = r.get("hallazgo") or 0
             conf = round((r.get("conforme") or 0) / rev * 100)
             texto = ("Se revisaron %d elementos de la muestra. Conformidad %d%%. "
                      "%s" % (rev, conf,

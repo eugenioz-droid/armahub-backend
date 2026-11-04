@@ -323,7 +323,7 @@ check("el criterio es el MISMO que el de Stock Cubicaciones: movimiento en N mes
       "MESES_MOVIMIENTO = 3" in API and "def _filtro_movimiento(" in API
       and "programacion" in API.lower())
 check("...y se puede soltar: 0 es «todas», no un valor que se ignora",
-      "if not meses:" in API and 'VENTANA_TODO' in API)
+      "if not meses:" in API and 'VENTANA_TODO' not in API)
 check("el reloj tampoco barre obras muertas: la cola usa la misma ventana",
       "def pendientes(limite: int = 0, meses: int = MESES_MOVIMIENTO, tarde: bool = False)" in API)
 # El selector de ventana se fue con la pantalla por obra: el reporte usa los 3 meses de
@@ -390,7 +390,7 @@ check("se resuelven VARIAS de un golpe, por la misma escritura que una sola",
 check("...y lo ya corregido por el sistema no se pisa a mano",
       "AND estado <> 'corregida' RETURNING id" in API)
 check("marcar «corregir» le AVISA al cubicador, uno por persona, con sus códigos",
-      "def _avisar_por_corregir(" in API and "def _email_de_login(" in API
+      "def _avisar_por_corregir(" in API and "def _email_de_login(" not in API
       and API.count("_avisar_por_corregir(cur, hechas)") == 2)
 check("...resolviendo el login de aSa con la misma regla que las auditorías",
       "correo_de_login(cur, login)" in API)
@@ -720,7 +720,7 @@ check("declarar ya no rechaza lo ajeno: avisa al dueño, con cuántas y en qué 
 check("...y cerrar lo resuelto tampoco: avisa al dueño qué confirmó aSa",
       "cierra lo suyo quien lo hizo." not in API and "cerró %d barra(s) tuyas" in API)
 check("el login de aSa se resuelve a correo con UNA función, la de las auditorías",
-      "return correo_de_login(cur, login)" in API and "correo_de_login," in API)
+      "_email_de_login" not in API and API.count("correo_de_login(cur, ") >= 3)
 check("en la hoja todos ven todo; el chip filtra y el cubicador entra con el propio puesto",
       "function _miChip(" in JS and "_esAdmin() ? null : (_miChip() || null)" in JS
       and "'Tus ' + items.length" not in JS

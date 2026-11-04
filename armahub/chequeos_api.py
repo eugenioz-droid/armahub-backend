@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .asa import AsaError
-from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_de, alias_cubicador, correo_de_login,
+from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_cubicador, correo_de_login,
                          _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
 from .chequeos_elementos import (REGLAS_ELEMENTO, correr_elemento, firma_elemento, gemelos_de, pares_de_obra,
                                  resumir)
@@ -92,8 +92,6 @@ SE_CIERRAN_SOLAS = ABIERTAS + ("declarada",)
 # meses quedan 62 obras y 917 códigos, que es lo que de verdad se está cubicando. El filtro
 # se ve y se puede soltar: una obra se mira igual aunque esté quieta, pero que uno lo pida.
 MESES_MOVIMIENTO = 3
-# «Todo»: cien años, o sea la historia completa del espejo. Mismo truco que en programación.
-VENTANA_TODO = 1200
 
 
 def _filtro_movimiento(meses: int):
@@ -351,6 +349,7 @@ def revisar_cc(body: RevisarCc, user=Depends(get_current_user)):
     try:
         elementos = revisar_elementos_cc(body.job, body.cc, body.revision, items, email, cubico, obra)
     except Exception as e:  # noqa: BLE001 — se informa, no se tumba la revisión de barras
+        log.exception("Revisión de elementos: %s falló", body.cc)
         elementos = {"senales": 0, "error": str(e)[:160]}
     return {"cc": body.cc, "barras": len(barras), "nuevas": nuevas, "vistas": vistas,
             "corregidas": corregidas, "elementos": elementos,
@@ -701,12 +700,6 @@ class ResolverVariasBody(BaseModel):
     nota: Optional[str] = None
 
 
-def _email_de_login(cur, login: str) -> Optional[str]:
-    """El correo del cubicador que en aSa se llama `login`. Es la misma regla de las
-    auditorías, y desde el 21-oct es la misma función: `correo_de_login`."""
-    return correo_de_login(cur, login)
-
-
 def _avisar_por_corregir(cur, ids: list) -> int:
     """Le avisa a cada cubicador cuántas barras suyas quedaron POR CORREGIR, y dónde.
 
@@ -721,7 +714,7 @@ def _avisar_por_corregir(cur, ids: list) -> int:
             GROUP BY cubico""", (ids,))
     avisados = 0
     for login, obra, ccs, n in cur.fetchall():
-        email = _email_de_login(cur, login)
+        email = correo_de_login(cur, login)
         if not email:
             continue
         _avisar(email, "Chequeo · %s: %d barra(s) tuyas por corregir en %s. Se comprueba solo "
@@ -887,7 +880,7 @@ def barrido_automatico(lanzado_por: str = "reloj") -> dict:
             hechos += 1
             nuevas += r.get("nuevas", 0)
         except Exception as e:          # noqa: BLE001 — un código no puede botar el barrido
-            log.warning("Revisión automática: %s falló (%s)", c["cc"], e)
+            log.warning("Revisión automática: %s falló (%s)", c["cc"], e, exc_info=True)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE chequeo_revisiones SET terminada = now(), nota = %s WHERE id = %s",
@@ -1354,7 +1347,7 @@ def por_cubicador(user=Depends(get_current_user)):
                 if quien in filas:
                     filas[quien]["por_regla"][regla] = n
             for quien, f in filas.items():
-                f["email"] = _email_de_login(cur, quien) if quien != "(sin dato)" else None
+                f["email"] = correo_de_login(cur, quien) if quien != "(sin dato)" else None
     lista = sorted(filas.values(), key=lambda f: (-(f["abiertas"] + f["corregir"]), f["cubico"]))
     return {"cubicadores": lista,
             "reglas": {r["codigo"]: r.get("corto") or r["nombre"] for r in REGLAS},
@@ -1385,7 +1378,7 @@ def hoja_cubicador(quien: str, estado: str = "", user=Depends(get_current_user))
                   WHERE """ + " AND ".join(where) + """
                   ORDER BY s.obra, s.cc, s.regla, s.ref""", tuple(args))
             filas = [_fila_senal(r) for r in cur.fetchall()]
-            email = _email_de_login(cur, quien) if quien != "(sin dato)" else None
+            email = correo_de_login(cur, quien) if quien != "(sin dato)" else None
     # Agrupado por código: es la unidad en la que se trabaja y en la que se comprueba (una
     # llamada a aSa por código, no por barra).
     por_cc, orden = {}, []

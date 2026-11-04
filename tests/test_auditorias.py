@@ -975,7 +975,14 @@ check("existe y va a los tres de una vez",
       and "destinatarios = sorted({x for x in ya if x} | {c for c in _correo_administracion() if c})" in SRC)
 check("...lleva el resultado contado: revisados, conformidad y los cuatro niveles",
       "de conformidad." in SRC and "Conformes: <b>%d</b> · Observaciones:" in SRC
-      and "No conformidades menores" in SRC)
+      and "Hallazgos: <b>%d</b>." in SRC)
+check("el PDF y el correo no repiten la llave «hallazgo» ni lo suman dos veces (residuo de la migración 156)",
+      '"hallazgo": (239, 154, 154), "hallazgo"' not in SRC and '"No conformidad menor"' not in SRC
+      and 'nc = r.get("hallazgo") or 0' in SRC and '("observacion", "hallazgo", "hallazgo")' not in SRC
+      and 'for k in ("conforme", "observacion", "hallazgo"):' in SRC)
+check("la alerta de independencia compara el login de aSa con los alias del auditor, no el correo con el login",
+      'auditor_alias = set(alias_cubicador(cur, aud.get("auditor") or ""))' in SRC
+      and '"conflicto": (e[9] or "").strip() in auditor_alias}' in SRC)
 check("...y el detalle de lo que salió mal, con su hallazgo",
       "Elementos con hallazgo:" in SRC and "_NOMBRE.get(e.get(\"hallazgo\")" in SRC)
 check("...o dice que no hubo nada, en vez de dejar un hueco",
