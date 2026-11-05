@@ -173,6 +173,9 @@
   function _porCerrar(i) { return i.estado === EST.DECLARADA || i.estado === EST.CORREGIR; }
   function _noAplica(i) { return i.estado === EST.ACEPTADA; }
   function _confirmada(i) { return i.estado === EST.CORREGIDA; }
+  // Resuelta: alguien dijo que la corrigió, la haya confirmado aSa o todavía no. Es lo que
+  // pinta la fila de verde: en un barrido se busca lo que falta, y lo que falta es lo abierto.
+  function _resuelta(i) { return _confirmada(i) || _porCerrar(i); }
   // Cerrada: no aplica, aSa la confirmó, o se cerró bajo la firma de quien lo decidió.
   function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_porCerrar(i) && !!i.cerrada_el); }
   // La hoja de trabajo (el modal) está a la vista.
@@ -1123,7 +1126,7 @@
 
   function _filaElemento(i) {
     var d = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla, grupo: d.grupo };
-    var hecho = _confirmada(i), nap = _noAplica(i);
+    var hecho = _resuelta(i), nap = _noAplica(i);
     var grupo = r.grupo || d.grupo || 'todas';
     var act = d.actual || { cc: i.cc, descr: '', kg: null }, con = d.contra || {};
     var igual = i.regla === 'codigo_duplicado' || i.regla === 'mismo_pedido';
@@ -1154,7 +1157,7 @@
 
   function filaItem(i, c) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
-    var hecho = _confirmada(i), nap = _noAplica(i);
+    var hecho = _resuelta(i), nap = _noAplica(i);
     var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
     var malos = {}, porL = {}, angs = [];
     (det.lados || []).forEach(function (L) { malos[L] = 1; });

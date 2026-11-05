@@ -734,7 +734,11 @@ check("Resuelto va en línea, a continuación de No aplica, con una separación 
 # «No aplica» CIERRA pero no es resuelto (vocabulario del 2-nov): la fila queda verde al
 # guardar, sin otro clic, y el texto del boton ya no dice «queda resuelta».
 check("«no aplica» cierra la fila al guardar, sin otro clic, y no se llama resuelta",
-      ".revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." not in JS)
+      ".revcc2 tr.hecho td, .revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." not in JS)
+check("la fila resuelta va verde aunque aSa no la haya confirmado todavia (4-nov: en blanco parecia pendiente)",
+      "function _resuelta(i) { return _confirmada(i) || _porCerrar(i); }" in JS
+      and JS.count("var hecho = _resuelta(i), nap = _noAplica(i);") == 2
+      and "var hecho = _confirmada(i)" not in JS)
 # «¿Por que el render muestra ganchos de 10 y los parametros A y G muestran 8?» Porque la
 # columna es la medida de cuando salto y el dibujo es aSa de ahora: medido en SU2N, la
 # señal guarda A=80/G=80 del 29-oct y aSa hoy devuelve A=100/G=100. Ya esta corregida.
