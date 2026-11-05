@@ -364,7 +364,8 @@ var DASH_SUBTABS = {
   tableros:  { panel: 'dashSubTableros', btn: 'dashSubBtnTableros', color: '#1565C0' },
   kpis:      { panel: 'dashSubKpis',     btn: 'dashSubBtnKpis',     color: '#00897b' },
   historico: { panel: 'dashSubHist',     btn: 'dashSubBtnHist',     color: '#5e35b1' },
-  indicadores: { panel: 'dashSubInd',    btn: 'dashSubBtnInd',      color: '#00897b' }
+  indicadores: { panel: 'dashSubInd',    btn: 'dashSubBtnInd',      color: '#00897b' },
+  control:     { panel: 'dashSubCtrl',   btn: 'dashSubBtnCtrl',     color: '#e65100' }
 };
 var _dashSubActual = 'tableros';
 var _dashKpisLoaded = false;
@@ -386,6 +387,175 @@ function switchDashSubTab(sub) {
   if (sub === 'kpis') loadDashKpis();
   if (sub === 'historico') loadDashHistorico();
   if (sub === 'indicadores') loadDashIndicadores();
+  if (sub === 'control') loadDashControl();
+}
+
+// ── CONTROL AUDITORÍAS (4-nov) ───────────────────────────────────────────────────
+// Las tres fuentes de calidad de cubicación —revisión de barras, revisión de elementos,
+// auditorías— con las mismas tres preguntas. El backend (control_auditorias.py) manda las
+// tres con la MISMA forma, así que acá hay un solo dibujante y un selector de fuente.
+var CA = { datos: null, fuente: 'barras', charts: {} };
+var CA_FUENTES = ['barras', 'elementos', 'auditorias'];
+var CA_COLOR = { no_aplica: '#b0bec5', resueltas: '#8BC34A', abiertas: '#ef5350' };
+
+async function loadDashControl() {
+  if (!CA.datos) {
+    var d = await apiGet('/control-auditorias');
+    if (!d) return;
+    CA.datos = d;
+    // Los cubicadores vienen como login de aSa; el nombre lo sabe la plataforma.
+    if (typeof cargarNomCub === 'function') { try { await cargarNomCub(); } catch (e) { /* sin nombres, el login */ } }
+  }
+  caPintar();
+}
+
+// Días con un decimal mientras sean pocos («1,5»); enteros de diez para arriba.
+function caDias(v) {
+  if (v == null) return '';
+  var n = Number(v);
+  return (n < 10 ? (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') : String(Math.round(n))).replace('.', ',');
+}
+
+function caNom(x) {
+  var s = String(x == null ? '' : x).trim();
+  if (s.indexOf('@') !== -1) return s.split('@')[0];
+  return (typeof nomCub === 'function') ? nomCub(s) : s;
+}
+
+function caGrafico(canvas, cfg) {
+  if (CA.charts[canvas]) CA.charts[canvas].destroy();
+  var ctx = document.getElementById(canvas);
+  if (!ctx) return;
+  CA.charts[canvas] = new Chart(ctx, cfg);
+}
+
+function caPintar() {
+  var f = CA.datos && CA.datos.fuentes[CA.fuente];
+  if (!f) return;
+  var pills = document.getElementById('caFuentes');
+  pills.innerHTML = CA_FUENTES.map(function (k) {
+    var x = CA.datos.fuentes[k];
+    return '<button data-caf="' + k + '" class="' + (k === CA.fuente ? 'on' : '') + '">' + rhEsc(x.titulo) + '</button>';
+  }).join('');
+  pills.querySelectorAll('button[data-caf]').forEach(function (b) {
+    b.addEventListener('click', function () { CA.fuente = b.dataset.caf; caPintar(); });
+  });
+  document.getElementById('caColTit').textContent = f.columna;
+  caLectura(f);
+  caEmbudo(f);
+  caCalor(f);
+  caCierre(f);
+}
+
+// LA LECTURA, con su denominador: «N detectadas · R resueltas (x%) · P no aplican · A sin resolver».
+function caLectura(f) {
+  var t = { detectadas: 0, no_aplica: 0, resueltas: 0, abiertas: 0 };
+  f.semanas.forEach(function (s) { Object.keys(t).forEach(function (k) { t[k] += s[k] || 0; }); });
+  var desde = CA.datos.desde ? CA.datos.desde.split('-').reverse().join('-') : '';
+  var el = document.getElementById('caLectura');
+  if (!t.detectadas) { el.innerHTML = 'Desde el ' + desde + ' no hay ' + rhEsc(f.unidad) + ' detectadas en esta fuente.'; return; }
+  var pct = function (n) { return Math.round(n / t.detectadas * 100); };
+  el.innerHTML = 'Desde el ' + desde + ': <b>' + rhNum(t.detectadas) + '</b> ' + rhEsc(f.unidad) + ' detectadas · ' +
+    '<b>' + rhNum(t.resueltas) + '</b> ' + rhEsc(f.series.resueltas.toLowerCase()) + ' (' + pct(t.resueltas) + '%) · ' +
+    rhNum(t.no_aplica) + ' ' + rhEsc(f.series.no_aplica.toLowerCase()) + ' (' + pct(t.no_aplica) + '%) · ' +
+    '<b style="color:' + (t.abiertas ? '#c62828' : '#2e7d32') + '">' + rhNum(t.abiertas) + '</b> ' +
+    rhEsc(f.series.abiertas.toLowerCase()) + ' (' + pct(t.abiertas) + '%).';
+}
+
+// 1. ¿SE CIERRA LO QUE SALE? Barras apiladas por semana de detección, estado de hoy.
+function caEmbudo(f) {
+  var sub = document.getElementById('caEmbudoSub');
+  sub.textContent = 'Cada barra es lo detectado esa semana, con su estado de hoy: ' + f.series.no_aplica.toLowerCase() +
+    ', ' + f.series.resueltas.toLowerCase() + ' y ' + f.series.abiertas.toLowerCase() + '. El tramo rojo que crece es la alarma.';
+  var sem = f.semanas;
+  var etiquetas = sem.map(function (s) { var p = (s.semana || '').split('-'); return p.length === 3 ? p[2] + '-' + p[1] : s.semana; });
+  var series = ['no_aplica', 'resueltas', 'abiertas'].map(function (k) {
+    return { label: f.series[k], data: sem.map(function (s) { return s[k] || 0; }), backgroundColor: CA_COLOR[k],
+             borderRadius: 2, maxBarThickness: 40 };
+  });
+  caGrafico('caEmbudo', {
+    type: 'bar',
+    data: { labels: etiquetas, datasets: series },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+        datalabels: { display: false },
+        tooltip: { callbacks: {
+          title: function (c) { return 'Semana del ' + c[0].label + ' · ' + rhNum(sem[c[0].dataIndex].detectadas) + ' detectadas'; },
+          label: function (c) { return c.dataset.label + ': ' + rhNum(c.parsed.y); } } }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { stacked: true, beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 }, grid: { color: '#f2f4f6' } }
+      }
+    }
+  });
+}
+
+// 2. ¿DÓNDE ESTÁ EL PROBLEMA? Cubicador × regla (o causa), el número adentro y el color por
+// cuántas. Filas y columnas ordenadas por total: lo que más pesa, arriba y a la izquierda.
+function caCalor(f) {
+  var tabla = document.getElementById('caCalor');
+  var mapa = {}, filas = {}, cols = {}, max = 0;
+  f.calor.forEach(function (c) {
+    mapa[c.cub] = mapa[c.cub] || {};
+    mapa[c.cub][c.col] = (mapa[c.cub][c.col] || 0) + c.n;
+    filas[c.cub] = (filas[c.cub] || 0) + c.n;
+    cols[c.col] = (cols[c.col] || 0) + c.n;
+    if (mapa[c.cub][c.col] > max) max = mapa[c.cub][c.col];
+  });
+  var kf = Object.keys(filas).sort(function (a, b) { return filas[b] - filas[a]; });
+  var kc = Object.keys(cols).sort(function (a, b) { return cols[b] - cols[a]; });
+  if (!kf.length) { tabla.innerHTML = '<tr><td class="cavacio">Nada detectado en el período.</td></tr>'; return; }
+  var nombreCol = function (c) { return (f.columnas || {})[c] || c; };
+  var celda = function (v) {
+    if (!v) return '<td class="c cero">·</td>';
+    var a = Math.min(0.9, 0.12 + 0.78 * v / max);
+    return '<td class="c" style="background:rgba(229,57,53,' + a.toFixed(2) + '); color:' + (a > 0.5 ? '#fff' : '#263238') + '">' + rhNum(v) + '</td>';
+  };
+  tabla.innerHTML =
+    '<thead><tr><th>Cubicador</th>' + kc.map(function (c) { return '<th class="c" title="' + rhEsc(c) + '">' + rhEsc(nombreCol(c)) + '</th>'; }).join('') +
+    '<th class="c">Total</th></tr></thead><tbody>' +
+    kf.map(function (k) {
+      return '<tr><td title="' + rhEsc(k) + '">' + rhEsc(caNom(k)) + '</td>' +
+        kc.map(function (c) { return celda(mapa[k][c] || 0); }).join('') + '<td class="c"><b>' + rhNum(filas[k]) + '</b></td></tr>';
+    }).join('') + '</tbody><tfoot><tr><td>Total</td>' +
+    kc.map(function (c) { return '<td class="c">' + rhNum(cols[c]) + '</td>'; }).join('') +
+    '<td class="c">' + rhNum(kf.reduce(function (a, k) { return a + filas[k]; }, 0)) + '</td></tr></tfoot>';
+}
+
+// 3. ¿CUÁNTO SE TARDA EN CERRAR? Mediana de días por cubicador, con cuántas cerró al lado,
+// y la mediana general en el subtítulo. Mediana y no promedio: una que tardó un mes no
+// debe tapar a veinte que se cerraron el mismo día.
+function caCierre(f) {
+  var sub = document.getElementById('caCierreSub');
+  var t = f.cierre_total || {};
+  sub.textContent = t.n
+    ? 'Entre que salió y se cerró. Mediana general: ' + caDias(t.mediana) + ' día(s) sobre ' + rhNum(t.n) + ' cerradas.'
+    : 'Todavía no hay cierres en el período.';
+  var filas = (f.cierre || []).filter(function (c) { return c.mediana != null; })
+    .sort(function (a, b) { return b.mediana - a.mediana; });
+  caGrafico('caCierre', {
+    type: 'bar',
+    data: { labels: filas.map(function (c) { return caNom(c.cub); }),
+            datasets: [{ label: 'Mediana de días', data: filas.map(function (c) { return c.mediana; }),
+                         backgroundColor: '#e65100', borderRadius: 3, maxBarThickness: 22 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: true, anchor: 'end', align: 'end', offset: 2, color: '#546e7a', font: { size: 9, weight: '700' },
+                      formatter: function (v, c) { return caDias(v) + ' d · ' + rhNum(filas[c.dataIndex].n); } },
+        tooltip: { callbacks: { label: function (c) { return 'Mediana ' + caDias(c.parsed.x) + ' día(s) · ' + rhNum(filas[c.dataIndex].n) + ' cerradas'; } } }
+      },
+      scales: {
+        x: { beginAtZero: true, grace: '25%', ticks: { font: { size: 9 } }, grid: { color: '#f2f4f6' } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
 }
 
 // ── POR AÑO (5-oct) ──────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@
       <button id="dashSubBtnKpis" onclick="switchDashSubTab('kpis')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">RCA · Ishikawa</button>
       <button id="dashSubBtnHist" onclick="switchDashSubTab('historico')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Por año</button>
       <button id="dashSubBtnInd" onclick="switchDashSubTab('indicadores')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Indicadores</button>
+      <button id="dashSubBtnCtrl" onclick="switchDashSubTab('control')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Control Auditorías</button>
     </div>
 
     <!-- Sub-panel: INDICADORES. Los reclamos puestos contra lo que se cubicó, que es lo
@@ -209,6 +210,48 @@
         </div>
         <div id="dashKpiArbol" style="font-size:12px;">
           <div class="muted" style="font-style:italic;">Cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-panel: CONTROL AUDITORÍAS (4-nov). Las tres fuentes de calidad de cubicación
+         —revisión de barras, revisión de elementos, auditorías— con las mismas tres
+         preguntas: ¿se cierra lo que sale?, ¿dónde está el problema?, ¿cuánto se tarda?
+         Se llama como el tab de Auditorías porque de ahí sale la data. -->
+    <div id="dashSubCtrl" style="display:none;">
+      <style>
+        .cafuentes{display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;}
+        .cafuentes button{font-size:11.5px; font-weight:600; padding:5px 14px; border-radius:99px;
+                          border:1px solid #cfd8dc; background:#fff; color:#546e7a; cursor:pointer;}
+        .cafuentes button.on{background:#e65100; border-color:#e65100; color:#fff;}
+        .calect{font-size:11.5px; color:#37474f; background:#fff; border:1px solid #eee;
+                border-left:4px solid #e65100; border-radius:8px; padding:9px 13px; margin-bottom:12px;}
+        .calect b{color:#e65100;}
+        .cagrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;}
+        @media (max-width:1100px){ .cagrid{grid-template-columns:1fr;} }
+        .cacanvas{position:relative; height:260px;}
+        /* El mapa de calor: el número adentro, el color por cuántas. */
+        .cacalor td.c{text-align:center; font-weight:700; min-width:46px;}
+        .cacalor th.c{text-align:center;}
+        .cavacio{font-size:11.5px; color:#90a4ae; padding:14px 0;}
+      </style>
+      <div class="cafuentes" id="caFuentes"></div>
+      <div class="calect" id="caLectura"></div>
+      <div class="rhcaja" style="margin-bottom:12px;">
+        <div class="rhtit">¿Se cierra lo que sale? Por semana de detección</div>
+        <div class="rhsub" id="caEmbudoSub"></div>
+        <div class="cacanvas"><canvas id="caEmbudo"></canvas></div>
+      </div>
+      <div class="cagrid">
+        <div class="rhcaja">
+          <div class="rhtit">¿Dónde está el problema? Cubicador × <span id="caColTit">regla</span></div>
+          <div class="rhsub">Una columna encendida para todos es una regla mal calibrada, no una persona.</div>
+          <div style="overflow-x:auto;"><table class="rht cacalor" id="caCalor"></table></div>
+        </div>
+        <div class="rhcaja">
+          <div class="rhtit">¿Cuánto se tarda en cerrar? Mediana de días por cubicador</div>
+          <div class="rhsub" id="caCierreSub"></div>
+          <div class="cacanvas"><canvas id="caCierre"></canvas></div>
         </div>
       </div>
     </div>
