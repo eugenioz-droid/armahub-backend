@@ -169,15 +169,19 @@
   // lee igual que «declarada».
   var EST = { ABIERTA: 'abierta', DECLARADA: 'declarada', CORREGIR: 'corregir',
               CORREGIDA: 'corregida', ACEPTADA: 'aceptada' };
-  // Por cerrar: alguien dijo «ya la corregí» y el cierre todavía no pasó por aSa.
-  function _porCerrar(i) { return i.estado === EST.DECLARADA || i.estado === EST.CORREGIR; }
+  // Declarada: alguien dijo «ya la corregí». Puede estar cerrada (bajo la firma de quien
+  // la cerró igual) o no.
+  function _declarada(i) { return i.estado === EST.DECLARADA || i.estado === EST.CORREGIR; }
+  // Por cerrar: declarada y el cierre todavía no pasó. LA QUE SE CERRÓ IGUAL YA NO ESTÁ POR
+  // CERRAR (4-nov): el botón de arriba ofrecía «Cerrar lo resuelto (17)» con las 17 cerradas.
+  function _porCerrar(i) { return _declarada(i) && !i.cerrada_el; }
   function _noAplica(i) { return i.estado === EST.ACEPTADA; }
   function _confirmada(i) { return i.estado === EST.CORREGIDA; }
   // Resuelta: alguien dijo que la corrigió, la haya confirmado aSa o todavía no. Es lo que
   // pinta la fila de verde: en un barrido se busca lo que falta, y lo que falta es lo abierto.
-  function _resuelta(i) { return _confirmada(i) || _porCerrar(i); }
+  function _resuelta(i) { return _confirmada(i) || _declarada(i); }
   // Cerrada: no aplica, aSa la confirmó, o se cerró bajo la firma de quien lo decidió.
-  function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_porCerrar(i) && !!i.cerrada_el); }
+  function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_declarada(i) && !!i.cerrada_el); }
   // La hoja de trabajo (el modal) está a la vista.
   function hojaAbierta() { var m = $('revItemsModal'); return !!m && m.style.display !== 'none'; }
   // Un valor dentro de un selector de atributo entre comillas dobles: sólo las comillas y la
@@ -1087,10 +1091,10 @@
       return '<span class="revfirma">' + esc(i.nota || '') +
              (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
     }
-    if ((_confirmada(i) || _porCerrar(i)) && i.declarada_por) {
+    if ((_confirmada(i) || _declarada(i)) && i.declarada_por) {
       return '<span class="revfirma">resuelto por ' + esc(i.declarada_por.split('@')[0]) +
              (i.declarada_el ? ' · ' + _fechaHora(i.declarada_el) : '') +
-             (_confirmada(i) ? ' · aSa lo confirmó' : '') + '</span>';
+             (_confirmada(i) ? ' · aSa lo confirmó' : i.cerrada_el ? ' · cerrada igual' : '') + '</span>';
     }
     return '';
   }
@@ -1103,7 +1107,7 @@
   // cierro?». Ahora: No aplica cierra con Enter; Resuelto cierra con Resuelto.
   function _accionesDe(i, t) {
     if (_confirmada(i)) return '<span class="muted">confirmada</span>';
-    if (_porCerrar(i) || _noAplica(i)) {
+    if (_declarada(i) || _noAplica(i)) {
       return '<button class="audmini" data-deshacer="' + i.id + '" title="' + t.deshacer + '">Deshacer</button>';
     }
     return '<div class="revaccs">' +

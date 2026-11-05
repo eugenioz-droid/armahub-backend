@@ -743,7 +743,7 @@ check("el nombre de la figura se ve siempre, haya dibujo o no (4-nov)",
       "function _nombreFig(sen) {" in JS and "var c = REVS.figs[cc], nom = _nombreFig(sen);" in JS
       and "if (!c) return nom;" in JS and "'\">' + _celda(i.cc || '', i.ref, i.id) + '</td>' +" in JS)
 check("la fila resuelta va verde aunque aSa no la haya confirmado todavia (4-nov: en blanco parecia pendiente)",
-      "function _resuelta(i) { return _confirmada(i) || _porCerrar(i); }" in JS
+      "function _resuelta(i) { return _confirmada(i) || _declarada(i); }" in JS
       and JS.count("var hecho = _resuelta(i), nap = _noAplica(i);") == 2
       and "var hecho = _confirmada(i)" not in JS)
 # «¿Por que el render muestra ganchos de 10 y los parametros A y G muestran 8?» Porque la
@@ -773,7 +773,11 @@ check("...y cada uno lleva su cabecera, sus barras y su pie; el que esta cerrado
       and "(ok >= g.items.length ? ' listo' : '')" in JS and ".revcc2.listo h5{" in HTM)
 check("cerrada, para los contadores de la hoja, es la que paso por el cierre",
       "var RES = {" not in JS and "function _cerrada(i) {" in JS
-      and "function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_porCerrar(i) && !!i.cerrada_el); }" in JS)
+      and "function _cerrada(i) { return _noAplica(i) || _confirmada(i) || (_declarada(i) && !!i.cerrada_el); }" in JS)
+check("la que se cerro igual ya no esta por cerrar: el boton de arriba no la cuenta ni la vuelve a mandar (4-nov)",
+      "function _porCerrar(i) { return _declarada(i) && !i.cerrada_el; }" in JS
+      and "itemsVisibles().filter(_porCerrar).length" in JS
+      and "i.cerrada_el ? ' · cerrada igual' : ''" in JS)
 
 
 print("\nUN SOLO FORMULARIO PARA TODOS, Y EL CABEZAL EN φ8 Y φ10 (28-oct)")
