@@ -1575,5 +1575,11 @@ check("toda funcion enganchada por nombre a un click existe (el 28-oct se borrar
 for f in sorted(_enganchados - _definidas):
     print("      sin definir: " + f)
 
+print("\nLA CAUSA DE UNA BARRA VA A LA BARRA (5-nov)")
+_JSC = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
+_ce = _JSC.split("global.audCausaElegida = async function")[1].split("ok('Causa registrada')")[0]
+check("en Mis correcciones la fila trae barra y elemento: manda la barra, no el comentario del elemento",
+      "var ruta = a.item_id" in _ce and _ce.index("/items/") < _ce.index("/resolucion"))
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

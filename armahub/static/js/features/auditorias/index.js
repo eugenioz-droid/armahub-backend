@@ -2654,10 +2654,13 @@
     if (!a || !sel || !sel.cod_causa) return;
     try {
       // La misma matriz sirve a la barra y al comentario del elemento: cambia a dónde se
-      // guarda, no qué se pregunta. `elemento_id` manda cuando no hay barra.
-      var ruta = a.elemento_id
-        ? '/auditorias/' + a.auditoria_id + '/elementos/' + a.elemento_id + '/resolucion'
-        : '/auditorias/' + a.auditoria_id + '/items/' + a.item_id + '/causa';
+      // guarda, no qué se pregunta. MANDA LA BARRA (5-nov): las filas de «Mis correcciones»
+      // traen la barra Y su elemento, y preguntar primero por el elemento mandaba la causa
+      // de una barra al comentario del elemento («Ese elemento tiene barras marcadas»), así
+      // que nadie podía clasificar desde ahí ni, por lo tanto, dar nada por corregido.
+      var ruta = a.item_id
+        ? '/auditorias/' + a.auditoria_id + '/items/' + a.item_id + '/causa'
+        : '/auditorias/' + a.auditoria_id + '/elementos/' + a.elemento_id + '/resolucion';
       await req('PUT', ruta,
                 { causa: sel.cod_causa, causa_categoria: sel.categoria, causa_texto: sel.sub_causa });
       ok('Causa registrada');
