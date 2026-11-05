@@ -550,10 +550,9 @@ check("«Resuelto» por fila, verde; lo decidido lleva un solo «Deshacer»",
       and "deshacer: 'Vuelve a dejarla abierta'" in JS
       and "declararUno(b.dataset.resuelto, 'declarada'" in JS
       and "declararUno(b.dataset.deshacer, 'abierta'" in JS and 'title="Ya la corregí"' not in JS)
-check("con los checks, los tres verbos de a muchas: Aplica · No aplica · Resuelto",
-      'data-lote="abierta"' in JS and 'data-lote="aceptada" id="revAccNoAplica"' in JS
-      and 'data-lote="declarada"' in JS and "async function loteMarcadas(estado, boton)" in JS
-      and "{ ids: ids, estado: estado }" in JS)
+check("con los checks, los tres verbos de a muchas van EN LA FILA (4-nov: la barra ya no los repite)",
+      'data-lote=' not in JS and "async function loteMarcadas(estado, boton)" in JS
+      and "function _enLote(estado, boton) {" in JS and "{ ids: ids, estado: estado }" in JS)
 check("cerrar lo resuelto le pregunta a aSa y devuelve qué cumple, qué sigue igual y qué no se pudo leer",
       '@router.post("/chequeos/cerrar-resueltas")' in API and 'class CerrarResueltasBody' in API
       and '"cumplen": cumplen, "siguen_igual": siguen, "sin_leer": sin_leer' in API)
@@ -580,9 +579,9 @@ check("resuelto es lo que dijo quien lo hizo: la declarada cuenta como resuelta 
 # usuario pueda ponerle No aplica masivamente, marca checks, contesta y eso se hace
 # multiple para cada barra seleccionada». Cien barras correctas no pueden ser cien
 # explicaciones iguales: lo que pasa entonces es que nadie explica nada.
-check("...y las marcadas se pueden dejar sin efecto de a muchas, con UNA explicacion",
-      'id="revAccNoAplica"' in JS and "async function noAplicaMarcadas(" in JS
-      and "estado: 'aceptada', nota: nota" in JS)
+check("...y las marcadas se pueden dejar sin efecto de a muchas, con UNA explicacion, desde la fila",
+      'id="revAccNoAplica"' not in JS and "noAplicaMarcadas" not in JS
+      and "estado: 'aceptada', nota: nota" in JS and "function abrirNoAplica(id) {" in JS)
 check("...que exige la explicacion, igual que una barra suelta",
       "Elige por qué no aplican." not in JS and "nota.length < 10" in JS)
 # EL BOTON TIENE QUE DECIR QUE LO APRETASTE (19-oct). El usuario: «al presionar el boton
@@ -884,8 +883,8 @@ print("\nEL LOTE, LIMPIO (29-oct)")
 # «Tienes una barra arriba pero otro check en la misma linea. ¿Como deberia ser para que sea
 # limpio?» Sin marcas no hay barra; lo permanente va al encabezado; el check «todas» va en su
 # columna; con marcas, la fila se apaga.
-check("sin marcas no hay barra: aparece con la primera y se queda pegada arriba",
-      "acc.style.display = n ? '' : 'none';" in JS and "position:sticky; top:0; z-index:5;" in HTM
+check("sin marcas no hay barra: aparece con la primera, dentro de la cabecera anclada (4-nov)",
+      "acc.style.display = n ? '' : 'none';" in JS and ".revcab{position:sticky; top:0; z-index:6;" in HTM
       and "Marca con el check para resolver varias" not in JS)
 check("ver figuras y cerrar lo resuelto viven en el encabezado de la hoja, siempre en el mismo lugar",
       'id="revAccCerrar" disabled' in HTM and 'id="revAccFiguras"' in HTM
@@ -935,9 +934,11 @@ check("el campo del «no aplica» va AL LADO, corto, y se guarda con Enter; Esc 
 check("...sin Guardar, sin Cancelar, sin fila adicional, sin «y todas las iguales»",
       "data-napok" not in JS and "data-napno" not in JS and "revnapform" not in JS and "data-pat" not in JS
       and ">Guardar</button>" not in JS and ">Cancelar</button>" not in JS)
-check("el lote tiene los mismos verbos: Resuelto · No aplica (campo al lado, Enter) · Deshacer",
-      'id="revAccNapNota" style="display:none"' in JS and "revAccNapOk" not in JS and "revAccNapForm" not in JS
-      and 'data-lote="abierta" title="Las marcadas vuelven a quedar abiertas">Deshacer' in JS)
+check("la barra de marcadas dice cuantas hay y donde se actua, y la cabecera entera queda anclada (4-nov)",
+      "revAccNapNota" not in JS and "revAccNapOk" not in JS and "revAccNapForm" not in JS
+      and "actúa sobre todas.</span>" in JS and 'id="revAccQuitar"' in JS
+      and '<div class="revcab" id="revCab">' in HTM and ".revcab{position:sticky; top:0;" in HTM
+      and "position:sticky" not in HTM.split(".revcubacc{")[1].split("}")[0])
 check("la hoja no deja huella: «Abrir» desde la fila elige para abrir, y al cerrar vuelve lo que habia",
       "var antes = { sel: REVS.sel, detalle: REVS.detalle };" in JS and "REVS.antes = antes;" in JS
       and "if (REVS.antes) { REVS.sel = REVS.antes.sel; REVS.detalle = REVS.antes.detalle; REVS.antes = null; }" in JS)

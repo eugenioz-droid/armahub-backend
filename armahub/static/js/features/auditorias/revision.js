@@ -770,40 +770,17 @@
     var acc = $('revItemsAcc');
     acc.style.display = n ? '' : 'none';
     if (!n) { acc.innerHTML = ''; return; }
+    // SIN VERBOS EN LA BARRA (4-nov). Hubo tres botones acá —Resuelto · No aplica · Deshacer—
+    // duplicando los de la fila; desde que el botón de la fila actúa sobre todas las marcadas
+    // (3-nov) sobraban, y el usuario: «no sirven, usamos el de la línea del ítem, mucho más
+    // claro». La barra dice cuántas hay y dónde se actúa.
     acc.innerHTML =
       '<b>' + n + ' barra(s) marcada(s)</b>' +
-      // LOS TRES VERBOS, DE A MUCHAS (20-oct). «Muchas veces el hallazgo es el mismo para
-      // más de un ítem»: se marcan los checks y lo que se hace se replica. «No aplica»
-      // pide la explicación UNA vez y vale para todas; «Resuelto» y «Aplica» van directo.
-      // Los mismos verbos que la fila, de a muchas: Resuelto · No aplica (campo al lado,
-      // una explicación para todas, Enter) · Deshacer.
-      '<button class="audbres" data-lote="declarada"' +
-        ' title="Marca las barras marcadas como resueltas: ya hiciste el cambio en aSa. Al cerrar ' +
-        'se comprueba contra aSa y, si algo sigue igual, te avisa.">Resuelto</button>' +
-      '<button class="revnapbtn" data-lote="aceptada" id="revAccNoAplica"' +
-        ' title="Deja sin efecto las marcadas, con una sola explicación para todas">No aplica</button>' +
-      '<input type="text" class="revnapin" id="revAccNapNota" style="display:none"' +
-        ' placeholder="¿por qué no aplican? … y Enter" title="Una explicación para todas las marcadas. Enter guarda; Esc deja.">' +
-      '<button class="audmini" data-lote="abierta" title="Las marcadas vuelven a quedar abiertas">Deshacer</button>' +
+      '<span class="muted">Resuelto, No aplica o Deshacer en cualquiera de sus filas actúa sobre todas.</span>' +
       '<div style="flex:1"></div>' +
       '<button class="audmini" id="revAccQuitar" title="Desmarcar todo">Quitar selección</button>';
-    var lr = document.querySelector('#revItemsAcc button[data-lote="declarada"]');
-    if (lr) lr.addEventListener('click', function () { loteMarcadas('declarada', lr); });
-    var la = document.querySelector('#revItemsAcc button[data-lote="abierta"]');
-    if (la) la.addEventListener('click', function () { loteMarcadas('abierta', la); });
     var q = $('revAccQuitar');
     if (q) q.addEventListener('click', quitarSeleccion);
-    var na = $('revAccNoAplica'), nota = $('revAccNapNota');
-    // Mismo trato que el de la fila: el botón queda encendido mientras se escribe.
-    if (na) na.addEventListener('click', function () {
-      nota.style.display = '';
-      na.classList.add('eligiendo');
-      nota.focus();
-    });
-    if (nota) nota.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') noAplicaMarcadas();
-      if (e.key === 'Escape') { nota.style.display = 'none'; nota.value = ''; na.classList.remove('eligiendo'); }
-    });
   }
 
   // Sólo el pie, que es lo único que cambia al escribir: repintar la hoja entera por cada
@@ -831,27 +808,6 @@
     var caja = $('revItemsCuerpo');
     if (caja) caja.querySelectorAll('input[data-item], input[data-grupo]').forEach(function (c) { c.checked = false; });
     _pintarAcc();
-  }
-
-  // DEJAR SIN EFECTO LO MARCADO, con UNA explicación para todas. El backend ya recibía
-  // varios ids: lo que faltaba era la pantalla.
-  async function noAplicaMarcadas() {
-    var ids = _marcados();
-    if (!ids.length) return;
-    var nota = ($('revAccNapNota').value || '').trim();
-    if (nota.length < 10) { aviso('Hace falta la explicación: la lee quien audita.'); return; }
-    var b = $('revAccNoAplica');
-    b.disabled = true; b.textContent = 'Guardando…';
-    try {
-      var r = await req('PUT', '/chequeos/declarar',
-                        { ids: ids, estado: 'aceptada', nota: nota });
-      ok((r.afectadas || ids.length) + ' barra(s) dejadas sin efecto');
-      REVS.sel_items = {};
-      await refrescarRevision();
-    } catch (e) {
-      aviso(e.message);
-      b.disabled = false; b.textContent = 'No aplica';
-    }
   }
 
   // ══════ LAS FIGURAS ══════
