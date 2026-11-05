@@ -187,8 +187,11 @@ XML_3D = ("<la><st>TP</st><bc>3</bc><mbr><X>0</X><Y>0</Y><Z>0</Z></mbr><lt>800</
           "<cp><t>STD</t><a>90</a><l>300</l><n>3</n><ln>C</ln></cp></la>")
 r = figura_de(DIMS_3D, XML_3D, pin_diam=48.0, diam_mm=12.0)
 check("se reconoce por la componente Z del vector", r["tridimensional"])
-check("...se dibuja igual (su proyección) pero con aviso, no como si fuera plana",
-      len(r["puntos"]) == 4 and not r["ok"] and "tridimensional" in r["motivo"])
+check("...y se manda el eje en el espacio, vértice a vértice, sin marcarla como mal construida (4-nov)",
+      len(r["puntos"]) == 4 and r["ok"] and "tridimensional" in r["motivo"]
+      and r["puntos3d"] == [[0, 0, 0], [300, 0, 0], [300, 0, 200], [0, 0, 200]]
+      and [l["lado"] for l in r["lados3d"]] == ["A", "B", "C"])
+check("...una figura plana no manda eje 3D", figura_de(DIMS_T12, T12, 48.0, 12.0)["puntos3d"] == [])
 check("y una figura plana no lleva ese aviso", not figura_de(DIMS_T12, T12, 48.0, 12.0)["tridimensional"])
 
 # ── Caso 11: un arco de más de 180° (estribo circular) se parte para el motor ──

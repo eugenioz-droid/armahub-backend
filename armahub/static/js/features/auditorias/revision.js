@@ -622,6 +622,7 @@
 
   function pintarItems() {
     var d = REVS.detalle, r = d.revision, items = itemsVisibles();
+    var notas = _notasAbiertas();
     // EL AVISO DE CIERRE ES DE UN INTENTO, NO DE LA HOJA (3-nov). Quedaba arriba después de
     // que el usuario cambiara la barra a «no aplica»: ofrecía «cerrar igual» algo que ya no
     // estaba por cerrar. Cualquier cambio en la hoja lo deja sin efecto.
@@ -688,7 +689,7 @@
               ? '<span class="revido" title="Este código está ' + esc(g.items[0].cc_estado || '') +
                 ' en aSa: el fierro ya salió. El hallazgo queda registrado, pero corregirlo ' +
                 'acá no cambia lo despachado.">ya despachado</span>' : '') +
-            (g.cc && !fg && REVS.nivel === 'barra' ? '<button class="audmini" data-figs="' + esc(g.cc) +
+            (g.cc && (!fg || fg.estado === 'error') && REVS.nivel === 'barra' ? '<button class="audmini" data-figs="' + esc(g.cc) +
                            '" title="Lee este código en aSa y dibuja sus barras">Ver figuras</button>' : '') +
             // EL AVANCE DEL CÓDIGO, COMPACTO Y A LA DERECHA: «3/10» se lee bajando por la
             // hoja sin tener que leer una frase en cada cabecera.
@@ -697,8 +698,37 @@
             _tablaGrupo(g) + _pieGrupo(g) + '</div>';
         }).join('');
     _bindItems();
+    _reabrirNotas(notas);
     // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la hoja.
     if (global.audChipsTam) global.audChipsTam('revTam', pintarItems);
+  }
+
+  // LO ESCRITO Y NO GUARDADO SOBREVIVE AL REPINTADO (4-nov). Cerrar un código repinta la
+  // hoja entera, y la explicación que se estaba escribiendo en OTRO código se perdía con
+  // el repintado. Se recogen los campos abiertos con texto antes de pintar y se vuelven a
+  // abrir después, en las filas que siguen abiertas, con su espejo y su botón encendido.
+  function _notasAbiertas() {
+    var out = {};
+    document.querySelectorAll('#revItemsCuerpo input[data-nota]').forEach(function (c) {
+      if (c.style.display !== 'none' && (c.value || '').trim()) {
+        out[c.dataset.nota] = { v: c.value, espejo: c.dataset.espejo || '', ph: c.placeholder };
+      }
+    });
+    return out;
+  }
+  function _reabrirNotas(notas) {
+    var pies = {};
+    Object.keys(notas).forEach(function (id) {
+      var i = _senalDe(id);
+      if (!i || i.estado !== EST.ABIERTA) return;
+      var b = _botones(id);
+      if (!b.nota) return;
+      b.nota.value = notas[id].v; b.nota.dataset.espejo = notas[id].espejo;
+      b.nota.placeholder = notas[id].ph; b.nota.style.display = '';
+      if (b.na) b.na.classList.add('eligiendo');
+      pies[i.cc || ''] = 1;
+    });
+    Object.keys(pies).forEach(_repintarPie);
   }
 
   // LA BARRA DE ACCIONES SE PINTA SOLA. Antes marcar un check repintaba la hoja entera,
@@ -861,15 +891,24 @@
   // así que no cuesta una llamada más. Mientras no se hayan pedido las figuras se
   // muestra sólo el lado del hallazgo, que es el dato que la señal ya trae.
 
+  // EL NOMBRE DE LA FIGURA SE VE SIEMPRE (4-nov): la señal lo trae, y es con lo que se
+  // habla de una barra. Antes la columna quedaba vacía hasta apretar «Ver figuras».
+  function _nombreFig(sen) {
+    var i = _senalDe(sen);
+    return i && i.figura
+      ? '<span class="audfigw"><span class="audfign" title="Figura del catálogo de aSa">' + esc(i.figura) + '</span></span>'
+      : '';
+  }
+
   function _celda(cc, ref, sen) {
-    var c = REVS.figs[cc];
-    if (!c) return '';
-    if (c.estado === 'cargando') return '<span class="muted">…</span>';
-    if (c.estado === 'error') return '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
+    var c = REVS.figs[cc], nom = _nombreFig(sen);
+    if (!c) return nom;
+    if (c.estado === 'cargando') return nom + '<span class="muted">…</span>';
+    if (c.estado === 'error') return nom + '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
     var b = _barraDe(cc, ref);
     // LA BARRA QUE YA NO ESTÁ ESTÁ CORREGIDA: alguien la cambió o la sacó del código, y
     // es lo mismo que mira el sistema para cerrarla sola.
-    if (!b) return '<div class="revcorr" title="La barra ya no está en este código en aSa: ' +
+    if (!b) return nom + '<div class="revcorr" title="La barra ya no está en este código en aSa: ' +
                    'alguien la cambió o la sacó.">corregido</div>';
     if (!global.audBarraNormalizada || !global.audCeldaFigura) return '';
     try {
@@ -928,7 +967,8 @@
   }
 
   async function cargarFiguras(cc, job) {
-    if (!cc || REVS.figs[cc]) return;
+    // Si la lectura falló se puede volver a pedir: el botón vuelve a salir (4-nov).
+    if (!cc || (REVS.figs[cc] && REVS.figs[cc].estado !== 'error')) return;
     REVS.figs[cc] = { estado: 'cargando', barras: {} };
     _pintarFiguras(cc);
     try {
@@ -1173,7 +1213,7 @@
       '<td class="revm"><span class="audref" data-ver="' + i.id +
         '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
       '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') +
-        '" data-sen="' + i.id + '"></td>' +
+        '" data-sen="' + i.id + '">' + _celda(i.cc || '', i.ref, i.id) + '</td>' +
       c.letras.map(function (L) {
         return '<td class="revn' + (malos[L] ? ' mal' : '') + '">' + (porL[L] != null ? cm(porL[L] / 10) : '') + '</td>';
       }).join('') + angTd +
@@ -1387,6 +1427,10 @@
           });
         });
       }
+      // AL CERRAR SE SUELTA LO MARCADO (4-nov). Las marcas seguían puestas después de
+      // cerrar el código, y el siguiente «Deshacer» en otro código actuaba en lote sobre
+      // lo recién cerrado. El usuario: «al cerrar quedan seleccionadas, debieran soltarse».
+      REVS.sel_items = {};
       // Lo marcado resuelto se comprueba en aSa; lo que no aplica no tiene nada que ir a ver.
       var decl = (g.items || []).filter(_porCerrar).map(function (i) { return Number(i.id); });
       if (decl.length) {

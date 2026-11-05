@@ -735,6 +735,14 @@ check("Resuelto va en línea, a continuación de No aplica, con una separación 
 # guardar, sin otro clic, y el texto del boton ya no dice «queda resuelta».
 check("«no aplica» cierra la fila al guardar, sin otro clic, y no se llama resuelta",
       ".revcc2 tr.hecho td, .revcc2 tr.nap td{background:#f1f8e9;}" in HTM and "Queda resuelta." not in JS)
+check("al cerrar un codigo se suelta lo marcado (4-nov: el siguiente Deshacer actuaba en lote sobre lo recien cerrado)",
+      "REVS.sel_items = {};\n      // Lo marcado resuelto se comprueba en aSa" in JS)
+check("lo escrito y no guardado sobrevive al repintado de la hoja (4-nov)",
+      "var notas = _notasAbiertas();" in JS and "_bindItems();\n    _reabrirNotas(notas);" in JS
+      and "function _notasAbiertas() {" in JS and "if (!i || i.estado !== EST.ABIERTA) return;" in JS)
+check("el nombre de la figura se ve siempre, haya dibujo o no (4-nov)",
+      "function _nombreFig(sen) {" in JS and "var c = REVS.figs[cc], nom = _nombreFig(sen);" in JS
+      and "if (!c) return nom;" in JS and "'\">' + _celda(i.cc || '', i.ref, i.id) + '</td>' +" in JS)
 check("la fila resuelta va verde aunque aSa no la haya confirmado todavia (4-nov: en blanco parecia pendiente)",
       "function _resuelta(i) { return _confirmada(i) || _porCerrar(i); }" in JS
       and JS.count("var hecho = _resuelta(i), nap = _noAplica(i);") == 2

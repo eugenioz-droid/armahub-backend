@@ -1531,6 +1531,16 @@ check("...y no queda ninguna cuenta de barras por corregir sin el filtro de hall
 for m in _sueltas:
     print("      " + m[:100].replace("\n", " "))
 
+print("\nLA FIGURA DOBLADA EN DOS PLANOS SE DIBUJA EN EL ESPACIO (4-nov)")
+FIG = open(os.path.join(ROOT, "armahub", "figura_asa.py"), encoding="utf-8").read()
+check("el backend manda el eje 3D vertice a vertice (puntos3d, lados3d) para la figura tridimensional",
+      "def _puntos_3d(legs, dirs):" in FIG and '"puntos3d": puntos3d, "lados3d": lados3d,' in FIG
+      and "se muestra su proyección en planta" not in FIG)
+check("la pantalla lo proyecta en isometrica, antes que cualquier trazo plano del catalogo, y lo dice con «3D»",
+      "function svgIso(f) {" in JS and "if (f.eje && f.eje.tridimensional && (f.eje.puntos3d || []).length > 1) {" in JS
+      and JS.index("var iso = svgIso(f);") < JS.index("var svg = global._bmFiguraSvg ? global._bmFiguraSvg(f, FIG_TAM) : '';")
+      and '>3D</span>' in JS)
+
 print("\nLOS BOTONES DEL AUDITOR TIENEN SU FUNCION (4-nov)")
 IDX = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
 import re as _re2  # noqa: E402

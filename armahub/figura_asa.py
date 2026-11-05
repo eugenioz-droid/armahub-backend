@@ -165,6 +165,26 @@ def _es_tridimensional(legs) -> bool:
     return False
 
 
+def _puntos_3d(legs, dirs):
+    """El eje en el espacio, vértice a vértice y sin codos: la dirección de cada lado es su
+    vector completo (x, y, z) y, si el lado no trae vector, la que ya se resolvió en el
+    plano. Es lo que la pantalla dibuja en isométrica para una figura doblada en dos planos.
+    El gancho sísmico final se da vuelta igual que en el plano (ver la cabecera)."""
+    p, pts, n = (0.0, 0.0, 0.0), [(0.0, 0.0, 0.0)], len(legs)
+    for i, leg in enumerate(legs):
+        vz = leg.get("vz", 0.0)
+        h = math.hypot(leg["vx"], leg["vy"], vz)
+        if h > 0:
+            d = (leg["vx"] / h, leg["vy"] / h, vz / h)
+            if leg["tipo"] == GANCHO_135 and i == n - 1:
+                d = (-d[0], -d[1], -d[2])
+        else:
+            d = (dirs[i][0], dirs[i][1], 0.0)
+        p = (p[0] + d[0] * leg["largo"], p[1] + d[1] * leg["largo"], p[2] + d[2] * leg["largo"])
+        pts.append(p)
+    return [[round(c, 1) for c in q] for q in pts]
+
+
 def _unit(vx, vy):
     h = math.hypot(vx, vy)
     return (vx / h, vy / h) if h else None
@@ -398,13 +418,19 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
             ok = False
     else:
         ok, motivo = (ancho > 0 or alto > 0), "sin envolvente para comprobar"
+    puntos3d, lados3d = [], []
     if tridimensional:
-        # Se dibuja la proyección en planta y se dice: una traba doblada en dos planos no
-        # es lo que se ve, y el auditor tiene que saberlo.
-        ok, motivo = False, "figura tridimensional (aSa la dobla en dos planos): se muestra su proyección en planta"
+        # SE DIBUJA EN EL ESPACIO (4-nov). Hasta hoy iba la proyección en planta con un
+        # aviso, y la traba 26 se veía igual que una figura plana: «eso lleva a confusión».
+        # `puntos3d` es el eje vértice a vértice con el vector completo de cada lado; la
+        # pantalla lo proyecta en isométrica. La envolvente no se comprueba: es de la planta.
+        puntos3d = _puntos_3d(legs, dirs)
+        lados3d = [{"lado": l["nombre"], "largo": round(l["largo"])} for l in legs]
+        ok, motivo = True, "figura tridimensional: aSa la dobla en dos planos y se dibuja en isométrica"
 
     return {"ok": ok, "motivo": motivo, "tridimensional": tridimensional, "fuente": "reconstruida",
             "puntos": [[round(p[0], 1), round(p[1], 1)] for p in puntos],
+            "puntos3d": puntos3d, "lados3d": lados3d,
             "tramos": tramos, "ancho": round(ancho), "alto": round(alto), "mbr": mbr,
             "radio": round(radio_curvo) if radio_curvo else None}
 

@@ -1241,6 +1241,15 @@
   }
 
   function celdaFigura(f) {
+    // LA FIGURA DOBLADA EN DOS PLANOS VA EN ISOMÉTRICA, antes que cualquier trazo plano:
+    // el del catálogo con ese nombre sería una figura plana con el nombre de una que no lo es.
+    if (f.eje && f.eje.tridimensional && (f.eje.puntos3d || []).length > 1) {
+      var iso = svgIso(f);
+      if (iso) {
+        return _conNombre(iso, f) + '<span class="audfigfte" title="Esta barra se dobla en dos planos: ' +
+          'se dibuja en isométrica (30°, Z hacia arriba) tal como aSa la define, lado por lado.">3D</span>';
+      }
+    }
     var svg = global._bmFiguraSvg ? global._bmFiguraSvg(f, FIG_TAM) : '';
     if (svg) return _conNombre(svg, f);
     svg = svgEje(f);
@@ -1342,6 +1351,47 @@
                  y: out[i - 1].y + (pts[i].y - pts[i - 1].y) * k });
     }
     return out;
+  }
+
+  // LA FIGURA EN EL ESPACIO (4-nov). La traba 26 y las TP se doblan en dos planos; hasta
+  // hoy se mostraba su proyección en planta con un ⚠, y se veía igual que una figura
+  // plana: «eso lleva a confusión». El backend manda el eje 3D vértice a vértice
+  // (`puntos3d`, mm) y acá se proyecta en isométrica a 30° con Z hacia arriba: una
+  // polilínea, sin librerías ni codos, con el largo de cada lado en cm y tres ejes chicos
+  // para que se lea como espacio y no como otra figura plana.
+  function svgIso(f) {
+    var eje = f.eje, P3 = eje.puntos3d || [];
+    if (P3.length < 2) return '';
+    var t = global._bmTam ? global._bmTam(FIG_TAM) : { w: 120, h: 70 };
+    var c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6);
+    var iso = function (p) { return { x: (p[0] - p[1]) * c, y: -((p[0] + p[1]) * s + p[2]) }; };
+    var P = P3.map(iso), i;
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (i = 0; i < P.length; i++) {
+      minX = Math.min(minX, P[i].x); maxX = Math.max(maxX, P[i].x);
+      minY = Math.min(minY, P[i].y); maxY = Math.max(maxY, P[i].y);
+    }
+    var W = t.w, H = t.h, pad = 16, fw = (maxX - minX) || 1, fh = (maxY - minY) || 1;
+    var k = Math.min((W - 2 * pad) / fw, (H - 2 * pad) / fh);
+    var ox = (W - fw * k) / 2 - minX * k, oy = (H - fh * k) / 2 - minY * k;
+    var Q = P.map(function (p) { return { x: ox + p.x * k, y: oy + p.y * k }; });
+    var d = Q.map(function (q, j) { return (j ? 'L' : 'M') + q.x.toFixed(1) + ' ' + q.y.toFixed(1); }).join(' ');
+    var labels = (eje.lados3d || []).map(function (l, j) {
+      var a = Q[j], b = Q[j + 1];
+      if (!a || !b || !l.largo) return '';
+      return '<text x="' + ((a.x + b.x) / 2).toFixed(1) + '" y="' + ((a.y + b.y) / 2 - 3).toFixed(1) +
+             '" font-size="8" text-anchor="middle" fill="#555">' + Math.round(l.largo / 10) + '</text>';
+    }).join('');
+    // Los tres ejes, abajo a la izquierda: X e Y en el plano, Z arriba.
+    var e0 = { x: 9, y: H - 9 }, L = 9, ejes = [['x', L * c, L * s], ['y', -L * c, L * s], ['z', 0, -L]];
+    var axes = ejes.map(function (a) {
+      return '<line x1="' + e0.x + '" y1="' + e0.y + '" x2="' + (e0.x + a[1]).toFixed(1) + '" y2="' + (e0.y + a[2]).toFixed(1) +
+             '" stroke="#90a4ae" stroke-width="1"/><text x="' + (e0.x + a[1] * 1.6).toFixed(1) + '" y="' + (e0.y + a[2] * 1.6 + 2).toFixed(1) +
+             '" font-size="6" text-anchor="middle" fill="#90a4ae">' + a[0] + '</text>';
+    }).join('');
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">' +
+      axes + '<path d="' + d + '" fill="none" stroke="#00695c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      labels + '</svg>';
   }
 
   function svgEje(f) {
