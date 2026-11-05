@@ -1079,7 +1079,7 @@ check("el formulario del auditor se bloquea entero y DICE por qué",
 check("la tabla de lo que salió es POR BARRA, no por elemento",
       "function filaAccion(" in JS and "malas.map(function (b) { return filaAccion(" in JS)
 check("cada barra lleva Aplica | No aplica, y «no aplica» pide el motivo ahí mismo",
-      "data-aplica=" in JS and "data-noaplica=" in JS and "audnapform" in JS
+      "data-aplica=" in JS and "data-noaplica=" in JS and "function _campoNap(pref, id)" in JS
       and "function desestimarItem(" in JS and "m.length < 10" in JS)
 check("el Ishikawa es POR BARRA y abre la MISMA matriz de los reclamos",
       "function clasificarItem(" in JS and "global.abrirIshikawaModal('auditoria')" in JS
@@ -1287,7 +1287,7 @@ check("...y el detalle los suma a lo que falta por resolver",
       'aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)' in SRC)
 check("la pantalla le pone sus controles al comentario, en vez de dejarlo como texto muerto",
       "function filaComentario(" in JS and "'data-ecorregi'" in JS and "data-enoaplica=" in JS
-      and "'data-ecausa'" in JS and "function _celdaCausa(" in JS and "function _filaFormNap(" in JS)
+      and "'data-ecausa'" in JS and "function _celdaCausa(" in JS and "_campoNap('e', e.id)" in JS)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
       and "/resolucion" in JS.split("global.audCausaElegida")[1][:800])
@@ -1388,11 +1388,19 @@ check("...contra un lote del backend con las mismas reglas que de a una",
       and SRC.count("causa = NULL, causa_categoria = NULL, causa_texto = NULL") >= 2)
 check("...que avisa al auditor y al dueño de cada barra ajena, una vez por persona",
       "duenos.setdefault(" in SRC and "en tu lugar (%s)" in SRC)
-check("«no aplica» pide motivo de lista más explicación, como la revisión",
+check("«no aplica» se justifica con un campo al final de la linea, sin lista de motivos (5-nov)",
       "MOTIVOS_NO_APLICA_AUD = {" in SRC and "motivo_tipo: Optional[str] = None" in SRC
-      and "desestimado_tipo" in MIG160 and 'aud["motivos"] = MOTIVOS_NO_APLICA_AUD' in SRC
-      and "<select data-mot=" in JS and "function _opcionesMotivoAud(" in JS
-      and "Elige por qué no aplica." in SRC)
+      and "desestimado_tipo" in MIG160
+      and "<select data-mot=" not in JS and "_opcionesMotivoAud" not in JS and "audLoteMot" not in JS
+      and "Elige por qué no aplica." not in SRC and SRC.count("body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD") == 2
+      and "audnapform" not in JS and "_filaFormNap" not in JS and "data-napok" not in JS)
+check("...Enter guarda, Esc lo deja, y mientras se escribe la fila esconde el RCA y el Resuelto",
+      "if (e.key === 'Escape') _formNap(i.dataset.motivo, false);" in JS
+      and "tr.classList.toggle('napabierto', !!abrir);" in JS
+      and ".audacct tr.napabierto td.audcausa > *, .audacct tr.napabierto .audbres{display:none;}" in HTM)
+check("lo que no aplica no se clasifica: ni en Mis correcciones ni por el backend",
+      "'<td class=\"audcausa\">' + (a.desestimado" in JS
+      and "Esa barra no aplica: no lleva RCA." in SRC)
 check("...y el motivo viaja en cada barra del detalle",
       '"desestimado_tipo": des_tipo' in SRC)
 # EL BUG DEL CIERRE: `addEventListener('click', cerrarResueltas)` le pasaba el MouseEvent

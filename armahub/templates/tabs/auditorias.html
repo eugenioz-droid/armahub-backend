@@ -497,7 +497,12 @@
   .audacct td.revfig{width:124px; text-align:center;}
   .audacct td.revfig svg{display:block; margin:0 auto; max-width:116px; height:auto;}
   .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
-  .audacct tr.audnapform td{background:#fff8e1;}
+  /* MIENTRAS SE JUSTIFICA UN «NO APLICA» (5-nov): la fila esconde el RCA y el Resuelto;
+     lo que no aplica no se clasifica ni se resuelve. */
+  .audacct tr.napabierto td.audcausa > *, .audacct tr.napabierto .audbres{display:none;}
+  .audacct tr.napabierto td.audcausa::after{content:'—'; color:#b0bec5;}
+  .audacct tr.napabierto td{background:#fff8e1;}
+  .audlote .revnapin{width:320px;}
   /* ══════ LAS REVISIONES ══════ */
   /* LA MATRIZ, ARMONIZADA (2-nov). Un solo tamaño de número; el peso y el color dicen qué
      importa. Dos filas de encabezado: la sección y la columna. */

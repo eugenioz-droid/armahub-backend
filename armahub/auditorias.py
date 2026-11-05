@@ -3310,6 +3310,13 @@ def clasificar_item(auditoria_id: int, item_id: int, body: CausaBody,
         with conn.cursor() as cur:
             _, _, ref, cubico, nombre, codigo, _ = _barra_del_auditado(cur, auditoria_id, item_id, user)
             _solo_si_enviada(cur, auditoria_id)
+            # LO QUE NO APLICA NO SE CLASIFICA (5-nov). Al dejarla sin efecto se le borra la
+            # causa para que no pese en el indicador; dejar ponérsela después era volver a
+            # meterla por la otra puerta.
+            cur.execute("SELECT desestimado FROM auditoria_items WHERE id = %s", (item_id,))
+            if (cur.fetchone() or [False])[0]:
+                raise HTTPException(status_code=400,
+                                    detail="Esa barra no aplica: no lleva RCA. Si sí aplica, vuelve a marcarla «Aplica».")
             cur.execute(
                 """UPDATE auditoria_items
                       SET causa = %s, causa_categoria = %s, causa_texto = %s,
@@ -3436,8 +3443,10 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
     _puede_ver(user)
     email = user.get("email", "?")
     motivo = (body.motivo or "").strip()
-    if body.desestimado and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
-        raise HTTPException(status_code=400, detail="Elige por qué no aplica.")
+    # LA CATEGORÍA DEJÓ DE PEDIRSE (5-nov): basta la explicación, como en la revisión de
+    # barras. Si llega una, tiene que ser de las conocidas.
+    if body.desestimado and body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
+        raise HTTPException(status_code=400, detail="Motivo de «no aplica» desconocido.")
     if body.desestimado and len(motivo) < 10:
         raise HTTPException(
             status_code=400,
@@ -3514,8 +3523,8 @@ def lote_items(auditoria_id: int, body: LoteBody, user=Depends(get_current_user)
         raise HTTPException(status_code=422, detail="Acción no válida: aplica / no_aplica / resuelto.")
     nota = (body.nota or "").strip()
     if body.accion == "no_aplica":
-        if body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
-            raise HTTPException(status_code=400, detail="Elige por qué no aplica.")
+        if body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
+            raise HTTPException(status_code=400, detail="Motivo de «no aplica» desconocido.")
         if len(nota) < 10:
             raise HTTPException(
                 status_code=400,

@@ -1767,18 +1767,15 @@
               '<button data-alote="aplica"' + (nsel ? '' : ' disabled') +
                 ' title="Las marcadas vuelven a quedar por resolver">Aplica' + (nsel ? ' (' + nsel + ')' : '') + '</button>' +
               '<button data-alote="no_aplica"' + (nsel ? '' : ' disabled') +
-                ' title="Deja sin efecto las marcadas, con un motivo y una explicación para todas">No aplica' +
+                ' title="Deja sin efecto las marcadas, con una explicación para todas">No aplica' +
                 (nsel ? ' (' + nsel + ')' : '') + '</button>' +
             '</div>' +
             '<button class="audbres" data-alote="resuelto"' + (nsel ? '' : ' disabled') +
               ' title="Marca las marcadas como resueltas: ya hiciste el cambio en aSa. Todas necesitan RCA.">' +
               'Resuelto' + (nsel ? ' (' + nsel + ')' : '') + '</button>' +
-            '<div class="revnapcaja" id="audLoteNap" style="display:none; width:100%; margin-top:6px;">' +
-              '<select id="audLoteMot">' + _opcionesMotivoAud() + '</select>' +
-              '<input type="text" id="audLoteNota" placeholder="Explica por qué no aplican — lo lee quien auditó y queda en el informe">' +
-              '<button class="audmini ver" id="audLoteOk">Guardar</button>' +
-              '<button class="audmini" id="audLoteNo">Cancelar</button>' +
-            '</div>' +
+            '<input type="text" class="revnapin" id="audLoteNota" style="display:none"' +
+              ' placeholder="¿Por qué no aplican las marcadas? … y Enter"' +
+              ' title="Una explicación para todas. La lee quien auditó y queda en el informe. Enter guarda; Esc lo deja.">' +
           '</div>'
         : '') +
       '<div class="audbdacc"><table class="audt audacct"><thead><tr><th style="width:22px"></th><th>Barra</th><th>Figura</th>' +
@@ -1866,18 +1863,16 @@
       : '<span class="muted">sin RCA</span>';
   }
 
-  // LA FILA ESCONDIDA DEL «NO APLICA», que se abre bajo la barra o el comentario. `pref` es
-  // la letra que distingue los data-* del comentario ('e') de los de la barra (''); la
-  // barra además elige el motivo de una lista.
-  function _filaFormNap(pref, id, conMotivo, cols) {
-    return '<tr class="audnapform" data-' + pref + 'form="' + id + '" style="display:none">' +
-      '<td colspan="' + cols + '"><div class="revnapcaja">' +
-        (conMotivo ? '<select data-mot="' + id + '">' + _opcionesMotivoAud() + '</select>' : '') +
-        '<input type="text" data-' + pref + 'motivo="' + id + '" ' +
-          'placeholder="¿Por qué no corresponde? Lo lee quien auditó y queda firmado">' +
-        '<button class="audmini ver" data-' + pref + 'napok="' + id + '">Guardar</button>' +
-        '<button class="audmini" data-' + pref + 'napno="' + id + '">Cancelar</button>' +
-      '</div></td></tr>';
+  // «NO APLICA» SE JUSTIFICA AL FINAL DE LA LÍNEA (5-nov). Era una fila escondida bajo la
+  // barra con un desplegable de motivo, Guardar y Cancelar, y mientras se llenaba la barra
+  // seguía ofreciendo «RCA». El usuario: «no debe clasificarse si no aplica, un campo de
+  // texto al final de la línea basta para justificar». Como en la revisión de barras: el
+  // botón se enciende, el campo aparece al lado, Enter guarda y Esc lo deja como estaba.
+  // Mientras está abierto, la fila esconde el RCA y el Resuelto (`tr.napabierto`).
+  // `pref` distingue los data-* del comentario ('e') de los de la barra ('').
+  function _campoNap(pref, id) {
+    return '<input type="text" class="revnapin" data-' + pref + 'motivo="' + id + '" style="display:none" ' +
+      'placeholder="¿Por qué no aplica? … y Enter" title="Lo lee quien auditó y queda firmado. Enter guarda; Esc lo deja.">';
   }
 
   // EL COMENTARIO DEL ELEMENTO, cuando el hallazgo no es de ninguna barra.
@@ -1908,7 +1903,8 @@
               '<button class="' + (nap ? 'on' : '') + '" data-enoaplica="' + e.id + '"' +
                 ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
             '</div>' +
-            (nap ? '' : _btnResuelto(resuelto, sinRca, resuelto ? 'data-edeshacer' : 'data-ecorregi', e.id));
+            (nap ? '' : _btnResuelto(resuelto, sinRca, resuelto ? 'data-edeshacer' : 'data-ecorregi', e.id) +
+                        _campoNap('e', e.id));
     }
     var causa = _celdaCausa(e, nap, 'data-ecausa', e.id, puede, puede, 'dar por resuelto');
     return '<tr' + (est === 'desestimada' ? ' class="audeses"' : '') + '>' +
@@ -1918,10 +1914,9 @@
       '<td></td>' +
       '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(nombreCompleto(e)) + '</td>' +
       '<td class="audqse" colspan="2">' + esc(e.texto || '') + '</td>' +
-      '<td>' + causa + '</td>' +
+      '<td class="audcausa">' + causa + '</td>' +
       '<td>' + estado + '</td>' +
-      '<td>' + acc + '</td></tr>' +
-      _filaFormNap('e', e.id, false, 9);
+      '<td class="audacc2">' + acc + '</td></tr>';
   }
 
   // UNA BARRA DE LA AUDITORÍA, con lo que se puede hacer con ella.
@@ -1963,7 +1958,8 @@
                 ' title="Dejar sin efecto, con explicación firmada">No aplica</button>' +
             '</div>' +
             (b.desestimado ? '' :
-              _btnResuelto(!!b.corregido, sinRca, b.corregido ? 'data-deshacer' : 'data-corregi', b.item_id));
+              _btnResuelto(!!b.corregido, sinRca, b.corregido ? 'data-deshacer' : 'data-corregi', b.item_id) +
+              (b.corregido ? '' : _campoNap('', b.item_id)));
     } else if (b.desestimado && AUD.soy_auditor && !cerrada) {
       // Derecho a réplica del auditor: el descarte vale por defecto, pero si no
       // corresponde lo reabre dejando por escrito por qué.
@@ -1972,7 +1968,6 @@
     }
     var causa = _celdaCausa(b, !!b.desestimado, 'data-causa', b.item_id, puede && !b.corregido, puede,
                             'dar la barra por resuelta');
-    var cols = 9;
     return '<tr' + (b.desestimado ? ' class="audeses"' : '') + '>' +
       '<td>' + (puede && !b.corregido && !b.desestimado
         ? '<input type="checkbox" data-aitem="' + b.item_id + '" data-acc="' + esc(e.cc || '') + '"' +
@@ -1990,8 +1985,7 @@
       '<td class="audesp">' + esc(_esperadoTxt(b.esperado)) + '</td>' +
       '<td class="audcausa">' + causa + '</td>' +
       '<td>' + estado + '</td>' +
-      '<td class="audacc2">' + acc + '</td></tr>' +
-      _filaFormNap('', b.item_id, true, cols);
+      '<td class="audacc2">' + acc + '</td></tr>';
   }
 
   // LAS FIGURAS DE LA AUDITORÍA. Mismo trato que en la revisión de barras: se piden POR
@@ -2065,16 +2059,19 @@
     caja.querySelectorAll('button[data-alote]').forEach(function (b) {
       b.addEventListener('click', function () {
         if (b.dataset.alote === 'no_aplica') {
-          $('audLoteNap').style.display = 'flex'; b.classList.add('eligiendo'); $('audLoteNota').focus();
+          var n = $('audLoteNota'); n.style.display = ''; b.classList.add('eligiendo'); n.focus();
         } else { loteAuditoria(b.dataset.alote); }
       });
     });
-    var lno = $('audLoteNo');
-    if (lno) lno.addEventListener('click', function () { $('audLoteNap').style.display = 'none'; });
-    var lok = $('audLoteOk');
-    if (lok) lok.addEventListener('click', function () { loteAuditoria('no_aplica'); });
     var lnota = $('audLoteNota');
-    if (lnota) lnota.addEventListener('keydown', function (e) { if (e.key === 'Enter') loteAuditoria('no_aplica'); });
+    if (lnota) lnota.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') loteAuditoria('no_aplica');
+      if (e.key === 'Escape') {
+        lnota.style.display = 'none'; lnota.value = '';
+        var bn = document.querySelector('#audLote button[data-alote="no_aplica"]');
+        if (bn) bn.classList.remove('eligiendo');
+      }
+    });
     caja.querySelectorAll('button[data-objetar]').forEach(function (b) {
       b.addEventListener('click', function () { objetar(b.dataset.objetar); });
     });
@@ -2093,15 +2090,10 @@
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
       b.addEventListener('click', function () { _formNap(b.dataset.noaplica, true); });
     });
-    caja.querySelectorAll('button[data-napno]').forEach(function (b) {
-      b.addEventListener('click', function () { _formNap(b.dataset.napno, false); });
-    });
-    caja.querySelectorAll('button[data-napok]').forEach(function (b) {
-      b.addEventListener('click', function () { _guardarNap(b.dataset.napok); });
-    });
     caja.querySelectorAll('input[data-motivo]').forEach(function (i) {
       i.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') _guardarNap(i.dataset.motivo);
+        if (e.key === 'Escape') _formNap(i.dataset.motivo, false);
       });
     });
     // Los mismos cuatro verbos sobre el comentario del elemento.
@@ -2126,23 +2118,12 @@
     caja.querySelectorAll('button[data-enoaplica]').forEach(function (b) {
       b.addEventListener('click', function () { _formNapE(b.dataset.enoaplica, true); });
     });
-    caja.querySelectorAll('button[data-enapno]').forEach(function (b) {
-      b.addEventListener('click', function () { _formNapE(b.dataset.enapno, false); });
-    });
-    caja.querySelectorAll('button[data-enapok]').forEach(function (b) {
-      b.addEventListener('click', function () { _guardarNapE(b.dataset.enapok); });
-    });
     caja.querySelectorAll('input[data-emotivo]').forEach(function (i) {
       i.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') _guardarNapE(i.dataset.emotivo);
+        if (e.key === 'Escape') _formNapE(i.dataset.emotivo, false);
       });
     });
-  }
-
-  function _opcionesMotivoAud() {
-    var m = (AUD && AUD.motivos) || {};
-    return '<option value="">¿Por qué no aplica?</option>' +
-      Object.keys(m).map(function (k) { return '<option value="' + esc(k) + '">' + esc(m[k]) + '</option>'; }).join('');
   }
 
   // VARIAS BARRAS, UN VERBO (21-oct). Un solo viaje y un solo detalle al final.
@@ -2151,9 +2132,7 @@
     if (!ids.length) return;
     var cuerpo = { ids: ids, accion: accion };
     if (accion === 'no_aplica') {
-      cuerpo.motivo_tipo = $('audLoteMot').value;
       cuerpo.nota = ($('audLoteNota').value || '').trim();
-      if (!cuerpo.motivo_tipo) { aviso('Elige por qué no aplican.'); return; }
       if (cuerpo.nota.length < 10) { aviso('Hace falta la explicación: la lee quien auditó.'); return; }
     }
     var b = document.querySelector('#audLote button[data-alote="' + accion + '"]');
@@ -2167,25 +2146,29 @@
     } catch (e) { aviso(e.message); _ocupado(b, false); }
   }
 
+  // Abre o cierra el campo del «no aplica» de una fila. Abierto: el botón encendido, el
+  // campo al lado y la fila sin RCA ni Resuelto (no se clasifica lo que no aplica).
+  function _abrirNap(campo, boton, abrir) {
+    if (!campo) return;
+    campo.style.display = abrir ? '' : 'none';
+    if (!abrir) campo.value = '';
+    if (boton) boton.classList.toggle('eligiendo', !!abrir);
+    var tr = campo.closest('tr');
+    if (tr) tr.classList.toggle('napabierto', !!abrir);
+    if (abrir) campo.focus();
+  }
+
   function _formNap(itemId, abrir) {
-    var f = document.querySelector('tr[data-form="' + itemId + '"]');
-    if (!f) return;
-    f.style.display = abrir ? '' : 'none';
-    if (abrir) {
-      var i = f.querySelector('input[data-motivo]');
-      if (i) i.focus();
-    }
+    _abrirNap(document.querySelector('input[data-motivo="' + itemId + '"]'),
+              document.querySelector('button[data-noaplica="' + itemId + '"]'), abrir);
   }
 
   function _guardarNap(itemId) {
-    var f = document.querySelector('tr[data-form="' + itemId + '"]');
-    if (!f) return;
-    var sel = f.querySelector('select[data-mot]');
-    var tipo = sel ? sel.value : '';
-    var m = (f.querySelector('input[data-motivo]').value || '').trim();
-    if (!tipo) { aviso('Elige por qué no aplica.'); return; }
-    if (m.length < 10) { aviso('Di por qué no corresponde: lo va a leer quien auditó.'); return; }
-    desestimarItem(itemId, true, m, tipo);
+    var i = document.querySelector('input[data-motivo="' + itemId + '"]');
+    if (!i) return;
+    var m = (i.value || '').trim();
+    if (m.length < 10) { aviso('Di por qué no aplica: lo va a leer quien auditó.'); return; }
+    desestimarItem(itemId, true, m);
   }
 
   // DEJAR SIN EFECTO UNA BARRA, o volverla a dejar válida. El motivo es obligatorio y es
@@ -2201,13 +2184,12 @@
 
   function _botonDe(sel) { return document.querySelector(sel); }
 
-  async function desestimarItem(itemId, desestimar, motivo, motivoTipo) {
+  async function desestimarItem(itemId, desestimar, motivo) {
     var bt = _botonDe('[data-' + (desestimar ? 'noaplica' : 'aplica') + '="' + itemId + '"]');
     _ocupado(bt, true);
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/items/' + itemId + '/desestimar',
-                      { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.',
-                        motivo_tipo: motivoTipo || null });
+                      { desestimado: !!desestimar, motivo: motivo || 'Vuelve a quedar por corregir.' });
       ok(desestimar ? 'Barra dejada sin efecto' : 'La barra vuelve a quedar por corregir');
       await Promise.all([cargarLista(), cargarMisAcciones()]); pintarDetalle();
     } catch (e) { aviso(e.message); _ocupado(bt, false); }
@@ -2327,22 +2309,16 @@
   }
 
   function _formNapE(eid, abrir) {
-    var f = document.querySelector('tr[data-eform="' + eid + '"]');
-    if (!f) return;
-    f.style.display = abrir ? '' : 'none';
-    if (abrir) {
-      var i = f.querySelector('input[data-emotivo]');
-      if (i) i.focus();
-    }
+    _abrirNap(document.querySelector('input[data-emotivo="' + eid + '"]'),
+              document.querySelector('button[data-enoaplica="' + eid + '"]'), abrir);
   }
 
   function _guardarNapE(eid) {
-    var f = document.querySelector('tr[data-eform="' + eid + '"]');
-    if (!f) return;
-    var m = (f.querySelector('input[data-emotivo]').value || '').trim();
-    if (m.length < 10) { aviso('Di por qué no corresponde: lo va a leer quien auditó.'); return; }
-    resolverElemento(eid, { aplica: false, nota: m },
-                     _botonDe('[data-enapok="' + eid + '"]'));
+    var i = document.querySelector('input[data-emotivo="' + eid + '"]');
+    if (!i) return;
+    var m = (i.value || '').trim();
+    if (m.length < 10) { aviso('Di por qué no aplica: lo va a leer quien auditó.'); return; }
+    resolverElemento(eid, { aplica: false, nota: m }, _botonDe('[data-enoaplica="' + eid + '"]'));
   }
 
   function clasificarComentario(eid) {
@@ -2514,7 +2490,9 @@
       '<td><span class="audref">' + esc(a.ref) + '</span></td>' +
       '<td>' + esc(a.observacion || '') + '</td>' +
       '<td class="audesp">' + esc(_esperadoTxt(a.esperado)) + '</td>' +
-      '<td class="audcausa">' + (a.causa
+      '<td class="audcausa">' + (a.desestimado
+          ? '<span class="muted" title="No aplica: no lleva RCA.">—</span>'
+          : a.causa
           ? '<button class="audmini" data-causa="' + a.item_id + '" title="' +
             esc(a.causa + (a.causa_texto ? ' · ' + a.causa_texto : '')) + '">' +
             esc(a.causa) + ' ✎</button>'
