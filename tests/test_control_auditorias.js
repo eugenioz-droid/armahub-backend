@@ -66,7 +66,7 @@ try { vm.runInContext(codigo, sandbox); } catch (e) { /* carga parcial, basta */
   const lect = nodo('caLectura').innerHTML;
   check('la lectura lleva el denominador: 14 detectadas, 5 resueltas (36%), 2 no aplican, 7 sin resolver',
     lect.indexOf('<b>14</b> barras detectadas') !== -1 && lect.indexOf('<b>5</b> resueltas (36%)') !== -1
-    && lect.indexOf('2 no aplica (14%)') !== -1 && lect.indexOf('<b style="color:#c62828">7</b> sin resolver (50%)') !== -1);
+    && lect.indexOf('2 no aplica (14%)') !== -1 && lect.indexOf('<b class="mal">7</b> sin resolver (50%)') !== -1);
   const calor = nodo('caCalor').innerHTML;
   const posJ = calor.indexOf('Jvelasquez'), posN = calor.indexOf('Nlopez');
   check('el mapa pone primero a quien más tiene (Jvelasquez 9 antes que Nlopez 5)', posJ !== -1 && posN !== -1 && posJ < posN);
@@ -74,7 +74,7 @@ try { vm.runInContext(codigo, sandbox); } catch (e) { /* carga parcial, basta */
   check('...y las columnas por peso, con el nombre corto de la regla (Lado corto 10 antes que Lados opuestos 4)',
     posLC !== -1 && posLO !== -1 && posLC < posLO);
   check('la celda más cargada va oscura con el número adentro, y la vacía con un punto',
-    /rgba\(229,57,53,0\.90\); color:#fff">9</.test(calor) && calor.indexOf('class="c cero">·<') !== -1);
+    /rgba\(198,40,40,0\.90\); color:#fff">9</.test(calor) && calor.indexOf('class="c cero">·<') !== -1);
   check('la fila de totales suma 14', calor.indexOf('<tfoot><tr><td>Total</td><td class="c">10</td><td class="c">4</td><td class="c">14</td>') !== -1);
   const emb = graficos.find(g => g.ctx.id === 'caEmbudo');
   check('el embudo es una barra apilada por semana con las tres series',

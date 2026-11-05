@@ -365,7 +365,7 @@ var DASH_SUBTABS = {
   kpis:      { panel: 'dashSubKpis',     btn: 'dashSubBtnKpis',     color: '#00897b' },
   historico: { panel: 'dashSubHist',     btn: 'dashSubBtnHist',     color: '#5e35b1' },
   indicadores: { panel: 'dashSubInd',    btn: 'dashSubBtnInd',      color: '#00897b' },
-  control:     { panel: 'dashSubCtrl',   btn: 'dashSubBtnCtrl',     color: '#e65100' }
+  control:     { panel: 'dashSubCtrl',   btn: 'dashSubBtnCtrl',     color: '#1565C0' }
 };
 var _dashSubActual = 'tableros';
 var _dashKpisLoaded = false;
@@ -396,7 +396,7 @@ function switchDashSubTab(sub) {
 // tres con la MISMA forma, así que acá hay un solo dibujante y un selector de fuente.
 var CA = { datos: null, fuente: 'barras', charts: {} };
 var CA_FUENTES = ['barras', 'elementos', 'auditorias'];
-var CA_COLOR = { no_aplica: '#b0bec5', resueltas: '#8BC34A', abiertas: '#ef5350' };
+var CA_COLOR = { no_aplica: '#b0bec5', resueltas: '#8BC34A', abiertas: '#e53935' };
 
 async function loadDashControl() {
   if (!CA.datos) {
@@ -458,7 +458,7 @@ function caLectura(f) {
   el.innerHTML = 'Desde el ' + desde + ': <b>' + rhNum(t.detectadas) + '</b> ' + rhEsc(f.unidad) + ' detectadas · ' +
     '<b>' + rhNum(t.resueltas) + '</b> ' + rhEsc(f.series.resueltas.toLowerCase()) + ' (' + pct(t.resueltas) + '%) · ' +
     rhNum(t.no_aplica) + ' ' + rhEsc(f.series.no_aplica.toLowerCase()) + ' (' + pct(t.no_aplica) + '%) · ' +
-    '<b style="color:' + (t.abiertas ? '#c62828' : '#2e7d32') + '">' + rhNum(t.abiertas) + '</b> ' +
+    '<b class="' + (t.abiertas ? 'mal' : 'bien') + '">' + rhNum(t.abiertas) + '</b> ' +
     rhEsc(f.series.abiertas.toLowerCase()) + ' (' + pct(t.abiertas) + '%).';
 }
 
@@ -512,7 +512,7 @@ function caCalor(f) {
   var celda = function (v) {
     if (!v) return '<td class="c cero">·</td>';
     var a = Math.min(0.9, 0.12 + 0.78 * v / max);
-    return '<td class="c" style="background:rgba(229,57,53,' + a.toFixed(2) + '); color:' + (a > 0.5 ? '#fff' : '#263238') + '">' + rhNum(v) + '</td>';
+    return '<td class="c" style="background:rgba(198,40,40,' + a.toFixed(2) + '); color:' + (a > 0.5 ? '#fff' : '#263238') + '">' + rhNum(v) + '</td>';
   };
   tabla.innerHTML =
     '<thead><tr><th>Cubicador</th>' + kc.map(function (c) { return '<th class="c" title="' + rhEsc(c) + '">' + rhEsc(nombreCol(c)) + '</th>'; }).join('') +
@@ -540,7 +540,7 @@ function caCierre(f) {
     type: 'bar',
     data: { labels: filas.map(function (c) { return caNom(c.cub); }),
             datasets: [{ label: 'Mediana de días', data: filas.map(function (c) { return c.mediana; }),
-                         backgroundColor: '#e65100', borderRadius: 3, maxBarThickness: 22 }] },
+                         backgroundColor: '#1565C0', borderRadius: 3, maxBarThickness: 22 }] },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: {
