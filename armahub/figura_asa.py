@@ -182,7 +182,46 @@ def _puntos_3d(legs, dirs):
             d = (dirs[i][0], dirs[i][1], 0.0)
         p = (p[0] + d[0] * leg["largo"], p[1] + d[1] * leg["largo"], p[2] + d[2] * leg["largo"])
         pts.append(p)
-    return [[round(c, 1) for c in q] for q in pts]
+    return [[round(c, 1) for c in q] for q in _orientar_3d(pts)]
+
+
+def _orientar_3d(pts):
+    """AL CONVENIO DEL EDITOR 3D DEL CATÁLOGO (4-nov), que es como está dibujada la 305A: el
+    lado más largo por X, el primer doblez que sale de él hacia arriba (Z) y el tercer eje
+    por Y. aSa trae la traba con el lado largo por su Z y se veía parada y al revés; el
+    usuario: «está mal orientado, debiera verse como nuestra figura». Es la misma regla
+    del plano (el lado más largo horizontal), llevada al espacio."""
+    def resta(a, b):
+        return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+    def punto(a, b):
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+    def cruz(a, b):
+        return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+    def unidad(a):
+        n = math.sqrt(punto(a, a))
+        return (a[0] / n, a[1] / n, a[2] / n) if n > 1e-9 else None
+
+    segs = [resta(pts[i + 1], pts[i]) for i in range(len(pts) - 1)]
+    segs = [s for s in segs if punto(s, s) > 1e-9]
+    if not segs:
+        return pts
+    x = unidad(max(segs, key=lambda s: punto(s, s)))
+    z = None
+    for s in segs:
+        k = punto(s, x)
+        perp = (s[0] - k * x[0], s[1] - k * x[1], s[2] - k * x[2])
+        if punto(perp, perp) > 1e-6 * punto(s, s):
+            z = unidad(perp)
+            break
+    if z is None:
+        # Todo en una línea: cualquier perpendicular sirve.
+        z = unidad(cruz(x, (0.0, 0.0, 1.0))) or unidad(cruz(x, (0.0, 1.0, 0.0)))
+    y = cruz(z, x)
+    o = pts[0]
+    return [(punto(resta(p, o), x), punto(resta(p, o), y), punto(resta(p, o), z)) for p in pts]
 
 
 def _unit(vx, vy):

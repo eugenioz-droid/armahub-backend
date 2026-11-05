@@ -1540,6 +1540,9 @@ check("la pantalla lo proyecta en isometrica, antes que cualquier trazo plano de
       "function svgIso(f) {" in JS and "if (f.eje && f.eje.tridimensional && (f.eje.puntos3d || []).length > 1) {" in JS
       and JS.index("var iso = svgIso(f);") < JS.index("var svg = global._bmFiguraSvg ? global._bmFiguraSvg(f, FIG_TAM) : '';")
       and '>3D</span>' in JS)
+check("...con la misma camara del editor 3D del catalogo (azimut 45, elevacion 30), no una isometrica propia",
+      "var el = Math.PI / 6, az = Math.PI / 4;" in JS and "var ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;" in JS
+      and "def _orientar_3d(pts):" in FIG)
 
 print("\nLOS BOTONES DEL AUDITOR TIENEN SU FUNCION (4-nov)")
 IDX = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()

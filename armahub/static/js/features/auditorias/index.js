@@ -1356,22 +1356,30 @@
   // LA FIGURA EN EL ESPACIO (4-nov). La traba 26 y las TP se doblan en dos planos; hasta
   // hoy se mostraba su proyección en planta con un ⚠, y se veía igual que una figura
   // plana: «eso lleva a confusión». El backend manda el eje 3D vértice a vértice
-  // (`puntos3d`, mm) y acá se proyecta en isométrica a 30° con Z hacia arriba: una
-  // polilínea, sin librerías ni codos, con el largo de cada lado en cm y tres ejes chicos
-  // para que se lea como espacio y no como otra figura plana.
+  // (`puntos3d`, mm) ya orientado como las figuras 3D del catálogo (lado largo por X, el
+  // doblez hacia arriba), y acá se proyecta con LA MISMA CÁMARA del editor 3D del catálogo
+  // (disenador3d.js::_isoBasis: azimut 45°, elevación 30°, Z arriba), para que la 26 se vea
+  // como la 305A. Una polilínea, sin librerías ni codos, con el largo de cada lado en cm y
+  // tres ejes chicos para que se lea como espacio y no como otra figura plana.
   function svgIso(f) {
     var eje = f.eje, P3 = eje.puntos3d || [];
     if (P3.length < 2) return '';
     var t = global._bmTam ? global._bmTam(FIG_TAM) : { w: 120, h: 70 };
-    var c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6);
-    var iso = function (p) { return { x: (p[0] - p[1]) * c, y: -((p[0] + p[1]) * s + p[2]) }; };
+    var el = Math.PI / 6, az = Math.PI / 4;
+    var ex = Math.cos(el) * Math.cos(az), ey = -Math.cos(el) * Math.sin(az), ez = Math.sin(el);
+    var fx = -ex, fy = -ey, fz = -ez;
+    var rx = fy, ry = -fx, rz = 0, rn = Math.hypot(rx, ry) || 1; rx /= rn; ry /= rn;
+    var ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    var un = Math.hypot(ux, uy, uz) || 1; ux /= un; uy /= un; uz /= un;
+    // El SVG crece hacia abajo: la altura de cámara se invierte, igual que hace el motor.
+    var iso = function (p) { return { x: p[0] * rx + p[1] * ry + p[2] * rz, y: -(p[0] * ux + p[1] * uy + p[2] * uz) }; };
     var P = P3.map(iso), i;
     var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (i = 0; i < P.length; i++) {
       minX = Math.min(minX, P[i].x); maxX = Math.max(maxX, P[i].x);
       minY = Math.min(minY, P[i].y); maxY = Math.max(maxY, P[i].y);
     }
-    var W = t.w, H = t.h, pad = 16, fw = (maxX - minX) || 1, fh = (maxY - minY) || 1;
+    var W = t.w, H = t.h, pad = 7, fw = (maxX - minX) || 1, fh = (maxY - minY) || 1;
     var k = Math.min((W - 2 * pad) / fw, (H - 2 * pad) / fh);
     var ox = (W - fw * k) / 2 - minX * k, oy = (H - fh * k) / 2 - minY * k;
     var Q = P.map(function (p) { return { x: ox + p.x * k, y: oy + p.y * k }; });
@@ -1382,11 +1390,13 @@
       return '<text x="' + ((a.x + b.x) / 2).toFixed(1) + '" y="' + ((a.y + b.y) / 2 - 3).toFixed(1) +
              '" font-size="8" text-anchor="middle" fill="#555">' + Math.round(l.largo / 10) + '</text>';
     }).join('');
-    // Los tres ejes, abajo a la izquierda: X e Y en el plano, Z arriba.
-    var e0 = { x: 9, y: H - 9 }, L = 9, ejes = [['x', L * c, L * s], ['y', -L * c, L * s], ['z', 0, -L]];
-    var axes = ejes.map(function (a) {
-      return '<line x1="' + e0.x + '" y1="' + e0.y + '" x2="' + (e0.x + a[1]).toFixed(1) + '" y2="' + (e0.y + a[2]).toFixed(1) +
-             '" stroke="#90a4ae" stroke-width="1"/><text x="' + (e0.x + a[1] * 1.6).toFixed(1) + '" y="' + (e0.y + a[2] * 1.6 + 2).toFixed(1) +
+    // Los tres ejes, chicos y abajo a la izquierda, con la misma cámara: X e Y en el
+    // plano, Z arriba.
+    var e0 = { x: 8, y: H - 7 }, L = 7;
+    var axes = [['x', [1, 0, 0]], ['y', [0, 1, 0]], ['z', [0, 0, 1]]].map(function (a) {
+      var q = iso(a[1]);
+      return '<line x1="' + e0.x + '" y1="' + e0.y + '" x2="' + (e0.x + q.x * L).toFixed(1) + '" y2="' + (e0.y + q.y * L).toFixed(1) +
+             '" stroke="#90a4ae" stroke-width="1"/><text x="' + (e0.x + q.x * L * 1.7).toFixed(1) + '" y="' + (e0.y + q.y * L * 1.7 + 2).toFixed(1) +
              '" font-size="6" text-anchor="middle" fill="#90a4ae">' + a[0] + '</text>';
     }).join('');
     return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">' +

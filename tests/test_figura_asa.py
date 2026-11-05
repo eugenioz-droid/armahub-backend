@@ -192,6 +192,17 @@ check("...y se manda el eje en el espacio, vértice a vértice, sin marcarla com
       and r["puntos3d"] == [[0, 0, 0], [300, 0, 0], [300, 0, 200], [0, 0, 200]]
       and [l["lado"] for l in r["lados3d"]] == ["A", "B", "C"])
 check("...una figura plana no manda eje 3D", figura_de(DIMS_T12, T12, 48.0, 12.0)["puntos3d"] == [])
+# La misma traba, pero como la manda aSa de verdad: el lado largo por SU eje Z y el doblez
+# por Y. Tiene que salir igual que arriba: lado largo por X, doblez hacia arriba (Z), como
+# está dibujada la 305A en el catálogo.
+DIMS_3D_Z = json.dumps([
+    {"MMLength": 300.0, "LegNum": 1, "LegName": "A", "ElemType": "B", "SlopingVector": "0,0,100"},
+    {"MMLength": 200.0, "LegNum": 2, "LegName": "B", "ElemType": "B", "SlopingVector": "0,80,0"},
+    {"MMLength": 300.0, "LegNum": 3, "LegName": "C", "ElemType": "B", "SlopingVector": "0,0,-100"},
+])
+r2 = figura_de(DIMS_3D_Z, XML_3D, pin_diam=48.0, diam_mm=12.0)
+check("el eje 3D se orienta al convenio del editor del catálogo: lado largo por X, doblez hacia arriba (4-nov)",
+      r2["puntos3d"] == [[0, 0, 0], [300, 0, 0], [300, 0, 200], [0, 0, 200]])
 check("y una figura plana no lleva ese aviso", not figura_de(DIMS_T12, T12, 48.0, 12.0)["tridimensional"])
 
 # ── Caso 11: un arco de más de 180° (estribo circular) se parte para el motor ──
