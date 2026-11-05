@@ -80,7 +80,7 @@ cur = _con()
 r = CA.control_auditorias(desde="", user={"email": "x@y"})
 check("el endpoint responde con las tres fuentes y la misma forma en cada una",
       set(r["fuentes"]) == {"barras", "elementos", "auditorias"}
-      and all({"semanas", "calor", "cierre", "cierre_total", "columnas", "titulo", "unidad", "columna", "series"}
+      and all({"dias", "calor", "cierre", "cierre_total", "columnas", "titulo", "unidad", "columna", "series"}
               <= set(f) for f in r["fuentes"].values()))
 check("...y son 12 consultas (4 por fuente), todas con sus marcadores cuadrados", len(_Cursor.consultas) == 12)
 check("por defecto arranca el 1 de enero del año en curso", r["desde"].endswith("-01-01"))
@@ -91,14 +91,14 @@ check("las columnas del mapa de calor de barras y de elementos son las reglas, c
       and r["fuentes"]["elementos"]["columnas"].get("mismo_pedido") == "Mismo pedido")
 
 print("\nLAS CUENTAS")
-cur = _con({"date_trunc('week', s.visto_primero)": [("2026-10-26", 10, 2, 5), ("2026-11-02", 4, 0, 0)],
+cur = _con({"TO_CHAR(s.visto_primero, 'YYYY-MM-DD'), COALESCE": [("2026-10-26", "Jvel", 10, 2, 5), ("2026-11-02", "Nlop", 4, 0, 0)],
             "percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (CASE": [("Jvel", 7, 1.5)],
             "s.regla, COUNT(*)": [("Jvel", "lado_corto", 9), ("Nlop", "lado_corto", 1)]})
 r = CA.control_auditorias(desde="2026-10-01", user={})
 b = r["fuentes"]["barras"]
-check("«sin resolver» es lo detectado menos lo que no aplica y lo resuelto",
-      b["semanas"][0] == {"semana": "2026-10-26", "detectadas": 10, "no_aplica": 2, "resueltas": 5, "abiertas": 3}
-      and b["semanas"][1]["abiertas"] == 4)
+check("«sin resolver» es lo detectado menos lo que no aplica y lo resuelto, por dia y por cubicador",
+      b["dias"][0] == {"dia": "2026-10-26", "cub": "Jvel", "detectadas": 10, "no_aplica": 2, "resueltas": 5, "abiertas": 3}
+      and b["dias"][1]["abiertas"] == 4 and b["dias"][1]["cub"] == "Nlop")
 check("el cierre trae la mediana en días con un decimal y cuántas cerró",
       b["cierre"] and b["cierre"][0] == {"cub": "Jvel", "n": 7, "mediana": 1.5} or b["cierre_total"]["mediana"] == 1.5)
 check("el mapa de calor es una celda por cubicador × regla",
@@ -113,7 +113,9 @@ check("señal resuelta = cerrada y no «no aplica»", "aceptada" not in CA.SQL_S
 SRC = open(os.path.join(ROOT, "armahub", "control_auditorias.py"), encoding="utf-8").read()
 check("en auditorías: detectada = observación u hallazgo, «no aplica» = observación, resuelta = hallazgo corregido o verificado",
       "e.hallazgo IN ('observacion', 'hallazgo')" in SRC
-      and "e.hallazgo = 'hallazgo'\n                                     AND e.accion_estado IN ('corregida', 'verificada')" in SRC)
+      and re.search(r"e\.hallazgo = 'hallazgo'\s+AND e\.accion_estado IN \('corregida', 'verificada'\)", SRC) is not None)
+check("la variable que vuelve a la pantalla es la lista por dia, no la expresion SQL de los dias (4-nov)",
+      "    dias = SQL_DIAS" not in SRC and SRC.count("expr_dias") == 6)
 check("la causa del mapa de auditorías vive en la barra (i.causa), como el Pareto de indicadores",
       "COALESCE(NULLIF(TRIM(i.causa), ''), '(sin clasificar)')" in SRC and "i.conforme IS FALSE" in SRC)
 check("mediana, no promedio", SRC.count("percentile_cont(0.5)") == 4)
@@ -131,7 +133,10 @@ check("el sub-tab se llama Control Auditorías y vive en Dashboards de Reclamos,
       ">Control Auditorías</button>" in HTM and 'id="dashSubCtrl"' in HTM
       and "control:     { panel: 'dashSubCtrl',   btn: 'dashSubBtnCtrl'" in JS
       and "if (sub === 'control') loadDashControl();" in JS)
-check("los tres dibujos: embudo por semana, mapa cubicador × regla, días hasta cerrar",
+check("el filtro por cubicador vive en la pantalla: todo viaja por cubicador y se filtra sin volver a preguntar",
+      "GROUP BY 1, 2 ORDER BY 1, 2" in SRC and SRC.count("GROUP BY 1, 2 ORDER BY 1, 2") == 2
+      and "function caFiltra(lista)" in JS and 'id="caCubs"' in HTM and "caFiltra(f.calor)" in JS and "caFiltra(f.cierre)" in JS)
+check("los tres dibujos: barras por dia, mapa cubicador × regla, días hasta cerrar",
       'id="caEmbudo"' in HTM and 'id="caCalor"' in HTM and 'id="caCierre"' in HTM
       and "function caEmbudo(f)" in JS and "function caCalor(f)" in JS and "function caCierre(f)" in JS)
 check("el mapa de calor lo ven todos los que ven el tablero (sin filtro de rol en el dibujo)",

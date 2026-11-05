@@ -7,9 +7,11 @@ barras, las auditorías y las revisiones de elementos».
 TRES PREGUNTAS, LAS MISMAS PARA LAS TRES FUENTES, y por eso las tres vuelven con la misma
 forma y la pantalla tiene un solo dibujante:
 
-  1. ¿Se cierra lo que sale? — por SEMANA de detección: detectadas, y de ésas cuántas no
-     aplican, cuántas se resolvieron y cuántas siguen sin resolver HOY. La semana es la de
-     detección y el estado es el de ahora: así el tramo rojo que crece es la alarma.
+  1. ¿Se cierra lo que sale? — por DÍA de detección y por cubicador: detectadas, y de
+     ésas cuántas no aplican, cuántas se resolvieron y cuántas siguen sin resolver HOY. El
+     día es el de detección y el estado es el de ahora: así la barra roja que crece es la
+     alarma. Va por cubicador para que la pantalla filtre sin volver a preguntar (4-nov:
+     «un filtro con botones por cubicador»).
   2. ¿Dónde está el problema? — cubicador × regla (o causa, en auditorías). Una columna
      encendida para todos es una regla mal calibrada, no una persona.
   3. ¿Cuánto se tarda en cerrar? — mediana de días entre detección y cierre, por cubicador
@@ -49,12 +51,12 @@ SQL_CUB_AUD = "COALESCE(NULLIF(TRIM(e.cubicado_por), ''), '(sin dato)')"
 SQL_DIAS = "EXTRACT(EPOCH FROM (%s - %s)) / 86400.0"
 
 
-def _semanas(filas):
-    """Las filas (semana, detectadas, no_aplica, resueltas) → dicts con «abiertas» = el resto."""
+def _dias(filas):
+    """Las filas (día, cubicador, detectadas, no_aplica, resueltas) → dicts con «abiertas» = el resto."""
     out = []
-    for sem, n, nap, res in filas:
+    for dia, cub, n, nap, res in filas:
         n, nap, res = int(n or 0), int(nap or 0), int(res or 0)
-        out.append({"semana": sem, "detectadas": n, "no_aplica": nap, "resueltas": res,
+        out.append({"dia": dia, "cub": cub, "detectadas": n, "no_aplica": nap, "resueltas": res,
                     "abiertas": max(0, n - nap - res)})
     return out
 
@@ -66,46 +68,46 @@ def _cierre(filas):
 
 def _fuente_senales(cur, nivel: str, desde: date, reglas) -> dict:
     cur.execute(
-        f"""SELECT TO_CHAR(date_trunc('week', s.visto_primero), 'YYYY-MM-DD'),
+        f"""SELECT TO_CHAR(s.visto_primero, 'YYYY-MM-DD'), {SQL_CUB_SENAL},
                    COUNT(*),
                    COUNT(*) FILTER (WHERE s.estado = 'aceptada'),
                    COUNT(*) FILTER (WHERE {SQL_SENAL_RESUELTA})
               FROM chequeo_senales s
              WHERE s.nivel = %s AND s.visto_primero >= %s
-             GROUP BY 1 ORDER BY 1""", (nivel, desde))
-    semanas = _semanas(cur.fetchall())
+             GROUP BY 1, 2 ORDER BY 1, 2""", (nivel, desde))
+    dias = _dias(cur.fetchall())
     cur.execute(
         f"""SELECT {SQL_CUB_SENAL}, s.regla, COUNT(*)
               FROM chequeo_senales s
              WHERE s.nivel = %s AND s.visto_primero >= %s
              GROUP BY 1, 2""", (nivel, desde))
     calor = [{"cub": c, "col": r, "n": int(n)} for c, r, n in cur.fetchall()]
-    dias = SQL_DIAS % (SQL_SENAL_CIERRE, "s.visto_primero")
+    expr_dias = SQL_DIAS % (SQL_SENAL_CIERRE, "s.visto_primero")
     base = (f"FROM chequeo_senales s WHERE s.nivel = %s AND s.visto_primero >= %s"
             f" AND {SQL_SENAL_CERRADA} AND ({SQL_SENAL_CIERRE}) IS NOT NULL")
     cur.execute(f"""SELECT {SQL_CUB_SENAL}, COUNT(*),
-                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {dias})
+                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {expr_dias})
                       {base} GROUP BY 1""", (nivel, desde))
     cierre = _cierre(cur.fetchall())
     cur.execute(f"""SELECT 'total', COUNT(*),
-                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {dias}) {base}""", (nivel, desde))
+                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {expr_dias}) {base}""", (nivel, desde))
     total = _cierre(cur.fetchall())
-    return {"semanas": semanas, "calor": calor, "cierre": cierre,
+    return {"dias": dias, "calor": calor, "cierre": cierre,
             "cierre_total": total[0] if total else {"cub": "total", "n": 0, "mediana": None},
             "columnas": {r["codigo"]: r.get("corto") or r["nombre"] for r in reglas}}
 
 
 def _fuente_auditorias(cur, desde: date) -> dict:
     cur.execute(
-        """SELECT TO_CHAR(date_trunc('week', a.creada_fecha), 'YYYY-MM-DD'),
-                  COUNT(*) FILTER (WHERE e.hallazgo IN ('observacion', 'hallazgo')),
-                  COUNT(*) FILTER (WHERE e.hallazgo = 'observacion'),
-                  COUNT(*) FILTER (WHERE e.hallazgo = 'hallazgo'
-                                     AND e.accion_estado IN ('corregida', 'verificada'))
-             FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
-            WHERE e.hallazgo IS NOT NULL AND a.creada_fecha >= %s
-            GROUP BY 1 ORDER BY 1""", (desde,))
-    semanas = _semanas(cur.fetchall())
+        f"""SELECT TO_CHAR(a.creada_fecha, 'YYYY-MM-DD'), {SQL_CUB_AUD},
+                   COUNT(*) FILTER (WHERE e.hallazgo IN ('observacion', 'hallazgo')),
+                   COUNT(*) FILTER (WHERE e.hallazgo = 'observacion'),
+                   COUNT(*) FILTER (WHERE e.hallazgo = 'hallazgo'
+                                      AND e.accion_estado IN ('corregida', 'verificada'))
+              FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id
+             WHERE e.hallazgo IS NOT NULL AND a.creada_fecha >= %s
+             GROUP BY 1, 2 ORDER BY 1, 2""", (desde,))
+    dias = _dias(cur.fetchall())
     # LA CAUSA VIVE EN LA BARRA (8-oct), como en el Pareto de indicadores: la clasifica
     # quien responde. «(sin clasificar)» se cuenta y no se esconde.
     cur.execute(
@@ -116,19 +118,19 @@ def _fuente_auditorias(cur, desde: date) -> dict:
              WHERE a.creada_fecha >= %s AND i.conforme IS FALSE AND e.hallazgo = 'hallazgo'
              GROUP BY 1, 2""", (desde,))
     calor = [{"cub": c, "col": r, "n": int(n)} for c, r, n in cur.fetchall()]
-    dias = SQL_DIAS % ("e.accion_el", "e.revisado_el")
+    expr_dias = SQL_DIAS % ("e.accion_el", "e.revisado_el")
     base = ("FROM auditoria_elementos e JOIN auditorias a ON a.id = e.auditoria_id"
             " WHERE a.creada_fecha >= %s AND e.hallazgo = 'hallazgo'"
             " AND e.accion_estado IN ('corregida', 'verificada')"
             " AND e.accion_el IS NOT NULL AND e.revisado_el IS NOT NULL")
     cur.execute(f"""SELECT {SQL_CUB_AUD}, COUNT(*),
-                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {dias})
+                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {expr_dias})
                       {base} GROUP BY 1""", (desde,))
     cierre = _cierre(cur.fetchall())
     cur.execute(f"""SELECT 'total', COUNT(*),
-                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {dias}) {base}""", (desde,))
+                           percentile_cont(0.5) WITHIN GROUP (ORDER BY {expr_dias}) {base}""", (desde,))
     total = _cierre(cur.fetchall())
-    return {"semanas": semanas, "calor": calor, "cierre": cierre,
+    return {"dias": dias, "calor": calor, "cierre": cierre,
             "cierre_total": total[0] if total else {"cub": "total", "n": 0, "mediana": None},
             "columnas": {}}
 

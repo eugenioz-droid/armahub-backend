@@ -227,6 +227,8 @@
            para lo que está mal (sin resolver, el mapa de calor) y el verde para lo resuelto,
            como en el resto de Dashboards. */
         .cafuentes button.on{background:#1565C0; border-color:#1565C0; color:#fff;}
+        .cacubs button{font-weight:600; color:#607d8b; padding:3px 10px; font-size:11px;}
+        .cacubs button.on{background:#546e7a; border-color:#546e7a;}
         .calect{font-size:11.5px; color:#37474f; background:#fff; border:1px solid #eee;
                 border-left:4px solid #1565C0; border-radius:8px; padding:9px 13px; margin-bottom:12px;}
         .calect b{color:#1565C0;}
@@ -240,9 +242,12 @@
         .cavacio{font-size:11.5px; color:#90a4ae; padding:14px 0;}
       </style>
       <div class="cafuentes" id="caFuentes"></div>
+      <!-- El filtro por cubicador (4-nov): un botón por persona, «Todos» primero. Filtra
+           los tres tableros y la lectura, sin volver a preguntar al servidor. -->
+      <div class="cafuentes cacubs" id="caCubs"></div>
       <div class="calect" id="caLectura"></div>
       <div class="rhcaja" style="margin-bottom:12px;">
-        <div class="rhtit">¿Se cierra lo que sale? Por semana de detección</div>
+        <div class="rhtit">¿Se cierra lo que sale? Por día de detección</div>
         <div class="rhsub" id="caEmbudoSub"></div>
         <div class="cacanvas"><canvas id="caEmbudo"></canvas></div>
       </div>

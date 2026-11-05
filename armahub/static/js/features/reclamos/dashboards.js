@@ -394,7 +394,7 @@ function switchDashSubTab(sub) {
 // Las tres fuentes de calidad de cubicación —revisión de barras, revisión de elementos,
 // auditorías— con las mismas tres preguntas. El backend (control_auditorias.py) manda las
 // tres con la MISMA forma, así que acá hay un solo dibujante y un selector de fuente.
-var CA = { datos: null, fuente: 'barras', charts: {} };
+var CA = { datos: null, fuente: 'barras', cub: null, charts: {} };
 var CA_FUENTES = ['barras', 'elementos', 'auditorias'];
 var CA_COLOR = { no_aplica: '#b0bec5', resueltas: '#8BC34A', abiertas: '#e53935' };
 
@@ -441,37 +441,69 @@ function caPintar() {
     b.addEventListener('click', function () { CA.fuente = b.dataset.caf; caPintar(); });
   });
   document.getElementById('caColTit').textContent = f.columna;
+  // EL FILTRO POR CUBICADOR (4-nov): un botón por persona con data en esta fuente,
+  // ordenados por cuántas tienen; «Todos» primero. Clic deja SOLO ese; volver a tocarlo
+  // suelta. Si el elegido no está en esta fuente, se vuelve a «Todos».
+  var porCub = {};
+  f.dias.forEach(function (d) { porCub[d.cub] = (porCub[d.cub] || 0) + (d.detectadas || 0); });
+  var cubs = Object.keys(porCub).sort(function (a, b) { return porCub[b] - porCub[a]; });
+  if (CA.cub && cubs.indexOf(CA.cub) === -1) CA.cub = null;
+  var cc = document.getElementById('caCubs');
+  cc.innerHTML = '<button data-cacub="" class="' + (CA.cub ? '' : 'on') + '">Todos</button>' +
+    cubs.map(function (k) {
+      return '<button data-cacub="' + rhEsc(k) + '" class="' + (k === CA.cub ? 'on' : '') + '" title="' + rhEsc(k) + '">' +
+             rhEsc(caNom(k)) + ' <small>' + rhNum(porCub[k]) + '</small></button>';
+    }).join('');
+  cc.querySelectorAll('button[data-cacub]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      CA.cub = (b.dataset.cacub && b.dataset.cacub !== CA.cub) ? b.dataset.cacub : null;
+      caPintar();
+    });
+  });
   caLectura(f);
   caEmbudo(f);
   caCalor(f);
   caCierre(f);
 }
 
+// Lo que pasa el filtro de cubicador. Sin filtro, todo.
+function caFiltra(lista) {
+  return CA.cub ? (lista || []).filter(function (x) { return x.cub === CA.cub; }) : (lista || []);
+}
+
 // LA LECTURA, con su denominador: «N detectadas · R resueltas (x%) · P no aplican · A sin resolver».
 function caLectura(f) {
   var t = { detectadas: 0, no_aplica: 0, resueltas: 0, abiertas: 0 };
-  f.semanas.forEach(function (s) { Object.keys(t).forEach(function (k) { t[k] += s[k] || 0; }); });
+  caFiltra(f.dias).forEach(function (s) { Object.keys(t).forEach(function (k) { t[k] += s[k] || 0; }); });
   var desde = CA.datos.desde ? CA.datos.desde.split('-').reverse().join('-') : '';
+  var quien = CA.cub ? ' de ' + rhEsc(caNom(CA.cub)) : '';
   var el = document.getElementById('caLectura');
-  if (!t.detectadas) { el.innerHTML = 'Desde el ' + desde + ' no hay ' + rhEsc(f.unidad) + ' detectadas en esta fuente.'; return; }
+  if (!t.detectadas) { el.innerHTML = 'Desde el ' + desde + ' no hay ' + rhEsc(f.unidad) + quien + ' detectadas en esta fuente.'; return; }
   var pct = function (n) { return Math.round(n / t.detectadas * 100); };
-  el.innerHTML = 'Desde el ' + desde + ': <b>' + rhNum(t.detectadas) + '</b> ' + rhEsc(f.unidad) + ' detectadas · ' +
+  el.innerHTML = 'Desde el ' + desde + quien + ': <b>' + rhNum(t.detectadas) + '</b> ' + rhEsc(f.unidad) + ' detectadas · ' +
     '<b>' + rhNum(t.resueltas) + '</b> ' + rhEsc(f.series.resueltas.toLowerCase()) + ' (' + pct(t.resueltas) + '%) · ' +
     rhNum(t.no_aplica) + ' ' + rhEsc(f.series.no_aplica.toLowerCase()) + ' (' + pct(t.no_aplica) + '%) · ' +
     '<b class="' + (t.abiertas ? 'mal' : 'bien') + '">' + rhNum(t.abiertas) + '</b> ' +
     rhEsc(f.series.abiertas.toLowerCase()) + ' (' + pct(t.abiertas) + '%).';
 }
 
-// 1. ¿SE CIERRA LO QUE SALE? Barras apiladas por semana de detección, estado de hoy.
+// 1. ¿SE CIERRA LO QUE SALE? Tres barras por DÍA de detección —no aplica, resueltas, por
+// resolver—, una al lado de la otra (4-nov: el usuario las quiso separadas, no apiladas),
+// con el estado de hoy. Por día y filtrado por cubicador si hay uno elegido.
 function caEmbudo(f) {
   var sub = document.getElementById('caEmbudoSub');
-  sub.textContent = 'Cada barra es lo detectado esa semana, con su estado de hoy: ' + f.series.no_aplica.toLowerCase() +
-    ', ' + f.series.resueltas.toLowerCase() + ' y ' + f.series.abiertas.toLowerCase() + '. El tramo rojo que crece es la alarma.';
-  var sem = f.semanas;
-  var etiquetas = sem.map(function (s) { var p = (s.semana || '').split('-'); return p.length === 3 ? p[2] + '-' + p[1] : s.semana; });
+  sub.textContent = 'Cada día, lo detectado ese día con su estado de hoy: ' + f.series.no_aplica.toLowerCase() +
+    ', ' + f.series.resueltas.toLowerCase() + ' y ' + f.series.abiertas.toLowerCase() + '. La barra roja que crece es la alarma.';
+  var porDia = {}, dias = [];
+  caFiltra(f.dias).forEach(function (d) {
+    if (!porDia[d.dia]) { porDia[d.dia] = { detectadas: 0, no_aplica: 0, resueltas: 0, abiertas: 0 }; dias.push(d.dia); }
+    Object.keys(porDia[d.dia]).forEach(function (k) { porDia[d.dia][k] += d[k] || 0; });
+  });
+  dias.sort();
+  var etiquetas = dias.map(function (d) { var p = d.split('-'); return p.length === 3 ? p[2] + '-' + p[1] : d; });
   var series = ['no_aplica', 'resueltas', 'abiertas'].map(function (k) {
-    return { label: f.series[k], data: sem.map(function (s) { return s[k] || 0; }), backgroundColor: CA_COLOR[k],
-             borderRadius: 2, maxBarThickness: 40 };
+    return { label: f.series[k], data: dias.map(function (d) { return porDia[d][k] || 0; }), backgroundColor: CA_COLOR[k],
+             borderRadius: 2, maxBarThickness: 22 };
   });
   caGrafico('caEmbudo', {
     type: 'bar',
@@ -480,16 +512,18 @@ function caEmbudo(f) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-        datalabels: { display: false },
+        datalabels: { display: true, anchor: 'end', align: 'end', offset: 0, color: '#546e7a', font: { size: 8, weight: '700' },
+                      formatter: function (v) { return v ? rhNum(v) : ''; } },
         tooltip: { callbacks: {
-          title: function (c) { return 'Semana del ' + c[0].label + ' · ' + rhNum(sem[c[0].dataIndex].detectadas) + ' detectadas'; },
+          title: function (c) { return c[0].label + ' · ' + rhNum(porDia[dias[c[0].dataIndex]].detectadas) + ' detectadas'; },
           label: function (c) { return c.dataset.label + ': ' + rhNum(c.parsed.y); } } }
       },
       scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
-        y: { stacked: true, beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 }, grid: { color: '#f2f4f6' } }
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { beginAtZero: true, grace: '12%', ticks: { font: { size: 9 }, precision: 0 }, grid: { color: '#f2f4f6' } }
       }
-    }
+    },
+    plugins: [ChartDataLabels]
   });
 }
 
@@ -498,7 +532,7 @@ function caEmbudo(f) {
 function caCalor(f) {
   var tabla = document.getElementById('caCalor');
   var mapa = {}, filas = {}, cols = {}, max = 0;
-  f.calor.forEach(function (c) {
+  caFiltra(f.calor).forEach(function (c) {
     mapa[c.cub] = mapa[c.cub] || {};
     mapa[c.cub][c.col] = (mapa[c.cub][c.col] || 0) + c.n;
     filas[c.cub] = (filas[c.cub] || 0) + c.n;
@@ -530,12 +564,14 @@ function caCalor(f) {
 // debe tapar a veinte que se cerraron el mismo día.
 function caCierre(f) {
   var sub = document.getElementById('caCierreSub');
-  var t = f.cierre_total || {};
-  sub.textContent = t.n
-    ? 'Entre que salió y se cerró. Mediana general: ' + caDias(t.mediana) + ' día(s) sobre ' + rhNum(t.n) + ' cerradas.'
-    : 'Todavía no hay cierres en el período.';
-  var filas = (f.cierre || []).filter(function (c) { return c.mediana != null; })
+  var filas = caFiltra(f.cierre).filter(function (c) { return c.mediana != null; })
     .sort(function (a, b) { return b.mediana - a.mediana; });
+  // Con un cubicador elegido la referencia es la suya; sin filtro, la mediana general.
+  var t = CA.cub ? (filas[0] || {}) : (f.cierre_total || {});
+  sub.textContent = t.n
+    ? 'Entre que salió y se cerró. Mediana ' + (CA.cub ? 'de ' + caNom(CA.cub) : 'general') + ': ' +
+      caDias(t.mediana) + ' día(s) sobre ' + rhNum(t.n) + ' cerradas.'
+    : 'Todavía no hay cierres en el período' + (CA.cub ? ' para ' + caNom(CA.cub) : '') + '.';
   caGrafico('caCierre', {
     type: 'bar',
     data: { labels: filas.map(function (c) { return caNom(c.cub); }),
