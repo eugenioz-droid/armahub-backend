@@ -786,15 +786,20 @@
         porcub[q] = (porcub[q] || 0) + 1;
       });
     });
-    var quien = Object.keys(porcub).sort().map(function (q) {
-      return esc(q.split('@')[0]) + ': ' + porcub[q]; }).join(' · ');
+    // OJO CON EL NOMBRE (4-nov): esto se llamaba `quien`, igual que la función de arriba
+    // que escribe el nombre del cubicador, y como `var` se iza a toda la función, la
+    // tabla de elementos de más abajo llamaba a un string: «quien is not a function».
+    // Desde el 2-nov ninguna auditoría pintaba su detalle entero; la enviada quedaba sin
+    // el Resumen Hallazgos, que es la mesa de trabajo del auditado.
+    var porCubTxt = Object.keys(porcub).sort().map(function (q) {
+      return esc(quien(q)) + ': ' + porcub[q]; }).join(' · ');
     $('audDetInfo').innerHTML += '<div class="audkpis audres3" id="audResBarra">' +
       caj(rs.elementos_auditados || 0, 'elementos auditados' +
           (rs.elementos && rs.elementos !== rs.elementos_auditados ? ' de ' + rs.elementos : '')) +
       caj(rs.items_auditados || 0, 'ítems auditados') +
       caj(rs.hallazgos || 0, 'hallazgos', rs.hallazgos ? 'mal' : 'bien') +
       caj(obsN, 'observaciones') +
-      caj(quien || '—', 'barras por corregir, por cubicador') +
+      caj(porCubTxt || '—', 'barras por corregir, por cubicador') +
       (enviadaYa && AUD.soy_auditor
         ? '<button class="audmini auddespl" id="audVerMuestra">' +
           (MUESTRA_ABIERTA ? '▾ Ocultar la muestra' : '▸ Ver la muestra del auditor (' + (AUD.n || 0) + ')') + '</button>'

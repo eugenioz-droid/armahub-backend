@@ -1544,6 +1544,19 @@ check("...con la misma camara del editor 3D del catalogo (azimut 45, elevacion 3
       "var el = Math.PI / 6, az = Math.PI / 4;" in JS and "var ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;" in JS
       and "def _orientar_3d(pts):" in FIG)
 
+print("\nNINGUNA VARIABLE LOCAL TAPA UNA FUNCION DEL MODULO (4-nov)")
+import re as _re2  # noqa: E402
+IDX = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
+# `var quien = '...'` dentro de pintarDetalle tapaba a `function quien(x)`, y la tabla de
+# elementos llamaba a un string. Dos dias sin que ninguna auditoria pintara su detalle entero.
+_funcs = set(_re2.findall(r"^  (?:async )?function (\w+)\s*\(", IDX, _re2.M))
+_tapadas = sorted(f for f in _funcs if _re2.search(r"\bvar " + f + r"\s*=", IDX))
+check("ninguna funcion del modulo tiene una `var` con su mismo nombre (quien is not a function)", not _tapadas)
+for f in _tapadas:
+    print("      tapada: " + f)
+check("...y las barras por corregir por cubicador salen con el nombre, no con el login",
+      "var porCubTxt = Object.keys(porcub)" in IDX and "return esc(quien(q)) + ': ' + porcub[q]; }).join(' · ');" in IDX)
+
 print("\nLOS BOTONES DEL AUDITOR TIENEN SU FUNCION (4-nov)")
 IDX = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"), encoding="utf-8").read()
 import re as _re2  # noqa: E402
