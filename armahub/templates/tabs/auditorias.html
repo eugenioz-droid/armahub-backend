@@ -36,7 +36,6 @@
     <div id="audVistaLista">
 
     <!-- LO MÍO primero: si tengo correcciones pendientes, las veo al entrar. -->
-    <div class="card audc audmias" id="audMias" style="display:none;"></div>
 
     <!-- ══════ 1 · CREAR ══════
          El formulario arranca PLEGADO: lo normal al entrar es mirar las auditorías que
@@ -462,7 +461,6 @@
   .audt td.audnom{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   /* EN LA TABLA DE ACCIONES el texto NO se corta: ahí es donde se trabaja la corrección y
      hay que poder leerlo entero, así que esa fila crece hacia abajo en vez de a lo ancho. */
-  .audt.audacct td{white-space:normal; overflow:visible;}
   .audt td.audqse{min-width:260px; max-width:520px;}
   /* La barra, en el panel del auditado: lo primero que busca para ir a arreglarla. */
   .audref{font-family:ui-monospace,Consolas,monospace; font-size:10px; color:#37474f;
@@ -483,7 +481,6 @@
   .audsololeer #audRevBarras select, .audsololeer #audRevChips{pointer-events:none;}
   .audnota{background:#f7f9fb; border:1px solid #e3e8ef; color:#607d8b; font-size:11px;
            padding:6px 9px; border-radius:5px; margin-bottom:8px;}
-  .audacc2{white-space:nowrap; display:flex; gap:4px; align-items:center;}
   /* LA SEÑAL DE QUE SE APRETÓ. Sin esto los botones quedaban «pegados»: el clic no
      cambiaba nada a la vista mientras el servidor respondía, y se apretaba de nuevo. */
   .audwait{opacity:.55; cursor:progress !important; position:relative;}
@@ -493,16 +490,35 @@
   @keyframes audwait{ 0%{transform:translateX(-100%);} 100%{transform:translateX(100%);} }
   .audmini:active:not(:disabled), .audbtn:active:not(:disabled),
   .audenviar:active:not(:disabled){transform:translateY(1px);}
-  .revseg button:active:not(:disabled){transform:translateY(1px);}
-  .audacct td.revfig{width:124px; text-align:center;}
-  .audacct td.revfig svg{display:block; margin:0 auto; max-width:116px; height:auto;}
-  .audacct tr.audeses td{background:#fafafa; color:#90a4ae;}
-  /* MIENTRAS SE JUSTIFICA UN «NO APLICA» (5-nov): la fila esconde el RCA y el Resuelto;
-     lo que no aplica no se clasifica ni se resuelve. */
-  .audacct tr.napabierto td.audcausa > *, .audacct tr.napabierto .audbres{display:none;}
-  .audacct tr.napabierto td.audcausa::after{content:'—'; color:#b0bec5;}
-  .audacct tr.napabierto td{background:#fff8e1;}
-  .audlote .revnapin{width:320px;}
+  /* LA HOJA DE LA AUDITORÍA (6-nov): los mismos bloques de la revisión de barras (.revcc2),
+     con lo propio de la auditoría. La cabecera te sigue al bajar, como la de la revisión. */
+  .audcab{position:sticky; top:0; z-index:6; background:#fff; padding-bottom:2px;}
+  .audhoja .audtbl{overflow-x:auto;}
+  .audhoja td.audnom{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .audhoja td.audqse{min-width:200px; max-width:420px;}
+  .audhoja td.audcausa{white-space:nowrap;}
+  .audhoja td.audcausa .audmini{font-family:ui-monospace,Consolas,monospace;}
+  .audhoja td.audcausa .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
+  /* El nombre que le puso el cubicador a la marca (Notes en aSa), al lado de la marca. */
+  .audnotas{font-size:9.5px; font-weight:700; color:#4e342e; background:#efebe9; border-radius:3px;
+            padding:0 5px; margin-left:3px; letter-spacing:.3px;}
+  /* Lo que dijo aSa al resolver: editada, idéntica (traba el cierre) o sin comprobar. */
+  .audasa{display:inline-block; margin-left:5px; font-size:9.5px; font-weight:700; border-radius:99px;
+          padding:1px 7px; white-space:nowrap;}
+  .audasa.ok{background:#e8f5e9; color:#2e7d32;}
+  .audasa.mal{background:#ffebee; color:#c62828;}
+  .audasa.nd{background:#eceff1; color:#78909c;}
+  .audnota.audidem{background:#ffebee; border-color:#ef9a9a; color:#c62828;}
+  /* La salida elegida queda encendida mientras se escribe; el código y la marca nuevos, en
+     azul para no confundirse con el texto de la línea. */
+  .audbres.eligiendo{background:#e8f5e9; border-color:#2e7d32; box-shadow:inset 0 -2px 0 #2e7d32;}
+  .revccin{width:92px; font-size:11px; padding:3px 6px; border:1px solid #90caf9; border-radius:4px;
+           background:#e3f2fd; color:#0d47a1;}
+  .revccin.revmarcain{width:64px;}
+  /* MIENTRAS SE JUSTIFICA UN «NO APLICA» (5-nov): la fila esconde el RCA; lo que no aplica
+     no se clasifica. */
+  .audhoja tr.napabierto td.audcausa > *{display:none;}
+  .audhoja tr.napabierto td.audcausa::after{content:'—'; color:#b0bec5;}
   /* ══════ LAS REVISIONES ══════ */
   /* LA MATRIZ, ARMONIZADA (2-nov). Un solo tamaño de número; el peso y el color dicen qué
      importa. Dos filas de encabezado: la sección y la columna. */
@@ -746,7 +762,6 @@
   /* El nombre de la figura al lado del dibujo (21-oct): filas más bajas. */
   .audfigw{display:inline-flex; align-items:center; gap:5px; vertical-align:middle;}
   .audfigw .audfign{margin:0;}
-  .audacct th.audaccth:not(:empty){min-width:210px;}
   .revcc2 td{vertical-align:middle;}
   .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
   .revi.abierta{background:#fff8e1; color:#8d6e00;} .revi.declarada{background:#e3f2fd; color:#1565C0;}
@@ -754,12 +769,6 @@
   /* LA DECISIÓN, EN LA FILA (2-nov): «Resuelto» · «No aplica», y al apretar No aplica se
      abre AL LADO un campo corto. El campo no es para explicaciones largas: una línea, y
      el texto corre con el cursor. */
-  .revseg{display:inline-flex; border:1px solid #cfd8dc; border-radius:5px; overflow:hidden;}
-  .revseg button{border:none; background:#fff; color:#546e7a; font-size:10px; font-weight:600;
-                 padding:3px 8px; cursor:pointer; white-space:nowrap;}
-  .revseg button + button{border-left:1px solid #cfd8dc;}
-  .revseg button:hover:not(:disabled){background:#eceff1;}
-  .revseg button.on{background:#1565C0; color:#fff;}
   .revnapbtn{border:1px solid #cfd8dc; background:#fff; color:#546e7a; font-size:10px; font-weight:600;
              padding:3px 8px; border-radius:5px; cursor:pointer; white-space:nowrap;}
   .revnapbtn:hover:not(:disabled){background:#eceff1;}
@@ -843,22 +852,6 @@
   .audt td.audedc input.auded:focus{outline:2px solid #aed581; outline-offset:-2px;
         background:#fff;}
   .audt td.audedc.puesto{background:#f1f8e9;}
-  /* ══════ RESOLVER UNA BARRA ══════
-     Los tres caminos a la vista, en la fila de la propia barra. Antes esto era una cadena
-     de confirm() y prompt(): no se veía qué se estaba eligiendo ni se podía volver atrás. */
-  .audt tr.audresol td{background:#f7f9fb; padding:8px 10px;}
-  .audresolc{display:flex; flex-direction:column; gap:5px;}
-  .audresolq{font-size:11px; color:#37474f; margin-bottom:2px;}
-  .audresolc label{font-size:11px; color:#37474f; display:flex; align-items:center; gap:6px;
-                   cursor:pointer;}
-  .audresolc input[type=radio]{margin:0;}
-  .audresi{font-size:11px; padding:2px 6px; border:1px solid #cfd8dc; border-radius:4px;
-           width:140px;}
-  .audresn{font-size:11px; padding:4px 7px; border:1px solid #cfd8dc; border-radius:4px;
-           width:100%; max-width:680px;}
-  .audresolb{display:flex; align-items:center; gap:8px; margin-top:2px;}
-  /* Una barra desestimada por el auditado: no cuenta como abierta, pero se ve. */
-  .audt tr.audeses td{background:#fafafa; color:#78909c;}
   .auddes{font-size:9.5px; font-weight:700; color:#5d4037; background:#efebe9;
           border:1px solid #d7ccc8; border-radius:99px; padding:1px 7px;}
   /* La causa de una barra: botón, porque abre la matriz. Sin clasificar se ve que falta. */
@@ -924,20 +917,12 @@
   .audacc{margin-top:10px; padding:12px 14px; background:#fff; border:1px solid #e8ebef;
           border-top:3px solid #ffb300; border-radius:8px;
           box-shadow:0 1px 2px rgba(38,50,56,.06);}
-  /* NINGUNA COLUMNA SE CORTA. La tabla reparte el ancho sobrante en «Qué se encontró» y
-     «Debería decir», que son las que llevan texto; el resto va al contenido. Y si la
-     pantalla es angosta, la tabla scrollea sola en vez de empujar las últimas columnas
-     fuera de la caja. */
-  .audacc .audbdacc{overflow-x:auto;}
   /* La observación de la barra, a la derecha de la barra (28-oct). */
   .audt th.audobsth{min-width:240px;}
   .audt td.audobstd{min-width:240px; padding:2px 6px;}
   .audt td.audobstd .audobs{width:100%; box-sizing:border-box;}
   /* Lo que dijo aSa al cerrar, en la pantalla de la auditoría cerrada. */
   .audnota.audcerrada{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32;}
-  .audt.audacct{table-layout:auto; min-width:980px;}
-  .audacct td.audqse{min-width:240px;}
-  .audacct th:last-child, .audacct td:last-child{white-space:nowrap;}
   /* EL BOTÓN «RESUELTO» (20-oct). Se llama audBres y no audres porque .audres ya era la
      barrita de 10px de los indicadores (línea de arriba): con el mismo nombre el botón
      salía como un óvalo sin texto. Reemplaza el check «Corregido en aSa»: verde cuando está
@@ -958,18 +943,6 @@
      y la fila lo dice para que el rastro esté a la vista. */
   .audporotro{font-size:9px; font-weight:600; color:#6d4c41; background:#efebe9;
               border-radius:99px; padding:1px 6px; white-space:nowrap; margin-left:4px;}
-  /* EL MISMO FORMATO QUE LA REVISIÓN (21-oct): agrupado por código, con cabecera y avance
-     por código, y la barra de lote arriba de la tabla. */
-  .audacct tr.audgrupo td{background:#f5f7f9; font-size:11px; padding:7px 8px;
-                          border-top:2px solid #e0e6ea; color:#37474f;}
-  .audacct tr.audgrupo td label{cursor:pointer;}
-  .audacct tr.audgrupo .revquien{margin-left:8px;}
-  .audlote{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:6px 0 8px;
-           padding:8px 10px; background:#f1f8e9; border:1px solid #c5e1a5; border-radius:6px;
-           font-size:11px; color:#33691e;}
-  .audlote .revseg button.eligiendo{background:#efebe9; color:#4e342e; box-shadow:inset 0 -2px 0 #6d4c41;}
-  /* Mis correcciones pendientes: lo primero que ve el cubicador al entrar. */
-  .audmias{background:#fffdf5; border-top:3px solid #ffb300;}
   /* Estado de la acción. Pendiente pesa, verificada se apaga: lo cerrado no debe gritar. */
   .audacc1{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
   .audacc1.pendiente{background:#fff3e0; color:#e65100;}

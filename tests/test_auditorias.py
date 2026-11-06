@@ -239,8 +239,8 @@ check("...y el correo y el informe muestran las dos cosas, no sólo el campo gen
 check("la pantalla lo muestra barra por barra en la tabla de acciones; la celda vieja ya no existe",
       "function celdaQueSeEncontro(" not in JS and "audobsgen" not in JS and "audobsb" not in HTM
       and "function filaComentario(" in JS and "function filaAccion(" in JS)
-check("...y en la tabla de acciones el texto NO se corta: ahí es donde se trabaja",
-      ".audt.audacct td{white-space:normal" in HTM and "audacct" in JS)
+check("...y en la hoja de la auditoría el texto del auditor tiene su ancho: ahí es donde se trabaja",
+      ".audhoja td.audqse{min-width:200px" in HTM and "revcc2 audhoja" in JS)
 
 # LA TABLA DE LA MUESTRA SE SALÍA DEL ANCHO y la última columna quedaba cortada contra el
 # borde. Lo que la empujaba era el texto del hallazgo arrastrado dentro de su celda.
@@ -275,9 +275,11 @@ check("VERIFICAR es del auditor: el que corrigió no puede darse el visto bueno"
 check("a quien cubicó le llega aviso en la campana, sin romper el hallazgo si falla",
       "def _avisar(" in SRC and "'auditoria_accion'" in SRC and "except Exception:" in SRC
       and "reclamo_id` va NULL" in SRC)
-check("...y además tiene su propia caja «mis correcciones pendientes»",
-      '@router.get("/auditorias/mias/acciones")' in SRC and 'id="audMias"' in HTM
-      and "cargarMisAcciones" in JS)
+# «MIS CORRECCIONES» SE FUE (6-nov): «al cubicador le aparece un resumen super desordenado
+# que de hecho le desordena la forma de trabajar… al presionar en la auditoría, ahí entra».
+check("...y el cubicador trabaja dentro de cada auditoría: la caja suelta «Mis correcciones» ya no está",
+      'id="audMias"' not in HTM and "cargarMisAcciones" not in JS and "function filaMia(" not in JS
+      and ".audmias" not in HTM)
 check("una auditoría con hallazgos NO se borra (es un registro de calidad)",
       "una auditoría con hallazgos no se borra" in SRC and "status_code=409" in SRC)
 
@@ -581,8 +583,9 @@ check("la corrección es por ITEM, igual que el hallazgo",
 check("...la declara cualquier cubicador; si no es el dueño, al dueño le llega aviso (21-oct)",
       "Esta corrección es de quien cubicó el elemento." not in SRC
       and "_avisar_si_ajeno(user, cubico," in SRC)
-check("...con un comentario para cuando lo hecho no calza exacto con lo observado",
-      "consideración mixta entre lo" in SRC and "nota_correccion" in SRC)
+check("...con el texto de la línea, obligatorio al resolver (6-nov)",
+      "MIN_NOTA = 10" in SRC and "raise HTTPException(status_code=400, detail=FALTA_NOTA)" in SRC
+      and "nota_correccion" in SRC)
 check("decir «hice uno nuevo» obliga a decir CUÁL",
       "Si se hizo un código nuevo, hay que decir cuál" in SRC)
 check("...porque ése es el único caso que el sistema NO puede comprobar solo",
@@ -609,14 +612,14 @@ check("...y vuelve al reabrir el elemento, junto con en qué va la corrección",
 
 print("\n7c0c. El panel del auditado")
 check("una fila por BARRA, no un botón por elemento",
-      "function filaMia(" in JS and "MIS CORRECCIONES, BARRA POR BARRA" in JS)
+      "function filaAccion(" in JS and "var lin = 'i' + b.item_id" in JS)
 check("...dice qué encontró el auditor y qué DEBERÍA decir",
       "function _esperadoTxt(" in JS and "Debería decir" in JS)
-check("...y el plazo vencido se ve, aunque todavía no dispare nada",
-      "audvenc" in JS and ".audt tr.audvenc td{" in HTM)
+check("...y el plazo vencido se ve en la lista de auditorías, aunque todavía no dispare nada",
+      "class=\"venc\" title=\"Pasó el plazo\"" in JS)
 check("lo que aSa dijo se muestra aparte de lo que declaró la persona, pero todo resuelto dice «Resuelto»",
-      "Sigue igual en aSa" in JS and "Comprobada" not in JS
-      and "corregida: 'Resuelto', verificada: 'Resuelto'" in JS)
+      "Editada en aSa" in JS and "Idéntica en aSa" in JS and "Sin comprobar" in JS
+      and "Comprobada" not in JS and "corregida: 'Resuelto', verificada: 'Resuelto'" in JS)
 
 print("\n7c0d. El POR QUÉ es del auditado, por ITEM, y se elige en la matriz")
 # LO PIDIÓ EL USUARIO (8-oct): «lo del ishikawa sería bueno sacarlo de la auditoría y
@@ -651,8 +654,8 @@ check("...hablándole por las dos funciones de siempre",
       "global.audIshikawa" in JS and "global.audCausaElegida" in JS)
 check("el id del área de la matriz viaja con el catálogo (si no, sale vacía)",
       '"causas_area": causas_area' in SRC and "BASE.causas_area" in JS)
-check("la causa se ve en la fila de la barra, y se puede cambiar",
-      "audcausa" in JS and "td.audcausa" in HTM and "Clasificar" in JS)
+check("la causa se ve en la fila de la barra, y se puede cambiar; el botón dice RCA, no «Clasificar»",
+      "audcausa" in JS and "td.audcausa" in HTM and ">Clasificar<" not in JS)
 
 print("\n7c0f. El botón dice Hallazgo, no «NC»")
 check("en el veredicto de cada barra",
@@ -694,8 +697,8 @@ check("el plazo del auditado arranca AL ENVIAR y no se negocia",
 check("...y se confirma en una línea: a quién le llega y que lo marcado queda firme",
       "global.confirm('Enviar '" in JS and "Le llega a: " in JS
       and "queda firme" in JS and 'id="audEnvio"' not in HTM and "audEnvioOk" not in JS)
-check("...y se muestra cuánto falta, no sólo la fecha: con 24 h el día no dice nada",
-      "function _cuantoFalta(" in JS and "vencido" in JS)
+check("...y la cuenta regresiva de «Mis correcciones» se fue con ella; el plazo vive en la lista",
+      "function _cuantoFalta(" not in JS and "a.plazo < new Date().toISOString()" in JS)
 check("un aviso por persona al enviar, no uno por elemento mientras se revisa",
       "A QUIÉN LE TOCA QUÉ, para avisar UNA vez" in SRC)
 check("antes del envío el auditado no puede accionar, y se valida en el BACKEND",
@@ -725,12 +728,23 @@ check("DÉBIL cuando sólo hay un comentario: dice si la barra cambió",
       and A.comparar({}, {"cant": 100}, {"cant": 100})[0] == "sigue_igual")
 check("TRES resultados: una caída de aSa no es una corrección no hecha",
       A.comparar({}, {}, {"cant": 1})[0] == "no_aplica"
-      and A.comparar({"cant": 1}, {}, None)[0] == "no_aplica"
+      and A.comparar({"cant": 1}, {}, None, "nuevo")[0] == "no_aplica"
       and "reintentable" in SRC)
+# LA BARRA QUE YA NO ESTÁ EN SU CÓDIGO SE EDITÓ (6-nov), como en la revisión de barras; en un
+# código NUEVO es otra cosa: la marca la escribió quien resolvió.
+check("una barra que ya no está en su código cuenta como editada en aSa; en un código nuevo, no",
+      A.comparar({}, {"cant": 1}, None)[0] == "ok"
+      and A.comparar({}, {"cant": 1}, None, "nuevo")[0] == "no_aplica")
+check("ÁNGULOS Y MANDRIL también cuentan: un ángulo cambiado ya no sale «idéntica» (6-nov)",
+      A.comparar({}, {"cant": 5, "angulos": [90, 90]}, {"cant": 5, "angulos": [90, 135]})[0] == "ok"
+      and A.comparar({}, {"cant": 5, "angulos": [90, 90]}, {"cant": 5, "angulos": [90.4, 90]})[0] == "sigue_igual"
+      and A.comparar({}, {"cant": 5, "radio": 40}, {"cant": 5, "radio": 60})[0] == "ok"
+      and A.comparar({}, {"cant": 5}, {"cant": 5, "angulos": [90], "radio": 40})[0] == "sigue_igual")
 check("el ANTES se guarda al auditar y NO se pisa al volver a guardar",
       "dato_original = COALESCE(auditoria_items.dato_original" in SRC)
 check("decir «lo rehice en otro código» obliga a decir cuál, y con qué marca",
-      "item_nuevo" in SRC and "audResCc" in JS and "audResItem" in JS)
+      "item_nuevo" in SRC and "data-accnuevo=" in JS and "data-amarca=" in JS
+      and "Falta el código nuevo" in JS)
 check("el reloj comprueba después del sync y con tope de llamadas",
       "_auditorias_al_dia()" in SCHED and "TOPE_COMPROBAR" in SCHED)
 # LA COMPROBACIÓN CORRE AL CERRAR (20-oct), no a pedido ni de noche: «vamos a reemplazar
@@ -761,8 +775,8 @@ check("...y entonces la barra deja de estar abierta, pero NO desaparece",
       '"desestimadas"' in SRC and "barras_desestimadas" in SRC)
 check("...porque si saliera del conteo, el auditado mejoraría su propio indicador",
       "mejorar su propio indicador" in SRC)
-check("el warning se da al ELEGIR descartar, no de entrada",
-      "no se consideró lo auditado" in JS)
+check("el «no aplica» se justifica en la línea, y se dice que lo lee quien auditó",
+      "¿por qué no aplica?" in JS and "Di por qué no aplica: lo va a leer quien auditó." in JS)
 check("el auditor NO valida los descartes: tiene derecho a réplica",
       '/objecion")' in SRC and "derecho a réplica, no deber de validar" in SRC)
 check("...y las dos posturas quedan escritas", "El motivo del descarte no se borra" in SRC)
@@ -982,7 +996,7 @@ check("el PDF y el correo no repiten la llave «hallazgo» ni lo suman dos veces
       and 'for k in ("conforme", "observacion", "hallazgo"):' in SRC)
 check("la alerta de independencia compara el login de aSa con los alias del auditor, no el correo con el login",
       'auditor_alias = set(alias_cubicador(cur, aud.get("auditor") or ""))' in SRC
-      and '"conflicto": (e[9] or "").strip() in auditor_alias}' in SRC)
+      and '"conflicto": (e[9] or "").strip() in auditor_alias,' in SRC)
 check("...y el detalle de lo que salió mal, con su hallazgo",
       "Elementos con hallazgo:" in SRC and "_NOMBRE.get(e.get(\"hallazgo\")" in SRC)
 check("...o dice que no hubo nada, en vez de dejar un hueco",
@@ -1078,20 +1092,24 @@ check("el formulario del auditor se bloquea entero y DICE por qué",
       and "if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }" in JS)
 check("la tabla de lo que salió es POR BARRA, no por elemento",
       "function filaAccion(" in JS and "malas.map(function (b) { return filaAccion(" in JS)
-check("cada barra lleva Aplica | No aplica, y «no aplica» pide el motivo ahí mismo",
-      "data-aplica=" in JS and "data-noaplica=" in JS and "function _campoNap(pref, id)" in JS
-      and "function desestimarItem(" in JS and "m.length < 10" in JS)
+# TRES SALIDAS POR LÍNEA (6-nov): «Resuelto en CC / Resuelto en nuevo CC / No aplica», y
+# al final el campo de texto, obligatorio en las tres.
+check("cada línea lleva Resuelto en CC | Resuelto en nuevo CC | No aplica, y el texto al final, obligatorio",
+      'data-amodo="cc"' in JS and 'data-amodo="nuevo"' in JS and 'data-amodo="nap"' in JS
+      and 'class="revnapin" data-anota=' in JS and "texto.length < 10" in JS
+      and "data-aplica=" not in JS)
 check("el Ishikawa es POR BARRA y abre la MISMA matriz de los reclamos",
       "function clasificarItem(" in JS and "global.abrirIshikawaModal('auditoria')" in JS
       and "item_id: b.item_id" in JS and "window.audIshikawa" in DEJS)
 # UN CLIC, SIN PREGUNTAS (20-oct): el «¿se rehizo en otro código?» se fue; si se rehizo, el
 # chequeo del cierre lo dice y quien cierra lo confirma.
-check("marcar resuelto es un clic: ya no pregunta cómo se corrigió",
-      "function corregirItem(" in JS and "cuerpo.tipo = 'nuevo'" not in JS
-      and "global.confirm(" not in JS.split("async function corregirItem(")[1][:900]
+check("resolver dice dónde: en el mismo código o en uno nuevo, sin diálogos del navegador",
+      "async function guardarLinea(" in JS and "cuerpo.cc_nuevo = cc" in JS
+      and "global.confirm(" not in JS.split("async function guardarLinea(")[1][:4000]
       and "/correccion'" in JS)
 check("los botones salen para cualquier cubicador, sólo si está enviada y no cerrada",
-      "var puede = !!(AUD.puedo_actuar && enviada && !cerrada);" in JS)
+      "function _actuo() { return !!(AUD && AUD.puedo_actuar && _enCurso()); }" in JS
+      and "AUD.estado !== 'cerrada'" in JS.split("function _enCurso()")[1][:200])
 check("el auditor conserva su derecho a réplica sobre un descarte",
       "data-objetar=" in JS and "AUD.soy_auditor" in JS)
 
@@ -1104,24 +1122,23 @@ check("sin RCA no se puede dar una barra por corregida, y lo rechaza el BACKEND"
       "clasifica por qué pasó (RCA)" in SRC
       and "SELECT causa FROM auditoria_items WHERE id = %s" in SRC)
 check("...y la pantalla apaga el botón en vez de dejar que salte el error",
-      "var sinRca = !b.causa;" in JS and "audbres' + (sinRca ? ' off' : '')" in JS)
+      "Primero el RCA: por qué pasó." in JS and "_accionesAud(lin, abierta, puede, !b.causa" in JS)
 check("...pero «no aplica» NO lo pide: ahí no hubo error que explicar",
       "Dejar sin efecto NO la pide" in SRC
       and "if body.corregido:" in SRC.split("clasifica por qué pasó")[0][-700:])
 check("«Clasificar» pasa a llamarse RCA", ">RCA</button>" in JS and "sin RCA" in JS)
 # EL BOTÓN «RESUELTO» (20-oct). El check «Corregido en aSa» pasó a ser un botón verde que
 # se aprieta cuando el cambio ya está hecho en aSa; el hover lo dice.
-check("«Corregido en aSa» pasa a ser el botón «Resuelto», verde, con su hover",
-      "function _btnResuelto(" in JS and "> Corregido en aSa</label>" not in JS
-      and 'type="checkbox" data-corregi=' not in JS
-      and ">✓ Resuelto</button>" in JS and ".audbres.on{background:#2e7d32" in HTM
-      and "cuando ya hayas hecho el cambio en aSa" in JS)
+check("los dos «Resuelto» son botones verdes que quedan encendidos mientras se escribe",
+      ">Resuelto en CC</button>" in JS and ">Resuelto en nuevo CC</button>" in JS
+      and "> Corregido en aSa</label>" not in JS and ".audbres.eligiendo{" in HTM
+      and ".audbres.on{background:#2e7d32" in HTM)
 # El usuario: «al presionar los botones no funciona la animacion, quedan pegados».
 check("los botones dan señal mientras el servidor responde",
       "function _ocupado(" in JS and ".audwait" in HTM and "@keyframes audwait" in HTM
       and ":active:not(:disabled)" in HTM)
 check("...y si el servidor rechaza, el botón se suelta y la pantalla no miente",
-      "_ocupado(control, false);" in JS.split("async function corregirItem(")[1][:900])
+      "_ocupado(boton, false);" in JS.split("async function guardarLinea(")[1][:4000])
 # EL CIERRE ES DEL AUDITADO, y sólo con todo resuelto. Verificado contra A-2026-018:
 # con 15 pendientes da 400; marcadas las 15, la condición se cumple.
 check("hay un cierre del auditado, aparte del «cerrar a mano» del auditor",
@@ -1139,11 +1156,20 @@ check("la condición la dice el backend, para no ofrecer un botón que iba a dar
 check("el informe PDF sólo se emite con la auditoría cerrada",
       "AUD.estado === 'cerrada'" in JS.split("var pdf = $('audPdf');")[1][:400]
       and "pdf.disabled = !lista" in JS)
-check("la figura de la barra se puede ver en el resumen, pedida por código",
-      "function _figAud(" in JS and "async function cargarFigurasAud(" in JS
-      and 'id="audFigs"' in JS and "'/auditorias/elemento-asa?cc='" in JS)
-check("...con sus lados y ángulos, como en la revisión de barras",
-      "audGrillaLados(f, null, esc)" in JS and ".audgl" in HTM)
+check("la figura de la barra se puede ver en el resumen, pedida por código (todas o una)",
+      "function _celdaFig(" in JS and "async function cargarFigurasAud(" in JS
+      and 'id="audFigs"' in JS and "data-afigs=" in JS and "'/auditorias/elemento-asa?cc='" in JS)
+# LA FORMA DE LA REVISIÓN DE BARRAS (6-nov): lados y ángulos en sus columnas, no en una
+# tablita bajo el dibujo («hiciste un invento medio raro»).
+check("...con sus lados y ángulos en columnas, como en la revisión de barras, sin tablita bajo el dibujo",
+      "audGrillaLados(f, null, esc)" not in JS and "'<th class=\"revn reva\">α' + k" in JS
+      and "c.letras.map(function (L)" in JS.split("function filaAccion(")[1][:3000])
+# EL NOMBRE DE LA FIGURA Y EL DE LA MARCA SE VEN SIEMPRE (6-nov): salen de la foto de la
+# auditoría; las que no los tienen piden sus códigos solas al abrirse.
+check("el nombre de la figura y el que le puso el cubicador a la marca (Notes) se ven siempre",
+      "notas: b.notas || null" in JS and '"notas": (it.get("Notes") or "").strip() or None' in SRC
+      and 'class="audnotas"' in JS and "function _autoFiguras(" in JS
+      and "!o.figura || !('notas' in o)" in JS)
 
 print("\nEL ESTRIBO NO SE ESTIRA, Y LOS LADOS SE LEEN EN GRILLA")
 # El usuario: «el renderizado sigue desencuadrando la esquina con algun tipo de
@@ -1285,9 +1311,11 @@ check("cerrar cuenta los comentarios pendientes, no sólo las barras",
       "comentario(s) de elemento" in SRC and "sueltos_pend" in SRC)
 check("...y el detalle los suma a lo que falta por resolver",
       'aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)' in SRC)
-check("la pantalla le pone sus controles al comentario, en vez de dejarlo como texto muerto",
-      "function filaComentario(" in JS and "'data-ecorregi'" in JS and "data-enoaplica=" in JS
-      and "'data-ecausa'" in JS and "function _celdaCausa(" in JS and "_campoNap('e', e.id)" in JS)
+check("la pantalla le pone al comentario las mismas tres salidas que a una barra",
+      "function filaComentario(" in JS and "var lin = 'e' + e.id" in JS
+      and "'data-ecausa'" in JS and "function _celdaCausa(" in JS
+      and "_accionesAud(lin, abierta, puede && !!e.comentario_suelto, !e.causa, false" in JS
+      and "accion_cc_nuevo = %s" in SRC)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
       and "/resolucion" in JS.split("global.audCausaElegida")[1][:800])
@@ -1310,24 +1338,33 @@ print("\nRESUELTO, CIERRE CON CHEQUEO, RCA FUERA EN «NO APLICA», CUENTAS EN VE
 _cr = _cuerpo_post("{auditoria_id}/cerrar-resueltas")
 _des = _cuerpo("{auditoria_id}/items/{item_id}/desestimar")
 _res = _cuerpo("{auditoria_id}/elementos/{elemento_id}/resolucion")
-check("cerrar le pregunta a aSa por cada barra resuelta, en vivo",
+check("cerrar le pregunta a aSa por cada barra resuelta, en vivo, una lectura por código",
       "chequeo = _chequear_lo_resuelto(cur, auditoria_id)" in _cr
-      and "real = _barra_hoy(donde, cual)" in SRC)
-check("...y si alguna sigue igual, avisa con 409 y la lista, SIN cerrar",
+      and "real = _barra_hoy(donde, cual, cache)" in SRC and "cache[cc] = _items_de(cc) or []" in SRC)
+check("...y si alguna sigue igual, contesta 409 con la lista y NO cierra",
       "status_code=409" in _cr and '"motivo": "sigue_igual"' in _cr
       and '"barras": chequeo["siguen_igual"]' in _cr
-      and 'if chequeo["siguen_igual"] and not confirmar:' in _cr)
-check("...quien cierra puede confirmar igual, y queda escrito qué seguía igual y que lo confirmó",
-      "confirmar: bool = False" in SRC
-      and "Confirmó el cierre con %d barra(s) que en aSa seguían" in _cr
-      and "cierre_chequeo = %s" in _cr)
+      and 'if chequeo["siguen_igual"]:' in _cr)
+# SIN «CERRAR IGUAL» (6-nov): «el cerrar igual no me gusta, porque rompe el flujo». Lo
+# idéntico se corrige en aSa o se marca «No aplica»; lo raro lo cierra el auditor a mano.
+check("...y no hay forma de cerrar igual: ni el parámetro, ni el texto del registro",
+      "confirmar: bool = False" not in SRC.split("def cerrar_resueltas(")[1][:200]
+      and "Confirmó el cierre con" not in _cr and "?confirmar=true" not in JS
+      and "Cerrar igual" not in JS)
 check("...y lo que no se pudo comprobar se dice, no se cuenta como incumplido",
       '"sin_leer"' in SRC and "no se pudieron comprobar" in _cr)
 check("el cierre del auditado se distingue del cierre forzado del auditor",
       "cierre_tipo = 'auditado'" in _cr and "cierre_tipo" in MIG157 and "cierre_chequeo" in MIG157)
-check("la pantalla muestra el aviso con la lista y dos salidas, y reintenta con confirmar",
-      "function _avisoCierre(" in JS and "?confirmar=true" in JS and "Cerrar igual" in JS
-      and "e.status === 409" in JS and "err.detalle = det;" in JS)
+check("la pantalla muestra por qué no cerró, con la lista, y repinta con lo que dijo aSa",
+      "function _avisoCierre(" in JS and "e.status === 409" in JS and "err.detalle = det;" in JS
+      and "AUD = await req('GET', '/auditorias/' + AUD.id);" in JS.split("async function cerrarResueltas(")[1][:1200])
+# SE COMPRUEBA AL MARCAR (6-nov): la fila dice en el acto si la barra se editó en aSa.
+check("al resolver, el backend compara con aSa en el acto (de a una y en lote)",
+      "if body.corregido:\n                _comprobar_al_marcar(cur, [item_id])" in SRC
+      and "_comprobar_al_marcar(cur, sel)" in SRC.split("def lote_items(")[1]
+      and "comprobar_item(cur, item_id, cache)" in SRC.split("def _comprobar_al_marcar(")[1][:900])
+check("...y si la comparación revienta, lo declarado se guarda igual y el error queda en el log",
+      '.exception("comparar con aSa la barra %s al marcarla", item_id)' in SRC)
 check("«no aplica» se lleva el RCA de la barra, y deja escrito cuál era",
       "causa = NULL, causa_categoria = NULL, causa_texto = NULL" in _des
       and "se quitó el RCA %s" in _des)
@@ -1363,7 +1400,7 @@ check("...y los 37 que ya salieron al login se re-dirigen al correo",
       "UPDATE notificaciones" in MIG159 and "NOT LIKE '%@%'" in MIG159)
 check("el detalle dice quién resolvió en lugar del dueño, y que cualquiera puede actuar",
       '"resuelto_por_otro"' in SRC and 'aud["puedo_actuar"]' in SRC
-      and "function _porOtro(" in JS and "AUD.puedo_actuar && enviada" in JS
+      and "function _porOtro(" in JS and "AUD.puedo_actuar && _enCurso()" in JS
       and ".audporotro{" in HTM)
 check("cierra también quien resolvió algo acá en lugar del dueño",
       "o quien las resolvió." in SRC and "resolvi = cur.fetchone()[0]" in SRC)
@@ -1376,12 +1413,18 @@ print("\nEL MISMO FORMATO QUE LA REVISIÓN: AGRUPADO, DE A MUCHAS, MOTIVO DE LIS
 # flujos y formatos muy similares». Lo que a la auditoría le faltaba de la revisión.
 MIG160 = open(os.path.join(ROOT, "armahub", "migrations", "160_no_aplica_con_motivo_de_lista.sql"),
               encoding="utf-8").read()
-check("el Resumen Hallazgos agrupa por código de control, con cabecera y avance por código",
-      '<tr class="audgrupo">' in JS and "data-agrupo=" in JS and "resuelta(s)</span></td></tr>" in JS
-      and ".audacct tr.audgrupo td{" in HTM)
-check("hay checks por barra y los tres verbos de a muchas: Aplica · No aplica · Resuelto",
-      "data-aitem=" in JS and 'data-alote="aplica"' in JS and 'data-alote="no_aplica"' in JS
-      and 'data-alote="resuelto"' in JS and "async function loteAuditoria(" in JS)
+check("el Resumen Hallazgos agrupa por código de control, con la cabecera y la cuenta de la revisión de barras",
+      "'<div class=\"revcc2 audhoja'" in JS and "data-aselgrp=" in JS and 'class="revcuenta"' in JS
+      and '<tr class="revhead">' in JS)
+check("hay checks por barra y, con marcas, los botones de la fila actúan sobre todas (sin verbos en la barra)",
+      "data-asel=" in JS and "function _lineasDe(" in JS and "data-alote" not in JS
+      and "RCA, Resuelto o No aplica en cualquiera de sus filas actúa sobre todas." in JS
+      and "accion: modo === 'nap' ? 'no_aplica' : 'resuelto'" in JS)
+check("...lo escrito en una se escribe en todas (el código nuevo también, la marca no)",
+      "input[data-anota][data-espejo=\"1\"]" in JS and "input[data-accnuevo][data-espejo=\"1\"]" in JS
+      and "data-amarca" in JS and "cuerpo.marcas = marcas" in JS and "marcas: Optional[dict] = None" in SRC)
+check("...y el RCA también va para todas las marcadas",
+      "accion: 'causa'" in JS and 'elif body.accion == "causa":' in SRC)
 check("...contra un lote del backend con las mismas reglas que de a una",
       '@router.put("/auditorias/{auditoria_id}/items/lote")' in SRC and "class LoteBody" in SRC
       and "Antes de darlas por resueltas, clasifica por qué pasó (RCA)" in SRC
@@ -1394,19 +1437,19 @@ check("«no aplica» se justifica con un campo al final de la linea, sin lista d
       and "<select data-mot=" not in JS and "_opcionesMotivoAud" not in JS and "audLoteMot" not in JS
       and "Elige por qué no aplica." not in SRC and SRC.count("body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD") == 2
       and "audnapform" not in JS and "_filaFormNap" not in JS and "data-napok" not in JS)
-check("...Enter guarda, Esc lo deja, y mientras se escribe la fila esconde el RCA y el Resuelto",
-      "if (e.key === 'Escape') _formNap(i.dataset.motivo, false);" in JS
-      and "tr.classList.toggle('napabierto', !!abrir);" in JS
-      and ".audacct tr.napabierto td.audcausa > *, .audacct tr.napabierto .audbres{display:none;}" in HTM)
-check("lo que no aplica no se clasifica: ni en Mis correcciones ni por el backend",
-      "'<td class=\"audcausa\">' + (a.desestimado" in JS
+check("...Enter guarda, Esc lo deja, y mientras se justifica un «no aplica» la fila esconde el RCA",
+      "if (ev.key === 'Escape') cerrarLinea(lin);" in JS and "if (ev.key === 'Enter') guardarLinea(lin);" in JS
+      and "tr.classList.toggle('napabierto', modo === 'nap');" in JS
+      and ".audhoja tr.napabierto td.audcausa > *{display:none;}" in HTM)
+check("lo que no aplica no se clasifica: ni en pantalla ni por el backend",
+      "if (nap) return '<span class=\"muted\" title=\"Sin efecto: no lleva RCA.\">—</span>';" in JS
       and "Esa barra no aplica: no lleva RCA." in SRC)
 check("...y el motivo viaja en cada barra del detalle",
       '"desestimado_tipo": des_tipo' in SRC)
 # EL BUG DEL CIERRE: `addEventListener('click', cerrarResueltas)` le pasaba el MouseEvent
 # como `confirmar`, y «confirmar» verdadero cierra SIN el chequeo en aSa.
-check("cerrar no recibe el evento del clic como «confirmar»: sin eso se saltaba el chequeo en aSa",
-      "cz.addEventListener('click', function () { cerrarResueltas(false); });" in JS
+check("cerrar no recibe el evento del clic como argumento",
+      "cz.addEventListener('click', function () { cerrarResueltas(); });" in JS
       and "cz.addEventListener('click', cerrarResueltas);" not in JS)
 
 
@@ -1418,9 +1461,8 @@ check("la lista es para todo el equipo; antes del envío, quien no audita no rec
       and 'por_elemento.get(e["id"], []) if ve_hallazgos else []' in SRC)
 check("la muestra del auditor no se le pinta a quien no audita",
       "La muestra la revisa el auditor. Lo tuyo está abajo" in JS)
-check("el check de grupo sale sólo cuando hay algo que marcar, y la última columna tiene nombre",
-      "var marcables = enviada" in JS and 'class="audaccth"' in JS
-      and ".audacct th.audaccth:not(:empty)" in HTM)
+check("el check de grupo sale sólo cuando hay algo que marcar",
+      "var marcables = _actuo() &&" in JS and "(marcables" in JS)
 check("el nombre de la figura va al lado del dibujo, y el tamaño por defecto es S",
       'class="audfigw"' in JS and "var FIG_TAM = 's';" in JS and ".audfigw{" in HTM)
 
@@ -1442,9 +1484,8 @@ check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
       ".audacc{margin-top:10px; padding:10px 12px; background:#fffdf5" not in HTM
       and ".audacc{margin-top:10px; padding:12px 14px; background:#fff;" in HTM
       and "border-top:3px solid #ffb300" in HTM)
-check("...y ninguna columna queda cortada contra el borde",
-      'class="audbdacc"' in JS and ".audacc .audbdacc{overflow-x:auto;}" in HTM
-      and ".audt.audacct{table-layout:auto; min-width:980px;}" in HTM)
+check("...y ninguna columna queda cortada contra el borde: la tabla de cada código scrollea sola",
+      'class="audtbl"' in JS and ".audhoja .audtbl{overflow-x:auto;}" in HTM)
 
 
 print("\nEL DISEÑO APROBADO (28-oct): el auditor audita y envia; el auditado resuelve")
@@ -1454,9 +1495,9 @@ check("la observacion es POR BARRA y va a la derecha de la barra, siempre",
 check("...y la nota del elemento se llama por lo que es: lo que no es de ninguna barra",
       'for="audRevTexto"' in HTM and "Nota del elemento" in HTM and "falta trabas" in HTM)
 check("el Resumen Hallazgos existe desde el envio, no mientras se revisa",
-      "if (!acc.length || !enviadaAhora)" in JS and "Todavía no se envía" not in JS)
+      "if (!acc.length || !enviada)" in JS and "Todavía no se envía" not in JS)
 check("...sin la columna Cubico por fila: esta en la cabecera de cada codigo",
-      "'<th>Elemento</th><th>Cubicó</th>'" not in JS and '<tr class="audgrupo"><td colspan="9">' in JS)
+      "'<th>Elemento</th><th>Cubicó</th>'" not in JS and "'<span class=\"revquien\">' + esc(Object.keys(g.cubs)" in JS)
 check("el auditor no resuelve lo que el mismo marco: juez y parte",
       'user.get("email", "?") != aud.get("auditor")' in SRC.split('aud["puedo_actuar"]')[1][:200]
       and "No lo acepto" in JS)
@@ -1580,6 +1621,28 @@ _JSC = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditoria
 _ce = _JSC.split("global.audCausaElegida = async function")[1].split("ok('Causa registrada')")[0]
 check("en Mis correcciones la fila trae barra y elemento: manda la barra, no el comentario del elemento",
       "var ruta = a.item_id" in _ce and _ce.index("/items/") < _ce.index("/resolucion"))
+
+print("\nLA BARRA DE HOY EN aSa TRAE ÁNGULOS Y MANDRIL, Y CADA CÓDIGO SE LEE UNA VEZ (6-nov)")
+_xml = "<cp><l>1200</l><ln>A</ln><t>STD</t></cp><cp><l>300</l><a>90</a><ln>B</ln><t>STD</t></cp>"
+_item = {"BarMark": "A12", "BarSizeDescr": "12mm", "ShpNameID": "102A", "LegAngle": _xml, "ShapeDims": "",
+         "LengthTheor": 1500, "TotalQty": 10, "PinDiam": 48, "CtrlCode": "SUTQ", "Notes": "MV"}
+_lecturas = []
+_items_de_real = A._items_de
+A._items_de = lambda cc: (_lecturas.append(cc), [_item])[1]
+try:
+    _cache = {}
+    _hoy = A._barra_hoy("SUTQ", "A12", _cache)
+    A._barra_hoy("SUTQ", "A12#2", _cache)
+finally:
+    A._items_de = _items_de_real
+_foto = {"diam": 12, "cant": 10, "largo": 1500, "figura": "102A", "lados": {"A": 1200, "B": 300},
+         "angulos": [90], "radio": 48}
+check("la barra de hoy trae ángulos y mandril con la misma forma que la foto",
+      _hoy["angulos"] == [90.0] and _hoy["radio"] == 48)
+check("...dos barras del mismo código, una sola lectura a aSa", len(_lecturas) == 1)
+check("...igual a la foto sale idéntica; con un ángulo distinto, editada y dicho en palabras de planta",
+      A.comparar({}, _foto, _hoy)[0] == "sigue_igual"
+      and A.comparar({}, dict(_foto, angulos=[135], radio=60), _hoy) == ("ok", "La barra cambió en: ángulos, mandril"))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

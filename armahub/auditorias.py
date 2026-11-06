@@ -29,6 +29,7 @@ hallazgos: nadie lo elige. Así no puede haber una auditoría «cerrada» a medi
 """
 import re
 import secrets
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -1004,6 +1005,9 @@ def elemento_asa(cc: str, element: str = "", elemento_id: int = 0, user=Depends(
             "eje": mejor_eje(it, lados["dims"]),
             "cant_total": it.get("TotalQty"), "peso_total": it.get("LineWeight"),
             "plano": it.get("ElementDesc"), "radio": it.get("PinDiam"),
+            # EL NOMBRE QUE LE PUSO EL CUBICADOR A LA MARCA (MH, MV, TR…), solo: va al lado
+            # de la marca en la tabla de la auditoría y en la foto de la barra (6-nov).
+            "notas": (it.get("Notes") or "").strip() or None,
             "nota": " · ".join(x for x in ((it.get("Notes") or "").strip(),
                                            (it.get("ShopMessage") or "").strip()) if x) or None,
         })
@@ -1503,7 +1507,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           -- creada. Auditar algo despachado llega tarde —lo que vale es
                           -- revisar antes de que salga— así que el auditor tiene que
                           -- verlo en la lista, no descubrirlo al abrir el elemento.
-                          p.estado, p.proj_ship_date
+                          p.estado, p.proj_ship_date,
+                          -- 30: dónde quedó resuelto el comentario, si fue en otro código.
+                          e.accion_cc_nuevo
                      FROM auditoria_elementos e
                      LEFT JOIN asa_pedidos p ON p.control_code = e.cc
                     WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
@@ -1534,7 +1540,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  "gravedad_txt": GRAVEDAD.get(gravedad_de(e[10], e[28]) or "", ""),
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
-                 "conflicto": (e[9] or "").strip() in auditor_alias}
+                 "conflicto": (e[9] or "").strip() in auditor_alias,
+                 "accion_cc_nuevo": e[30]}
                 for e in cur.fetchall()]
             # LO QUE SE ENCONTRÓ EN CADA BARRA, por su nombre. Va aparte de `texto` —que es
             # la observación del elemento entero— porque son dos cosas distintas y
@@ -1546,7 +1553,11 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           i.desestimado, i.desestimado_motivo, i.desestimado_por,
                           i.tipo_correccion, i.cc_nuevo, i.item_nuevo, i.nota_correccion,
                           i.id, i.objecion, i.causa_categoria, i.corregido_por, i.causa_por,
-                          i.desestimado_tipo
+                          i.desestimado_tipo,
+                          -- LA FOTO DE LA BARRA AL AUDITARLA y lo que dijo aSa al comparar:
+                          -- la tabla muestra marca, figura, lados y ángulos como la
+                          -- revisión de barras, y al lado si la barra se editó en aSa.
+                          i.dato_original, i.verificado_dato, i.desestimado_el, i.corregido_el
                      FROM auditoria_items i
                      JOIN auditoria_elementos e ON e.id = i.elemento_id
                     WHERE e.auditoria_id = %s AND i.conforme IS FALSE
@@ -1555,7 +1566,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             for fila_b in cur.fetchall():
                 (eid, ref, marca, obs, corr, ca, ca_txt, esp, ver,
                  des, des_mot, des_por, tipo_c, cc_n, item_n, nota_c,
-                 item_id_b, objec, ca_cat, corr_por, ca_por, des_tipo) = fila_b
+                 item_id_b, objec, ca_cat, corr_por, ca_por, des_tipo,
+                 orig, vdato, des_el, corr_el) = fila_b
                 por_elemento.setdefault(eid, []).append(
                     {"ref": ref, "marca": marca, "observacion": obs,
                      "corregido": bool(corr), "causa": ca, "causa_texto": ca_txt,
@@ -1569,7 +1581,11 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                      # La categoría viaja para que el modal del Ishikawa abra con la
                      # causa ya elegida marcada, en vez de en blanco.
                      "causa_categoria": ca_cat, "corregido_por": corr_por, "causa_por": ca_por,
-                     "desestimado_tipo": des_tipo})
+                     "desestimado_tipo": des_tipo,
+                     "original": orig or {},
+                     "verificado_porque": (vdato or {}).get("porque") if vdato else None,
+                     "desestimado_el": des_el.isoformat() if des_el else None,
+                     "corregido_el": corr_el.isoformat() if corr_el else None})
             # QUIÉN PUEDE QUÉ, DICHO POR EL BACKEND. El front no puede deducirlo: saber si
             # una barra es «mía» exige comparar el login de aSa de quien cubicó con mi
             # correo, y esa equivalencia la resuelve `alias_cubicador` acá. Deducirla en el
@@ -2397,6 +2413,20 @@ def reabrir(auditoria_id: int, body: ReaperturaBody, user=Depends(get_current_us
     return detalle(auditoria_id, user)
 
 
+def _comprobar_al_marcar(cur, ids) -> None:
+    """LA COMPARACIÓN DEL MOMENTO DE MARCAR (6-nov), una lectura por código para todas.
+
+    Lo que el cubicador declaró se guarda aunque la comparación reviente: la fila queda «Sin
+    comprobar» y el cierre la vuelve a mirar y la anota entre las que no se pudieron leer,
+    igual que `_chequear_lo_resuelto`. El error queda en el log, no se traga."""
+    cache = {}
+    for item_id in ids:
+        try:
+            comprobar_item(cur, item_id, cache)
+        except Exception:
+            logging.getLogger(__name__).exception("comparar con aSa la barra %s al marcarla", item_id)
+
+
 def _chequear_lo_resuelto(cur, auditoria_id: int) -> dict:
     """LE PREGUNTA A aSa POR CADA BARRA QUE SE DECLARÓ RESUELTA, y devuelve en qué quedó.
 
@@ -2418,9 +2448,10 @@ def _chequear_lo_resuelto(cur, auditoria_id: int) -> dict:
     barras = cur.fetchall()
     out = {"cuando": datetime.now(timezone.utc).isoformat(), "miradas": len(barras),
            "cumplen": [], "siguen_igual": [], "sin_leer": []}
+    cache = {}
     for item_id, ref in barras:
         try:
-            r = comprobar_item(cur, item_id)
+            r = comprobar_item(cur, item_id, cache)
         except Exception as exc:          # aSa caído, un código raro: no bloquea el cierre
             out["sin_leer"].append({"ref": ref, "porque": str(exc)[:160]})
             continue
@@ -2435,8 +2466,7 @@ def _chequear_lo_resuelto(cur, auditoria_id: int) -> dict:
 
 
 @router.post("/auditorias/{auditoria_id}/cerrar-resueltas")
-def cerrar_resueltas(auditoria_id: int, request: Request, confirmar: bool = False,
-                     user=Depends(get_current_user)):
+def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_current_user)):
     """EL AUDITADO CIERRA, cuando ya no le queda ninguna barra pendiente.
 
     Lo pidió el usuario (13-oct): «debe haber un botón de cerrar, que sólo se puede
@@ -2449,11 +2479,11 @@ def cerrar_resueltas(auditoria_id: int, request: Request, confirmar: bool = Fals
     él marca «Resuelto» a medida que avanza y cierra cuando terminó: esto es la firma.
 
     Y ACÁ SE COMPRUEBA, QUE ES CUANDO IMPORTA. Al cerrar se le vuelve a preguntar a aSa por
-    cada barra que se declaró resuelta. Si alguna sigue como estaba, se avisa y NO se
-    bloquea: el usuario fue explícito —«se le da un warning al cubicador… en ese warning
-    igual el cubicador puede confirmar y queda trazabilidad»—. Lo que aSa dijo en ese
-    momento queda guardado en la auditoría, así que cerrar con algo pendiente es una
-    decisión firmada y no un descuido invisible.
+    cada barra que se declaró resuelta. SI ALGUNA SIGUE IDÉNTICA, NO SE CIERRA (6-nov). Hasta
+    hoy se avisaba y se podía «cerrar igual»; el usuario lo sacó: «el cerrar igual no me
+    gusta, porque rompe el flujo». Lo que hay que hacer con una barra idéntica es corregirla
+    en aSa o marcarla «No aplica» con su explicación. Lo raro —una barra que no se puede
+    resolver— tiene su válvula en el auditor: «cerrar a mano», con motivo.
 
     La lectura va a la API de aSa en vivo, sin pasar por nuestra copia (`_items_de` →
     `asa.consultar`), que es lo que hace que el aviso signifique algo.
@@ -2530,22 +2560,19 @@ def cerrar_resueltas(auditoria_id: int, request: Request, confirmar: bool = Fals
             # por código (1 a 2 segundos cada uno) y se hace una sola vez en la vida de la
             # auditoría: acá.
             chequeo = _chequear_lo_resuelto(cur, auditoria_id)
-            if chequeo["siguen_igual"] and not confirmar:
-                # 409 Y NO 400: no es que la petición esté mal, es que falta decidir. El
-                # detalle lleva la lista para que la pantalla pueda decir cuáles son.
+            if chequeo["siguen_igual"]:
+                # 409: la petición está bien, la auditoría todavía no. El detalle lleva la
+                # lista para que la pantalla diga cuáles son. Lo que aSa dijo ya quedó en
+                # cada barra (`verificado`), así que la tabla lo muestra al repintar.
                 raise HTTPException(
                     status_code=409,
                     detail={"motivo": "sigue_igual",
-                            "mensaje": "En aSa %d barra(s) siguen como estaban. Revísalo en "
-                                       "aSa: si ya lo cambiaste y acá no se ve, puedes cerrar "
-                                       "igual y queda registrado."
+                            "mensaje": "No se puede cerrar: en aSa %d barra(s) siguen idénticas "
+                                       "a cuando se auditaron. Corrígelas en aSa, o márcalas "
+                                       "«No aplica» con su explicación."
                                        % len(chequeo["siguen_igual"]),
                             "barras": chequeo["siguen_igual"]})
             motivo = "Cerrada por quien respondió: las %d barra(s) quedaron resueltas." % (total or 0)
-            if chequeo["siguen_igual"]:
-                motivo += (" Confirmó el cierre con %d barra(s) que en aSa seguían como "
-                           "estaban: %s." % (len(chequeo["siguen_igual"]),
-                                             ", ".join(b["ref"] for b in chequeo["siguen_igual"][:8])))
             if chequeo["cumplen"]:
                 motivo += " aSa confirmó %d." % len(chequeo["cumplen"])
             if chequeo["sin_leer"]:
@@ -2725,7 +2752,15 @@ def avisos_fabricacion(user=Depends(get_current_user)):
 # redondeo. El diámetro y la cantidad son exactos: no hay media barra ni medio milímetro
 # de φ.
 TOLERANCIA_MM = 1.0
-CAMPOS_COMPARABLES = ("diam", "cant", "largo", "figura", "lados")
+# ÁNGULOS Y MANDRIL (6-nov): «puede cambiar diámetro o un parámetro». Con sólo los lados,
+# una barra a la que le cambiaron un ángulo salía «idéntica» y trababa el cierre. Las fotos
+# de antes de hoy no los traen y no cuentan en contra: un campo que la foto no tiene no se
+# compara (`_igual` con esperado vacío).
+CAMPOS_COMPARABLES = ("diam", "cant", "largo", "figura", "lados", "angulos", "radio")
+TOLERANCIA_GRADOS = 1.0
+# Cómo se dice cada campo en la pantalla (el «por qué» va en el título de la etiqueta).
+NOMBRE_CAMPO = {"diam": "diámetro", "cant": "cantidad", "largo": "largo", "figura": "figura",
+                "lados": "lados", "angulos": "ángulos", "radio": "mandril"}
 
 
 def _igual(esperado, real, campo: str) -> bool:
@@ -2737,6 +2772,14 @@ def _igual(esperado, real, campo: str) -> bool:
     if campo in ("diam", "cant"):
         try:
             return abs(float(esperado) - float(real or 0)) < 0.01
+        except (TypeError, ValueError):
+            return False
+    if campo == "angulos":
+        # La lista de ángulos entre lados, en el orden de aSa. Otro largo es otra figura.
+        if not isinstance(esperado, list) or not isinstance(real, list) or len(esperado) != len(real):
+            return False
+        try:
+            return all(abs(float(a) - float(b)) <= TOLERANCIA_GRADOS for a, b in zip(esperado, real))
         except (TypeError, ValueError):
             return False
     if campo == "lados":
@@ -2762,21 +2805,30 @@ def _igual(esperado, real, campo: str) -> bool:
         return str(esperado).strip() == str(real or "").strip()
 
 
-def comparar(esperado: dict, original: dict, real: dict) -> tuple:
+def comparar(esperado: dict, original: dict, real: dict, tipo: str = "item") -> tuple:
     """El veredicto de UNA barra: (resultado, por qué). Función pura, sin base ni red.
 
     `esperado` es lo que el auditor dijo que debía decir; `original`, cómo estaba cuando se
-    auditó; `real`, lo que aSa dice hoy. Se prueba sin tocar nada."""
+    auditó; `real`, lo que aSa dice hoy. Se prueba sin tocar nada.
+
+    LA BARRA QUE YA NO ESTÁ SE EDITÓ (6-nov). Si en su código ya no hay una barra con esa
+    marca, alguien la cambió o la sacó: es una edición en aSa, igual que en la revisión de
+    barras («corregido»). Antes salía «no se pudo comprobar». En un código NUEVO es otra
+    cosa: ahí la marca la escribió quien resolvió, y no encontrarla es un dato mal escrito,
+    no una corrección."""
     if not real:
-        return "no_aplica", "La barra ya no está en ese código de control."
+        if tipo == "nuevo":
+            return "no_aplica", ("Esa marca no está en el código nuevo: revisa el código y la "
+                                 "marca que escribiste.")
+        return "ok", "La barra ya no está en su código: se cambió o se sacó en aSa."
     esperado = esperado or {}
     pedidos = {k: v for k, v in esperado.items()
                if k in CAMPOS_COMPARABLES and v not in (None, "")}
     if pedidos:
         malos = [k for k, v in pedidos.items() if not _igual(v, real.get(k), k)]
         if not malos:
-            return "ok", "Coincide con lo que el auditor pidió: " + ", ".join(sorted(pedidos))
-        return "sigue_igual", "Todavía no coincide en: " + ", ".join(sorted(malos))
+            return "ok", "Coincide con lo que el auditor pidió: " + ", ".join(NOMBRE_CAMPO.get(k, k) for k in sorted(pedidos))
+        return "sigue_igual", "Todavía no coincide en: " + ", ".join(NOMBRE_CAMPO.get(k, k) for k in sorted(malos))
     # SIN VALOR ESPERADO: lo único que se puede decir es si cambió.
     if not original:
         return "no_aplica", ("Se auditó sin registrar cómo estaba la barra ni qué debía "
@@ -2784,11 +2836,11 @@ def comparar(esperado: dict, original: dict, real: dict) -> tuple:
     campos = [c for c in CAMPOS_COMPARABLES if c in original or c in real]
     distintos = [c for c in campos if not _igual(original.get(c), real.get(c), c)]
     if distintos:
-        return "ok", "La barra cambió en: " + ", ".join(sorted(distintos))
+        return "ok", "La barra cambió en: " + ", ".join(NOMBRE_CAMPO.get(c, c) for c in sorted(distintos))
     return "sigue_igual", "La barra está idéntica a cuando se auditó."
 
 
-def _barra_hoy(cc: str, marca: str) -> Optional[dict]:
+def _barra_hoy(cc: str, marca: str, cache: Optional[dict] = None) -> Optional[dict]:
     """La barra que aSa tiene HOY en ese código, buscada por su marca.
 
     La marca puede repetirse dentro de un código —de ahí los `#2` de `refs_de_barras`— así
@@ -2798,7 +2850,14 @@ def _barra_hoy(cc: str, marca: str) -> Optional[dict]:
     base = (marca or "").split("#")[0].strip()
     if not cc or not base:
         return None
-    for it in (_items_de(cc) or []):
+    # UNA LECTURA POR CÓDIGO aunque se comprueben varias barras de él (lote, cierre).
+    if cache is not None:
+        if cc not in cache:
+            cache[cc] = _items_de(cc) or []
+        items = cache[cc]
+    else:
+        items = _items_de(cc) or []
+    for it in items:
         if str(it.get("BarMark") or "").strip() != base:
             continue
         from .chequeos import normalizar_asa
@@ -2811,11 +2870,15 @@ def _barra_hoy(cc: str, marca: str) -> Optional[dict]:
             if nombre:
                 lados[nombre] = l.get("largo")
         return {"diam": n.get("diam"), "cant": n.get("cant"), "largo": n.get("largo"),
-                "figura": n.get("figura"), "lados": lados}
+                "figura": n.get("figura"), "lados": lados,
+                # Con la MISMA función que arma la foto (`elemento-asa` → `_lados`), para
+                # que la lista se compare contra una lista hecha igual.
+                "angulos": _lados(it.get("LegAngle"))["angulos"],
+                "radio": it.get("PinDiam")}
     return None
 
 
-def comprobar_item(cur, item_id: int) -> dict:
+def comprobar_item(cur, item_id: int, cache: Optional[dict] = None) -> dict:
     """Va a mirar UNA barra a aSa y guarda el veredicto.
 
     DÓNDE MIRAR depende de lo que declaró el auditado, y es el único dato que el sistema no
@@ -2852,14 +2915,15 @@ def comprobar_item(cur, item_id: int) -> dict:
     else:
         donde, cual = (cc or "").strip(), (marca or ref or "").strip()
     try:
-        real = _barra_hoy(donde, cual)
+        real = _barra_hoy(donde, cual, cache)
     except HTTPException as e:
         # aSa no respondió. NO se escribe nada: dejar `sigue_igual` por una caída de red
         # sería acusar al auditado de no haber hecho su trabajo.
         return {"item_id": item_id, "resultado": "no_aplica",
                 "porque": "aSa no respondió por el código %s." % donde,
                 "reintentable": True, "detalle": str(getattr(e, "detail", e))[:200]}
-    resultado, porque = comparar(esperado or {}, original or {}, real or {})
+    resultado, porque = comparar(esperado or {}, original or {}, real or {},
+                                 "nuevo" if tipo == "nuevo" else "item")
     cur.execute(
         """UPDATE auditoria_items
               SET verificado = %s, verificado_el = now(), verificado_dato = %s
@@ -3088,9 +3152,10 @@ def mover_accion(auditoria_id: int, elemento_id: int, body: AccionBody, user=Dep
 class CorreccionBody(BaseModel):
     """Lo que declara el AUDITADO sobre una barra que le marcaron."""
     corregido: bool = True
-    # Para cuando lo hecho no calza exacto con lo observado. Lo pidió el usuario: «un
-    # posible comentario en caso de que haya alguna consideración mixta entre lo
-    # observado y lo correcto».
+    # QUÉ SE HIZO, OBLIGATORIO AL RESOLVER (6-nov). Era opcional —«un posible comentario
+    # en caso de que haya alguna consideración mixta»—; el usuario lo dejó fijo: «dejamos
+    # siempre al final un campo de texto obligatorio… ese se debe llenar siempre». La
+    # observación del auditor es un texto, y la respuesta también.
     nota: Optional[str] = None
     # `item` = se corrigió la misma barra, y entonces el sistema puede ir a mirarla.
     # `nuevo` = se hizo un ítem o un código nuevo, y entonces NO puede: la barra vieja va
@@ -3208,6 +3273,9 @@ class ResolucionBody(BaseModel):
     causa_texto: Optional[str] = None
     corregido: bool = False
     nota: Optional[str] = None
+    # Resuelto en un código nuevo (6-nov). No hay barra que comprobar: queda dicho dónde.
+    tipo: str = "item"
+    cc_nuevo: Optional[str] = None
 
 
 @router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/resolucion")
@@ -3249,6 +3317,11 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                     raise HTTPException(
                         status_code=400,
                         detail="Antes de darlo por corregido, clasifica por qué pasó (RCA).")
+                if len(nota or "") < MIN_NOTA:
+                    raise HTTPException(status_code=400, detail=FALTA_NOTA)
+                if body.tipo == "nuevo" and not (body.cc_nuevo or "").strip():
+                    raise HTTPException(status_code=400,
+                                        detail="Si quedó en un código nuevo, di cuál.")
                 estado = "corregida"
             else:
                 estado = "pendiente"
@@ -3256,10 +3329,13 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                 """UPDATE auditoria_elementos
                       SET causa = %s, causa_categoria = %s, causa_texto = %s,
                           accion_estado = %s, accion_nota = %s, accion_por = %s,
-                          accion_el = now()
+                          accion_el = now(), accion_cc_nuevo = %s
                     WHERE id = %s""",
                 (causa, (body.causa_categoria or "").strip() or None,
-                 (body.causa_texto or "").strip() or None, estado, nota, email, elemento_id))
+                 (body.causa_texto or "").strip() or None, estado, nota, email,
+                 (body.cc_nuevo or "").strip() or None
+                 if estado == "corregida" and body.tipo == "nuevo" else None,
+                 elemento_id))
             _recalcular(cur, auditoria_id)
             audit(email, "auditoria_resolucion",
                   "%s · %s: %s%s" % (codigo, nombre, estado,
@@ -3344,10 +3420,12 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
     email = user.get("email", "?")
     if body.tipo not in ("item", "nuevo"):
         raise HTTPException(status_code=422, detail="Tipo no válido: item / nuevo.")
-    if body.tipo == "nuevo" and not (body.cc_nuevo or "").strip():
+    if body.corregido and body.tipo == "nuevo" and not (body.cc_nuevo or "").strip():
         raise HTTPException(status_code=400,
                             detail="Si se hizo un código nuevo, hay que decir cuál: sin eso "
                                    "nadie puede ir a buscarlo después.")
+    if body.corregido and len((body.nota or "").strip()) < MIN_NOTA:
+        raise HTTPException(status_code=400, detail=FALTA_NOTA)
     with get_conn() as conn:
         with conn.cursor() as cur:
             elemento_id, _, ref, cubico, nombre, codigo, auditor = \
@@ -3374,17 +3452,21 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                           corregido_el = CASE WHEN %s THEN now() END,
                           nota_correccion = %s, tipo_correccion = %s, cc_nuevo = %s,
                           item_nuevo = %s,
-                          -- Volver a abrirla borra lo que el sistema había comprobado:
-                          -- esa medición era de la corrección anterior.
-                          verificado = CASE WHEN %s THEN verificado END,
-                          verificado_el = CASE WHEN %s THEN verificado_el END
+                          -- Lo comprobado antes era de la corrección anterior: se borra, y
+                          -- si esto es una corrección nueva se vuelve a comprobar abajo.
+                          verificado = NULL, verificado_el = NULL, verificado_dato = NULL
                     WHERE id = %s""",
                 (body.corregido, email if body.corregido else None, body.corregido,
                  (body.nota or "").strip() or None,
                  body.tipo if body.corregido else None,
                  (body.cc_nuevo or "").strip() or None if body.corregido else None,
                  (body.item_nuevo or "").strip() or None if body.corregido else None,
-                 body.corregido, body.corregido, item_id))
+                 item_id))
+            # SE COMPRUEBA AL MARCAR, NO DE NOCHE (6-nov). La fila dice en el acto si la
+            # barra se editó en aSa; esperar a la noche era dejar al cubicador sin poder
+            # cerrar hasta el día siguiente. Una lectura del código a aSa.
+            if body.corregido:
+                _comprobar_al_marcar(cur, [item_id])
             accion = _accion_de_items(cur, elemento_id)
             cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
                         (accion, elemento_id))
@@ -3398,6 +3480,13 @@ def corregir_item(auditoria_id: int, item_id: int, body: CorreccionBody,
                      % (codigo, nombre, ref, email.split("@")[0],
                         "resuelta" if body.corregido else "por resolver otra vez"))
     return detalle(auditoria_id, user)
+
+
+# EL TEXTO DE LA LÍNEA (6-nov): el mismo mínimo para Resuelto en CC, Resuelto en nuevo CC
+# y No aplica. Diez caracteres es lo que ya pedía el «no aplica».
+MIN_NOTA = 10
+FALTA_NOTA = ("Escribe qué hiciste: el texto de la línea es obligatorio y lo lee quien "
+              "auditó.")
 
 
 # LOS MOTIVOS POR LOS QUE UN HALLAZGO DE AUDITORÍA NO APLICA (21-oct). Mismo mecanismo
@@ -3504,11 +3593,20 @@ def desestimar_item(auditoria_id: int, item_id: int, body: DesestimarBody,
 
 
 class LoteBody(BaseModel):
-    """Varias barras marcadas, un solo verbo: aplica | no_aplica | resuelto."""
+    """Varias barras marcadas, un solo verbo: aplica | no_aplica | resuelto | causa."""
     ids: List[int]
     accion: str
     motivo_tipo: Optional[str] = None
     nota: Optional[str] = None
+    # Resuelto (6-nov): en el mismo código o en uno nuevo. El código nuevo es uno para
+    # todas; la marca, la de cada barra (`marcas`, por id), y vacía = conservó la suya.
+    tipo: str = "item"
+    cc_nuevo: Optional[str] = None
+    marcas: Optional[dict] = None
+    # El RCA de varias de una vez (6-nov): «que aplique incluso al RCA».
+    causa: Optional[str] = None
+    causa_categoria: Optional[str] = None
+    causa_texto: Optional[str] = None
 
 
 @router.put("/auditorias/{auditoria_id}/items/lote")
@@ -3519,9 +3617,19 @@ def lote_items(auditoria_id: int, body: LoteBody, user=Depends(get_current_user)
     sola escritura y un solo detalle al final. Al dueño de cada barra ajena, UN aviso."""
     _puede_ver(user)
     email = user.get("email", "?")
-    if body.accion not in ("aplica", "no_aplica", "resuelto"):
-        raise HTTPException(status_code=422, detail="Acción no válida: aplica / no_aplica / resuelto.")
+    if body.accion not in ("aplica", "no_aplica", "resuelto", "causa"):
+        raise HTTPException(status_code=422,
+                            detail="Acción no válida: aplica / no_aplica / resuelto / causa.")
     nota = (body.nota or "").strip()
+    if body.accion == "resuelto":
+        if body.tipo not in ("item", "nuevo"):
+            raise HTTPException(status_code=422, detail="Tipo no válido: item / nuevo.")
+        if body.tipo == "nuevo" and not (body.cc_nuevo or "").strip():
+            raise HTTPException(status_code=400, detail="Si quedaron en un código nuevo, di cuál.")
+        if len(nota) < MIN_NOTA:
+            raise HTTPException(status_code=400, detail=FALTA_NOTA)
+    if body.accion == "causa" and not (body.causa or "").strip():
+        raise HTTPException(status_code=400, detail="Elige una causa.")
     if body.accion == "no_aplica":
         if body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD:
             raise HTTPException(status_code=400, detail="Motivo de «no aplica» desconocido.")
@@ -3557,10 +3665,29 @@ def lote_items(auditoria_id: int, body: LoteBody, user=Depends(get_current_user)
                         status_code=400,
                         detail="Antes de darlas por resueltas, clasifica por qué pasó (RCA) en: %s."
                                % ", ".join(sin_rca[:6]))
+                marcas = {str(k): (v or "").strip() for k, v in (body.marcas or {}).items()}
+                nuevo = body.tipo == "nuevo"
+                for item_id in sel:
+                    cur.execute("""UPDATE auditoria_items
+                                      SET corregido = TRUE, corregido_por = %s, corregido_el = now(),
+                                          desestimado = FALSE, tipo_correccion = %s,
+                                          nota_correccion = %s, cc_nuevo = %s, item_nuevo = %s,
+                                          verificado = NULL, verificado_el = NULL,
+                                          verificado_dato = NULL
+                                    WHERE id = %s""",
+                                (email, body.tipo, nota,
+                                 (body.cc_nuevo or "").strip() if nuevo else None,
+                                 (marcas.get(str(item_id)) or None) if nuevo else None, item_id))
+                # Cada una contra aSa, con UNA lectura por código para todas.
+                _comprobar_al_marcar(cur, sel)
+            elif body.accion == "causa":
+                # Sólo las abiertas: lo que no aplica no lleva RCA, y lo resuelto ya lo tiene.
                 cur.execute("""UPDATE auditoria_items
-                                  SET corregido = TRUE, corregido_por = %s, corregido_el = now(),
-                                      desestimado = FALSE, tipo_correccion = 'item'
-                                WHERE id = ANY(%s)""", (email, sel))
+                                  SET causa = %s, causa_categoria = %s, causa_texto = %s,
+                                      causa_por = %s, causa_el = now()
+                                WHERE id = ANY(%s) AND NOT desestimado AND NOT corregido""",
+                            ((body.causa or "").strip(), (body.causa_categoria or "").strip() or None,
+                             (body.causa_texto or "").strip() or None, email, sel))
             elif body.accion == "no_aplica":
                 # El RCA se va con el «no aplica», igual que de a una: un hallazgo que no
                 # correspondía no es un error que clasificar.
@@ -3581,8 +3708,8 @@ def lote_items(auditoria_id: int, body: LoteBody, user=Depends(get_current_user)
             audit(email, "auditoria_lote", "%s: %d barra(s) → %s" % (codigo, len(filas), body.accion),
                   "auditoria", str(auditoria_id))
     verbo = {"resuelto": "marcó resueltas", "no_aplica": "dejó sin efecto",
-             "aplica": "volvió a abrir"}[body.accion]
-    if auditor and body.accion != "aplica":
+             "aplica": "volvió a abrir", "causa": "clasificó (RCA)"}[body.accion]
+    if auditor and body.accion not in ("aplica", "causa"):
         _avisar(auditor, "Auditoría %s: %s %s %d barra(s). %s"
                 % (codigo, email.split("@")[0], verbo, len(filas), nota[:100]))
     duenos = {}
