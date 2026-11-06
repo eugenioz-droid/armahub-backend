@@ -192,6 +192,7 @@
              como que está roto. -->
         <div class="audcandado" id="audRevCandado" style="display:none;"></div>
         <div class="audh"><span id="audRevTitulo"></span>
+          <span class="dshchips audtam" id="audRevTam" title="Tamaño del dibujo"></span>
           <div style="flex:1"></div><span class="muted" id="audRevInfo" style="font-size:10.5px;"></span></div>
         <div class="audbd" style="max-height:60vh;"><table class="audt" id="audRevBarras"></table></div>
         <!-- La SEVERIDAD es del elemento —se decide mirando el conjunto— y sólo aparece
@@ -900,6 +901,11 @@
      tamaño M) en la suya. El aviso ⚠ va cuando el eje de aSa no cuadra con su envolvente. */
   .audt td.audfigcel{text-align:center; white-space:nowrap;}
   .audt td.audfigcel svg{vertical-align:middle;}
+  /* LA PLANILLA DEL AUDITOR NO SE MUEVE (6-nov): cada columna con su ancho (_colsMuestra)
+     y el dibujo a su tamaño S/M/L, sin encogerse para caber cuando se abren los campos. */
+  #audRevBarras{table-layout:fixed;}
+  #audRevBarras td.audfigcel svg{max-width:none !important;}
+  #audRevBarras td.audedc input.auded{min-width:0;}
   .audt td.g{color:#444;} .audt th.g{color:#78909c;}
   .audfigav{display:inline-block; margin-left:3px; color:#e65100; font-weight:700; cursor:help; vertical-align:middle;}
   /* La figura se dibujó con el trazo que exportó aSa, no con nuestra reconstrucción. No es

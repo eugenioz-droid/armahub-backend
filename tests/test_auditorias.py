@@ -1223,6 +1223,14 @@ check("la grilla tiene ancho fijo, para que no se desordene fila a fila",
       "table-layout:fixed" in HTM and ".audgl td{" in HTM and "width:34px" in HTM)
 check("el dibujo lleva el nombre de la figura, que es con lo que se habla de una barra",
       "function _conNombre(" in JS and "audfign" in JS and ".audfign" in HTM)
+# LA PLANILLA DEL AUDITOR (6-nov): «no tiene cómo controlar el tamaño de las figuras», el
+# nombre salía dos veces y al marcar Hallazgo «se mueve toda la planilla… se achican las
+# barras». Anchos fijos por columna; el dibujo, a su S/M/L y sin encogerse.
+check("la planilla del auditor tiene S/M/L, el nombre sólo en Figura y anchos que no se mueven",
+      'id="audRevTam"' in HTM and "global.audChipsTam('audRevTam', pintarBarras)" in JS
+      and "celdaFigura(f, true)" in JS and "function _colsMuestra(" in JS
+      and "#audRevBarras{table-layout:fixed;}" in HTM
+      and "#audRevBarras td.audfigcel svg{max-width:none !important;}" in HTM)
 check("hay tres tamanos de dibujo y se recuerdan por navegador",
       "global.audFigTam = function" in JS and "global.audChipsTam = function" in JS
       and "armahub_fig_tam" in JS and "[['s', 'S'], ['m', 'M'], ['l', 'L']]" in JS)

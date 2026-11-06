@@ -983,7 +983,8 @@
     var nAng = filas.reduce(function (m, f) { return Math.max(m, f.angulos.length); }, 0);
     var conRadio = filas.some(function (f) { return f.radio > 0; });
     var nCols = 10 + letras.length + nAng + (conRadio ? 1 : 0);
-    var html = '<thead><tr><th style="width:124px">Veredicto</th><th>Marca</th><th class="num">φ</th>' +
+    var cols = _colsMuestra(letras.length, nAng, conRadio);
+    var html = cols.html + '<thead><tr><th>Veredicto</th><th>Marca</th><th class="num">φ</th>' +
       '<th>Figura</th><th>Render</th>' +
       letras.map(function (L) { return '<th class="num g">' + esc(L) + '</th>'; }).join('') +
       rango(nAng).map(function (i) { return '<th class="num g">α' + (i + 1) + '</th>'; }).join('') +
@@ -1009,7 +1010,8 @@
         '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
         celdaEd(b, v, 'diam', num(f.diam), 'num') +
         celdaEd(b, v, 'figura', esc(b.figura || ''), 'cc') +
-        '<td class="audfigcel">' + celdaFigura(f) + '</td>' +
+        // EL NOMBRE VA EN SU COLUMNA, «Figura»; al lado del dibujo sobraba (6-nov).
+        '<td class="audfigcel">' + celdaFigura(f, true) + '</td>' +
         letras.map(function (L) {
           return celdaEd(b, v, 'lado:' + L, num(f.dims[L]), 'num g'); }).join('') +
         rango(nAng).map(function (k) { return '<td class="num g">' + num(f.angulos[k]) + '</td>'; }).join('') +
@@ -1027,7 +1029,13 @@
               esc(v.observacion || '') + '">'
             : '') + '</td></tr>';
     });
+    // Repintar no mueve la planilla: se queda donde la dejó el auditor.
+    var caja = $('audRevBarras').parentNode, arriba = caja.scrollTop, lado = caja.scrollLeft;
     $('audRevBarras').innerHTML = html + '</tbody>';
+    $('audRevBarras').style.minWidth = cols.ancho + 'px';
+    caja.scrollTop = arriba; caja.scrollLeft = lado;
+    // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la tabla.
+    if (global.audChipsTam) global.audChipsTam('audRevTam', pintarBarras);
     $('audRevBarras').querySelectorAll('button[data-v]').forEach(function (b) {
       b.addEventListener('click', function () {
         var ref = b.dataset.ref, si = b.dataset.v === '1';
@@ -1044,6 +1052,23 @@
     });
     _bindEditables();
     pintarRevision();
+  }
+
+  // LA PLANILLA NO SE MUEVE (6-nov). Marcar «Hallazgo» vuelve campos las celdas de esa
+  // fila y abre su observación: con el ancho repartido según el contenido, la tabla
+  // recalculaba todas las columnas y el dibujo —que se encoge solo para caber— se
+  // achicaba. Cada columna tiene su ancho fijo, la del dibujo según el S/M/L elegido; lo
+  // que sobra va a la observación, que es la única que lo necesita.
+  function _colsMuestra(nLados, nAng, conRadio) {
+    var t = global._bmTam ? global._bmTam(FIG_TAM) : { w: 70 };
+    var anchos = [124, 72, 40, 60, t.w + 40]
+      .concat(rango(nLados).map(function () { return 46; }))
+      .concat(rango(nAng).map(function () { return 40; }))
+      .concat(conRadio ? [40] : [])
+      .concat([54, 48, 56, 150]);
+    var suma = anchos.reduce(function (s, w) { return s + w; }, 0);
+    return { html: '<colgroup>' + anchos.map(function (w) { return '<col style="width:' + w + 'px">'; }).join('') +
+                   '<col></colgroup>', ancho: suma + 240 };
   }
 
   // ══════ EL VALOR ESPERADO: EL AUDITOR CORRIGE EL NÚMERO DONDE LO VE ══════
@@ -1238,25 +1263,26 @@
   // EL NOMBRE DE LA FIGURA, debajo del dibujo. Es el código del catálogo de aSa (T1,
   // 106A, 105A…) y es con lo que se habla de una barra en planta: sin él, dos figuras
   // parecidas en una miniatura son la misma.
-  function _conNombre(svg, f) {
-    if (!svg || !f || !f.figura) return svg;
+  function _conNombre(svg, f, sinNombre) {
+    if (!svg || !f || !f.figura || sinNombre) return svg;
     // AL LADO, NO DEBAJO (21-oct): el usuario quería las filas más compactas.
     return '<span class="audfigw">' + svg + '<span class="audfign" title="Figura del catálogo de aSa">' +
            esc(f.figura) + '</span></span>';
   }
 
-  function celdaFigura(f) {
+  // `sinNombre`: para la tabla que ya trae el nombre en su propia columna.
+  function celdaFigura(f, sinNombre) {
     // LA FIGURA DOBLADA EN DOS PLANOS VA EN ISOMÉTRICA, antes que cualquier trazo plano:
     // el del catálogo con ese nombre sería una figura plana con el nombre de una que no lo es.
     if (f.eje && f.eje.tridimensional && (f.eje.puntos3d || []).length > 1) {
       var iso = svgIso(f);
       if (iso) {
-        return _conNombre(iso, f) + '<span class="audfigfte" title="Esta barra se dobla en dos planos: ' +
+        return _conNombre(iso, f, sinNombre) + '<span class="audfigfte" title="Esta barra se dobla en dos planos: ' +
           'se dibuja en isométrica (30°, Z hacia arriba) tal como aSa la define, lado por lado.">3D</span>';
       }
     }
     var svg = global._bmFiguraSvg ? global._bmFiguraSvg(f, FIG_TAM) : '';
-    if (svg) return _conNombre(svg, f);
+    if (svg) return _conNombre(svg, f, sinNombre);
     svg = svgEje(f);
     if (!svg) return '<span class="muted">—</span>';
     // DE DÓNDE SALIÓ EL DIBUJO, cuando no salió de donde sale siempre. El backend intenta
@@ -1265,11 +1291,11 @@
     // esté dibujando por la segunda vía no es un problema —al contrario, es la topología de
     // aSa— pero el auditor tiene derecho a saber qué está mirando.
     if (f.eje.fuente === 'catalogo_asa') {
-      return _conNombre(svg, f) + '<span class="audfigfte" title="Esta figura se dibuja con el trazo que ' +
+      return _conNombre(svg, f, sinNombre) + '<span class="audfigfte" title="Esta figura se dibuja con el trazo que ' +
         'exportó aSa en su catálogo, a las medidas de esta barra. La reconstrucción desde ' +
         'los vectores no cuadraba con la envolvente que aSa declara.">aSa</span>';
     }
-    return _conNombre(svg, f) + (f.eje.ok ? '' :
+    return _conNombre(svg, f, sinNombre) + (f.eje.ok ? '' :
       '<span class="audfigav" title="' + esc(f.eje.motivo || 'La envolvente no cuadra con la que declara aSa') + '">⚠</span>');
   }
 
