@@ -977,62 +977,60 @@
   // Las medidas van en cm, como en toda la plataforma (aSa las manda en mm). Conforme /
   // No conforme por barra; el campo de observación aparece sólo cuando se marca no
   // conforme: así no se pide escribir trece veces «ok».
+  // LA HOJA DE BARRAS (6-nov): esta planilla es el modelo de la tabla común
+  // (hoja_barras.js), y la arma la misma función que el Resumen Hallazgos y la revisión
+  // de barras. Lo propio de acá: el veredicto, las celdas que el auditor corrige y la
+  // observación de la barra. Anchos fijos: marcar «Hallazgo» no mueve la planilla ni
+  // achica el dibujo («se mueve toda la planilla… se achican las barras»).
   function pintarBarras() {
     var filas = BARRAS.map(function (b) { return normalizarBarra(b, AUD.origen); });
-    var letras = letrasUsadas(filas);
-    var nAng = filas.reduce(function (m, f) { return Math.max(m, f.angulos.length); }, 0);
-    var conRadio = filas.some(function (f) { return f.radio > 0; });
-    var nCols = 10 + letras.length + nAng + (conRadio ? 1 : 0);
-    var cols = _colsMuestra(letras.length, nAng, conRadio);
-    var html = cols.html + '<thead><tr><th>Veredicto</th><th>Marca</th><th class="num">φ</th>' +
-      '<th>Figura</th><th>Render</th>' +
-      letras.map(function (L) { return '<th class="num g">' + esc(L) + '</th>'; }).join('') +
-      rango(nAng).map(function (i) { return '<th class="num g">α' + (i + 1) + '</th>'; }).join('') +
-      (conRadio ? '<th class="num g">R</th>' : '') +
-      '<th class="num" title="Suma de los largos parciales, como los suma la plataforma. ' +
-      'No es el largo de corte de aSa, que descuenta el doblez.">Largo</th>' +
-      '<th class="num">Cant</th><th class="num">Peso</th>' +
-      '<th>' + (AUD.origen === 'asa' ? 'Elemento' : 'Plano') + '</th>' +
+    var hoja = global.HojaBarras.partes({
+      accion: { titulo: 'Veredicto', ancho: 124 },
+      elementoTitulo: AUD.origen === 'asa' ? 'Elemento' : 'Plano',
       // LA OBSERVACIÓN ES DE LA BARRA Y VA A LA DERECHA, SIEMPRE (28-oct). Antes aparecía
       // como una fila extra debajo al marcar «Hallazgo», y la nota del elemento abajo del
       // todo: el usuario veía las dos cosas mezcladas en un solo texto. Columna propia.
-      '<th class="audobsth" title="Qué tiene ESTA barra. Es lo que le llega a quien cubicó, ' +
-      'barra por barra. Lo que no es de ninguna barra va en la nota del elemento, abajo.">' +
-      'Observación de la barra</th></tr></thead><tbody>';
-    BARRAS.forEach(function (b, i) {
-      var f = filas[i], v = VERED[b.ref];
-      var clase = v ? (v.conforme ? ' class="bueno"' : ' class="malo"') : '';
-      html += '<tr' + clase + ' data-ref="' + esc(b.ref) + '">' +
-        '<td><span class="audvb">' +
-          '<button class="si' + (v && v.conforme ? ' on' : '') + '" data-v="1" data-ref="' + esc(b.ref) + '" title="Conforme">OK</button>' +
-          '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="Hay algo que corregir en esta barra">Hallazgo</button>' +
-        '</span></td>' +
-        '<td class="cc" title="' + esc(b.ref) + '">' + esc(b.marca || '') + '</td>' +
-        celdaEd(b, v, 'diam', num(f.diam), 'num') +
-        celdaEd(b, v, 'figura', esc(b.figura || ''), 'cc') +
-        // EL NOMBRE VA EN SU COLUMNA, «Figura»; al lado del dibujo sobraba (6-nov).
-        '<td class="audfigcel">' + celdaFigura(f, true) + '</td>' +
-        letras.map(function (L) {
-          return celdaEd(b, v, 'lado:' + L, num(f.dims[L]), 'num g'); }).join('') +
-        rango(nAng).map(function (k) { return '<td class="num g">' + num(f.angulos[k]) + '</td>'; }).join('') +
-        (conRadio ? '<td class="num g">' + num(f.radio, 1) + '</td>' : '') +
-        '<td class="num"' + (f.corte != null && Math.abs(f.corte - f.largo) > 0.5
-            ? ' title="Suma de los largos parciales. aSa corta ' + num(f.corte) +
-              ' cm: la diferencia es lo que se come el doblez."' : '') + '>' + num(f.largo) + '</td>' +
-        celdaEd(b, v, 'cant', (b.cant_total != null ? b.cant_total : (b.cant || '')), 'num') +
-        '<td class="num">' + kg0(b.peso_total) + '</td>' +
-        '<td title="' + esc((b.plano || '') + (b.nota ? ' · ' + b.nota : '')) + '">' +
-          esc(b.plano || '') + (b.nota ? ' <span class="muted">· ' + esc(b.nota) + '</span>' : '') + '</td>' +
-        '<td class="audobstd">' +
-          (v && v.conforme === false
+      texto: { titulo: 'Observación de la barra',
+               title: 'Qué tiene ESTA barra. Es lo que le llega a quien cubicó, barra por barra. ' +
+                      'Lo que no es de ninguna barra va en la nota del elemento, abajo.' },
+      titulos: { largo: 'Suma de los largos parciales, como los suma la plataforma. No es el ' +
+                        'largo de corte de aSa, que descuenta el doblez.' },
+      celda: function (x, campo, valor, clase) { return celdaEd(x.b, x.v, campo, valor, clase); },
+      filas: BARRAS.map(function (b, i) {
+        var f = filas[i], v = VERED[b.ref];
+        // El nombre de la marca va al lado de la marca; en el elemento queda el mensaje
+        // para el taller, si lo hay.
+        var taller = String(b.nota || '').replace(b.notas || '\u0000', '').replace(/^\s*·\s*/, '');
+        return {
+          b: b, v: v,
+          attrs: (v ? (v.conforme ? ' class="bueno"' : ' class="malo"') : '') + ' data-ref="' + esc(b.ref) + '"',
+          accion: '<span class="audvb">' +
+            '<button class="si' + (v && v.conforme ? ' on' : '') + '" data-v="1" data-ref="' + esc(b.ref) + '" title="Conforme">OK</button>' +
+            '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="Hay algo que corregir en esta barra">Hallazgo</button>' +
+            '</span>',
+          barra: {
+            marca: b.marca || '', marcaTitle: b.ref, notas: b.notas || '',
+            diam: f.diam, figura: b.figura || '',
+            // EL NOMBRE VA EN SU COLUMNA, «Figura»; al lado del dibujo sobraba (6-nov).
+            render: celdaFigura(f, true),
+            lados: f.dims, angulos: f.angulos, radio: f.radio, largo: f.largo,
+            largoTitle: (f.corte != null && Math.abs(f.corte - f.largo) > 0.5)
+              ? 'Suma de los largos parciales. aSa corta ' + num(f.corte) + ' cm: la diferencia es lo que se come el doblez.'
+              : '',
+            cant: b.cant_total != null ? b.cant_total : b.cant, peso: b.peso_total },
+          elemento: (b.plano || '') + (taller ? ' · ' + taller : ''),
+          elementoTitle: (b.plano || '') + (b.nota ? ' · ' + b.nota : ''),
+          texto: v && v.conforme === false
             ? '<input type="text" class="audobs" data-obs="' + esc(b.ref) + '" placeholder="Qué tiene esta barra (obligatorio)" value="' +
               esc(v.observacion || '') + '">'
-            : '') + '</td></tr>';
+            : ''
+        };
+      })
     });
     // Repintar no mueve la planilla: se queda donde la dejó el auditor.
     var caja = $('audRevBarras').parentNode, arriba = caja.scrollTop, lado = caja.scrollLeft;
-    $('audRevBarras').innerHTML = html + '</tbody>';
-    $('audRevBarras').style.minWidth = cols.ancho + 'px';
+    $('audRevBarras').innerHTML = hoja.html;
+    $('audRevBarras').style.minWidth = hoja.ancho + 'px';
     caja.scrollTop = arriba; caja.scrollLeft = lado;
     // Los chips S/M/L: cambiar el tamaño rehace los SVG, así que repinta la tabla.
     if (global.audChipsTam) global.audChipsTam('audRevTam', pintarBarras);
@@ -1052,23 +1050,6 @@
     });
     _bindEditables();
     pintarRevision();
-  }
-
-  // LA PLANILLA NO SE MUEVE (6-nov). Marcar «Hallazgo» vuelve campos las celdas de esa
-  // fila y abre su observación: con el ancho repartido según el contenido, la tabla
-  // recalculaba todas las columnas y el dibujo —que se encoge solo para caber— se
-  // achicaba. Cada columna tiene su ancho fijo, la del dibujo según el S/M/L elegido; lo
-  // que sobra va a la observación, que es la única que lo necesita.
-  function _colsMuestra(nLados, nAng, conRadio) {
-    var t = global._bmTam ? global._bmTam(FIG_TAM) : { w: 70 };
-    var anchos = [124, 72, 40, 60, t.w + 40]
-      .concat(rango(nLados).map(function () { return 46; }))
-      .concat(rango(nAng).map(function () { return 40; }))
-      .concat(conRadio ? [40] : [])
-      .concat([54, 48, 56, 150]);
-    var suma = anchos.reduce(function (s, w) { return s + w; }, 0);
-    return { html: '<colgroup>' + anchos.map(function (w) { return '<col style="width:' + w + 'px">'; }).join('') +
-                   '<col></colgroup>', ancho: suma + 240 };
   }
 
   // ══════ EL VALOR ESPERADO: EL AUDITOR CORRIGE EL NÚMERO DONDE LO VE ══════
@@ -1146,15 +1127,17 @@
   }
 
   // Y lo que el auditor pidió, en las mismas unidades. Lo escribe en cm, como lo ve.
+  // La coma decimal vale: la tabla muestra «29,5» y así se escribe.
+  function _nro(x) { return Number(String(x).replace(',', '.')); }
   function _esperadoDe(esp) {
     if (!esp) return null;
     var out = {};
-    if (esp.diam) out.diam = Number(esp.diam);
-    if (esp.cant) out.cant = Number(esp.cant);
+    if (esp.diam) out.diam = _nro(esp.diam);
+    if (esp.cant) out.cant = _nro(esp.cant);
     if (esp.figura) out.figura = String(esp.figura).trim();
     if (esp.lados) {
       out.lados = {};
-      Object.keys(esp.lados).forEach(function (L) { out.lados[L] = _aMm(esp.lados[L]); });
+      Object.keys(esp.lados).forEach(function (L) { out.lados[L] = _aMm(_nro(esp.lados[L])); });
     }
     return Object.keys(out).length ? out : null;
   }
@@ -1770,48 +1753,40 @@
     return c.barras[ref] || c.barras[String(ref).split('#')[0]] || null;
   }
 
-  // Lo que se muestra de una barra: la foto de la auditoría, completada con aSa.
+  // Lo que se muestra de una barra: la FOTO de la auditoría (dato_original), en cm como la
+  // planilla del auditor. Las auditorías de antes del 15-oct no tienen foto y toman lados,
+  // ángulos, figura y nombre de lo leído en aSa; las demás no leen parámetros: «Ver
+  // figuras» trae el dibujo y nada más.
   function _vista(cc, b) {
     var o = b.original || {}, v = _barraAsa(cc, b.ref) || {};
-    return { lados: (o.lados && Object.keys(o.lados).length) ? o.lados : (v.dims || {}),
+    var deFoto = !!(o.lados && Object.keys(o.lados).length);
+    var k = AUD.origen === 'asa' ? 0.1 : 1, lados = {};
+    var src = deFoto ? o.lados : (v.dims || {}), kl = deFoto ? k : 0.1;
+    Object.keys(src).forEach(function (L) { lados[String(L).toUpperCase()] = Number(src[L]) * kl; });
+    return { lados: lados,
              angulos: Array.isArray(o.angulos) ? o.angulos : (v.angulos || []),
              figura: o.figura || v.figura || '',
-             notas: o.notas || v.notas || '' };
+             notas: o.notas || v.notas || '',
+             diam: o.diam || null, cant: o.cant || null,
+             largo: (o.largo != null && o.largo !== '') ? Number(o.largo) * k : null,
+             // El radio de aSa es el mandril, no la R de la plataforma: no se mezclan.
+             radio: AUD.origen === 'asa' ? null : (o.radio || null) };
   }
 
-  // Las columnas de un código: las letras de todos sus lados y el máximo de ángulos.
-  function _colsAud(els) {
-    var letras = [], vistas = {}, nang = 0;
-    els.forEach(function (e) {
-      (e.barras_malas || []).forEach(function (b) {
-        var v = _vista(e.cc, b);
-        Object.keys(v.lados).forEach(function (L) { if (!vistas[L]) { vistas[L] = 1; letras.push(L); } });
-        nang = Math.max(nang, (v.angulos || []).length);
-      });
-    });
-    letras.sort();
-    return { letras: letras, nang: nang };
-  }
-
-  // LA FIGURA, con su nombre siempre a la vista. El dibujo es aSa de ahora y llega con «Ver
-  // figuras»; mientras tanto, o si falla, queda el nombre.
-  function _celdaFig(cc, b, v) {
-    var nom = v.figura ? '<span class="audfigw"><span class="audfign" title="Figura del catálogo de aSa">' +
-                         esc(v.figura) + '</span></span>' : '';
+  // EL DIBUJO, sin el nombre: el nombre va en su columna, «Figura» (6-nov). Es aSa de
+  // ahora y llega con «Ver figuras»; mientras tanto la celda queda vacía.
+  function _celdaFig(cc, b) {
     var c = AFIGS[cc];
-    if (!c) return nom;
-    if (c.estado === 'cargando') return nom + '<span class="muted">…</span>';
-    if (c.estado === 'error') return nom + '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
+    if (!c) return '';
+    if (c.estado === 'cargando') return '<span class="muted">…</span>';
+    if (c.estado === 'error') return '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
     var x = _barraAsa(cc, b.ref);
     if (!x) {
-      return nom + '<div class="revcorr" title="En aSa ya no hay una barra con esta marca en este ' +
+      return '<div class="revcorr" title="En aSa ya no hay una barra con esta marca en este ' +
              'código: alguien la cambió o la sacó.">ya no está</div>';
     }
-    // El nombre no se pierde aunque el dibujo no salga: el dibujante lo pone sólo cuando dibuja.
-    try {
-      var html = celdaFigura(normalizarBarra(x, 'asa'));
-      return html.indexOf('audfign') === -1 ? nom + html : html;
-    } catch (err) { return nom || '<span class="muted">—</span>'; }
+    try { return celdaFigura(normalizarBarra(x, 'asa'), true); }
+    catch (err) { return '<span class="muted">—</span>'; }
   }
 
   function _gruposAud(acc) {
@@ -1925,19 +1900,22 @@
         'aceptas un descarte, «No lo acepto» lo vuelve a abrir.</div>';
   }
 
-  // UN CÓDIGO: cabecera y tabla, como en la revisión de barras.
+  // UN CÓDIGO: cabecera y la tabla común (hoja_barras.js), como la planilla del auditor.
+  // Lo propio del Resumen: el check, las tres salidas, lo que encontró el auditor, lo que
+  // debería decir, el RCA, el estado y la respuesta de quien resolvió.
   function _bloqueAud(g) {
-    var c = _colsAud(g.els), lineas = 0, listas = 0;
+    var lineas = 0, listas = 0, filas = [];
     g.els.forEach(function (e) {
       (e.barras_malas || []).forEach(function (b) { lineas++; if (b.corregido || b.desestimado) listas++; });
       if (e.comentario_suelto) { lineas++; if ((e.accion_estado || 'pendiente') !== 'pendiente') listas++; }
+      var malas = e.barras_malas || [];
+      if (!malas.length) filas.push(filaComentario(e));
+      else malas.forEach(function (b) { filas.push(filaAccion(e, b)); });
     });
     var fg = AFIGS[g.cc];
     var marcables = _actuo() && g.els.some(function (e) {
       return (e.barras_malas || []).some(function (b) { return !b.corregido && !b.desestimado; });
     });
-    var ang = '';
-    for (var k = 1; k <= c.nang; k++) ang += '<th class="revn reva">α' + k + '</th>';
     return '<div class="revcc2 audhoja' + (lineas && listas >= lineas ? ' listo' : '') +
       '" data-grupocc="' + esc(g.cc) + '"><h5>' +
       '<b>' + esc(g.cc || '—') + '</b> <span class="muted">' + esc(g.descr || '') + '</span>' +
@@ -1955,26 +1933,27 @@
       (fg && fg.estado === 'cargando' ? '<span class="muted">leyendo aSa…</span>' : '') +
       '<span class="revcuenta" title="Resueltas y no aplican, sobre las líneas del código."><b>' +
         listas + '</b>/' + lineas + '</span></h5>' +
-      '<div class="audtbl"><table><tr class="revhead">' +
-        '<th style="width:22px">' + (marcables
+      global.HojaBarras.tabla({
+        check: { titulo: marcables
           ? '<input type="checkbox" data-aselgrp="' + esc(g.cc) + '" title="Marcar todas las barras ' +
-            'por resolver de este código">' : '') + '</th>' +
-        '<th>Marca</th><th>Figura</th>' +
-        c.letras.map(function (L) {
-          return '<th class="revn" title="Medida del lado ' + esc(L) + ' cuando se auditó. El dibujo ' +
-                 'es lo que hay en aSa ahora: si no calzan, la barra ya se editó.">' + esc(L) + '</th>';
-        }).join('') + ang +
-        '<th>Elemento</th><th>Qué encontró el auditor</th>' +
-        '<th class="revn" title="Lo que la barra debería decir, como lo dejó el auditor.">Debería decir</th>' +
-        '<th title="Por qué pasó, en la matriz Ishikawa. Es por barra y es de este módulo: no se ' +
-        'mezcla con las causas de los reclamos.">RCA</th>' +
-        '<th>Estado</th><th></th></tr>' +
-        g.els.map(function (e) {
-          var malas = e.barras_malas || [];
-          if (!malas.length) return filaComentario(e, c);
-          return malas.map(function (b) { return filaAccion(e, b, c); }).join('');
-        }).join('') +
-      '</table></div></div>';
+            'por resolver de este código">' : '' },
+        accion: { titulo: 'Acción', ancho: 340 },
+        titulos: { lado: function (L) {
+          return 'Medida del lado ' + L + ' cuando se auditó. El dibujo es lo que hay en aSa ahora: ' +
+                 'si no calzan, la barra ya se editó.'; } },
+        propias: [
+          { titulo: 'Qué encontró el auditor', ancho: 200, clase: 'audqse' },
+          { titulo: 'Debería decir', ancho: 90, clase: 'revesp',
+            title: 'Lo que la barra debería decir, como lo dejó el auditor.' },
+          { titulo: 'RCA', ancho: 76, clase: 'audcausa',
+            title: 'Por qué pasó, en la matriz Ishikawa. Es por barra y es de este módulo: no se ' +
+                   'mezcla con las causas de los reclamos.' },
+          { titulo: 'Estado', ancho: 120, clase: 'hojaest' }
+        ],
+        texto: { titulo: 'Respuesta',
+                 title: 'Qué hizo quien resolvió, o por qué no aplica. Obligatorio: lo lee quien auditó.' },
+        filas: filas
+      }) + '</div>';
   }
 
   // LA CELDA DEL RCA, igual para la barra y para el comentario del elemento. RCA = análisis
@@ -2043,12 +2022,12 @@
     return '';
   }
 
-  // LOS BOTONES DE UNA LÍNEA. Abierta: las tres salidas y sus campos, escondidos hasta que
-  // se aprieta una. Resuelta o sin efecto: la firma y Deshacer. `lin` es «i<barra>» o
-  // «e<elemento>» (el comentario del elemento).
-  function _accionesAud(lin, abierta, puede, sinRca, esBarra, firma, objetarId) {
+  // LOS BOTONES DE UNA LÍNEA, en la primera columna como el OK / Hallazgo del auditor.
+  // Abierta: las tres salidas. Resuelta o sin efecto: Deshacer (y «No lo acepto» para el
+  // auditor). `lin` es «i<barra>» o «e<elemento>» (el comentario del elemento).
+  function _accionesAud(lin, abierta, puede, sinRca, esBarra, objetarId) {
     if (!abierta) {
-      var out = firma ? '<span class="revfirma" title="' + esc(firma) + '">' + esc(firma) + '</span>' : '';
+      var out = '';
       if (puede) out += '<button class="audmini" data-adeshacer="' + lin + '" title="Vuelve a dejar la ' +
                         'línea por resolver.">Deshacer</button>';
       // Derecho a réplica del auditor: el descarte vale por defecto, pero si no corresponde
@@ -2069,6 +2048,16 @@
         '>Resuelto en nuevo CC</button>' +
       '<button class="revnapbtn" data-amodo="nap" data-alin="' + lin + '" title="Lo observado no ' +
         'corresponde. No lleva RCA.">No aplica</button>' +
+      '</div>';
+  }
+
+  // EL TEXTO DE LA LÍNEA, en la última columna como la observación del auditor. Abierta:
+  // los campos, escondidos hasta que se aprieta una salida (el código y la marca nuevos
+  // sólo con «nuevo CC»). Cerrada: lo que quedó escrito y quién.
+  function _textoAud(lin, abierta, puede, esBarra, firma) {
+    if (!abierta) return firma ? '<span class="revfirma" title="' + esc(firma) + '">' + esc(firma) + '</span>' : '';
+    if (!puede) return '';
+    return '<div class="hojain">' +
       '<input type="text" class="revccin" data-accnuevo="' + lin + '" style="display:none" ' +
         'placeholder="código nuevo" title="El código de control donde quedó.">' +
       (esBarra ? '<input type="text" class="revccin revmarcain" data-amarca="' + lin + '" style="display:none" ' +
@@ -2078,75 +2067,63 @@
       '</div>';
   }
 
-  // UNA BARRA DE LA AUDITORÍA.
-  function filaAccion(e, b, c) {
+  // UNA BARRA DE LA AUDITORÍA, como fila de la tabla común.
+  function filaAccion(e, b) {
     var lin = 'i' + b.item_id, v = _vista(e.cc, b);
     var puede = _actuo();
     var abierta = !b.corregido && !b.desestimado;
-    var cm = global.audNumCm;
     var malos = {};
     Object.keys((b.esperado || {}).lados || {}).forEach(function (L) { malos[String(L).toUpperCase()] = 1; });
-    var angTd = '';
-    for (var k = 0; k < c.nang; k++) {
-      var a = (v.angulos || [])[k];
-      angTd += '<td class="revn reva">' + (a != null && a !== '' ? Math.abs(Math.round(Number(a))) + '°' : '') + '</td>';
-    }
     var objetarId = (!puede && b.desestimado && AUD.soy_auditor && AUD.estado !== 'cerrada') ? b.item_id : null;
-    return '<tr class="' + (b.corregido ? 'hecho' : b.desestimado ? 'nap' : '') + '" data-alin="' + lin + '">' +
-      '<td style="width:22px">' + (puede && abierta
+    return {
+      attrs: ' class="' + (b.corregido ? 'hecho' : b.desestimado ? 'nap' : '') + '" data-alin="' + lin + '"',
+      check: (puede && abierta)
         ? '<input type="checkbox" data-asel="' + b.item_id + '" data-agrp="' + esc(e.cc || '') + '"' +
           (SEL_AUD[b.item_id] ? ' checked' : '') + ' title="Marcar para resolver varias de una vez">'
-        : '') + '</td>' +
-      '<td class="revm"><span class="audref">' + esc(b.ref || b.marca || '') + '</span>' +
-        (v.notas ? ' <span class="audnotas" title="El nombre que le puso a la marca quien cubicó ' +
-                   '(Notes en aSa)">' + esc(v.notas) + '</span>' : '') + '</td>' +
-      '<td class="revfig">' + _celdaFig(e.cc, b, v) + '</td>' +
-      c.letras.map(function (L) {
-        var x = v.lados[L];
-        return '<td class="revn' + (malos[L] ? ' mal' : '') + '">' +
-               (x != null && x !== '' ? cm(Number(x) / 10) : '') + '</td>';
-      }).join('') + angTd +
-      '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(e.nombre || nombreCompleto(e)) + '</td>' +
-      '<td class="audqse">' + esc(b.observacion || '') + '</td>' +
-      '<td class="revn revesp">' + esc(_esperadoTxt(b.esperado)) + '</td>' +
-      '<td class="audcausa">' + _celdaCausa(b, !!b.desestimado, 'data-causa', b.item_id, puede && abierta,
-                                             puede && abierta, 'darla por resuelta') + '</td>' +
-      '<td>' + _estadoBarra(b) + '</td>' +
-      '<td class="revacc">' + _accionesAud(lin, abierta, puede, !b.causa, true, _firmaBarra(b), objetarId) +
-      '</td></tr>';
+        : '',
+      accion: _accionesAud(lin, abierta, puede, !b.causa, true, objetarId),
+      barra: { marca: b.ref || b.marca || '', notas: v.notas, diam: v.diam, figura: v.figura,
+               render: _celdaFig(e.cc, b), lados: v.lados, malos: malos, angulos: v.angulos,
+               radio: v.radio, largo: v.largo, cant: v.cant },
+      elemento: e.nombre || nombreCompleto(e), elementoTitle: nombreCompleto(e),
+      propias: [esc(b.observacion || ''), esc(_esperadoTxt(b.esperado)),
+                _celdaCausa(b, !!b.desestimado, 'data-causa', b.item_id, puede && abierta,
+                            puede && abierta, 'darla por resuelta'),
+                _estadoBarra(b)],
+      texto: _textoAud(lin, abierta, puede, true, _firmaBarra(b))
+    };
   }
 
   // EL COMENTARIO DEL ELEMENTO, cuando el hallazgo no es de ninguna barra. «Falta trabas de
   // muro» no se puede colgar de una barra: la barra que falta no está. Lleva las mismas tres
   // salidas que una barra, porque es el mismo trabajo a otra escala; en un código nuevo
-  // queda dicho cuál, sin marca, porque no hay barra.
-  function filaComentario(e, c) {
+  // queda dicho cuál, sin marca, porque no hay barra. En la tabla común cruza a lo ancho
+  // las columnas de la barra.
+  function filaComentario(e) {
     var est = e.accion_estado || 'pendiente';
     var resuelto = est === 'corregida' || est === 'verificada';
     var nap = est === 'desestimada';
     var abierta = !resuelto && !nap;
     var puede = !!(e.comentario_suelto && _actuo());
-    var lin = 'e' + e.id, vacias = '';
-    for (var k = 0; k < c.letras.length + c.nang; k++) vacias += '<td class="revn"></td>';
+    var lin = 'e' + e.id;
     var estado = nap
       ? '<span class="revi aceptada" title="' + esc(e.accion_nota || '') + '">No aplica</span>'
       : resuelto ? '<span class="revi corregida">Resuelto</span>' : '<span class="revi abierta">Por resolver</span>';
     var firma = abierta ? '' :
       (resuelto && e.accion_cc_nuevo ? 'en ' + e.accion_cc_nuevo + ': ' : '') + (e.accion_nota || '') +
       (e.accion_por ? ' — ' + e.accion_por.split('@')[0] : '');
-    return '<tr class="' + (resuelto ? 'hecho' : nap ? 'nap' : '') + '" data-alin="' + lin + '">' +
-      '<td></td>' +
-      '<td class="revm"><span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
-        'del elemento.">elemento</span></td>' +
-      '<td class="revfig"></td>' + vacias +
-      '<td class="audnom" title="' + esc(nombreCompleto(e)) + '">' + esc(e.nombre || nombreCompleto(e)) + '</td>' +
-      '<td class="audqse">' + esc(e.texto || '') + '</td>' +
-      '<td class="revn revesp"></td>' +
-      '<td class="audcausa">' + _celdaCausa(e, nap, 'data-ecausa', e.id, puede && abierta, puede && abierta,
-                                             'darlo por resuelto') + '</td>' +
-      '<td>' + estado + _porOtro(e.resuelto_por_otro) + '</td>' +
-      '<td class="revacc">' + _accionesAud(lin, abierta, puede && !!e.comentario_suelto, !e.causa, false, firma, null) +
-      '</td></tr>';
+    return {
+      attrs: ' class="' + (resuelto ? 'hecho' : nap ? 'nap' : '') + '" data-alin="' + lin + '"',
+      accion: _accionesAud(lin, abierta, puede, !e.causa, false, null),
+      barra: null,
+      sinBarra: '<span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
+                'del elemento.">elemento</span> <span class="muted">— no es de una barra en particular</span>',
+      elemento: e.nombre || nombreCompleto(e), elementoTitle: nombreCompleto(e),
+      propias: [esc(e.texto || ''), '',
+                _celdaCausa(e, nap, 'data-ecausa', e.id, puede && abierta, puede && abierta, 'darlo por resuelto'),
+                estado + _porOtro(e.resuelto_por_otro)],
+      texto: _textoAud(lin, abierta, puede, false, firma)
+    };
   }
 
   // LAS FIGURAS DE LA AUDITORÍA. Mismo trato que en la revisión de barras: se piden POR

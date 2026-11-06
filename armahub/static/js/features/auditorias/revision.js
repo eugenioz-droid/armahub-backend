@@ -851,31 +851,25 @@
   // así que no cuesta una llamada más. Mientras no se hayan pedido las figuras se
   // muestra sólo el lado del hallazgo, que es el dato que la señal ya trae.
 
-  // EL NOMBRE DE LA FIGURA SE VE SIEMPRE (4-nov): la señal lo trae, y es con lo que se
-  // habla de una barra. Antes la columna quedaba vacía hasta apretar «Ver figuras».
-  function _nombreFig(sen) {
-    var i = _senalDe(sen);
-    return i && i.figura
-      ? '<span class="audfigw"><span class="audfign" title="Figura del catálogo de aSa">' + esc(i.figura) + '</span></span>'
-      : '';
-  }
-
+  // EL DIBUJO, SIN EL NOMBRE (6-nov): el nombre va en su columna, «Figura», que la señal
+  // trae siempre. El dibujo es aSa de ahora y llega con «Ver figuras»: trae el dibujo y
+  // nada más, sin leer parámetros. Mientras tanto la celda queda vacía.
   function _celda(cc, ref, sen) {
-    var c = REVS.figs[cc], nom = _nombreFig(sen);
-    if (!c) return nom;
-    if (c.estado === 'cargando') return nom + '<span class="muted">…</span>';
-    if (c.estado === 'error') return nom + '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
+    var c = REVS.figs[cc];
+    if (!c) return '';
+    if (c.estado === 'cargando') return '<span class="muted">…</span>';
+    if (c.estado === 'error') return '<span class="muted" title="' + esc(c.msg || '') + '">sin dibujo</span>';
     var b = _barraDe(cc, ref);
     // LA BARRA QUE YA NO ESTÁ ESTÁ CORREGIDA: alguien la cambió o la sacó del código, y
     // es lo mismo que mira el sistema para cerrarla sola.
-    if (!b) return nom + '<div class="revcorr" title="La barra ya no está en este código en aSa: ' +
+    if (!b) return '<div class="revcorr" title="La barra ya no está en este código en aSa: ' +
                    'alguien la cambió o la sacó.">corregido</div>';
     if (!global.audBarraNormalizada || !global.audCeldaFigura) return '';
     try {
       // EL SELLO, DEBAJO DEL DIBUJO. El dibujo es aSa de ahora; si el lado que motivó el
       // hallazgo ya cumple, se dice con todas las letras en vez de dejar que el usuario
       // compare contra la columna —que es la medida vieja— y crea que algo está mal.
-      return global.audCeldaFigura(global.audBarraNormalizada(b, 'asa')) + _selloCorregido(sen, b);
+      return global.audCeldaFigura(global.audBarraNormalizada(b, 'asa'), true) + _selloCorregido(sen, b);
     } catch (e) { return '<span class="muted">—</span>'; }
   }
 
@@ -974,43 +968,35 @@
 
 
   // UN SOLO ENCABEZADO POR CÓDIGO (21-oct, lo pidió el usuario: «estamos repitiendo A, B y
-  // C muchas veces»): Marca · Figura · A B C… · α1 α2… · Esperado · Regla · Estado. Las
-  // letras y los ángulos salen de la señal (`detalle.lados_all`, guardado al detectar), así
-  // que no dependen de haber leído aSa; la figura sólo dibuja. Las señales de antes de hoy
-  // traen sólo los lados marcados hasta la próxima revisión, que las rellena.
-  function _colsGrupo(items) {
-    var letras = [], vistas = {}, nang = 0;
-    items.forEach(function (i) {
-      var det = i.detalle || {}, la = det.lados_all || [];
-      la.forEach(function (l, k) {
-        if (!vistas[l[0]]) { vistas[l[0]] = 1; letras.push(l[0]); }
-        if (k > 0 && l[2] != null) nang = Math.max(nang, k);
-      });
-      if (!la.length) (det.lados || []).forEach(function (L) { if (!vistas[L]) { vistas[L] = 1; letras.push(L); } });
-    });
-    letras.sort();
-    return { letras: letras, nang: nang };
-  }
-
+  // C muchas veces»). LA TABLA COMÚN (6-nov, hoja_barras.js): la misma de la planilla del
+  // auditor y del Resumen Hallazgos —marcar · Resuelto / No aplica · Marca · φ · Figura ·
+  // Render · A B C… · α… · Elemento · Esperado · Regla · Estado · Explicación—. Las letras y
+  // los ángulos salen de la señal (`detalle.lados_all`, guardado al detectar), así que no
+  // dependen de haber leído aSa; la figura sólo dibuja. Largo, cantidad y peso no salen:
+  // la señal no los guarda.
   function _tablaGrupo(g) {
     if (REVS.nivel === 'elemento') return _tablaElementos(g);
-    var c = _colsGrupo(g.items), ang = '';
-    for (var k = 1; k <= c.nang; k++) ang += '<th class="revn reva">α' + k + '</th>';
-    // El check «todas» va donde van los checks: en su columna (29-oct). Antes estaba en
-    // el título del código, mezclado con la obra y «Ver figuras».
-    return '<table><tr class="revhead"><th style="width:22px"><input type="checkbox" data-grupo="' +
-      esc(g.cc || '') + '" title="Marcar todas las barras de este código"></th><th>Marca</th><th>Figura</th>' +
+    return global.HojaBarras.tabla({
+      // El check «todas» va donde van los checks: en su columna (29-oct).
+      check: { titulo: '<input type="checkbox" data-grupo="' + esc(g.cc || '') +
+                       '" title="Marcar todas las barras de este código">' },
+      accion: { titulo: 'Acción', ancho: 160 },
       // LAS MEDIDAS SON LAS DEL MOMENTO EN QUE SALTÓ (3-nov). El dibujo, en cambio, se lee
       // de aSa cuando se aprieta «Ver figuras»: si alguien ya corrigió la barra, el dibujo
       // muestra la medida nueva y la columna la vieja, y parecen contradecirse. Son dos
       // cosas distintas y la cabecera lo dice.
-      c.letras.map(function (L) {
-        return '<th class="revn" title="Medida del lado ' + esc(L) + ' cuando se detectó el ' +
-               'hallazgo. El dibujo es lo que hay en aSa ahora: si no calzan, es que la ' +
-               'barra ya se corrigió.">' + esc(L) + '</th>'; }).join('') + ang +
-      '<th class="revn" title="Lo que la regla pide: un mínimo en el lado corto, la medida exacta en los opuestos">Esperado</th>' +
-      '<th>Regla</th><th>Estado</th><th></th></tr>' +
-      g.items.map(function (i) { return filaItem(i, c); }).join('') + '</table>';
+      titulos: { lado: function (L) {
+        return 'Medida del lado ' + L + ' cuando se detectó el hallazgo. El dibujo es lo que hay ' +
+               'en aSa ahora: si no calzan, es que la barra ya se corrigió.'; } },
+      propias: [
+        { titulo: 'Esperado', ancho: 64, clase: 'num revesp',
+          title: 'Lo que la regla pide: un mínimo en el lado corto, la medida exacta en los opuestos' },
+        { titulo: 'Regla', ancho: 120 },
+        { titulo: 'Estado', ancho: 96 }
+      ],
+      texto: { titulo: 'Explicación', title: 'Por qué no aplica, o quién lo resolvió.' },
+      filas: g.items.map(filaItem)
+    });
   }
 
   // EL PIE DEL CÓDIGO: un solo botón que cierra todo lo de este CC. Dice lo que falta
@@ -1113,9 +1099,15 @@
     return '<div class="revaccs">' +
       '<button class="audbres" data-resuelto="' + i.id + '" title="' + t.resuelto + '">Resuelto</button>' +
       '<button class="revnapbtn" data-noaplica="' + i.id + '" title="' + t.noaplica + '">No aplica</button>' +
-      '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
-        ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">' +
       '</div>';
+  }
+
+  // EL CAMPO DEL «NO APLICA», escondido hasta que se aprieta. En la barra va en la última
+  // columna, la del texto de la línea; en la tarjeta del elemento, al lado de los botones.
+  function _campoNota(i) {
+    if (_confirmada(i) || _declarada(i) || _noAplica(i)) return '';
+    return '<input type="text" class="revnapin" data-nota="' + i.id + '" style="display:none"' +
+      ' placeholder="¿por qué? … y Enter" title="Escribe la explicación y aprieta Enter. Esc para dejarlo.">';
   }
 
   function _checkDe(i, t) {
@@ -1151,37 +1143,42 @@
           '<div class="elmed">' + medidas + '</div>' +
           (lista.length ? '<div class="ellista">' + lista.join('') + '</div>' : '') + '</div>' +
         '<div class="elacc"><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>' +
-          _firmaDe(i) + _accionesDe(i, TXT_ELEMENTO) + '</div>' +
+          _firmaDe(i) + _accionesDe(i, TXT_ELEMENTO) + _campoNota(i) + '</div>' +
       '</div></td></tr>';
   }
 
-  function filaItem(i, c) {
+  function filaItem(i) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
     var hecho = _resuelta(i), nap = _noAplica(i);
     var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
     var malos = {}, porL = {}, angs = [];
+    // La señal guarda los lados en mm; la tabla los muestra en cm.
     (det.lados || []).forEach(function (L) { malos[L] = 1; });
-    (det.lados_all || []).forEach(function (l, k) { porL[l[0]] = l[1]; if (k > 0) angs[k - 1] = l[2]; });
-    if (!(det.lados_all || []).length) (det.lados || []).forEach(function (L) { porL[L] = det.valor; });
-    var angTd = '';
-    for (var k = 0; k < c.nang; k++) {
-      angTd += '<td class="revn reva">' + (angs[k] != null ? Math.abs(Math.round(angs[k])) + '°' : '') + '</td>';
-    }
+    (det.lados_all || []).forEach(function (l, k) {
+      porL[l[0]] = Number(l[1]) / 10;
+      if (k > 0 && l[2] != null) angs[k - 1] = l[2];
+    });
+    if (!(det.lados_all || []).length) (det.lados || []).forEach(function (L) { porL[L] = Number(det.valor) / 10; });
     var esp = det.esperado != null ? (i.regla === 'lado_corto' ? 'mín ' : '') + cm(det.esperado / 10) : '';
-    return '<tr class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '">' +
-      '<td style="width:22px">' + _checkDe(i, TXT_BARRA) + '</td>' +
-      '<td class="revm"><span class="audref" data-ver="' + i.id +
-        '" title="Ver la barra en grande">' + esc(i.ref) + '</span></td>' +
-      '<td class="revfig" data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') +
-        '" data-sen="' + i.id + '">' + _celda(i.cc || '', i.ref, i.id) + '</td>' +
-      c.letras.map(function (L) {
-        return '<td class="revn' + (malos[L] ? ' mal' : '') + '">' + (porL[L] != null ? cm(porL[L] / 10) : '') + '</td>';
-      }).join('') + angTd +
-      '<td class="revn revesp">' + esc(esp) + '</td>' +
-      '<td><span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +
-        esc(r.corto || r.nombre) + '</span></td>' +
-      '<td><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span></td>' +
-      '<td class="revacc">' + _firmaDe(i) + _accionesDe(i, TXT_BARRA) + '</td></tr>';
+    return {
+      attrs: ' class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '"',
+      check: _checkDe(i, TXT_BARRA),
+      accion: _accionesDe(i, TXT_BARRA),
+      // La referencia abre el render en grande.
+      barra: { marca: i.ref, marcaAttrs: ' data-ver="' + i.id + '"', marcaTitle: 'Ver la barra en grande',
+               diam: i.diam, figura: i.figura || '',
+               render: _celda(i.cc || '', i.ref, i.id),
+               renderAttrs: ' data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '" data-sen="' + i.id + '"',
+               lados: porL, malos: malos, angulos: angs },
+      elemento: i.elemento || '',
+      propias: [esc(esp),
+                '<span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +
+                  esc(r.corto || r.nombre) + '</span>',
+                '<span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>'],
+      // LA FIRMA VA AL FINAL DE LA FILA (2-nov): acompaña a la decisión que explica. Y
+      // mientras la barra está abierta, ahí se escribe el «no aplica».
+      texto: _firmaDe(i) + _campoNota(i)
+    };
   }
 
   function _bindItems() {

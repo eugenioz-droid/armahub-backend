@@ -194,7 +194,7 @@
         <div class="audh"><span id="audRevTitulo"></span>
           <span class="dshchips audtam" id="audRevTam" title="Tamaño del dibujo"></span>
           <div style="flex:1"></div><span class="muted" id="audRevInfo" style="font-size:10.5px;"></span></div>
-        <div class="audbd" style="max-height:60vh;"><table class="audt" id="audRevBarras"></table></div>
+        <div class="audbd" style="max-height:60vh;"><table class="audt hojab" id="audRevBarras"></table></div>
         <!-- La SEVERIDAD es del elemento —se decide mirando el conjunto— y sólo aparece
              cuando hay alguna barra no conforme. El QUÉ se encontró va barra por barra,
              arriba. -->
@@ -494,9 +494,6 @@
   /* LA HOJA DE LA AUDITORÍA (6-nov): los mismos bloques de la revisión de barras (.revcc2),
      con lo propio de la auditoría. La cabecera te sigue al bajar, como la de la revisión. */
   .audcab{position:sticky; top:0; z-index:6; background:#fff; padding-bottom:2px;}
-  .audhoja .audtbl{overflow-x:auto;}
-  .audhoja td.audnom{max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .audhoja td.audqse{min-width:200px; max-width:420px;}
   .audhoja td.audcausa{white-space:nowrap;}
   .audhoja td.audcausa .audmini{font-family:ui-monospace,Consolas,monospace;}
   .audhoja td.audcausa .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
@@ -674,10 +671,6 @@
   .revcc2.listo .revcuenta, .revcc2.listo .revcuenta b{color:#33691e;}
   .revccpie .revbar2{width:120px; flex:none; height:5px; background:#eceff1; border-radius:99px; overflow:hidden;}
   .revccpie .revbar2 i{display:block; height:100%; background:#8BC34A;}
-  /* LA MARCA Y SU FIGURA, JUNTAS: la columna de la marca se encoge a lo que mide el
-     texto, así el dibujo queda al lado y no al otro extremo de la hoja. */
-  .revcc2 td.revm, .revcc2 th.revm{width:1%; white-space:nowrap; padding-right:4px;}
-  .revcc2 td.revfig, .revcc2 th.revfig{padding-left:0;}
   /* La explicación firmada, al final de la fila y en chico: acompaña a la decisión. */
   .revfirma{display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis;
             white-space:nowrap; vertical-align:middle; margin-right:8px;
@@ -713,13 +706,6 @@
   .revcorr{display:inline-block; margin-left:8px; font-size:9.5px; font-weight:700;
            background:#e3f2fd; color:#0d47a1; border:1px solid #90caf9; vertical-align:middle;
            border-radius:99px; padding:1px 9px; white-space:nowrap;}
-  /* LA FIGURA, BAJO SU ENCABEZADO (3-nov). La celda venía centrada y la columna es ancha,
-     así que el dibujo flotaba al medio, lejos de «Figura». Ahora va a la izquierda: primero
-     el nombre de la figura, alineado con el encabezado, y después el dibujo. El sello
-     «corregido» en azul, para que no se confunda con el verde de la fila cerrada. */
-  .revcc2 td.revfig{text-align:left; padding-left:4px !important;}
-  .revcc2 .audfigw{gap:7px;}
-  .revcc2 .audfigw .audfign{order:-1; min-width:28px; text-align:left;}
   /* Los chips del tamaño: chiquitos, que son un ajuste y no una acción. */
   .audtam{display:inline-flex; gap:0; margin-left:6px; vertical-align:middle;}
   .audtam button{font-size:9.5px; padding:2px 7px; min-width:0; border:1px solid #cfd8dc;
@@ -731,25 +717,16 @@
   /* El nombre de la figura, debajo del dibujo: es con lo que se habla de una barra. */
   .audfign{font-size:9px; color:#4a148c; font-weight:700; letter-spacing:.3px;
            margin-top:1px; text-align:center;}
-  .revfig{width:auto; min-width:92px; text-align:center; padding:3px 4px !important;}
-  .revfig svg{display:block; margin:0 auto; height:auto;}
   /* TODO LO QUE NO ESTÁ ABIERTO VA VERDE (4-nov): resuelto, confirmado por aSa o no aplica.
      En un barrido se busca lo que falta; una resuelta en blanco parecía pendiente. */
   .revcc2 tr.hecho td, .revcc2 tr.nap td{background:#f1f8e9;}
-  .revcc2 tr.hecho td.revm{color:#558b2f;}
   /* UN SOLO ENCABEZADO POR CÓDIGO (21-oct): Marca · Figura · A B C… · α1 α2… · Esperado ·
      Regla · Estado. Los lados van compactos y centrados; el malo en rojo. */
   .revcc2 th{font-size:9.5px; color:#78909c; text-transform:uppercase; letter-spacing:.3px;
              font-weight:600; text-align:left; padding:4px 6px; background:#fafbfc;
              border-bottom:1px solid #e3e8ef; white-space:nowrap;}
   .revcc2 td{padding:4px 6px;}
-  .revcc2 th.revn, .revcc2 td.revn{text-align:center; padding-left:3px; padding-right:3px;
-                                   min-width:30px; font-variant-numeric:tabular-nums;}
-  .revcc2 td.revn{font-weight:600; color:#37474f; vertical-align:middle;}
-  .revcc2 td.revn.mal{background:#ffebee; color:#c62828;}
-  .revcc2 th.reva, .revcc2 td.reva{color:#90a4ae; font-weight:400; font-size:10px;}
   .revcc2 td.revesp{color:#8d6e00; font-weight:600;}
-  .revcc2 td.revacc{white-space:nowrap;}
   /* EL PIE DEL CÓDIGO (2-nov): el botón que cierra el CC, y la cuenta de cómo va. */
   .revccpie{display:flex; align-items:center; gap:10px; padding:8px 10px; background:#f7f9fb;
             border-top:1px solid #eceff1; font-size:11px;}
@@ -797,9 +774,9 @@
     #revItemsModal{position:static !important; background:none !important; overflow:visible !important; display:block !important;}
     .revhoja{max-width:none; margin:0; padding:0;}
     #revItemsImprimir, #revItemsCerrar, #revAccFiguras, #revAccCerrar, #revAccMsg, .revcubacc, #revItemsCubs,
-    .revcc2 input[type=checkbox], .revcc2 td.revacc { display:none !important; }
+    .revcc2 input[type=checkbox], .revcc2 td.hojaacc .revaccs { display:none !important; }
     /* La figura SÍ se imprime: es la mitad de para qué sirve la hoja. */
-    .revfig, .revfig svg { display:table-cell !important; }
+    .revcc2 td.audfigcel svg { display:inline-block !important; }
     .revcc2 tr { break-inside:avoid; }
   }
   /* ══════ EL FLUJO DE CHEQUEOS (13-oct) ══════ */
@@ -901,11 +878,46 @@
      tamaño M) en la suya. El aviso ⚠ va cuando el eje de aSa no cuadra con su envolvente. */
   .audt td.audfigcel{text-align:center; white-space:nowrap;}
   .audt td.audfigcel svg{vertical-align:middle;}
-  /* LA PLANILLA DEL AUDITOR NO SE MUEVE (6-nov): cada columna con su ancho (_colsMuestra)
-     y el dibujo a su tamaño S/M/L, sin encogerse para caber cuando se abren los campos. */
-  #audRevBarras{table-layout:fixed;}
-  #audRevBarras td.audfigcel svg{max-width:none !important;}
-  #audRevBarras td.audedc input.auded{min-width:0;}
+  /* ══════ LA HOJA DE BARRAS (6-nov) ══════
+     La tabla común de las tres pantallas (hoja_barras.js): la planilla del auditor, el
+     Resumen Hallazgos y la revisión de barras. Cada columna con su ancho fijo y el dibujo a
+     su S/M/L, sin encogerse para caber cuando se abren los campos: lo que sobra va al
+     texto de la línea. Ganan sobre las reglas sueltas de .revcc2 (mayúsculas, centrados):
+     la forma es la de la planilla del auditor. */
+  .hojatbl{overflow-x:auto;}
+  .audt.hojab{table-layout:fixed;}
+  .audt.hojab th{font-size:10.5px; color:#546e7a; text-transform:none; letter-spacing:0;
+                 font-weight:600; padding:4px 6px; background:#fafbfc; overflow:hidden; text-overflow:ellipsis;}
+  .audt.hojab td{padding:4px 6px; vertical-align:middle; border-top:1px solid #edf0f3;
+                 border-right:1px solid #f2f4f7;}
+  .audt.hojab td.audfigcel{text-align:center;}
+  .audt.hojab td.audfigcel svg{max-width:none !important;}
+  .audt.hojab td.audedc input.auded{min-width:0;}
+  .audt.hojab td.audqse, .audt.hojab td.hojasin, .audt.hojab td.hojatxt, .audt.hojab td.hojaest{white-space:normal;}
+  .audt.hojab td.revesp{color:#8d6e00; font-weight:600;}
+  /* El texto de la línea: el campo se lleva el ancho; el código y la marca nuevos, al lado. */
+  .hojain{display:flex; gap:4px; align-items:center;}
+  .hojain .revnapin{flex:1; width:auto; min-width:0;}
+  .audt.hojab td.hojatxt .audobs{width:100%;}
+  .audt.hojab .revfirma{max-width:none; white-space:normal; margin-right:0;}
+  /* El estado de la fila gana sobre el cebrado de .audt: antes una fila par «malo» o
+     resuelta se veía blanca. */
+  .audt.hojab tbody tr.malo td{background:#fff6f6;}
+  .audt.hojab tbody tr.bueno td{background:#f8fbf4;}
+  .audt.hojab tbody tr.hecho td, .audt.hojab tbody tr.nap td{background:#f1f8e9;}
+  .audt.hojab tbody tr.falta td{background:#fff3e0;}
+  .audt.hojab tbody tr td.mal{background:#ffebee; color:#c62828; font-weight:700;}
+  /* LOS BOTONES NO SE VAN DE LA VISTA. Cuando la tabla es más ancha que la pantalla y se
+     corre hasta el texto de la línea, marcar y la acción quedan fijos a la izquierda. */
+  .audt.hojab td.hojachk, .audt.hojab th.hojachk, .audt.hojab td.hojaacc, .audt.hojab th.hojaacc{
+    position:sticky; left:0; z-index:2; background:#fff; box-shadow:inset -1px 0 0 #e3e8ef;}
+  .audt.hojab th.hojachk, .audt.hojab th.hojaacc{z-index:4; background:#fafbfc;}
+  .audt.hojab.conchk td.hojaacc, .audt.hojab.conchk th.hojaacc{left:22px;}
+  .audt.hojab tbody tr.malo td.hojaacc{background:#fff6f6;}
+  .audt.hojab tbody tr.bueno td.hojaacc{background:#f8fbf4;}
+  .audt.hojab tbody tr.hecho td.hojaacc, .audt.hojab tbody tr.nap td.hojaacc,
+  .audt.hojab tbody tr.hecho td.hojachk, .audt.hojab tbody tr.nap td.hojachk{background:#f1f8e9;}
+  .audt.hojab tbody tr.falta td.hojaacc, .audt.hojab tbody tr.falta td.hojachk{background:#fff3e0;}
   .audt td.g{color:#444;} .audt th.g{color:#78909c;}
   .audfigav{display:inline-block; margin-left:3px; color:#e65100; font-weight:700; cursor:help; vertical-align:middle;}
   /* La figura se dibujó con el trazo que exportó aSa, no con nuestra reconstrucción. No es
@@ -923,10 +935,6 @@
   .audacc{margin-top:10px; padding:12px 14px; background:#fff; border:1px solid #e8ebef;
           border-top:3px solid #ffb300; border-radius:8px;
           box-shadow:0 1px 2px rgba(38,50,56,.06);}
-  /* La observación de la barra, a la derecha de la barra (28-oct). */
-  .audt th.audobsth{min-width:240px;}
-  .audt td.audobstd{min-width:240px; padding:2px 6px;}
-  .audt td.audobstd .audobs{width:100%; box-sizing:border-box;}
   /* Lo que dijo aSa al cerrar, en la pantalla de la auditoría cerrada. */
   .audnota.audcerrada{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32;}
   /* EL BOTÓN «RESUELTO» (20-oct). Se llama audBres y no audres porque .audres ya era la

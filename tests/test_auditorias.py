@@ -49,6 +49,11 @@ SHELL = open(os.path.join(ROOT, "armahub", "static", "js", "app", "shell.js"), e
 DEJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "reclamos", "detail-edit.js"), encoding="utf-8").read()
 REVJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "revision.js"),
              encoding="utf-8").read()
+# LA HOJA DE BARRAS (6-nov): la tabla común de la planilla del auditor, el Resumen
+# Hallazgos y la revisión de barras.
+HOJA = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "hoja_barras.js"),
+            encoding="utf-8").read()
+APPH = open(os.path.join(ROOT, "armahub", "templates", "app.html"), encoding="utf-8").read()
 SCHED = open(os.path.join(ROOT, "armahub", "asa_scheduler.py"), encoding="utf-8").read()
 MIG138 = open(os.path.join(ROOT, "armahub", "migrations", "138_auditoria_envio_cierre.sql"),
               encoding="utf-8").read()
@@ -240,7 +245,8 @@ check("la pantalla lo muestra barra por barra en la tabla de acciones; la celda 
       "function celdaQueSeEncontro(" not in JS and "audobsgen" not in JS and "audobsb" not in HTM
       and "function filaComentario(" in JS and "function filaAccion(" in JS)
 check("...y en la hoja de la auditoría el texto del auditor tiene su ancho: ahí es donde se trabaja",
-      ".audhoja td.audqse{min-width:200px" in HTM and "revcc2 audhoja" in JS)
+      "{ titulo: 'Qué encontró el auditor', ancho: 200, clase: 'audqse' }" in JS
+      and ".audt.hojab td.audqse" in HTM and "revcc2 audhoja" in JS)
 
 # LA TABLA DE LA MUESTRA SE SALÍA DEL ANCHO y la última columna quedaba cortada contra el
 # borde. Lo que la empujaba era el texto del hallazgo arrastrado dentro de su celda.
@@ -1091,7 +1097,7 @@ check("el formulario del auditor se bloquea entero y DICE por qué",
       and 'id="audRevCandado"' in HTM and ".audsololeer" in HTM
       and "if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }" in JS)
 check("la tabla de lo que salió es POR BARRA, no por elemento",
-      "function filaAccion(" in JS and "malas.map(function (b) { return filaAccion(" in JS)
+      "function filaAccion(" in JS and "malas.forEach(function (b) { filas.push(filaAccion(e, b)); });" in JS)
 # TRES SALIDAS POR LÍNEA (6-nov): «Resuelto en CC / Resuelto en nuevo CC / No aplica», y
 # al final el campo de texto, obligatorio en las tres.
 check("cada línea lleva Resuelto en CC | Resuelto en nuevo CC | No aplica, y el texto al final, obligatorio",
@@ -1162,13 +1168,14 @@ check("la figura de la barra se puede ver en el resumen, pedida por código (tod
 # LA FORMA DE LA REVISIÓN DE BARRAS (6-nov): lados y ángulos en sus columnas, no en una
 # tablita bajo el dibujo («hiciste un invento medio raro»).
 check("...con sus lados y ángulos en columnas, como en la revisión de barras, sin tablita bajo el dibujo",
-      "audGrillaLados(f, null, esc)" not in JS and "'<th class=\"revn reva\">α' + k" in JS
-      and "c.letras.map(function (L)" in JS.split("function filaAccion(")[1][:3000])
+      "audGrillaLados(f, null, esc)" not in JS and "'α' + (k + 1)" in HOJA
+      and "c.letras.forEach(function (L)" in HOJA
+      and "lados: v.lados" in JS.split("function filaAccion(")[1][:2500])
 # EL NOMBRE DE LA FIGURA Y EL DE LA MARCA SE VEN SIEMPRE (6-nov): salen de la foto de la
 # auditoría; las que no los tienen piden sus códigos solas al abrirse.
 check("el nombre de la figura y el que le puso el cubicador a la marca (Notes) se ven siempre",
       "notas: b.notas || null" in JS and '"notas": (it.get("Notes") or "").strip() or None' in SRC
-      and 'class="audnotas"' in JS and "function _autoFiguras(" in JS
+      and 'class="audnotas"' in HOJA and "notas: b.notas || ''" in JS and "function _autoFiguras(" in JS
       and "!o.figura || !('notas' in o)" in JS)
 
 print("\nEL ESTRIBO NO SE ESTIRA, Y LOS LADOS SE LEEN EN GRILLA")
@@ -1213,8 +1220,8 @@ check("la grilla va en CENTIMETROS, que es lo que ya rotula el dibujo",
       "fila('v', 'cm'," in JS and "fila('v', 'mm'," not in JS
       and "global.audNumCm" in JS)
 check("...y el esperado de la regla se convierte: lo guarda en milimetros",
-      "cm(det.esperado / 10)" in REVJS and "cm(porL[L] / 10)" in REVJS
-      and "porL[L] = det.valor" in REVJS)
+      "cm(det.esperado / 10)" in REVJS and "porL[l[0]] = Number(l[1]) / 10;" in REVJS
+      and "porL[L] = Number(det.valor) / 10" in REVJS)
 check("...con un decimal solo cuando hace falta: 1,5 se lee, 55,0 es ruido",
       "Math.abs(r - Math.round(r)) < 0.05" in JS and "replace('.', ',')" in JS)
 # «La grilla se desordena, dejala fija»: sin ancho fijo cada columna se estira con su
@@ -1228,9 +1235,39 @@ check("el dibujo lleva el nombre de la figura, que es con lo que se habla de una
 # barras». Anchos fijos por columna; el dibujo, a su S/M/L y sin encogerse.
 check("la planilla del auditor tiene S/M/L, el nombre sólo en Figura y anchos que no se mueven",
       'id="audRevTam"' in HTM and "global.audChipsTam('audRevTam', pintarBarras)" in JS
-      and "celdaFigura(f, true)" in JS and "function _colsMuestra(" in JS
-      and "#audRevBarras{table-layout:fixed;}" in HTM
-      and "#audRevBarras td.audfigcel svg{max-width:none !important;}" in HTM)
+      and "render: celdaFigura(f, true)" in JS and 'class="audt hojab" id="audRevBarras"' in HTM
+      and ".audt.hojab{table-layout:fixed;}" in HTM
+      and ".audt.hojab td.audfigcel svg{max-width:none !important;}" in HTM
+      and "'<col style=\"width:' + w + 'px\">'" in HOJA)
+# LA HOJA DE BARRAS (6-nov): «has implementado cada cosa en forma diferente en vez de tener
+# un tipo de formulario estándar que sirva para todo». El modelo es la planilla del
+# auditor; las tres pantallas la arman con la misma función y sólo ponen lo suyo.
+check("una sola tabla para las tres pantallas: la planilla del auditor, el Resumen y la revisión",
+      "global.HojaBarras.partes({" in JS.split("function pintarBarras()")[1][:600]
+      and "global.HojaBarras.tabla({" in JS.split("function _bloqueAud(")[1][:3000]
+      and "global.HojaBarras.tabla({" in REVJS.split("function _tablaGrupo(")[1][:300]
+      and APPH.index("auditorias/hoja_barras.js") < APPH.index("auditorias/index.js"))
+check("...con el orden de la planilla del auditor: acción · Marca · φ · Figura · Render · lados · α · R · Largo · Cant · Peso · Elemento · lo propio · texto",
+      HOJA.index("col(cfg.accion.ancho") < HOJA.index("col(ANCHO.marca, 'Marca')")
+      < HOJA.index("col(ANCHO.diam, 'φ'") < HOJA.index("col(ANCHO.figura, 'Figura')")
+      < HOJA.index("col(anchoRender(), 'Render'") < HOJA.index("col(ANCHO.lado")
+      < HOJA.index("col(ANCHO.peso, 'Peso'") < HOJA.index("col(ANCHO.elemento, cfg.elementoTitulo || 'Elemento')")
+      < HOJA.index("(cfg.propias || []).forEach(function (p) { col(")
+      < HOJA.index("'<th class=\"hojatxt\"'"))
+check("...una columna sin ningún dato en la tabla no sale (la R en aSa; largo, cant y peso en la revisión)",
+      "if (hay(b[k])) c[k] = true;" in HOJA and "if (c.radio) col(" in HOJA
+      and "radio: AUD.origen === 'asa' ? null" in JS)
+check("...el comentario del elemento cruza a lo ancho las columnas de la barra",
+      "'<td class=\"hojasin\" colspan=\"' + nBarra + '\">'" in HOJA and "sinBarra:" in JS)
+check("...y el estado de la fila gana sobre el cebrado (una fila par resuelta ya no se ve blanca)",
+      ".audt.hojab tbody tr.hecho td, .audt.hojab tbody tr.nap td{background:#f1f8e9;}" in HTM
+      and ".audt.hojab tbody tr.malo td{" in HTM)
+check("«Ver figuras» trae el dibujo y nada más: la foto manda en las medidas",
+      "diam: o.diam || null, cant: o.cant || null" in JS
+      and "lados: porL, malos: malos, angulos: angs" in REVJS)
+check("el valor que corrige el auditor se puede escribir con coma, como lo muestra la tabla",
+      "function _nro(x) { return Number(String(x).replace(',', '.')); }" in JS
+      and "_aMm(_nro(esp.lados[L]))" in JS)
 check("hay tres tamanos de dibujo y se recuerdan por navegador",
       "global.audFigTam = function" in JS and "global.audChipsTam = function" in JS
       and "armahub_fig_tam" in JS and "[['s', 'S'], ['m', 'M'], ['l', 'L']]" in JS)
@@ -1322,7 +1359,7 @@ check("...y el detalle los suma a lo que falta por resolver",
 check("la pantalla le pone al comentario las mismas tres salidas que a una barra",
       "function filaComentario(" in JS and "var lin = 'e' + e.id" in JS
       and "'data-ecausa'" in JS and "function _celdaCausa(" in JS
-      and "_accionesAud(lin, abierta, puede && !!e.comentario_suelto, !e.causa, false" in JS
+      and "accion: _accionesAud(lin, abierta, puede, !e.causa, false, null)" in JS
       and "accion_cc_nuevo = %s" in SRC)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
@@ -1423,7 +1460,7 @@ MIG160 = open(os.path.join(ROOT, "armahub", "migrations", "160_no_aplica_con_mot
               encoding="utf-8").read()
 check("el Resumen Hallazgos agrupa por código de control, con la cabecera y la cuenta de la revisión de barras",
       "'<div class=\"revcc2 audhoja'" in JS and "data-aselgrp=" in JS and 'class="revcuenta"' in JS
-      and '<tr class="revhead">' in JS)
+      and "global.HojaBarras.tabla({" in JS.split("function _bloqueAud(")[1][:3000])
 check("hay checks por barra y, con marcas, los botones de la fila actúan sobre todas (sin verbos en la barra)",
       "data-asel=" in JS and "function _lineasDe(" in JS and "data-alote" not in JS
       and "RCA, Resuelto o No aplica en cualquiera de sus filas actúa sobre todas." in JS
@@ -1470,7 +1507,7 @@ check("la lista es para todo el equipo; antes del envío, quien no audita no rec
 check("la muestra del auditor no se le pinta a quien no audita",
       "La muestra la revisa el auditor. Lo tuyo está abajo" in JS)
 check("el check de grupo sale sólo cuando hay algo que marcar",
-      "var marcables = _actuo() &&" in JS and "(marcables" in JS)
+      "var marcables = _actuo() &&" in JS and "check: { titulo: marcables" in JS)
 check("el nombre de la figura va al lado del dibujo, y el tamaño por defecto es S",
       'class="audfigw"' in JS and "var FIG_TAM = 's';" in JS and ".audfigw{" in HTM)
 
@@ -1493,13 +1530,13 @@ check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
       and ".audacc{margin-top:10px; padding:12px 14px; background:#fff;" in HTM
       and "border-top:3px solid #ffb300" in HTM)
 check("...y ninguna columna queda cortada contra el borde: la tabla de cada código scrollea sola",
-      'class="audtbl"' in JS and ".audhoja .audtbl{overflow-x:auto;}" in HTM)
+      '<div class="hojatbl">' in HOJA and ".hojatbl{overflow-x:auto;}" in HTM)
 
 
 print("\nEL DISEÑO APROBADO (28-oct): el auditor audita y envia; el auditado resuelve")
 check("la observacion es POR BARRA y va a la derecha de la barra, siempre",
-      'class="audobsth"' in JS and 'class="audobstd"' in JS and "Observación de la barra" in JS
-      and "Elemento / nota" not in JS and ".audt td.audobstd" in HTM)
+      "texto: { titulo: 'Observación de la barra'" in JS and "Elemento / nota" not in JS
+      and "'<td class=\"hojatxt\">'" in HOJA and ".audt.hojab td.hojatxt .audobs{width:100%;}" in HTM)
 check("...y la nota del elemento se llama por lo que es: lo que no es de ninguna barra",
       'for="audRevTexto"' in HTM and "Nota del elemento" in HTM and "falta trabas" in HTM)
 check("el Resumen Hallazgos existe desde el envio, no mientras se revisa",

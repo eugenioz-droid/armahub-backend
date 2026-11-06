@@ -63,6 +63,10 @@ BM = open(os.path.join(ROOT, "armahub", "static", "js", "features", "cubicacion"
           encoding="utf-8").read()
 AUDJS = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "index.js"),
              encoding="utf-8").read()
+# LA HOJA DE BARRAS (6-nov): la tabla común de la revisión, la planilla del auditor y el
+# Resumen Hallazgos.
+HOJA = open(os.path.join(ROOT, "armahub", "static", "js", "features", "auditorias", "hoja_barras.js"),
+            encoding="utf-8").read()
 
 
 def barra(lados, diam=10.0, figura="X", mbr=None, elemento="E1", ref="r1", cc="CC1"):
@@ -602,15 +606,16 @@ check("al guardar, la fila queda como quedo aunque el refresco no corra",
 check("...y mientras el servidor responde, el boton lo dice",
       "x.classList.add('audwait')" in JS.split("async function declararUno(")[1][:1400])
 check("la referencia abre el render: el detalle no se perdió",
-      "abrirDetalleSenal(b.dataset.ver)" in JS and 'audref" data-ver=' in JS)
+      "abrirDetalleSenal(b.dataset.ver)" in JS and "marcaAttrs: ' data-ver=\"' + i.id + '\"'" in JS
+      and "(b.marcaAttrs || '') + '>' + esc(b.marca || '') + '</span>'" in HOJA)
 check("«Mis chequeos» ya no filtra por el estado muerto que dejó la 146",
       "s.estado = 'corregir'" not in API and "s.estado IN ('abierta', 'declarada')" in API)
 
 print("\n17. La figura de la barra, en la hoja de trabajo")
 # El usuario la pidió en el modal: ver la barra no es lo mismo que leer «lado B de 90 mm».
-check("cada fila tiene su celda de dibujo, con el mismo motor que el auditor",
-      'class="revfig"' in JS and "global.audCeldaFigura(global.audBarraNormalizada(" in JS
-      and ".revfig svg" in HTM)
+check("cada fila tiene su celda de dibujo, con el mismo motor que el auditor y sin el nombre al lado",
+      "renderAttrs: ' data-fig=\"" in JS and "global.audCeldaFigura(global.audBarraNormalizada(b, 'asa'), true)" in JS
+      and ".audt.hojab td.audfigcel svg{max-width:none !important;}" in HTM)
 # LO QUE NO PUEDE PASAR: pedirle a aSa una barra por fila. Son ~3 segundos cada llamada,
 # y un código entero cuesta lo mismo que una de sus barras.
 check("se pide POR CÓDIGO y sólo cuando alguien lo pide, no al abrir el modal",
@@ -626,7 +631,9 @@ check("...pero se olvida lo de los códigos que una verificación acaba de leer 
       "function _olvidarFiguras(" in JS and "_olvidarFiguras(ids);" in JS
       and "REVS.figs = {};" in JS)
 check("la figura se imprime: es la mitad de para qué sirve la hoja",
-      ".revfig, .revfig svg { display:table-cell !important; }" in HTM)
+      ".revcc2 td.audfigcel svg { display:inline-block !important; }" in HTM
+      # Con anchos fijos, esconder la celda correría las columnas: se esconden los botones.
+      and ".revcc2 input[type=checkbox], .revcc2 td.hojaacc .revaccs { display:none !important; }" in HTM)
 
 print("\n17b. El cabezal con diametro chico")
 # «Revisar si tenemos cabezales con diametros 8, 10 o 12... podria aplicar a vigas, muros
@@ -664,16 +671,16 @@ print("\n18. La fila muestra la barra, no la describe")
 # y los lados que tiene la figura, resaltar en rojo el que no cumple. Eso es mejor que
 # todo ese texto. Además así el usuario verifica acá sin tener que ir a aSa».
 check("los lados de la figura están en la fila, con el que falla en rojo",
-      "function _colsGrupo(" in JS and "malos[L] ? ' mal' : ''" in JS
-      and ".revcc2 td.revn.mal{" in HTM and "color:#c62828" in HTM)
+      "lados: porL, malos: malos" in JS and "(b.malos || {})[L] ? ' mal' : ''" in HOJA
+      and ".audt.hojab tbody tr td.mal{background:#ffebee; color:#c62828;" in HTM)
 # DESDE LA SEÑAL, NO DESDE aSa (21-oct): todos los lados se guardan al detectar, en su
 # orden y con su ángulo, y la hoja los pinta sin leer nada. La figura sólo dibuja.
 check("...y salen de la señal misma, guardados al detectar: no cuesta leer aSa",
       '"lados_all": [[l["nombre"], l["largo"], l.get("angulo")]' in SRC and "det.lados_all" in JS)
 check("...y una señal de antes de hoy (sin todos los lados) muestra al menos el del hallazgo",
-      "porL[L] = det.valor" in JS)
+      "porL[L] = Number(det.valor) / 10" in JS)
 check("el esperado se rotula según lo que significa en cada regla, no «debería» siempre",
-      "i.regla === 'lado_corto' ? 'mín ' : ''" in JS and 'title="Lo que la regla pide' in JS)
+      "i.regla === 'lado_corto' ? 'mín ' : ''" in JS and "title: 'Lo que la regla pide" in JS)
 check("el hallazgo va como etiqueta corta, no como párrafo",
       "r.corto || r.nombre" in JS and 'class="revreg"' in JS
       and "esc(det.texto || '') + firma" not in JS)
@@ -697,10 +704,14 @@ check("...y nada las pide solo: ni al abrir la hoja ni al bajar por ella (3-nov)
 # sucia... por que no los pones claros, A = 15, B = XX, con encabezados».
 # UN SOLO ENCABEZADO POR CÓDIGO (21-oct). El usuario: «estamos repitiendo A, B y C muchas
 # veces. Haz 1 solo encabezado para todo: Marca | Figura | A | B | C | … | Ang1 | Ang2».
-check("un solo encabezado por código: Marca · Figura · A B C… · α1 α2… · Esperado · Regla · Estado",
-      "function _tablaGrupo(" in JS and "<th>Marca</th><th>Figura</th>" in JS
-      and "'<th class=\"revn reva\">α' + k + '</th>'" in JS and "revang" not in JS
-      and ".revcc2 th.revn, .revcc2 td.revn{" in HTM)
+# LA TABLA COMÚN (6-nov): la de la planilla del auditor, con lo propio de la revisión.
+check("un solo encabezado por código, el de la tabla común: Acción · Marca · φ · Figura · Render · A B C… · α… · Elemento · Esperado · Regla · Estado · Explicación",
+      "function _tablaGrupo(" in JS and "global.HojaBarras.tabla({" in JS.split("function _tablaGrupo(")[1][:300]
+      and "col(ANCHO.marca, 'Marca');" in HOJA and "'α' + (k + 1)" in HOJA and "revang" not in JS
+      and "{ titulo: 'Regla', ancho: 120 }" in JS and "texto: { titulo: 'Explicación'" in JS)
+check("...y sin Largo, Cant ni Peso: la señal no los guarda y una columna sin datos no sale",
+      "if (c.largo) col(" in HOJA and "if (hay(b[k])) c[k] = true;" in HOJA
+      and "cant:" not in JS.split("function filaItem(i) {")[1][:2500])
 check("...y la grilla por fila se fue de acá: la auditoría conserva la suya en index.js",
       "function _ladosCelda(" not in JS and "audGrillaLados" not in JS and "audGrillaLados" in AUDJS)
 # El usuario: «establecer un color especifico para las figuras que vienen de aSa».
@@ -739,9 +750,11 @@ check("al cerrar un codigo se suelta lo marcado (4-nov: el siguiente Deshacer ac
 check("lo escrito y no guardado sobrevive al repintado de la hoja (4-nov)",
       "var notas = _notasAbiertas();" in JS and "_bindItems();\n    _reabrirNotas(notas);" in JS
       and "function _notasAbiertas() {" in JS and "if (!i || i.estado !== EST.ABIERTA) return;" in JS)
-check("el nombre de la figura se ve siempre, haya dibujo o no (4-nov)",
-      "function _nombreFig(sen) {" in JS and "var c = REVS.figs[cc], nom = _nombreFig(sen);" in JS
-      and "if (!c) return nom;" in JS and "'\">' + _celda(i.cc || '', i.ref, i.id) + '</td>' +" in JS)
+check("el nombre de la figura se ve siempre, en su columna, haya dibujo o no (4-nov, 6-nov)",
+      "figura: i.figura || ''" in JS and "function _nombreFig(" not in JS
+      and "h += td('figura', esc(b.figura || ''), 'hojafig');" in HOJA
+      and "if (!c) return '';" in JS.split("function _celda(cc, ref, sen) {")[1][:200]
+      and "render: _celda(i.cc || '', i.ref, i.id)" in JS)
 check("la fila resuelta va verde aunque aSa no la haya confirmado todavia (4-nov: en blanco parecia pendiente)",
       "function _resuelta(i) { return _confirmada(i) || _declarada(i); }" in JS
       and JS.count("var hecho = _resuelta(i), nap = _noAplica(i);") == 2
@@ -750,8 +763,8 @@ check("la fila resuelta va verde aunque aSa no la haya confirmado todavia (4-nov
 # columna es la medida de cuando salto y el dibujo es aSa de ahora: medido en SU2N, la
 # señal guarda A=80/G=80 del 29-oct y aSa hoy devuelve A=100/G=100. Ya esta corregida.
 check("la cabecera dice que las medidas son del momento del hallazgo, no de ahora",
-      'title="Medida del lado ' in JS and "cuando se detectó el " in JS
-      and "'barra ya se corrigió" in JS)
+      "'Medida del lado ' + L + ' cuando se detectó el hallazgo." in JS
+      and "es que la barra ya se corrigió." in JS)
 check("la figura, cuando llega, sólo dibuja: los lados ya están en la fila",
       "td.innerHTML = _celda(td.dataset.cc, td.dataset.fig, td.dataset.sen);" in JS
       and "lad.innerHTML = _ladosCelda" not in JS)
@@ -1007,7 +1020,7 @@ check("con barras marcadas, el boton de la fila actua sobre TODAS, confirmando a
       and "if (ids.indexOf(Number(id)) === -1) ids.push(Number(id));" in JS
       and "barra(s) marcada(s) con esta explicación?'" in JS
       and "#revItemsCuerpo.lote .revcc2 td.revacc button{opacity" not in HTM
-      and "pointer-events:none" not in HTM.split(".revcc2 td.revacc{")[1][:300])
+      and "pointer-events:none" not in HTM.split(".audt.hojab{")[1][:3000])
 
 
 print("\nUNA PALABRA POR CONCEPTO (2-nov)")
@@ -1053,11 +1066,12 @@ print("\nLA FILA: LA FIGURA PEGADA A LA MARCA Y LA FIRMA AL FINAL (2-nov)")
 # «Esa observacion que se guardo debajo de la marca deberia ir al final, en un texto
 # pequeño, y debieramos pegar figura a marca para aprovechar ese espacio.»
 check("la firma va al final de la fila, con la decision que explica, y no bajo la marca",
-      "'<td class=\"revacc\">' + _firmaDe(i) + _accionesDe(i, TXT_BARRA) + '</td></tr>';" in JS
+      "texto: _firmaDe(i) + _campoNota(i)" in JS and "accion: _accionesDe(i, TXT_BARRA)" in JS
       and 'class="revfirma"' in JS and ".revfirma{display:inline-block" in HTM
-      and "esc(i.ref) + '</span></td>'" in JS)
-check("...y la columna de la marca se encoge para que el dibujo quede pegado",
-      ".revcc2 td.revm, .revcc2 th.revm{width:1%" in HTM and ".revcc2 td.revfig, .revcc2 th.revfig{padding-left:0;}" in HTM)
+      and "marca: i.ref," in JS)
+check("...y la marca y su figura quedan juntas: Marca · φ · Figura · Render, cada una con su ancho",
+      "col(ANCHO.marca, 'Marca');" in HOJA and "col(ANCHO.figura, 'Figura');" in HOJA
+      and "col(anchoRender(), 'Render', '', tit.render);" in HOJA)
 
 
 print("\nUNA REVISION CON TODO DESCARTADO ESTA CERRADA, NO VACIA (2-nov)")
@@ -1147,8 +1161,7 @@ check("la barra que ya no esta en aSa tambien se dice corregida, que es lo que m
       '<div class="revcorr" title="La barra ya no está en este código en aSa' in JS
       and ".revcorr{display:inline-block" in HTM and ">ya no está</span>" not in JS
       # El sello va en azul, separado del dibujo; la figura, a la izquierda y con su nombre primero.
-      and "background:#e3f2fd; color:#0d47a1;" in HTM and ".revcc2 td.revfig{text-align:left;" in HTM
-      and ".revcc2 .audfigw .audfign{order:-1;" in HTM)
+      and "background:#e3f2fd; color:#0d47a1;" in HTM)
 
 print("\nEL AVISO DE CIERRE ES DE UN INTENTO, NO DE LA HOJA (3-nov)")
 # Quedaba arriba despues de que el usuario pasara la barra a «no aplica»: ofrecia «cerrar
@@ -1290,7 +1303,8 @@ check("...y es una fila de la misma tabla, con los mismos data-*: el lote, el es
       "'<tr class=\"elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '\" data-fila=\"' + i.id + '\">'" in JS
       and "_accionesDe(i, TXT_ELEMENTO)" in JS.split("function _filaElemento(i) {")[1][:4000]
       and "data-resuelto=\"' + i.id + '\"" in JS.split("function _accionesDe(i, t) {")[1][:1200]
-      and "data-nota=\"' + i.id + '\"" in JS.split("function _accionesDe(i, t) {")[1][:1200])
+      and "data-nota=\"' + i.id + '\"" in JS.split("function _campoNota(i) {")[1][:400]
+      and "_accionesDe(i, TXT_ELEMENTO) + _campoNota(i)" in JS)
 check("«Que se revisa» va en dos grupos cuando se miran elementos, y las figuras no se ofrecen",
       "el.className = 'elcrit';" in JS and "'Todas las obras' : 'Sólo edificación'" in JS
       and "if (REVS.nivel === 'elemento') return [];" in JS and "&& REVS.nivel === 'barra' ? '<button class=\"audmini\" data-figs=" in JS
