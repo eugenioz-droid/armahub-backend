@@ -1777,8 +1777,9 @@
 
   // Lo que se muestra de una barra: la FOTO de la auditoría (dato_original), en cm como la
   // planilla del auditor. Las auditorías de antes del 15-oct no tienen foto y toman lados,
-  // ángulos, figura y nombre de lo leído en aSa; las demás no leen parámetros: «Ver
-  // figuras» trae el dibujo y nada más.
+  // ángulos, figura, nombre y CANTIDAD de lo leído en aSa (la cantidad, 9-nov: sin ella la
+  // columna no salía, y los hallazgos de «1 barra de más» no se podían leer); las demás no
+  // leen parámetros: «Ver figuras» trae el dibujo y nada más.
   function _vista(cc, b) {
     var o = b.original || {}, v = _barraAsa(cc, b.ref) || {};
     var deFoto = !!(o.lados && Object.keys(o.lados).length);
@@ -1789,7 +1790,7 @@
              angulos: Array.isArray(o.angulos) ? o.angulos : (v.angulos || []),
              figura: o.figura || v.figura || '',
              notas: o.notas || v.notas || '',
-             diam: o.diam || null, cant: o.cant || null,
+             diam: o.diam || null, cant: o.cant || (deFoto ? null : v.cant_total) || null,
              largo: (o.largo != null && o.largo !== '') ? Number(o.largo) * k : null,
              // El radio de aSa es el mandril, no la R de la plataforma: no se mezclan.
              radio: AUD.origen === 'asa' ? null : (o.radio || null) };
@@ -1881,7 +1882,7 @@
     caja.innerHTML =
       // LA CABECERA TE SIGUE: el elemento, el código, quién cubicó y cuánto falta.
       '<div class="audcab">' +
-        '<div class="audh"><span><b>' + esc(g.cc || '—') + '</b> · ' + esc(e.nombre || '') + '</span>' +
+        '<div class="audh"><span><b>' + esc(g.cc || '—') + '</b> · ' + esc(e.nombre || '') + _ejeCab(e) + '</span>' +
           ' <span class="muted">' + esc(g.descr || '') + '</span>' +
           (e.cubicado_por ? '<span class="revquien">' + esc(quien(e.cubicado_por)) + '</span>' : '') +
           // LO URGENTE SE DICE EN LA CABECERA: si el código ya entró a fabricación se corrige
@@ -1917,6 +1918,16 @@
     _pintarLote();
     _reabrirLineas(abiertas);
     _autoFiguras([g]);
+  }
+
+  // EL ELEMENTO SE NOMBRA ENTERO EN LA CABECERA (9-nov). En aSa un código tiene varios
+  // elementos con el mismo nombre —«ELEV» tres veces en ST1G— y lo que los distingue es el
+  // eje: con «ST1G · ELEV» no se sabía cuál se estaba revisando. En ArmaHub el nombre ya
+  // es la clave con el eje adentro, y no se repite.
+  function _ejeCab(e) {
+    var eje = String(e.eje || '').trim();
+    if (!eje || String(e.nombre || '').indexOf(eje) !== -1) return '';
+    return ' · eje <b>' + esc(eje) + '</b>';
   }
 
   function abrirHallazgos(e) {
@@ -1972,7 +1983,9 @@
         accion: { titulo: 'Acción', ancho: 340 },
         titulos: { lado: function (L) {
           return 'Medida del lado ' + L + ' cuando se auditó. El dibujo es lo que hay en aSa ahora: ' +
-                 'si no calzan, la barra ya se editó.'; } },
+                 'si no calzan, la barra ya se editó.'; },
+          cant: 'Cantidad de barras cuando se auditó. En las auditorías de antes del 15-oct, que no ' +
+                'guardaron la barra, es la de aSa ahora.' },
         propias: [
           { titulo: 'Qué encontró el auditor', ancho: 220, clase: 'audqse' },
           { titulo: 'Estado', ancho: 120, clase: 'hojaest' },

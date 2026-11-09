@@ -1144,6 +1144,12 @@ check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; s
 check("con «nuevo CC» la respuesta baja a su línea en vez de quedar en un cuadrito",
       ".hojain{display:flex; flex-wrap:wrap;" in HTM and ".hojain .revnapin{flex:1 1 150px;" in HTM
       and 'placeholder="respuesta (obligatoria)"' in JS)
+# 9-nov: «acá no sale la cantidad. Tampoco sale arriba del modal el nombre del elemento».
+check("la cabecera del modal nombra el elemento con su eje (en aSa varios se llaman igual)",
+      "esc(e.nombre || '') + _ejeCab(e) + '</span>'" in JS and "function _ejeCab(e)" in JS)
+check("sin foto, la cantidad sale de lo leído en aSa en vez de quedar la columna fuera",
+      "cant: o.cant || (deFoto ? null : v.cant_total) || null," in JS
+      and "if (c.cant) col(ANCHO.cant, 'Cant', 'num', tit.cant);" in HOJA)
 # 9-nov: «acá hay 2 hallazgos, pero al imprimir el informe me dice que hay uno». El informe
 # contaba elementos por severidad; la pantalla, barras.
 _inf = SRC.split("class _InformePDF")[1]
@@ -1330,8 +1336,9 @@ check("...el comentario del elemento cruza a lo ancho las columnas de la barra",
 check("...y el estado de la fila gana sobre el cebrado (una fila par resuelta ya no se ve blanca)",
       ".audt.hojab tbody tr.hecho td, .audt.hojab tbody tr.nap td{background:#f1f8e9;}" in HTM
       and ".audt.hojab tbody tr.malo td{" in HTM)
+# Con foto, la cantidad es la de la foto; aSa sólo la pone donde no hay foto (9-nov).
 check("«Ver figuras» trae el dibujo y nada más: la foto manda en las medidas",
-      "diam: o.diam || null, cant: o.cant || null" in JS
+      "diam: o.diam || null, cant: o.cant || (deFoto ? null : v.cant_total) || null" in JS
       and "lados: porL, malos: malos, angulos: angs" in REVJS)
 # 9-nov: «elimina la columna del elemento… tienes el nombre del elemento arriba».
 check("la planilla del auditor no lleva columna Elemento: es un solo elemento y lo dice la cabecera",

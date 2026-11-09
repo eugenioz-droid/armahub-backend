@@ -81,7 +81,7 @@
   //   cfg.texto   {titulo, title}
   //   cfg.celda   fn(fila, campo, valorHtml, clase) → '<td…>': la celda que se puede
   //               corregir (la usa el auditor para escribir lo que debería decir)
-  //   cfg.titulos {lado(L), largo, render}: las ayudas de los encabezados
+  //   cfg.titulos {lado(L), largo, cant, render}: las ayudas de los encabezados
   //   cfg.filas   [{attrs, check, accion, barra, sinBarra, elemento, elementoTitle,
   //                 propias: [html], texto}]
   //   fila.barra  {marca, marcaAttrs, marcaTitle, notas, diam (mm), figura, render,
@@ -106,7 +106,7 @@
     for (var k = 0; k < c.nAng; k++) col(ANCHO.ang, 'α' + (k + 1), 'num g');
     if (c.radio) col(ANCHO.radio, 'R', 'num g');
     if (c.largo) col(ANCHO.largo, 'Largo', 'num', tit.largo);
-    if (c.cant) col(ANCHO.cant, 'Cant', 'num');
+    if (c.cant) col(ANCHO.cant, 'Cant', 'num', tit.cant);
     if (c.peso) col(ANCHO.peso, 'Peso', 'num');
     if (c.elemento) col(ANCHO.elemento, 'Elemento');
     // Las columnas de la barra, para el comentario que las cruza a lo ancho.
