@@ -1898,6 +1898,11 @@
           '<div style="flex:1"></div>' +
           '<span class="revcuenta" title="Resueltas y no aplican, sobre las líneas del elemento."><b>' +
             c.listas + '</b>/' + c.total + '</span>' +
+          // CUANDO YA NO QUEDA NADA, EL CIERRE SE OFRECE ACÁ (9-nov): el de la franja queda
+          // detrás del modal, y quien termina la última línea no lo veía. Cierra el modal
+          // para que lo que diga el cierre se lea en la página.
+          (AUD.puedo_cerrar ? '<button class="audenviar" id="audAccCerrarAud" title="Compara con aSa lo ' +
+                              'resuelto y cierra la auditoría completa.">Cerrar la auditoría</button>' : '') +
           '<button class="audmini" id="audAccCerrar" title="Volver a la auditoría">✕</button>' +
         '</div>' +
         (cerrada || c.mias ? '' : _notaQuien()) +
@@ -1905,6 +1910,8 @@
       '</div>' +
       _hojaElemento(e, g, c.total > 0 && c.listas >= c.total);
     $('audAccCerrar').addEventListener('click', cerrarHallazgos);
+    var ca = $('audAccCerrarAud');
+    if (ca) ca.addEventListener('click', function () { cerrarHallazgos(); cerrarResueltas(); });
     modal.onclick = function (ev) { if (ev.target === modal) cerrarHallazgos(); };
     _bindAcciones(caja);
     _pintarLote();
@@ -2088,6 +2095,8 @@
   // EL TEXTO DE LA LÍNEA, en la última columna como la observación del auditor. Abierta:
   // los campos, escondidos hasta que se aprieta una salida (el código y la marca nuevos
   // sólo con «nuevo CC»). Cerrada: lo que quedó escrito y quién.
+  // CON SU BOTÓN «GUARDAR» (9-nov): guardar era sólo con Enter, y el usuario escribió las
+  // dos respuestas y no encontró cómo cerrarlas. Enter sigue sirviendo.
   function _textoAud(lin, abierta, puede, esBarra, firma) {
     if (!abierta) return firma ? '<span class="revfirma" title="' + esc(firma) + '">' + esc(firma) + '</span>' : '';
     if (!puede) return '';
@@ -2098,6 +2107,8 @@
                  'placeholder="marca" title="La marca en el código nuevo. Vacía = conservó la misma.">' : '') +
       '<input type="text" class="revnapin" data-anota="' + lin + '" style="display:none" ' +
         'title="Obligatorio: lo lee quien auditó. Enter guarda; Esc lo deja.">' +
+      '<button class="audmini" data-aguardar="' + lin + '" style="display:none" ' +
+        'title="Guarda esta línea (y las marcadas junto con ella).">Guardar</button>' +
       '</div>';
   }
 
@@ -2235,6 +2246,9 @@
     caja.querySelectorAll('button[data-amodo]').forEach(function (b) {
       b.addEventListener('click', function () { abrirModo(b.dataset.alin, b.dataset.amodo); });
     });
+    caja.querySelectorAll('button[data-aguardar]').forEach(function (b) {
+      b.addEventListener('click', function () { guardarLinea(b.dataset.aguardar); });
+    });
     caja.querySelectorAll('input[data-anota], input[data-accnuevo], input[data-amarca]').forEach(function (i) {
       i.addEventListener('keydown', function (ev) {
         var lin = i.dataset.anota || i.dataset.accnuevo || i.dataset.amarca;
@@ -2314,6 +2328,8 @@
     });
     var nota = _q1('input[data-anota="' + l + '"]');
     var cc = _q1('input[data-accnuevo="' + l + '"]'), mc = _q1('input[data-amarca="' + l + '"]');
+    var gb = _q1('button[data-aguardar="' + l + '"]');
+    if (gb) gb.style.display = modo ? '' : 'none';
     if (nota) {
       nota.style.display = modo ? '' : 'none';
       if (!modo) nota.value = '';

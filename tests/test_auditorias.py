@@ -1138,6 +1138,14 @@ check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; s
       and ".audhoja tr.resabierto td.audrca .rcaabierta{display:inline;}" in HTM
       and "data-causa" not in JS.split("function _accionesAud(")[1][:1800]
       and "{ titulo: 'Debería decir'" not in JS and "'<div class=\"revesp\">Debería decir: '" in JS)
+# 9-nov: «marqué como no aplica pero no me aparece botón de cerrar». Guardar era sólo Enter.
+check("cada línea abierta tiene su botón Guardar a la vista (Enter sigue sirviendo)",
+      "data-aguardar=" in JS and ">Guardar</button>" in JS
+      and "if (gb) gb.style.display = modo ? '' : 'none';" in JS
+      and "guardarLinea(b.dataset.aguardar)" in JS)
+check("...y cuando ya no queda nada, «Cerrar la auditoría» también está en el modal",
+      "(AUD.puedo_cerrar ? '<button class=\"audenviar\" id=\"audAccCerrarAud\"" in JS
+      and "cerrarHallazgos(); cerrarResueltas();" in JS)
 check("...y lo de toda la auditoría queda en la página: lo idéntico en aSa, el cierre y por qué no cerró",
       '<div id="audAccAvisos"></div>' in HTM and "var caja = $('audAccAvisos');" in JS
       and "if (AUD.puedo_cerrar) {" in JS.split("function _flujoBotones()")[1][:2500]
