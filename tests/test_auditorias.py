@@ -1009,20 +1009,22 @@ print("\n12c. El correo del resultado, al cerrar la auditoría")
 check("existe y va a los tres de una vez",
       "def _avisar_auditoria_cerrada(" in SRC
       and "destinatarios = sorted({x for x in ya if x} | {c for c in _correo_administracion() if c})" in SRC)
-check("...lleva el resultado contado: revisados, conformidad y los cuatro niveles",
-      "de conformidad." in SRC and "Conformes: <b>%d</b> · Observaciones:" in SRC
-      and "Hallazgos: <b>%d</b>." in SRC)
+# 9-nov: con las cuentas de la pantalla (elementos auditados, ítems, hallazgos = barras),
+# no elementos por severidad: la página decía 2 hallazgos y el informe 1.
+check("...lleva el resultado contado como la pantalla: elementos, ítems y hallazgos",
+      "<b>%d</b> elemento(s) auditados · <b>%d</b> ítem(s) auditados · <b>%d</b> hallazgo(s)." in SRC
+      and "de conformidad." not in SRC and "Conformes: <b>%d</b>" not in SRC)
 check("el PDF y el correo no repiten la llave «hallazgo» ni lo suman dos veces (residuo de la migración 156)",
       '"hallazgo": (239, 154, 154), "hallazgo"' not in SRC and '"No conformidad menor"' not in SRC
-      and 'nc = r.get("hallazgo") or 0' in SRC and '("observacion", "hallazgo", "hallazgo")' not in SRC
-      and 'for k in ("conforme", "observacion", "hallazgo"):' in SRC)
+      and '("observacion", "hallazgo", "hallazgo")' not in SRC
+      and 'for k in ("conforme", "observacion", "hallazgo"):' not in SRC)
 check("la alerta de independencia compara el login de aSa con los alias del auditor, no el correo con el login",
       'auditor_alias = set(alias_cubicador(cur, aud.get("auditor") or ""))' in SRC
       and '"conflicto": (e[9] or "").strip() in auditor_alias,' in SRC)
 check("...y el detalle de lo que salió mal, con su hallazgo",
       "Elementos con hallazgo:" in SRC and "_NOMBRE.get(e.get(\"hallazgo\")" in SRC)
 check("...o dice que no hubo nada, en vez de dejar un hueco",
-      "No se detectaron no conformidades." in SRC)
+      "No se detectaron hallazgos." in SRC)
 # Lo dispara el CIERRE y una sola vez. Los sitios donde puede cerrarse son tres desde el
 # 9-oct: las dos puertas de revisión de siempre y el cierre a mano, que es la válvula para
 # lo que el sistema no puede comprobar.
@@ -1142,6 +1144,12 @@ check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; s
 check("con «nuevo CC» la respuesta baja a su línea en vez de quedar en un cuadrito",
       ".hojain{display:flex; flex-wrap:wrap;" in HTM and ".hojain .revnapin{flex:1 1 150px;" in HTM
       and 'placeholder="respuesta (obligatoria)"' in JS)
+# 9-nov: «acá hay 2 hallazgos, pero al imprimir el informe me dice que hay uno». El informe
+# contaba elementos por severidad; la pantalla, barras.
+_inf = SRC.split("class _InformePDF")[1]
+check("el informe dice las mismas cuentas que la pantalla (resumen), no elementos por severidad",
+      _inf.count('r = a.get("resumen") or {}') == 2 and 'a.get("resultado")' not in _inf
+      and '("Hallazgos", r.get("hallazgos") or 0, True)' in _inf and "Conformidad %d%%" not in _inf)
 check("cada línea abierta tiene su botón Guardar a la vista (Enter sigue sirviendo)",
       "data-aguardar=" in JS and ">Guardar</button>" in JS
       and "if (gb) gb.style.display = modo ? '' : 'none';" in JS

@@ -2112,9 +2112,9 @@ def _avisar_auditoria_cerrada(aud: dict, request=None) -> dict:
     el mismo para quien audita, para quien fue auditado y para administración."""
     elementos = aud.get("elementos") or []
     revisados = [e for e in elementos if e.get("hallazgo")]
-    res = aud.get("resultado") or {}
-    conformes = int(res.get("conforme") or 0)
-    pct = round(conformes * 100.0 / len(revisados)) if revisados else 0
+    # Las cuentas de la pantalla y del informe (9-nov): antes acá iban elementos por
+    # severidad —«Hallazgos: 1»— cuando la página decía 2 (barras).
+    r = aud.get("resumen") or {}
     auditados = sorted({(e.get("cubicado_por") or "").strip()
                         for e in elementos if (e.get("cubicado_por") or "").strip()})
     nombres = _nombres([aud.get("auditor")] + auditados)
@@ -2133,16 +2133,16 @@ def _avisar_auditoria_cerrada(aud: dict, request=None) -> dict:
         "Audita: <b>%s</b>" % _quien(aud.get("auditor"), nombres),
         "Auditado: <b>%s</b>" % (", ".join(_quien(x, nombres) for x in auditados) or "—"),
         "Fecha de cierre: <b>%s</b>" % _fecha_larga(aud.get("cierre")),
-        "Resultado: <b>%d</b> elemento(s) revisados · <b>%d%%</b> de conformidad." % (len(revisados), pct),
-        "Conformes: <b>%d</b> · Observaciones: <b>%d</b> · Hallazgos: <b>%d</b>."
-        % (conformes, int(res.get("observacion") or 0), int(res.get("hallazgo") or 0)),
+        "Resultado: <b>%d</b> elemento(s) auditados · <b>%d</b> ítem(s) auditados · <b>%d</b> hallazgo(s)."
+        % (int(r.get("elementos_auditados") or 0), int(r.get("items_auditados") or 0),
+           int(r.get("hallazgos") or 0)),
     ]
     if no_conformes:
         lineas.append("Elementos con hallazgo:%s" % detalle_nc)
         lineas.append("Acciones abiertas: <b>%d</b>. La corrección la realiza quien cubicó, en su "
                       "cubicación, y el auditor la verifica." % int(aud.get("acciones_abiertas") or 0))
     else:
-        lineas.append("No se detectaron no conformidades.")
+        lineas.append("No se detectaron hallazgos.")
     ya = set([aud.get("auditor")] + auditados)
     destinatarios = sorted({x for x in ya if x} | {c for c in _correo_administracion() if c})
     return _avisar_correo(
@@ -3995,33 +3995,36 @@ class _InformePDF:
                       ", ".join(a.get("ciclos") or []) or "todos los ciclos"]
         return " - ".join(partes)
 
+    # LAS MISMAS TRES CUENTAS DE LA PANTALLA (9-nov). Acá se contaban ELEMENTOS por
+    # severidad —«Hallazgo 1», «Conforme 4»— mientras la pantalla decía «2 hallazgos»
+    # contando barras: el mismo nombre para dos cosas, y el informe contradecía a la página.
+    # La severidad del elemento ya no existe (cada barra con su tratamiento): el informe
+    # lee `resumen`, lo mismo que pinta la pantalla.
     def _resultado(self):
         p, a = self.pdf, self.a
-        r = a.get("resultado") or {}
+        r = a.get("resumen") or {}
         self._titulo("2. Resultado")
         p.set_font("Helvetica", "", 9)
-        rev = a.get("revisados") or 0
+        rev = r.get("elementos_auditados") or 0
         if not rev:
             p.cell(0, 5, self._s("Sin elementos revisados todavia."), new_x="LMARGIN", new_y="NEXT")
             return
-        for k in ("conforme", "observacion", "hallazgo"):
-            n = r.get(k) or 0
-            p.set_fill_color(*self.COLOR[k])
-            p.cell(4, 5, "", fill=True, border=0)
-            p.set_font("Helvetica", "B" if k == HALLAZGO_ABRE_ACCION and n else "", 9)
-            p.cell(52, 5, self._s("  " + self.NOMBRE[k]), border=0)
-            p.cell(16, 5, self._s("%d" % n), border=0, align="R")
-            p.cell(16, 5, self._s("%d%%" % round(n / rev * 100)), border=0, align="R")
-            # Barra proporcional, que es lo que se mira antes que el número.
-            ancho = max(0.4, (n / rev) * 80) if n else 0
-            if ancho:
-                p.set_fill_color(*self.COLOR[k])
-                p.cell(ancho, 4, "", fill=True, border=0)
-            p.ln(5)
+        for nombre, n, alerta in (("Elementos auditados", rev, False),
+                                  ("Items auditados", r.get("items_auditados") or 0, False),
+                                  ("Hallazgos", r.get("hallazgos") or 0, True)):
+            if alerta and n:
+                p.set_font("Helvetica", "B", 9)
+                p.set_text_color(*self.COLOR["hallazgo"])
+            else:
+                p.set_font("Helvetica", "", 9)
+            p.cell(52, 5, self._s(nombre), border=0)
+            p.cell(16, 5, self._s("%d" % n), border=0, align="R", new_x="LMARGIN", new_y="NEXT")
+            p.set_text_color(40, 40, 40)
         p.ln(1)
         p.set_font("Helvetica", "", 8)
         p.set_text_color(110, 110, 110)
-        p.cell(0, 4, self._s("Revisados %d de %d elementos de la muestra." % (rev, a["n"])),
+        p.cell(0, 4, self._s("Revisados %d de %d elementos de la muestra. Cada hallazgo es una barra "
+                             "marcada por el auditor." % (rev, a["n"])),
                new_x="LMARGIN", new_y="NEXT")
         p.set_text_color(40, 40, 40)
 
@@ -4118,19 +4121,19 @@ class _InformePDF:
 
     def _conclusion(self):
         p, a = self.pdf, self.a
-        r = a.get("resultado") or {}
-        rev = a.get("revisados") or 0
+        r = a.get("resumen") or {}
+        rev = r.get("elementos_auditados") or 0
         self._titulo("6. Conclusion")
         p.set_font("Helvetica", "", 9)
         if not rev:
             texto = "La auditoria esta planificada y todavia no se revisa ningun elemento."
         else:
-            nc = r.get("hallazgo") or 0
-            conf = round((r.get("conforme") or 0) / rev * 100)
-            texto = ("Se revisaron %d elementos de la muestra. Conformidad %d%%. "
-                     "%s" % (rev, conf,
-                             ("Se detectaron %d no conformidad(es), con su accion asignada." % nc) if nc
-                             else "No se detectaron no conformidades."))
+            # Con las cuentas de la pantalla, como el resultado (9-nov).
+            nh = r.get("hallazgos") or 0
+            texto = ("Se auditaron %d elementos de la muestra (%d items). %s" % (
+                rev, r.get("items_auditados") or 0,
+                ("Se detectaron %d hallazgo(s), con su accion asignada." % nh) if nh
+                else "No se detectaron hallazgos."))
             if a["estado"] != "cerrada":
                 texto += " La auditoria sigue abierta."
         p.multi_cell(self.w, 5, self._s(texto), new_x="LMARGIN", new_y="NEXT")
