@@ -244,7 +244,7 @@ check("la pantalla lo muestra barra por barra en la tabla de acciones; la celda 
       "function celdaQueSeEncontro(" not in JS and "audobsgen" not in JS and "audobsb" not in HTM
       and "function filaComentario(" in JS and "function filaAccion(" in JS)
 check("...y en la hoja de la auditoría el texto del auditor tiene su ancho: ahí es donde se trabaja",
-      "{ titulo: 'Qué encontró el auditor', ancho: 200, clase: 'audqse' }" in JS
+      "{ titulo: 'Qué encontró el auditor', ancho: 220, clase: 'audqse' }" in JS
       and ".audt.hojab td.audqse" in HTM and "revcc2 audhoja" in JS)
 
 # LA TABLA DE LA MUESTRA SE SALÍA DEL ANCHO y la última columna quedaba cortada contra el
@@ -677,7 +677,7 @@ check("...hablándole por las dos funciones de siempre",
 check("el id del área de la matriz viaja con el catálogo (si no, sale vacía)",
       '"causas_area": causas_area' in SRC and "BASE.causas_area" in JS)
 check("la causa se ve en la fila de la barra, y se puede cambiar; el botón dice RCA, no «Clasificar»",
-      "audcausa" in JS and "td.audcausa" in HTM and ">Clasificar<" not in JS)
+      "button[data-causa]" in HTM and "'data-causa', b.item_id" in JS and ">Clasificar<" not in JS)
 
 print("\n7c0f. El botón dice Hallazgo, no «NC»")
 check("en el veredicto de cada barra",
@@ -1113,7 +1113,29 @@ check("el formulario del auditor se bloquea entero y DICE por qué",
       and 'id="audRevCandado"' in HTM and ".audsololeer" in HTM
       and "if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }" in JS)
 check("la tabla de lo que salió es POR BARRA, no por elemento",
-      "function filaAccion(" in JS and "malas.forEach(function (b) { filas.push(filaAccion(e, b)); });" in JS)
+      "function filaAccion(" in JS
+      and "malas.length ? malas.map(function (b) { return filaAccion(e, b); }) : [filaComentario(e)]" in JS)
+# 9-nov: «el auditado debiera tener algo similar: resumen de los elementos revisados; los que
+# tienen hallazgos les hace click y se abre el modal con el detalle. Ese botón de abrir
+# resumen me sobra». Y: el RCA va en la acción; sin columnas Elemento ni «Debería decir».
+check("después del envío la lista de elementos la ven todos y el clic abre los hallazgos de ESE elemento",
+      "$('audDetElems').innerHTML = (AUD.soy_auditor || enviadaYa)" in JS
+      and "if (e.accion_estado && _cuentaLineas(e).total) abrirHallazgos(e);" in JS
+      and "cols.style.display = (AUD.soy_auditor || enviadaYa) ? '' : 'none';" in JS
+      and "audAccTarjeta" not in HTM and "audAccTarjeta" not in JS
+      and "MUESTRA_ABIERTA" not in JS and "audVerMuestra" not in JS)
+check("...el modal es de un elemento: su nombre arriba y sólo sus barras, sin columna Elemento",
+      "var e = (enviada && ACC_EL != null) ? acc.filter(function (x) { return x.id === ACC_EL; })[0] : null;" in JS
+      and "_hojaElemento(e, g, c.total > 0 && c.listas >= c.total)" in JS
+      and "elemento:" not in JS.split("function filaAccion(")[1].split("function _autoFiguras(")[0])
+check("...el RCA es el primer botón de la acción, y no hay columna RCA ni «Debería decir»",
+      "return '<div class=\"revaccs\">' + rca +" in JS
+      and "{ titulo: 'RCA'" not in JS and "{ titulo: 'Debería decir'" not in JS
+      and "'<div class=\"revesp\">Debería decir: '" in JS)
+check("...y lo de toda la auditoría queda en la página: lo idéntico en aSa, el cierre y por qué no cerró",
+      '<div id="audAccAvisos"></div>' in HTM and "var caja = $('audAccAvisos');" in JS
+      and "if (AUD.puedo_cerrar) {" in JS.split("function _flujoBotones()")[1][:2500]
+      and "var cz = $('audBtnCerrarOk');" in JS.split("function _flujoBind()")[1][:600])
 # TRES SALIDAS POR LÍNEA (6-nov): «Resuelto en CC / Resuelto en nuevo CC / No aplica», y
 # al final el campo de texto, obligatorio en las tres.
 check("cada línea lleva Resuelto en CC | Resuelto en nuevo CC | No aplica, y el texto al final, obligatorio",
@@ -1180,7 +1202,7 @@ check("el informe PDF sólo se emite con la auditoría cerrada",
       and "pdf.disabled = !lista" in JS)
 check("la figura de la barra se puede ver en el resumen, pedida por código (todas o una)",
       "function _celdaFig(" in JS and "async function cargarFigurasAud(" in JS
-      and 'id="audFigs"' in JS and "data-afigs=" in JS and "'/auditorias/elemento-asa?cc='" in JS)
+      and "data-afigs=" in JS and "'/auditorias/elemento-asa?cc='" in JS)
 # LA FORMA DE LA REVISIÓN DE BARRAS (6-nov): lados y ángulos en sus columnas, no en una
 # tablita bajo el dibujo («hiciste un invento medio raro»).
 check("...con sus lados y ángulos en columnas, como en la revisión de barras, sin tablita bajo el dibujo",
@@ -1263,7 +1285,7 @@ check("la planilla del auditor tiene S/M/L, el nombre sólo en Figura y anchos q
 # auditor; las tres pantallas la arman con la misma función y sólo ponen lo suyo.
 check("una sola tabla para las tres pantallas: la planilla del auditor, el Resumen y la revisión",
       "global.HojaBarras.partes({" in JS.split("function pintarBarras()")[1][:600]
-      and "global.HojaBarras.tabla({" in JS.split("function _bloqueAud(")[1][:3000]
+      and "global.HojaBarras.tabla({" in JS.split("function _hojaElemento(")[1][:3000]
       and "global.HojaBarras.tabla({" in REVJS.split("function _tablaGrupo(")[1][:300]
       and APPH.index("auditorias/hoja_barras.js") < APPH.index("auditorias/index.js"))
 check("...con el orden de la planilla del auditor: acción · Marca · φ · Figura · Render · lados · α · R · Largo · Cant · Peso · Elemento · lo propio · texto",
@@ -1289,7 +1311,7 @@ check("«Ver figuras» trae el dibujo y nada más: la foto manda en las medidas"
 check("la planilla del auditor no lleva columna Elemento: es un solo elemento y lo dice la cabecera",
       "elemento:" not in JS.split("function pintarBarras()")[1].split("function celdaEd(")[0]
       and "marcaTitle: [b.ref, b.plano, taller].filter(Boolean).join(' · ')" in JS
-      and "elemento: e.nombre || nombreCompleto(e)" in JS)
+      and "elemento:" not in JS.split("function filaAccion(")[1].split("function _autoFiguras(")[0])
 check("φ y Figura centrados, el encabezado con el dato; la casilla de marcar cabe en su columna",
       "col(ANCHO.diam, 'φ', 'hojac')" in HOJA and "col(ANCHO.figura, 'Figura', 'hojac')" in HOJA
       and ".audt.hojab th.hojac, .audt.hojab td.hojac{text-align:center;}" in HTM
@@ -1356,7 +1378,7 @@ check("el auditado no abre el formulario del auditor, ni a mirar: lo lleva al Re
       "if (!AUD || !AUD.soy_auditor) {" in JS.split("async function abrirElemento(e) {")[1][:900]
       and "mostrarRevision(false);" in JS.split("async function abrirElemento(e) {")[1][:900])
 check("...y la fila de la muestra se lo dice en vez de prometerle revisar",
-      "Lo tuyo se resuelve abajo, en Resumen Hallazgos" in JS)
+      "conHall ? 'Clic para ver sus hallazgos y resolverlos' : 'Sin hallazgos que resolver'" in JS)
 
 print("\nEL COMENTARIO QUE NO ES DE NINGUNA BARRA")
 # NO TODO HALLAZGO ES DE UNA BARRA (15-oct). «Falta trabas de muro» no se puede colgar de
@@ -1389,7 +1411,7 @@ check("...y el detalle los suma a lo que falta por resolver",
 check("la pantalla le pone al comentario las mismas tres salidas que a una barra",
       "function filaComentario(" in JS and "var lin = 'e' + e.id" in JS
       and "'data-ecausa'" in JS and "function _celdaCausa(" in JS
-      and "accion: _accionesAud(lin, abierta, puede, !e.causa, false, null)" in JS
+      and "accion: _accionesAud(lin, abierta, puede, !e.causa, false, null," in JS
       and "accion_cc_nuevo = %s" in SRC)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
@@ -1446,7 +1468,7 @@ check("«no aplica» se lleva el RCA de la barra, y deja escrito cuál era",
 check("...y del comentario de elemento también",
       "causa = None" in _res and "se quitó el RCA %s" in _res)
 check("...y la pantalla apaga el RCA en una barra sin efecto",
-      "Sin efecto: no lleva RCA." in JS)
+      "if (nap) return '';" in JS.split("function _celdaCausa(")[1][:200])
 check("los indicadores del área son cuentas: auditorías, hallazgos, obras, cubicadores, sin corregir",
       '"obras_auditadas"' in SRC and '"cubicadores_auditados"' in SRC
       and "'obras auditadas'" in JS and "'cubicadores auditados'" in JS
@@ -1490,7 +1512,7 @@ MIG160 = open(os.path.join(ROOT, "armahub", "migrations", "160_no_aplica_con_mot
               encoding="utf-8").read()
 check("el Resumen Hallazgos agrupa por código de control, con la cabecera y la cuenta de la revisión de barras",
       "'<div class=\"revcc2 audhoja'" in JS and "data-aselgrp=" in JS and 'class="revcuenta"' in JS
-      and "global.HojaBarras.tabla({" in JS.split("function _bloqueAud(")[1][:3000])
+      and "global.HojaBarras.tabla({" in JS.split("function _hojaElemento(")[1][:3000])
 check("hay checks por barra y, con marcas, los botones de la fila actúan sobre todas (sin verbos en la barra)",
       "data-asel=" in JS and "function _lineasDe(" in JS and "data-alote" not in JS
       and "RCA, Resuelto o No aplica en cualquiera de sus filas actúa sobre todas." in JS
@@ -1515,9 +1537,9 @@ check("«no aplica» se justifica con un campo al final de la linea, sin lista d
 check("...Enter guarda, Esc lo deja, y mientras se justifica un «no aplica» la fila esconde el RCA",
       "if (ev.key === 'Escape') cerrarLinea(lin);" in JS and "if (ev.key === 'Enter') guardarLinea(lin);" in JS
       and "tr.classList.toggle('napabierto', modo === 'nap');" in JS
-      and ".audhoja tr.napabierto td.audcausa > *{display:none;}" in HTM)
+      and ".audhoja tr.napabierto td.hojaacc button[data-causa]," in HTM)
 check("lo que no aplica no se clasifica: ni en pantalla ni por el backend",
-      "if (nap) return '<span class=\"muted\" title=\"Sin efecto: no lleva RCA.\">—</span>';" in JS
+      "if (nap) return '';" in JS.split("function _celdaCausa(")[1][:200]
       and "Esa barra no aplica: no lleva RCA." in SRC)
 check("...y el motivo viaja en cada barra del detalle",
       '"desestimado_tipo": des_tipo' in SRC)
@@ -1535,7 +1557,7 @@ check("la lista es para todo el equipo; antes del envío, quien no audita no rec
       "(a.enviada_el IS NOT NULL OR a.auditor = %s OR a.creada_por = %s)" not in SRC
       and 'por_elemento.get(e["id"], []) if ve_hallazgos else []' in SRC)
 check("la muestra del auditor no se le pinta a quien no audita",
-      "La muestra la revisa el auditor. Lo tuyo está abajo" in JS)
+      "La muestra la revisa el auditor. Cuando la envíe" in JS)
 check("el check de grupo sale sólo cuando hay algo que marcar",
       "var marcables = _actuo() &&" in JS and "check: { titulo: marcables" in JS)
 check("el nombre de la figura va al lado del dibujo, y el tamaño por defecto es S",
@@ -1552,16 +1574,15 @@ print("\nLA PANTALLA DEL AUDITOR, DESPEJADA (28-oct)")
 check("la franja va a lo ancho: elementos, items, hallazgos, observaciones y a quien le toca cuanto",
       'id="audResBarra"' in JS and "'observaciones'" in JS
       and "'barras por corregir, por cubicador'" in JS)
-check("antes del envio la muestra esta siempre; despues queda plegada para quien audita",
-      "(AUD.soy_auditor && (!enviadaYa || MUESTRA_ABIERTA || ELEM)) ? '' : 'none'" in JS
-      and "enviadaYa && AUD.soy_auditor" in JS and "Ver la muestra del auditor (" in JS)
+check("antes del envio la muestra es del auditor; despues la ven todos (9-nov)",
+      "(AUD.soy_auditor || enviadaYa) ? '' : 'none'" in JS and "Ver la muestra del auditor (" not in JS)
 check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
       ".audacc{margin-top:10px; padding:10px 12px; background:#fffdf5" not in HTM
       and ".audacc{margin-top:10px; padding:12px 14px; background:#fff;" in HTM
       # 9-nov: «Además debiera estar en un modal».
       and '<div id="audAccModal" style="display:none; position:fixed;' in HTM
       and '<div id="audAcciones" class="revhoja audacc"></div>' in HTM
-      and 'id="audAccTarjeta"' in HTM and "modal.style.display = ACC_DE === AUD.id ? '' : 'none';" in JS
+      and "function cerrarHallazgos()" in JS
       and "'<button class=\"audmini\" id=\"audAccCerrar\"" in JS
       and "border-top:3px solid #ffb300" in HTM)
 check("...y ninguna columna queda cortada contra el borde: la tabla de cada código scrollea sola",
@@ -1575,9 +1596,10 @@ check("la observacion es POR BARRA y va a la derecha de la barra, siempre",
 check("...y la nota del elemento se llama por lo que es: lo que no es de ninguna barra",
       'for="audRevTexto"' in HTM and "Nota del elemento" in HTM and "falta trabas" in HTM)
 check("el Resumen Hallazgos existe desde el envio, no mientras se revisa",
-      "if (!acc.length || !enviada)" in JS and "Todavía no se envía" not in JS)
-check("...sin la columna Cubico por fila: esta en la cabecera de cada codigo",
-      "'<th>Elemento</th><th>Cubicó</th>'" not in JS and "'<span class=\"revquien\">' + esc(Object.keys(g.cubs)" in JS)
+      "(enviada && ACC_EL != null)" in JS and "avisos.innerHTML = (!enviada || !acc.length)" in JS
+      and "Todavía no se envía" not in JS)
+check("...sin la columna Cubico por fila: esta en la cabecera del elemento",
+      "'<th>Elemento</th><th>Cubicó</th>'" not in JS and "'<span class=\"revquien\">' + esc(quien(e.cubicado_por))" in JS)
 check("el auditor no resuelve lo que el mismo marco: juez y parte",
       'user.get("email", "?") != aud.get("auditor")' in SRC.split('aud["puedo_actuar"]')[1][:200]
       and "No lo acepto" in JS)

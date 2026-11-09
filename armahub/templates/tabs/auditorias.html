@@ -177,7 +177,11 @@
 
       <div class="card audc">
       <div id="audDetInfo" class="muted" style="font-size:11px; margin-bottom:6px;"></div>
-      <!-- LA MUESTRA. Clic en un elemento abre su revisión en el modal de abajo. En aSa el
+      <!-- Lo que es de toda la auditoría después del envío: lo idéntico en aSa, lo que dijo
+           el cierre y por qué no cerró. -->
+      <div id="audAccAvisos"></div>
+      <!-- LA MUESTRA. Clic en un elemento abre su revisión en el modal de abajo; después
+           del envío, sus hallazgos. En aSa el
            tipo, el piso y el ciclo se escriben en la fila del elemento abierto (aSa no los
            trae; en ArmaHub salen de la cubicación). -->
       <div class="audcols" id="audCols">
@@ -216,10 +220,8 @@
       </div>
       </div><!-- fin #audRevModal -->
 
-      <!-- Las acciones que nacen de cada hallazgo: para quien cubicó. EN UN MODAL (9-nov),
-           como la revisión del elemento y la revisión de barras; en la página queda la
-           tarjeta que dice cuánto falta y lo abre. -->
-      <div id="audAccTarjeta" class="audacc audacctar" style="display:none;"></div>
+      <!-- LOS HALLAZGOS DE UN ELEMENTO, para quien cubicó: se abren desde la lista de
+           elementos después del envío, en un modal (9-nov). -->
       <div id="audAccModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); z-index:9998; overflow-y:auto;">
         <div id="audAcciones" class="revhoja audacc"></div>
       </div>
@@ -227,12 +229,7 @@
       <!-- CUÁNTO DE LA OBRA SE HA MIRADO, contando todas sus auditorías. Responde la
            pregunta que una auditoría suelta no contesta: qué falta. -->
 
-      <div class="muted" style="font-size:10.5px; margin-top:6px;">
-        Clic en un elemento para revisarlo. El estado y las fechas se ponen solos: <b>en curso</b> al
-        primer hallazgo, <b>cerrada</b> al revisar el último. Una no conformidad le llega como
-        <b>acción</b> a quien cubicó (le aparece en la campana y en su lista al entrar); él corrige
-        en su cubicación, la marca corregida, y el auditor <b>verifica</b>.
-      </div>
+      <div class="muted" id="audMuestraAyuda" style="font-size:10.5px; margin-top:6px;"></div>
       </div>
     </div>
     </div><!-- /audSubAuditorias -->
@@ -434,7 +431,7 @@
   .audt td:last-child, .audt th:last-child{border-right:0;}
   .audt tbody tr:nth-child(even) td{background:#fcfdfe;}
   .audt .num{text-align:right;}
-  .audt tbody tr.fila{cursor:pointer;} .audt tbody tr.fila:hover td{background:#f3f7fc;}
+  .audt tbody tr.fila{cursor:pointer;} .audt tbody tr.fila.nada{cursor:default;} .audt tbody tr.fila:hover td{background:#f3f7fc;}
   .audt tbody tr.sel td{background:#e8f1fb;}
   /* Estado de la auditoría, en el idioma de la ISO. */
   .audest{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 8px; white-space:nowrap;}
@@ -494,9 +491,10 @@
   /* LA HOJA DE LA AUDITORÍA (6-nov): los mismos bloques de la revisión de barras (.revcc2),
      con lo propio de la auditoría. La cabecera te sigue al bajar, como la de la revisión. */
   .audcab{position:sticky; top:0; z-index:6; background:#fff; padding-bottom:2px;}
-  .audhoja td.audcausa{white-space:nowrap;}
-  .audhoja td.audcausa .audmini{font-family:ui-monospace,Consolas,monospace;}
-  .audhoja td.audcausa .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
+  /* El RCA, primer botón de la acción: el código elegido en monoespaciada; sin elegir, en
+     naranjo, porque es lo que falta para poder dar la línea por resuelta. */
+  .audhoja td.hojaacc button[data-causa], .audhoja td.hojaacc button[data-ecausa]{font-family:ui-monospace,Consolas,monospace;}
+  .audhoja td.hojaacc .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
   /* El nombre que le puso el cubicador a la marca (Notes en aSa), al lado de la marca. */
   .audnotas{font-size:9.5px; font-weight:700; color:#4e342e; background:#efebe9; border-radius:3px;
             padding:0 5px; margin-left:3px; letter-spacing:.3px;}
@@ -515,8 +513,8 @@
   .revccin.revmarcain{width:64px;}
   /* MIENTRAS SE JUSTIFICA UN «NO APLICA» (5-nov): la fila esconde el RCA; lo que no aplica
      no se clasifica. */
-  .audhoja tr.napabierto td.audcausa > *{display:none;}
-  .audhoja tr.napabierto td.audcausa::after{content:'—'; color:#b0bec5;}
+  .audhoja tr.napabierto td.hojaacc button[data-causa],
+  .audhoja tr.napabierto td.hojaacc button[data-ecausa]{visibility:hidden;}
   /* ══════ LAS REVISIONES ══════ */
   /* LA MATRIZ, ARMONIZADA (2-nov). Un solo tamaño de número; el peso y el color dicen qué
      importa. Dos filas de encabezado: la sección y la columna. */
@@ -941,9 +939,6 @@
   .audacc{margin-top:10px; padding:12px 14px; background:#fff; border:1px solid #e8ebef;
           border-top:3px solid #ffb300; border-radius:8px;
           box-shadow:0 1px 2px rgba(38,50,56,.06);}
-  /* La tarjeta del Resumen en la página: cuánto falta y el botón que abre el modal. */
-  .audacctar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; cursor:pointer;}
-  .audacctar .audh{margin:0;}
   /* Lo que dijo aSa al cerrar, en la pantalla de la auditoría cerrada. */
   .audnota.audcerrada{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32;}
   /* EL BOTÓN «RESUELTO» (20-oct). Se llama audBres y no audres porque .audres ya era la
