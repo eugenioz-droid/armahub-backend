@@ -191,9 +191,8 @@ check("el elemento se trae ENTERO: marca, Ø, figura, dimensiones, largo, cantid
       '@router.get("/auditorias/elemento")' in SRC
       and all(c in SRC for c in ("marca, diam, figura, dim_a", "largo_total, cant, mult, cant_total", "nombre_plano"))
       and 'id="audRevBarras"' in HTM)
-check("el hallazgo tiene los cuatro niveles y el TEXTO LO EXIGE EL BACKEND si no es conforme",
-      'id="audRevChips"' in HTM
-      and 'detail="Di qué encontraste: un hallazgo sin texto no es evidencia."' in SRC
+check("el TEXTO LO EXIGE EL BACKEND si no es conforme",
+       'detail="Di qué encontraste: un hallazgo sin texto no es evidencia."' in SRC
       and 'body.hallazgo != "conforme" and not texto' in SRC)
 check("la causa sale del Ishikawa de Cubicaciones que Calidad ya tiene",
       'AREA_CUBICACIONES = "Cubicaciones"' in SRC and "FROM area_rca_subcausas s" in SRC
@@ -261,9 +260,26 @@ check("las dos columnas de texto largo tienen techo y se cortan con puntos suspe
       and ".audt td.auddcc{max-width:190px" in HTM)
 check("el front marca barra por barra y el campo de texto aparece al marcar NC",
       "function pintarBarras()" in JS and "var BARRAS = [], VERED = {};" in JS
-      and "class=\"audobs\"" in JS and 'id="audRevSev"' in HTM)
-check("...y la severidad sólo se pregunta si hay alguna barra no conforme",
-      "$('audRevSev').style.display = c.malas ? 'flex' : 'none';" in JS)
+      and "class=\"audobs\"" in JS)
+# 9-nov: «Elimina esa severidad del elemento… Cada barra con su propio tratamiento».
+check("...sin severidad del elemento: una barra con Hallazgo abre acción, siempre (lo deriva el backend)",
+      'id="audRevSev"' not in HTM and "audRevChips" not in HTM and "audRevChips" not in JS
+      and "items: items, texto: $('audRevTexto').value" in JS
+      and A.severidad_derivada([{"conforme": True}, {"conforme": False}], None) == "hallazgo")
+check("...y la caja «observaciones» sale sólo en las auditorías viejas que las tienen",
+      "(obsN ? caj(obsN, 'observaciones') : '')" in JS)
+# 9-nov: «quedaría mejor que la tabla de la auditoría se vea en un modal y no más abajo».
+check("la revisión del elemento va en un modal, como la revisión de barras, y se cierra con ✕ o afuera",
+      '<div id="audRevModal" style="display:none; position:fixed;' in HTM
+      and '<div id="audRev" class="revhoja audrev">' in HTM
+      and HTM.index('</div><!-- fin .audcols -->') < HTM.index('id="audRevModal"')
+      and "$('audRevModal').style.display = visible ? '' : 'none';" in JS
+      and "if (e.target === $('audRevModal')) cerrarRevision();" in JS
+      and ".audrev .audbd{max-height:calc(100vh - 230px);}" in HTM)
+check("...cerrar con barras marcadas sin guardar pregunta, y guardar cierra",
+      "if (SUCIO && !global.confirm(" in JS
+      and "REV_ABIERTA = false; SUCIO = false;" in JS.split("async function guardarHallazgo(")[1][:2500]
+      and "mostrarRevision(!!ELEM && REV_ABIERTA);" in JS)
 check("al reabrir el elemento vuelve lo ya marcado",
       "def _hallazgos_de_items(" in SRC and '"revisados": revisados' in SRC
       and "Object.keys(d.revisados || {})" in JS)
@@ -536,7 +552,7 @@ check("...sólo en las auditorías de aSa y sólo en la fila abierta",
 check("...se guardan al salir del campo, sin repintar la lista (el foco se quedaría sin dueño)",
       "inp.addEventListener('change', guardarUbicacion);" in JS and "No se repinta la lista" in JS)
 check("...y el clic en un campo no vuelve a abrir el elemento",
-      "ev.stopPropagation()" in JS and "ya está abierto: el clic es para escribir" in JS)
+      "ev.stopPropagation()" in JS and "campos de ubicación no llega acá (stopPropagation)" in JS)
 check("...diciendo por qué están vacíos", "aSa no trae tipo, piso ni ciclo" in JS)
 check("el tipo se ofrece de la lista del backend, no de una copia en el navegador",
       "BASE.sectores" in JS)

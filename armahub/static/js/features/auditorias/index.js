@@ -97,6 +97,10 @@
   // El veredicto de cada barra del elemento abierto: {ref: {conforme, observacion}}.
   // Vive acá mientras se revisa y se guarda todo junto.
   var BARRAS = [], VERED = {};
+  // EL MODAL DE LA REVISIÓN (9-nov). El elemento abierto (ELEM) sigue seleccionado en la
+  // muestra al cerrar el modal —ahí se escriben tipo, piso y ciclo en aSa—; REV_ABIERTA
+  // dice si el modal está a la vista y SUCIO si hay algo marcado sin guardar.
+  var REV_ABIERTA = false, SUCIO = false;
 
   // Las obras que se pueden auditar: los jobs de aSa, con su código y su tamaño. Una
   // entrada por job, que es la identidad de la obra en producción: los frentes que
@@ -322,6 +326,9 @@
       pintarLista(); pintarDetalle();
     });
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
+    $('audRevCerrar').addEventListener('click', cerrarRevision);
+    $('audRevModal').addEventListener('click', function (e) { if (e.target === $('audRevModal')) cerrarRevision(); });
+    $('audRevTexto').addEventListener('input', function () { SUCIO = true; });
     // El PDF se baja con fetch y no con un enlace: el token va en la cabecera, y un
     // <a href> no la lleva (daría 401). Mismo camino que el informe de reclamos.
     $('audPdf').addEventListener('click', async function () {
@@ -746,7 +753,7 @@
     var caja = $('audDetalle'), lista = $('audVistaLista');
     // O se está mirando la lista, o se está DENTRO de una auditoría. Nunca las dos.
     if (!AUD) {
-      caja.style.display = 'none'; $('audRev').style.display = 'none';
+      caja.style.display = 'none'; mostrarRevision(false);
       if (lista) lista.style.display = '';
       return;
     }
@@ -792,7 +799,9 @@
           (rs.elementos && rs.elementos !== rs.elementos_auditados ? ' de ' + rs.elementos : '')) +
       caj(rs.items_auditados || 0, 'ítems auditados') +
       caj(rs.hallazgos || 0, 'hallazgos', rs.hallazgos ? 'mal' : 'bien') +
-      caj(obsN, 'observaciones') +
+      // Las observaciones son de las auditorías anteriores al 9-nov, cuando el elemento
+      // tenía severidad: la caja sale sólo si hay alguna.
+      (obsN ? caj(obsN, 'observaciones') : '') +
       caj(porCubTxt || '—', 'barras por corregir, por cubicador') +
       (enviadaYa && AUD.soy_auditor
         ? '<button class="audmini auddespl" id="audVerMuestra">' +
@@ -865,7 +874,8 @@
     $('audDetElems').querySelectorAll('tr.fila').forEach(function (tr) {
       tr.addEventListener('click', function () {
         var e = (AUD.elementos || []).filter(function (x) { return x.id === Number(tr.dataset.id); })[0];
-        if (ELEM && e && ELEM.id === e.id) return;   // ya está abierto: el clic es para escribir en sus campos
+        // Con el modal cerrado, el clic en la fila seleccionada la vuelve a abrir; en sus
+        // campos de ubicación no llega acá (stopPropagation).
         abrirElemento(e);
       });
     });
@@ -897,15 +907,19 @@
     }
   }
 
-  // El panel de revisión se ve (o no), y con él la lista se comprime a un lado en las
-  // pantallas anchas (ver .audcols.abierta en el HTML): la muestra a la izquierda, las
-  // barras a la derecha, las dos a la vista.
-  // EL DETALLE DEL ELEMENTO VA DEBAJO DE LA MUESTRA, A LO ANCHO (28-oct). Antes la pantalla
-  // se partía en dos columnas y la muestra quedaba comprimida a la izquierda con los ejes
-  // cortados; el usuario: «el detalle según lo que seleccione, en el mismo cuadro pero
-  // abajo».
+  // LA REVISIÓN DEL ELEMENTO VA EN UN MODAL (9-nov). Fue lado a lado con la muestra, y
+  // después debajo (28-oct); el usuario: «quedaría mejor que la tabla se vea en un modal y
+  // no más abajo. Así tienes el protagonismo de la tabla 100%», como la revisión de barras.
   function mostrarRevision(visible) {
-    $('audRev').style.display = visible ? '' : 'none';
+    $('audRevModal').style.display = visible ? '' : 'none';
+  }
+
+  // Cerrar el modal es dejar la revisión: lo marcado sin guardar se pierde, y se pregunta.
+  // El elemento queda seleccionado en la muestra.
+  function cerrarRevision() {
+    if (SUCIO && !global.confirm('Hay barras marcadas sin guardar en este elemento. ¿Cerrar sin guardar?')) return;
+    REV_ABIERTA = false; SUCIO = false;
+    mostrarRevision(false);
   }
 
   // El elemento nombrado ENTERO, para cuando se lee fuera de la tabla —el título de la
@@ -927,8 +941,10 @@
       if (res && res.scrollIntoView) res.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
-    ELEM = e; pintarDetalle();
-    $('audRev').style.display = '';
+    ELEM = e; REV_ABIERTA = true; SUCIO = false;
+    $('audRevTexto').dataset.de = '';   // la nota se vuelve a llenar con lo guardado
+    pintarDetalle();
+    mostrarRevision(true);
     $('audRevTitulo').textContent = nombreCompleto(e);
     $('audRevInfo').textContent = 'cargando…';
     $('audRevBarras').innerHTML = '';
@@ -1039,12 +1055,14 @@
         if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }
         if (VERED[ref] && VERED[ref].conforme === si) delete VERED[ref];   // volver a tocarlo lo suelta
         else VERED[ref] = { conforme: si, observacion: (VERED[ref] || {}).observacion || '' };
+        SUCIO = true;
         pintarBarras(); pintarRevision();
       });
     });
     $('audRevBarras').querySelectorAll('input[data-obs]').forEach(function (i) {
       i.addEventListener('input', function () {
         if (VERED[i.dataset.obs]) VERED[i.dataset.obs].observacion = i.value;
+        SUCIO = true;
       });
     });
     _bindEditables();
@@ -1092,6 +1110,7 @@
       i.addEventListener('input', function () {
         var v = VERED[i.dataset.ed];
         if (!v) return;
+        SUCIO = true;
         v.esperado = v.esperado || {};
         var campo = i.dataset.campo, val = i.value.trim();
         if (campo.indexOf('lado:') === 0) {
@@ -1584,7 +1603,7 @@
   }
 
   function pintarRevision() {
-    mostrarRevision(!!ELEM);
+    mostrarRevision(!!ELEM && REV_ABIERTA);
     if (!ELEM) return;
     // EL FORMULARIO SE BLOQUEA ENTERO, no botón por botón: media docena de campos
     // editables con el guardar apagado invita a escribir para nada.
@@ -1601,22 +1620,10 @@
     var c = cuentaBarras();
     $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
       (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '');
-    // Sin barras malas no hay severidad que elegir: el elemento es conforme y punto.
-    $('audRevSev').style.display = c.malas ? 'flex' : 'none';
-    if (c.malas) {
-      var sel = (ELEM.hallazgo && ELEM.hallazgo !== 'conforme') ? ELEM.hallazgo : 'hallazgo';
-      var previos = $('audRevChips').querySelector('button.on');
-      if (previos) sel = previos.dataset.h;
-      $('audRevChips').innerHTML = ['observacion', 'hallazgo'].map(function (k) {
-        return '<button data-h="' + k + '" class="hz ' + k + (sel === k ? ' on' : '') + '">' + HALLAZGO_TXT[k] + '</button>';
-      }).join('');
-      $('audRevChips').querySelectorAll('button').forEach(function (b) {
-        b.addEventListener('click', function () {
-          $('audRevChips').querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
-          b.classList.add('on');
-        });
-      });
-    }
+    // SIN SEVERIDAD DEL ELEMENTO (9-nov). Se elegía Observación u Hallazgo para el
+    // conjunto, y Observación dejaba sin acción las barras marcadas con Hallazgo. El
+    // usuario: «no me cuadra. Cada barra con su propio tratamiento». Una barra con
+    // Hallazgo abre acción, siempre: el backend lo deriva de las barras.
     // LA NOTA ES DE ESTE ELEMENTO (28-oct). Acá decía «si el textarea está vacío, poné el
     // texto del elemento» y nada más: al pasar a otro elemento, lo escrito en el anterior
     // seguía ahí y se guardaba con el siguiente. Así quedó la misma nota pegada en cuatro
@@ -1643,7 +1650,6 @@
       return VERED[r].conforme === false && !(VERED[r].observacion || '').trim();
     });
     if (faltan.length) { $('audRevMsg').textContent = 'Di qué tienen las barras ' + faltan.join(', ') + '.'; return; }
-    var on = $('audRevChips').querySelector('button.on');
     var items = Object.keys(VERED).map(function (r) {
       var i = -1;
       BARRAS.forEach(function (x, k) { if (x.ref === r) i = k; });
@@ -1659,9 +1665,10 @@
     $('audRevGuardar').disabled = true;
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/revision', {
-        items: items, hallazgo: (c.malas && on) ? on.dataset.h : null,
-        texto: $('audRevTexto').value });
+        items: items, texto: $('audRevTexto').value });
       ok('Revisión guardada');
+      // Guardar cierra el modal: de vuelta a la muestra, con el elemento al día.
+      REV_ABIERTA = false; SUCIO = false;
       await cargarLista();
       await cargarIndicadores();
       pintarDetalle();
