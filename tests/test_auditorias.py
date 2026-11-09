@@ -1139,6 +1139,9 @@ check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; s
       and "data-causa" not in JS.split("function _accionesAud(")[1][:1800]
       and "{ titulo: 'Debería decir'" not in JS and "'<div class=\"revesp\">Debería decir: '" in JS)
 # 9-nov: «marqué como no aplica pero no me aparece botón de cerrar». Guardar era sólo Enter.
+check("con «nuevo CC» la respuesta baja a su línea en vez de quedar en un cuadrito",
+      ".hojain{display:flex; flex-wrap:wrap;" in HTM and ".hojain .revnapin{flex:1 1 150px;" in HTM
+      and 'placeholder="respuesta (obligatoria)"' in JS)
 check("cada línea abierta tiene su botón Guardar a la vista (Enter sigue sirviendo)",
       "data-aguardar=" in JS and ">Guardar</button>" in JS
       and "if (gb) gb.style.display = modo ? '' : 'none';" in JS

@@ -897,9 +897,11 @@
   .audt.hojab th.hojac, .audt.hojab td.hojac{text-align:center;}
   .audt.hojab td.hojanotas{white-space:normal; line-height:1.5;}
   .audt.hojab td.hojanotas .audnotas{margin-left:0;}
-  /* El texto de la línea: el campo se lleva el ancho; el código y la marca nuevos, al lado. */
-  .hojain{display:flex; gap:4px; align-items:center;}
-  .hojain .revnapin{flex:1; width:auto; min-width:0;}
+  /* El texto de la línea: el campo se lleva el ancho; el código y la marca nuevos, al lado.
+     Con «nuevo CC» no caben los tres: la respuesta baja a su propia línea, con el Guardar,
+     en vez de quedar en un cuadrito (9-nov). */
+  .hojain{display:flex; flex-wrap:wrap; gap:4px; align-items:center;}
+  .hojain .revnapin{flex:1 1 150px; width:auto; min-width:150px;}
   .audt.hojab td.hojatxt .audobs{width:100%;}
   .audt.hojab .revfirma{max-width:none; white-space:normal; margin-right:0;}
   /* El estado de la fila gana sobre el cebrado de .audt: antes una fila par «malo» o

@@ -2106,7 +2106,7 @@
       (esBarra ? '<input type="text" class="revccin revmarcain" data-amarca="' + lin + '" style="display:none" ' +
                  'placeholder="marca" title="La marca en el código nuevo. Vacía = conservó la misma.">' : '') +
       '<input type="text" class="revnapin" data-anota="' + lin + '" style="display:none" ' +
-        'title="Obligatorio: lo lee quien auditó. Enter guarda; Esc lo deja.">' +
+        'placeholder="respuesta (obligatoria)" title="Obligatorio: lo lee quien auditó. Enter guarda; Esc lo deja.">' +
       '<button class="audmini" data-aguardar="' + lin + '" style="display:none" ' +
         'title="Guarda esta línea (y las marcadas junto con ella).">Guardar</button>' +
       '</div>';

@@ -64,5 +64,14 @@ check("el formulario lo muestra en sólo lectura",
 check("...y ni guardar análisis ni enviar a validación lo mandan",
       "_setIf('fecha_fin_analisis'" not in EDIT and "_setIf('fecha_fin_analisis'" not in FLOW)
 
+# 9-nov: en validación dejaba cambiar la causa y no la guardaba. El bloqueo buscaba
+# #btnAbrirIshikawa y el botón 🔍 no tenía ese id.
+PERM = open(os.path.join(ROOT, "armahub", "static", "js", "features", "reclamos", "detail-permissions.js"),
+            encoding="utf-8").read()
+check("fuera de análisis, la causa no se puede cambiar: el 🔍 lleva el id que apaga el bloqueo",
+      'id="btnAbrirIshikawa"' in HTM and "onclick=\"abrirIshikawaModal('detail')\">🔍</button>" in HTM
+      and "btnIshikawa.disabled = !puedeResponder" in PERM
+      and "'recDetailCausaDisplay'" in PERM)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
