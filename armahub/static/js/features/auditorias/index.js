@@ -1949,8 +1949,8 @@
   }
 
   // LAS BARRAS DEL ELEMENTO en la tabla común (hoja_barras.js), como la planilla del
-  // auditor. Lo propio: el check, el RCA y las tres salidas en la acción, lo que encontró
-  // el auditor, el estado y la respuesta de quien resolvió. SIN COLUMNA ELEMENTO (9-nov):
+  // auditor. Lo propio: el check y las tres salidas en la acción, lo que encontró el
+  // auditor, el estado, el RCA y la respuesta de quien resolvió. SIN COLUMNA ELEMENTO (9-nov):
   // es uno solo y lo dice la cabecera. SIN «DEBERÍA DECIR» (9-nov): el auditor dice lo
   // que encontró con un texto; si además corrigió un número, va debajo de ese texto.
   function _hojaElemento(e, g, listo) {
@@ -1962,15 +1962,20 @@
         check: { titulo: marcables
           ? '<input type="checkbox" data-aselgrp="' + esc(g.cc) + '" title="Marcar todas las barras ' +
             'por resolver de este elemento">' : '' },
-        // EL RCA VA PRIMERO, EN LA ACCIÓN (9-nov): «Resuelto» lo pide antes, y en su columna
-        // al fondo de la tabla no se veía; los botones parecían bloqueados sin razón.
-        accion: { titulo: 'Acción', ancho: 400 },
+        accion: { titulo: 'Acción', ancho: 340 },
         titulos: { lado: function (L) {
           return 'Medida del lado ' + L + ' cuando se auditó. El dibujo es lo que hay en aSa ahora: ' +
                  'si no calzan, la barra ya se editó.'; } },
         propias: [
           { titulo: 'Qué encontró el auditor', ancho: 220, clase: 'audqse' },
-          { titulo: 'Estado', ancho: 120, clase: 'hojaest' }
+          { titulo: 'Estado', ancho: 120, clase: 'hojaest' },
+          // EL RCA VIENE DESPUÉS DE RESOLVER (9-nov): «aparece sólo cuando se marca como
+          // Resuelto con alguna de las 2 opciones; de lo contrario no se considera, porque
+          // no aplica». Sigue siendo obligatorio para resolver —lo exige el backend—: al
+          // elegir «Resuelto» aparece acá, y si se da Enter sin él se abre la matriz.
+          { titulo: 'RCA', ancho: 76, clase: 'audrca',
+            title: 'Por qué pasó, en la matriz Ishikawa. Sólo en lo resuelto: lo que no aplica no ' +
+                   'se clasifica. Es de este módulo: no se mezcla con las causas de los reclamos.' }
         ],
         texto: { titulo: 'Respuesta',
                  title: 'Qué hizo quien resolvió, o por qué no aplica. Obligatorio: lo lee quien auditó.' },
@@ -1984,6 +1989,14 @@
   // SE APAGA EN «NO APLICA» (20-oct): un hallazgo que no correspondía no tiene causa que
   // clasificar, y si la tenía el backend la quitó para que no pese en el indicador de causas
   // de la auditoría (que es interno: NO es el Pareto de los reclamos y no se mezcla con él).
+  // Abierta: el botón, que se ve sólo mientras se está resolviendo (tr.resabierto).
+  // Resuelta: la causa que quedó. No aplica: nada.
+  function _celdaRca(x, resuelta, nap, attr, id, puede, sinEsto) {
+    if (nap) return '';
+    if (resuelta) return _celdaCausa(x, false, attr, id, false, false, sinEsto);
+    return '<span class="rcaabierta">' + _celdaCausa(x, false, attr, id, puede, puede, sinEsto) + '</span>';
+  }
+
   function _celdaCausa(x, nap, attr, id, editable, puede, sinEsto) {
     if (nap) return '';
     if (x.causa) {
@@ -2047,10 +2060,9 @@
   // LOS BOTONES DE UNA LÍNEA, en la primera columna como el OK / Hallazgo del auditor.
   // Abierta: las tres salidas. Resuelta o sin efecto: Deshacer (y «No lo acepto» para el
   // auditor). `lin` es «i<barra>» o «e<elemento>» (el comentario del elemento).
-  function _accionesAud(lin, abierta, puede, sinRca, esBarra, objetarId, rca) {
-    rca = rca || '';
+  function _accionesAud(lin, abierta, puede, esBarra, objetarId) {
     if (!abierta) {
-      var out = rca;
+      var out = '';
       if (puede) out += '<button class="audmini" data-adeshacer="' + lin + '" title="Vuelve a dejar la ' +
                         'línea por resolver.">Deshacer</button>';
       // Derecho a réplica del auditor: el descarte vale por defecto, pero si no corresponde
@@ -2060,14 +2072,13 @@
                             'No lo acepto</button>';
       return out ? '<div class="revaccs">' + out + '</div>' : '';
     }
-    if (!puede) return rca ? '<div class="revaccs">' + rca + '</div>' : '';
-    var off = sinRca ? ' off" disabled title="Primero el RCA: por qué pasó."' : '"';
-    return '<div class="revaccs">' + rca +
-      '<button class="audbres' + off + ' data-amodo="cc" data-alin="' + lin + '"' +
-        (sinRca ? '' : ' title="Ya lo corregiste en este mismo código en aSa. Se compara con aSa en el acto."') +
+    if (!puede) return '';
+    return '<div class="revaccs">' +
+      '<button class="audbres" data-amodo="cc" data-alin="' + lin + '"' +
+        ' title="Ya lo corregiste en este mismo código en aSa. Se compara con aSa en el acto. Pide el RCA."' +
         '>Resuelto en CC</button>' +
-      '<button class="audbres' + off + ' data-amodo="nuevo" data-alin="' + lin + '"' +
-        (sinRca ? '' : ' title="Quedó en otro código de control: di cuál' + (esBarra ? ' y con qué marca' : '') + '."') +
+      '<button class="audbres" data-amodo="nuevo" data-alin="' + lin + '"' +
+        ' title="Quedó en otro código de control: di cuál' + (esBarra ? ' y con qué marca' : '') + '. Pide el RCA."' +
         '>Resuelto en nuevo CC</button>' +
       '<button class="revnapbtn" data-amodo="nap" data-alin="' + lin + '" title="Lo observado no ' +
         'corresponde. No lleva RCA.">No aplica</button>' +
@@ -2104,15 +2115,15 @@
         ? '<input type="checkbox" data-asel="' + b.item_id + '" data-agrp="' + esc(e.cc || '') + '"' +
           (SEL_AUD[b.item_id] ? ' checked' : '') + ' title="Marcar para resolver varias de una vez">'
         : '',
-      accion: _accionesAud(lin, abierta, puede, !b.causa, true, objetarId,
-                           _celdaCausa(b, !!b.desestimado, 'data-causa', b.item_id, puede && abierta,
-                                       puede && abierta, 'darla por resuelta')),
+      accion: _accionesAud(lin, abierta, puede, true, objetarId),
       barra: { marca: b.ref || b.marca || '', notas: v.notas, diam: v.diam, figura: v.figura,
                render: _celdaFig(e.cc, b), lados: v.lados, malos: malos, angulos: v.angulos,
                radio: v.radio, largo: v.largo, cant: v.cant },
       propias: [esc(b.observacion || '') +
                   (_esperadoTxt(b.esperado) ? '<div class="revesp">Debería decir: ' + esc(_esperadoTxt(b.esperado)) + '</div>' : ''),
-                _estadoBarra(b)],
+                _estadoBarra(b),
+                _celdaRca(b, !!b.corregido, !!b.desestimado, 'data-causa', b.item_id, puede && abierta,
+                          'darla por resuelta')],
       texto: _textoAud(lin, abierta, puede, true, _firmaBarra(b))
     };
   }
@@ -2137,13 +2148,12 @@
       (e.accion_por ? ' — ' + e.accion_por.split('@')[0] : '');
     return {
       attrs: ' class="' + (resuelto ? 'hecho' : nap ? 'nap' : '') + '" data-alin="' + lin + '"',
-      accion: _accionesAud(lin, abierta, puede, !e.causa, false, null,
-                           _celdaCausa(e, nap, 'data-ecausa', e.id, puede && abierta, puede && abierta,
-                                       'darlo por resuelto')),
+      accion: _accionesAud(lin, abierta, puede, false, null),
       barra: null,
       sinBarra: '<span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
                 'del elemento.">elemento</span> <span class="muted">— no es de una barra en particular</span>',
-      propias: [esc(e.texto || ''), estado + _porOtro(e.resuelto_por_otro)],
+      propias: [esc(e.texto || ''), estado + _porOtro(e.resuelto_por_otro),
+                _celdaRca(e, resuelto, nap, 'data-ecausa', e.id, puede && abierta, 'darlo por resuelto')],
       texto: _textoAud(lin, abierta, puede, false, firma)
     };
   }
@@ -2289,19 +2299,7 @@
     var lins = _lineasDe(lin);
     var b = _q1('button[data-amodo="' + modo + '"][data-alin="' + lin + '"]');
     var yaEsta = !!(b && b.classList.contains('eligiendo'));
-    if (!yaEsta && modo !== 'nap') {
-      var sinRca = lins.filter(function (l) {
-        var x = _q1('button[data-amodo="cc"][data-alin="' + l + '"]');
-        return !x || x.disabled;
-      });
-      if (sinRca.length) {
-        aviso('Primero el RCA en ' + sinRca.map(function (l) {
-          var r = _q1('tr[data-alin="' + l + '"] .audref');
-          return r ? r.textContent : l;
-        }).join(', ') + '.');
-        return;
-      }
-    }
+    TRAS_RCA = null;
     lins.forEach(function (l) { _abrirLinea(l, yaEsta ? null : modo, lins.length); });
     if (!yaEsta) {
       var foco = modo === 'nuevo' ? _q1('input[data-accnuevo="' + lin + '"]') : _q1('input[data-anota="' + lin + '"]');
@@ -2336,6 +2334,8 @@
     // no aplica.
     var tr = _q1('tr[data-alin="' + l + '"]');
     if (tr) tr.classList.toggle('napabierto', modo === 'nap');
+    // Al elegir «Resuelto» aparece el RCA de la fila (9-nov).
+    if (tr) tr.classList.toggle('resabierto', modo === 'cc' || modo === 'nuevo');
   }
 
   function cerrarLinea(lin) {
@@ -2395,6 +2395,17 @@
         return;
       }
     }
+    // SIN RCA NO SE RESUELVE (lo exige el backend): se abre la matriz, y al elegir la causa
+    // el guardado sigue solo. Con varias marcadas, la causa va para todas.
+    if (modo !== 'nap') {
+      var sinRca = lins.filter(function (l) { return !_causaDe(l); });
+      if (sinRca.length) {
+        TRAS_RCA = lin;
+        if (sinRca[0].charAt(0) === 'i') clasificarItem(sinRca[0].slice(1));
+        else clasificarComentario(sinRca[0].slice(1));
+        return;
+      }
+    }
     var marcas = {};
     lins.forEach(function (l) {
       var m = _q1('input[data-amarca="' + l + '"]');
@@ -2435,6 +2446,16 @@
       await cargarLista();
       pintarDetalle();
     } catch (e) { aviso(e.message); _ocupado(boton, false); }
+  }
+
+  // La causa que ya tiene una línea: la de la barra o la del comentario del elemento.
+  function _causaDe(lin) {
+    var id = lin.slice(1), c = null;
+    (AUD.elementos || []).forEach(function (e) {
+      if (lin.charAt(0) === 'e' && String(e.id) === id) c = e.causa;
+      (e.barras_malas || []).forEach(function (b) { if (String(b.item_id) === id && lin.charAt(0) === 'i') c = b.causa; });
+    });
+    return c;
   }
 
   // Lo que dijo aSa, en el aviso: si quedó idéntica, se dice fuerte, porque traba el cierre.
@@ -2607,6 +2628,8 @@
   // ningún reporte de reclamos lee las de acá. Un hallazgo que encontramos nosotros antes
   // de fabricar y un reclamo que encontró el cliente después no se suman en el mismo Pareto.
   var CAUSA_DE = null;   // la barra que se está clasificando
+  // La línea que se estaba guardando cuando faltó el RCA: al elegir la causa, sigue.
+  var TRAS_RCA = null;
 
   // EL DIBUJO DE UNA BARRA DE aSa, PARA OTRAS PANTALLAS (13-oct). El detalle de una señal
   // de chequeo muestra la misma barra que mira el auditor, con el mismo motor: se exponen
@@ -2645,6 +2668,11 @@
       ok(a.ids ? 'RCA para las ' + a.ids.length + ' barras marcadas' : 'Causa registrada');
       await cargarIndicadores();
       if (AUD && AUD.id === a.auditoria_id) { AUD = r; pintarDetalle(); }
+      // Si la causa se pidió al guardar un «Resuelto», el guardado sigue: lo escrito
+      // sobrevivió al repintado.
+      var sigue = TRAS_RCA;
+      TRAS_RCA = null;
+      if (sigue && _causaDe(sigue)) await guardarLinea(sigue);
     } catch (e) { aviso(e.message); }
   };
 

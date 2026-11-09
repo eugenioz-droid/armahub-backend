@@ -491,10 +491,13 @@
   /* LA HOJA DE LA AUDITORÍA (6-nov): los mismos bloques de la revisión de barras (.revcc2),
      con lo propio de la auditoría. La cabecera te sigue al bajar, como la de la revisión. */
   .audcab{position:sticky; top:0; z-index:6; background:#fff; padding-bottom:2px;}
-  /* El RCA, primer botón de la acción: el código elegido en monoespaciada; sin elegir, en
-     naranjo, porque es lo que falta para poder dar la línea por resuelta. */
-  .audhoja td.hojaacc button[data-causa], .audhoja td.hojaacc button[data-ecausa]{font-family:ui-monospace,Consolas,monospace;}
-  .audhoja td.hojaacc .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
+  /* El RCA, después del estado (9-nov): el código elegido en monoespaciada; sin elegir, en
+     naranjo. En una línea abierta aparece sólo al elegir «Resuelto». */
+  .audhoja td.audrca{white-space:nowrap;}
+  .audhoja td.audrca .audmini{font-family:ui-monospace,Consolas,monospace;}
+  .audhoja td.audrca .audmini.sinc{font-family:inherit; border-color:#ffb74d; color:#e65100;}
+  .audhoja td.audrca .rcaabierta{display:none;}
+  .audhoja tr.resabierto td.audrca .rcaabierta{display:inline;}
   /* El nombre que le puso el cubicador a la marca (Notes en aSa), al lado de la marca. */
   .audnotas{font-size:9.5px; font-weight:700; color:#4e342e; background:#efebe9; border-radius:3px;
             padding:0 5px; margin-left:3px; letter-spacing:.3px;}
@@ -513,8 +516,7 @@
   .revccin.revmarcain{width:64px;}
   /* MIENTRAS SE JUSTIFICA UN «NO APLICA» (5-nov): la fila esconde el RCA; lo que no aplica
      no se clasifica. */
-  .audhoja tr.napabierto td.hojaacc button[data-causa],
-  .audhoja tr.napabierto td.hojaacc button[data-ecausa]{visibility:hidden;}
+
   /* ══════ LAS REVISIONES ══════ */
   /* LA MATRIZ, ARMONIZADA (2-nov). Un solo tamaño de número; el peso y el color dicen qué
      importa. Dos filas de encabezado: la sección y la columna. */

@@ -677,7 +677,7 @@ check("...hablándole por las dos funciones de siempre",
 check("el id del área de la matriz viaja con el catálogo (si no, sale vacía)",
       '"causas_area": causas_area' in SRC and "BASE.causas_area" in JS)
 check("la causa se ve en la fila de la barra, y se puede cambiar; el botón dice RCA, no «Clasificar»",
-      "button[data-causa]" in HTM and "'data-causa', b.item_id" in JS and ">Clasificar<" not in JS)
+      "td.audrca" in HTM and "'data-causa', b.item_id" in JS and ">Clasificar<" not in JS)
 
 print("\n7c0f. El botón dice Hallazgo, no «NC»")
 check("en el veredicto de cada barra",
@@ -1128,10 +1128,16 @@ check("...el modal es de un elemento: su nombre arriba y sólo sus barras, sin c
       "var e = (enviada && ACC_EL != null) ? acc.filter(function (x) { return x.id === ACC_EL; })[0] : null;" in JS
       and "_hojaElemento(e, g, c.total > 0 && c.listas >= c.total)" in JS
       and "elemento:" not in JS.split("function filaAccion(")[1].split("function _autoFiguras(")[0])
-check("...el RCA es el primer botón de la acción, y no hay columna RCA ni «Debería decir»",
-      "return '<div class=\"revaccs\">' + rca +" in JS
-      and "{ titulo: 'RCA'" not in JS and "{ titulo: 'Debería decir'" not in JS
-      and "'<div class=\"revesp\">Debería decir: '" in JS)
+# 9-nov: «El RCA aparece después, ponlo después de estado. Aparece sólo cuando se marca
+# como Resuelto con alguna de las 2 opciones; de lo contrario no se considera».
+check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; sin «Debería decir»",
+      "{ titulo: 'Estado', ancho: 120, clase: 'hojaest' },\n          // EL RCA VIENE DESPUÉS" in JS
+      and "{ titulo: 'RCA', ancho: 76, clase: 'audrca'" in JS
+      and "tr.classList.toggle('resabierto', modo === 'cc' || modo === 'nuevo');" in JS
+      and ".audhoja td.audrca .rcaabierta{display:none;}" in HTM
+      and ".audhoja tr.resabierto td.audrca .rcaabierta{display:inline;}" in HTM
+      and "data-causa" not in JS.split("function _accionesAud(")[1][:1800]
+      and "{ titulo: 'Debería decir'" not in JS and "'<div class=\"revesp\">Debería decir: '" in JS)
 check("...y lo de toda la auditoría queda en la página: lo idéntico en aSa, el cierre y por qué no cerró",
       '<div id="audAccAvisos"></div>' in HTM and "var caja = $('audAccAvisos');" in JS
       and "if (AUD.puedo_cerrar) {" in JS.split("function _flujoBotones()")[1][:2500]
@@ -1165,8 +1171,9 @@ check("la caja se llama Resumen Hallazgos",
 check("sin RCA no se puede dar una barra por corregida, y lo rechaza el BACKEND",
       "clasifica por qué pasó (RCA)" in SRC
       and "SELECT causa FROM auditoria_items WHERE id = %s" in SRC)
-check("...y la pantalla apaga el botón en vez de dejar que salte el error",
-      "Primero el RCA: por qué pasó." in JS and "_accionesAud(lin, abierta, puede, !b.causa" in JS)
+check("...y la pantalla, al guardar un «Resuelto» sin RCA, abre la matriz y al elegir la causa sigue sola",
+      "Primero el RCA: por qué pasó." not in JS and "TRAS_RCA = lin;" in JS
+      and "if (sigue && _causaDe(sigue)) await guardarLinea(sigue);" in JS)
 check("...pero «no aplica» NO lo pide: ahí no hubo error que explicar",
       "Dejar sin efecto NO la pide" in SRC
       and "if body.corregido:" in SRC.split("clasifica por qué pasó")[0][-700:])
@@ -1411,7 +1418,7 @@ check("...y el detalle los suma a lo que falta por resolver",
 check("la pantalla le pone al comentario las mismas tres salidas que a una barra",
       "function filaComentario(" in JS and "var lin = 'e' + e.id" in JS
       and "'data-ecausa'" in JS and "function _celdaCausa(" in JS
-      and "accion: _accionesAud(lin, abierta, puede, !e.causa, false, null," in JS
+      and "accion: _accionesAud(lin, abierta, puede, false, null)," in JS
       and "accion_cc_nuevo = %s" in SRC)
 check("...y la matriz Ishikawa es LA MISMA, sólo cambia a dónde guarda",
       "a.elemento_id" in JS.split("global.audCausaElegida")[1][:800]
@@ -1534,10 +1541,10 @@ check("«no aplica» se justifica con un campo al final de la linea, sin lista d
       and "<select data-mot=" not in JS and "_opcionesMotivoAud" not in JS and "audLoteMot" not in JS
       and "Elige por qué no aplica." not in SRC and SRC.count("body.motivo_tipo and body.motivo_tipo not in MOTIVOS_NO_APLICA_AUD") == 2
       and "audnapform" not in JS and "_filaFormNap" not in JS and "data-napok" not in JS)
-check("...Enter guarda, Esc lo deja, y mientras se justifica un «no aplica» la fila esconde el RCA",
+check("...Enter guarda, Esc lo deja, y un «no aplica» no muestra el RCA (sólo «Resuelto» lo pide)",
       "if (ev.key === 'Escape') cerrarLinea(lin);" in JS and "if (ev.key === 'Enter') guardarLinea(lin);" in JS
       and "tr.classList.toggle('napabierto', modo === 'nap');" in JS
-      and ".audhoja tr.napabierto td.hojaacc button[data-causa]," in HTM)
+      and "if (modo !== 'nap') {\n      var sinRca" in JS)
 check("lo que no aplica no se clasifica: ni en pantalla ni por el backend",
       "if (nap) return '';" in JS.split("function _celdaCausa(")[1][:200]
       and "Esa barra no aplica: no lleva RCA." in SRC)
