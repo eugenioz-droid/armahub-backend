@@ -26,6 +26,9 @@ var REC_SUBTABS = {
   acciones:      { panel: 'recSubAcciones',       btn: 'recSubBtnAcciones', color: '#00897b', roles: null },
   rca:           { panel: 'recSubRCA',            btn: 'recSubBtnRCA',      color: '#e65100', roles: ['admin','admin_calidad'] },
   presentaciones:{ panel: 'recSubPresentaciones', btn: 'recSubBtnPres',     color: '#7B1FA2', roles: ['admin','admin_calidad','miembro','externo'] },
+  // MAQUETA del rediseño de Presentaciones (9-nov): sólo admin, datos de ejemplo. Se
+  // borra cuando el rediseño reemplace a la de hoy.
+  presentaciones2:{ panel: 'recSubPres2',         btn: 'recSubBtnPres2',    color: '#7B1FA2', roles: ['admin'] },
   validaciones:  { panel: 'recSubValidaciones',   btn: 'recSubBtnVal',      color: '#7B1FA2', roles: ['admin','admin_calidad'] },
   // Sólo administración, por decisión del usuario. Mientras los análisis no estén
   // hechos, estos 511 reclamos viejos se leen como un marcador de quién lo hizo peor,

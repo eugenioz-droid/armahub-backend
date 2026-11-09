@@ -10,6 +10,7 @@
       <button id="recSubBtnAcciones" onclick="switchRecSubTab('acciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Acciones</button>
       <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Matriz RCA</button>
       <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Presentaciones</button>
+      <button id="recSubBtnPres2" onclick="switchRecSubTab('presentaciones2')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;" title="Maqueta del rediseño: datos de ejemplo, sólo admin">Presentaciones 2 · maqueta</button>
       <button id="recSubBtnVal" onclick="switchRecSubTab('validaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Validaciones</button>
       <button id="recSubBtnAnalisis" onclick="switchRecSubTab('analisis')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Análisis histórico</button>
     </div>
@@ -972,6 +973,183 @@
       </div>
 
     </div><!-- /recSubValidaciones -->
+
+    <!-- PRESENTACIONES 2 · MAQUETA (9-nov). Sólo HTML/CSS y datos de ejemplo: no lee ni
+         guarda nada. Paralela a «Presentaciones» para verla sin romper la de hoy; sólo
+         admin. Cuando se apruebe, se cablea y este bloque se borra entero. -->
+    <div id="recSubPres2" style="display:none;">
+      <style>
+        .p2aviso{background:#fff8e1; border:1px dashed #ffb300; color:#6d4c00; font-size:11px; padding:6px 10px; border-radius:6px; margin-bottom:10px;}
+        .p2t{width:100%; font-size:12px; border-collapse:collapse;}
+        .p2t th{background:#f5f5f5; text-align:left; padding:5px 6px;}
+        .p2t td{padding:4px 6px; border-bottom:1px solid #eee;}
+        .p2t tbody tr{cursor:pointer;}
+        .p2t tbody tr:hover td{background:#faf5fc;}
+        .p2pill{color:#fff; padding:1px 6px; border-radius:3px; font-size:10px; white-space:nowrap;}
+        .p2pres{font-size:11px; white-space:nowrap;}
+        .p2pres.pend{color:#e65100; font-weight:600;}
+        .p2pres.hecho{color:#2e7d32;}
+        .p2pres.sin{color:#9e9e9e; font-style:italic;}
+        .p2graf{margin-top:12px; padding:14px; border:1px dashed #ce93d8; border-radius:8px; color:#8e6a99; font-size:11px; text-align:center;}
+        .p2modal{position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:9000; display:none; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto;}
+        .p2card{background:#fff; border-radius:10px; width:min(980px, 100%); padding:16px 18px; box-shadow:0 10px 40px rgba(0,0,0,.2); position:relative;}
+        .p2ficha{margin:10px 0; padding:22px; background:#f7f7f7; border:1px dashed #cfd8dc; border-radius:8px; color:#78909c; font-size:12px; text-align:center;}
+        .p2sec{padding:12px; background:#F3E5F5; border:1px solid #CE93D8; border-radius:8px; margin-bottom:10px;}
+        .p2sec h4{margin:0 0 8px 0; font-size:13px; color:#7B1FA2;}
+        .p2asis{display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; margin:4px 0 8px;}
+        .p2asis label{display:flex; align-items:center; gap:4px; cursor:pointer;}
+        .p2check{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:#4a148c;}
+        .p2check input{width:18px; height:18px; margin:0;}
+        .p2nota{font-size:11px; color:#7b6a80; margin-top:4px;}
+      </style>
+
+      <div class="card" style="border-top:3px solid #7B1FA2;">
+        <div class="p2aviso"><b>Maqueta.</b> Datos de ejemplo: no lee ni guarda nada. Sólo la ves tú (admin). La pestaña «Presentaciones» de siempre sigue funcionando al lado.</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 10px 0;">
+          <h3 style="margin:0; color:#7B1FA2;">🎤 Presentaciones de reclamos</h3>
+        </div>
+
+        <div class="dshbarra">
+          <span class="dshbl">Presentación</span>
+          <div id="pres2Chips" class="dshchips">
+            <button class="on" onclick="pres2Filtro('pend', this)">Por presentar<i>5</i></button>
+            <button onclick="pres2Filtro('hecho', this)">Presentados<i>2</i></button>
+            <button onclick="pres2Filtro('todos', this)">Todos<i>7</i></button>
+          </div>
+          <span class="dshbl" title="Sólo admin: el cubicador ve sólo los suyos">Cubicador</span>
+          <select class="ahsel"><option>Todos</option><option>M. Soto</option><option>J. Pérez</option><option>A. Rojas</option></select>
+        </div>
+
+        <table id="pres2Tabla" class="p2t">
+          <thead><tr>
+            <th>Código</th><th>Obra</th><th>Título</th>
+            <th title="Sólo admin">Cubicador</th>
+            <th>Estado</th><th>Aplica</th><th>Detección</th><th>Presentación</th>
+          </tr></thead>
+          <tbody>
+            <tr data-p="pend" data-s="pend" data-t="Estribo con gancho mal doblado" data-c="2026-071 · Edificio Los Robles · M. Soto" data-e="En análisis" data-ec="#ff9800" onclick="pres2Abrir(this)">
+              <td style="font-weight:600;">2026-071</td><td>Edificio Los Robles</td><td>Estribo con gancho mal doblado</td><td>M. Soto</td>
+              <td><span class="p2pill" style="background:#ff9800;">En análisis</span></td>
+              <td><span style="color:#e53935; font-weight:600; font-size:10px;">Sí aplica</span></td>
+              <td class="muted">03-11-2026</td><td><span class="p2pres pend">Por presentar</span></td>
+            </tr>
+            <tr data-p="pend" data-s="pend" data-t="Faltan 12 barras φ12 en losa" data-c="2026-068 · Torre Norte · M. Soto" data-e="En validación" data-ec="#7B1FA2" onclick="pres2Abrir(this)">
+              <td style="font-weight:600;">2026-068</td><td>Torre Norte</td><td>Faltan 12 barras φ12 en losa</td><td>M. Soto</td>
+              <td><span class="p2pill" style="background:#7B1FA2;">En validación</span></td>
+              <td><span style="color:#e53935; font-weight:600; font-size:10px;">Sí aplica</span></td>
+              <td class="muted">28-10-2026</td><td><span class="p2pres pend">Por presentar</span></td>
+            </tr>
+            <tr data-p="pend" data-s="pend" data-t="Largo de traslapo distinto al plano" data-c="2026-067 · Edificio Los Robles · J. Pérez" data-e="En revisión" data-ec="#1976d2" onclick="pres2Abrir(this)">
+              <td style="font-weight:600;">2026-067</td><td>Edificio Los Robles</td><td>Largo de traslapo distinto al plano</td><td>J. Pérez</td>
+              <td><span class="p2pill" style="background:#1976d2;">En revisión</span></td>
+              <td><span style="color:#4CAF50; font-weight:600; font-size:10px;">No aplica</span></td>
+              <td class="muted">27-10-2026</td><td><span class="p2pres pend">Por presentar</span></td>
+            </tr>
+            <tr data-p="pend" data-s="pend" data-t="Marca repetida en dos elementos" data-c="2026-060 · Condominio Sur · J. Pérez" data-e="Cerrado" data-ec="#4CAF50" onclick="pres2Abrir(this)">
+              <td style="font-weight:600;">2026-060</td><td>Condominio Sur</td><td>Marca repetida en dos elementos</td><td>J. Pérez</td>
+              <td><span class="p2pill" style="background:#4CAF50;">Cerrado</span></td>
+              <td><span style="color:#e53935; font-weight:600; font-size:10px;">Sí aplica</span></td>
+              <td class="muted">15-10-2026</td><td><span class="p2pres pend">Por presentar</span></td>
+            </tr>
+            <tr data-p="pend" data-s="sin" data-t="Diferencia de kilos en despacho" data-c="2026-074 · Torre Norte · A. Rojas" data-e="Abierto" data-ec="#e53935" onclick="pres2Abrir(this)">
+              <td style="font-weight:600;">2026-074</td><td>Torre Norte</td><td>Diferencia de kilos en despacho</td><td>A. Rojas</td>
+              <td><span class="p2pill" style="background:#e53935;">Abierto</span></td>
+              <td><span style="color:#ff9800; font-weight:600; font-size:10px;">Pendiente</span></td>
+              <td class="muted">06-11-2026</td><td><span class="p2pres sin">Sin análisis todavía</span></td>
+            </tr>
+            <tr data-p="hecho" data-s="hecho" data-t="Diámetro equivocado en viga" data-c="2026-052 · Torre Norte · M. Soto" data-e="Cerrado" data-ec="#4CAF50" onclick="pres2Abrir(this)" style="display:none;">
+              <td style="font-weight:600;">2026-052</td><td>Torre Norte</td><td>Diámetro equivocado en viga</td><td>M. Soto</td>
+              <td><span class="p2pill" style="background:#4CAF50;">Cerrado</span></td>
+              <td><span style="color:#e53935; font-weight:600; font-size:10px;">Sí aplica</span></td>
+              <td class="muted">02-10-2026</td><td><span class="p2pres hecho">✓ 12-10-2026 · 4 asistentes</span></td>
+            </tr>
+            <tr data-p="hecho" data-s="hecho" data-t="Cantidad de estribos insuficiente" data-c="2026-049 · Condominio Sur · A. Rojas" data-e="Cerrado" data-ec="#4CAF50" onclick="pres2Abrir(this)" style="display:none;">
+              <td style="font-weight:600;">2026-049</td><td>Condominio Sur</td><td>Cantidad de estribos insuficiente</td><td>A. Rojas</td>
+              <td><span class="p2pill" style="background:#4CAF50;">Cerrado</span></td>
+              <td><span style="color:#4CAF50; font-weight:600; font-size:10px;">No aplica</span></td>
+              <td class="muted">29-09-2026</td><td><span class="p2pres hecho">✓ 05-10-2026 · 3 asistentes</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="muted" style="font-size:11px; margin-top:4px;">Clic en un reclamo para abrir su ficha y presentarlo.</div>
+
+        <div class="p2graf">Acá abajo quedan los dos gráficos de hoy, «por presentar» y «presentados» por cubicador. <b>Sólo admin</b>: al cubicador le mostrarían una sola barra.</div>
+      </div>
+
+      <!-- La ficha: la MISMA del reclamo (con sus ◀ ▶ para pasar al siguiente) y, al
+           final, la sección de la presentación, como la verde de Validación. -->
+      <div id="pres2Modal" class="p2modal" onclick="if (event.target === this) pres2Cerrar()">
+        <div class="p2card">
+          <button class="rec-modal-close" style="position:absolute; top:10px; right:12px;" onclick="pres2Cerrar()" title="Cerrar">✕</button>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+            <button style="background:none; border:1px solid #ccc; border-radius:4px; padding:2px 8px; font-size:14px; color:#555;" title="Reclamo anterior">◀</button>
+            <span style="font-size:11px; color:#999;">2 / 5</span>
+            <button style="background:none; border:1px solid #ccc; border-radius:4px; padding:2px 8px; font-size:14px; color:#555;" title="Reclamo siguiente">▶</button>
+          </div>
+          <h3 style="margin:0;" id="pres2Titulo">—</h3>
+          <div class="muted" style="font-size:11px; margin-top:4px;" id="pres2Meta"></div>
+          <div style="margin-top:4px;"><span class="p2pill" id="pres2Estado">—</span></div>
+
+          <div class="p2ficha">La ficha del reclamo, la misma de siempre: registro, análisis causa raíz, acciones, imágenes y seguimiento.<br>(En la maqueta no se repite: es la que ya conoces.)</div>
+
+          <!-- Por presentar -->
+          <div class="p2sec" id="pres2Sec_pend">
+            <h4>🎤 Presentación</h4>
+            <div style="font-size:11px; color:#666;">Asistentes</div>
+            <div class="p2asis">
+              <label><input type="checkbox" checked> Eugenio Zalazar (yo)</label>
+              <label><input type="checkbox"> M. Soto</label>
+              <label><input type="checkbox"> J. Pérez</label>
+              <label><input type="checkbox"> A. Rojas</label>
+            </div>
+            <div style="font-size:11px; color:#666;">Comentario (opcional)</div>
+            <input type="text" placeholder="Acuerdos u observaciones de la presentación" style="width:100%; font-size:12px; margin:2px 0 10px;">
+            <label class="p2check"><input type="checkbox"> Presentado</label>
+            <div class="p2nota">Se marca al terminar de presentar: queda con la fecha de hoy y quién lo presentó.</div>
+          </div>
+
+          <!-- Presentado -->
+          <div class="p2sec" id="pres2Sec_hecho" style="display:none; background:#E8F5E9; border-color:#A5D6A7;">
+            <h4 style="color:#2E7D32;">🎤 Presentación</h4>
+            <label class="p2check" style="color:#1b5e20;"><input type="checkbox" checked> Presentado el 12-10-2026 por M. Soto</label>
+            <div style="font-size:12px; margin-top:6px;"><b>Asistentes:</b> Eugenio Zalazar, M. Soto, J. Pérez, A. Rojas</div>
+            <div style="font-size:12px; margin-top:2px;"><b>Comentario:</b> Se acordó revisar los traslapos de todas las losas del ciclo 7.</div>
+            <div class="p2nota">Sólo admin puede desmarcarlo (si quedó marcado sin haberse presentado). Pide confirmación y queda en el seguimiento.</div>
+          </div>
+
+          <!-- Sin análisis -->
+          <div class="p2sec" id="pres2Sec_sin" style="display:none; background:#f5f5f5; border-color:#e0e0e0;">
+            <h4 style="color:#757575;">🎤 Presentación</h4>
+            <label class="p2check" style="color:#9e9e9e;"><input type="checkbox" disabled> Presentado</label>
+            <div class="p2nota">Sin análisis escrito todavía: no hay qué presentar.</div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+      (function () {
+        function todos(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+        window.pres2Filtro = function (k, btn) {
+          todos('#pres2Chips button').forEach(function (b) { b.classList.toggle('on', b === btn); });
+          todos('#pres2Tabla tbody tr').forEach(function (tr) {
+            tr.style.display = (k === 'todos' || tr.dataset.p === k) ? '' : 'none';
+          });
+        };
+        window.pres2Abrir = function (tr) {
+          document.getElementById('pres2Titulo').textContent = tr.dataset.t;
+          document.getElementById('pres2Meta').textContent = tr.dataset.c;
+          var e = document.getElementById('pres2Estado');
+          e.textContent = tr.dataset.e;
+          e.style.background = tr.dataset.ec;
+          ['pend', 'hecho', 'sin'].forEach(function (k) {
+            document.getElementById('pres2Sec_' + k).style.display = (k === tr.dataset.s) ? '' : 'none';
+          });
+          document.getElementById('pres2Modal').style.display = 'flex';
+        };
+        window.pres2Cerrar = function () { document.getElementById('pres2Modal').style.display = 'none'; };
+      })();
+      </script>
+    </div><!-- /recSubPres2 (MAQUETA) -->
 
     </div><!-- /recTabMain -->
 
