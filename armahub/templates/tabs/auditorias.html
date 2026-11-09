@@ -216,8 +216,13 @@
       </div>
       </div><!-- fin #audRevModal -->
 
-      <!-- Las acciones que nacen de cada hallazgo: para quien cubicó. -->
-      <div id="audAcciones" class="audacc" style="display:none;"></div>
+      <!-- Las acciones que nacen de cada hallazgo: para quien cubicó. EN UN MODAL (9-nov),
+           como la revisión del elemento y la revisión de barras; en la página queda la
+           tarjeta que dice cuánto falta y lo abre. -->
+      <div id="audAccTarjeta" class="audacc audacctar" style="display:none;"></div>
+      <div id="audAccModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); z-index:9998; overflow-y:auto;">
+        <div id="audAcciones" class="revhoja audacc"></div>
+      </div>
 
       <!-- CUÁNTO DE LA OBRA SE HA MIRADO, contando todas sus auditorías. Responde la
            pregunta que una auditoría suelta no contesta: qué falta. -->
@@ -936,6 +941,9 @@
   .audacc{margin-top:10px; padding:12px 14px; background:#fff; border:1px solid #e8ebef;
           border-top:3px solid #ffb300; border-radius:8px;
           box-shadow:0 1px 2px rgba(38,50,56,.06);}
+  /* La tarjeta del Resumen en la página: cuánto falta y el botón que abre el modal. */
+  .audacctar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; cursor:pointer;}
+  .audacctar .audh{margin:0;}
   /* Lo que dijo aSa al cerrar, en la pantalla de la auditoría cerrada. */
   .audnota.audcerrada{background:#e8f5e9; border-color:#a5d6a7; color:#2e7d32;}
   /* EL BOTÓN «RESUELTO» (20-oct). Se llama audBres y no audres porque .audres ya era la

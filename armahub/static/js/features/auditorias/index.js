@@ -101,6 +101,9 @@
   // muestra al cerrar el modal —ahí se escriben tipo, piso y ciclo en aSa—; REV_ABIERTA
   // dice si el modal está a la vista y SUCIO si hay algo marcado sin guardar.
   var REV_ABIERTA = false, SUCIO = false;
+  // EL RESUMEN HALLAZGOS EN SU MODAL (9-nov): el id de la auditoría cuyo Resumen está a la
+  // vista. Por auditoría y no un sí/no, para que al entrar a otra no aparezca abierto.
+  var ACC_DE = null;
 
   // Las obras que se pueden auditar: los jobs de aSa, con su código y su tamaño. Una
   // entrada por job, que es la identidad de la obra en producción: los frentes que
@@ -937,8 +940,7 @@
     // el Resumen Hallazgos, abajo, con Aplica / No aplica / RCA / Corregido en aSa.
     if (!AUD || !AUD.soy_auditor) {
       mostrarRevision(false);
-      var res = $('audAcciones');
-      if (res && res.scrollIntoView) res.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      ACC_DE = AUD ? AUD.id : null; pintarAcciones();
       return;
     }
     ELEM = e; REV_ABIERTA = true; SUCIO = false;
@@ -1815,13 +1817,14 @@
   }
 
   function pintarAcciones() {
-    var caja = $('audAcciones');
+    var caja = $('audAcciones'), tar = $('audAccTarjeta'), modal = $('audAccModal');
     if (!caja || !AUD) return;
     var acc = (AUD.elementos || []).filter(function (e) { return e.accion_estado; });
     // EL RESUMEN EXISTE DESDE EL ENVÍO (28-oct): antes son hallazgos a medio hacer.
     var enviada = !!(AUD.enviada || AUD.enviada_el);
-    if (!acc.length || !enviada) { caja.style.display = 'none'; return; }
-    caja.style.display = '';
+    if (!acc.length || !enviada) { tar.style.display = 'none'; modal.style.display = 'none'; return; }
+    tar.style.display = '';
+    modal.style.display = ACC_DE === AUD.id ? '' : 'none';
     // LO ESCRITO Y NO GUARDADO SOBREVIVE AL REPINTADO, como en la revisión: llegar las
     // figuras de un código o guardar otra línea repinta todo.
     var abiertas = _lineasAbiertas();
@@ -1847,6 +1850,15 @@
       var c = AFIGS[g.cc];
       return g.cc && g.hayBarras && (!c || c.estado === 'error');
     }).length;
+    // LA TARJETA DE LA PÁGINA: lo mismo que dice la cabecera del modal, y el botón que lo abre.
+    tar.innerHTML = '<div class="audh">Resumen Hallazgos <span class="muted">' + total + ' línea(s) · ' +
+        resueltas + ' resuelta(s)' +
+        (mias ? ' · <b style="color:#c62828">' + mias + ' tuya(s) por resolver</b>' : '') + '</span></div>' +
+      '<div style="flex:1"></div>' +
+      (cerrada ? '' : AUD.puedo_cerrar ? '<span class="muted" style="font-size:10.5px">lista para cerrar</span>'
+                    : faltan ? '<span class="muted" style="font-size:10.5px">quedan ' + faltan + ' por resolver</span>' : '') +
+      '<button class="audenviar" id="audAccAbrir">Abrir el Resumen Hallazgos</button>';
+    tar.onclick = function () { ACC_DE = AUD.id; modal.style.display = ''; };
     caja.innerHTML =
       // LA CABECERA TE SIGUE, como la de la revisión: se baja por los códigos sin perder
       // cuánto falta, el cierre y lo marcado.
@@ -1867,6 +1879,7 @@
             : (faltan && !cerrada
                 ? '<span class="muted" style="font-size:10.5px">quedan ' + faltan +
                   ' por resolver para poder cerrar</span>' : '')) +
+          '<button class="audmini" id="audAccCerrar" title="Volver a la auditoría">✕</button>' +
         '</div>' +
         (identicas && !cerrada
           ? '<div class="audnota audidem"><b>' + identicas + ' barra(s) resueltas siguen idénticas ' +
@@ -1876,6 +1889,8 @@
         '<div class="revcubacc" id="audLote" style="display:none"></div>' +
       '</div>' +
       grupos.map(_bloqueAud).join('');
+    $('audAccCerrar').addEventListener('click', function () { ACC_DE = null; modal.style.display = 'none'; });
+    modal.onclick = function (e) { if (e.target === modal) { ACC_DE = null; modal.style.display = 'none'; } };
     _bindAcciones(caja);
     _pintarLote();
     _reabrirLineas(abiertas);

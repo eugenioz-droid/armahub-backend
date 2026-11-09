@@ -1558,6 +1558,11 @@ check("antes del envio la muestra esta siempre; despues queda plegada para quien
 check("el Resumen Hallazgos deja el cartel amarillo y usa la caja estandar",
       ".audacc{margin-top:10px; padding:10px 12px; background:#fffdf5" not in HTM
       and ".audacc{margin-top:10px; padding:12px 14px; background:#fff;" in HTM
+      # 9-nov: «Además debiera estar en un modal».
+      and '<div id="audAccModal" style="display:none; position:fixed;' in HTM
+      and '<div id="audAcciones" class="revhoja audacc"></div>' in HTM
+      and 'id="audAccTarjeta"' in HTM and "modal.style.display = ACC_DE === AUD.id ? '' : 'none';" in JS
+      and "'<button class=\"audmini\" id=\"audAccCerrar\"" in JS
       and "border-top:3px solid #ffb300" in HTM)
 check("...y ninguna columna queda cortada contra el borde: la tabla de cada código scrollea sola",
       '<div class="hojatbl">' in HOJA and ".hojatbl{overflow-x:auto;}" in HTM)
