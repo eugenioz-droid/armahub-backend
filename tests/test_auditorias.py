@@ -1176,6 +1176,9 @@ check("...con sus lados y ángulos en columnas, como en la revisión de barras, 
 check("el nombre de la figura y el que le puso el cubicador a la marca (Notes) se ven siempre",
       "notas: b.notas || null" in JS and '"notas": (it.get("Notes") or "").strip() or None' in SRC
       and 'class="audnotas"' in HOJA and "notas: b.notas || ''" in JS and "function _autoFiguras(" in JS
+      # La Notes en su columna, no pegada a la marca: ahí se cortaba (9-nov).
+      and "if (c.notas) h += '<td class=\"hojanotas\">'" in HOJA
+      and "'</span></td>';" in HOJA.split("'<td class=\"hojamarca\"")[1][:300]
       and "!o.figura || !('notas' in o)" in JS)
 
 print("\nEL ESTRIBO NO SE ESTIRA, Y LOS LADOS SE LEEN EN GRILLA")
@@ -1249,9 +1252,10 @@ check("una sola tabla para las tres pantallas: la planilla del auditor, el Resum
       and APPH.index("auditorias/hoja_barras.js") < APPH.index("auditorias/index.js"))
 check("...con el orden de la planilla del auditor: acción · Marca · φ · Figura · Render · lados · α · R · Largo · Cant · Peso · Elemento · lo propio · texto",
       HOJA.index("col(cfg.accion.ancho") < HOJA.index("col(ANCHO.marca, 'Marca')")
-      < HOJA.index("col(ANCHO.diam, 'φ'") < HOJA.index("col(ANCHO.figura, 'Figura')")
+      < HOJA.index("col(anchoNotas(c.notas), 'Notes'")
+      < HOJA.index("col(ANCHO.diam, 'φ'") < HOJA.index("col(ANCHO.figura, 'Figura'")
       < HOJA.index("col(anchoRender(), 'Render'") < HOJA.index("col(ANCHO.lado")
-      < HOJA.index("col(ANCHO.peso, 'Peso'") < HOJA.index("col(ANCHO.elemento, cfg.elementoTitulo || 'Elemento')")
+      < HOJA.index("col(ANCHO.peso, 'Peso'") < HOJA.index("col(ANCHO.elemento, 'Elemento')")
       < HOJA.index("(cfg.propias || []).forEach(function (p) { col(")
       < HOJA.index("'<th class=\"hojatxt\"'"))
 check("...una columna sin ningún dato en la tabla no sale (la R en aSa; largo, cant y peso en la revisión)",
@@ -1265,6 +1269,16 @@ check("...y el estado de la fila gana sobre el cebrado (una fila par resuelta ya
 check("«Ver figuras» trae el dibujo y nada más: la foto manda en las medidas",
       "diam: o.diam || null, cant: o.cant || null" in JS
       and "lados: porL, malos: malos, angulos: angs" in REVJS)
+# 9-nov: «elimina la columna del elemento… tienes el nombre del elemento arriba».
+check("la planilla del auditor no lleva columna Elemento: es un solo elemento y lo dice la cabecera",
+      "elemento:" not in JS.split("function pintarBarras()")[1].split("function celdaEd(")[0]
+      and "marcaTitle: [b.ref, b.plano, taller].filter(Boolean).join(' · ')" in JS
+      and "elemento: e.nombre || nombreCompleto(e)" in JS)
+check("φ y Figura centrados, el encabezado con el dato; la casilla de marcar cabe en su columna",
+      "col(ANCHO.diam, 'φ', 'hojac')" in HOJA and "col(ANCHO.figura, 'Figura', 'hojac')" in HOJA
+      and ".audt.hojab th.hojac, .audt.hojab td.hojac{text-align:center;}" in HTM
+      and ".audt.hojab td.hojachk, .audt.hojab th.hojachk{padding:0; text-align:center;}" in HTM
+      and "check: 26," in HOJA and ".audt.hojab.conchk td.hojaacc, .audt.hojab.conchk th.hojaacc{left:26px;}" in HTM)
 check("el valor que corrige el auditor se puede escribir con coma, como lo muestra la tabla",
       "function _nro(x) { return Number(String(x).replace(',', '.')); }" in JS
       and "_aMm(_nro(esp.lados[L]))" in JS)

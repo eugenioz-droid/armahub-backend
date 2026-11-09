@@ -895,6 +895,10 @@
   .audt.hojab td.audedc input.auded{min-width:0;}
   .audt.hojab td.audqse, .audt.hojab td.hojasin, .audt.hojab td.hojatxt, .audt.hojab td.hojaest{white-space:normal;}
   .audt.hojab td.revesp{color:#8d6e00; font-weight:600;}
+  /* φ y Figura centrados, encabezado y dato (9-nov). La Notes en su columna, sin cortarse. */
+  .audt.hojab th.hojac, .audt.hojab td.hojac{text-align:center;}
+  .audt.hojab td.hojanotas{white-space:normal; line-height:1.5;}
+  .audt.hojab td.hojanotas .audnotas{margin-left:0;}
   /* El texto de la línea: el campo se lleva el ancho; el código y la marca nuevos, al lado. */
   .hojain{display:flex; gap:4px; align-items:center;}
   .hojain .revnapin{flex:1; width:auto; min-width:0;}
@@ -912,7 +916,11 @@
   .audt.hojab td.hojachk, .audt.hojab th.hojachk, .audt.hojab td.hojaacc, .audt.hojab th.hojaacc{
     position:sticky; left:0; z-index:2; background:#fff; box-shadow:inset -1px 0 0 #e3e8ef;}
   .audt.hojab th.hojachk, .audt.hojab th.hojaacc{z-index:4; background:#fafbfc;}
-  .audt.hojab.conchk td.hojaacc, .audt.hojab.conchk th.hojaacc{left:22px;}
+  .audt.hojab.conchk td.hojaacc, .audt.hojab.conchk th.hojaacc{left:26px;}
+  /* La casilla cabe en su columna: sin el margen del navegador ni el relleno de la celda,
+     que la empujaban encima de la línea de la acción (9-nov). */
+  .audt.hojab td.hojachk, .audt.hojab th.hojachk{padding:0; text-align:center;}
+  .audt.hojab td.hojachk input, .audt.hojab th.hojachk input{margin:0; vertical-align:middle;}
   .audt.hojab tbody tr.malo td.hojaacc{background:#fff6f6;}
   .audt.hojab tbody tr.bueno td.hojaacc{background:#f8fbf4;}
   .audt.hojab tbody tr.hecho td.hojaacc, .audt.hojab tbody tr.nap td.hojaacc,

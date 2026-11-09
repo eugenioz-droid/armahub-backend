@@ -986,7 +986,6 @@
     var filas = BARRAS.map(function (b) { return normalizarBarra(b, AUD.origen); });
     var hoja = global.HojaBarras.partes({
       accion: { titulo: 'Veredicto', ancho: 124 },
-      elementoTitulo: AUD.origen === 'asa' ? 'Elemento' : 'Plano',
       // LA OBSERVACIÓN ES DE LA BARRA Y VA A LA DERECHA, SIEMPRE (28-oct). Antes aparecía
       // como una fila extra debajo al marcar «Hallazgo», y la nota del elemento abajo del
       // todo: el usuario veía las dos cosas mezcladas en un solo texto. Columna propia.
@@ -998,8 +997,9 @@
       celda: function (x, campo, valor, clase) { return celdaEd(x.b, x.v, campo, valor, clase); },
       filas: BARRAS.map(function (b, i) {
         var f = filas[i], v = VERED[b.ref];
-        // El nombre de la marca va al lado de la marca; en el elemento queda el mensaje
-        // para el taller, si lo hay.
+        // SIN COLUMNA DE ELEMENTO (9-nov): es uno solo y lo dice la cabecera. El plano de
+        // la barra y el mensaje para el taller (ShopMessage), si lo hay, quedan en el globo
+        // de la marca.
         var taller = String(b.nota || '').replace(b.notas || '\u0000', '').replace(/^\s*·\s*/, '');
         return {
           b: b, v: v,
@@ -1009,7 +1009,8 @@
             '<button class="no' + (v && v.conforme === false ? ' on' : '') + '" data-v="0" data-ref="' + esc(b.ref) + '" title="Hay algo que corregir en esta barra">Hallazgo</button>' +
             '</span>',
           barra: {
-            marca: b.marca || '', marcaTitle: b.ref, notas: b.notas || '',
+            marca: b.marca || '', notas: b.notas || '',
+            marcaTitle: [b.ref, b.plano, taller].filter(Boolean).join(' · '),
             diam: f.diam, figura: b.figura || '',
             // EL NOMBRE VA EN SU COLUMNA, «Figura»; al lado del dibujo sobraba (6-nov).
             render: celdaFigura(f, true),
@@ -1018,8 +1019,6 @@
               ? 'Suma de los largos parciales. aSa corta ' + num(f.corte) + ' cm: la diferencia es lo que se come el doblez.'
               : '',
             cant: b.cant_total != null ? b.cant_total : b.cant, peso: b.peso_total },
-          elemento: (b.plano || '') + (taller ? ' · ' + taller : ''),
-          elementoTitle: (b.plano || '') + (b.nota ? ' · ' + b.nota : ''),
           texto: v && v.conforme === false
             ? '<input type="text" class="audobs" data-obs="' + esc(b.ref) + '" placeholder="Qué tiene esta barra (obligatorio)" value="' +
               esc(v.observacion || '') + '">'

@@ -7,8 +7,8 @@
 // diferente en vez de tener un tipo de formulario estándar que sirva para todo». El
 // modelo es la planilla del auditor:
 //
-//   [marcar] · [acción] · Marca · φ · Figura · Render · A… · α… · R · Largo · Cant · Peso ·
-//   Elemento · [lo propio de la pantalla] · el texto de la línea
+//   [marcar] · [acción] · Marca · Notes · φ · Figura · Render · A… · α… · R · Largo · Cant ·
+//   Peso · Elemento · [lo propio de la pantalla] · el texto de la línea
 //
 //   · CADA COLUMNA TIENE SU ANCHO FIJO, la del dibujo según el S/M/L: marcar, abrir un
 //     campo o llegar las figuras no mueve la tabla ni achica el dibujo. Lo que sobra va
@@ -16,6 +16,10 @@
 //   · UNA COLUMNA SIN NINGÚN DATO EN TODA LA TABLA NO SALE: la R en aSa (lo de aSa es el
 //     mandril, otra cosa); largo, cantidad y peso en la revisión, cuya señal no los guarda.
 //     No se inventa lo que no hay.
+//   · LA MARCA Y SU NOTES, CADA UNA EN SU COLUMNA (9-nov): juntas, la Notes se cortaba.
+//   · EL ELEMENTO VA SÓLO DONDE LA TABLA JUNTA VARIOS: el Resumen y la revisión agrupan
+//     por código. La planilla del auditor es de un elemento y lo dice su cabecera; el
+//     usuario: «consume un montón de espacio… basta que esté ahí» (9-nov).
 //   · LO QUE NO ES UNA BARRA —el comentario del elemento— va en la misma tabla, con su
 //     texto a lo ancho de las columnas de la barra.
 //
@@ -40,7 +44,7 @@
   function ent(v) { return hay(v) ? String(Math.round(Math.abs(Number(v)))) : ''; }
   function kg(v) { return hay(v) ? Math.round(Number(v)).toLocaleString('es-CL') : ''; }
 
-  var ANCHO = { check: 22, marca: 96, diam: 40, figura: 60, lado: 46, ang: 40, radio: 40,
+  var ANCHO = { check: 26, marca: 96, diam: 40, figura: 60, lado: 46, ang: 40, radio: 40,
                 largo: 54, cant: 48, peso: 56, elemento: 130, texto: 240 };
 
   // El dibujo mide lo del S/M/L elegido; la celda le deja aire para el aviso (⚠, 3D, aSa).
@@ -50,9 +54,12 @@
     return ((m && m.w) || 70) + 40;
   }
 
+  // La Notes mide lo que la más larga de la tabla; si es muy larga, se parte en dos líneas.
+  function anchoNotas(n) { return Math.min(150, Math.max(48, Math.round(n * 6.5) + 24)); }
+
   // Qué columnas de barra lleva la tabla, según lo que traen sus filas.
   function columnas(filas) {
-    var letras = {}, c = { nAng: 0, diam: false, radio: false, largo: false, cant: false,
+    var letras = {}, c = { nAng: 0, notas: 0, diam: false, radio: false, largo: false, cant: false,
                            peso: false, elemento: false };
     filas.forEach(function (f) {
       if (f.elemento) c.elemento = true;
@@ -60,6 +67,7 @@
       if (!b) return;
       Object.keys(b.lados || {}).forEach(function (L) { if (hay(b.lados[L])) letras[L] = 1; });
       c.nAng = Math.max(c.nAng, (b.angulos || []).length);
+      if (b.notas) c.notas = Math.max(c.notas, String(b.notas).length);
       ['diam', 'radio', 'largo', 'cant', 'peso'].forEach(function (k) { if (hay(b[k])) c[k] = true; });
     });
     c.letras = Object.keys(letras).sort();
@@ -71,7 +79,6 @@
   //   cfg.accion  {titulo, ancho, title}
   //   cfg.propias [{titulo, ancho, clase, title}]
   //   cfg.texto   {titulo, title}
-  //   cfg.elementoTitulo  'Plano' en las auditorías de ArmaHub
   //   cfg.celda   fn(fila, campo, valorHtml, clase) → '<td…>': la celda que se puede
   //               corregir (la usa el auditor para escribir lo que debería decir)
   //   cfg.titulos {lado(L), largo, render}: las ayudas de los encabezados
@@ -91,8 +98,9 @@
     if (cfg.check) col(ANCHO.check, cfg.check.titulo || '', 'hojachk');
     col(cfg.accion.ancho, cfg.accion.titulo || '', 'hojaacc', cfg.accion.title);
     col(ANCHO.marca, 'Marca');
-    if (c.diam) col(ANCHO.diam, 'φ', 'num');
-    col(ANCHO.figura, 'Figura');
+    if (c.notas) col(anchoNotas(c.notas), 'Notes', '', 'El nombre que le puso a la marca quien cubicó (Notes en aSa)');
+    if (c.diam) col(ANCHO.diam, 'φ', 'hojac');
+    col(ANCHO.figura, 'Figura', 'hojac');
     col(anchoRender(), 'Render', '', tit.render);
     c.letras.forEach(function (L) { col(ANCHO.lado, esc(L), 'num g', tit.lado ? tit.lado(L) : ''); });
     for (var k = 0; k < c.nAng; k++) col(ANCHO.ang, 'α' + (k + 1), 'num g');
@@ -100,7 +108,7 @@
     if (c.largo) col(ANCHO.largo, 'Largo', 'num', tit.largo);
     if (c.cant) col(ANCHO.cant, 'Cant', 'num');
     if (c.peso) col(ANCHO.peso, 'Peso', 'num');
-    if (c.elemento) col(ANCHO.elemento, cfg.elementoTitulo || 'Elemento');
+    if (c.elemento) col(ANCHO.elemento, 'Elemento');
     // Las columnas de la barra, para el comentario que las cruza a lo ancho.
     var nBarra = anchos.length - (cfg.check ? 2 : 1) - (c.elemento ? 1 : 0);
     (cfg.propias || []).forEach(function (p) { col(p.ancho, p.titulo, p.clase, p.title); });
@@ -125,11 +133,10 @@
       h += '<td class="hojasin" colspan="' + nBarra + '">' + (f.sinBarra || '') + '</td>';
     } else {
       h += '<td class="hojamarca" title="' + esc(b.marcaTitle || b.marca || '') + '"><span class="audref"' +
-             (b.marcaAttrs || '') + '>' + esc(b.marca || '') + '</span>' +
-           (b.notas ? ' <span class="audnotas" title="El nombre que le puso a la marca quien cubicó ' +
-                      '(Notes en aSa)">' + esc(b.notas) + '</span>' : '') + '</td>';
-      if (c.diam) h += td('diam', ent(b.diam), 'num');
-      h += td('figura', esc(b.figura || ''), 'hojafig');
+             (b.marcaAttrs || '') + '>' + esc(b.marca || '') + '</span></td>';
+      if (c.notas) h += '<td class="hojanotas">' + (b.notas ? '<span class="audnotas">' + esc(b.notas) + '</span>' : '') + '</td>';
+      if (c.diam) h += td('diam', ent(b.diam), 'hojac');
+      h += td('figura', esc(b.figura || ''), 'hojafig hojac');
       h += '<td class="audfigcel"' + (b.renderAttrs || '') + '>' + (b.render || '') + '</td>';
       c.letras.forEach(function (L) {
         h += td('lado:' + L, cm((b.lados || {})[L]), 'num g' + ((b.malos || {})[L] ? ' mal' : ''));

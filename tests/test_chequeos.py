@@ -607,7 +607,7 @@ check("...y mientras el servidor responde, el boton lo dice",
       "x.classList.add('audwait')" in JS.split("async function declararUno(")[1][:1400])
 check("la referencia abre el render: el detalle no se perdió",
       "abrirDetalleSenal(b.dataset.ver)" in JS and "marcaAttrs: ' data-ver=\"' + i.id + '\"'" in JS
-      and "(b.marcaAttrs || '') + '>' + esc(b.marca || '') + '</span>'" in HOJA)
+      and "(b.marcaAttrs || '') + '>' + esc(b.marca || '') + '</span></td>'" in HOJA)
 check("«Mis chequeos» ya no filtra por el estado muerto que dejó la 146",
       "s.estado = 'corregir'" not in API and "s.estado IN ('abierta', 'declarada')" in API)
 
@@ -752,7 +752,7 @@ check("lo escrito y no guardado sobrevive al repintado de la hoja (4-nov)",
       and "function _notasAbiertas() {" in JS and "if (!i || i.estado !== EST.ABIERTA) return;" in JS)
 check("el nombre de la figura se ve siempre, en su columna, haya dibujo o no (4-nov, 6-nov)",
       "figura: i.figura || ''" in JS and "function _nombreFig(" not in JS
-      and "h += td('figura', esc(b.figura || ''), 'hojafig');" in HOJA
+      and "h += td('figura', esc(b.figura || ''), 'hojafig hojac');" in HOJA
       and "if (!c) return '';" in JS.split("function _celda(cc, ref, sen) {")[1][:200]
       and "render: _celda(i.cc || '', i.ref, i.id)" in JS)
 check("la fila resuelta va verde aunque aSa no la haya confirmado todavia (4-nov: en blanco parecia pendiente)",
@@ -1070,7 +1070,7 @@ check("la firma va al final de la fila, con la decision que explica, y no bajo l
       and 'class="revfirma"' in JS and ".revfirma{display:inline-block" in HTM
       and "marca: i.ref," in JS)
 check("...y la marca y su figura quedan juntas: Marca · φ · Figura · Render, cada una con su ancho",
-      "col(ANCHO.marca, 'Marca');" in HOJA and "col(ANCHO.figura, 'Figura');" in HOJA
+      "col(ANCHO.marca, 'Marca');" in HOJA and "col(ANCHO.figura, 'Figura', 'hojac');" in HOJA
       and "col(anchoRender(), 'Render', '', tit.render);" in HOJA)
 
 
