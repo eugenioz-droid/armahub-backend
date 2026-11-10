@@ -1448,6 +1448,42 @@ apagada con el motivo.
    Lo correcto sería que arrastrando en modo centrado la barra crezca a los dos lados a la vez
    (el borde arrastrado sigue al mouse igual y el opuesto se abre lo mismo).
 
+### 11.4 El gancho de 135° es el codo de la esquina más 45° — UNA geometría para todo dibujante
+
+Regla que se perdió dos veces (10-ago se resolvió en el Modelador; 9-nov se reescribió mal en
+Auditorías). Fijada 2026-11-10. Vale para TODO dibujo de barra con gancho sísmico: Modelador,
+reconstrucción desde aSa, ejemplos de reglas, lo que venga.
+
+**La construcción.** El lado del cuerpo que remata en gancho se mide hasta su **esquina**, vértice
+a vértice como los demás lados. El recto termina **R** antes de la esquina (R = radio del EJE del
+codo: mandril/2 + φ/2 con datos de aSa; 2φ + φ/2 de norma en el Modelador). El arco de radio R
+arranca ahí con su centro a R del lado y a R de la medida: **envuelve la esquina** —toca la línea de
+la medida, por eso la envolvente es el marco exacto— y sigue 45° más. La pata (H3, 10φ) sale
+**tangente**, entera, y pasa 0,41·R por DENTRO del vértice, nunca por el vértice. En un estribo los
+dos ganchos **comparten ese centro**: la esquina es una esquina redonda igual a las otras tres y las
+dos patas salen **paralelas, separadas 2R**, apuntando al núcleo. En una figura abierta (traba T12,
+104E) es la misma construcción en cada punta; sólo que no hay otra pata con quien compartir el centro.
+
+**Lo que NO es** (las dos formas en que se escribió mal):
+- Sumar el arco **después** del lado entero: el gancho queda corrido hacia afuera y la pata cruza el
+  marco (envolvente 475 × 375 donde aSa declara 450 × 350).
+- Un **empalme de CAD** con la pata pasando por el vértice: el recto termina a t = R·tan(67,5°) =
+  2,4R de la esquina, la esquina queda vacía, las dos curvas quedan desfasadas y las dos patas caen
+  sobre la misma línea. La envolvente sale exacta igual: **medir sólo el marco no detecta esto**.
+
+**Dónde vive.** `figura_puntos.js::_estriboPerimetral` (Modelador; centro común `O`) y
+`figura_asa.py::_trazar` (reconstrucción desde aSa para Auditorías; `figura_de_lados` la reusa para
+los ejemplos del menú de reglas). aSa NO marca los ganchos de 103B/103C/104B/105B/105C/106A (los
+manda `STD`): un lado terminal de hasta 15φ que dobla más de 90° es gancho
+(`figura_asa.es_gancho_sin_marcar`, la misma regla que usa la revisión de barras). El dibujante `disenador.js::svgDesdePuntos` sólo traza lo que le
+dan: la geometría del gancho **no se escribe una tercera vez**; un dibujante nuevo reusa uno de esos
+dos.
+
+**Qué lo congela.** `tests/test_figura_asa.py` caso 7b (T1 real: tangencia a R de la esquina, centros
+coincidentes, patas paralelas a 2R y a 45°, nada fuera del marco en x ni en y) y
+`tests/test_figura_puntos.js` (Modelador: codos de 135° con centro común, cresta en el borde, patas
+paralelas).
+
 ## 12. ASISTENTE IA DE ENFIERRADO — chat en el modelador (DISEÑO CERRADO 2026-08-30, 2ª ronda auditada)
 
 ### 12.1 Propósito
