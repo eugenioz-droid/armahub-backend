@@ -102,10 +102,12 @@
     $('revReglasN').textContent = ks.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
     el.innerHTML = ks.map(function (k) {
       var r = REV.reglas[k], ej = r.ejemplo;
+      // La leyenda va BAJO el dibujo, no al final de la explicación (el usuario, 10-nov:
+      // «ese quedaría muy bien bajo el renderizado»).
       return '<li class="regl">' +
-        '<div class="regfig">' + _svgRegla(ej) + '</div>' +
-        '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p>' +
+        '<div class="regfig">' + _svgRegla(ej) +
           (ej && ej.leyenda ? '<span class="umb">' + esc(ej.leyenda) + '</span>' : '') + '</div>' +
+        '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p></div>' +
         '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') + '</div></li>';
     }).join('');
   }
@@ -121,8 +123,11 @@
     var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
     var completo = tramos.length === pts.length - 1;
     var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
+    // El alto sigue la proporción de la figura (entre 40 y 104 px): una barra recta o una U
+    // chata no deja un hueco de aire entre el dibujo y su leyenda.
+    var alto = Math.max(40, Math.min(104, Math.round(134 * (eje.alto || 0) / Math.max(1, eje.ancho || 1)) + 36));
     try {
-      return M.svgDesdePuntos(pts, { width: 170, height: 104, pad: 18,
+      return M.svgDesdePuntos(pts, { width: 170, height: alto, pad: 18,
         tipos_seg: completo ? tipos : null,
         radios_seg: completo ? tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; }) : null,
         sweeps_seg: completo ? tramos.map(function (s) { return s.sweep == null ? 1 : 1 - s.sweep; }) : null,

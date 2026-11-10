@@ -396,8 +396,10 @@ def r_patas_suple(barra, hermanas) -> list:
 # ver «gráficamente las reglas que tenemos implementadas»: el menú de la pantalla muestra
 # por regla un ejemplo trazado —con el mismo motor que las barras reales— con los lados
 # que compara marcados, la explicación al lado y, en una tercera columna, el alcance:
-# a qué figuras aplica y qué deja fuera. `ejemplo` es None cuando la regla no mira la
-# figura (el cabezal mira la tipología): ahí no hay nada que dibujar, y se dice.
+# a qué figuras aplica y qué deja fuera. La leyenda va BAJO el dibujo (el usuario, 10-nov).
+# `ejemplo` puede ser None si de verdad no hay nada que dibujar; la pantalla lo dice en vez
+# de dejar el hueco. El cabezal, que mira la tipología y no la figura, se dibuja igual como
+# una 101A recta: lo que salta lo dice su leyenda.
 #   ejemplo = {"lados": [(nombre, mm, giro, gancho?), ...], "diam": φ, "pin": mandril,
 #              "marcar": [lados que compara], "leyenda": "lo que se lee bajo el dibujo"}
 REGLAS = [
@@ -439,7 +441,10 @@ REGLAS = [
      "necesita": ("diam",),
      "alcance": "Sólo barras cuya tipología (Notes en aSa) dice CB o CAB. No mira la figura: "
                 "mira el diámetro.",
-     "ejemplo": None,
+     # Se dibuja igual (el usuario, 10-nov): una 101A recta, y lo que salta va en el texto
+     # de abajo. Así el menú no tiene un hueco donde las demás tienen dibujo.
+     "ejemplo": {"lados": [("A", 1200)], "diam": 10, "pin": 60,
+                 "marcar": ["A"], "leyenda": "CB con φ8 o φ10"},
      "fn": r_cabezal_delgado},
     {"codigo": "patas_suple",
      "corto": "Patas del suple",

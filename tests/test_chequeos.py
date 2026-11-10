@@ -1501,9 +1501,15 @@ print("\n8. El menú de reglas: dibujo, explicación y alcance")
 check("cada regla declara su alcance", all((r.get("alcance") or "").strip() for r in C.REGLAS))
 check("...y dice si tiene ejemplo para dibujar", all("ejemplo" in r for r in C.REGLAS))
 por = {r["codigo"]: r for r in C.REGLAS}
-check("el cabezal no mira la figura: no se dibuja, y el alcance lo dice",
-      por["cabezal_delgado"]["ejemplo"] is None and C.ejemplo_dibujado(por["cabezal_delgado"]) is None
-      and "No mira la figura" in por["cabezal_delgado"]["alcance"])
+# El cabezal también se dibuja (el usuario, 10-nov): «igual puedes renderizar una 101A y le
+# pones un texto abajo». Y la leyenda de TODAS va bajo el dibujo, no al final del texto.
+e0 = C.ejemplo_dibujado(por["cabezal_delgado"])
+check("el cabezal se dibuja como una 101A recta, con lo que salta en su leyenda; el alcance sigue diciendo que mira el diámetro",
+      bool(e0) and e0["eje"]["ok"] and [t["lado"] for t in e0["eje"]["tramos"]] == ["A"] and e0["eje"]["alto"] == 0
+      and "φ8 o φ10" in e0["leyenda"] and "No mira la figura" in por["cabezal_delgado"]["alcance"])
+check("la leyenda va BAJO el dibujo, dentro de la celda del dibujo",
+      "_svgRegla(ej) +\n          (ej && ej.leyenda ? '<span class=\"umb\">'" in JS and ".regfig .umb{" in HTM
+      and ".regtxt .umb{" not in HTM)
 e = C.ejemplo_dibujado(por["patas_suple"])
 check("el ejemplo del suple se traza con el motor de las barras reales: cinco rectos, B y D marcados",
       bool(e) and e["eje"]["ok"] and [t["lado"] for t in e["eje"]["tramos"]] == ["A", "B", "C", "D", "E"]

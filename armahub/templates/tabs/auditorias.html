@@ -769,12 +769,13 @@
   .revreglasc li.regl{display:grid; grid-template-columns:180px minmax(0,1fr) 240px; gap:16px;
                       align-items:center; padding:8px 0; border-top:1px solid #eceff1;}
   .revreglasc li.regl:first-child{border-top:none;}
-  .regfig{display:flex; align-items:center; justify-content:center; min-height:64px;}
+  .regfig{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:64px;}
   .regfig svg{display:block;}
   .regsin{font-size:10.5px; color:#90a4ae; text-align:center;}
   .regtxt b{font-size:12px; color:#263238;}
   .regtxt p{margin:3px 0 0; font-size:11px; color:#546e7a; line-height:1.4;}
-  .regtxt .umb{display:inline-block; margin-top:5px; font-size:10.5px; color:#455a64; background:#f7f9fb;
+  /* La leyenda, bajo el dibujo: el mismo chip de los criterios de elementos (.umb). */
+  .regfig .umb{display:inline-block; font-size:10.5px; color:#455a64; background:#f7f9fb;
                border-radius:4px; padding:2px 7px; font-variant-numeric:tabular-nums;}
   .regalc{font-size:11px; color:#546e7a; line-height:1.4; border-left:2px solid #e3e8ef; padding-left:10px;}
   .regalc i{display:block; font-style:normal; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
