@@ -25,7 +25,8 @@ def check(nombre, cond):
         fallos += 1
 
 
-from armahub.figura_asa import (figura_de, envolvente_declarada, figura_de_lados, trazo_de_catalogo,  # noqa: E402
+from armahub.figura_asa import (figura_de, envolvente_declarada, es_gancho_sin_marcar, figura_de_lados,  # noqa: E402
+                                trazo_de_catalogo,
                                 TOLERANCIA)
 
 
@@ -135,12 +136,14 @@ r90 = figura_de(DIMS3, TRES, pin_diam=48.0, diam_mm=12.0)
 check("el gancho de 90° (H9) NO se da vuelta ni se vuelve arco: sigue midiendo 11400 × 300",
       r90["ok"] and r90["alto"] == 300 and tipos(r90) == ["recto"] * 3)
 
-# ── Caso 7b: el ESTRIBO T1 REAL de aSa (SVIP · 10mmA83): el gancho se dobla en el vértice ──
+# ── Caso 7b: el ESTRIBO T1 REAL de aSa (SVIP · 10mmA83): el gancho es el codo de la esquina ──
 # 9-nov, el usuario: «sigues renderizando mal los estribos… le sumas un margen y los vértices
-# quedan desfasados, no coinciden». El arco del gancho se SUMABA después del lado entero, y
-# el gancho quedaba corrido hacia afuera de la esquina, con la pata cruzando el marco. aSa
-# declara 260 × 260 —el marco— y con el arco sumado salía 285 × 285. Medido sobre las 1109
-# barras de 16 códigos auditados: los 62 estribos T1 pasan de 25 mm de error a 0.
+# quedan desfasados, no coinciden». 10-nov, de nuevo: «te da con dibujar mal los estribos».
+# DOS VECES MAL: primero el arco se SUMABA después del lado entero (285 × 285 contra los
+# 260 × 260 que declara aSa); después se trató el gancho como un empalme de CAD con la
+# pata por el vértice (envolvente exacta, pero la esquina vacía, dos curvas desfasadas y
+# las dos patas sobre la misma línea). La envolvente NO distingue las geometrías: estas
+# pruebas miden la ESQUINA. La regla queda en SPECS §11.4 y en la cabecera de figura_asa.
 T1 = ("<la><st>T</st><bc>6</bc><mbr><X>260</X><Y>260</Y><Z>0</Z></mbr><lt>1280</lt><v>4.0</v>"
       "<cp><t>H3</t><l>120</l><n>1</n><ln>G</ln></cp><cp><t>STD</t><a>-135</a><l>260</l><n>2</n><ln>E</ln></cp>"
       "<cp><t>STD</t><a>-90</a><l>260</l><n>3</n><ln>D</ln></cp><cp><t>STD</t><a>-90</a><l>260</l><n>4</n><ln>C</ln></cp>"
@@ -153,37 +156,97 @@ DIMS_T1 = json.dumps([
     {"MMLength": 260.0, "LegNum": 2, "LegName": "E", "ElemType": "B", "IsHook": False, "SlopingVector": "0,-187,0"},
     {"MMLength": 120.0, "LegNum": 1, "LegName": "G", "ElemType": "H3", "IsHook": True, "SlopingVector": "17,16,0"},
 ])
-print("\n7b. El estribo T1: el gancho se dobla en el vértice del cuerpo, no después de él")
+print("\n7b. El estribo T1: el gancho es el codo de la esquina más 45°, con las dos patas paralelas")
 r = figura_de(DIMS_T1, T1, pin_diam=40.0, diam_mm=10.0)
+R = 40.0 / 2 + 10.0 / 2     # el radio del eje del codo: mandril/2 + φ/2 = 25
 
 
 def _d(p, q):
     return math.hypot(q[0] - p[0], q[1] - p[1])
 
 
+def _cruce(a, b, c, d):
+    """Dónde se cortan la recta a→b y la recta c→d."""
+    den = (a[0] - b[0]) * (c[1] - d[1]) - (a[1] - b[1]) * (c[0] - d[0])
+    t = ((a[0] - c[0]) * (c[1] - d[1]) - (a[1] - c[1]) * (c[0] - d[0])) / den
+    return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]
+
+
 p = r["puntos"]
 check("pata · arco · cuatro lados · arco · pata", tipos(r) == ["recto", "arco", "recto", "recto", "recto", "recto", "arco", "recto"])
 check("la envolvente es EXACTAMENTE el marco que declara aSa (260 × 260), no 285 × 285",
       (r["ancho"], r["alto"]) == (260, 260) and r["ok"])
-check("el lado del cuerpo que remata en gancho termina t = R·tan(w/2) antes del vértice (recto ≈ 202 de 260)",
-      195 < _d(p[2], p[3]) < 210 and abs(_d(p[3], p[4]) - 260) < 0.5 and abs(_d(p[4], p[5]) - 260) < 0.5)
+check("el recto del cuerpo termina R antes de su esquina (235 de 260), y los lados sin gancho van enteros",
+      abs(_d(p[2], p[3]) - (260 - R)) < 0.5 and abs(_d(p[5], p[6]) - (260 - R)) < 0.5
+      and abs(_d(p[3], p[4]) - 260) < 0.5 and abs(_d(p[4], p[5]) - 260) < 0.5)
 check("...y la pata del gancho arranca entera (120) después del arco", abs(_d(p[0], p[1]) - 120) < 0.5 and abs(_d(p[7], p[8]) - 120) < 0.5)
-check("los dos ganchos se doblan en el MISMO vértice: la figura cierra y el backend lo dice",
-      r["cerrada"] is True and _d(r["tramos"][1]["vertice"], r["tramos"][6]["vertice"]) < 1.0)
-check("...y nada del gancho se sale del marco (las patas quedan adentro, como en el fierro)",
-      all(min(q[0] for q in p) - 0.5 <= pt[0] <= max(q[0] for q in p) + 0.5 for pt in (p[0], p[1], p[7], p[8])))
-# La traba T12 (caso 7) NO cierra: sus ganchos están en vértices distintos, y la medida del
-# cuerpo la pone la curva del gancho (exterior), no el vértice. Medido sobre 85 T12 reales:
-# aSa declara 358 para un cuerpo de 360; al vértice salía 281 y con el arco sumado 420.
+# LA ESQUINA: donde se cortan la línea de B (p2→p3) y la de E (p5→p6). Cada tangencia está
+# a R de ella, como en las otras tres esquinas; no a 2,4R (el chaflán del empalme de CAD).
+V = _cruce(p[2], p[3], p[5], p[6])
+check("la tangencia de cada gancho está a R de la esquina: es un codo como los otros tres, no un chaflán de 2,4R",
+      abs(_d(p[2], V) - R) < 0.5 and abs(_d(p[6], V) - R) < 0.5)
+check("los dos codos comparten la esquina (el centro): la figura cierra y el backend lo dice",
+      r["cerrada"] is True and _d(r["tramos"][1]["esquina"], r["tramos"][6]["esquina"]) < 1.0
+      and _d(r["tramos"][1]["esquina"], V) < 1.0)
+# LAS DOS PATAS: paralelas, a 45° del marco, una a cada lado del centro → separadas 2R. Antes
+# caían las dos sobre la misma diagonal por el vértice. La dirección de cada pata la trae aSa
+# en su vector, redondeado a enteros (16,17 y 17,16 → 3° entre sí): la holgura es ésa, no
+# nuestra. Las comprobaciones exactas van sobre el ejemplo trazado a mano (caso 13).
+dA = ((p[1][0] - p[0][0]) / 120.0, (p[1][1] - p[0][1]) / 120.0)
+dG = ((p[8][0] - p[7][0]) / 120.0, (p[8][1] - p[7][1]) / 120.0)
+sep = abs(dA[0] * (p[7][1] - p[0][1]) - dA[1] * (p[7][0] - p[0][0]))
+check("las dos patas son paralelas (a los 3° que redondea aSa) y van separadas 2R (50 mm), no una encima de la otra",
+      abs(dA[0] * dG[1] - dA[1] * dG[0]) < 0.08 and abs(sep - 2 * R) < 2.0)
+check("...a 45° del marco (± los 2° del redondeo de aSa)", abs(abs(dA[0]) - abs(dA[1])) < 0.06)
+marco_x = [q[0] for q in (p[3], p[4], p[5], V)]
+marco_y = [q[1] for q in (p[3], p[4], p[5], V)]
+check("nada del gancho se sale del marco, en x NI en y (antes sólo se miraba x)",
+      all(min(marco_x) - 0.5 <= pt[0] <= max(marco_x) + 0.5 and min(marco_y) - 0.5 <= pt[1] <= max(marco_y) + 0.5
+          for pt in (p[0], p[1], p[7], p[8])))
+check("...y las puntas apuntan al núcleo: están más lejos de la esquina que sus tangencias",
+      _d(p[0], V) > _d(p[1], V) + 100 and _d(p[8], V) > _d(p[7], V) + 100)
+# La traba T12 (caso 7) NO cierra: sus ganchos están en esquinas distintas. La geometría es
+# la MISMA (recto hasta R antes de la medida, el arco llega justo a ella). Medido sobre 85
+# T12 reales: aSa declara 358 para un cuerpo de 360; con el arco sumado salía 420.
 _fa = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "armahub", "figura_asa.py"),
            encoding="utf-8").read()
 r = figura_de(DIMS_T12, T12, pin_diam=48.0, diam_mm=12.0)
 check("en la traba T12 el cuerpo mide 900 de fuera a fuera: la curva llega justo a la medida y el recto es 900 − 2R",
       r["ancho"] == 900 and 838 < _d(r["puntos"][2], r["puntos"][3]) < 842)
 check("...y no cierra: no es un estribo", r["cerrada"] is False)
-check("la regla se escribe una vez (setback del gancho, dos pasadas) y el de 180° no la usa: no tiene vértice",
-      "def _setback_gancho(" in _fa and "GIRO_GANCHO_VERTICE = 150.0" in _fa and "def _cierra(tramos)" in _fa
-      and 'tramos[n_arco]["vertice"]' in _fa and '"cerrada": cerrada,' in _fa and "pasos, exterior=True)" in _fa)
+check("UNA geometría y UNA pasada: ya no existe el modo «exterior» ni el setback al vértice; el de 180° no tiene esquina",
+      "def _es_doblez_de_gancho(" in _fa and "GIRO_GANCHO_ESQUINA = 150.0" in _fa and "def _cierra(tramos)" in _fa
+      and 'tramos[n_arco]["esquina"]' in _fa and '"cerrada": cerrada,' in _fa
+      and "exterior" not in _fa and "_setback_gancho" not in _fa)
+check("...y queda escrito lo que estuvo mal dos veces, con la referencia a SPECS",
+      "LO QUE ESTUVO MAL DOS VECES" in _fa and "SPECS §11.4" in _fa and "figura_puntos.js::_estriboPerimetral" in _fa)
+
+# ── Caso 7c: la 106A, el estribo cuyos ganchos aSa manda como STD sin marcarlos ──────────
+# SUKQ 10mmA29 real (φ10, mandril 60 → R = 35): A y F de 120 doblando 135°, sin IsHook. Sin
+# reconocerlos, el trazador los dibujaba con el arco sumado después del lado entero y la 106A
+# salía con el gancho corrido hacia afuera, igual que el T1 de antes. Medido sobre 117 barras
+# reales de las familias 103B/103C/104B/105B/105C/106A: error de 35-60 mm a 5-17, 106A cierra.
+print("\n7c. La 106A: ganchos que aSa no marca, reconocidos por terminales, cortos y doblando >90°")
+A106 = ("<la><st>T</st><bc>6</bc><mbr><X>444</X><Y>354</Y><Z>0</Z></mbr><lt>1860</lt>"
+        "<cp><t>STD</t><l>120</l><n>1</n><ln>A</ln></cp><cp><t>STD</t><a>-135</a><l>360</l><n>2</n><ln>B</ln></cp>"
+        "<cp><t>STD</t><a>-90</a><l>450</l><n>3</n><ln>C</ln></cp><cp><t>STD</t><a>-90</a><l>360</l><n>4</n><ln>D</ln></cp>"
+        "<cp><t>STD</t><a>-90</a><l>450</l><n>5</n><ln>E</ln></cp><cp><t>STD</t><a>-135</a><l>120</l><n>6</n><ln>F</ln></cp></la>")
+r = figura_de(None, A106, pin_diam=60.0, diam_mm=10.0)
+p = r["puntos"]
+check("sus dos puntas se reconocen como ganchos y se dibujan en arco: pata · arco · 4 lados · arco · pata",
+      tipos(r) == ["recto", "arco", "recto", "recto", "recto", "recto", "arco", "recto"])
+check("...la figura cierra, como el estribo que es, con el marco 450 × 360 vértice a vértice",
+      r["cerrada"] is True and r["ok"] and (r["ancho"], r["alto"]) == (450, 360))
+dA = ((p[1][0] - p[0][0]) / 120.0, (p[1][1] - p[0][1]) / 120.0)
+dG = ((p[8][0] - p[7][0]) / 120.0, (p[8][1] - p[7][1]) / 120.0)
+check("...la tangencia a R = 35 de la esquina y las dos patas paralelas, separadas 2R = 70",
+      abs(_d(p[2], _cruce(p[2], p[3], p[5], p[6])) - 35) < 0.5 and abs(dA[0] * dG[1] - dA[1] * dG[0]) < 1e-3
+      and abs(abs(dA[0] * (p[7][1] - p[0][1]) - dA[1] * (p[7][0] - p[0][0])) - 70) < 0.5)
+check("un lado terminal LARGO que dobla no es gancho (la traba 305A lleva 300 en las puntas)",
+      not es_gancho_sin_marcar(True, -135.0, 300.0, 10.0) and es_gancho_sin_marcar(True, -135.0, 120.0, 10.0)
+      and not es_gancho_sin_marcar(False, -135.0, 120.0, 10.0) and not es_gancho_sin_marcar(True, -90.0, 120.0, 10.0))
+check("el 15φ se escribe una vez: la revisión de barras lo toma de acá",
+      "GANCHO_MAXIMO_PHI = 15.0" in _fa and "GANCHO_MAXIMO_PHI = " not in open(os.path.join(ROOT, "armahub", "chequeos.py"), encoding="utf-8").read())
 
 # ── Caso 8: gancho de 180° — el arco deja la pata paralela a dos radios, no plegada encima ──
 U180 = ("<la><st>B</st><bc>3</bc><mbr><X>900</X><Y>70</Y><Z>0</Z></mbr><lt>1060</lt>"
@@ -342,9 +405,20 @@ check("...y cada lado mide lo que se le dijo",
       abs(_d(p[1], p[2]) - 170) < 0.5 and abs(_d(p[2], p[3]) - 600) < 0.5 and abs(_d(p[3], p[4]) - 130) < 0.5)
 r = figura_de_lados([("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
                      ("E", 500, -90), ("G", 100, -135, True)], pin_diam=40, diam_mm=10)
-check("un estribo bien tipeado CIERRA: los dos ganchos en arco se doblan en el mismo vértice",
+check("un estribo bien tipeado CIERRA: los dos ganchos se doblan en la misma esquina",
       r["ok"] and r["cerrada"] is True and tipos(r) == ["recto", "arco", "recto", "recto", "recto", "recto", "arco", "recto"]
       and (r["ancho"], r["alto"]) == (500, 300))
+# LA ESQUINA EXACTA (SPECS §11.4), sin el redondeo de los vectores de aSa: tangencias a R de
+# la esquina, patas paralelas exactas a 45°, separadas 2R justos.
+p = r["puntos"]
+V = _cruce(p[2], p[3], p[5], p[6])
+dA = ((p[1][0] - p[0][0]) / 100.0, (p[1][1] - p[0][1]) / 100.0)
+dG = ((p[8][0] - p[7][0]) / 100.0, (p[8][1] - p[7][1]) / 100.0)
+sep = abs(dA[0] * (p[7][1] - p[0][1]) - dA[1] * (p[7][0] - p[0][0]))
+check("...con cada tangencia a R = 25 de la esquina (no a 2,4R) y la esquina escrita donde se cortan los lados",
+      abs(_d(p[2], V) - 25) < 0.2 and abs(_d(p[6], V) - 25) < 0.2 and _d(r["tramos"][1]["esquina"], V) < 0.2)
+check("...y las dos patas EXACTAMENTE paralelas, a 45° y separadas 2R = 50",
+      abs(dA[0] * dG[1] - dA[1] * dG[0]) < 1e-3 and abs(abs(dA[0]) - abs(dA[1])) < 1e-3 and abs(sep - 50) < 0.2)
 r = figura_de_lados([("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
                      ("E", 540, -90), ("G", 100, -135, True)], pin_diam=40, diam_mm=10)
 check("...y el mismo estribo con E = 540 contra C = 500 NO cierra", r["ok"] and r["cerrada"] is False)

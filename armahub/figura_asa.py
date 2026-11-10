@@ -29,23 +29,36 @@ CÓMO SE CONSTRUYE (medido sobre 888 barras reales de 28 códigos de control, 6-
     explícito de radio mandril/2 + φ/2 entre sus dos puntos de tangencia. Es la misma
     receta con que el Modelador 3D arregló el estribo y lo que dice el estándar BVBS: la
     curva >90° es un segmento propio, no un vértice.
-  · EL GANCHO DE 135° SE DOBLA EN LA MEDIDA DEL CUERPO, NO DESPUÉS (9-nov). El lado del
-    cuerpo que remata en gancho —el 350 de un estribo T1, el 360 de una traba T12— es la
-    medida EXTERIOR de la figura; la pata del gancho (H3) es la extensión recta después del
-    doblez y arranca entera. Antes el arco se SUMABA después del lado entero: el gancho
-    quedaba corrido hacia afuera, curvado por fuera de la esquina del estribo y con la
-    pata cruzando el marco («le sumas un margen y los vértices quedan desfasados»).
-    Dónde cae la medida exterior depende de la figura, y se traza en dos pasadas:
-      - ESTRIBO (cierra: los dos ganchos se doblan en el mismo vértice): la medida la pone
-        la esquina del marco, así que el lado llega al vértice y su recto termina t =
-        R·tan(w/2) antes, en la tangencia. Medido sobre 62 T1 reales: aSa declara el
-        marco exacto (450 × 350) y así sale exacto; con el arco sumado salía 475 × 375.
-      - ABIERTA (traba T12, 104E…): no hay otra pata que haga la esquina, la medida la
-        pone la curva del gancho, que se queda s = t − R antes del vértice. El recto
-        termina R antes de la medida (t − s = R) y la curva llega justo a ella. Medido
-        sobre 85 T12 reales: aSa declara 358 para un cuerpo de 360; al vértice salía 281.
-    El gancho de 180° no tiene vértice (t → ∞): ahí los lados siguen siendo a la
-    tangencia, como dice BVBS.
+  · EL GANCHO DE 135° ES EL CODO DE LA ESQUINA MÁS 45° (10-nov; SPECS §11.4). El lado del
+    cuerpo que remata en gancho —el 350 de un estribo T1, el 360 de una traba T12— se mide
+    hasta su ESQUINA, vértice a vértice como los demás lados. El recto termina R antes de
+    la esquina; el arco de radio R arranca ahí con su centro a R del lado y a R de la
+    medida, envuelve la esquina —toca la línea de la medida, por eso la envolvente es el
+    marco exacto— y sigue 45° más; la pata (H3) sale TANGENTE, entera, y pasa 0,41·R por
+    DENTRO del vértice, no por el vértice. En el estribo los dos ganchos comparten ese
+    centro: la esquina es una esquina redonda igual a las otras tres y las dos patas salen
+    paralelas, separadas 2R, apuntando al núcleo. Es la misma construcción del Modelador
+    3D (figura_puntos.js::_estriboPerimetral, 10-ago): la geometría del gancho se escribe
+    en esos dos lugares y en ninguno más; el dibujante (disenador.js) sólo traza.
+    LO QUE ESTUVO MAL DOS VECES, para no volver: primero el arco se SUMABA después del
+    lado entero (gancho corrido hacia afuera, pata cruzando el marco). Después (9-nov) se
+    trató el gancho como un empalme de CAD con la pata pasando por el vértice: el recto
+    terminaba t = R·tan(67,5°) = 2,4R antes de la esquina, la esquina quedaba vacía, los
+    dos arcos no se juntaban («los vértices quedan desfasados, no coinciden») y las dos
+    patas caían sobre la misma línea. La ENVOLVENTE da lo mismo en las tres geometrías
+    (450 × 350 exacto), por eso medirla contra aSa no lo detectó: el test mide ahora la
+    esquina (tests/test_figura_asa.py, caso 7b). Medido sobre 62 T1 y 85 T12 reales la
+    envolvente sigue exacta, y en 104E1/104E2 queda como estaba.
+    El gancho de 180° no tiene esquina: ahí los lados siguen siendo a la tangencia, como
+    dice BVBS.
+  · EL GANCHO QUE aSa NO MARCA (10-nov). Las familias 103B, 103C, 104B, 105B, 105C y 106A
+    mandan sus ganchos de 135° como `STD`, sin IsHook, y así el trazador los dibujaba con el
+    arco sumado después del lado entero: la 106A —que ES un estribo— salía con el gancho
+    corrido hacia afuera igual que el T1 de antes. Un lado TERMINAL, CORTO (≤ 15φ) y que
+    dobla más de 90° es un gancho aunque nadie lo diga (es_gancho_sin_marcar); es la misma
+    regla de la revisión de barras (chequeos._clasificar_lados), que toma el 15φ de acá.
+    Medido sobre 117 barras reales de esas familias: el error de envolvente baja de 35-60
+    mm a 5-17, y las 106A cierran.
   · Un lado curvo (`RB`) es un arco con su radio y su barrido. Comprobado contra un caso
     real: radio 12.200, arco 10.000 → 46,96°, cuerda 9.722 y flecha 1.010, que es la
     envolvente que manda aSa (9.708 × 1.007).
@@ -76,9 +89,35 @@ TOLERANCIA = 0.03
 GANCHO_135 = "H3"
 # Desde qué giro un doblez deja de ser un vértice y pasa a ser un arco propio.
 GIRO_ARCO = 90.5
-# Hasta qué giro el gancho se dobla en el vértice del cuerpo (ver la cabecera). El de 180°
-# no tiene vértice: su tangente se va al infinito.
-GIRO_GANCHO_VERTICE = 150.0
+# Hasta qué giro el gancho tiene esquina (ver la cabecera). El de 180° no la tiene: su
+# pata vuelve paralela, a dos radios.
+GIRO_GANCHO_ESQUINA = 150.0
+# Hasta qué largo un lado terminal que dobla puede ser un gancho sin que aSa lo marque (ver
+# la cabecera). La planta hace el gancho a 10φ; 15φ deja pasar cualquier gancho real y ningún
+# tramo de barra (la traba 305A lleva lados de 300 en las puntas).
+GANCHO_MAXIMO_PHI = 15.0
+
+
+def es_gancho_sin_marcar(terminal: bool, giro, largo: float, diam_mm: float) -> bool:
+    """¿Este lado es un gancho de 135° aunque aSa lo mande como STD? Terminal, corto y
+    doblando más de 90° contra su vecino (ver la cabecera)."""
+    return bool(terminal and giro is not None and abs(giro) > GIRO_ARCO
+                and diam_mm > 0 and largo <= GANCHO_MAXIMO_PHI * diam_mm)
+
+
+def _marcar_ganchos(legs, diam_mm: float) -> None:
+    """Marca como gancho los lados terminales que lo son sin que aSa lo diga. El giro de
+    un lado es contra el ANTERIOR, así que para el primero cuenta el del segundo."""
+    n = len(legs)
+    if n < 2:
+        return
+    for i in (0, n - 1):
+        l = legs[i]
+        if l["gancho"] or l["arco"]:
+            continue
+        giro = legs[1]["angulo"] if i == 0 else l["angulo"]
+        if es_gancho_sin_marcar(True, giro, l["largo"], diam_mm):
+            l["gancho"] = True
 # El motor 2D dibuja cada arco con el comando A de SVG en su versión CORTA (large-arc 0): un
 # arco de más de 180° hay que partirlo. Un estribo circular o una espiral son varios pedazos.
 ARCO_MAXIMO = 180.0
@@ -324,24 +363,22 @@ def _barrido_de(pts_arco, inicio, radio):
     return total
 
 
-def _setback_gancho(entra, sale, giro, radio):
-    """Cuánto antes del vértice empieza el arco de un gancho de 135°: t = R·tan(w/2). Sólo
-    cuando un lado es del cuerpo y el otro la pata (ver la cabecera); entre dos lados del
-    cuerpo, o dos patas, el doblez sigue a la tangencia como dice BVBS. Cero si el lado
-    del cuerpo no alcanza para el recorte, para no dibujar un recto negativo."""
-    if abs(giro) >= GIRO_GANCHO_VERTICE or bool(entra["gancho"]) == bool(sale["gancho"]):
-        return 0.0
+def _es_doblez_de_gancho(entra, sale, giro, radio) -> bool:
+    """¿Este doblez es el de un gancho de 135° entre un lado del cuerpo y su pata? Sólo
+    entonces rige la geometría de esquina de la cabecera. Entre dos lados del cuerpo, o
+    dos patas, el doblez sigue a la tangencia como dice BVBS; el de 180° no tiene esquina.
+    Falso también si el cuerpo no alcanza para el recorte R: no se dibuja un recto
+    negativo."""
+    if abs(giro) >= GIRO_GANCHO_ESQUINA or bool(entra["gancho"]) == bool(sale["gancho"]):
+        return False
     cuerpo = sale if entra["gancho"] else entra
-    t = radio * math.tan(math.radians(abs(giro)) / 2.0)
-    return t if t <= cuerpo["largo"] * 0.49 else 0.0
+    return radio <= cuerpo["largo"] * 0.49
 
 
-def _trazar(legs, dirs, radio_codo, pasos, exterior=False):
+def _trazar(legs, dirs, radio_codo, pasos):
     """Recorre los lados y arma la policurva. Devuelve (puntos, tramos, muestra): los
     puntos son los nodos (los arcos van como cuerda, el motor los dibuja con su radio); la
-    muestra tiene los arcos desplegados, para medir la envolvente. `exterior`: la medida
-    del lado del cuerpo que remata en gancho la pone la curva, no el vértice (ver la
-    cabecera: figura abierta)."""
+    muestra tiene los arcos desplegados, para medir la envolvente."""
     puntos = [(0.0, 0.0)]
     muestra = [(0.0, 0.0)]
     tramos = []
@@ -357,27 +394,31 @@ def _trazar(legs, dirs, radio_codo, pasos, exterior=False):
             if abs(giro) > GIRO_ARCO:
                 signo = 1.0 if giro > 0 else -1.0
                 dp = dirs[i - 1]
-                t = _setback_gancho(legs[i - 1], leg, giro, radio_codo)
-                # Cuánto deja de recorrer recto el lado del cuerpo: hasta la tangencia (t)
-                # cuando la medida la pone el vértice; R cuando la pone la curva (t − s).
-                corte = (radio_codo if exterior else t) if t else 0.0
-                if corte and not legs[i - 1]["gancho"]:
-                    # El lado del cuerpo llegó entero a su medida: el recto termina antes,
-                    # y el arco arranca ahí.
-                    x, y = x - dp[0] * corte, y - dp[1] * corte
+                R = radio_codo
+                gancho = _es_doblez_de_gancho(legs[i - 1], leg, giro, R)
+                esquina = None
+                if gancho and not legs[i - 1]["gancho"]:
+                    # CUERPO → GANCHO. El recto del cuerpo llegó entero a su esquina: se
+                    # devuelve R, que es donde arranca el codo (ver la cabecera). La esquina
+                    # queda escrita para saber si la figura cierra.
+                    esquina = [x, y]
+                    x, y = x - dp[0] * R, y - dp[1] * R
                     puntos[-1] = (x, y)
                     muestra[-1] = (x, y)
-                centro = (x - dp[1] * signo * radio_codo, y + dp[0] * signo * radio_codo)
+                centro = (x - dp[1] * signo * R, y + dp[0] * signo * R)
                 a0 = math.atan2(y - centro[1], x - centro[0])
-                pts_arco = _arco(centro, radio_codo, a0, math.radians(giro), pasos)
+                pts_arco = _arco(centro, R, a0, math.radians(giro), pasos)
                 n_arco = len(tramos)
-                x, y = _emitir_arco(puntos, muestra, tramos, pts_arco, radio_codo, signo, "", None)
-                if t:
-                    # El vértice del gancho queda escrito en su arco: con los dos ganchos de
-                    # un estribo en el mismo vértice se sabe que la figura cierra.
-                    tramos[n_arco]["vertice"] = [x - d[0] * t, y - d[1] * t]
-                    if not leg["gancho"]:
-                        recorte = corte   # el lado del cuerpo arranca después del arco
+                x, y = _emitir_arco(puntos, muestra, tramos, pts_arco, R, signo, "", None)
+                if gancho:
+                    if esquina is None:
+                        # GANCHO → CUERPO. El arco termina en la tangencia; la esquina está
+                        # R más atrás sobre la línea del cuerpo, y el cuerpo arranca ahí.
+                        esquina = [x - d[0] * R, y - d[1] * R]
+                        recorte = R
+                    # Con los dos ganchos de un estribo en la misma esquina (el mismo
+                    # centro) se sabe que la figura cierra.
+                    tramos[n_arco]["esquina"] = esquina
         desde = len(puntos) - 1
         if leg["arco"] and leg["radio"] and leg["radio"] > 0:
             r = leg["radio"]
@@ -406,9 +447,10 @@ def _trazar(legs, dirs, radio_codo, pasos, exterior=False):
 
 
 def _cierra(tramos) -> bool:
-    """¿Los dos ganchos se doblan en el mismo vértice? Eso es un estribo."""
-    vs = [t["vertice"] for t in tramos if t.get("vertice")]
-    return len(vs) >= 2 and math.hypot(vs[0][0] - vs[-1][0], vs[0][1] - vs[-1][1]) < 1.0
+    """¿Los dos ganchos se doblan en la misma esquina (comparten el centro)? Eso es un
+    estribo."""
+    es = [t["esquina"] for t in tramos if t.get("esquina")]
+    return len(es) >= 2 and math.hypot(es[0][0] - es[-1][0], es[0][1] - es[-1][1]) < 1.0
 
 
 def _recortar_por_doblado(puntos, radio_doblado: float):
@@ -455,17 +497,25 @@ def _orientar(puntos, tramos, muestra):
         return puntos, tramos, muestra
     a, b = puntos[largo["desde"]], puntos[largo["hasta"]]
     ang = -math.atan2(b[1] - a[1], b[0] - a[0])
+
+    def con_esquina(t, f):
+        # La esquina escrita en el arco del gancho viaja con los puntos: misma rotación,
+        # mismo espejo. Si no, quedaba en las coordenadas de antes de orientar.
+        return dict(t, esquina=f(t["esquina"])) if t.get("esquina") else t
+
     if abs(ang) > 1e-9:
         c, s = math.cos(ang), math.sin(ang)
         puntos = [(p[0] * c - p[1] * s, p[0] * s + p[1] * c) for p in puntos]
         muestra = [(p[0] * c - p[1] * s, p[0] * s + p[1] * c) for p in muestra]
+        tramos = [con_esquina(t, lambda e: [e[0] * c - e[1] * s, e[0] * s + e[1] * c]) for t in tramos]
     base = puntos[largo["desde"]][1]
     arriba = sum(1 for p in puntos if p[1] > base + 1e-6)
     abajo = sum(1 for p in puntos if p[1] < base - 1e-6)
     if abajo > arriba:
         puntos = [(p[0], -p[1]) for p in puntos]
         muestra = [(p[0], -p[1]) for p in muestra]
-        tramos = [dict(t, sweep=(None if t["sweep"] is None else 1 - t["sweep"])) for t in tramos]
+        tramos = [con_esquina(dict(t, sweep=(None if t["sweep"] is None else 1 - t["sweep"])),
+                              lambda e: [e[0], -e[1]]) for t in tramos]
     return puntos, tramos, muestra
 
 
@@ -476,12 +526,10 @@ def _policurva(legs, dirs, radio_codo, pasos):
     puntos, tramos, muestra = _trazar(legs, dirs, radio_codo, pasos)
     if puntos is None:
         return None, None, None, False
-    # ¿CIERRA? Un estribo dobla sus dos ganchos en el mismo vértice. La pantalla no lo
-    # adivina midiendo puntas (las tangencias de los dos ganchos no coinciden): se le dice.
-    # Y si NO cierra, la medida del cuerpo la pone la curva del gancho: se traza de nuevo.
+    # ¿CIERRA? Un estribo dobla sus dos ganchos en la misma esquina. La pantalla no lo
+    # adivina midiendo puntas (las dos tangencias no coinciden): se le dice. UNA sola
+    # pasada: la geometría del gancho es la misma cierre o no (ver la cabecera).
     cerrada = _cierra(tramos)
-    if not cerrada and any(t.get("vertice") for t in tramos):
-        puntos, tramos, muestra = _trazar(legs, dirs, radio_codo, pasos, exterior=True)
     puntos, tramos, muestra = _orientar(puntos, tramos, muestra)
     return puntos, tramos, muestra, cerrada
 
@@ -530,6 +578,7 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
     if not legs:
         return {"ok": False, "motivo": "aSa no mandó los lados de esta barra",
                 "puntos": [], "tramos": [], "mbr": mbr}
+    _marcar_ganchos(legs, _num(diam_mm))
     dirs = _direcciones(legs)
     pin = _num(pin_diam)
     radio_codo = pin / 2.0 + _num(diam_mm) / 2.0

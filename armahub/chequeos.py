@@ -30,7 +30,7 @@ import math
 import re
 from typing import Optional
 
-from .figura_asa import _legs, envolvente_declarada, figura_de_lados
+from .figura_asa import GANCHO_MAXIMO_PHI, _legs, envolvente_declarada, figura_de_lados
 from .modelador_config import GANCHO_FABRICACION
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -48,8 +48,9 @@ GIRO_GANCHO = 89.5
 # tope, la traba 305A —que es un zigzag A·B·C·D·E con los tres lados largos de 300 mm en
 # las puntas— daba sus lados de 300 como «ganchos» sólo por ser terminales y doblar 90°.
 # No molestaba ahí (300 mm no dispara ninguna regla), pero habría tapado un lado terminal
-# corto de verdad. 15φ deja pasar cualquier gancho real y ningún tramo de barra.
-GANCHO_MAXIMO_PHI = 15.0
+# corto de verdad. 15φ deja pasar cualquier gancho real y ningún tramo de barra. El número
+# vive en figura_asa (GANCHO_MAXIMO_PHI), que lo usa para DIBUJAR esos mismos ganchos que
+# aSa no marca: se escribe una vez.
 
 
 def _num(x, por_defecto=0.0) -> float:
