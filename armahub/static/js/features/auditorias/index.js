@@ -1366,7 +1366,9 @@
     return false;
   }
 
-  function _conMinimo(pts, tipos) {
+  // `cerrada` lo dice el backend (9-nov): en un estribo con ganchos de 135° las puntas del
+  // marco son dos tangencias que no coinciden, y mirarlas no alcanza para saber que cierra.
+  function _conMinimo(pts, tipos, cerrada) {
     if (pts.length < 3) return pts;
     // Una figura CERRADA no se toca: estirar un lado la dejaría abierta, y un estribo con
     // una esquina suelta se lee como un error de la barra y no del dibujo.
@@ -1375,7 +1377,7 @@
     // descuadrado: lo que cierra ahí es el MARCO, y los ganchos sobresalen de él. Y un
     // estribo no necesita el mínimo —sus cuatro lados son del mismo orden de magnitud—,
     // así que no se pierde nada por no tocarlo.
-    if (_cierraRecortando(pts)) return pts;
+    if (cerrada || _cierraRecortando(pts)) return pts;
     var esArco = function (i) { return !!(tipos && tipos[i] === 'arco'); };
     var largos = [], i;
     for (i = 1; i < pts.length; i++) {
@@ -1461,7 +1463,7 @@
     var tramos = eje.tramos || [];
     var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
     // Los tipos van ANTES del mínimo: es lo que le dice cuáles no debe tocar.
-    var pts = _conMinimo(eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; }), tipos);
+    var pts = _conMinimo(eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; }), tipos, !!eje.cerrada);
     var completo = tramos.length === pts.length - 1;
     var radios = tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; });
     // El backend dice el sentido en geometría (sweep 1 = antihorario con la Y hacia
@@ -1755,8 +1757,6 @@
   var AFIGS = {};
   // Las barras marcadas con el check para resolverlas de a muchas.
   var SEL_AUD = {};
-  // Los códigos cuyas figuras ya se pidieron solas, por auditoría: una vez cada uno.
-  var AUTO_FIGS = {};
   var MODOS = {
     cc: { txt: 'Resuelto en CC', ph: '¿qué corregiste?' },
     nuevo: { txt: 'Resuelto en nuevo CC', ph: '¿qué hiciste?' },
@@ -1917,7 +1917,6 @@
     _bindAcciones(caja);
     _pintarLote();
     _reabrirLineas(abiertas);
-    _autoFiguras([g]);
   }
 
   // EL ELEMENTO SE NOMBRA ENTERO EN LA CABECERA (9-nov). En aSa un código tiene varios
@@ -2215,25 +2214,12 @@
     }
   }
 
-  // LAS QUE NO TIENEN FOTO COMPLETA PIDEN SUS CÓDIGOS SOLAS, una vez por apertura: sin eso
-  // el nombre de la figura y el de la marca no se verían. Las auditorías desde el 6-nov
-  // traen todo en la foto y no piden nada hasta que alguien apriete «Ver figuras».
-  function _autoFiguras(grupos) {
-    if (!AUD) return;
-    var ccs = [];
-    grupos.forEach(function (g) {
-      if (!g.cc || AFIGS[g.cc] || AUTO_FIGS[AUD.id + '|' + g.cc]) return;
-      AUTO_FIGS[AUD.id + '|' + g.cc] = 1;
-      var falta = g.els.some(function (e) {
-        return (e.barras_malas || []).some(function (b) {
-          var o = b.original || {};
-          return !o.figura || !('notas' in o);
-        });
-      });
-      if (falta) ccs.push(g.cc);
-    });
-    if (ccs.length) cargarFigurasAud(null, ccs);
-  }
+  // NADA SE PIDE A aSa SOLO (9-nov): las figuras llegan con «Ver figuras», igual que en la
+  // revisión de barras. Hubo una carga automática para las auditorías sin foto completa
+  // (las de antes del 6-nov, para que salieran el nombre de la figura y la Notes), y era lo
+  // que hacía lento abrir el modal: una lectura a aSa de 1 a 11 segundos sin que nadie la
+  // pidiera. En esas auditorías viejas la figura, la Notes y la cantidad salen al apretar
+  // el botón; en las nuevas vienen en la foto.
 
   function _bindAcciones(caja) {
     caja.querySelectorAll('button[data-afigs]').forEach(function (b) {

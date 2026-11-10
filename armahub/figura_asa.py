@@ -26,11 +26,26 @@ CÓMO SE CONSTRUYE (medido sobre 888 barras reales de 28 códigos de control, 6-
     donde los hay); y si es el primero, del primer lado con vector girado hacia atrás.
   · Un doblez de HASTA 90° es un vértice: el motor que dibuja le pone el codo tangente él
     mismo (disenador.js). Un doblez de MÁS de 90° —los ganchos de 135° y 180°— es un ARCO
-    explícito de radio mandril/2 + φ/2 entre sus dos puntos de tangencia: el lado que entra
-    llega entero al inicio del arco y el que sale arranca entero al final. Así el gancho de
-    180° queda paralelo a la barra, a dos radios, y no plegado encima de ella. Es la misma
-    receta con que el Modelador 3D arregló el estribo (figura_puntos.js::_ganchoArco) y lo
-    que dice el estándar BVBS: la curva >90° es un segmento propio, no un vértice.
+    explícito de radio mandril/2 + φ/2 entre sus dos puntos de tangencia. Es la misma
+    receta con que el Modelador 3D arregló el estribo y lo que dice el estándar BVBS: la
+    curva >90° es un segmento propio, no un vértice.
+  · EL GANCHO DE 135° SE DOBLA EN LA MEDIDA DEL CUERPO, NO DESPUÉS (9-nov). El lado del
+    cuerpo que remata en gancho —el 350 de un estribo T1, el 360 de una traba T12— es la
+    medida EXTERIOR de la figura; la pata del gancho (H3) es la extensión recta después del
+    doblez y arranca entera. Antes el arco se SUMABA después del lado entero: el gancho
+    quedaba corrido hacia afuera, curvado por fuera de la esquina del estribo y con la
+    pata cruzando el marco («le sumas un margen y los vértices quedan desfasados»).
+    Dónde cae la medida exterior depende de la figura, y se traza en dos pasadas:
+      - ESTRIBO (cierra: los dos ganchos se doblan en el mismo vértice): la medida la pone
+        la esquina del marco, así que el lado llega al vértice y su recto termina t =
+        R·tan(w/2) antes, en la tangencia. Medido sobre 62 T1 reales: aSa declara el
+        marco exacto (450 × 350) y así sale exacto; con el arco sumado salía 475 × 375.
+      - ABIERTA (traba T12, 104E…): no hay otra pata que haga la esquina, la medida la
+        pone la curva del gancho, que se queda s = t − R antes del vértice. El recto
+        termina R antes de la medida (t − s = R) y la curva llega justo a ella. Medido
+        sobre 85 T12 reales: aSa declara 358 para un cuerpo de 360; al vértice salía 281.
+    El gancho de 180° no tiene vértice (t → ∞): ahí los lados siguen siendo a la
+    tangencia, como dice BVBS.
   · Un lado curvo (`RB`) es un arco con su radio y su barrido. Comprobado contra un caso
     real: radio 12.200, arco 10.000 → 46,96°, cuerda 9.722 y flecha 1.010, que es la
     envolvente que manda aSa (9.708 × 1.007).
@@ -61,6 +76,9 @@ TOLERANCIA = 0.03
 GANCHO_135 = "H3"
 # Desde qué giro un doblez deja de ser un vértice y pasa a ser un arco propio.
 GIRO_ARCO = 90.5
+# Hasta qué giro el gancho se dobla en el vértice del cuerpo (ver la cabecera). El de 180°
+# no tiene vértice: su tangente se va al infinito.
+GIRO_GANCHO_VERTICE = 150.0
 # El motor 2D dibuja cada arco con el comando A de SVG en su versión CORTA (large-arc 0): un
 # arco de más de 180° hay que partirlo. Un estribo circular o una espiral son varios pedazos.
 ARCO_MAXIMO = 180.0
@@ -306,10 +324,24 @@ def _barrido_de(pts_arco, inicio, radio):
     return total
 
 
-def _trazar(legs, dirs, radio_codo, pasos):
+def _setback_gancho(entra, sale, giro, radio):
+    """Cuánto antes del vértice empieza el arco de un gancho de 135°: t = R·tan(w/2). Sólo
+    cuando un lado es del cuerpo y el otro la pata (ver la cabecera); entre dos lados del
+    cuerpo, o dos patas, el doblez sigue a la tangencia como dice BVBS. Cero si el lado
+    del cuerpo no alcanza para el recorte, para no dibujar un recto negativo."""
+    if abs(giro) >= GIRO_GANCHO_VERTICE or bool(entra["gancho"]) == bool(sale["gancho"]):
+        return 0.0
+    cuerpo = sale if entra["gancho"] else entra
+    t = radio * math.tan(math.radians(abs(giro)) / 2.0)
+    return t if t <= cuerpo["largo"] * 0.49 else 0.0
+
+
+def _trazar(legs, dirs, radio_codo, pasos, exterior=False):
     """Recorre los lados y arma la policurva. Devuelve (puntos, tramos, muestra): los
     puntos son los nodos (los arcos van como cuerda, el motor los dibuja con su radio); la
-    muestra tiene los arcos desplegados, para medir la envolvente."""
+    muestra tiene los arcos desplegados, para medir la envolvente. `exterior`: la medida
+    del lado del cuerpo que remata en gancho la pone la curva, no el vértice (ver la
+    cabecera: figura abierta)."""
     puntos = [(0.0, 0.0)]
     muestra = [(0.0, 0.0)]
     tramos = []
@@ -318,16 +350,34 @@ def _trazar(legs, dirs, radio_codo, pasos):
         d = dirs[i]
         if d is None:
             return None, None, None
+        recorte = 0.0   # lo que un lado del cuerpo deja de recorrer recto tras el gancho
         # El doblez con el lado anterior: si pasa de 90°, un arco propio antes del lado.
         if i > 0 and radio_codo > 0 and not leg["arco"] and not legs[i - 1]["arco"]:
             giro = _giro(dirs[i - 1], d)
             if abs(giro) > GIRO_ARCO:
                 signo = 1.0 if giro > 0 else -1.0
                 dp = dirs[i - 1]
+                t = _setback_gancho(legs[i - 1], leg, giro, radio_codo)
+                # Cuánto deja de recorrer recto el lado del cuerpo: hasta la tangencia (t)
+                # cuando la medida la pone el vértice; R cuando la pone la curva (t − s).
+                corte = (radio_codo if exterior else t) if t else 0.0
+                if corte and not legs[i - 1]["gancho"]:
+                    # El lado del cuerpo llegó entero a su medida: el recto termina antes,
+                    # y el arco arranca ahí.
+                    x, y = x - dp[0] * corte, y - dp[1] * corte
+                    puntos[-1] = (x, y)
+                    muestra[-1] = (x, y)
                 centro = (x - dp[1] * signo * radio_codo, y + dp[0] * signo * radio_codo)
                 a0 = math.atan2(y - centro[1], x - centro[0])
                 pts_arco = _arco(centro, radio_codo, a0, math.radians(giro), pasos)
+                n_arco = len(tramos)
                 x, y = _emitir_arco(puntos, muestra, tramos, pts_arco, radio_codo, signo, "", None)
+                if t:
+                    # El vértice del gancho queda escrito en su arco: con los dos ganchos de
+                    # un estribo en el mismo vértice se sabe que la figura cierra.
+                    tramos[n_arco]["vertice"] = [x - d[0] * t, y - d[1] * t]
+                    if not leg["gancho"]:
+                        recorte = corte   # el lado del cuerpo arranca después del arco
         desde = len(puntos) - 1
         if leg["arco"] and leg["radio"] and leg["radio"] > 0:
             r = leg["radio"]
@@ -345,14 +395,20 @@ def _trazar(legs, dirs, radio_codo, pasos):
             pts_arco = _arco(centro, r, a0, signo * barrido, pasos_rb)
             x, y = _emitir_arco(puntos, muestra, tramos, pts_arco, r, signo, leg["nombre"], round(leg["largo"]))
         else:
-            x += d[0] * leg["largo"]
-            y += d[1] * leg["largo"]
+            x += d[0] * (leg["largo"] - recorte)
+            y += d[1] * (leg["largo"] - recorte)
             puntos.append((x, y))
             muestra.append((x, y))
             tramos.append({"tipo": "recto", "radio": 0, "sweep": None, "lado": leg["nombre"],
                            "largo": round(leg["largo"]), "gancho": leg["gancho"],
                            "desde": desde, "hasta": len(puntos) - 1})
     return puntos, tramos, muestra
+
+
+def _cierra(tramos) -> bool:
+    """¿Los dos ganchos se doblan en el mismo vértice? Eso es un estribo."""
+    vs = [t["vertice"] for t in tramos if t.get("vertice")]
+    return len(vs) >= 2 and math.hypot(vs[0][0] - vs[-1][0], vs[0][1] - vs[-1][1]) < 1.0
 
 
 def _recortar_por_doblado(puntos, radio_doblado: float):
@@ -434,6 +490,12 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
     if puntos is None:
         return {"ok": False, "motivo": "un lado viene sin dirección",
                 "puntos": [], "tramos": [], "mbr": mbr}
+    # ¿CIERRA? Un estribo dobla sus dos ganchos en el mismo vértice. La pantalla no lo
+    # adivina midiendo puntas (las tangencias de los dos ganchos no coinciden): se le dice.
+    # Y si NO cierra, la medida del cuerpo la pone la curva del gancho: se traza de nuevo.
+    cerrada = _cierra(tramos)
+    if not cerrada and any(t.get("vertice") for t in tramos):
+        puntos, tramos, muestra = _trazar(legs, dirs, radio_codo, pasos_arco, exterior=True)
     puntos, tramos, muestra = _orientar(puntos, tramos, muestra)
     tridimensional = _es_tridimensional(legs)
 
@@ -468,6 +530,7 @@ def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
         ok, motivo = True, "figura tridimensional: aSa la dobla en dos planos y se dibuja en isométrica"
 
     return {"ok": ok, "motivo": motivo, "tridimensional": tridimensional, "fuente": "reconstruida",
+            "cerrada": cerrada,
             "puntos": [[round(p[0], 1), round(p[1], 1)] for p in puntos],
             "puntos3d": puntos3d, "lados3d": lados3d,
             "tramos": tramos, "ancho": round(ancho), "alto": round(alto), "mbr": mbr,

@@ -8,6 +8,7 @@ declara aSa, y lo que no cuadra se dibuja con aviso.
 Correr con: python tests/test_figura_asa.py
 """
 import json
+import math
 import os
 import sys
 
@@ -133,6 +134,56 @@ check("...y cuadra con aSa dentro de lo que mueve el doblez", r["ok"])
 r90 = figura_de(DIMS3, TRES, pin_diam=48.0, diam_mm=12.0)
 check("el gancho de 90° (H9) NO se da vuelta ni se vuelve arco: sigue midiendo 11400 × 300",
       r90["ok"] and r90["alto"] == 300 and tipos(r90) == ["recto"] * 3)
+
+# ── Caso 7b: el ESTRIBO T1 REAL de aSa (SVIP · 10mmA83): el gancho se dobla en el vértice ──
+# 9-nov, el usuario: «sigues renderizando mal los estribos… le sumas un margen y los vértices
+# quedan desfasados, no coinciden». El arco del gancho se SUMABA después del lado entero, y
+# el gancho quedaba corrido hacia afuera de la esquina, con la pata cruzando el marco. aSa
+# declara 260 × 260 —el marco— y con el arco sumado salía 285 × 285. Medido sobre las 1109
+# barras de 16 códigos auditados: los 62 estribos T1 pasan de 25 mm de error a 0.
+T1 = ("<la><st>T</st><bc>6</bc><mbr><X>260</X><Y>260</Y><Z>0</Z></mbr><lt>1280</lt><v>4.0</v>"
+      "<cp><t>H3</t><l>120</l><n>1</n><ln>G</ln></cp><cp><t>STD</t><a>-135</a><l>260</l><n>2</n><ln>E</ln></cp>"
+      "<cp><t>STD</t><a>-90</a><l>260</l><n>3</n><ln>D</ln></cp><cp><t>STD</t><a>-90</a><l>260</l><n>4</n><ln>C</ln></cp>"
+      "<cp><t>STD</t><a>-90</a><l>260</l><n>5</n><ln>B</ln></cp><cp><t>H3</t><a>-135</a><l>120</l><n>6</n><ln>A</ln></cp></la>")
+DIMS_T1 = json.dumps([
+    {"MMLength": 120.0, "LegNum": 6, "LegName": "A", "ElemType": "H3", "IsHook": True, "SlopingVector": "16,17,0"},
+    {"MMLength": 260.0, "LegNum": 5, "LegName": "B", "ElemType": "B", "IsHook": False, "SlopingVector": "252,0,0"},
+    {"MMLength": 260.0, "LegNum": 4, "LegName": "C", "ElemType": "B", "IsHook": False, "SlopingVector": "0,198,0"},
+    {"MMLength": 260.0, "LegNum": 3, "LegName": "D", "ElemType": "B", "IsHook": False, "SlopingVector": "-264,0,0"},
+    {"MMLength": 260.0, "LegNum": 2, "LegName": "E", "ElemType": "B", "IsHook": False, "SlopingVector": "0,-187,0"},
+    {"MMLength": 120.0, "LegNum": 1, "LegName": "G", "ElemType": "H3", "IsHook": True, "SlopingVector": "17,16,0"},
+])
+print("\n7b. El estribo T1: el gancho se dobla en el vértice del cuerpo, no después de él")
+r = figura_de(DIMS_T1, T1, pin_diam=40.0, diam_mm=10.0)
+
+
+def _d(p, q):
+    return math.hypot(q[0] - p[0], q[1] - p[1])
+
+
+p = r["puntos"]
+check("pata · arco · cuatro lados · arco · pata", tipos(r) == ["recto", "arco", "recto", "recto", "recto", "recto", "arco", "recto"])
+check("la envolvente es EXACTAMENTE el marco que declara aSa (260 × 260), no 285 × 285",
+      (r["ancho"], r["alto"]) == (260, 260) and r["ok"])
+check("el lado del cuerpo que remata en gancho termina t = R·tan(w/2) antes del vértice (recto ≈ 202 de 260)",
+      195 < _d(p[2], p[3]) < 210 and abs(_d(p[3], p[4]) - 260) < 0.5 and abs(_d(p[4], p[5]) - 260) < 0.5)
+check("...y la pata del gancho arranca entera (120) después del arco", abs(_d(p[0], p[1]) - 120) < 0.5 and abs(_d(p[7], p[8]) - 120) < 0.5)
+check("los dos ganchos se doblan en el MISMO vértice: la figura cierra y el backend lo dice",
+      r["cerrada"] is True and _d(r["tramos"][1]["vertice"], r["tramos"][6]["vertice"]) < 1.0)
+check("...y nada del gancho se sale del marco (las patas quedan adentro, como en el fierro)",
+      all(min(q[0] for q in p) - 0.5 <= pt[0] <= max(q[0] for q in p) + 0.5 for pt in (p[0], p[1], p[7], p[8])))
+# La traba T12 (caso 7) NO cierra: sus ganchos están en vértices distintos, y la medida del
+# cuerpo la pone la curva del gancho (exterior), no el vértice. Medido sobre 85 T12 reales:
+# aSa declara 358 para un cuerpo de 360; al vértice salía 281 y con el arco sumado 420.
+_fa = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "armahub", "figura_asa.py"),
+           encoding="utf-8").read()
+r = figura_de(DIMS_T12, T12, pin_diam=48.0, diam_mm=12.0)
+check("en la traba T12 el cuerpo mide 900 de fuera a fuera: la curva llega justo a la medida y el recto es 900 − 2R",
+      r["ancho"] == 900 and 838 < _d(r["puntos"][2], r["puntos"][3]) < 842)
+check("...y no cierra: no es un estribo", r["cerrada"] is False)
+check("la regla se escribe una vez (setback del gancho, dos pasadas) y el de 180° no la usa: no tiene vértice",
+      "def _setback_gancho(" in _fa and "GIRO_GANCHO_VERTICE = 150.0" in _fa and "def _cierra(tramos)" in _fa
+      and 'tramos[n_arco]["vertice"]' in _fa and '"cerrada": cerrada,' in _fa and "pasos_arco, exterior=True)" in _fa)
 
 # ── Caso 8: gancho de 180° — el arco deja la pata paralela a dos radios, no plegada encima ──
 U180 = ("<la><st>B</st><bc>3</bc><mbr><X>900</X><Y>70</Y><Z>0</Z></mbr><lt>1060</lt>"

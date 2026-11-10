@@ -1129,7 +1129,7 @@ check("después del envío la lista de elementos la ven todos y el clic abre los
 check("...el modal es de un elemento: su nombre arriba y sólo sus barras, sin columna Elemento",
       "var e = (enviada && ACC_EL != null) ? acc.filter(function (x) { return x.id === ACC_EL; })[0] : null;" in JS
       and "_hojaElemento(e, g, c.total > 0 && c.listas >= c.total)" in JS
-      and "elemento:" not in JS.split("function filaAccion(")[1].split("function _autoFiguras(")[0])
+      and "elemento:" not in JS.split("function filaAccion(")[1].split("function _bindAcciones(")[0])
 # 9-nov: «El RCA aparece después, ponlo después de estado. Aparece sólo cuando se marca
 # como Resuelto con alguna de las 2 opciones; de lo contrario no se considera».
 check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; sin «Debería decir»",
@@ -1144,6 +1144,12 @@ check("...el RCA va después de Estado y aparece sólo al elegir «Resuelto»; s
 check("con «nuevo CC» la respuesta baja a su línea en vez de quedar en un cuadrito",
       ".hojain{display:flex; flex-wrap:wrap;" in HTM and ".hojain .revnapin{flex:1 1 150px;" in HTM
       and 'placeholder="respuesta (obligatoria)"' in JS)
+# 9-nov: «sigues renderizando mal los estribos… le sumas un margen y los vértices quedan
+# desfasados». El arreglo es del backend (figura_asa.py, test_figura_asa); acá, que la
+# pantalla no estire un estribo que el backend ya dijo que cierra.
+check("la pantalla no estira las patas de un estribo: el backend le dice que la figura cierra",
+      "function _conMinimo(pts, tipos, cerrada)" in JS and "if (cerrada || _cierraRecortando(pts)) return pts;" in JS
+      and "tipos, !!eje.cerrada);" in JS)
 # 9-nov: «acá no sale la cantidad. Tampoco sale arriba del modal el nombre del elemento».
 check("la cabecera del modal nombra el elemento con su eje (en aSa varios se llaman igual)",
       "esc(e.nombre || '') + _ejeCab(e) + '</span>'" in JS and "function _ejeCab(e)" in JS)
@@ -1242,14 +1248,16 @@ check("...con sus lados y ángulos en columnas, como en la revisión de barras, 
       and "c.letras.forEach(function (L)" in HOJA
       and "lados: v.lados" in JS.split("function filaAccion(")[1][:2500])
 # EL NOMBRE DE LA FIGURA Y EL DE LA MARCA SE VEN SIEMPRE (6-nov): salen de la foto de la
-# auditoría; las que no los tienen piden sus códigos solas al abrirse.
+# auditoría. Las que no los tienen (antes del 6-nov) los traen con «Ver figuras»: nada se
+# pide a aSa solo (9-nov, «recuerda el botón para ver figuras… cargan lentos los modales»).
 check("el nombre de la figura y el que le puso el cubicador a la marca (Notes) se ven siempre",
       "notas: b.notas || null" in JS and '"notas": (it.get("Notes") or "").strip() or None' in SRC
-      and 'class="audnotas"' in HOJA and "notas: b.notas || ''" in JS and "function _autoFiguras(" in JS
+      and 'class="audnotas"' in HOJA and "notas: b.notas || ''" in JS
+      and "_autoFiguras" not in JS and "AUTO_FIGS" not in JS
+      and "'<button class=\"audmini\" data-afigs=\"' + esc(g.cc) + '\" title=\"Lee este código en aSa y '" in JS
       # La Notes en su columna, no pegada a la marca: ahí se cortaba (9-nov).
       and "if (c.notas) h += '<td class=\"hojanotas\">'" in HOJA
-      and "'</span></td>';" in HOJA.split("'<td class=\"hojamarca\"")[1][:300]
-      and "!o.figura || !('notas' in o)" in JS)
+      and "'</span></td>';" in HOJA.split("'<td class=\"hojamarca\"")[1][:300])
 
 print("\nEL ESTRIBO NO SE ESTIRA, Y LOS LADOS SE LEEN EN GRILLA")
 # El usuario: «el renderizado sigue desencuadrando la esquina con algun tipo de
@@ -1260,7 +1268,7 @@ print("\nEL ESTRIBO NO SE ESTIRA, Y LOS LADOS SE LEEN EN GRILLA")
 # descuadrada.
 check("una figura cuyo CONTORNO cierra no se estira, aunque sus puntas no se toquen",
       "function _cierraRecortando(" in JS and "for (var k = 0; k <= 2; k++)" in JS
-      and "if (_cierraRecortando(pts)) return pts;" in JS)
+      and "if (cerrada || _cierraRecortando(pts)) return pts;" in JS)
 # MEDIDO sobre barras de aSa: una T1 (SUSW 10mmA26) y una 106A (SUSH 8mmA37) llegan con
 # ocho tramos —pata, arco, cuatro lados, arco, pata— y su marco cierra recortando DOS de
 # cada punta. Una 102A (barra abierta) no cierra con ningun recorte y sigue recibiendo el
@@ -1344,7 +1352,7 @@ check("«Ver figuras» trae el dibujo y nada más: la foto manda en las medidas"
 check("la planilla del auditor no lleva columna Elemento: es un solo elemento y lo dice la cabecera",
       "elemento:" not in JS.split("function pintarBarras()")[1].split("function celdaEd(")[0]
       and "marcaTitle: [b.ref, b.plano, taller].filter(Boolean).join(' · ')" in JS
-      and "elemento:" not in JS.split("function filaAccion(")[1].split("function _autoFiguras(")[0])
+      and "elemento:" not in JS.split("function filaAccion(")[1].split("function _bindAcciones(")[0])
 check("φ y Figura centrados, el encabezado con el dato; la casilla de marcar cabe en su columna",
       "col(ANCHO.diam, 'φ', 'hojac')" in HOJA and "col(ANCHO.figura, 'Figura', 'hojac')" in HOJA
       and ".audt.hojab th.hojac, .audt.hojab td.hojac{text-align:center;}" in HTM
