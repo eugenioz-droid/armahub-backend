@@ -19,6 +19,7 @@ igual», que es otra cosa.
 
 Correr con: python tests/test_chequeos.py
 """
+import math
 import os
 import sys
 
@@ -1527,6 +1528,54 @@ check("la pantalla los pone en tres columnas: dibujo, regla, dónde aplica",
       and '<div class="regalc"><i>Dónde aplica</i>' in JS and ".revreglasc li.regl{display:grid" in HTM)
 check("...y el motor sabe marcar los lados que la regla compara", "opts.resaltar_seg" in DIS and "resaltar_seg:" in JS)
 check("la regla que no mira la figura lo dice en vez de dejar el hueco", "no mira la figura" in JS)
+
+# ── 9. No cabe en el camión (10-nov) ────────────────────────────────────────────────
+# El usuario: «hay figuras que por tamaño se salen del camión, el máximo permitido es de
+# 250 cm … si lo vemos como un triángulo, la altura no sobrepase esa medida». Sólo dos lados
+# («las reglas para figuras de más lados las iremos implementando de a poco»), por geometría:
+# la 102A/B/C y las de aSa que quedan así con sus lados opcionales vacíos (el corchete «2»).
+print("\n9. Una barra de dos lados que no cabe en el camión")
+
+
+def ele(a, b, giro=90.0, figura="102A", tipo_a="STD"):
+    return barra([("A", a, tipo_a, None), ("B", b, "STD", giro)], diam=12.0, figura=figura, ref="L1")
+
+
+m = C.r_no_cabe_camion(ele(3500, 4000), [])
+check("una L de 350 × 400 ocupa 263 cm acostada en diagonal: salta, y el texto lo dice en cm",
+      len(m) == 1 and m[0]["valor"] == 2634 and m[0]["esperado"] == 2500
+      and "263 cm de ancho" in m[0]["texto"] and "lleva 250" in m[0]["texto"] and m[0]["lados"] == ["A", "B"])
+check("una L de 300 × 300 ocupa 212: cabe", C.r_no_cabe_camion(ele(3000, 3000), []) == [])
+check("la altura es menor que el lado corto: 250 × 1200 no salta (245), 260 × 1200 sí (254)",
+      C.r_no_cabe_camion(ele(2500, 12000), []) == [] and len(C.r_no_cabe_camion(ele(2600, 12000), [])) == 1)
+check("la barra real más ancha que se midió (SVOA 8mmA159, L 160 × 402) ocupa 149 cm y no salta",
+      round(C.altura_en_camion(ele(1600, 4020)["lados"])) == 1487 and C.r_no_cabe_camion(ele(1600, 4020), []) == [])
+check("el ángulo es el GIRO de aSa: la 102C (135, punta aguda) y la 102B (45, abierta) usan la misma fórmula",
+      abs(C.altura_en_camion(ele(4000, 4000, 135.0, "102C")["lados"]) - 3696) < 2
+      and abs(C.altura_en_camion(ele(4000, 4000, 45.0, "102B")["lados"]) - 1531) < 2)
+check("va por GEOMETRÍA: el corchete «2» con el gancho G vacío es una L y entra igual",
+      len(C.r_no_cabe_camion(ele(3500, 4000, figura="2", tipo_a="H9"), [])) == 1)
+check("una figura de tres lados no entra en ésta (tendrá su propia regla)",
+      C.r_no_cabe_camion(barra([("A", 3000, "STD", None), ("B", 4000, "STD", 90), ("C", 3000, "STD", 90)],
+                               figura="103A"), []) == [])
+# SIN ÁNGULO EN EL XML (SU25 12mmA129, SU4K 8mmA56, SVKZ 16mmA11): el giro sale de los
+# vectores de ShapeDims, como al dibujarla. Si no, una L grande sin ángulo pasaría callada.
+sin_ang = [{"nombre": "A", "largo": 3500.0, "tipo": "H9", "arco": False, "angulo": None, "vx": 0.0, "vy": 120.0},
+           {"nombre": "B", "largo": 4000.0, "tipo": "B", "arco": False, "angulo": None, "vx": 377.0, "vy": 0.0}]
+check("sin ángulo en el XML el giro sale de los vectores: la misma L de 350 × 400 da 263",
+      round(C.altura_en_camion(sin_ang)) == 2634
+      and C.altura_en_camion([dict(l, vx=0.0, vy=0.0) for l in sin_ang]) is None)
+check("un lado curvo tampoco", C.altura_en_camion([{"nombre": "A", "largo": 3000.0, "arco": False, "angulo": None},
+                                                   {"nombre": "B", "largo": 4000.0, "arco": True, "angulo": 0.0}]) is None)
+r_cam = {r["codigo"]: r for r in C.REGLAS}["no_cabe_camion"]
+check("está en REGLAS con su nombre corto, su alcance y la tolerancia de 250 cm",
+      r_cam["corto"] == "No cabe en camión" and "102C" in r_cam["alcance"] and "corchete 2 sin G" in r_cam["alcance"]
+      and C.ANCHO_CAMION == 2500.0)
+e = C.ejemplo_dibujado(r_cam)
+check("su dibujo es la L con la diagonal (cota) y la altura (flecha) hasta ella",
+      bool(e) and [g["tipo"] for g in e["guias"]] == ["cota", "diametro"]
+      and abs(math.hypot(e["guias"][1]["x2"] - e["guias"][1]["x1"], e["guias"][1]["y2"] - e["guias"][1]["y1"]) - 2634) < 2
+      and "etiquetas: (ej.guias || [])" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

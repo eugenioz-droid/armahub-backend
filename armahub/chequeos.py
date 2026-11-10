@@ -30,7 +30,7 @@ import math
 import re
 from typing import Optional
 
-from .figura_asa import GANCHO_MAXIMO_PHI, _legs, envolvente_declarada, figura_de_lados
+from .figura_asa import GANCHO_MAXIMO_PHI, _direcciones, _giro, _legs, envolvente_declarada, figura_de_lados
 from .modelador_config import GANCHO_FABRICACION
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,9 +68,13 @@ def normalizar_asa(item: dict, ref: str) -> Optional[dict]:
     if not legs:
         return None
     diam = _diam_mm(item.get("BarSizeDescr"))
+    # El vector de cada lado viaja con él: hay barras que aSa manda sin el ángulo en el XML
+    # y sólo con vectores, y una regla que necesite el giro lo saca de ahí (ver
+    # altura_en_camion).
     lados = [{"nombre": l["nombre"], "largo": _num(l["largo"]), "tipo": l["tipo"],
               "angulo": l["angulo"], "arco": bool(l["arco"]),
-              "declarado_gancho": bool(l["gancho"])}
+              "declarado_gancho": bool(l["gancho"]),
+              "vx": l.get("vx", 0.0), "vy": l.get("vy", 0.0)}
              for l in legs]
     _clasificar_lados(lados, diam)
     return {
@@ -392,6 +396,77 @@ def r_patas_suple(barra, hermanas) -> list:
     }]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NO CABE EN EL CAMIÓN (10-nov)
+# ─────────────────────────────────────────────────────────────────────────────
+# El camión lleva 250 cm de ancho. Una barra de dos lados se carga acostada y en diagonal: la
+# línea entre sus dos puntas va a lo largo del camión, y lo que ocupa a lo ancho es la ALTURA
+# DEL TRIÁNGULO que forman sus dos lados sobre esa línea. Es la forma más angosta de cargarla
+# (la altura sobre el lado más largo es la menor de las tres), así que si eso no cabe, no
+# cabe de ninguna manera. Lo fijó el usuario: «si lo vemos como un triángulo, la altura no
+# sobrepase esa medida».
+#
+# POR GEOMETRÍA Y NO POR CÓDIGO. Entran la 102A, la 102B y la 102C —las del catálogo propio
+# siempre traen sus dos lados— y las figuras de aSa que quedan con dos lados cuando sus lados
+# opcionales van vacíos: el corchete «2» sin el gancho G (la figura más usada de aSa), J71,
+# AA1, 17, 4, 6, 14, 29, 30… Una lista de códigos dejaría pasar la próxima forma de armar la
+# misma L. Los lados vacíos ya no llegan: `_legs` descarta los de largo cero.
+#
+# SÓLO DOS LADOS, a pedido del usuario: «las reglas para figuras de más lados las iremos
+# implementando de a poco». La otra lectura —el lado corto atravesado en el camión, con el
+# largo a lo largo— es OTRA regla, para la 103A y otras, y no es ésta.
+#
+# MEDIDO al crearla, sobre los 160 códigos revisados en 30 días: de 1.558 barras de dos lados
+# no salta ninguna (la más ancha, SVOA 8mmA159, una L de 160 × 402, ocupa 149 cm). Es una
+# barrera: la altura siempre es menor que el lado corto, así que sólo puede saltar una barra
+# con sus dos lados sobre 250 cm. Se mide con las medidas cubicadas, hasta el vértice: el
+# doblez real redondea la esquina y ocupa unos centímetros menos, o sea que erra hacia el
+# lado seguro.
+ANCHO_CAMION = 2500.0
+
+
+def altura_en_camion(lados) -> Optional[float]:
+    """Lo que ocupa a lo ancho una barra de DOS lados rectos acostada en diagonal, en mm: la
+    altura del triángulo sobre la línea entre sus puntas. None si no es de dos lados rectos
+    o si falta el ángulo. El ángulo de aSa es el GIRO contra el lado anterior (90 en la
+    102A, 135 en la 102C, 45 en la 102B), así que la diagonal es √(a² + b² + 2ab·cos giro)
+    y el doble del área, a·b·sen giro."""
+    ls = [l for l in (lados or []) if l["largo"] > 0]
+    if len(ls) != 2 or any(l["arco"] for l in ls):
+        return None
+    giro = ls[1]["angulo"]
+    if giro is None:
+        # SIN ÁNGULO EN EL XML (3 de 1.558 barras reales): el giro sale de los vectores, con
+        # la misma función que los dibuja. Sin vectores tampoco, no hay cómo medir.
+        if not all(l.get("vx") or l.get("vy") for l in ls):
+            return None
+        d = _direcciones([dict(l, vz=0.0) for l in ls])
+        if d[0] is None or d[1] is None:
+            return None
+        giro = _giro(d[0], d[1])
+    a, b = ls[0]["largo"], ls[1]["largo"]
+    g = math.radians(abs(float(giro)))
+    c = math.sqrt(max(0.0, a * a + b * b + 2 * a * b * math.cos(g)))
+    return (a * b * abs(math.sin(g)) / c) if c > 1e-9 else 0.0
+
+
+def r_no_cabe_camion(barra, hermanas) -> list:
+    """UNA BARRA DE DOS LADOS QUE NO CABE EN EL CAMIÓN. Ver arriba: la altura del triángulo
+    sobre la diagonal pasa de 250 cm."""
+    h = altura_en_camion(barra["lados"])
+    if h is None or h <= ANCHO_CAMION + 0.01:
+        return []
+    a, b = [l for l in barra["lados"] if l["largo"] > 0]
+    return [{
+        "texto": ("acostada en diagonal ocupa %d cm de ancho y el camión lleva %d: con %s = %d y "
+                  "%s = %d cm no cabe" % (round(h / 10.0), round(ANCHO_CAMION / 10.0), a["nombre"],
+                                          round(a["largo"] / 10.0), b["nombre"], round(b["largo"] / 10.0))),
+        "lados": [a["nombre"], b["nombre"]],
+        "valor": round(h), "esperado": round(ANCHO_CAMION),
+        "clave": ("camion", round(a["largo"]), round(b["largo"])),
+    }]
+
+
 # CADA REGLA DICE DÓNDE APLICA Y, SI MIRA LA FIGURA, SE DIBUJA (10-nov). El usuario quiso
 # ver «gráficamente las reglas que tenemos implementadas»: el menú de la pantalla muestra
 # por regla un ejemplo trazado —con el mismo motor que las barras reales— con los lados
@@ -401,7 +476,8 @@ def r_patas_suple(barra, hermanas) -> list:
 # de dejar el hueco. El cabezal, que mira la tipología y no la figura, se dibuja igual como
 # una 101A recta: lo que salta lo dice su leyenda.
 #   ejemplo = {"lados": [(nombre, mm, giro, gancho?), ...], "diam": φ, "pin": mandril,
-#              "marcar": [lados que compara], "leyenda": "lo que se lee bajo el dibujo"}
+#              "marcar": [lados que compara], "leyenda": "lo que se lee bajo el dibujo",
+#              "guias": "altura_diagonal" (opcional: líneas de apoyo, ver _guias)}
 REGLAS = [
     {"codigo": "lado_corto",
      # El nombre corto es para los encabezados de tabla. Lo declara la regla y no lo recorta
@@ -457,7 +533,39 @@ REGLAS = [
      "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
                  "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B = 17 ≠ D = 13"},
      "fn": r_patas_suple},
+    {"codigo": "no_cabe_camion",
+     "corto": "No cabe en camión",
+     "nombre": "Figura de dos lados que no cabe en el camión",
+     "porque": "El camión lleva 250 cm de ancho. Una barra de dos lados se carga acostada y en "
+               "diagonal: lo que ocupa a lo ancho es la altura del triángulo que forman sus lados "
+               "sobre la línea entre las puntas. Si pasa de 250 cm, no se puede despachar.",
+     "necesita": ("lados",),
+     "alcance": "Toda barra de dos lados con un doblez, con cualquier ángulo: 102A, 102B y 102C, y las "
+                "figuras de aSa que quedan así con sus lados opcionales vacíos (el corchete 2 sin G, "
+                "J71, AA1, 17…). Las figuras de más lados tendrán sus propias reglas.",
+     "ejemplo": {"lados": [("A", 3500), ("B", 4000, -90)], "diam": 12, "pin": 72,
+                 "marcar": [], "guias": "altura_diagonal", "leyenda": "altura 263 cm > 250"},
+     "fn": r_no_cabe_camion},
 ]
+
+
+def _guias(tipo, puntos) -> list:
+    """Líneas de apoyo del dibujo de una regla, en las coordenadas del eje ya orientado (mm).
+    `altura_diagonal`: la diagonal entre las puntas (cota gris) y la altura desde el vértice
+    más lejano hasta ella (flecha azul de doble punta), que es lo que mide la regla del
+    camión."""
+    if tipo != "altura_diagonal" or len(puntos) < 3:
+        return []
+    p0, p1 = puntos[0], puntos[-1]
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-9:
+        return []
+    v = max(puntos[1:-1], key=lambda q: abs(dx * (q[1] - p0[1]) - dy * (q[0] - p0[0])))
+    t = ((v[0] - p0[0]) * dx + (v[1] - p0[1]) * dy) / L2
+    pie = [p0[0] + t * dx, p0[1] + t * dy]
+    return [{"tipo": "cota", "x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1]},
+            {"tipo": "diametro", "x1": v[0], "y1": v[1], "x2": round(pie[0], 1), "y2": round(pie[1], 1)}]
 
 
 def ejemplo_dibujado(regla) -> Optional[dict]:
@@ -468,7 +576,8 @@ def ejemplo_dibujado(regla) -> Optional[dict]:
         return None
     eje = figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0))
     return {"eje": eje, "marcar": list(ej.get("marcar") or []), "leyenda": ej.get("leyenda") or "",
-            "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]]}
+            "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]],
+            "guias": _guias(ej.get("guias"), eje.get("puntos") or [])}
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

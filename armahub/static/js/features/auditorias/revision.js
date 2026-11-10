@@ -135,6 +135,11 @@
         labels_auto: completo, angulos: false, cotas_arco_iso: [],
         resaltar_seg: completo ? tramos.map(function (s, i) { return marcar.indexOf(s.lado) !== -1 ? i : -1; })
                                        .filter(function (i) { return i >= 0; }) : [],
+        // Las líneas de apoyo que manda la regla (la diagonal y la altura del camión): mismas
+        // etiquetas de cota del Diseñador, en cm como los puntos.
+        etiquetas: (ej.guias || []).map(function (g) {
+          return { tipo: g.tipo, x1: g.x1 / 10, y1: g.y1 / 10, x2: g.x2 / 10, y2: g.y2 / 10 };
+        }),
         diam_mm: ej.diam, metrico: true });
     } catch (e) { return ''; }
   }
