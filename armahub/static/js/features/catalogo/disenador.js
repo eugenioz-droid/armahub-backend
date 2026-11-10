@@ -351,6 +351,18 @@
     // puntas. Con el codo tangente ya casi no se ve, pero sigue haciendo falta donde el
     // codo no se dibuja —vuelta en U, codo sub-píxel, vértice contra un arco declarado—
     // y ahí `miter` sacaría el pico de flecha que el codo vino justamente a matar.
+    // LOS LADOS QUE UNA REGLA MIRA (10-nov): una banda suave DEBAJO del trazo en los
+    // segmentos pedidos (`resaltar_seg`, índices de tramo). Va antes del path para que la
+    // tinta quede encima y la figura siga siendo la figura. Sólo rectos: una regla habla
+    // de lados, y el arco de un gancho no es un lado que se compare. El color es el mismo
+    // rojo con que la grilla de lados pinta la celda mala (.mal), para que sea una cosa.
+    (opts.resaltar_seg || []).forEach(function(i) {
+      var ra = tpts[i], rb = tpts[i + 1];
+      if (!ra || !rb || tiposEsc[i] === 'arco') return;
+      svg += '<line x1="' + ra.x.toFixed(1) + '" y1="' + ra.y.toFixed(1) + '" x2="' + rb.x.toFixed(1) + '" y2="' + rb.y.toFixed(1) +
+             '" stroke="' + (opts.color_resalte || '#c62828') + '" stroke-width="' + _swTxt(swTrazo * 3.2) +
+             '" stroke-linecap="butt" opacity="0.28"/>';
+    });
     svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet, filTmax) + '" fill="none" stroke="' + tinta + '" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="butt" />';
     // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
     //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas

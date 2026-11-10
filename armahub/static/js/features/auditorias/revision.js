@@ -93,12 +93,45 @@
       }).join('');
       return;
     }
-    el.className = '';
+    // EN TRES COLUMNAS, CON DIBUJO (10-nov). El usuario: «que se muestre el render con
+    // algún apoyo gráfico y al lado la explicación de la regla, en una tercera columna
+    // … el alcance». El dibujo es el ejemplo que declara la regla, trazado por el backend
+    // con el mismo motor que las barras reales; acá se dibuja y se marcan los lados que
+    // la regla compara. La regla que no mira la figura lo dice en vez de dejar el hueco.
+    el.className = 'regls';
     $('revReglasN').textContent = ks.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
     el.innerHTML = ks.map(function (k) {
-      var r = REV.reglas[k];
-      return '<li><b>' + esc(r.nombre) + '</b> <span>' + esc(r.porque) + '</span></li>';
+      var r = REV.reglas[k], ej = r.ejemplo;
+      return '<li class="regl">' +
+        '<div class="regfig">' + _svgRegla(ej) + '</div>' +
+        '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p>' +
+          (ej && ej.leyenda ? '<span class="umb">' + esc(ej.leyenda) + '</span>' : '') + '</div>' +
+        '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') + '</div></li>';
     }).join('');
+  }
+
+  // El dibujo de una regla: el eje que mandó el backend (figura_de_lados), por el mismo
+  // camino que svgEje en auditorias/index.js, con las LETRAS de rótulo —la leyenda habla
+  // de B y D, no de centímetros— y los lados que la regla compara en una banda roja.
+  function _svgRegla(ej) {
+    var M = global.disenadorMotor;
+    if (!ej || !ej.eje || !(ej.eje.puntos || []).length) return '<span class="regsin">no mira la figura</span>';
+    if (!M || !M.svgDesdePuntos) return '';
+    var eje = ej.eje, tramos = eje.tramos || [], marcar = ej.marcar || [];
+    var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
+    var completo = tramos.length === pts.length - 1;
+    var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
+    try {
+      return M.svgDesdePuntos(pts, { width: 170, height: 104, pad: 18,
+        tipos_seg: completo ? tipos : null,
+        radios_seg: completo ? tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; }) : null,
+        sweeps_seg: completo ? tramos.map(function (s) { return s.sweep == null ? 1 : 1 - s.sweep; }) : null,
+        labels: completo ? tramos.map(function (s) { return s.tipo === 'recto' ? (s.lado || '') : ''; }) : [],
+        labels_auto: completo, angulos: false, cotas_arco_iso: [],
+        resaltar_seg: completo ? tramos.map(function (s, i) { return marcar.indexOf(s.lado) !== -1 ? i : -1; })
+                                       .filter(function (i) { return i >= 0; }) : [],
+        diam_mm: ej.diam, metrico: true });
+    } catch (e) { return ''; }
   }
 
   // ── Correr la revisión, código por código ─────────────────────────────────────────

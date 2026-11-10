@@ -30,7 +30,7 @@ import math
 import re
 from typing import Optional
 
-from .figura_asa import _legs, envolvente_declarada
+from .figura_asa import _legs, envolvente_declarada, figura_de_lados
 from .modelador_config import GANCHO_FABRICACION
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -346,6 +346,59 @@ def r_cabezal_delgado(barra, hermanas) -> list:
     }]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LAS PATAS DEL SUPLE (10-nov)
+# ─────────────────────────────────────────────────────────────────────────────
+# UN CENTÍMETRO, QUE ES COMO SE CUBICA. El usuario: «para la tolerancia estamos hablando
+# de 1 cm, que es como se cubica (no al milímetro)». Las patas se tipean en centímetros,
+# así que hasta 1 cm de diferencia no es una pata distinta; desde 2 cm, sí.
+TOLERANCIA_PATAS_SUPLE = 10.0
+# REGLA POR FIGURA, y es a propósito. El usuario: «esa regla es para esa figura, es
+# inevitable que vamos a tener que ir definiendo reglas para figuras específicas». Las
+# reglas de arriba miran la FORMA (gancho en las dos puntas, cuatro lados en medio); ésta
+# mira el CÓDIGO de la figura, porque lo que la justifica no es la geometría sino para qué
+# se usa la barra. Si mañana otra figura es un suple, se agrega acá.
+FIGURAS_SUPLE = ("105A",)
+
+
+def r_patas_suple(barra, hermanas) -> list:
+    """LAS DOS PATAS DEL SUPLE TIENEN QUE MEDIR LO MISMO. El suple (105A: pie A, pata B,
+    lomo C, pata D, pie E) va dentro de una losa, y la losa tiene un solo espesor: B y D,
+    las patas perpendiculares al lomo, miden lo mismo. Los pies A y E sí pueden ser
+    distintos, por eso no se comparan.
+
+    EL CASO: SVN7 (EMM La Quebrada, «31.5 Corona suples»), 8mmA34, 8mmA36 y 12mmA8 con
+    D = 130 contra B de 200, 230 y 170. La revisión los miró la noche anterior y no dijo
+    nada: la regla de los lados opuestos deja fuera la 105A a propósito —sus pies son
+    desiguales— y con los pies se iban también las patas. Y las mismas diez barras
+    estaban en SU5D, el piso anterior, ya despachado: SVN7 era su copia."""
+    if (barra.get("figura") or "").strip().upper() not in FIGURAS_SUPLE:
+        return []
+    por_nombre = {l["nombre"]: l for l in barra["lados"]}
+    b, d = por_nombre.get("B"), por_nombre.get("D")
+    if not b or not d or b["largo"] <= 0 or d["largo"] <= 0:
+        return []
+    dif = abs(b["largo"] - d["largo"])
+    if dif <= TOLERANCIA_PATAS_SUPLE + 0.01:
+        return []
+    return [{
+        "texto": ("las patas B y D del suple miden distinto: %d y %d mm (%d de diferencia), "
+                  "y la losa en que va tiene un solo espesor"
+                  % (round(b["largo"]), round(d["largo"]), round(dif))),
+        "lados": ["B", "D"],
+        "valor": round(b["largo"]), "esperado": round(d["largo"]),
+        "clave": ("patas", round(b["largo"]), round(d["largo"])),
+    }]
+
+
+# CADA REGLA DICE DÓNDE APLICA Y, SI MIRA LA FIGURA, SE DIBUJA (10-nov). El usuario quiso
+# ver «gráficamente las reglas que tenemos implementadas»: el menú de la pantalla muestra
+# por regla un ejemplo trazado —con el mismo motor que las barras reales— con los lados
+# que compara marcados, la explicación al lado y, en una tercera columna, el alcance:
+# a qué figuras aplica y qué deja fuera. `ejemplo` es None cuando la regla no mira la
+# figura (el cabezal mira la tipología): ahí no hay nada que dibujar, y se dice.
+#   ejemplo = {"lados": [(nombre, mm, giro, gancho?), ...], "diam": φ, "pin": mandril,
+#              "marcar": [lados que compara], "leyenda": "lo que se lee bajo el dibujo"}
 REGLAS = [
     {"codigo": "lado_corto",
      # El nombre corto es para los encabezados de tabla. Lo declara la regla y no lo recorta
@@ -356,6 +409,10 @@ REGLAS = [
      "porque": "La planta dobla a 10 veces el diámetro. Menos que eso no se puede fabricar "
                "ni anclar. Ningún lado se excluye, tampoco los ganchos.",
      "necesita": ("lados", "diam"),
+     "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
+                "el diámetro, con piso de 7,5 cm.",
+     "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
+                 "marcar": ["C"], "leyenda": "C = 6 cm < 10 φ"},
      "fn": r_lado_corto},
     {"codigo": "lados_opuestos",
      "corto": "Lados opuestos",
@@ -363,6 +420,15 @@ REGLAS = [
      "porque": "En un estribo rectangular los dos lados que se miran de frente tienen que "
                "medir lo mismo. Si no, hay una medida tipeada mal.",
      "necesita": ("lados",),
+     "alcance": "Sólo estribos cerrados: gancho en las dos puntas y cuatro lados en medio "
+                "(T1, 106A…). Compara B con D y C con E. Una C o un suple 105A no entran: "
+                "sus pies son distintos a propósito.",
+     # El ejemplo va BIEN tipeado y cerrado, con el par que se compara marcado: dibujado
+     # con E ≠ C el marco no cierra y los dos ganchos se amontonan con las letras en una
+     # esquina; así se entiende qué se compara, y la leyenda dice cuándo salta.
+     "ejemplo": {"lados": [("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
+                           ("E", 500, -90), ("G", 100, -135, True)], "diam": 10, "pin": 40,
+                 "marcar": ["C", "E"], "leyenda": "salta si C ≠ E, o B ≠ D"},
      "fn": r_lados_opuestos},
     {"codigo": "cabezal_delgado",
      "corto": "Cabezal φ chico",
@@ -370,8 +436,33 @@ REGLAS = [
      "porque": "Un cabezal de φ12 o menos es inusual. Puede ser correcto —y entonces se "
                "deja sin efecto, de a muchos si hace falta— pero conviene mirarlo.",
      "necesita": ("diam",),
+     "alcance": "Sólo barras cuya tipología (Notes en aSa) dice CB o CAB. No mira la figura: "
+                "mira el diámetro.",
+     "ejemplo": None,
      "fn": r_cabezal_delgado},
+    {"codigo": "patas_suple",
+     "corto": "Patas del suple",
+     "nombre": "Suple 105A con las patas de distinto largo",
+     "porque": "El suple va dentro de una losa y la losa tiene un solo espesor: las patas B y D "
+               "tienen que medir lo mismo. Más de 1 cm de diferencia es una medida tipeada mal.",
+     "necesita": ("lados",),
+     "alcance": "Sólo la figura 105A. Compara B con D, las patas; los pies A y E pueden ser "
+                "distintos y no se miran. Tolerancia: 1 cm, que es como se cubica.",
+     "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
+                 "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B = 17 ≠ D = 13"},
+     "fn": r_patas_suple},
 ]
+
+
+def ejemplo_dibujado(regla) -> Optional[dict]:
+    """El ejemplo de una regla, trazado con el mismo motor que las barras reales, listo
+    para que la pantalla lo dibuje y marque los lados. None si la regla no mira la figura."""
+    ej = regla.get("ejemplo")
+    if not ej:
+        return None
+    eje = figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0))
+    return {"eje": eje, "marcar": list(ej.get("marcar") or []), "leyenda": ej.get("leyenda") or "",
+            "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]]}
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

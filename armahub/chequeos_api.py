@@ -36,7 +36,7 @@ from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_c
 from .chequeos_elementos import (REGLAS_ELEMENTO, correr_elemento, firma_elemento, gemelos_de, pares_de_obra,
                                  resumir)
 from .auth import get_current_user
-from .chequeos import REGLAS, correr, normalizar_asa
+from .chequeos import REGLAS, correr, ejemplo_dibujado, normalizar_asa
 from .db import audit, get_conn
 
 log = logging.getLogger("armahub.chequeos")
@@ -108,8 +108,11 @@ def listar_reglas(user=Depends(get_current_user)):
     """Qué se revisa y por qué. La pantalla lo muestra tal cual: una regla que nadie
     entiende es una regla que se ignora."""
     _puede_ver(user)
+    # CON SU DIBUJO Y SU ALCANCE (10-nov): el ejemplo va trazado desde acá, con el mismo
+    # motor que las barras reales, para que la pantalla sólo lo dibuje.
     return {"reglas": [{"codigo": r["codigo"], "nombre": r["nombre"],
-                        "corto": r.get("corto") or r["nombre"], "porque": r["porque"]}
+                        "corto": r.get("corto") or r["nombre"], "porque": r["porque"],
+                        "alcance": r.get("alcance") or "", "ejemplo": ejemplo_dibujado(r)}
                        for r in REGLAS]}
 
 

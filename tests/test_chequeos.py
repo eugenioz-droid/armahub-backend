@@ -1443,5 +1443,84 @@ check("cada consulta de los endpoints de lectura recibe tantos parametros como m
 for m in _malas:
     print("      " + m)
 
+# ── 7. Las patas del suple (10-nov) ─────────────────────────────────────────────────
+# EL CASO: SVN7 (EMM La Quebrada, «31.5 Corona suples»): 8mmA34, 8mmA36 y 12mmA8 son
+# suples 105A con D = 130 contra B de 200, 230 y 170. La revisión de la noche anterior
+# los miró (87 barras, 0 señales) y no dijo nada, porque NO había regla: la de los lados
+# opuestos deja fuera la 105A a propósito —sus pies A y E son desiguales— y con los pies
+# se iban las patas. El usuario: «esa figura 105A debiera tener una regla que identifique
+# si es que B es distinto de D, ya que lo usual es que el espesor de la losa en que va
+# esa figura sea el mismo». Tolerancia: «1 cm, que es como se cubica (no al milímetro)».
+print("\n7. Las patas del suple 105A tienen que medir lo mismo (10-nov)")
+
+
+def suple(a, b, c, d, e, figura="105A", diam=12.0):
+    return barra([("A", a, "STD", None), ("B", b, "STD", -90), ("C", c, "STD", -90),
+                  ("D", d, "STD", -90), ("E", e, "STD", -90)], diam=diam, figura=figura, ref="s1")
+
+
+check("un suple con las patas iguales no dice nada", C.r_patas_suple(suple(130, 170, 2280, 170, 640), []) == [])
+m = C.r_patas_suple(suple(130, 170, 2280, 130, 640), [])
+check("12mmA8 de SVN7: B = 170 contra D = 130 SÍ se marca, y el texto dice cuánto",
+      len(m) == 1 and m[0]["lados"] == ["B", "D"] and "170" in m[0]["texto"] and "130" in m[0]["texto"]
+      and "40 de diferencia" in m[0]["texto"] and "un solo espesor" in m[0]["texto"])
+check("...con valor y esperado, para poder comprobarlo después", m[0]["valor"] == 170 and m[0]["esperado"] == 130)
+check("los pies A y E pueden ser distintos: no se comparan (8mmA37-like: 740 y 740 vs 730 y 600 da igual)",
+      C.r_patas_suple(suple(730, 200, 4050, 200, 600), []) == [])
+check("la tolerancia es UN CENTÍMETRO, que es como se cubica: 17 contra 16 pasa",
+      C.TOLERANCIA_PATAS_SUPLE == 10.0 and C.r_patas_suple(suple(130, 170, 2280, 160, 640), []) == []
+      and "que es como se cubica" in SRC)
+check("...y 17 contra 15 no", len(C.r_patas_suple(suple(130, 170, 2280, 150, 640), [])) == 1)
+check("es una regla POR FIGURA: la misma barra con otro código no entra",
+      C.r_patas_suple(suple(130, 170, 2280, 130, 640, figura="103A"), []) == [] and C.FIGURAS_SUPLE == ("105A",))
+check("...y queda escrito que es a propósito, con las palabras del usuario",
+      "ir definiendo reglas para figuras específicas" in SRC)
+check("sin pata B o D no hay nada que comparar",
+      C.r_patas_suple(barra([("A", 100, "STD", None), ("B", 900, "STD", 90)], figura="105A"), []) == [])
+# LA BARRA REAL, con el LegAngle tal cual lo manda aSa (sin ShapeDims: los lados salen del XML).
+LA_12MMA8 = ("<la><st>B</st><bc>3</bc><mbr><X>2280</X><Y>170</Y><Z>0</Z></mbr><lt>3350</lt><v>4.0</v>"
+             "<cp><t>STD</t><l>130</l><n>1</n><ln>A</ln></cp><cp><t>STD</t><a>-90</a><l>170</l><n>2</n><ln>B</ln></cp>"
+             "<cp><t>STD</t><a>-90</a><l>2280</l><n>3</n><ln>C</ln></cp><cp><t>STD</t><a>-90</a><l>130</l><n>4</n><ln>D</ln></cp>"
+             "<cp><t>STD</t><a>-90</a><l>640</l><n>5</n><ln>E</ln></cp></la>")
+breal = C.normalizar_asa({"LegAngle": LA_12MMA8, "BarSizeDescr": "12mm", "ShpNameID": "105A", "PinDiam": 72,
+                          "CtrlCode": "SVN7", "ElementID": "SUPLES", "BarMark": "12mmA8", "TotalQty": 30}, "12mmA8")
+sreal = C.correr([breal])
+check("la barra real de SVN7 pasa por el motor entero y sale con la señal",
+      [x["regla"] for x in sreal] == ["patas_suple"] and sreal[0]["marca"] == "12mmA8"
+      and sreal[0]["detalle"]["lados"] == ["B", "D"])
+check("...y los lados opuestos siguen sin meterse con la 105A", C.r_lados_opuestos(breal, []) == [])
+check("está en REGLAS con su nombre corto",
+      any(r["codigo"] == "patas_suple" and r["corto"] == "Patas del suple" for r in C.REGLAS))
+
+# ── 8. Cada regla dice dónde aplica y, si mira la figura, se dibuja (10-nov) ─────────
+# El usuario: «me gustaría que en el menú de reglas podamos agregar dibujos renderizados
+# para que quede claro al usuario las cosas con las que saltan las reglas … el render con
+# algún apoyo gráfico y al lado la explicación de la regla, en una tercera columna … las
+# barras excluidas». Y: «el renderizado, pero solo si aplica».
+print("\n8. El menú de reglas: dibujo, explicación y alcance")
+check("cada regla declara su alcance", all((r.get("alcance") or "").strip() for r in C.REGLAS))
+check("...y dice si tiene ejemplo para dibujar", all("ejemplo" in r for r in C.REGLAS))
+por = {r["codigo"]: r for r in C.REGLAS}
+check("el cabezal no mira la figura: no se dibuja, y el alcance lo dice",
+      por["cabezal_delgado"]["ejemplo"] is None and C.ejemplo_dibujado(por["cabezal_delgado"]) is None
+      and "No mira la figura" in por["cabezal_delgado"]["alcance"])
+e = C.ejemplo_dibujado(por["patas_suple"])
+check("el ejemplo del suple se traza con el motor de las barras reales: cinco rectos, B y D marcados",
+      bool(e) and e["eje"]["ok"] and [t["lado"] for t in e["eje"]["tramos"]] == ["A", "B", "C", "D", "E"]
+      and e["marcar"] == ["B", "D"] and e["eje"]["ancho"] == 600 and e["eje"]["alto"] == 170)
+e2 = C.ejemplo_dibujado(por["lados_opuestos"])
+check("el del estribo va bien tipeado y CIERRA, con sus dos ganchos en arco y el par C-E marcado",
+      bool(e2) and [t["tipo"] for t in e2["eje"]["tramos"]].count("arco") == 2 and e2["marcar"] == ["C", "E"]
+      and e2["eje"]["cerrada"] is True)
+e3 = C.ejemplo_dibujado(por["lado_corto"])
+check("el del lado corto marca el lado que no llega a 10 φ", bool(e3) and e3["marcar"] == ["C"] and e3["eje"]["ok"])
+check("el endpoint los manda con el alcance",
+      '"alcance": r.get("alcance") or "", "ejemplo": ejemplo_dibujado(r)' in API)
+check("la pantalla los pone en tres columnas: dibujo, regla, dónde aplica",
+      "function _svgRegla(" in JS and '<div class="regfig">' in JS
+      and '<div class="regalc"><i>Dónde aplica</i>' in JS and ".revreglasc li.regl{display:grid" in HTM)
+check("...y el motor sabe marcar los lados que la regla compara", "opts.resaltar_seg" in DIS and "resaltar_seg:" in JS)
+check("la regla que no mira la figura lo dice en vez de dejar el hueco", "no mira la figura" in JS)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

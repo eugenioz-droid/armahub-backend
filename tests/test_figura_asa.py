@@ -25,7 +25,7 @@ def check(nombre, cond):
         fallos += 1
 
 
-from armahub.figura_asa import (figura_de, envolvente_declarada, trazo_de_catalogo,  # noqa: E402
+from armahub.figura_asa import (figura_de, envolvente_declarada, figura_de_lados, trazo_de_catalogo,  # noqa: E402
                                 TOLERANCIA)
 
 
@@ -183,7 +183,7 @@ check("en la traba T12 el cuerpo mide 900 de fuera a fuera: la curva llega justo
 check("...y no cierra: no es un estribo", r["cerrada"] is False)
 check("la regla se escribe una vez (setback del gancho, dos pasadas) y el de 180° no la usa: no tiene vértice",
       "def _setback_gancho(" in _fa and "GIRO_GANCHO_VERTICE = 150.0" in _fa and "def _cierra(tramos)" in _fa
-      and 'tramos[n_arco]["vertice"]' in _fa and '"cerrada": cerrada,' in _fa and "pasos_arco, exterior=True)" in _fa)
+      and 'tramos[n_arco]["vertice"]' in _fa and '"cerrada": cerrada,' in _fa and "pasos, exterior=True)" in _fa)
 
 # ── Caso 8: gancho de 180° — el arco deja la pata paralela a dos radios, no plegada encima ──
 U180 = ("<la><st>B</st><bc>3</bc><mbr><X>900</X><Y>70</Y><Z>0</Z></mbr><lt>1060</lt>"
@@ -328,6 +328,29 @@ r = trazo_de_catalogo({"puntos": [[-250.0, 0.0], [250.0, 0.0]], "lados": [{"nomb
                       {"A": 7450.0}, ARC, pin_diam=0.0)
 check("estirar la cuerda de un arco da una recta, y la envolvente lo delata",
       r is not None and not r["ok"] and "no cuadra" in r["motivo"])
+
+# ── 13. La figura desde lados escritos a mano (10-nov) ───────────────────────────────
+# Para dibujar el EJEMPLO de una regla de revisión con el mismo trazador que las barras
+# reales: codos, ganchos en arco, regla del vértice, orientación. Sin XML de aSa.
+print("\n13. figura_de_lados: el ejemplo de una regla se traza como una barra real")
+r = figura_de_lados([("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)], pin_diam=72, diam_mm=12)
+check("un suple 105A: cinco rectos con su letra, 600 × 170, abierto",
+      r["ok"] and tipos(r) == ["recto"] * 5 and [t["lado"] for t in r["tramos"]] == ["A", "B", "C", "D", "E"]
+      and (r["ancho"], r["alto"]) == (600, 170) and r["cerrada"] is False)
+p = r["puntos"]
+check("...y cada lado mide lo que se le dijo",
+      abs(_d(p[1], p[2]) - 170) < 0.5 and abs(_d(p[2], p[3]) - 600) < 0.5 and abs(_d(p[3], p[4]) - 130) < 0.5)
+r = figura_de_lados([("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
+                     ("E", 500, -90), ("G", 100, -135, True)], pin_diam=40, diam_mm=10)
+check("un estribo bien tipeado CIERRA: los dos ganchos en arco se doblan en el mismo vértice",
+      r["ok"] and r["cerrada"] is True and tipos(r) == ["recto", "arco", "recto", "recto", "recto", "recto", "arco", "recto"]
+      and (r["ancho"], r["alto"]) == (500, 300))
+r = figura_de_lados([("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
+                     ("E", 540, -90), ("G", 100, -135, True)], pin_diam=40, diam_mm=10)
+check("...y el mismo estribo con E = 540 contra C = 500 NO cierra", r["ok"] and r["cerrada"] is False)
+check("sin lados no hay figura, y no revienta", figura_de_lados([])["ok"] is False)
+check("figura_de y el ejemplo comparten el trazado (una sola policurva)",
+      _fa.count("_policurva(legs, dirs, radio_codo, pasos_arco)") == 2 and "def _policurva(" in _fa)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
