@@ -1508,6 +1508,16 @@ e0 = C.ejemplo_dibujado(por["cabezal_delgado"])
 check("el cabezal se dibuja como una 101A recta, con lo que salta en su leyenda; el alcance sigue diciendo que mira el diámetro",
       bool(e0) and e0["eje"]["ok"] and [t["lado"] for t in e0["eje"]["tramos"]] == ["A"] and e0["eje"]["alto"] == 0
       and "φ8 o φ10" in e0["leyenda"] and "No mira la figura" in por["cabezal_delgado"]["alcance"])
+# 11-nov, el usuario: «pones medidas arbitrarias mayores a 250, eso confunde, mejor poner el
+# nombre de la dimensión». Ninguna leyenda lleva una cifra del ejemplo: nombra la dimensión
+# y el límite de la regla (250 cm, 10 φ, 1 cm).
+import re as _re
+_ley = {r["codigo"]: (r.get("ejemplo") or {}).get("leyenda", "") for r in C.REGLAS}
+check("las leyendas nombran la dimensión y el límite, sin cifras del ejemplo",
+      _ley["no_cabe_camion"] == "h > 250 cm" and _ley["no_cabe_camion_radio"] == "h > 250 cm"
+      and _ley["no_cabe_camion_3"] == "pata A > 250 cm" and _ley["lado_corto"] == "C < 10 φ"
+      and _ley["patas_suple"] == "B ≠ D por más de 1 cm"
+      and all(set(_re.findall(r"\d+", t)) <= {"250", "10", "1", "8"} for t in _ley.values()))
 check("la leyenda va BAJO el dibujo, dentro de la celda del dibujo",
       "_svgRegla(ej) +\n          (ej && ej.leyenda ? '<span class=\"umb\">'" in JS and ".regfig .umb{" in HTM
       and ".regtxt .umb{" not in HTM)
@@ -1574,7 +1584,7 @@ check("está en REGLAS con su nombre corto, su alcance y la tolerancia de 250 cm
 e = C.ejemplo_dibujado(r_cam)
 check("su dibujo es la L con la diagonal (cota), la altura (flecha) hasta ella y su «h» (11-nov)",
       bool(e) and [g["tipo"] for g in e["guias"]] == ["cota", "diametro", "letra"] and e["guias"][2]["texto"] == "h"
-      and "h = 263" in e["leyenda"] and "g.texto != null ? { tipo: g.tipo, texto: g.texto" in JS
+      and e["leyenda"] == "h > 250 cm" and "g.texto != null ? { tipo: g.tipo, texto: g.texto" in JS
       and abs(math.hypot(e["guias"][1]["x2"] - e["guias"][1]["x1"], e["guias"][1]["y2"] - e["guias"][1]["y1"]) - 2634) < 2
       and "etiquetas: (ej.guias || [])" in JS)
 

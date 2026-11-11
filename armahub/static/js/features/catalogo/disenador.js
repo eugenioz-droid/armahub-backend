@@ -214,6 +214,13 @@
   // ---- Render: puntos → <svg> string ----
   // Escala y centra la polilínea en un viewBox fijo, con margen. Dibuja los
   // vértices y etiqueta cada lado con su letra.
+  // CADA RENDER CON SUS PROPIAS PUNTAS DE FLECHA (11-nov). Todos los tabs conviven en el mismo
+  // documento, y `url(#id)` resuelve al PRIMER elemento con ese id: si ése está dentro de un
+  // contenedor oculto (otro tab, un modal cerrado), Chrome no dibuja la punta. Medido: con un
+  // <marker id="disArrowEnd"> oculto antes, la flecha visible sale sin punta. El usuario lo vio
+  // en los dibujos del menú de reglas. Por eso el render numera sus markers; el lienzo del
+  // Diseñador conserva los suyos (es uno solo y está a la vista cuando se usa).
+  var _seqFlecha = 0;
   function svgDesdePuntos(pts, opts) {
     opts = opts || {};
     var tinta = opts.color || TINTA;        // ver "LA TINTA DE LA FIGURA" arriba
@@ -303,9 +310,10 @@
     var filTmax = _topeTangencia(opts.diam_mm, opts.metrico);
 
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
+    var mk = 'disArw' + (++_seqFlecha);
     svg += '<defs>' +
-      '<marker id="disArrowEnd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
-      '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker>' +
+      '<marker id="' + mk + 'E" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
+      '<marker id="' + mk + 'S" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker>' +
       '</defs>';
     // GIZMO de ejes X/Y/Z (solo 3D con vista fijada): pequeño indicador de ORIENTACIÓN
     // FIJO en la esquina inferior izquierda del preview. Muestra solo la dirección de
@@ -370,10 +378,10 @@
     //  - 2D: se calculan aquí desde los puntos escalados del lienzo (tpts). Como ya
     //    están en coords de render, se dibujan con tx identidad.
     if (opts.cotas_arco_iso) {
-      opts.cotas_arco_iso.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
+      opts.cotas_arco_iso.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx, mk + 'E'); });
     } else if (_cotas2d) {
       // 2D: calculadas sobre pts originales (arriba); tx las escala/posiciona al render.
-      _cotas2d.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
+      _cotas2d.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx, mk + 'E'); });
     }
     // LAS PUNTAS YA NO LLEVAN NODO (20-ago). Acá se dibujaban dos círculos de r = 2.5 en
     // los extremos, con la guarda `sw < 5` para no pintarlos cuando el trazo ya los tapaba.
@@ -451,7 +459,7 @@
     });
     // Etiquetas MANUALES mapeadas con tx() al render. Mismas funciones de dibujo
     // que el lienzo (registro), con los tamaños/estilos propios del render.
-    var oR = { sw: 1.2, tope: 4, dash: '3,2', fs: 11, halo: 2.5, dy: 3 };
+    var oR = { sw: 1.2, tope: 4, dash: '3,2', fs: 11, halo: 2.5, dy: 3, mkEnd: mk + 'E', mkStart: mk + 'S' };
     (opts.etiquetas || []).forEach(function(e) {
       if (REG().esArco(e.tipo)) {
         // Cota de arco concéntrica al segmento e.seg (mismo radio/sweep escalados).
@@ -811,12 +819,15 @@
   // Dibuja las 4 cotas de un arco a partir de sus PUNTOS YA EN EL ESPACIO DESTINO.
   // 2D: coords del lienzo (tx identidad). 3D: puntos proyectados con _iso (tx mapea al
   // render). `seg` = { desarrollo:[...], radio:[m,rp], horiz:[a,b], vert:[mv,gv] }.
-  function _dibujarCotasArcoProyectadas(seg, tx) {
+  // `mkEnd`: el id de la punta de flecha del SVG donde se dibuja (ver _seqFlecha); sin él,
+  // la del lienzo del Diseñador.
+  function _dibujarCotasArcoProyectadas(seg, tx, mkEnd) {
+    var urlFlecha = 'url(#' + (mkEnd || 'disArrowEnd') + ')';
     var col = '#888', ar = '#1565c0', out = '';
     function linea(par, color, dash, marker) {
       if (!par || par.length < 2) return '';
       var p1 = tx(par[0]), p2 = tx(par[1]);
-      return '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="'+color+'" stroke-width="0.8"'+(dash?' stroke-dasharray="3,2"':'')+(marker?' marker-end="url(#disArrowEnd)"':'')+'/>';
+      return '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="'+color+'" stroke-width="0.8"'+(dash?' stroke-dasharray="3,2"':'')+(marker?' marker-end="' + urlFlecha + '"':'')+'/>';
     }
     // DESARROLLO del arco: curva (polyline) paralela al arco, con offset. NO recta.
     if (seg.desarrollo && seg.desarrollo.length > 1) {

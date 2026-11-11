@@ -604,6 +604,9 @@ def r_no_cabe_camion_radio(barra, hermanas) -> list:
 # una 101A recta: lo que salta lo dice su leyenda.
 #   ejemplo = {"lados": [(nombre, mm, giro, gancho?), ...], "diam": φ, "pin": mandril,
 #              "marcar": [lados que compara], "leyenda": "lo que se lee bajo el dibujo",
+#   LA LEYENDA NOMBRA LA DIMENSIÓN Y EL LÍMITE, SIN CIFRAS DEL EJEMPLO (11-nov). El usuario:
+#   «pones medidas arbitrarias mayores a 250, eso confunde, mejor poner el nombre de la
+#   dimensión». El ejemplo se dibuja con medidas inventadas; la leyenda dice la REGLA.
 #              "guias": "altura_diagonal" (opcional: líneas de apoyo, ver _guias)}
 REGLAS = [
     {"codigo": "lado_corto",
@@ -618,7 +621,7 @@ REGLAS = [
      "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
                 "el diámetro, con piso de 7,5 cm.",
      "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
-                 "marcar": ["C"], "leyenda": "C = 6 cm < 10 φ"},
+                 "marcar": ["C"], "leyenda": "C < 10 φ"},
      "fn": r_lado_corto},
     {"codigo": "lados_opuestos",
      "corto": "Lados opuestos",
@@ -634,7 +637,7 @@ REGLAS = [
      # esquina; así se entiende qué se compara, y la leyenda dice cuándo salta.
      "ejemplo": {"lados": [("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
                            ("E", 500, -90), ("G", 100, -135, True)], "diam": 10, "pin": 40,
-                 "marcar": ["C", "E"], "leyenda": "salta si C ≠ E, o B ≠ D"},
+                 "marcar": ["C", "E"], "leyenda": "C ≠ E o B ≠ D"},
      "fn": r_lados_opuestos},
     {"codigo": "cabezal_delgado",
      "corto": "Cabezal φ chico",
@@ -658,7 +661,7 @@ REGLAS = [
      "alcance": "Sólo la figura 105A. Compara B con D, las patas; los pies A y E pueden ser "
                 "distintos y no se miran. Tolerancia: 1 cm, que es como se cubica.",
      "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
-                 "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B = 17 ≠ D = 13"},
+                 "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B ≠ D por más de 1 cm"},
      "fn": r_patas_suple},
     {"codigo": "no_cabe_camion",
      # «Camión: …» en las tres: son tres reglas del mismo motivo, y en los encabezados del
@@ -673,7 +676,7 @@ REGLAS = [
                 "figuras de aSa que quedan así con sus lados opcionales vacíos (el corchete 2 sin G, "
                 "J71, AA1, 17…). Las figuras de más lados tendrán sus propias reglas.",
      "ejemplo": {"lados": [("A", 3500), ("B", 4000, -90)], "diam": 12, "pin": 72,
-                 "marcar": [], "guias": "altura", "leyenda": "h = 263 cm > 250"},
+                 "marcar": [], "guias": "altura", "leyenda": "h > 250 cm"},
      "fn": r_no_cabe_camion},
     {"codigo": "no_cabe_camion_3",
      "corto": "Camión: 3 lados",
@@ -685,7 +688,7 @@ REGLAS = [
                 "ganchos, 103D1, 103G… La pata es la que queda atravesada: en una U de patas largas y "
                 "cuerpo corto (horquilla) es el cuerpo, y en una Z se suman las dos.",
      "ejemplo": {"lados": [("A", 3000), ("B", 6000, -90), ("C", 1200, -90)], "diam": 12, "pin": 72,
-                 "marcar": ["A"], "leyenda": "pata A = 300 cm > 250"},
+                 "marcar": ["A"], "leyenda": "pata A > 250 cm"},
      "fn": r_no_cabe_camion_3},
     {"codigo": "no_cabe_camion_radio",
      "corto": "Camión: radio",
@@ -698,7 +701,7 @@ REGLAS = [
                 "La cuerda no se compara con 250: va a lo largo del camión, y en los radios reales llega "
                 "a 12 m.",
      "ejemplo": {"lados": [("B", 8796, None, False, 2800)], "diam": 16, "pin": 96,
-                 "marcar": [], "guias": "altura", "leyenda": "h = 280 cm > 250"},
+                 "marcar": [], "guias": "altura", "leyenda": "h > 250 cm"},
      "fn": r_no_cabe_camion_radio},
 ]
 
