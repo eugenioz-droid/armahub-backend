@@ -108,7 +108,12 @@
         '<div class="regfig">' + _svgRegla(ej) +
           (ej && ej.leyenda ? '<span class="umb">' + esc(ej.leyenda) + '</span>' : '') + '</div>' +
         '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p></div>' +
-        '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') + '</div></li>';
+        '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') +
+          // LAS EXCEPCIONES, DENTRO DE LA REGLA (11-nov): una por bloque, con su fuente.
+          (r.excepciones || []).map(function (x) {
+            return '<div class="regexc"><i>Excepción · ' + esc(x.titulo || '') + '</i>' + esc(x.texto || '') +
+              (x.fuente ? '<span>' + esc(x.fuente) + '</span>' : '') + '</div>';
+          }).join('') + '</div></li>';
     }).join('');
   }
 

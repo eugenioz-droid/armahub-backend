@@ -176,6 +176,34 @@ def _minimo_fabricacion(diam_mm: float) -> float:
     return max(GANCHO_FABRICACION["factor"] * diam_mm, GANCHO_FABRICACION["min"] * 10.0)
 
 
+# EXCEPCIÓN: LAS ALTURAS DE LOS SOPORTES DE LOSA (11-nov). Las «patas de losa» —figuras 26 y
+# 305A, las sillas tridimensionales— se doblan en un SEGUNDO PROCESO, con bulón no normado, y
+# por eso sus alturas pueden bajar del mínimo de 10φ. Producción lo dejó escrito (correo del
+# 25-ago-2025): «8mm → altura mínima 6cm, 10mm → 8cm, 12mm → 10cm… como la pata losa no es un
+# elemento estructural no debería haber problemas». El usuario: «las patas de losa en general
+# tienen un segundo proceso y sí permiten mínimos de doblado menores a 10 veces el diámetro».
+#
+# SÓLO LAS ALTURAS, Y SÓLO ESOS TRES φ. Los demás lados de la silla siguen con 10φ, y un φ16
+# también. Las alturas son lados FIJOS de cada figura —en aSa van por el eje Y—: C y E en la
+# 26 (B, D y F son el apoyo y el travesaño), B y D en la 305A. Medido al crearla: las 63
+# señales de lado corto que hubo en esas dos figuras eran todas esas alturas, todas dentro
+# de la tabla, y todas se aceptaron a mano con «corresponde a soportes de losa».
+#
+# En los textos visibles se dice «soporte de losa» (la tipología SP del catálogo) y no «pata
+# de losa»: el usuario pidió no usar «pata» (ver test_chequeos §12).
+ALTURA_MINIMA_SOPORTE_LOSA = {8.0: 60.0, 10.0: 80.0, 12.0: 100.0}     # φ mm → altura mínima mm
+ALTURAS_SOPORTE_LOSA = {"26": ("C", "E"), "305A": ("B", "D")}       # figura → lados que son altura
+
+
+def _minimo_del_lado(barra, lado, minimo) -> tuple:
+    """El mínimo que rige para ESTE lado: el de fabricación, salvo la altura de un soporte de
+    losa en φ8, φ10 o φ12. Devuelve (mínimo mm, es_excepción)."""
+    alturas = ALTURAS_SOPORTE_LOSA.get((barra.get("figura") or "").strip().upper())
+    if alturas and lado["nombre"] in alturas and barra["diam"] in ALTURA_MINIMA_SOPORTE_LOSA:
+        return ALTURA_MINIMA_SOPORTE_LOSA[barra["diam"]], True
+    return minimo, False
+
+
 def r_lado_corto(barra, hermanas) -> list:
     """UN LADO MÁS CORTO QUE 10 DIÁMETROS. Menos que eso no se dobla ni ancla.
 
@@ -194,10 +222,34 @@ def r_lado_corto(barra, hermanas) -> list:
     if diam <= 0:
         return []
     minimo = _minimo_fabricacion(diam)
+    # Cada lado con SU mínimo: el de fabricación, o el de la excepción de soportes de losa.
+    rige = {l["nombre"]: _minimo_del_lado(barra, l, minimo) for l in barra["lados"]}
     cortos = [l for l in barra["lados"]
-              if not l["arco"] and l["largo"] > 0 and l["largo"] < minimo - 0.01]
+              if not l["arco"] and l["largo"] > 0 and l["largo"] < rige[l["nombre"]][0] - 0.01]
     if not cortos:
         return []
+    exc = [l for l in cortos if rige[l["nombre"]][1]]
+    if exc:
+        # Una altura de soporte de losa por debajo incluso de la excepción. El texto dice el
+        # mínimo de la excepción, que es el que rige, y por qué no es 10φ.
+        partes = ["%s (%d)" % (l["nombre"], round(l["largo"])) for l in exc]
+        texto = ("%s %s menos que la altura mínima de un soporte de losa en φ%g, %d mm (se dobla con bulón)"
+                 % (("la altura " + partes[0]) if len(partes) == 1 else ("las alturas " + _y(partes)),
+                    "mide" if len(partes) == 1 else "miden", diam, round(rige[exc[0]["nombre"]][0])))
+        otros = [l for l in cortos if not rige[l["nombre"]][1]]
+        if otros:
+            texto += (" · %s %s menos que el mínimo de fabricación, %d mm (%g × φ%g)"
+                      % (("el lado " if len(otros) == 1 else "los lados ")
+                         + _y(["%s (%d)" % (l["nombre"], round(l["largo"])) for l in otros]),
+                         "mide" if len(otros) == 1 else "miden",
+                         round(minimo), GANCHO_FABRICACION["factor"], diam))
+        peor = min(cortos, key=lambda l: l["largo"])
+        nombres = [l["nombre"] for l in cortos]
+        return [{
+            "texto": texto, "lados": nombres,
+            "valor": round(peor["largo"]), "esperado": round(rige[peor["nombre"]][0]),
+            "clave": tuple(sorted(nombres)) + (round(peor["largo"]),),
+        }]
     # UNA BARRA ES UN HALLAZGO, aunque le fallen tres lados. Lo pidió el usuario (14-oct)
     # viendo la misma barra dos veces en la lista, una por cada lado: «aunque sean 2 cosas
     # para una barra, creo que es mejor dejarlo como un único hallazgo».
@@ -620,6 +672,15 @@ REGLAS = [
      "necesita": ("lados", "diam"),
      "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
                 "el diámetro, con piso de 7,5 cm.",
+     # LAS EXCEPCIONES VAN DENTRO DE LA REGLA (11-nov): el menú las muestra bajo «Dónde aplica».
+     # El usuario lo dejó a criterio; una sección aparte complicaba el menú para una línea.
+     "excepciones": [
+         {"titulo": "Soportes de losa (figuras 26 y 305A)",
+          "texto": "Sus alturas (C y E en la 26, B y D en la 305A) se doblan en un segundo proceso, "
+                   "con bulón, y pueden bajar del mínimo: φ8 desde 6 cm, φ10 desde 8 cm, φ12 desde "
+                   "10 cm. Los demás lados y los otros diámetros siguen con 10 φ.",
+          "fuente": "Producción, 25-ago-2025"},
+     ],
      "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
                  "marcar": ["C"], "leyenda": "C < 10 φ"},
      "fn": r_lado_corto},

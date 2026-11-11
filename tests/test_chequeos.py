@@ -127,7 +127,9 @@ check("...con el piso de 7,5 cm para los diámetros chicos",
       abs(C._minimo_fabricacion(6.0) - 75.0) < 0.01)
 # LA COMPARACIÓN ES ESTRICTA Y ESO NO SE TOCA.
 check("la comparación es ESTRICTA: con «menor o igual» todos los ganchos serían errores",
-      "l[\"largo\"] < minimo - 0.01" in SRC)
+      # (11-nov) cada lado compara contra SU mínimo —el de fabricación o el de la excepción
+      # de soportes de losa—, pero la comparación sigue siendo estricta.
+      'l["largo"] < rige[l["nombre"]][0] - 0.01' in SRC)
 b = barra([("A", 900, "B", None), ("B", 900, "B", 90)], diam=10.0)
 check("una barra sana no dice nada", C.r_lado_corto(b, [b]) == [])
 
@@ -1670,6 +1672,52 @@ check("ningún texto visible usa pata, pie, horquilla ni cuerpo",
       not _re.search(r"\b(pata|patas|pie|pies|horquilla|horquillas|cuerpo)\b", _vis))
 s105 = C.r_patas_suple(suple(130, 170, 2280, 130, 640), [])
 check("...tampoco el texto de la señal del suple", "pata" not in s105[0]["texto"] and s105[0]["texto"].startswith("B y D"))
+
+# ── 13. Excepción: las alturas de los soportes de losa (11-nov) ────────────────────
+# Producción (25-ago-2025): las patas de losa se doblan con bulón en un segundo proceso; φ8
+# desde 6 cm, φ10 desde 8 cm, φ12 desde 10 cm. Sólo las alturas (C y E en la 26, B y D en la
+# 305A), sólo esos φ. Las 63 señales que hubo en esas figuras eran esas alturas.
+print("\n13. Las alturas de los soportes de losa tienen su propio mínimo")
+
+
+def silla26(c, e, diam=8.0, b=300, d=300, f=300):
+    return barra([("B", b, "STD", None), ("C", c, "STD", 90), ("D", d, "STD", -90), ("E", e, "STD", -90),
+                  ("F", f, "STD", 90)], diam=diam, figura="26", ref="S26")
+
+
+def silla305(b, d, diam=10.0):
+    return barra([("E", 500, "STD", None), ("D", d, "STD", 90), ("C", 500, "STD", -90), ("B", b, "STD", -90),
+                  ("A", 500, "STD", 90)], diam=diam, figura="305A", ref="S305")
+
+
+check("una 26 en φ8 con alturas de 7 cm ya no salta (antes: mínimo 8 cm)", C.r_lado_corto(silla26(70, 70), []) == [])
+check("...ni con 6 cm justos, que es el mínimo de la excepción", C.r_lado_corto(silla26(60, 60), []) == [])
+m = C.r_lado_corto(silla26(50, 70), [])
+check("con 5 cm sí salta, y dice el mínimo de la excepción (60) y por qué no es 10φ",
+      len(m) == 1 and m[0]["lados"] == ["C"] and m[0]["esperado"] == 60
+      and "altura mínima de un soporte de losa en φ8, 60 mm" in m[0]["texto"] and "bulón" in m[0]["texto"])
+check("una 305A en φ10 con alturas de 9 cm ya no salta; en φ12 rige 10 cm",
+      C.r_lado_corto(silla305(90, 90), []) == [] and len(C.r_lado_corto(silla305(90, 90, 12.0), [])) == 1)
+check("los OTROS lados de la silla siguen con 10φ: un apoyo B de 7 cm en φ8 salta como siempre",
+      len(C.r_lado_corto(silla26(70, 70, b=70), [])) == 1
+      and "mínimo de fabricación es 80" in C.r_lado_corto(silla26(70, 70, b=70), [])[0]["texto"])
+check("y los otros diámetros también: una altura de 15 cm en φ16 salta (mínimo 16)",
+      len(C.r_lado_corto(silla305(150, 150, 16.0), [])) == 1)
+check("la excepción es por figura: el mismo lado de 7 cm en una 103A φ8 salta",
+      len(C.r_lado_corto(barra([("A", 70, "STD", None), ("B", 900, "STD", 90), ("C", 70, "STD", 90)], diam=8.0,
+                               figura="103A"), [])) == 1)
+check("la tabla es la del correo de Producción",
+      C.ALTURA_MINIMA_SOPORTE_LOSA == {8.0: 60.0, 10.0: 80.0, 12.0: 100.0}
+      and C.ALTURAS_SOPORTE_LOSA == {"26": ("C", "E"), "305A": ("B", "D")})
+rl = {r["codigo"]: r for r in C.REGLAS}["lado_corto"]
+check("la regla declara su excepción y el menú la muestra dentro de la regla, con su fuente",
+      len(rl["excepciones"]) == 1 and "26 y 305A" in rl["excepciones"][0]["titulo"]
+      and rl["excepciones"][0]["fuente"] == "Producción, 25-ago-2025"
+      and '"excepciones": r.get("excepciones") or []' in API
+      and "'<div class=\"regexc\"><i>Excepción · '" in JS and ".regexc{" in HTM)
+check("el texto de la excepción tampoco usa términos coloquiales",
+      not _re.search(r"\b(pata|patas|pie|pies|horquilla|cuerpo)\b",
+                     (rl["excepciones"][0]["titulo"] + " " + rl["excepciones"][0]["texto"]).lower()))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

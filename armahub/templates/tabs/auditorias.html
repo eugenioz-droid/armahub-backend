@@ -780,6 +780,12 @@
   .regalc{font-size:11px; color:#546e7a; line-height:1.4; border-left:2px solid #e3e8ef; padding-left:10px;}
   .regalc i{display:block; font-style:normal; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
             color:#78909c; margin-bottom:2px;}
+  /* La excepción de una regla, dentro de «Dónde aplica»: el mismo rótulo, con el ámbar de
+     advertencia del Sistema de Diseño en el borde para que se distinga del alcance. */
+  .regexc{margin-top:8px; padding:6px 8px; background:#fffaf0; border-left:2px solid var(--arm-warning, #D97706);
+          border-radius:0 4px 4px 0; color:#5b4a2e;}
+  .regexc i{color:#92400E;}
+  .regexc span{display:block; margin-top:3px; font-size:10px; color:#8a7a5c;}
   @media (max-width:860px){ .revreglasc li.regl{grid-template-columns:1fr;} .regalc{border-left:none; padding-left:0;} }
   /* Las cajas de herramienta, plegadas. */
   .revmas{margin-top:10px; border:1px solid #cfd8dc; border-radius:6px; background:#fff;}
