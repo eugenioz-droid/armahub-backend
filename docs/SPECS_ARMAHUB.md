@@ -198,6 +198,19 @@ Reglas de prolijidad gráfica que aplican a TODA caluga, para mantener consisten
 - **Referencia canónica:** `templates/tabs/reclamos.html` (sub-tabs `recSubTabNav` +
   cards con título dentro). Replicar ese patrón al crear cualquier tab nuevo.
 
+#### Sistema de Diseño Armacero (desde 2026-11-11 — LEER ANTES DE TOCAR PANTALLAS)
+
+- La fuente es `docs/ARMACERO_DESIGN_SYSTEM/`: `DESIGN_RULES.md` (reglas), `tokens.json` (valores,
+  mandan sobre las láminas), `armacero-theme.css` (opt-in con `.arm-ds`, sólo vistas nuevas) y las
+  4 láminas de `manuales/`. **Leer `DESIGN_RULES.md` antes de crear o tocar cualquier pantalla.**
+- En la app los tokens viven como variables `--arm-*` en `:root` de `static/css/app.css`. Todo
+  color nuevo sale de ahí; no se inventan colores.
+- Decisiones ya tomadas por el usuario: verde oficial `#7EBA27` (reemplazó a `#8BC34A`); **texto
+  oscuro (`--arm-on-green`) sobre fondo verde**, nunca blanco; verde de TEXTO `--arm-green-ink`;
+  el azul `#104F9E` es de marca y vale como variante corporativa (sub-tabs de Auditorías).
+- La homologación de lo existente va **por pasos, sin cambiar funcionalidad**: no se tocan ids,
+  handlers ni textos, y cada paso se prueba en la web antes del siguiente.
+
 #### Carga de datos por tab y navegación (estándar — NO romper)
 
 Reglas para que la navegación sea uniforme y la restauración tras F5 funcione sola:
