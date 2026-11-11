@@ -79,7 +79,7 @@ print("\n4. Lo que no se esconde")
 check("lo que no tiene segmento cargado se muestra: si no, los porcentajes no suman cien",
       'SIN_SEGMENTO = "(sin segmento)"' in SRC and "no sumarian cien" in SRC)
 check("los colores del segmento son los MISMOS que en el cuadro por segmento",
-      "'1 y 2': '#42a5f5'" in JS and "'4 y 5': '#8bc34a'" in JS and "'YPS': '#ffa726'" in JS)
+      "'1 y 2': '#42a5f5'" in JS and "'4 y 5': '#7EBA27'" in JS and "'YPS': '#ffa726'" in JS)
 check("se agrega en la base, no se manda el detalle para que el navegador sume",
       "GROUP BY 1, 2" in SRC and "SE AGREGA EN LA BASE" in SRC)
 

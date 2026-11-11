@@ -461,10 +461,10 @@ function renderObraDetailSidebar(p, authData) {
   // KPIs grid
   html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px;">';
   html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
-  html += '<div style="font-size:18px; font-weight:bold; color:#8BC34A;">' + formatInteger(p.total_kilos, '0') + '</div>';
+  html += '<div style="font-size:18px; font-weight:bold; color:#7EBA27;">' + formatInteger(p.total_kilos, '0') + '</div>';
   html += '<div style="font-size:10px; color:#666;">kg</div></div>';
   html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
-  html += '<div style="font-size:18px; font-weight:bold; color:#558B2F;">' + (p.total_barras || 0).toLocaleString() + '</div>';
+  html += '<div style="font-size:18px; font-weight:bold; color:#4E7F16;">' + (p.total_barras || 0).toLocaleString() + '</div>';
   html += '<div style="font-size:10px; color:#666;">barras</div></div>';
   html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
   html += '<div style="font-size:14px; font-weight:bold; color:#666;">' + (p.diam_prom ? formatDecimal(p.diam_prom, 1, '-') : '-') + '</div>';
@@ -575,9 +575,9 @@ async function buildObraDetailMatriz(items, idProyecto) {
   // Build table — same format as export matrix but without checkboxes
   var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
   html += '<thead><tr>';
-  html += '<th style="border:1px solid #333; padding:3px 4px; background:#1a1a1a; color:#8BC34A; white-space:nowrap; min-width:120px; font-size:10px;">Piso</th>';
+  html += '<th style="border:1px solid #333; padding:3px 4px; background:#1a1a1a; color:#7EBA27; white-space:nowrap; min-width:120px; font-size:10px;">Piso</th>';
   ciclos.forEach(function(c) {
-    html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap; font-size:10px;">' + c + '</th>';
+    html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#7EBA27; text-align:center; white-space:nowrap; font-size:10px;">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
@@ -650,7 +650,7 @@ async function buildObraDetailMatriz(items, idProyecto) {
             if (isModified) {
               html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#c62828;" title="Modificado después de exportar">&#9888;</span>';
             } else {
-              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
+              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#4E7F16;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
             }
           }
           if (tieneEditadas) {
@@ -674,7 +674,7 @@ async function buildObraDetailMatriz(items, idProyecto) {
 
   // Legend
   html += '<div style="margin-top:6px; display:flex; gap:10px; align-items:center; font-size:10px; flex-wrap:wrap;">';
-  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> <span style="color:#558B2F;">&#10004;</span> Exportado</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #7EBA27; vertical-align:middle;"></span> <span style="color:#4E7F16;">&#10004;</span> Exportado</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado por re-import</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border-left:3px solid #8d6e63; border-top:1px solid #ccc; border-bottom:1px solid #ccc; border-right:1px solid #ccc; vertical-align:middle;"></span> &#9997; Editado a mano en la plataforma</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
@@ -919,7 +919,7 @@ async function crearCalcDesdeObraForm() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creado'; msg.style.color = '#4E7F16';
     document.getElementById('obraNewCalcNombre').value = '';
     await loadCalculistas();
     document.getElementById('newObraCalculista').value = data.id;
@@ -947,7 +947,7 @@ async function crearConstDesdeObraForm() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creada'; msg.style.color = '#4E7F16';
     document.getElementById('obraNewConstNombre').value = '';
     await loadClientes();
     document.getElementById('newObraCliente').value = data.id;
@@ -1254,7 +1254,7 @@ async function guardarEditObra() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Guardado'; msg.style.color = '#4E7F16';
     await loadProyectos();
     await loadFilters();
     await loadInicio();
@@ -1332,7 +1332,7 @@ async function crearCalcDesdeEditObra() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creado'; msg.style.color = '#4E7F16';
     document.getElementById('editObraNewCalcNombre').value = '';
     await loadCalculistas();
     var sel = document.getElementById('editObraCalculista');
@@ -1363,7 +1363,7 @@ async function crearConstDesdeEditObra() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creada'; msg.style.color = '#4E7F16';
     document.getElementById('editObraNewConstNombre').value = '';
     await loadClientes();
     var sel = document.getElementById('editObraConstructora');

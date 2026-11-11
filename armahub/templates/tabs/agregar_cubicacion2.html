@@ -7,7 +7,7 @@
     <!-- Cabecera. El título muestra el nombre de la obra desde la etapa 1 (ac2_tituloObra); en la
          landing (etapa 0) queda el genérico. El botón Volver (a la derecha) regresa a la landing. -->
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
-      <h3 id="ac2_tituloObra" style="margin:0; color:#558B2F;">📋 Despiece de Cubicación</h3>
+      <h3 id="ac2_tituloObra" style="margin:0; color:#4E7F16;">📋 Despiece de Cubicación</h3>
       <span id="ac2_estadoBadge" style="font-size:12px; color:#607d8b; background:#eceff1; border:1px solid #cfd8dc; border-radius:6px; padding:3px 10px; font-weight:600;">Nuevo Despiece</span>
       <div style="flex:1;"></div>
       <!-- ← Volver a obras: regresa a la landing (etapa 0). Visible en etapas 1-3 (en la 4 la ✕ hace de volver). -->
@@ -21,7 +21,7 @@
            lo que realmente es (otra forma de agregar barras, no una acción de cabecera). -->
       <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar el despiece: lo cierra y pasa a solo lectura"
               style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🚩 Terminar</button>
-      <button id="ac2_guardarBtn" onclick="ac2Guardar()" style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el despiece">💾 Guardar</button>
+      <button id="ac2_guardarBtn" onclick="ac2Guardar()" style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el despiece">💾 Guardar</button>
       <!-- X: DESCARTAR lo no guardado (distinto de "Eliminar lote", que borra uno ya guardado). -->
       <button id="ac2_descartarBtn" onclick="ac2Descartar()" title="Descartar lo no guardado y cerrar el despiece" style="display:none; font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
     </div>
@@ -57,19 +57,19 @@
            etapas muestra/oculta (NO el parentElement del input: el combobox lo envuelve y ese
            parent deja de contener el label). -->
       <div id="ac2_fldObra" style="display:flex; flex-direction:column; width:260px;">
-        <label id="ac2_lblObra" style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Obra *</label>
+        <label id="ac2_lblObra" style="font-size:11px; color:#4E7F16; font-weight:700; margin-bottom:2px;">Obra *</label>
         <input type="text" id="ac2_obra" list="ac2_obraDatalist" placeholder="🔍 buscar obra…" style="font-size:13px; height:34px; box-sizing:border-box;" />
         <datalist id="ac2_obraDatalist"></datalist>
         <select id="ac2_obraSel" style="display:none;"></select>
       </div>
       <!-- Ciclo: combobox de TEXTO LIBRE (sugiere ciclos de la obra, o escribe uno nuevo). -->
       <div id="ac2_fldCiclo" style="display:flex; flex-direction:column; width:180px;">
-        <label style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Ciclo</label>
+        <label style="font-size:11px; color:#4E7F16; font-weight:700; margin-bottom:2px;">Ciclo</label>
         <input type="text" id="ac2_ciclo" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
       <!-- Eje: combobox de TEXTO LIBRE (sugiere ejes existentes, pero puedes escribir uno nuevo). -->
       <div id="ac2_fldEje" style="display:flex; flex-direction:column; width:180px;">
-        <label id="ac2_lblEje" style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
+        <label id="ac2_lblEje" style="font-size:11px; color:#4E7F16; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
         <input type="text" id="ac2_eje" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
       <!-- Crear lote: exige Obra + Ciclo + Eje; ac2ActualizarCabecera lo pinta VIVO al completarlos.
@@ -78,7 +78,7 @@
       <!-- Botón FIJAR: confirma Ciclo+Eje y los bloquea → habilita elegir Sector/Estructura (abajo).
            Solo en el flujo de creación sin lote aún (etapa 3). Con lote+barras, el botón que aparece
            es "Editar ciclo/eje" (ac2_reasignarBtn). -->
-      <button id="ac2_fijarBtn" onclick="ac2FijarContexto()" title="Fijar Ciclo y Eje para elegir Sector/Estructura" style="display:none; font-size:13px; font-weight:600; height:34px; padding:0 16px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">✓ Fijar ciclo/eje</button>
+      <button id="ac2_fijarBtn" onclick="ac2FijarContexto()" title="Fijar Ciclo y Eje para elegir Sector/Estructura" style="display:none; font-size:13px; font-weight:600; height:34px; padding:0 16px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">✓ Fijar ciclo/eje</button>
       <!-- Guía del flujo: aparece si aún falta ciclo/eje. -->
       <span id="ac2_ctxHint" style="display:none; align-self:center; font-size:11px; color:#607d8b;">Completa Ciclo y Eje, luego presiona Fijar</span>
       <!-- Corregir eje/ciclo: modo explícito de 2 pasos. Botón "Corregir" (paso 1) desbloquea y
@@ -123,7 +123,7 @@
     </div>
     <!-- Botón "Crear despiece" (etapa 1): abre el flujo de creación (etapa 2 → aparecen Ciclo/Eje). -->
     <div id="ac2_crearDespieceWrap" style="display:none; margin-bottom:14px;">
-      <button id="ac2_crearDespieceBtn" onclick="ac2IniciarCreacion()" style="font-size:14px; font-weight:600; height:38px; padding:0 18px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Crear despiece</button>
+      <button id="ac2_crearDespieceBtn" onclick="ac2IniciarCreacion()" style="font-size:14px; font-weight:600; height:38px; padding:0 18px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">＋ Crear despiece</button>
       <span style="font-size:11px; color:#607d8b; margin-left:10px;">…o retoma uno del histórico ↓</span>
     </div>
 
@@ -132,7 +132,7 @@
     <div id="ac2_cfgModal" style="display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.35);">
       <div style="max-width:720px; margin:40px auto; background:#fff; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.25); max-height:88vh; overflow-y:auto;">
         <div style="display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid #eee;">
-          <h3 style="margin:0; color:#558B2F; font-size:16px;">⚙ Configuración de obra</h3>
+          <h3 style="margin:0; color:#4E7F16; font-size:16px;">⚙ Configuración de obra</h3>
           <span id="ac2_cfgObra" style="font-size:12px; color:#90a4ae;"></span>
           <div style="flex:1;"></div>
           <button onclick="ac2CerrarConfig()" style="font-size:16px; background:none; border:none; cursor:pointer; color:#90a4ae;">✕</button>
@@ -142,7 +142,7 @@
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; padding:12px 18px; border-top:1px solid #eee;">
           <button onclick="ac2CerrarConfig()" style="font-size:12px; padding:6px 14px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cerrar</button>
-          <button id="ac2_cfgGuardar" onclick="ac2GuardarConfig()" style="font-size:12px; padding:6px 16px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar configuración</button>
+          <button id="ac2_cfgGuardar" onclick="ac2GuardarConfig()" style="font-size:12px; padding:6px 16px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">💾 Guardar configuración</button>
         </div>
       </div>
     </div>
@@ -178,27 +178,27 @@
       <input id="ac2_planoInput" type="text" maxlength="120" placeholder="Ej: E-12 · Rev.C"
              onkeydown="if(event.key==='Enter'){event.preventDefault(); ac2FijarPlano();}"
              onblur="ac2FijarPlano()"
-             style="display:none; font-size:12px; height:24px; padding:2px 8px; border:1px solid #8BC34A; border-radius:4px; width:154px; box-sizing:border-box;" />
+             style="display:none; font-size:12px; height:24px; padding:2px 8px; border:1px solid #7EBA27; border-radius:4px; width:154px; box-sizing:border-box;" />
       <span id="ac2_planoChip" onclick="ac2EditarPlano()" title="Click para editar el plano"
             style="display:none; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; padding:3px 10px; background:#eef5e6; color:#33691e; border:1px solid #c5e1a5; border-radius:12px; cursor:pointer; font-weight:600;"></span>
     </div>
 
     <!-- FILA 3 · Botones rápidos + toggles -->
     <div id="ac2_toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-      <button id="ac2_barraBtn" onclick="ac2AgregarBarra()" style="font-size:12px; padding:5px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
+      <button id="ac2_barraBtn" onclick="ac2AgregarBarra()" style="font-size:12px; padding:5px 12px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
       <!-- +barras M: agrega N filas (una por piso seleccionado en el menú de Pisos), cada
            una con SU piso y la tipología del subtab activo. En la maqueta lo simula. -->
       <button id="ac2_barrasMBtn" onclick="ac2AgregarBarrasMulti()" style="font-size:12px; padding:5px 12px; background:#7cb342; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Agregar una barra por cada piso seleccionado, cada una con su piso y tipología">＋ barras M</button>
       <!-- Pisos múltiples: abre el selector de pisos de la obra (los pisos se CONFIGURAN
            en la tarea grande de "config de pisos"). Aquí es maqueta del menú. -->
       <div style="position:relative; display:inline-block;">
-        <button id="ac2_pisosBtn" onclick="ac2TogglePisos()" style="font-size:12px; padding:5px 12px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples ▾</button>
+        <button id="ac2_pisosBtn" onclick="ac2TogglePisos()" style="font-size:12px; padding:5px 12px; background:#fff; color:#4E7F16; border:1px solid #7EBA27; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples ▾</button>
         <div id="ac2_pisosMenu" style="display:none; position:absolute; z-index:20; top:34px; left:0; min-width:180px; background:#fff; border:1px solid #cfd8dc; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:8px;">
           <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:6px;">Pisos seleccionados (para “＋ barras M”):</div>
           <div id="ac2_pisosLista" style="font-size:12px; color:#90a4ae; font-style:italic; padding:4px 0;">Aún no hay pisos configurados para esta obra.</div>
           <div style="border-top:1px solid #eee; margin:6px 0;"></div>
           <div style="display:flex; gap:6px;">
-            <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">Aplicar</button>
+            <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">Aplicar</button>
             <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cerrar</button>
           </div>
           <div class="muted" style="font-size:9px; margin-top:6px; color:#999;">Los pisos se definen en “Config de pisos” de la obra.</div>
@@ -213,7 +213,7 @@
            que ellas porque se usa mucho menos. El id conserva su nombre histórico para no
            romper el show/hide que lo referencia. -->
       <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
-              style="display:none; font-size:11px; font-weight:600; padding:5px 10px; background:#fff; color:#33691e; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
+              style="display:none; font-size:11px; font-weight:600; padding:5px 10px; background:#fff; color:#33691e; border:1px solid #7EBA27; border-radius:4px; cursor:pointer;"><span class="b3d">3D</span> Enfierrador</button>
 
       <!-- Empuja los controles de VISTA hacia la DERECHA. -->
       <div style="flex:1;"></div>
@@ -232,10 +232,10 @@
         <!-- Orden/agrupación de la grilla: Creación (sin agrupar) · Piso · Tipología. -->
         <span id="ac2_ordenWrap" style="display:inline-flex; align-items:center; gap:5px;">
           <span style="font-size:11px; color:#78909c;">Agrupar</span>
-          <div style="display:inline-flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden;">
-            <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" title="Sin agrupar: en el orden en que se crearon" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Creación</button>
-            <button id="ac2o_piso" onclick="ac2SetOrden('piso')" title="Agrupar por piso" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
-            <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" title="Agrupar por tipología" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
+          <div style="display:inline-flex; border:1px solid #7EBA27; border-radius:4px; overflow:hidden;">
+            <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" title="Sin agrupar: en el orden en que se crearon" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#4E7F16; cursor:pointer;">Creación</button>
+            <button id="ac2o_piso" onclick="ac2SetOrden('piso')" title="Agrupar por piso" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #7EBA27; background:#7EBA27; color:#172408; cursor:pointer;">Piso</button>
+            <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" title="Agrupar por tipología" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #7EBA27; background:#fff; color:#4E7F16; cursor:pointer;">Tipología</button>
           </div>
         </span>
         <span style="width:1px; height:20px; background:#e0e0e0;"></span>
@@ -243,7 +243,7 @@
         <label style="font-size:11px; color:#546e7a; cursor:pointer; white-space:nowrap;" title="Mostrar/ocultar el dibujo de la figura"><input type="checkbox" id="ac2_render" checked onchange="ac2ToggleRender(this.checked)" style="vertical-align:middle;"/> Dibujo</label>
         <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;" title="Tamaño del dibujo">
           <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
-          <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
+          <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#7EBA27; color:#172408; cursor:pointer;">M</button>
           <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
           <button id="ac2r_xl" onclick="ac2SetTam('xl')" style="font-size:13px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
         </div>
@@ -263,7 +263,7 @@
         <select id="ac2ColOrigen" style="font-size:11px; padding:2px 4px;"></select>
         <select id="ac2ColOp" onchange="ac2ColFlecha()" style="font-size:11px; padding:2px 4px;"><option value="copiar">copiar →</option><option value="intercambiar">intercambiar ↔</option></select>
         <select id="ac2ColDestino" style="font-size:11px; padding:2px 4px;"></select>
-        <button onclick="ac2OperarColumnas()" style="font-size:11px; padding:4px 10px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Aplicar a las barras marcadas">Aplicar</button>
+        <button onclick="ac2OperarColumnas()" style="font-size:11px; padding:4px 10px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;" title="Aplicar a las barras marcadas">Aplicar</button>
         <div style="flex:1;"></div>
         <button onclick="ac2BorrarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;" title="Eliminar las barras marcadas">🗑 Borrar seleccionadas</button>
       </div>
@@ -374,7 +374,7 @@
 </div>
 
 <style>
-  /* Tab de tipología: activo con FONDO COMPLETO verde Armacero (#8BC34A), homologado al
+  /* Tab de tipología: activo con FONDO COMPLETO verde Armacero (#7EBA27), homologado al
      color primario de la plataforma. */
   /* MÁS PESO VISUAL (25-sep): la fila de tipologías es el control que más se clica del
      editor —se entra a Fi, se carga, se pasa a Fs— y era una hilera de chips pálidos bajo
@@ -382,8 +382,8 @@
      principal, y el tamaño lo tiene que decir. */
   .ac2tab { font-size:13px; padding:7px 16px; border:none; background:transparent; color:#455a64;
             cursor:pointer; border-radius:4px 4px 0 0; margin:0 1px; font-weight:700; }
-  .ac2tab:hover { background:#f1f8e9; color:#558B2F; }
-  .ac2tab.on { background:#8BC34A; color:#fff; box-shadow:0 -2px 0 inset rgba(0,0,0,.12); }
+  .ac2tab:hover { background:#f1f8e9; color:#4E7F16; }
+  .ac2tab.on { background:#7EBA27; color:#172408; box-shadow:0 -2px 0 inset rgba(0,0,0,.12); }
   /* TODOS no es una tipología, es una VISTA: se distingue de las que sí lo son. */
   .ac2tab.vista { font-size:11px; padding:5px 12px; font-weight:600; color:#78909c;
                   border:1px solid #cfd8dc; border-radius:4px; background:#fff; }
@@ -394,7 +394,7 @@
      para que el cebreado y la fila activa se vean a través. */
   .ac2cell { width:56px; font-size:11px; text-align:right; padding:3px 4px; border:1px solid #e6e9ed;
              border-radius:3px; box-sizing:border-box; background:transparent; }
-  .ac2cell:focus { outline:none; border-color:#8BC34A; box-shadow:0 0 0 2px rgba(139,195,74,.28); background:#fff; }
+  .ac2cell:focus { outline:none; border-color:#7EBA27; box-shadow:0 0 0 2px rgba(126,186,39,.28); background:#fff; }
   .ac2cell.rojo { border-color:#e57373; background:#ffebee; }
   /* CAMBIO DE DIÁMETRO respecto de la fila de arriba: barra ámbar + negrita en la celda del φ.
      Un solo color, sin rampa ni leyenda (ac2CalcMarcasDiam). */
@@ -405,7 +405,7 @@
   #ac2_grid tbody tr:nth-child(even):not(.ac2grupo):not(.ac2sep):not([style]) td { background:#fafbfc; }
   /* FILA ACTIVA (la del foco): franja verde al borde y fondo suave si no tiene estado propio. */
   #ac2_grid tr.ac2activa:not([style]) td { background:#f1f8e9; }
-  #ac2_grid tr.ac2activa td:first-child { box-shadow:inset 3px 0 0 #8BC34A; }
+  #ac2_grid tr.ac2activa td:first-child { box-shadow:inset 3px 0 0 #7EBA27; }
   /* ⎘ y ✕ sólo en la fila activa; ＋ se ve siempre. Siguen al FOCO, no al hover. */
   #ac2_grid tr:not(.ac2activa) .ac2accx { display:none; }
   /* Fila del repositorio de lotes / landing como hiperlink: hover la resalta (click abre). */
@@ -427,5 +427,5 @@
   /* Botón "Crear despiece" (landing): micro-realce al pasar el mouse. */
   #ac2_crearDespieceBtn { transition: filter .12s ease, transform .12s ease; }
   #ac2_crearDespieceBtn:hover { filter:brightness(1.06); transform:translateY(-1px); }
-  #ac2_crearDespieceBtn:focus-visible { outline:2px solid #558B2F; outline-offset:2px; }
+  #ac2_crearDespieceBtn:focus-visible { outline:2px solid #4E7F16; outline-offset:2px; }
 </style>

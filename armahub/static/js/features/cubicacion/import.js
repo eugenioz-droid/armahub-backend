@@ -22,13 +22,13 @@ function onObraDestinoChange() {
   const selected = sel.value;
   if (selected) {
     // Habilitar drop zone
-    dropZone.style.border = '2px dashed #8BC34A';
+    dropZone.style.border = '2px dashed #7EBA27';
     dropZone.style.background = '#f9fff4';
     dropZone.style.cursor = 'pointer';
     dropZone.style.opacity = '1';
     dropZone.style.pointerEvents = 'auto';
-    dropZone.ondragover = function(e) { e.preventDefault(); this.style.background='#e8f5e9'; this.style.borderColor='#558B2F'; };
-    dropZone.ondragleave = function() { this.style.background='#f9fff4'; this.style.borderColor='#8BC34A'; };
+    dropZone.ondragover = function(e) { e.preventDefault(); this.style.background='#e8f5e9'; this.style.borderColor='#6FA622'; };
+    dropZone.ondragleave = function() { this.style.background='#f9fff4'; this.style.borderColor='#7EBA27'; };
     dropZone.ondrop = function(e) { handleDrop(e); };
     dropZone.onclick = function() { document.getElementById('csvFile').click(); };
     dropZone.querySelector('div:nth-child(2)').textContent = 'Arrastra archivos CSV aquí o haz clic para seleccionar';
@@ -59,7 +59,7 @@ function onObraDestinoChange() {
 function handleDrop(e) {
   e.preventDefault();
   e.currentTarget.style.background = '#f9fff4';
-  e.currentTarget.style.borderColor = '#8BC34A';
+  e.currentTarget.style.borderColor = '#7EBA27';
   const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv') || f.name.endsWith('.txt'));
   if (files.length === 0) { alert('Solo se aceptan archivos CSV (.csv o .txt)'); return; }
   addFiles(files);
@@ -606,6 +606,9 @@ function showImportPreviewModalMulti(previews) {
       const allOk = decided === cantArchivos;
       btnConfirm.disabled = !allOk;
       if (allOk) {
+        // Blanco EXPLÍCITO: antes lo heredaba del estilo general de los botones, que
+        // desde el 11-nov lleva texto oscuro (sólo correcto sobre el verde).
+        btnConfirm.style.color = '#fff';
         if (conflicts.length > 0) {
           btnConfirm.style.background = '#b91c1c';
           btnConfirm.textContent = '⚠ Confirmar con solapamientos';

@@ -310,7 +310,7 @@ async function bmCargarObras(force) {
     var nom = o.nombre_proyecto || o.nombre || id;
     return '<tr style="border-top:1px solid #f0f0f0; cursor:pointer;" onmouseover="this.style.background=\'#f5faf5\'" onmouseout="this.style.background=\'\'"' +
            ' onclick="bmElegirObra(\'' + String(id).replace(/'/g,"\\'") + '\', \'' + String(nom).replace(/'/g,"\\'") + '\')">' +
-           '<td style="padding:6px 8px; color:#558B2F; font-weight:600;">' + _esc(nom) + '</td>' +
+           '<td style="padding:6px 8px; color:#4E7F16; font-weight:600;">' + _esc(nom) + '</td>' +
            '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_barras) + '</td>' +
            '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_kilos) + ' kg</td></tr>';
   }).join('') || '<tr><td colspan="3" style="padding:10px; color:#b0bec5; font-style:italic;">No hay obras con barras.</td></tr>';

@@ -13,7 +13,7 @@ async function loadPedidos() {
   if (!data || !data.pedidos) { container.innerHTML = '<div class="muted">Error cargando pedidos</div>'; return; }
   if (data.pedidos.length === 0) { container.innerHTML = '<div class="muted">No hay pedidos</div>'; return; }
 
-  const estadoColors = { borrador: '#9E9E9E', enviado: '#2196F3', en_proceso: '#FF9800', completado: '#8BC34A', cancelado: '#b42318' };
+  const estadoColors = { borrador: '#9E9E9E', enviado: '#2196F3', en_proceso: '#FF9800', completado: '#7EBA27', cancelado: '#b42318' };
 
   container.innerHTML = data.pedidos.map(p => {
     const sc = estadoColors[p.estado] || '#666';
@@ -90,7 +90,7 @@ async function openPedido(id) {
   if (!data.items || data.items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" class="muted">Sin items — agrega barras arriba</td></tr>';
   } else {
-    const estadoItemColors = { pendiente: '#9E9E9E', en_proceso: '#FF9800', completado: '#8BC34A' };
+    const estadoItemColors = { pendiente: '#9E9E9E', en_proceso: '#FF9800', completado: '#7EBA27' };
     tbody.innerHTML = data.items.map(i => {
       const ic = estadoItemColors[i.estado] || '#666';
       return '<tr>' +

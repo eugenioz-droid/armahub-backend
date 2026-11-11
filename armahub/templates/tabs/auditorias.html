@@ -140,7 +140,7 @@
       <div class="audh">Auditorías <span class="muted" id="audListaN"></span>
         <div style="flex:1"></div>
         <span class="audley">
-          <i style="background:#8BC34A"></i>conforme
+          <i style="background:#7EBA27"></i>conforme
           <i style="background:#ffb74d"></i>observación
           <i style="background:#c62828"></i>hallazgo
         </span>
@@ -153,7 +153,7 @@
     <!-- ══════ DENTRO DE LA AUDITORÍA: la muestra y la revisión ══════ -->
     <div id="audDetalle" style="display:none;">
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
-        <button id="audVolver" class="audnueva" style="background:#546e7a;">‹ Volver a las auditorías</button>
+        <button id="audVolver" class="audnueva" style="color:#fff; background:#546e7a;">‹ Volver a las auditorías</button>
         <b id="audDetTitulo" style="font-size:14px; color:#1565C0;"></b>
         <div style="flex:1"></div>
         <button id="audPdf" class="audmini" title="Alcance, hallazgos, acciones y conclusión">Informe PDF</button>
@@ -413,7 +413,7 @@
   .audnueva.on{background:#546e7a; box-shadow:none;}
   /* De dónde salió la obra: ArmaHub (con barras acá) o aSa. */
   .audori{font-size:9px; font-weight:700; border-radius:3px; padding:0 4px; letter-spacing:.3px;}
-  .audori.armahub{background:#f1f8e9; color:#558b2f;}
+  .audori.armahub{background:#f1f8e9; color:#4E7F16;}
   .audori.asa{background:#e3f2fd; color:#1565C0;}
   .audbd{max-height:40vh; overflow:auto;}
   .audt{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
@@ -566,7 +566,7 @@
   .revmat .revavth{min-width:140px;}
   .revmat .revav{display:flex; align-items:center; justify-content:center; gap:8px;}
   .revmat .revav .revbar2{width:84px; flex:none; height:6px; background:#eceff1; border-radius:99px; overflow:hidden;}
-  .revmat .revav .revbar2 i{display:block; height:100%; background:#8BC34A;}
+  .revmat .revav .revbar2 i{display:block; height:100%; background:#7EBA27;}
   .revmat .revav span{width:38px; text-align:right; font-variant-numeric:tabular-nums; color:#455a64;}
   .revmat tbody tr{cursor:pointer;}
   .revmat tbody tr:hover td{background:#f3f7fc;}
@@ -599,7 +599,7 @@
   .revkpi.listo{background:#e8f5e9; border-color:#c8e6c9;}
   .revkpi.listo b{color:#1b5e20;}
   .revkbar{height:5px; background:#eceff1; border-radius:99px; overflow:hidden; margin-top:6px;}
-  .revkbar i{display:block; height:100%; background:#8BC34A;}
+  .revkbar i{display:block; height:100%; background:#7EBA27;}
   .revkpi.listo .revkbar i{background:#43a047;}
   .revctx{font-size:10.5px; color:#90a4ae; margin-bottom:10px;}
   /* ══════ LA TARJETA DEL HALLAZGO DE ELEMENTO (4-nov) ══════
@@ -650,7 +650,7 @@
            border-radius:10px; padding:16px 18px;}
   .revavance{display:flex; align-items:center; gap:10px; font-size:11.5px; color:#546e7a; margin-bottom:8px;}
   .revavance .revbar2{flex:1; max-width:340px; height:8px; background:#eceff1; border-radius:99px; overflow:hidden;}
-  .revavance .revbar2 i{display:block; height:100%; background:#8BC34A;}
+  .revavance .revbar2 i{display:block; height:100%; background:#7EBA27;}
   /* LA CABECERA TE SIGUE (4-nov): toda la cabecera de la hoja queda pegada arriba mientras
      bajas por las barras, con el fondo de la hoja para tapar lo que pasa por debajo. */
   .revcab{position:sticky; top:0; z-index:6; background:#fff; margin:-16px -18px 10px;
@@ -670,7 +670,7 @@
   .revcuenta b{font-size:13px; color:#263238;}
   .revcc2.listo .revcuenta, .revcc2.listo .revcuenta b{color:#33691e;}
   .revccpie .revbar2{width:120px; flex:none; height:5px; background:#eceff1; border-radius:99px; overflow:hidden;}
-  .revccpie .revbar2 i{display:block; height:100%; background:#8BC34A;}
+  .revccpie .revbar2 i{display:block; height:100%; background:#7EBA27;}
   /* La explicación firmada, al final de la fila y en chico: acompaña a la decisión. */
   .revfirma{display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis;
             white-space:nowrap; vertical-align:middle; margin-right:8px;
@@ -818,7 +818,7 @@
   .audpasos span:first-child{border-radius:99px 0 0 99px; padding-left:12px;}
   .audpasos span:last-child{border-radius:0 99px 99px 0; border-right:1px solid #dfe5ea;
                             padding-right:12px;}
-  .audpasos span.hecho{background:#e8f0e3; color:#558b2f; border-color:#dce8d4;}
+  .audpasos span.hecho{background:#e8f0e3; color:#4E7F16; border-color:#dce8d4;}
   .audpasos span.aqui{background:#1565C0; color:#fff; border-color:#0d47a1;}
   .audflujoq{font-size:11px; color:#546e7a; max-width:560px;}
   .audflujoq b{color:#c62828;}
@@ -880,14 +880,14 @@
   /* Los dos hallazgos que se eligen con chip (observación y hallazgo), cada uno con su
      color cuando está encendido. */
   .audhz{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap; color:#fff;}
-  .audhz.conforme{background:#8BC34A;} .audhz.observacion{background:#ffb74d;}
+  .audhz.conforme{background:#7EBA27;} .audhz.observacion{background:#ffb74d;}
   .audhz.hallazgo{background:#c62828;}
   /* El veredicto de cada barra: dos botones chicos y, si es NC, su campo de texto. */
   .audvb{display:inline-flex; gap:2px;}
   .audvb button{font-size:9.5px; font-weight:700; padding:1px 7px; border:1px solid #dfe5ea;
                 background:#fff; color:#90a4ae; cursor:pointer;}
   .audvb button:first-child{border-radius:4px 0 0 4px;} .audvb button:last-child{border-radius:0 4px 4px 0;}
-  .audvb button.si.on{background:#8BC34A; border-color:#7cb342; color:#fff;}
+  .audvb button.si.on{background:#7EBA27; border-color:#7cb342; color:#172408;}
   .audvb button.no.on{background:#c62828; border-color:#b71c1c; color:#fff;}
   .audt tr.malo td{background:#fff6f6;}
   .audt tr.bueno td{background:#f8fbf4;}
@@ -1010,7 +1010,7 @@
   .audres2 > div{flex:1; min-width:280px;}
   /* La barrita de conformidad dentro de la tabla: se compara de un vistazo. */
   .audbar{position:relative; height:9px; background:#eceff1; border-radius:2px; min-width:50px;}
-  .audbar i{position:absolute; left:0; top:0; bottom:0; background:#8BC34A; border-radius:2px;}
+  .audbar i{position:absolute; left:0; top:0; bottom:0; background:#7EBA27; border-radius:2px;}
   /* La caja de códigos de control: es el alcance de una auditoría de aSa. */
   .audccbar{display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;}
   .audccb{flex:1; min-width:220px; font-size:11px; padding:4px 8px; border:1px solid #cfd8dc; border-radius:4px;}

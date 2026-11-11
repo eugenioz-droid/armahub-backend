@@ -255,8 +255,8 @@ function toggleKpiPeriod(period) {
   // Update button styles
   document.querySelectorAll('.kpi-toggle').forEach(function(btn) {
     if (btn.dataset.period === period) {
-      btn.style.background = '#8BC34A';
-      btn.style.color = 'white';
+      btn.style.background = '#7EBA27';
+      btn.style.color = '#172408';
     } else {
       btn.style.background = '';
       btn.style.color = '';
@@ -343,7 +343,7 @@ async function loadMiActividad() {
   const barrasData = dias.map(d => d.barras);
 
   // Highlight today (last bar)
-  const bgColors = dias.map((d, i) => i === dias.length - 1 ? '#558B2F' : '#8BC34A');
+  const bgColors = dias.map((d, i) => i === dias.length - 1 ? '#4E7F16' : '#7EBA27');
 
   const chartEl = document.getElementById('miActividadChart');
   if (!chartEl) return;

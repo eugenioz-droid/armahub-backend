@@ -132,7 +132,7 @@ async function crearReclamo() {
       }
     }
     _recCreateStagedFiles = [];
-    msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
+    msg.textContent = label + ' registrado correctamente'; msg.style.color = '#4E7F16';
     ['recTitulo','recDescripcion','recResponsable','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad','recAnioCalidad','recNumeroCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
@@ -194,7 +194,7 @@ async function crearCalcDesdeRecForm() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creado'; msg.style.color = '#4E7F16';
     document.getElementById('recNewCalcNombre').value = '';
     await loadCalculistas();
     document.getElementById('recNuevoProjCalculista').value = data.id;
@@ -222,7 +222,7 @@ async function crearConstDesdeRecForm() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creada'; msg.style.color = '#4E7F16';
     document.getElementById('recNewConstNombre').value = '';
     await loadClientes();
     document.getElementById('recNuevoProjConstructora').value = data.id;

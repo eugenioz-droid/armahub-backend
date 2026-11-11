@@ -1992,7 +1992,7 @@
       var btn = puede
         ? '<button onclick="disenadorReactivar(\'' + cod + '\')" title="Devolverla a su código ' +
           _escH(f.obsoleta_de) + ' y volver a ofrecerla" style="margin-top:3px; font-size:10px;' +
-          ' padding:2px 8px; border:1px solid #558B2F; background:#fff; color:#558B2F;' +
+          ' padding:2px 8px; border:1px solid #6FA622; background:#fff; color:#4E7F16;' +
           ' border-radius:4px; cursor:pointer;">Recuperar</button>'
         : '<button disabled title="El código ' + _escH(f.obsoleta_de) + ' ya lo ocupa otra figura.' +
           ' Para recuperar ésta, primero retira la que está usando ese código."' +

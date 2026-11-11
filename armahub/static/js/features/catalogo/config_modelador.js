@@ -467,7 +467,7 @@
       ' box-shadow:0 18px 48px rgba(0,0,0,.28); overflow:hidden;}' +
     '#cfgModHead{display:flex; justify-content:space-between; align-items:flex-start; gap:12px;' +
       ' padding:14px 18px; border-bottom:1px solid #e3e8ef;}' +
-    '#cfgModHead h3{margin:0; font-size:15px; color:#558B2F;}' +
+    '#cfgModHead h3{margin:0; font-size:15px; color:#4E7F16;}' +
     '#cfgModX{border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;' +
       ' font-size:14px; line-height:1; padding:6px 11px; color:#6b7a8d;}' +
     '#cfgModX:hover{background:#f5f7fa;}' +
@@ -490,8 +490,8 @@
     // tocar y qué no es justamente lo que faltaba cuando todo estaba apagado.
     '.cfgmod-card input,.cfgmod-card select{font:inherit; border:1px solid #dbe1e8; border-radius:6px;' +
       ' padding:4px 6px; background:#fff; color:#1f2a37; width:100%;}' +
-    '.cfgmod-card input:focus,.cfgmod-card select:focus{outline:none; border-color:#8BC34A;' +
-      ' box-shadow:0 0 0 2px rgba(139,195,74,.18);}' +
+    '.cfgmod-card input:focus,.cfgmod-card select:focus{outline:none; border-color:#7EBA27;' +
+      ' box-shadow:0 0 0 2px rgba(126,186,39,.18);}' +
     '.cfgmod-card input:disabled,.cfgmod-card select:disabled{background:#f2f4f7; color:#8a97a6;}' +
     '.cfgmod-w70{width:70px !important;}' +
     '.cfgmod-chipbox{margin-top:4px;}' +
@@ -502,7 +502,7 @@
     '#cfgModDirty{font-size:12px; color:#b26a00; font-weight:600;}' +
     '#cfgModMsg{font-size:12px; border-radius:7px; padding:6px 10px; display:none; flex:1;}' +
     '#cfgModGuardar{margin-left:auto; font-size:13px; font-weight:700; padding:8px 18px;' +
-      ' background:#8BC34A; color:#fff; border:none; border-radius:8px; cursor:pointer;}' +
+      ' background:#7EBA27; color:#172408; border:none; border-radius:8px; cursor:pointer;}' +
     '#cfgModGuardar:disabled{opacity:.45; cursor:default;}' +
     '.cfgmod-chip{display:inline-block; background:#eef3fb; border:1px solid #d6e4f7; border-radius:99px;' +
       ' padding:1px 8px; font-size:11px; margin:1px 2px 1px 0; color:#2b4a72;}' +
@@ -515,7 +515,7 @@
     '.cfgmod-modos{display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;}' +
     '.cfgmod-modos label{display:flex; gap:7px; align-items:flex-start; border:1px solid #e3e8ef;' +
       ' border-radius:9px; padding:9px 12px; background:#fff; flex:1; min-width:230px; font-size:13px;}' +
-    '.cfgmod-modos label.on{border-color:#8BC34A; box-shadow:0 0 0 2px rgba(139,195,74,.18);}' +
+    '.cfgmod-modos label.on{border-color:#7EBA27; box-shadow:0 0 0 2px rgba(126,186,39,.18);}' +
     '.cfgmod-modos label.off{opacity:.55; background:#f7f9fc;}' +
     '.cfgmod-modos label input{width:auto !important;}' +
     '.cfgmod-modos .t{font-weight:600; display:block;}' +

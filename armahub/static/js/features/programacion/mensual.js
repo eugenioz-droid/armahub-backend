@@ -33,7 +33,7 @@
   var MESN = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   // Los mismos colores del cuadro por segmento: el mismo segmento no puede ser de dos
   // colores distintos en dos pantallas de la misma aplicación.
-  var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#8bc34a', 'YPS': '#ffa726',
+  var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#7EBA27', 'YPS': '#ffa726',
                     'Otros': '#90a4ae', '(sin segmento)': '#cfd8dc' };
 
   function $(id) { return document.getElementById(id); }

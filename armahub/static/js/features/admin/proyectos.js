@@ -186,7 +186,7 @@ async function crearCalcDesdeAdminProj() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creado'; msg.style.color = '#4E7F16';
     document.getElementById('adminProjNewCalcNombre').value = '';
     await loadCalculistas();
     var sel = document.getElementById('editProjCalculista');
@@ -219,7 +219,7 @@ async function crearConstDesdeAdminProj() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    msg.textContent = 'Creada'; msg.style.color = '#4E7F16';
     document.getElementById('adminProjNewConstNombre').value = '';
     await loadClientes();
     var sel = document.getElementById('editProjCliente');
@@ -255,7 +255,7 @@ async function guardarProyectoAdmin(idProyecto) {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Guardado'; msg.style.color = '#4E7F16';
     await loadAdminProyectos();
     // Also refresh project selectors elsewhere
     await loadProyectos();

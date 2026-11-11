@@ -175,7 +175,7 @@ function bmSetTam(t) {
   bmTam = t;
   ['s','m','l','xl'].forEach(function(x) {
     var b = document.getElementById('bmr_' + x); if (!b) return;
-    var on = (t === x); b.style.background = on ? '#8BC34A' : '#fff'; b.style.color = on ? '#fff' : '#607d8b';
+    var on = (t === x); b.style.background = on ? '#7EBA27' : '#fff'; b.style.color = on ? '#fff' : '#607d8b';
   });
   if (bmVerRender && typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
 }

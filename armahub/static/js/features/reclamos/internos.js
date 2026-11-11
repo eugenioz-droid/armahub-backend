@@ -173,7 +173,7 @@ async function crearReclamoInterno() {
       }
     }
     _intCreateStagedFiles = [];
-    msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
+    msg.textContent = label + ' registrado correctamente'; msg.style.color = '#4E7F16';
     ['recIntTitulo','recIntDescripcion','recIntAreaDestino','recIntFechaDeteccion','recIntAnioCalidad','recIntNumeroCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });

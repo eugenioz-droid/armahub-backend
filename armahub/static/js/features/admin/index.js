@@ -111,19 +111,19 @@ async function loadDbInfo() {
   document.getElementById('dbInfoContainer').innerHTML = `
     <div class="row">
       <div class="card" style="flex:1; text-align:center; margin:4px;">
-        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.barras}</div>
+        <div style="font-size:28px; font-weight:bold; color:#7EBA27;">${data.barras}</div>
         <div class="muted">Barras</div>
       </div>
       <div class="card" style="flex:1; text-align:center; margin:4px;">
-        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.proyectos}</div>
+        <div style="font-size:28px; font-weight:bold; color:#7EBA27;">${data.proyectos}</div>
         <div class="muted">Proyectos</div>
       </div>
       <div class="card" style="flex:1; text-align:center; margin:4px;">
-        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.usuarios}</div>
+        <div style="font-size:28px; font-weight:bold; color:#7EBA27;">${data.usuarios}</div>
         <div class="muted">Usuarios</div>
       </div>
       <div class="card" style="flex:1; text-align:center; margin:4px;">
-        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.kilos_totales.toFixed(0)}</div>
+        <div style="font-size:28px; font-weight:bold; color:#7EBA27;">${data.kilos_totales.toFixed(0)}</div>
         <div class="muted">Kilos totales</div>
       </div>
     </div>
@@ -210,7 +210,7 @@ async function createUser() {
     var opt = sel ? sel.options[sel.selectedIndex] : null;
     areaLabel = opt ? ' → ' + opt.text + ' (' + rolArea + ')' : '';
   }
-  msg.textContent = 'Usuario ' + email + ' (' + role + ')' + areaLabel + ' creado.'; msg.style.color = '#558B2F';
+  msg.textContent = 'Usuario ' + email + ' (' + role + ')' + areaLabel + ' creado.'; msg.style.color = '#4E7F16';
   document.getElementById('newUserEmail').value = '';
   if (document.getElementById('newUserNombre')) document.getElementById('newUserNombre').value = '';
   if (document.getElementById('newUserApellido')) document.getElementById('newUserApellido').value = '';
@@ -449,7 +449,7 @@ async function loadAuditLog(offset) {
 
   const accionColors = {
     login: '#2196F3', signup: '#2196F3', registrar_usuario: '#9C27B0',
-    importar_csv: '#8BC34A', exportar_excel: '#FF9800',
+    importar_csv: '#7EBA27', exportar_excel: '#FF9800',
     crear_proyecto: '#4CAF50', editar_proyecto: '#FFC107', eliminar_proyecto: '#F44336',
     mover_barras: '#00BCD4', reset_db: '#F44336',
     crear_cliente: '#4CAF50', editar_cliente: '#FFC107', desactivar_cliente: '#F44336',

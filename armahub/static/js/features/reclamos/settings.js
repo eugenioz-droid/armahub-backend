@@ -177,7 +177,7 @@ async function recSettingsGuardarPlantilla() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (res.ok && data.ok) {
-    msg.textContent = '✓ Guardado'; msg.style.color = '#558B2F';
+    msg.textContent = '✓ Guardado'; msg.style.color = '#4E7F16';
     document.getElementById('recSetTemplateEditor').style.display = 'none';
     await loadRecSettingsTemplates();
   } else {

@@ -88,7 +88,7 @@ async function crearCliente() {
   if (res.status === 401) { logout(); return; }
   const data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Constructora creada'; msg.style.color = '#558B2F';
+    msg.textContent = 'Constructora creada'; msg.style.color = '#4E7F16';
     document.getElementById('ncNombre').value = '';
     document.getElementById('ncRut').value = '';
     document.getElementById('ncContacto').value = '';
@@ -183,7 +183,7 @@ async function crearCalculista() {
   if (res.status === 401) { logout(); return; }
   const data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Calculista creado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Calculista creado'; msg.style.color = '#4E7F16';
     document.getElementById('nCalcNombre').value = '';
     document.getElementById('nCalcEmail').value = '';
     document.getElementById('nuevoCalculistaForm').style.display = 'none';

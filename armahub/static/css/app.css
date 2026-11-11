@@ -1,24 +1,51 @@
 /* ArmaHub — Main Stylesheet */
 
+/* SISTEMA DE DISEÑO ARMACERO (11-nov) — docs/ARMACERO_DESIGN_SYSTEM. Leer DESIGN_RULES.md
+   antes de tocar pantallas. Los valores salen de tokens.json, que manda sobre las láminas.
+   Se homologa por pasos y sin cambiar funcionalidad (ver SPECS §2.4). Lo nuevo usa estas
+   variables; lo existente se va pasando a ellas pantalla por pantalla. */
+:root {
+  --arm-green: #7EBA27;        /* verde oficial (logo): acción primaria, activo, acentos */
+  --arm-green-hover: #6FA622;
+  --arm-green-ink: #4E7F16;    /* verde para TEXTO sobre blanco (el oficial no da contraste) */
+  --arm-green-tint: #EEF6E2;
+  --arm-on-green: #172408;     /* texto sobre fondo verde: oscuro, no blanco (decisión 11-nov) */
+  --arm-blue: #104F9E;         /* azul oficial (logo): informativo, navegación secundaria */
+  --arm-black: #171717;
+  --arm-text: #292D32;
+  --arm-text-muted: #667085;
+  --arm-surface: #FFFFFF;
+  --arm-background: #F3F4F6;
+  --arm-border: #D9DDE3;
+  --arm-th: #F5F6F7;
+  --arm-success: #248447;
+  --arm-warning: #D97706;
+  --arm-danger: #DC2626;
+  --arm-info: #1769C2;
+  --arm-review: #7E36B1;
+  --arm-radius-sm: 4px;
+  --arm-radius-md: 8px;
+}
+
 * { box-sizing: border-box; }
-body { 
+body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  margin: 0; padding: 0; 
-  background: #f5f5f5;
-  color: #2C2C2C;
+  margin: 0; padding: 0;
+  background: var(--arm-background);
+  color: var(--arm-text);
 }
 
 /* Header */
 .header {
-  background: #1a1a1a;
-  border-bottom: 3px solid #8BC34A;
+  background: var(--arm-black);
+  border-bottom: 3px solid var(--arm-green);
   padding: 16px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
-.header h1 { margin: 0; color: #8BC34A; font-size: 30px; letter-spacing: 1px; }
+.header h1 { margin: 0; color: var(--arm-green); font-size: 30px; letter-spacing: 1px; }
 /* LOGO DEL HEADER (21-ago) — reemplaza al texto "ArmaHub".
    El PNG mide 2172x724 y el logo ocupa sólo x 33..2118, y 185..543 (2085x358): el
    resto es margen negro. En vez de editar la imagen, la caja recorta y la imagen va
@@ -45,20 +72,20 @@ body {
   color: #ccc;
 }
 .btn-logout {
-  background: #8BC34A;
-  color: white;
+  background: var(--arm-green);
+  color: var(--arm-on-green);
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
 }
-.btn-logout:hover { background: #558B2F; }
+.btn-logout:hover { background: var(--arm-green-hover); }
 
 /* Tabs */
 .tabs {
   background: white;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--arm-border);
   padding: 0;
   display: flex;
   gap: 0;
@@ -75,10 +102,10 @@ body {
   border-bottom: 3px solid transparent;
   transition: all 0.2s;
 }
-.tab-btn:hover { color: #2C2C2C; background: #f9f9f9; }
-.tab-btn.active { 
-  color: #8BC34A;
-  border-bottom-color: #8BC34A;
+.tab-btn:hover { color: var(--arm-text); background: #f9f9f9; }
+.tab-btn.active {
+  color: var(--arm-green-ink);
+  border-bottom-color: var(--arm-green);
 }
 
 /* Tab content */
@@ -88,19 +115,19 @@ body {
 /* Cards */
 .card {
   background: white;
-  border: 1px solid #ddd;
+  border: 1px solid var(--arm-border);
   border-radius: 8px;
   padding: 16px;
   margin: 16px 0;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
-.card h3 { margin-top: 0; color: #2C2C2C; }
+.card h3 { margin-top: 0; color: var(--arm-text); }
 
 /* Buttons */
 button {
   padding: 10px 16px;
-  background: #8BC34A;
-  color: white;
+  background: var(--arm-green);
+  color: var(--arm-on-green);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -108,26 +135,28 @@ button {
   font-size: 14px;
   transition: all 0.2s;
 }
-button:hover { background: #558B2F; }
-button.secondary { background: #ddd; color: #2C2C2C; }
+button:hover { background: var(--arm-green-hover); }
+button.secondary { background: #ddd; color: var(--arm-text); }
 button.secondary:hover { background: #ccc; }
-button.secondary.active { background: #8BC34A; color: #fff; }
-button.secondary.active:hover { background: #558B2F; }
-button.danger { background: #b42318; }
+button.secondary.active { background: var(--arm-green); color: var(--arm-on-green); }
+button.secondary.active:hover { background: var(--arm-green-hover); }
+/* Blanco EXPLÍCITO: el estilo general de button lleva texto oscuro (sobre el verde) desde
+   el 11-nov; sin esto el peligro quedaba oscuro sobre rojo. */
+button.danger { background: #b42318; color: #fff; }
 button.danger:hover { background: #8b1a14; }
 
 /* Inputs */
 input, select, textarea {
   padding: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--arm-border);
   border-radius: 4px;
   font-family: inherit;
   font-size: 14px;
 }
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #8BC34A;
-  box-shadow: 0 0 0 2px rgba(139, 195, 74, 0.1);
+  border-color: var(--arm-green);
+  box-shadow: 0 0 0 2px rgba(126, 186, 39, 0.1);
 }
 
 /* Table */
@@ -135,17 +164,17 @@ table {
   width: 100%;
   border-collapse: collapse;
   background: white;
-  border: 1px solid #ddd;
+  border: 1px solid var(--arm-border);
   border-radius: 4px;
   overflow: hidden;
 }
 th {
-  background: #f5f5f5;
-  border-bottom: 2px solid #ddd;
+  background: var(--arm-th);
+  border-bottom: 2px solid var(--arm-border);
   padding: 12px;
   text-align: left;
   font-weight: 600;
-  color: #2C2C2C;
+  color: var(--arm-text);
   font-size: 13px;
 }
 td {
@@ -167,7 +196,7 @@ tr:hover { background: #fafafa; }
   flex: 1;
   min-width: 200px;
 }
-.muted { color: #666; font-size: 12px; }
+.muted { color: var(--arm-text-muted); font-size: 12px; }
 .status-ok { color: #1a7f37; }
 .status-err { color: #b42318; }
 .status-warn { color: #ff9800; }
@@ -176,8 +205,8 @@ tr:hover { background: #fafafa; }
 .badge {
   display: inline-block;
   padding: 4px 8px;
-  background: #8BC34A;
-  color: white;
+  background: var(--arm-green);
+  color: var(--arm-on-green);
   border-radius: 3px;
   font-size: 12px;
   margin-right: 4px;
@@ -199,12 +228,12 @@ tr:hover { background: #fafafa; }
   padding: 20px;
   text-align: center;
   box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-  border-top: 4px solid #8BC34A;
+  border-top: 4px solid var(--arm-green);
 }
 .kpi-card .kpi-value {
   font-size: 32px;
   font-weight: 700;
-  color: #8BC34A;
+  color: var(--arm-green-ink);
   margin: 4px 0;
 }
 .kpi-card .kpi-label {
@@ -231,7 +260,7 @@ tr:hover { background: #fafafa; }
 }
 .proyecto-mini:last-child { border-bottom: none; }
 .proyecto-mini .pm-name { font-weight: 500; color: #2C2C2C; font-size: 14px; }
-.proyecto-mini .pm-kilos { font-weight: 700; color: #8BC34A; font-size: 14px; }
+.proyecto-mini .pm-kilos { font-weight: 700; color: var(--arm-green-ink); font-size: 14px; }
 
 /* Navegador de sectores — collapsible tree */
 .nav-sector .nav-sector-body { display: none; }

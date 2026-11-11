@@ -294,11 +294,11 @@
          editor (selector del ribbon, _cambiarElemento) y se puede cambiar sin salir.
          Al crear se parte de VIGA, que es lo que ya hacía el default de esta card. -->
     <style>
-      #tplBtnCrear:not(:disabled):hover { background:#558B2F !important; }
+      #tplBtnCrear:not(:disabled):hover { background:#6FA622 !important; }
       #tplBtnCrear:disabled { opacity:.5; cursor:default; }
       .tplCfgBtn { flex:1; min-width:200px; text-align:left; padding:11px 14px; border:1px solid #dbe1e8;
                    background:#fff; border-radius:9px; cursor:pointer; font-size:13px; color:#33691e; }
-      .tplCfgBtn:hover { border-color:#8BC34A; background:#f7fbf2; }
+      .tplCfgBtn:hover { border-color:#7EBA27; background:#f7fbf2; }
       .tplCfgBtn .d { display:block; color:#8a97a6; font-size:11px; font-weight:400; margin-top:3px; }
     
   /* Fila de template: el objetivo de clic es la fila entera, así que tiene que
@@ -320,7 +320,7 @@
   #tplGuardadosLista .tplAccion[disabled]:hover{background:#fff;border-color:#dbe1e8;color:#5b6b7d;}
   .tplOrdenBtn { border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px;
                      padding:6px 12px; cursor:pointer; color:#6b7a8d; }
-      .tplOrdenBtn.on { border-color:#558B2F; background:#f7fbf2; color:#33691e; font-weight:700; }
+      .tplOrdenBtn.on { border-color:#6FA622; background:#f7fbf2; color:#33691e; font-weight:700; }
 
   /* CHIPS DE FILTRO. Mismo lenguaje que .tplOrdenBtn (borde + fondo, no sólo color
      de texto: gris sobre gris no se distingue) y con PALABRA — nada de iconos ni de
@@ -331,7 +331,7 @@
   .tplChip { border:1px solid #dbe1e8; background:#fff; border-radius:999px; font-size:11.5px;
              line-height:1; padding:5px 11px; cursor:pointer; color:#6b7a8d; }
   .tplChip:hover { border-color:#b9c4d0; background:#f7f9fb; }
-  .tplChip.on { border-color:#558B2F; background:#f1f7e8; color:#33691e; font-weight:700; }
+  .tplChip.on { border-color:#6FA622; background:#f1f7e8; color:#33691e; font-weight:700; }
   /* "Limpiar" se ve SIEMPRE; cuando no hay nada que limpiar va apagado en vez de
      desaparecer, así el usuario sabe que existe y por qué ahora no hace nada. */
   #tplChips .tplLimpiar { border:1px solid #dbe1e8; background:#fff; border-radius:7px;
@@ -407,9 +407,9 @@
            Renombrar y Eliminar van con palabra al final (DELETE con confirmación
            que nombra el template; 409 = está en uso y NO se borra).
            La lógica vive en template_editor.js. -->
-      <div class="card" id="tplGuardadosCard" style="border-top:3px solid #558B2F;">
+      <div class="card" id="tplGuardadosCard" style="border-top:3px solid #7EBA27;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <h3 style="margin:0; color:#558B2F;">📂 Gestor de templates</h3>
+          <h3 style="margin:0; color:#4E7F16;">📂 Gestor de templates</h3>
           <span id="tplGuardadosCount" class="muted" style="font-size:11px;"></span>
         </div>
 
@@ -421,7 +421,7 @@
                  onkeydown="if(event.key==='Enter'){var b=document.getElementById('tplBtnCrear'); if(b &amp;&amp; !b.disabled) b.click();}"
                  style="flex:1; width:100%; max-width:360px; border:1px solid #dbe1e8; border-radius:7px; padding:7px 10px; font-size:13px;">
           <button id="tplBtnCrear" onclick="tplCrearTemplate()" disabled title="Ponle nombre para crear el template"
-                  style="font-size:13px; font-weight:700; padding:9px 18px; background:#8BC34A; color:#fff; border:none; border-radius:8px; cursor:pointer;">
+                  style="font-size:13px; font-weight:700; padding:9px 18px; background:#7EBA27; color:#172408; border:none; border-radius:8px; cursor:pointer;">
             <span class="b3d">3D</span> Crear template
           </button>
           <span class="muted" style="font-size:11px;">El elemento y las dimensiones se eligen dentro del editor.</span>
@@ -463,9 +463,9 @@
     </div>
 
       <!-- CARD 1 — Configuración del modelador -->
-      <div class="card" style="border-top:3px solid #558B2F;">
+      <div class="card" style="border-top:3px solid #7EBA27;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <h3 style="margin:0; color:#558B2F;">⚙️ Configuración</h3>
+          <h3 style="margin:0; color:#4E7F16;">⚙️ Configuración</h3>
           <span class="muted" style="font-size:11px;">Con qué nacen las cosas</span>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:8px;">

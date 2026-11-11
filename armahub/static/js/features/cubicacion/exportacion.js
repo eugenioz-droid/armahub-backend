@@ -47,7 +47,7 @@ async function previewExport() {
   const doneCount = Object.keys(_exportHistory).length;
   preview.innerHTML = '<div style="background:#f8f9fa; padding:12px; border-radius:6px; font-size:13px;">' +
     '<strong>' + totalBarras.toLocaleString() + ' barras</strong> · <strong>' + Math.round(totalKilos).toLocaleString() + ' kg</strong> disponibles para exportar.' +
-    (doneCount > 0 ? ' · <span style="color:#558B2F;">' + doneCount + ' sectores ya exportados</span>' : '') +
+    (doneCount > 0 ? ' · <span style="color:#4E7F16;">' + doneCount + ' sectores ya exportados</span>' : '') +
     '<span class="muted" style="margin-left:8px; font-size:11px;">Un .xlsx por cada combinación SECTOR + PISO + CICLO.</span>' +
     '</div>';
 
@@ -125,9 +125,9 @@ function buildExportMatriz(items, proy) {
   let html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
   // Header row with ciclo names (clickable for column selection)
   html += '<thead><tr>';
-  html += '<th style="border:1px solid #333; padding:3px 4px; background:#1a1a1a; color:#8BC34A; white-space:nowrap; min-width:120px; font-size:10px;">Piso</th>';
+  html += '<th style="border:1px solid #333; padding:3px 4px; background:#1a1a1a; color:#7EBA27; white-space:nowrap; min-width:120px; font-size:10px;">Piso</th>';
   ciclos.forEach(c => {
-    html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap; cursor:pointer; font-size:10px;" onclick="exportToggleCiclo(\'' + c + '\')" title="Seleccionar/deseleccionar columna ' + c + '">' + c + '</th>';
+    html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#7EBA27; text-align:center; white-space:nowrap; cursor:pointer; font-size:10px;" onclick="exportToggleCiclo(\'' + c + '\')" title="Seleccionar/deseleccionar columna ' + c + '">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
@@ -222,7 +222,7 @@ function buildExportMatriz(items, proy) {
             if (isModified) {
               html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#c62828;" title="Modificado después de exportar - requiere re-exportar">&#9888;</span>';
             } else {
-              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
+              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#4E7F16;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
             }
           }
           // 5M.6: marca de edición-plataforma (abajo-derecha para no chocar con el
@@ -250,7 +250,7 @@ function buildExportMatriz(items, proy) {
   // Legend
   html += '<div style="margin-top:6px; display:flex; gap:10px; align-items:center; font-size:10px; flex-wrap:wrap;">';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e3f0ff; border:2px solid #4285f4; vertical-align:middle;"></span> Seleccionado</span>';
-  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> <span style="color:#558B2F;">&#10004;</span> Ya exportado</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #7EBA27; vertical-align:middle;"></span> <span style="color:#4E7F16;">&#10004;</span> Ya exportado</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado (re-exportar)</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
   // 5M.6: marca de edición-plataforma (borde marrón + ✏️), ortogonal al estado.
@@ -276,7 +276,7 @@ async function buildExportReport(proy) {
   html += '<div style="font-size:20px; font-weight:bold; color:#1a1a1a;">' + rpt.total_sectores + '</div>';
   html += '<div style="font-size:10px; color:#888;">Total sectores</div></div>';
   html += '<div style="background:#e8f5e9; padding:8px 14px; border-radius:6px; text-align:center;">';
-  html += '<div style="font-size:20px; font-weight:bold; color:#558B2F;">' + rpt.exportados + '</div>';
+  html += '<div style="font-size:20px; font-weight:bold; color:#4E7F16;">' + rpt.exportados + '</div>';
   html += '<div style="font-size:10px; color:#888;">Exportados</div></div>';
   html += '<div style="background:#fff3e0; padding:8px 14px; border-radius:6px; text-align:center;">';
   html += '<div style="font-size:20px; font-weight:bold; color:#e65100;">' + rpt.pendientes + '</div>';
@@ -285,7 +285,7 @@ async function buildExportReport(proy) {
   // Progress bar
   html += '<div style="font-size:16px; font-weight:bold; color:#1a1a1a;">' + rpt.porcentaje + '%</div>';
   html += '<div style="width:80px; height:6px; background:#e0e0e0; border-radius:3px; margin-top:2px;">';
-  html += '<div style="width:' + rpt.porcentaje + '%; height:100%; background:#8BC34A; border-radius:3px;"></div></div>';
+  html += '<div style="width:' + rpt.porcentaje + '%; height:100%; background:#7EBA27; border-radius:3px;"></div></div>';
   html += '<div style="font-size:10px; color:#888;">Progreso</div></div>';
   html += '</div>';
 
@@ -312,7 +312,7 @@ async function buildExportReport(proy) {
       html += '<td style="border:1px solid #eee; padding:2px 5px;">' + (it.ciclo || '') + '</td>';
       html += '<td style="border:1px solid #eee; padding:2px 5px; text-align:right;">' + it.barras + '</td>';
       html += '<td style="border:1px solid #eee; padding:2px 5px; text-align:right;">' + it.kilos.toLocaleString() + '</td>';
-      html += '<td style="border:1px solid #eee; padding:2px 5px; text-align:center;">' + (it.exportado ? '<span style="color:#558B2F; font-weight:bold;">Exportado</span>' : '<span style="color:#999;">Pendiente</span>') + '</td>';
+      html += '<td style="border:1px solid #eee; padding:2px 5px; text-align:center;">' + (it.exportado ? '<span style="color:#4E7F16; font-weight:bold;">Exportado</span>' : '<span style="color:#999;">Pendiente</span>') + '</td>';
       html += '<td style="border:1px solid #eee; padding:2px 5px; text-align:center;">' + (it.veces_exportado || 0) + '</td>';
       html += '<td style="border:1px solid #eee; padding:2px 5px;">' + (it.ultima_fecha ? it.ultima_fecha.substring(0, 16).replace('T', ' ') : '-') + '</td>';
       html += '<td style="border:1px solid #eee; padding:2px 5px;">' + (it.ultimo_usuario || '-') + '</td>';

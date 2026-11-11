@@ -53,7 +53,7 @@ window.murosPintar = function(lista){
       '<td style="padding:6px 8px;">'+_murosEsc(ciclo)+' · '+_murosEsc(eje)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+(e.n_barras||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+_murosNum(e.kg,1)+'</td>'+
-      '<td style="padding:6px 8px; color:#558B2F;">#'+_murosEsc(e.num_obra!=null?e.num_obra:e.lote_id)+'</td>'+
+      '<td style="padding:6px 8px; color:#4E7F16;">#'+_murosEsc(e.num_obra!=null?e.num_obra:e.lote_id)+'</td>'+
       '<td style="padding:6px 8px; color:#888;">'+_murosEsc(String(e.creado_por||'').split('@')[0])+(fecha?' · '+_murosEsc(fecha):'')+'</td>'+
       '<td style="padding:6px 8px; text-align:right; white-space:nowrap;">'+
         '<span onclick="murosVer3D('+e.id+')" title="Ver este muro en 3D (solo visualización)" style="color:#0277bd; cursor:pointer; font-weight:600;">👁 Ver 3D</span>'+

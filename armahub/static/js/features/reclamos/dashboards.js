@@ -399,7 +399,7 @@ function switchDashSubTab(sub) {
 // tres con la MISMA forma, así que acá hay un solo dibujante y un selector de fuente.
 var CA = { datos: null, fuente: 'barras', cub: null, charts: {} };
 var CA_FUENTES = ['barras', 'elementos', 'auditorias'];
-var CA_COLOR = { no_aplica: '#b0bec5', resueltas: '#8BC34A', abiertas: '#e53935' };
+var CA_COLOR = { no_aplica: '#b0bec5', resueltas: '#7EBA27', abiertas: '#e53935' };
 
 async function loadDashControl() {
   if (!CA.datos) {

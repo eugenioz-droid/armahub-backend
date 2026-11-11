@@ -307,7 +307,7 @@ async function guardarEdicionReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Guardado'; msg.style.color = '#4E7F16';
     // 5L.4: avisar si al cambiar el responsable cambió el área y se reinició la causa raíz
     if (data.ishikawa_limpiado_por_area && typeof showToast === 'function') {
       showToast('Cambió el área del reclamo: se reinició la causa raíz (Ishikawa). Vuelve a definirla si corresponde.', 'warning');
@@ -358,7 +358,7 @@ async function guardarEdicionReclamoInterno() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Guardado'; msg.style.color = '#4E7F16';
     // 5L.4: avisar si al reasignar el área se reinició la causa raíz
     if (data.ishikawa_limpiado_por_area && typeof showToast === 'function') {
       showToast('Cambió el área del reclamo: se reinició la causa raíz (Ishikawa). Vuelve a definirla si corresponde.', 'warning');
@@ -565,7 +565,7 @@ async function guardarRespuesta() {
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
     if (data.ok) {
-      msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
+      msg.textContent = 'Respuesta guardada'; msg.style.color = '#4E7F16';
       setTimeout(function() { msg.textContent = ''; }, 2000);
       var esInterno = _reclamoActual && _reclamoActual.tipo_origen === 'interno';
       await verReclamo(_reclamoActual.id);
@@ -842,7 +842,7 @@ async function _uploadFilesWithTipo(files, tipo, msgElId) {
       }
       return;
     }
-    if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F'; setTimeout(function() { msg.textContent = ''; }, 3000); }
+    if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#4E7F16'; setTimeout(function() { msg.textContent = ''; }, 3000); }
     await verReclamo(_reclamoActual.id, { preserveAnalysisDraft: true });
   } catch (err) {
     console.error('[_uploadFilesWithTipo] Error:', err);

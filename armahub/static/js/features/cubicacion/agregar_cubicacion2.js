@@ -430,8 +430,8 @@ function ac2Thead(){
   // resaltan según la dirección activa solo cuando la vista ya es por piso.
   var pisoActivo=(AC2.orden==='piso');
   var ordPiso='<span style="margin-left:6px; white-space:nowrap;">'+
-    '<span onclick="ac2OrdenarPisos(1)" title="Ordenar por piso, ascendente" style="cursor:pointer; font-size:10px; color:'+((pisoActivo&&_ac2PisoDir>0)?'#8BC34A':'#b0bec5')+';">▲</span>'+
-    '<span onclick="ac2OrdenarPisos(-1)" title="Ordenar por piso, descendente" style="cursor:pointer; font-size:10px; margin-left:2px; color:'+((pisoActivo&&_ac2PisoDir<0)?'#8BC34A':'#b0bec5')+';">▼</span></span>';
+    '<span onclick="ac2OrdenarPisos(1)" title="Ordenar por piso, ascendente" style="cursor:pointer; font-size:10px; color:'+((pisoActivo&&_ac2PisoDir>0)?'#7EBA27':'#b0bec5')+';">▲</span>'+
+    '<span onclick="ac2OrdenarPisos(-1)" title="Ordenar por piso, descendente" style="cursor:pointer; font-size:10px; margin-left:2px; color:'+((pisoActivo&&_ac2PisoDir<0)?'#7EBA27':'#b0bec5')+';">▼</span></span>';
   // LA CABECERA SALE DEL LAYOUT (ac2Layout): mismo orden y mismas columnas que las filas y el
   // colgroup. Aquí sólo se decide QUÉ DICE cada una. La unidad va en la cabecera (mm, cm, kg),
   // como en cualquier tabla de ingeniería. Tipología y Sufijo van siempre (25-sep): una barra
@@ -691,7 +691,7 @@ function ac2Fila(b){
   // Largo y Peso (calculados en vivo) — solo lectura, con id para la actualización granular.
   // Van DESPUÉS de figura y forma (orden pedido por el usuario 26-sep): son el resultado.
   c.largo='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
-  c.peso='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2PesoTxt(b)+'</td>';
+  c.peso='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#4E7F16; font-weight:600;">'+ac2PesoTxt(b)+'</td>';
   // Rev (revisada): solo marcable si la barra está COMPLETA y VÁLIDA (φ+figura+medidas ok).
   var lista=ac2BarraLista(b);
   c.rev='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2rev"'+(b.rev&&lista?' checked':'')+(lista?'':' disabled')+' onclick="ac2ToggleRev('+b._id+',this)" title="'+(lista?'Marcar/desmarcar revisada':'Completa la barra (φ, figura y sus medidas) para poder revisarla.')+'"/></td>';
@@ -709,7 +709,7 @@ function ac2Fila(b){
        // ＋ SIEMPRE (es la acción que se usa todo el rato); ⎘ y ✕ sólo en la fila ACTIVA (clase
        // ac2accx, ocultas por CSS fuera de ella). Cuesta un clic más para borrar una fila lejana
        // —hay que entrar a ella—; ahorra unos sesenta glifos por pantalla. Maqueta aprobada 26-sep.
-       '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#558B2F; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
+       '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#4E7F16; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
        '<span class="ac2accx" onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
        '<span class="ac2accx" onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td>';
   }
@@ -743,7 +743,7 @@ function ac2GrupoHdr(valor, cnt, porPiso){
   // El nombre del grupo va en data-grp y el onclick lo lee de ahí — misma regla que los botones
   // de tipología: un piso con apóstrofe rompía el texto del onclick y la flecha no hacía nada.
   var b=function(dir,fl,tit){ return '<button data-grp="'+ac2Esc(valor)+'" onclick="ac2MoverGrupo(this.dataset.grp,'+dir+')" title="'+tit+'" '+
-    'style="font-size:11px; line-height:1; padding:2px 6px; margin-left:4px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:3px; cursor:pointer;">'+fl+'</button>'; };
+    'style="font-size:11px; line-height:1; padding:2px 6px; margin-left:4px; background:#fff; color:#4E7F16; border:1px solid #7EBA27; border-radius:3px; cursor:pointer;">'+fl+'</button>'; };
   var flechas = porPiso
     ? '<span style="float:right; white-space:nowrap; font-weight:400;"><span style="font-size:10px; color:#78909c; margin-right:2px;">mover piso</span>'+
       b(-1,'▲','Subir este piso')+b(1,'▼','Bajar este piso')+'</span>'
@@ -774,7 +774,7 @@ window.ac2Render=function(){
         ? 'Este despiece todavía no tiene barras. Al agregar una aquí, elígele la <b>tipología</b> en su fila.'
         : 'Este despiece todavía no tiene barras en <b>'+ac2Esc(AC2.tipo)+'</b>.';
       acciones = '<div style="margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">'+
-        '<button onclick="ac2AgregarBarra()" style="font-size:13px; font-weight:600; padding:7px 16px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>'+
+        '<button onclick="ac2AgregarBarra()" style="font-size:13px; font-weight:600; padding:7px 16px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>'+
         '<button onclick="ac2AgregarBarrasMulti()" title="Una barra por cada piso seleccionado" style="font-size:13px; font-weight:600; padding:7px 16px; background:#7cb342; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barras M</button>'+
         '</div>';
     }
@@ -1011,7 +1011,7 @@ function ac2ActualizarCabecera(){
   var crear=document.getElementById('ac2_crearLoteBtn');
   if (crear){
     crear.style.display=hayLote?'none':'';
-    crear.style.background=listo?'#8BC34A':'#eceff1';
+    crear.style.background=listo?'#7EBA27':'#eceff1';
     crear.style.color=listo?'#fff':'#90a4ae';
     crear.style.cursor=listo?'pointer':'not-allowed';
     crear.title=listo?'Crear el despiece y empezar a cubicar':'Completa Obra, Ciclo y Eje/Losa.';
@@ -1212,7 +1212,7 @@ window.ac2CargarLandingObras=async function(){
     var enEd = o.en_edicion||0;
     var despTxt = (o.total||0) + (enEd ? ' <span style="color:#e65100;">('+enEd+' en edición)</span>' : '');
     return '<tr class="ac2loterow" onclick="ac2ElegirObraLanding('+"'"+ac2Esc(o.id_proyecto)+"','"+ac2Esc((o.nombre||'').replace(/'/g,"\\'"))+"'"+')" style="cursor:pointer; border-top:1px solid #f0f0f0;">'+
-      '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">'+ac2Esc(o.nombre||o.id_proyecto)+'</td>'+
+      '<td style="padding:6px 8px; font-weight:600; color:#4E7F16;">'+ac2Esc(o.nombre||o.id_proyecto)+'</td>'+
       '<td style="padding:6px 8px;">'+despTxt+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+(o.items||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(o.barras||0)+'</td>'+
@@ -1344,12 +1344,12 @@ function _ac2CargarPrefs(){
 // pero al cargar preferencias no se pasa por él).
 function _ac2PintarBotonesVista(){
   ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x);
-    if(b){var on=(AC2.orden===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
+    if(b){var on=(AC2.orden===x); b.style.background=on?'#7EBA27':'#fff'; b.style.color=on?'#172408':'#4E7F16';} });
   ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x);
-    if(b){var on=(AC2.tam===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+    if(b){var on=(AC2.tam===x); b.style.background=on?'#7EBA27':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
 }
 window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[]; _ac2PisoDir=1;   // reset orden manual + dirección
-  ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
+  ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#7EBA27':'#fff'; b.style.color=on?'#172408':'#4E7F16';} });
   _ac2GuardarPrefs();
   ac2Render(); };
 // Orden GLOBAL de pisos ascendente (dir=1) o descendente (dir=-1). Los iconos ▲/▼ del header de
@@ -1387,7 +1387,7 @@ window.ac2ToggleMult=function(on){ AC2.verMult=!!on; _ac2GuardarPrefs(); ac2Rend
 // re-render que hace la grilla mientras se cubica.
 window.ac2ToggleRender=function(on){ AC2.render=!!on; _ac2GuardarPrefs(); ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
-  ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+  ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#7EBA27':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
   _ac2GuardarPrefs();
   ac2Render(); };
 window.ac2ToggleRev=function(id,el){
@@ -1626,7 +1626,7 @@ function ac2ActualizarContadores(){
   var rc=document.getElementById('ac2_revcount');
   if(rc){ rc.innerHTML = !arr.length ? '' :
     ('✓ '+rev+' de '+arr.length+' revisadas' + (inval?(' · <b style="color:#c62828; cursor:help;" title="'+ac2Esc(detalle)+'">⚠ '+inval+' con geometría inválida</b>'):'')); }
-  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> items · <b style="color:#37474f;">'+ac2Num(barrasFis)+'</b> barras · <b style="color:#558B2F;">'+ac2Num(kg,1)+'</b> kg'):'';
+  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> items · <b style="color:#37474f;">'+ac2Num(barrasFis)+'</b> barras · <b style="color:#4E7F16;">'+ac2Num(kg,1)+'</b> kg'):'';
   // LA LEYENDA SE ENCIENDE SOLO CUANDO APLICA (25-sep). Explicar el dibujo azul en un
   // despiece sin ninguna barra del Enfierrador, o el fondo rosado sin ninguna medida mala,
   // son dos líneas permanentes que el ojo tiene que descartar cada vez. Se decide acá
@@ -2377,7 +2377,7 @@ async function ac2CargarLotes(){
     }
     // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
     return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este despiece para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
-      '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
+      '<td style="padding:6px 8px; font-weight:600; color:#4E7F16;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
       '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
       '<td style="padding:6px 8px; white-space:nowrap;">'+estado+'</td>'+
       ac2PisosTd(l,'6px 8px')+
@@ -2388,7 +2388,7 @@ async function ac2CargarLotes(){
       '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
       '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:11px;">'+
         '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este despiece en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
-        '<span style="color:#558B2F;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</span>'+
+        '<span style="color:#4E7F16;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</span>'+
       '</td></tr>';
   }).join('');
 }
@@ -2418,8 +2418,8 @@ window.ac2DuplicarLotePrompt=function(loteId, numObra){
       '<h3 style="margin:0 0 4px; color:#1565c0; font-size:16px;">⎘ Duplicar despiece <span id="ac2_dupNum"></span></h3>'+
       '<p style="margin:0 0 14px; font-size:12px; color:#607d8b;">Se copia toda la data del despiece (pisos, tipologías, medidas, cant/mult). Elige el <b>Ciclo</b> y <b>Eje</b> del nuevo despiece:</p>'+
       '<div style="display:flex; gap:10px; margin-bottom:14px;">'+
-        '<div style="flex:1;"><label style="font-size:11px; color:#558B2F; font-weight:700;">Ciclo *</label><input id="ac2_dupCiclo" list="ac2_dupCiclosDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="ciclo…"/><datalist id="ac2_dupCiclosDL"></datalist></div>'+
-        '<div style="flex:1;"><label style="font-size:11px; color:#558B2F; font-weight:700;">Eje / Losa *</label><input id="ac2_dupEje" list="ac2_dupEjesDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="eje…"/><datalist id="ac2_dupEjesDL"></datalist></div>'+
+        '<div style="flex:1;"><label style="font-size:11px; color:#4E7F16; font-weight:700;">Ciclo *</label><input id="ac2_dupCiclo" list="ac2_dupCiclosDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="ciclo…"/><datalist id="ac2_dupCiclosDL"></datalist></div>'+
+        '<div style="flex:1;"><label style="font-size:11px; color:#4E7F16; font-weight:700;">Eje / Losa *</label><input id="ac2_dupEje" list="ac2_dupEjesDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="eje…"/><datalist id="ac2_dupEjesDL"></datalist></div>'+
       '</div>'+
       '<div style="display:flex; justify-content:flex-end; gap:8px;">'+
         '<button onclick="ac2CerrarDup()" style="font-size:12px; padding:6px 14px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cancelar</button>'+
@@ -3005,7 +3005,7 @@ function ac2CfgSeccionLista(titulo, tipo, lista, exist, ayuda){
     (ayuda?'<div style="font-size:10.5px; color:#90a4ae; margin:2px 0 6px;">'+ayuda+'</div>':'')+
     '<div style="margin-bottom:6px;">'+(chips||'<span style="color:#b0bec5; font-size:11px; font-style:italic;">— ninguno —</span>')+'</div>'+
     '<input id="ac2cfg_new_'+tipo+'" type="text" placeholder="agregar '+tipo+'…" style="font-size:12px; padding:3px 8px; border:1px solid #cfd8dc; border-radius:4px; width:140px;" onkeydown="if(event.key===\'Enter\'){ac2CfgAgregar(\''+tipo+'\');event.preventDefault();}"/>'+
-    '<button onclick="ac2CfgAgregar(\''+tipo+'\')" style="font-size:11px; padding:4px 10px; margin-left:4px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ agregar</button>'+
+    '<button onclick="ac2CfgAgregar(\''+tipo+'\')" style="font-size:11px; padding:4px 10px; margin-left:4px; background:#7EBA27; color:#172408; border:none; border-radius:4px; cursor:pointer;">＋ agregar</button>'+
     '</div>';
 }
 function ac2CfgCampoNum(label, campo, val, ayuda){

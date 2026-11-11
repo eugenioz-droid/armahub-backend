@@ -76,7 +76,7 @@
      ['equipo','prgSubEquipo','prgPanelEquipo'], ['cub','prgSubCub','prgPanelCub']]
       .forEach(function (t) {
         var on = (t[0] === v), b = $(t[1]), p = $(t[2]);
-        if (b) { b.style.borderBottomColor = on ? '#8BC34A' : 'transparent'; b.style.color = on ? '#33691e' : '#aaa'; }
+        if (b) { b.style.borderBottomColor = on ? '#7EBA27' : 'transparent'; b.style.color = on ? '#33691e' : '#aaa'; }
         if (p) p.style.display = on ? '' : 'none';
       });
     // El tab de Obras se carga al abrirlo, no al cargar el módulo: consulta el estado de

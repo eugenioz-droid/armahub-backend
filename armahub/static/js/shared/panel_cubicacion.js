@@ -24,7 +24,7 @@
 // (shared/api.js, agrega /api/v1 y el token). Instancias independientes: sin funciones window.* por
 // instancia (listeners locales) → puede haber un panel en el Hub y otro en el editor a la vez.
 (function (global) {
-  var COLORES = ['#8BC34A', '#1565C0', '#ff9800', '#e53935', '#7B1FA2', '#00897B', '#795548', '#607D8B', '#F44336', '#009688'];
+  var COLORES = ['#7EBA27', '#1565C0', '#ff9800', '#e53935', '#7B1FA2', '#00897B', '#795548', '#607D8B', '#F44336', '#009688'];
   var PERIODOS = [
     { id: 'S',  rot: 'S',   title: 'Semana por día' },
     { id: 'MS', rot: 'M·S', title: 'Mes por semana' },
@@ -95,7 +95,7 @@
       var multi = anios.length > 1;
       PERIODOS.forEach(function (p) {
         var b = btnsPeriodo[p.id], on = (p.id === periodo);
-        b.style.background = on ? '#8BC34A' : '#fff'; b.style.color = on ? '#fff' : '#607d8b';
+        b.style.background = on ? '#7EBA27' : '#fff'; b.style.color = on ? '#fff' : '#607d8b';
         var dis = (multi && p.id !== 'A');
         b.disabled = dis; b.style.opacity = dis ? '0.4' : '1'; b.style.cursor = dis ? 'not-allowed' : 'pointer';
       });

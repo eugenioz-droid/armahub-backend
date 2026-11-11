@@ -52,7 +52,7 @@
     return lista;
   }
 
-  var COLOR = { conforme: '#8BC34A', observacion: '#ffb74d', hallazgo: '#c62828' };
+  var COLOR = { conforme: '#7EBA27', observacion: '#ffb74d', hallazgo: '#c62828' };
   // Lo que el auditor declara: un hecho, no una graduación. La gravedad la calcula el
   // backend mirando si el código ya se había despachado (ver `gravedad_de`).
   var HALLAZGO_TXT = { conforme: 'Conforme', observacion: 'Observación', hallazgo: 'Hallazgo' };

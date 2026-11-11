@@ -853,10 +853,10 @@
   // definió así el usuario: una matriz única con segmentos en filas no dejaba clasificar
   // por tipo, y al revés; un tab por eje sí.
   var SIN_COLOR = '#e0e0e0';
-  var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#8bc34a', 'YPS': '#ffa726', 'Otros': '#90a4ae' };
-  var COLOR_TIPO = { 'Cubicación': '#8bc34a', 'Digitación': '#42a5f5' };
+  var COLOR_SEG = { '1 y 2': '#42a5f5', '4 y 5': '#7EBA27', 'YPS': '#ffa726', 'Otros': '#90a4ae' };
+  var COLOR_TIPO = { 'Cubicación': '#7EBA27', 'Digitación': '#42a5f5' };
   // Ocho colores apagados y distintos entre sí para los cubicadores; después se repiten.
-  var PALETA = ['#8bc34a', '#42a5f5', '#ffa726', '#ab47bc', '#26a69a', '#ef5350', '#78909c', '#d4e157'];
+  var PALETA = ['#7EBA27', '#42a5f5', '#ffa726', '#ab47bc', '#26a69a', '#ef5350', '#78909c', '#d4e157'];
   var MAX_SERIES = 8;   // más series que esto y el gráfico deja de leerse: el resto se junta
 
   function personaDe(f) { return f.persona || '(sin detallar)'; }
@@ -966,7 +966,7 @@
     html += '<th class="tot">Total</th></tr></thead><tbody>';
     var tinte = function (v) {
       if (!v || !m.max) return '';
-      return ' style="background:rgba(139,195,74,' + (0.08 + 0.52 * v / m.max).toFixed(2) + ')"';
+      return ' style="background:rgba(126,186,39,' + (0.08 + 0.52 * v / m.max).toFixed(2) + ')"';
     };
     m.filas.forEach(function (r) {
       var e = cfg.etiqueta(r.clave);
@@ -1012,7 +1012,7 @@
   // sitios, para que nunca dejen de cuadrar entre sí.
   // Los estados con el nombre real de aSa, en el orden del ciclo: pedido → producido →
   // despachado, y al final los que no son trabajo.
-  var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#8bc34a', 'Shipped': '#90a4ae',
+  var COLOR_ESTADO = { 'Open': '#ffb74d', 'Processed': '#7EBA27', 'Shipped': '#90a4ae',
                        'Incomplete': '#ce93d8', 'Cancelled': '#e57373' };
   var ORDEN_ESTADO = ['Open', 'Processed', 'Shipped', 'Incomplete', 'Cancelled'];
 

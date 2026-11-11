@@ -26,7 +26,7 @@
   #te_backdrop{
     --te-bg:#eef1f4; --te-ink:#1f2937; --te-muted:#64748b; --te-line:#dbe1e8;
     --te-panel:#ffffff; --te-panel2:#f6f8fa;
-    --te-acero:#8BC34A; --te-acero-d:#558B2F; --te-azul:#1565c0; --te-azul-b:#e3f2fd;
+    --te-acero:#7EBA27; --te-acero-d:#6FA622; --te-azul:#1565c0; --te-azul-b:#e3f2fd;
     /* SEGUNDO nivel de gris. --te-muted = etiquetas de campo · --te-faint = notas,
        estado y placeholders. En claro casi no se distinguen; hacían falta dos porque
        heredar un solo gris dejaba las notas por debajo de 3:1 sobre el panel oscuro. */
@@ -42,7 +42,7 @@
        cuando pintan texto o borde sobre oscuro pasan a estos tonos claros: #1565c0
        en texto sobre negro era ilegible. En claro valen lo mismo que --te-acero-d y
        --te-azul, o sea que el cambio no se nota. */
-    --te-acero-t:#558B2F; --te-azul-t:#1565c0;
+    --te-acero-t:#4E7F16; --te-azul-t:#1565c0;
     /* Anillo del cuadradito de tipología. Vale el mismo que ya usaba el archivador
        de colores (.te-colsw) y SÓLO se dibuja sobre .te-sw en medio/oscuro, donde las
        tipologías oscuras (CBS #1565c0, TRV #7b1fa2) se fundían con el botón.
@@ -90,7 +90,7 @@
     --te-field:#262d3b; --te-field-b:#4b5670;
     --te-ghost:#3d4759; --te-ghost-ink:#d5dded; --te-hover:#414c61;
     --te-acero-t:#a5d76a; --te-azul-b:rgba(100,181,246,.20); --te-azul-t:#7cc0f8;
-    --te-chip:rgba(139,195,74,.16); --te-chip-ink:#bfe392; --te-chip-b:rgba(139,195,74,.40);
+    --te-chip:rgba(126,186,39,.16); --te-chip-ink:#bfe392; --te-chip-b:rgba(126,186,39,.40);
     --te-sw-ring:rgba(255,255,255,.30);
     --te-err:#ef8a84; --te-err-bg:rgba(198,40,40,.22);
     --te-warn:#ffab5e; --te-warn-bg:rgba(230,81,0,.22);
@@ -107,7 +107,7 @@
     --te-field:#141820; --te-field-b:#39414b;
     --te-ghost:#262b32; --te-ghost-ink:#d3dbe4; --te-hover:#2a3038;
     --te-acero-t:#aada6f; --te-azul-b:rgba(100,181,246,.16); --te-azul-t:#82c2f7;
-    --te-chip:rgba(139,195,74,.14); --te-chip-ink:#c2e59a; --te-chip-b:rgba(139,195,74,.34);
+    --te-chip:rgba(126,186,39,.14); --te-chip-ink:#c2e59a; --te-chip-b:rgba(126,186,39,.34);
     --te-sw-ring:rgba(255,255,255,.34);
     --te-err:#f2938c; --te-err-bg:rgba(198,40,40,.20);
     --te-warn:#ffb877; --te-warn-bg:rgba(230,81,0,.20);
@@ -523,7 +523,7 @@
      cursor la da el color, no una caja que agrandaria el blanco. */
   #te_modal .te-tjdel:hover{opacity:1;color:#c62828}
   #te_modal .te-comp:hover{border-color:var(--te-acero)}
-  #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
+  #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(126,186,39,.15)}
   /* ACOMPANANTE de una seleccion multiple (ctrl+clic). Se marca DISTINTO de la
      principal a proposito: la ficha de la derecha muestra UNA barra -la principal- y
      si las cuatro tejas se vieran iguales no habria como saber cual se esta
@@ -1255,7 +1255,7 @@
   #te_modal .te-ghostdom{fill:none;stroke-width:3.6;stroke-dasharray:5 4;opacity:1;
     stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   #te_modal .te-ghostpt{opacity:.9}
-  #te_modal .te-gpt{fill:#8BC34A;pointer-events:none}
+  #te_modal .te-gpt{fill:#7EBA27;pointer-events:none}
   /* BADGE de texto del ghost ("CBS ø16") pegado al cursor. */
   #te_modal .te-ghostbadge{pointer-events:none}
   #te_modal .te-ghostbadge-t{font:700 10px "Segoe UI",system-ui,sans-serif}
@@ -1286,7 +1286,7 @@
     font-size:11.5px;color:var(--te-ink);font-variant-numeric:tabular-nums;flex-shrink:0}
   #te_modal .te-dimval.vacio{color:var(--te-faint);font-weight:400}
   #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
-    filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
+    filter:drop-shadow(0 0 3px rgba(126,186,39,.55))}
   /* BOTÓN CONTEXTUAL DE GIRO (R) — flota sobre la pieza SELECCIONADA en los
      cuadrantes y la gira 90° EN LA VISTA ACTIVA (TANDA P · rotar-en-vista; ya no
      cicla orientaciones: una sola semántica, la misma que la tecla R). Discreto pero

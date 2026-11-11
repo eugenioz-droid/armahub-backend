@@ -16,7 +16,7 @@ function _calcDiasReclamo(r) {
 function _diasHeatColor(dias) {
   if (dias === null) return '';
   if (dias <= 3) return '#4CAF50';
-  if (dias <= 7) return '#8BC34A';
+  if (dias <= 7) return '#7EBA27';
   if (dias <= 14) return '#FFC107';
   if (dias <= 21) return '#FF9800';
   if (dias <= 30) return '#FF5722';
