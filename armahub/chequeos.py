@@ -390,8 +390,8 @@ def r_patas_suple(barra, hermanas) -> list:
     if dif <= TOLERANCIA_PATAS_SUPLE + 0.01:
         return []
     return [{
-        "texto": ("las patas B y D del suple miden distinto: %d y %d mm (%d de diferencia), "
-                  "y la losa en que va tiene un solo espesor"
+        "texto": ("B y D miden distinto: %d y %d mm (%d de diferencia), y la losa en que va el "
+                  "suple tiene un solo espesor"
                   % (round(b["largo"]), round(d["largo"]), round(dif))),
         "lados": ["B", "D"],
         "valor": round(b["largo"]), "esperado": round(d["largo"]),
@@ -631,7 +631,7 @@ REGLAS = [
      "necesita": ("lados",),
      "alcance": "Sólo estribos cerrados: gancho en las dos puntas y cuatro lados en medio "
                 "(T1, 106A…). Compara B con D y C con E. Una C o un suple 105A no entran: "
-                "sus pies son distintos a propósito.",
+                "sus extremos A y E son distintos a propósito.",
      # El ejemplo va BIEN tipeado y cerrado, con el par que se compara marcado: dibujado
      # con E ≠ C el marco no cierra y los dos ganchos se amontonan con las letras en una
      # esquina; así se entiende qué se compara, y la leyenda dice cuándo salta.
@@ -653,13 +653,13 @@ REGLAS = [
                  "marcar": ["A"], "leyenda": "CB con φ8 o φ10"},
      "fn": r_cabezal_delgado},
     {"codigo": "patas_suple",
-     "corto": "Patas del suple",
-     "nombre": "Suple 105A con las patas de distinto largo",
-     "porque": "El suple va dentro de una losa y la losa tiene un solo espesor: las patas B y D "
-               "tienen que medir lo mismo. Más de 1 cm de diferencia es una medida tipeada mal.",
+     "corto": "105A: B ≠ D",
+     "nombre": "Suple 105A con B distinto de D",
+     "porque": "El suple va dentro de una losa y la losa tiene un solo espesor: B y D tienen que "
+               "medir lo mismo. Más de 1 cm de diferencia es una medida tipeada mal.",
      "necesita": ("lados",),
-     "alcance": "Sólo la figura 105A. Compara B con D, las patas; los pies A y E pueden ser "
-                "distintos y no se miran. Tolerancia: 1 cm, que es como se cubica.",
+     "alcance": "Sólo la figura 105A. Compara B con D; A y E pueden ser distintos y no se miran. "
+                "Tolerancia: 1 cm, que es como se cubica.",
      "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
                  "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B ≠ D por más de 1 cm"},
      "fn": r_patas_suple},
@@ -668,50 +668,52 @@ REGLAS = [
      # reporte tienen que distinguirse.
      "corto": "Camión: 2 lados",
      "nombre": "Figura de dos lados que no cabe en el camión",
-     "porque": "El camión lleva 250 cm de ancho. Una barra de dos lados se carga acostada y en "
-               "diagonal: lo que ocupa a lo ancho es la altura del triángulo que forman sus lados "
-               "sobre la línea entre las puntas. Si pasa de 250 cm, no se puede despachar.",
+     "porque": "El camión lleva 250 cm de ancho. Una barra de dos lados se carga acostada, con d "
+               "a lo largo del camión: lo que ocupa a lo ancho es h. Si h pasa de 250 cm, no se "
+               "puede despachar.",
      "necesita": ("lados",),
      "alcance": "Toda barra de dos lados con un doblez, con cualquier ángulo: 102A, 102B y 102C, y las "
                 "figuras de aSa que quedan así con sus lados opcionales vacíos (el corchete 2 sin G, "
                 "J71, AA1, 17…). Las figuras de más lados tendrán sus propias reglas.",
      "ejemplo": {"lados": [("A", 3500), ("B", 4000, -90)], "diam": 12, "pin": 72,
-                 "marcar": [], "guias": "altura", "leyenda": "h > 250 cm"},
+                 "marcar": [], "guias": "altura", "base": "d", "leyenda": "h > 250 cm"},
      "fn": r_no_cabe_camion},
     {"codigo": "no_cabe_camion_3",
      "corto": "Camión: 3 lados",
      "nombre": "Figura de tres lados a 90° que no cabe en el camión",
      "porque": "El camión lleva 250 cm de ancho. La figura se carga con su lado más largo a lo largo "
-               "del camión: la pata que queda atravesada no puede pasar de 250 cm.",
+               "del camión: los lados que quedan atravesados no pueden pasar de 250 cm.",
      "necesita": ("lados",),
      "alcance": "Toda barra de tres lados con los dos dobleces a 90°: 103A, el corchete 2 con sus dos "
-                "ganchos, 103D1, 103G… La pata es la que queda atravesada: en una U de patas largas y "
-                "cuerpo corto (horquilla) es el cuerpo, y en una Z se suman las dos.",
+                "ganchos, 103D1, 103G… Si el lado más largo es B, se miden A y C; si es A o C, se mide "
+                "B. En una Z, A y C se suman.",
      "ejemplo": {"lados": [("A", 3000), ("B", 6000, -90), ("C", 1200, -90)], "diam": 12, "pin": 72,
-                 "marcar": ["A"], "leyenda": "pata A > 250 cm"},
+                 "marcar": ["A"], "leyenda": "A > 250 cm"},
      "fn": r_no_cabe_camion_3},
     {"codigo": "no_cabe_camion_radio",
      "corto": "Camión: radio",
      "nombre": "Radio que no cabe en el camión",
-     "porque": "El camión lleva 250 cm de ancho. Una barra curva se carga acostada con su cuerda a lo "
-               "largo del camión: lo que ocupa a lo ancho es la altura del arco. Si pasa de 250 cm, no "
-               "se puede despachar.",
+     "porque": "El camión lleva 250 cm de ancho. Una barra curva se carga acostada con c a lo largo "
+               "del camión: lo que ocupa a lo ancho es h. Si h pasa de 250 cm, no se puede despachar.",
      "necesita": ("lados",),
      "alcance": "Todo lado curvo, de cualquier figura (9, ARC, DOBLE, 10W1…), cada arco por separado. "
-                "La cuerda no se compara con 250: va a lo largo del camión, y en los radios reales llega "
-                "a 12 m.",
+                "En aSa, h es la cota H y c la cota O. c no se compara con 250: va a lo largo del "
+                "camión, y en los radios reales llega a 12 m.",
      "ejemplo": {"lados": [("B", 8796, None, False, 2800)], "diam": 16, "pin": 96,
-                 "marcar": [], "guias": "altura", "leyenda": "h > 250 cm"},
+                 "marcar": [], "guias": "altura", "base": "c", "leyenda": "h > 250 cm"},
      "fn": r_no_cabe_camion_radio},
 ]
 
 
-def _guias(tipo, puntos) -> list:
+def _guias(tipo, puntos, base=None) -> list:
     """Líneas de apoyo del dibujo de una regla, en las coordenadas del eje ya orientado (mm).
     `altura`: la línea entre las puntas (cota gris: la diagonal de la L, la cuerda del arco),
     la altura desde el punto más lejano hasta ella (flecha azul de doble punta) y su letra
     «h» (el usuario, 11-nov: «puedes dibujarle una h»). Es lo que miden las reglas del
-    camión. `puntos` es la MUESTRA: la altura de un arco no está en sus nodos."""
+    camión. `puntos` es la MUESTRA: la altura de un arco no está en sus nodos.
+    `base`: la letra de la línea entre puntas (d la diagonal, c la cuerda). El usuario, 11-nov:
+    todo lo que se dibuja lleva su letra («pusiste una cuerda sin letras en el render»); va
+    del lado de afuera de la figura, para no pisar el trazo."""
     if tipo != "altura" or len(puntos) < 3:
         return []
     p0, p1 = puntos[0], puntos[-1]
@@ -728,9 +730,18 @@ def _guias(tipo, puntos) -> list:
     off = 0.06 * L
     hx = (v[0] + pie[0]) / 2.0 + dx / L * off
     hy = (v[1] + pie[1]) / 2.0 + dy / L * off
-    return [{"tipo": "cota", "x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1]},
-            {"tipo": "diametro", "x1": v[0], "y1": v[1], "x2": round(pie[0], 1), "y2": round(pie[1], 1)},
-            {"tipo": "letra", "texto": "h", "x": round(hx, 1), "y": round(hy, 1)}]
+    guias = [{"tipo": "cota", "x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1]},
+             {"tipo": "diametro", "x1": v[0], "y1": v[1], "x2": round(pie[0], 1), "y2": round(pie[1], 1)},
+             {"tipo": "letra", "texto": "h", "x": round(hx, 1), "y": round(hy, 1)}]
+    if base:
+        # A un 30 por ciento de la línea (al medio la pisaba la punta de la flecha de h),
+        # corrida hacia el lado contrario al punto más lejano.
+        ux, uy = (pie[0] - v[0]), (pie[1] - v[1])
+        n = math.hypot(ux, uy) or 1.0
+        bx = p0[0] + 0.3 * dx + ux / n * 0.07 * L
+        by = p0[1] + 0.3 * dy + uy / n * 0.07 * L
+        guias.append({"tipo": "letra", "texto": base, "x": round(bx, 1), "y": round(by, 1)})
+    return guias
 
 
 def ejemplo_dibujado(regla) -> Optional[dict]:
@@ -742,7 +753,7 @@ def ejemplo_dibujado(regla) -> Optional[dict]:
     eje = figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0))
     return {"eje": eje, "marcar": list(ej.get("marcar") or []), "leyenda": ej.get("leyenda") or "",
             "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]],
-            "guias": _guias(ej.get("guias"), eje.get("muestra") or eje.get("puntos") or [])}
+            "guias": _guias(ej.get("guias"), eje.get("muestra") or eje.get("puntos") or [], ej.get("base"))}
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

@@ -1491,7 +1491,7 @@ check("la barra real de SVN7 pasa por el motor entero y sale con la señal",
       and sreal[0]["detalle"]["lados"] == ["B", "D"])
 check("...y los lados opuestos siguen sin meterse con la 105A", C.r_lados_opuestos(breal, []) == [])
 check("está en REGLAS con su nombre corto",
-      any(r["codigo"] == "patas_suple" and r["corto"] == "Patas del suple" for r in C.REGLAS))
+      any(r["codigo"] == "patas_suple" and r["corto"] == "105A: B ≠ D" for r in C.REGLAS))
 
 # ── 8. Cada regla dice dónde aplica y, si mira la figura, se dibuja (10-nov) ─────────
 # El usuario: «me gustaría que en el menú de reglas podamos agregar dibujos renderizados
@@ -1515,7 +1515,7 @@ import re as _re
 _ley = {r["codigo"]: (r.get("ejemplo") or {}).get("leyenda", "") for r in C.REGLAS}
 check("las leyendas nombran la dimensión y el límite, sin cifras del ejemplo",
       _ley["no_cabe_camion"] == "h > 250 cm" and _ley["no_cabe_camion_radio"] == "h > 250 cm"
-      and _ley["no_cabe_camion_3"] == "pata A > 250 cm" and _ley["lado_corto"] == "C < 10 φ"
+      and _ley["no_cabe_camion_3"] == "A > 250 cm" and _ley["lado_corto"] == "C < 10 φ"
       and _ley["patas_suple"] == "B ≠ D por más de 1 cm"
       and all(set(_re.findall(r"\d+", t)) <= {"250", "10", "1", "8"} for t in _ley.values()))
 check("la leyenda va BAJO el dibujo, dentro de la celda del dibujo",
@@ -1583,7 +1583,8 @@ check("está en REGLAS con su nombre corto, su alcance y la tolerancia de 250 cm
       and C.ANCHO_CAMION == 2500.0)
 e = C.ejemplo_dibujado(r_cam)
 check("su dibujo es la L con la diagonal (cota), la altura (flecha) hasta ella y su «h» (11-nov)",
-      bool(e) and [g["tipo"] for g in e["guias"]] == ["cota", "diametro", "letra"] and e["guias"][2]["texto"] == "h"
+      bool(e) and [g["tipo"] for g in e["guias"]] == ["cota", "diametro", "letra", "letra"]
+      and [g.get("texto") for g in e["guias"][2:]] == ["h", "d"]
       and e["leyenda"] == "h > 250 cm" and "g.texto != null ? { tipo: g.tipo, texto: g.texto" in JS
       and abs(math.hypot(e["guias"][1]["x2"] - e["guias"][1]["x1"], e["guias"][1]["y2"] - e["guias"][1]["y1"]) - 2634) < 2
       and "etiquetas: (ej.guias || [])" in JS)
@@ -1622,7 +1623,7 @@ check("dos lados o cuatro no son de esta regla",
 r3 = {r["codigo"]: r for r in C.REGLAS}["no_cabe_camion_3"]
 e3 = C.ejemplo_dibujado(r3)
 check("es una regla aparte, con su nombre corto, su alcance y su dibujo (la U con la pata marcada)",
-      r3["corto"] == "Camión: 3 lados" and "horquilla" in r3["alcance"] and "Z" in r3["alcance"]
+      r3["corto"] == "Camión: 3 lados" and "si es A o C, se mide B" in r3["alcance"] and "Z" in r3["alcance"]
       and bool(e3) and e3["marcar"] == ["A"] and [t["lado"] for t in e3["eje"]["tramos"]] == ["A", "B", "C"])
 
 # ── 11. No cabe en el camión: los radios (11-nov) ───────────────────────────────────
@@ -1651,13 +1652,24 @@ check("un lado recto no es un radio", C.altura_arco({"nombre": "A", "largo": 300
 rr = {r["codigo"]: r for r in C.REGLAS}["no_cabe_camion_radio"]
 er = C.ejemplo_dibujado(rr)
 check("es otra regla, con su alcance (la cuerda no se compara) y su dibujo: el arco, la cuerda y la h",
-      rr["corto"] == "Camión: radio" and "La cuerda no se compara" in rr["alcance"]
+      rr["corto"] == "Camión: radio" and "c no se compara" in rr["alcance"] and "h es la cota H y c la cota O" in rr["alcance"]
       and bool(er) and [t["tipo"] for t in er["eje"]["tramos"]].count("arco") >= 1
-      and [g["tipo"] for g in er["guias"]] == ["cota", "diametro", "letra"]
+      and [g.get("texto") for g in er["guias"] if g["tipo"] == "letra"] == ["h", "c"]
       and abs(math.hypot(er["guias"][1]["x2"] - er["guias"][1]["x1"], er["guias"][1]["y2"] - er["guias"][1]["y1"]) - 2800) < 30)
 check("las tres reglas del camión son reglas distintas y se distinguen en el reporte",
       [r["corto"] for r in C.REGLAS if r["codigo"].startswith("no_cabe_camion")]
       == ["Camión: 2 lados", "Camión: 3 lados", "Camión: radio"])
+
+# ── 12. Sin términos coloquiales (11-nov) ────────────────────────────────────────────
+# El usuario: «no uses términos coloquiales como pata... con la letra basta si es que está
+# renderizada». Ningún texto que se ve en el menú dice pata, pie, horquilla ni cuerpo.
+print("\n12. Los textos de las reglas nombran los lados por su letra")
+_vis = " ".join(" ".join([r["nombre"], r["corto"], r["porque"], r.get("alcance") or "",
+                          (r.get("ejemplo") or {}).get("leyenda", "")]) for r in C.REGLAS).lower()
+check("ningún texto visible usa pata, pie, horquilla ni cuerpo",
+      not _re.search(r"\b(pata|patas|pie|pies|horquilla|horquillas|cuerpo)\b", _vis))
+s105 = C.r_patas_suple(suple(130, 170, 2280, 130, 640), [])
+check("...tampoco el texto de la señal del suple", "pata" not in s105[0]["texto"] and s105[0]["texto"].startswith("B y D"))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
