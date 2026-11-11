@@ -536,19 +536,24 @@ def _policurva(legs, dirs, radio_codo, pasos):
 
 def figura_de_lados(lados, pin_diam: float = 0.0, diam_mm: float = 0.0, pasos_arco: int = 12) -> dict:
     """La misma policurva, pero desde lados escritos a mano:
-    `[(nombre, largo_mm, giro_con_el_anterior, es_gancho), ...]` (el giro y el gancho son
-    opcionales; el giro va con signo, + antihorario, como el `<a>` de aSa).
+    `[(nombre, largo_mm, giro_con_el_anterior, es_gancho, radio_mm), ...]` (giro, gancho y
+    radio son opcionales; el giro va con signo, + antihorario, como el `<a>` de aSa; con
+    radio el lado es CURVO, un `RB` de ese radio y ese largo de arco).
 
     Es para dibujar el EJEMPLO de una regla de revisión (chequeos.py, 10-nov) con el
     mismo trazador que dibuja las barras reales —codos, ganchos en arco, orientación—
     sin inventar un XML de aSa. El primer lado parte horizontal y los demás giran contra
-    el anterior. Devuelve `{ok, cerrada, puntos, tramos, ancho, alto}` como figura_de."""
+    el anterior. Devuelve `{ok, cerrada, puntos, tramos, ancho, alto, muestra}` como
+    figura_de; `muestra` trae los arcos desplegados, para medir sobre ella (la altura de un
+    arco no está en sus nodos)."""
     legs = []
     for i, l in enumerate(lados):
         giro = float(l[2]) if len(l) > 2 and l[2] is not None else None
         gancho = bool(l[3]) if len(l) > 3 else False
-        legs.append({"nombre": str(l[0]), "largo": float(l[1]), "tipo": GANCHO_135 if gancho else "STD",
-                     "angulo": giro if i > 0 else None, "arco": False, "radio": None, "barrido": None,
+        radio = float(l[4]) if len(l) > 4 and l[4] else None
+        legs.append({"nombre": str(l[0]), "largo": float(l[1]),
+                     "tipo": "RB" if radio else (GANCHO_135 if gancho else "STD"),
+                     "angulo": giro if i > 0 else None, "arco": bool(radio), "radio": radio, "barrido": None,
                      "gancho": gancho, "vx": 0.0, "vy": 0.0, "vz": 0.0})
     if not legs:
         return {"ok": False, "motivo": "sin lados", "puntos": [], "tramos": []}
@@ -561,6 +566,7 @@ def figura_de_lados(lados, pin_diam: float = 0.0, diam_mm: float = 0.0, pasos_ar
     ys = [p[1] for p in muestra]
     return {"ok": True, "motivo": "", "tridimensional": False, "fuente": "ejemplo", "cerrada": cerrada,
             "puntos": [[round(p[0], 1), round(p[1], 1)] for p in puntos], "tramos": tramos,
+            "muestra": [[round(p[0], 1), round(p[1], 1)] for p in muestra],
             "ancho": round(max(xs) - min(xs)), "alto": round(max(ys) - min(ys))}
 
 

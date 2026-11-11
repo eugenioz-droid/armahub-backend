@@ -74,7 +74,10 @@ def normalizar_asa(item: dict, ref: str) -> Optional[dict]:
     lados = [{"nombre": l["nombre"], "largo": _num(l["largo"]), "tipo": l["tipo"],
               "angulo": l["angulo"], "arco": bool(l["arco"]),
               "declarado_gancho": bool(l["gancho"]),
-              "vx": l.get("vx", 0.0), "vy": l.get("vy", 0.0)}
+              "vx": l.get("vx", 0.0), "vy": l.get("vy", 0.0),
+              # El radio y el barrido de un lado curvo: con ellos se mide la altura del
+              # arco (regla del camión para los radios).
+              "radio": l.get("radio"), "barrido": l.get("barrido")}
              for l in legs]
     _clasificar_lados(lados, diam)
     return {
@@ -434,20 +437,42 @@ def altura_en_camion(lados) -> Optional[float]:
     ls = [l for l in (lados or []) if l["largo"] > 0]
     if len(ls) != 2 or any(l["arco"] for l in ls):
         return None
-    giro = ls[1]["angulo"]
-    if giro is None:
-        # SIN ÁNGULO EN EL XML (3 de 1.558 barras reales): el giro sale de los vectores, con
-        # la misma función que los dibuja. Sin vectores tampoco, no hay cómo medir.
-        if not all(l.get("vx") or l.get("vy") for l in ls):
-            return None
-        d = _direcciones([dict(l, vz=0.0) for l in ls])
-        if d[0] is None or d[1] is None:
-            return None
-        giro = _giro(d[0], d[1])
+    giros = _giros_de(ls)
+    if giros is None:
+        return None
+    giro = giros[0]
     a, b = ls[0]["largo"], ls[1]["largo"]
     g = math.radians(abs(float(giro)))
     c = math.sqrt(max(0.0, a * a + b * b + 2 * a * b * math.cos(g)))
     return (a * b * abs(math.sin(g)) / c) if c > 1e-9 else 0.0
+
+
+def _giros_de(ls) -> Optional[list]:
+    """El giro de cada doblez (lado i contra el i-1), en grados con signo. Del ángulo que
+    trae el XML; si falta alguno (3 de 1.558 barras reales: SU25 12mmA129, SU4K 8mmA56,
+    SVKZ 16mmA11), de los vectores de ShapeDims con la misma función que los dibuja. None
+    si no hay cómo saberlo."""
+    if all(l["angulo"] is not None for l in ls[1:]):
+        return [float(l["angulo"]) for l in ls[1:]]
+    if not all(l.get("vx") or l.get("vy") for l in ls):
+        return None
+    d = _direcciones([dict(l, vz=0.0) for l in ls])
+    if any(x is None for x in d):
+        return None
+    return [_giro(d[i - 1], d[i]) for i in range(1, len(ls))]
+
+
+def _vertices(ls, giros) -> list:
+    """Los vértices de una figura de lados rectos, sin codos: parte horizontal y gira lo que
+    dice cada doblez. Basta para medir anchos (el doblez real redondea las esquinas y ocupa
+    unos centímetros menos: erra hacia el lado seguro)."""
+    d, p = (1.0, 0.0), [(0.0, 0.0)]
+    for i, l in enumerate(ls):
+        if i > 0:
+            g = math.radians(giros[i - 1])
+            d = (d[0] * math.cos(g) - d[1] * math.sin(g), d[0] * math.sin(g) + d[1] * math.cos(g))
+        p.append((p[-1][0] + d[0] * l["largo"], p[-1][1] + d[1] * l["largo"]))
+    return p
 
 
 def r_no_cabe_camion(barra, hermanas) -> list:
@@ -464,6 +489,108 @@ def r_no_cabe_camion(barra, hermanas) -> list:
         "lados": [a["nombre"], b["nombre"]],
         "valor": round(h), "esperado": round(ANCHO_CAMION),
         "clave": ("camion", round(a["largo"]), round(b["largo"])),
+    }]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NO CABE EN EL CAMIÓN: TRES LADOS A 90° (11-nov)
+# ─────────────────────────────────────────────────────────────────────────────
+# El usuario: «para todas las figuras de 3 lados con ángulos de 90, la pata no puede ser
+# mayor a 250 (esa es otra de no cabe en el camión)». Es otra regla, no la de dos lados.
+#
+# LA PATA ES LA QUE VA ATRAVESADA. La figura se carga con su lado más largo a lo largo del
+# camión, y lo que ocupa a lo ancho es lo que sobresale perpendicular a ese lado. En la U de
+# siempre (103A con el cuerpo B largo) eso es la pata más larga: la regla del usuario tal
+# cual. Pero medida al pie de la letra —A y C por su posición— saltaba en 227 barras de 160
+# códigos, TODAS horquillas: U de patas largas y cuerpo corto, como SVNT 8mmA1 (103A, 84 ×
+# 14 × 922 cm), que van con las patas a lo largo y ocupan los 14 cm del cuerpo. Midiendo
+# perpendicular al lado más largo, las 1.528 barras de tres lados a 90° de la muestra caben
+# (la más ancha, 120 cm). En una Z las dos patas salen a lados opuestos y el ancho es la
+# suma: dos patas de 200 ocupan 400.
+#
+# A 90° quiere decir los dos dobleces a 90° ± 2°: aSa manda 89,998.
+GIRO_RECTO_TOL = 2.0
+
+
+def ancho_tres_lados(lados) -> Optional[dict]:
+    """Lo que ocupa a lo ancho una barra de TRES lados rectos con los dos dobleces a 90°,
+    cargada con su lado más largo a lo largo del camión. None si no es de esa familia.
+    Devuelve {ancho (mm), largo (el lado a lo largo), atraviesan (los lados perpendiculares
+    a él, que son los que ocupan el ancho)}."""
+    ls = [l for l in (lados or []) if l["largo"] > 0]
+    if len(ls) != 3 or any(l["arco"] for l in ls):
+        return None
+    giros = _giros_de(ls)
+    if giros is None or any(abs(abs(g) - 90.0) > GIRO_RECTO_TOL for g in giros):
+        return None
+    p = _vertices(ls, giros)
+    k = max(range(3), key=lambda i: ls[i]["largo"])
+    ux, uy = (p[k + 1][0] - p[k][0]) / ls[k]["largo"], (p[k + 1][1] - p[k][1]) / ls[k]["largo"]
+    s = [-uy * (q[0] - p[k][0]) + ux * (q[1] - p[k][1]) for q in p]
+    atraviesan = [ls[0]["nombre"], ls[2]["nombre"]] if k == 1 else [ls[1]["nombre"]]
+    return {"ancho": max(s) - min(s), "largo": ls[k]["nombre"], "atraviesan": atraviesan}
+
+
+def r_no_cabe_camion_3(barra, hermanas) -> list:
+    """UNA BARRA DE TRES LADOS A 90° QUE NO CABE EN EL CAMIÓN. Ver arriba."""
+    m = ancho_tres_lados(barra["lados"])
+    if m is None or m["ancho"] <= ANCHO_CAMION + 0.01:
+        return []
+    por = {l["nombre"]: l for l in barra["lados"]}
+    # Se marcan las patas que pasan de 250 por sí solas; si ninguna (una Z, donde se suman),
+    # las dos.
+    marcar = [n for n in m["atraviesan"] if por[n]["largo"] > ANCHO_CAMION + 0.01] or m["atraviesan"]
+    return [{
+        "texto": ("con %s (%d cm) a lo largo del camión, %s ocupa%s %d cm de ancho y el camión lleva %d: no cabe"
+                  % (m["largo"], round(por[m["largo"]]["largo"] / 10.0), _y(marcar),
+                     "n" if len(marcar) > 1 else "", round(m["ancho"] / 10.0), round(ANCHO_CAMION / 10.0))),
+        "lados": marcar,
+        "valor": round(m["ancho"]), "esperado": round(ANCHO_CAMION),
+        "clave": ("camion3",) + tuple(round(l["largo"]) for l in barra["lados"] if l["largo"] > 0),
+    }]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NO CABE EN EL CAMIÓN: LOS RADIOS (11-nov)
+# ─────────────────────────────────────────────────────────────────────────────
+# El usuario: «cuando los radios tienen una altura o cuerda de más de 250 ocurre lo mismo.
+# Debieran ser reglas diferentes». Regla aparte, por cada lado curvo.
+#
+# SE MIDE LA ALTURA DEL ARCO, NO LA CUERDA. La barra curva va acostada con la cuerda a lo
+# largo del camión; lo que ocupa a lo ancho es la altura (la flecha): R·(1 − cos(θ/2)), que
+# vale también pasado el medio círculo (ahí la altura supera al radio). Comparar la cuerda
+# con 250 hacía saltar 42 de los 66 arcos medidos, todos radios 9 de 5 a 12 m de cuerda que
+# viajan a lo largo, como el ARC de SLPB 16mmA41: medio círculo de 474 cm de cuerda y 237 de
+# altura, que cabe. Ninguno de los 66 pasa de 250 de altura (el más alto, ese mismo).
+
+
+def altura_arco(lado) -> Optional[float]:
+    """La altura (flecha) del arco de un lado curvo, en mm. None si no es curvo o no trae
+    radio."""
+    if not lado.get("arco") or not lado.get("radio") or lado["largo"] <= 0:
+        return None
+    R = float(lado["radio"])
+    th = abs(math.radians(float(lado["barrido"]))) if lado.get("barrido") else lado["largo"] / R
+    th = min(th, 2 * math.pi)
+    return R * (1 - math.cos(th / 2.0))
+
+
+def r_no_cabe_camion_radio(barra, hermanas) -> list:
+    """UN LADO CURVO CUYA ALTURA NO CABE EN EL CAMIÓN. Ver arriba. Una barra es un hallazgo
+    aunque le fallen dos arcos: el texto los dice todos."""
+    malos = [(l, altura_arco(l)) for l in barra["lados"]]
+    malos = [(l, h) for l, h in malos if h is not None and h > ANCHO_CAMION + 0.01]
+    if not malos:
+        return []
+    texto = " · ".join("el arco %s (radio %d cm) tiene %d cm de altura y el camión lleva %d: no cabe"
+                       % (l["nombre"], round(float(l["radio"]) / 10.0), round(h / 10.0), round(ANCHO_CAMION / 10.0))
+                       for l, h in malos)
+    peor = max(h for _, h in malos)
+    return [{
+        "texto": texto,
+        "lados": [l["nombre"] for l, _ in malos],
+        "valor": round(peor), "esperado": round(ANCHO_CAMION),
+        "clave": ("camion_radio",) + tuple((l["nombre"], round(l["largo"]), round(float(l["radio"]))) for l, _ in malos),
     }]
 
 
@@ -534,7 +661,9 @@ REGLAS = [
                  "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B = 17 ≠ D = 13"},
      "fn": r_patas_suple},
     {"codigo": "no_cabe_camion",
-     "corto": "No cabe en camión",
+     # «Camión: …» en las tres: son tres reglas del mismo motivo, y en los encabezados del
+     # reporte tienen que distinguirse.
+     "corto": "Camión: 2 lados",
      "nombre": "Figura de dos lados que no cabe en el camión",
      "porque": "El camión lleva 250 cm de ancho. Una barra de dos lados se carga acostada y en "
                "diagonal: lo que ocupa a lo ancho es la altura del triángulo que forman sus lados "
@@ -544,17 +673,43 @@ REGLAS = [
                 "figuras de aSa que quedan así con sus lados opcionales vacíos (el corchete 2 sin G, "
                 "J71, AA1, 17…). Las figuras de más lados tendrán sus propias reglas.",
      "ejemplo": {"lados": [("A", 3500), ("B", 4000, -90)], "diam": 12, "pin": 72,
-                 "marcar": [], "guias": "altura_diagonal", "leyenda": "altura 263 cm > 250"},
+                 "marcar": [], "guias": "altura", "leyenda": "h = 263 cm > 250"},
      "fn": r_no_cabe_camion},
+    {"codigo": "no_cabe_camion_3",
+     "corto": "Camión: 3 lados",
+     "nombre": "Figura de tres lados a 90° que no cabe en el camión",
+     "porque": "El camión lleva 250 cm de ancho. La figura se carga con su lado más largo a lo largo "
+               "del camión: la pata que queda atravesada no puede pasar de 250 cm.",
+     "necesita": ("lados",),
+     "alcance": "Toda barra de tres lados con los dos dobleces a 90°: 103A, el corchete 2 con sus dos "
+                "ganchos, 103D1, 103G… La pata es la que queda atravesada: en una U de patas largas y "
+                "cuerpo corto (horquilla) es el cuerpo, y en una Z se suman las dos.",
+     "ejemplo": {"lados": [("A", 3000), ("B", 6000, -90), ("C", 1200, -90)], "diam": 12, "pin": 72,
+                 "marcar": ["A"], "leyenda": "pata A = 300 cm > 250"},
+     "fn": r_no_cabe_camion_3},
+    {"codigo": "no_cabe_camion_radio",
+     "corto": "Camión: radio",
+     "nombre": "Radio que no cabe en el camión",
+     "porque": "El camión lleva 250 cm de ancho. Una barra curva se carga acostada con su cuerda a lo "
+               "largo del camión: lo que ocupa a lo ancho es la altura del arco. Si pasa de 250 cm, no "
+               "se puede despachar.",
+     "necesita": ("lados",),
+     "alcance": "Todo lado curvo, de cualquier figura (9, ARC, DOBLE, 10W1…), cada arco por separado. "
+                "La cuerda no se compara con 250: va a lo largo del camión, y en los radios reales llega "
+                "a 12 m.",
+     "ejemplo": {"lados": [("B", 8796, None, False, 2800)], "diam": 16, "pin": 96,
+                 "marcar": [], "guias": "altura", "leyenda": "h = 280 cm > 250"},
+     "fn": r_no_cabe_camion_radio},
 ]
 
 
 def _guias(tipo, puntos) -> list:
     """Líneas de apoyo del dibujo de una regla, en las coordenadas del eje ya orientado (mm).
-    `altura_diagonal`: la diagonal entre las puntas (cota gris) y la altura desde el vértice
-    más lejano hasta ella (flecha azul de doble punta), que es lo que mide la regla del
-    camión."""
-    if tipo != "altura_diagonal" or len(puntos) < 3:
+    `altura`: la línea entre las puntas (cota gris: la diagonal de la L, la cuerda del arco),
+    la altura desde el punto más lejano hasta ella (flecha azul de doble punta) y su letra
+    «h» (el usuario, 11-nov: «puedes dibujarle una h»). Es lo que miden las reglas del
+    camión. `puntos` es la MUESTRA: la altura de un arco no está en sus nodos."""
+    if tipo != "altura" or len(puntos) < 3:
         return []
     p0, p1 = puntos[0], puntos[-1]
     dx, dy = p1[0] - p0[0], p1[1] - p0[1]
@@ -564,8 +719,15 @@ def _guias(tipo, puntos) -> list:
     v = max(puntos[1:-1], key=lambda q: abs(dx * (q[1] - p0[1]) - dy * (q[0] - p0[0])))
     t = ((v[0] - p0[0]) * dx + (v[1] - p0[1]) * dy) / L2
     pie = [p0[0] + t * dx, p0[1] + t * dy]
+    # La «h» al costado de la flecha, corrida a lo largo de la línea entre puntas (la flecha
+    # es perpendicular a ella): un 6 por ciento de esa línea, hacia la punta final.
+    L = math.sqrt(L2)
+    off = 0.06 * L
+    hx = (v[0] + pie[0]) / 2.0 + dx / L * off
+    hy = (v[1] + pie[1]) / 2.0 + dy / L * off
     return [{"tipo": "cota", "x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1]},
-            {"tipo": "diametro", "x1": v[0], "y1": v[1], "x2": round(pie[0], 1), "y2": round(pie[1], 1)}]
+            {"tipo": "diametro", "x1": v[0], "y1": v[1], "x2": round(pie[0], 1), "y2": round(pie[1], 1)},
+            {"tipo": "letra", "texto": "h", "x": round(hx, 1), "y": round(hy, 1)}]
 
 
 def ejemplo_dibujado(regla) -> Optional[dict]:
@@ -577,7 +739,7 @@ def ejemplo_dibujado(regla) -> Optional[dict]:
     eje = figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0))
     return {"eje": eje, "marcar": list(ej.get("marcar") or []), "leyenda": ej.get("leyenda") or "",
             "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]],
-            "guias": _guias(ej.get("guias"), eje.get("puntos") or [])}
+            "guias": _guias(ej.get("guias"), eje.get("muestra") or eje.get("puntos") or [])}
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

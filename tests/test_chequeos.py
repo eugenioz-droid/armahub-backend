@@ -1569,13 +1569,85 @@ check("un lado curvo tampoco", C.altura_en_camion([{"nombre": "A", "largo": 3000
                                                    {"nombre": "B", "largo": 4000.0, "arco": True, "angulo": 0.0}]) is None)
 r_cam = {r["codigo"]: r for r in C.REGLAS}["no_cabe_camion"]
 check("está en REGLAS con su nombre corto, su alcance y la tolerancia de 250 cm",
-      r_cam["corto"] == "No cabe en camión" and "102C" in r_cam["alcance"] and "corchete 2 sin G" in r_cam["alcance"]
+      r_cam["corto"] == "Camión: 2 lados" and "102C" in r_cam["alcance"] and "corchete 2 sin G" in r_cam["alcance"]
       and C.ANCHO_CAMION == 2500.0)
 e = C.ejemplo_dibujado(r_cam)
-check("su dibujo es la L con la diagonal (cota) y la altura (flecha) hasta ella",
-      bool(e) and [g["tipo"] for g in e["guias"]] == ["cota", "diametro"]
+check("su dibujo es la L con la diagonal (cota), la altura (flecha) hasta ella y su «h» (11-nov)",
+      bool(e) and [g["tipo"] for g in e["guias"]] == ["cota", "diametro", "letra"] and e["guias"][2]["texto"] == "h"
+      and "h = 263" in e["leyenda"] and "g.texto != null ? { tipo: g.tipo, texto: g.texto" in JS
       and abs(math.hypot(e["guias"][1]["x2"] - e["guias"][1]["x1"], e["guias"][1]["y2"] - e["guias"][1]["y1"]) - 2634) < 2
       and "etiquetas: (ej.guias || [])" in JS)
+
+# ── 10. No cabe en el camión: tres lados a 90° (11-nov) ─────────────────────────────
+# El usuario: «para todas las figuras de 3 lados con ángulos de 90, la pata no puede ser
+# mayor a 250». La pata es la que queda ATRAVESADA con el lado más largo a lo largo: tomada
+# por posición (A y C) saltaba en 227 horquillas que caben con las patas a lo largo.
+print("\n10. Una figura de tres lados a 90° que no cabe en el camión")
+
+
+def tres(a, b, c, g1=-90.0, g2=-90.0, figura="103A"):
+    return barra([("A", a, "STD", None), ("B", b, "STD", g1), ("C", c, "STD", g2)], diam=12.0,
+                 figura=figura, ref="U1")
+
+
+m = C.r_no_cabe_camion_3(tres(3000, 6000, 1200), [])
+check("una U de cuerpo 600 con una pata de 300 no cabe: marca esa pata y dice el ancho",
+      len(m) == 1 and m[0]["lados"] == ["A"] and m[0]["valor"] == 3000
+      and "con B (600 cm) a lo largo del camión, A ocupa 300 cm de ancho" in m[0]["texto"])
+check("con las dos patas de 250 justas cabe (la regla es «mayor a 250»)", C.r_no_cabe_camion_3(tres(2500, 6000, 2500), []) == [])
+check("la horquilla real SVNT 8mmA1 (103A, 84 × 14 × 922) va con las patas a lo largo y ocupa 14: cabe",
+      C.r_no_cabe_camion_3(tres(840, 140, 9220), []) == []
+      and round(C.ancho_tres_lados(tres(840, 140, 9220)["lados"])["ancho"]) == 140
+      and C.ancho_tres_lados(tres(840, 140, 9220)["lados"])["atraviesan"] == ["B"])
+mz = C.r_no_cabe_camion_3(tres(2000, 6000, 2000, -90.0, 90.0, "103G"), [])
+check("en una Z las patas salen a lados opuestos y se suman: dos de 200 ocupan 400",
+      len(mz) == 1 and mz[0]["valor"] == 4000 and mz[0]["lados"] == ["A", "C"])
+check("aSa manda 89,998: entra igual; con dobleces de 135° no es de esta familia",
+      len(C.r_no_cabe_camion_3(tres(3000, 6000, 1200, -89.998, -89.998), [])) == 1
+      and C.ancho_tres_lados(tres(3000, 6000, 1200, -135.0, -135.0)["lados"]) is None)
+check("dos lados o cuatro no son de esta regla",
+      C.ancho_tres_lados(ele(3500, 4000)["lados"]) is None
+      and C.ancho_tres_lados(barra([("A", 3000, "STD", None), ("B", 6000, "STD", 90), ("C", 3000, "STD", 90),
+                                    ("D", 500, "STD", 90)])["lados"]) is None)
+r3 = {r["codigo"]: r for r in C.REGLAS}["no_cabe_camion_3"]
+e3 = C.ejemplo_dibujado(r3)
+check("es una regla aparte, con su nombre corto, su alcance y su dibujo (la U con la pata marcada)",
+      r3["corto"] == "Camión: 3 lados" and "horquilla" in r3["alcance"] and "Z" in r3["alcance"]
+      and bool(e3) and e3["marcar"] == ["A"] and [t["lado"] for t in e3["eje"]["tramos"]] == ["A", "B", "C"])
+
+# ── 11. No cabe en el camión: los radios (11-nov) ───────────────────────────────────
+# El usuario: «cuando los radios tienen una altura o cuerda de más de 250 ocurre lo mismo.
+# Debieran ser reglas diferentes». Se mide la ALTURA del arco: la cuerda va a lo largo.
+print("\n11. Un radio que no cabe en el camión")
+
+
+def curva(largo, R, barrido=None, figura="9"):
+    b = barra([("B", largo, "RB", None)], diam=16.0, figura=figura, ref="R1")
+    b["lados"][0]["radio"], b["lados"][0]["barrido"] = R, barrido
+    return b
+
+
+m = C.r_no_cabe_camion_radio(curva(8796, 2800), [])
+check("medio círculo de radio 280: la altura es 280 y no cabe",
+      len(m) == 1 and m[0]["valor"] == 2800 and m[0]["lados"] == ["B"] and "280 cm de altura" in m[0]["texto"])
+check("el ARC real de SLPB 16mmA41 (medio círculo de 474 de cuerda) tiene 237 de altura: cabe",
+      C.r_no_cabe_camion_radio(curva(7450, 2371, 180.0, "ARC"), []) == [])
+check("un radio 9 de 12 m (SVAZ 16mmA2, R 26.150, 26°) tiene 69 de altura: cabe, aunque su cuerda sea de 11,9 m",
+      round(C.altura_arco(curva(12000, 26150, 26.3)["lados"][0])) in (685, 686) and C.r_no_cabe_camion_radio(curva(12000, 26150, 26.3), []) == [])
+check("pasado el medio círculo la altura supera al radio: 300° de radio 200 da 373 y no cabe",
+      round(C.altura_arco(curva(10472, 2000, 300.0)["lados"][0])) == 3732
+      and len(C.r_no_cabe_camion_radio(curva(10472, 2000, 300.0), [])) == 1)
+check("un lado recto no es un radio", C.altura_arco({"nombre": "A", "largo": 3000.0, "arco": False}) is None)
+rr = {r["codigo"]: r for r in C.REGLAS}["no_cabe_camion_radio"]
+er = C.ejemplo_dibujado(rr)
+check("es otra regla, con su alcance (la cuerda no se compara) y su dibujo: el arco, la cuerda y la h",
+      rr["corto"] == "Camión: radio" and "La cuerda no se compara" in rr["alcance"]
+      and bool(er) and [t["tipo"] for t in er["eje"]["tramos"]].count("arco") >= 1
+      and [g["tipo"] for g in er["guias"]] == ["cota", "diametro", "letra"]
+      and abs(math.hypot(er["guias"][1]["x2"] - er["guias"][1]["x1"], er["guias"][1]["y2"] - er["guias"][1]["y1"]) - 2800) < 30)
+check("las tres reglas del camión son reglas distintas y se distinguen en el reporte",
+      [r["corto"] for r in C.REGLAS if r["codigo"].startswith("no_cabe_camion")]
+      == ["Camión: 2 lados", "Camión: 3 lados", "Camión: radio"])
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

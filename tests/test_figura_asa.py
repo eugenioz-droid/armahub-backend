@@ -423,6 +423,9 @@ r = figura_de_lados([("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), 
                      ("E", 540, -90), ("G", 100, -135, True)], pin_diam=40, diam_mm=10)
 check("...y el mismo estribo con E = 540 contra C = 500 NO cierra", r["ok"] and r["cerrada"] is False)
 check("sin lados no hay figura, y no revienta", figura_de_lados([])["ok"] is False)
+r = figura_de_lados([("B", 8796, None, False, 2800)], pin_diam=96, diam_mm=16)
+check("un lado con radio es CURVO: medio círculo de radio 280, 560 × 280, con la muestra desplegada",
+      r["ok"] and "arco" in tipos(r) and (r["ancho"], r["alto"]) == (5600, 2800) and len(r["muestra"]) > 10)
 check("figura_de y el ejemplo comparten el trazado (una sola policurva)",
       _fa.count("_policurva(legs, dirs, radio_codo, pasos_arco)") == 2 and "def _policurva(" in _fa)
 

@@ -138,7 +138,9 @@
         // Las líneas de apoyo que manda la regla (la diagonal y la altura del camión): mismas
         // etiquetas de cota del Diseñador, en cm como los puntos.
         etiquetas: (ej.guias || []).map(function (g) {
-          return { tipo: g.tipo, x1: g.x1 / 10, y1: g.y1 / 10, x2: g.x2 / 10, y2: g.y2 / 10 };
+          // Una guía es una línea (la diagonal, la altura) o un texto (la «h»).
+          return g.texto != null ? { tipo: g.tipo, texto: g.texto, x: g.x / 10, y: g.y / 10 }
+                                 : { tipo: g.tipo, x1: g.x1 / 10, y1: g.y1 / 10, x2: g.x2 / 10, y2: g.y2 / 10 };
         }),
         diam_mm: ej.diam, metrico: true });
     } catch (e) { return ''; }
