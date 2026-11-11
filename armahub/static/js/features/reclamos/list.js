@@ -139,7 +139,7 @@ function populateRecFilterProyecto() {
   var _recAbiertoFilter = '';
   var _ABIERTO_CYCLE = ['', 'abiertos', 'cerrados'];
   var _ABIERTO_LABELS = { '': 'Abiertos/Cerrados', 'abiertos': 'Solo Abiertos', 'cerrados': 'Solo Cerrados' };
-  var _ABIERTO_COLORS = { '': '#1976d2', 'abiertos': '#e65100', 'cerrados': '#388e3c' };
+  var _ABIERTO_COLORS = { '': '#1769C2', 'abiertos': '#D97706', 'cerrados': '#248447' };
 
   function _updateAbiertoBtnLabel() {
     var btn = document.getElementById('recFiltroAbiertoBtn');

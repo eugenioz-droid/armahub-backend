@@ -9,9 +9,13 @@ var _reclamosListaIds = [];
 
 var _FECHA_OPERATIVA = '2026-04-16';
 
+// LOS COLORES DE ESTADO (11-nov, Sistema de Diseño Armacero; ver SPECS §2.4). Abierto en
+// NARANJA y no en rojo: un reclamo abierto pide atención pero no es un error; el rojo queda
+// para lo que urge (prioridad alta, tipo error, atraso). El usuario aprobó la tabla. Es la
+// misma que usan el informe PDF y el resumen del Hub: si se cambia acá, cambiarla allá.
 var _recEstadoColors = {
-  abierto: '#e53935', en_analisis: '#ff9800', en_revision: '#1976d2',
-  validacion: '#7B1FA2', cerrado: '#4CAF50', rechazado: '#9E9E9E'
+  abierto: '#D97706', en_analisis: '#1769C2', en_revision: '#1769C2',
+  validacion: '#7E36B1', cerrado: '#248447', rechazado: '#667085'
 };
 var _recEstadoLabels = {
   abierto: 'Abierto', en_analisis: 'En análisis', en_revision: 'En revisión',

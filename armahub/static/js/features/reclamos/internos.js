@@ -226,7 +226,7 @@ function toggleIntAplica() {
 function toggleIntAbierto() {
   var cycle = ['', 'abiertos', 'cerrados'];
   var labels = { '': 'Abiertos/Cerrados', 'abiertos': 'Solo Abiertos', 'cerrados': 'Solo Cerrados' };
-  var colors = { '': '#1976d2', 'abiertos': '#e65100', 'cerrados': '#388e3c' };
+  var colors = { '': '#1769C2', 'abiertos': '#D97706', 'cerrados': '#248447' };
   var idx = cycle.indexOf(_intAbiertoFilter);
   _intAbiertoFilter = cycle[(idx + 1) % cycle.length];
   var btn = document.getElementById('recIntFiltroAbiertoBtn');
