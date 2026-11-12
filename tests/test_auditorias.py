@@ -236,7 +236,8 @@ check("la evidencia no se pierde: toda barra no conforme sigue obligada a decir 
       "está marcada no conforme: di qué tiene." in SRC
       and 'if hallazgo != "conforme" and not texto and not malas:' in SRC)
 check("...y el correo y el informe muestran las dos cosas, no sólo el campo general",
-      "que_se_encontro(e, 200)" in SRC and "que_se_encontro(e)), new_x" in SRC)
+      "que_se_encontro(e, 200)" in SRC and '"obs": b.get("observacion") or ""' in SRC
+      and 'tejas.insert(0, {"item": "Elemento"' in SRC)
 # En pantalla lo que se encontró se lee en la tabla de acciones, barra por barra (filaAccion)
 # y el comentario del elemento en su fila (filaComentario). La celda que lo juntaba en un
 # párrafo con lista (celdaQueSeEncontro) quedó sin llamadores y se fue (4-nov).
@@ -375,10 +376,13 @@ print("\n5e. El informe y los indicadores")
 check("hay informe PDF, con el mismo motor que el de reclamos",
       '@router.get("/auditorias/{auditoria_id}/pdf")' in SRC and "class _InformePDF" in SRC
       and "from fpdf import FPDF" in SRC)
-check("...y sigue el orden de la ISO: alcance · resultado · hallazgos · acciones · conclusión",
-      all(s in SRC for s in ('"1. Alcance y muestra"', '"2. Resultado"', '"3. Hallazgos"',
-                             '"4. Acciones"', '"5. Cobertura de la obra"', '"6. Conclusion"')))
-check("...los hallazgos van primero en el informe", 'orden = {"hallazgo": 0' in SRC)
+# REHECHO EL 12-NOV. El de las seis secciones de la ISO, en párrafos, el usuario lo encontró
+# «súper cochino, no se entiende nada». Ahora: ficha, un cuadro por código con una teja por
+# hallazgo, y el resumen. Ver la sección «El informe en tejas» al final.
+check("...y es ficha · un cuadro por código con sus tejas · resumen, no las seis secciones de antes",
+      'self._titulo("Hallazgos por código")' in SRC and 'self._titulo("Resumen de hallazgos")' in SRC
+      and not any(s in SRC for s in ('"1. Alcance y muestra"', '"3. Hallazgos"', '"4. Acciones"',
+                                     '"6. Conclusion"')))
 check("...y se baja con fetch, no con un <a href> (el token va en la cabecera)",
       "'/auditorias/' + AUD.id + '/pdf'" in JS and "URL.createObjectURL(await res.blob())" in JS)
 check("los indicadores se cuentan en la base, sólo sobre lo REVISADO",
@@ -408,9 +412,8 @@ check("...y trae tres cuentas en su lugar: elementos, ítems, hallazgos",
       'aud["resumen"] = {' in SRC and '"elementos_auditados"' in SRC
       and '"items_auditados"' in SRC and '"hallazgos": sum(int(e.get("items_malos")' in SRC
       and "'ítems auditados'" in JS and "'elementos auditados'" in JS)
-check("...y entra al informe como su propia sección",
-      "def _cobertura(self)" in SRC and '"5. Cobertura de la obra"' in SRC
-      and '"6. Conclusion"' in SRC and "self._cobertura()" in SRC)
+check("...y el informe tampoco la trae: el usuario lo quiere en una hoja (12-nov)",
+      "def _cobertura(self)" not in SRC and '"5. Cobertura de la obra"' not in SRC)
 
 print("\n5g. Permisos y correo")
 check("sólo administración y cubicadores entran al módulo",
@@ -490,16 +493,13 @@ check("el elemento sin ElementID ya no da 404 al pedir sus barras",
       'SIN_ELEMENTO = "(sin elemento)"' in SRC
       and '("" if element == SIN_ELEMENTO else element)' in SRC)
 
-print("\n7b. Y llenarlo tiene que servir de algo: sale en el informe")
-check("la ubicación va al PDF, debajo del hallazgo",
-      "def _ubicacion_txt(" in SRC and "pie.append(_ubicacion_txt(e))" in SRC)
-check("...sin repetir la etiqueta si el auditor ya la escribió",
-      A._ubicacion_txt({"sector": "ELEV", "piso": "3", "ciclo": "2", "eje": "Eje K2"})
-      == "Elevación · Piso 3 · Ciclo 2 · Eje K2")
-check("...y mostrando sólo lo que está lleno",
-      A._ubicacion_txt({"sector": "", "piso": "", "ciclo": "", "eje": "K(12-18)"}) == "Eje K(12-18)")
-check("...sin ensuciar el informe con la etiqueta de «sin elemento»",
-      A._ubicacion_txt({"sector": "FUND", "eje": A.SIN_ELEMENTO}) == "Fundación")
+print("\n7b. Dónde está cada hallazgo, en el informe")
+# Desde el 12-nov el informe agrupa por código: el cuadro dice el código con su descripción
+# («SVIP · ELEVACIONES PISO 1 Z1») y cada teja el elemento. La línea de ubicación de antes
+# («CC SVIP · Elevación · Eje 13-A») se fue con el formato de párrafos.
+check("el cuadro dice el código y su descripción; la teja, el elemento",
+      '"descr": e.get("descr_cc") or ""' in SRC and '"el": e.get("nombre") or ""' in SRC
+      and "def _ubicacion_txt(" not in SRC)
 
 print("\n7b2. Lo que se lee del nombre del código (y el auditor completa sólo los raros)")
 # «Si puedes derivarlo del nombre y es fácil, mucho mejor: así completas los raros
@@ -930,9 +930,9 @@ check("la descripción larga se corta y queda entera en el title",
 # junto al nombre: el informe, los avisos y la lista de acciones se leen sueltos.
 check("fuera de la tabla el elemento se nombra con su código",
       "function nombreCompleto(e)" in JS and "nombreCompleto(e)" in JS.split("function nombreCompleto")[1])
-check("...y el informe también lo dice",
-      'partes.append("CC %s" % e["cc"])' in SRC
-      and 'titulo = " · ".join(x for x in (e.get("cc"), e["nombre"]) if x)' in SRC)
+check("...y el informe también lo dice: sus cuadros son por código (12-nov)",
+      'ix[k] = {"cc": k, "descr": e.get("descr_cc") or ""' in SRC
+      and 'sin.append(" · ".join(x for x in (e.get("cc"), e.get("nombre")) if x))' in SRC)
 check("...igual que el aviso al cubicador y la lista de «mis acciones»",
       "o el cubicador no sabe en cuál de sus veinte códigos mirar" in SRC
       and "CONCAT_WS(' · ', NULLIF(e.cc, ''), e.nombre)" in SRC)
@@ -1159,9 +1159,9 @@ check("sin foto, la cantidad sale de lo leído en aSa en vez de quedar la column
 # 9-nov: «acá hay 2 hallazgos, pero al imprimir el informe me dice que hay uno». El informe
 # contaba elementos por severidad; la pantalla, barras.
 _inf = SRC.split("class _InformePDF")[1]
-check("el informe dice las mismas cuentas que la pantalla (resumen), no elementos por severidad",
-      _inf.count('r = a.get("resumen") or {}') == 2 and 'a.get("resultado")' not in _inf
-      and '("Hallazgos", r.get("hallazgos") or 0, True)' in _inf and "Conformidad %d%%" not in _inf)
+check("el informe cuenta barras, como la pantalla, no elementos por severidad",
+      'a.get("resultado")' not in _inf and "Conformidad %d%%" not in _inf
+      and 'r.get("items_auditados")' in _inf and "por, tot = resumen_informe(cuadros)" in _inf)
 check("cada línea abierta tiene su botón Guardar a la vista (Enter sigue sirviendo)",
       "data-aguardar=" in JS and ">Guardar</button>" in JS
       and "if (gb) gb.style.display = modo ? '' : 'none';" in JS
@@ -1817,6 +1817,63 @@ check("los hallazgos del elemento la piden sólo si alguna fila tiene botones",
 check("la tabla común sabe ir sin ella, y el comentario sigue cruzando las columnas de la barra",
       "if (cfg.accion) h += '<td class=\"hojaacc\">'" in HOJA
       and "var nBarra = anchos.length - (cfg.check ? 1 : 0) - (cfg.accion ? 1 : 0) - (c.elemento ? 1 : 0);" in HOJA)
+
+# ── EL INFORME EN TEJAS (12-nov) ─────────────────────────────────────────────────────
+# El usuario: «un cuadro por CC, compacto. Una "teja" por hallazgo que tenga Item -
+# Observación - Resolución … podrías poner 3 tejas por [fila]? queda más compacto».
+print("\nEl informe en tejas, por código")
+_aud = {"codigo": "A-T", "obra": "OBRA", "estado": "cerrada", "auditor": "x@y", "creada": "2026-11-06",
+        "cierre": "2026-11-12", "kg": 1234.5, "ccs": ["CC1", "CC2"],
+        "resumen": {"elementos_auditados": 3, "items_auditados": 20, "hallazgos": 4},
+        "elementos": [
+            {"cc": "CC1", "descr_cc": "ELEV P1", "nombre": "13-A", "cubicado_por": "nlopez@x", "texto": "",
+             "barras_malas": [
+                 {"ref": "10mmA76", "observacion": "cantidad 32", "corregido": True, "nota_correccion": "se corrige",
+                  "verificado": "ok", "verificado_cambios": ["cantidad 36 → 32"]},
+                 {"ref": "10mmA83", "observacion": "medida", "desestimado": True, "desestimado_motivo": "va en otro cc"},
+                 {"ref": "10mmA90", "observacion": "falta", "corregido": False}]},
+            {"cc": "CC1", "descr_cc": "ELEV P1", "nombre": "J-29", "cubicado_por": "nlopez@x",
+             "texto": "falta un cabezal", "comentario_suelto": False,
+             "barras_malas": [{"ref": "10mmA118", "observacion": "cantidad 10", "corregido": True,
+                               "tipo_correccion": "nuevo", "cc_nuevo": "CC9", "item_nuevo": "A1",
+                               "nota_correccion": "rehecha", "verificado": "sigue_igual"}]},
+            {"cc": "CC2", "descr_cc": "LOSA", "nombre": "L1", "cubicado_por": "eramirez@x",
+             "texto": "faltan suples", "comentario_suelto": True, "accion_estado": "corregida",
+             "accion_nota": "agregados", "barras_malas": []},
+            {"cc": "CC2", "descr_cc": "LOSA", "nombre": "L2", "cubicado_por": "eramirez@x", "texto": "",
+             "barras_malas": []}]}
+_cu, _sin = A.tejas_informe(_aud)
+_t1 = {t["item"]: t for t in _cu[0]["tejas"]}
+check("un cuadro por código, en el orden de la muestra, con quién cubicó",
+      [c["cc"] for c in _cu] == ["CC1", "CC2"] and _cu[0]["descr"] == "ELEV P1" and _cu[0]["cubs"] == ["nlopez"])
+check("cada barra es una teja con ítem, elemento, observación, estado y resolución",
+      _t1["10mmA76"]["el"] == "13-A" and _t1["10mmA76"]["obs"] == "cantidad 32"
+      and _t1["10mmA76"]["est"] == "Resuelto" and _t1["10mmA76"]["res"] == "se corrige"
+      and _t1["10mmA83"]["est"] == "No aplica" and _t1["10mmA83"]["res"] == "va en otro cc"
+      and _t1["10mmA90"]["est"] == "Pendiente")
+check("la teja dice lo que dijo aSa, con sus números",
+      _t1["10mmA76"]["asa"] == "Editada en aSa: cantidad 36 → 32"
+      and _t1["10mmA118"]["asa"] == "Idéntica en aSa: no se editó" and _t1["10mmA83"]["asa"] == "")
+check("lo resuelto en otro código dice dónde quedó",
+      _t1["10mmA118"]["res"] == "en CC9 · A1: rehecha")
+check("el comentario de un elemento CON barras es «Comentario», sin respuesta, y no cuenta como hallazgo",
+      _t1["Elemento"]["est"] == "Comentario" and _t1["Elemento"]["obs"] == "falta un cabezal"
+      and "Sin respuesta propia" in _t1["Elemento"]["res"])
+check("el comentario de un elemento SIN barras es el hallazgo, con su respuesta",
+      _cu[1]["tejas"] == [{"item": "Elemento", "el": "L1", "obs": "faltan suples", "est": "Resuelto",
+                            "res": "agregados", "asa": ""}])
+check("lo que no tuvo hallazgos se nombra aparte", _sin == ["CC2 · L2"])
+_por, _tot = A.resumen_informe(_cu)
+check("el resumen: por cubicador, lo que aplica, lo que no, lo pendiente y lo que confirmó aSa",
+      _por["nlopez"] == {"n": 4, "aplica": 2, "nap": 1, "pend": 1, "val": 1}
+      and _por["eramirez"] == {"n": 1, "aplica": 1, "nap": 0, "pend": 0, "val": 0}
+      and _tot == {"n": 5, "aplica": 3, "nap": 1, "pend": 1, "val": 1})
+_pdf = A._InformePDF(_aud).build()
+check("el PDF sale, en una hoja, con tres tejas por fila",
+      _pdf[:4] == b"%PDF" and _pdf.count(b"/Type /Page\n") + _pdf.count(b"/Type /Page>") + _pdf.count(b"/Type /Page ") >= 1
+      and A._InformePDF.COLS == 3 and "self.tw = (self.W - 2 * self.PAD - (self.COLS - 1) * self.GAP) / self.COLS" in SRC)
+check("un cuadro no se parte si cabe entero en una hoja nueva",
+      "if (y + alto > self.PIE and alto <= self.PIE - 12) or y + 6.2 + 20 > self.PIE:" in SRC)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

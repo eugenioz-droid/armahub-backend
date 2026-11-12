@@ -138,31 +138,6 @@ def _lista(valor: Optional[str]):
     return [v for v in (valor or "").split(",") if v.strip()]
 
 
-def _ubicacion_txt(e) -> str:
-    """Dónde está el elemento, en una línea: «CC SUP4 · Elevación · Piso 3 · Ciclo 2 · Eje K2».
-
-    Sólo lo que está lleno. En aSa al principio vienen sólo el código y el eje, y el resto
-    aparece cuando el auditor lo escribe: por eso esto va al informe —si no, llenarlo no
-    serviría de nada, porque el informe seguiría diciendo lo mismo—.
-    """
-    partes = []
-    # El código de control manda: es lo primero que el auditado busca para ubicarse. En la
-    # pantalla va en su propia columna, pero el informe se lee suelto y tiene que decirlo.
-    if e.get("cc"):
-        partes.append("CC %s" % e["cc"])
-    tipo = SECTORES.get(e.get("sector") or "", e.get("sector") or "")
-    if tipo:
-        partes.append(tipo)
-    for etiqueta, campo in (("Piso", "piso"), ("Ciclo", "ciclo"), ("Eje", "eje")):
-        valor = (e.get(campo) or "").strip()
-        if not valor or valor == SIN_ELEMENTO:
-            continue
-        # Si el auditor ya escribió «Eje K2», no se le pone «Eje» otra vez delante.
-        partes.append(valor if valor.lower().startswith(etiqueta.lower())
-                      else "%s %s" % (etiqueta, valor))
-    return " · ".join(partes)
-
-
 def _hoy() -> date:
     return datetime.now(timezone.utc).date()
 
@@ -3959,22 +3934,136 @@ def informe_pdf(auditoria_id: int, user=Depends(get_current_user)):
                     headers={"Content-Disposition": 'inline; filename="%s.pdf"' % aud["codigo"]})
 
 
+def _quien_corto(correo) -> str:
+    return (correo or "").split("@")[0]
+
+
+def tejas_informe(aud: dict) -> tuple:
+    """LOS HALLAZGOS DEL INFORME, POR CÓDIGO (12-nov): ([cuadros], [elementos sin hallazgos]).
+
+    Cada cuadro es un código de control con sus hallazgos, y cada hallazgo una «teja»
+    {item, el, obs, est, res, asa}. El usuario: «un cuadro por CC, compacto. Una "teja" por
+    hallazgo que tenga Item - Observación - Resolución». `est` es Resuelto, No aplica,
+    Pendiente o Comentario; `asa`, lo que dijo aSa al resolver, con sus números.
+
+    EL COMENTARIO DEL ELEMENTO. Si el elemento no tiene barras marcadas, el comentario ES el
+    hallazgo y tiene su respuesta. Si las tiene, es una observación general que el flujo no
+    le pide responder a nadie: va como «Comentario», sin resolución, y no se cuenta como
+    hallazgo. Función pura."""
+    cuadros, ix, sin = [], {}, []
+    for e in aud.get("elementos") or []:
+        tejas = []
+        for b in e.get("barras_malas") or []:
+            asa = ""
+            if b.get("desestimado"):
+                est, res = "No aplica", b.get("desestimado_motivo") or ""
+            elif b.get("corregido"):
+                est = "Resuelto"
+                donde = ""
+                if b.get("tipo_correccion") == "nuevo":
+                    donde = "en %s%s: " % (b.get("cc_nuevo") or "otro código",
+                                            (" · " + b["item_nuevo"]) if b.get("item_nuevo") else "")
+                res = donde + (b.get("nota_correccion") or "")
+                if b.get("verificado") == "ok":
+                    cb = b.get("verificado_cambios") or []
+                    asa = ("Editada en aSa: " + "; ".join(cb)) if cb else "Editada en aSa"
+                elif b.get("verificado") == "sigue_igual":
+                    asa = "Idéntica en aSa: no se editó"
+                else:
+                    asa = "Sin comprobar en aSa"
+            else:
+                est, res = "Pendiente", ""
+            tejas.append({"item": b.get("ref") or b.get("marca") or "", "el": e.get("nombre") or "",
+                          "obs": b.get("observacion") or "", "est": est, "res": res, "asa": asa})
+        if (e.get("texto") or "").strip():
+            if e.get("comentario_suelto"):
+                ae = e.get("accion_estado") or "pendiente"
+                est = ("No aplica" if ae == "desestimada"
+                       else "Resuelto" if ae in ("corregida", "verificada") else "Pendiente")
+                res = ((("en %s: " % e["accion_cc_nuevo"]) if e.get("accion_cc_nuevo") else "")
+                       + (e.get("accion_nota") or "")) if est != "Pendiente" else ""
+            else:
+                est, res = "Comentario", "Sin respuesta propia: va con las barras del elemento."
+            tejas.insert(0, {"item": "Elemento", "el": e.get("nombre") or "", "obs": e["texto"].strip(),
+                             "est": est, "res": res, "asa": ""})
+        if not tejas:
+            sin.append(" · ".join(x for x in (e.get("cc"), e.get("nombre")) if x))
+            continue
+        k = e.get("cc") or "-"
+        if k not in ix:
+            ix[k] = {"cc": k, "descr": e.get("descr_cc") or "", "cubs": [], "tejas": []}
+            cuadros.append(ix[k])
+        c = _quien_corto(e.get("cubicado_por"))
+        if c and c not in ix[k]["cubs"]:
+            ix[k]["cubs"].append(c)
+        ix[k]["tejas"].extend(tejas)
+    return cuadros, sin
+
+
+def resumen_informe(cuadros: list) -> tuple:
+    """El cierre del informe: por cubicador, cuántos hallazgos, cuántos aplican (resueltos),
+    cuántos no, cuántos siguen pendientes y de los que aplican cuántos confirmó aSa. Los
+    comentarios generales no cuentan: no son un hallazgo con respuesta. Función pura:
+    ({cubicador: cuentas}, total)."""
+    por = {}
+    for c in cuadros:
+        quien = ", ".join(c["cubs"]) or "-"
+        for t in c["tejas"]:
+            if t["est"] == "Comentario":
+                continue
+            d = por.setdefault(quien, {"n": 0, "aplica": 0, "nap": 0, "pend": 0, "val": 0})
+            d["n"] += 1
+            if t["est"] == "No aplica":
+                d["nap"] += 1
+            elif t["est"] == "Resuelto":
+                d["aplica"] += 1
+                if t["asa"].startswith("Editada"):
+                    d["val"] += 1
+            else:
+                d["pend"] += 1
+    total = {k: sum(d[k] for d in por.values()) for k in ("n", "aplica", "nap", "pend", "val")}
+    return por, total
+
+
 class _InformePDF:
-    """EL INFORME DE AUDITORÍA, en el orden que pide la ISO 19011: qué se auditó (alcance
-    y muestra), qué se encontró (hallazgos), qué hay que hacer (acciones) y la conclusión.
+    """EL INFORME DE AUDITORÍA, REHECHO (12-nov). El de antes seguía el orden de la ISO 19011
+    en párrafos —alcance, resultado, hallazgos, acciones, cobertura, conclusión— y el usuario
+    lo encontró «súper cochino, no se entiende nada». Ahora es: la ficha en cuatro líneas, un
+    CUADRO POR CÓDIGO con una TEJA por hallazgo (ítem · observación · resolución, y lo que
+    dijo aSa), tres tejas por fila, y al final el resumen de lo que aplicó y lo que no, por
+    cubicador. Una hoja cuando cabe. Maquetado y aprobado antes de programarlo.
     Mismo motor que el informe de reclamos (fpdf2, fuentes integradas)."""
 
-    COLOR = {"conforme": (139, 195, 74), "observacion": (255, 183, 77), "hallazgo": (198, 40, 40)}
-    NOMBRE = {"conforme": "Conforme", "observacion": "Observacion", "hallazgo": "Hallazgo"}
+    # Los colores son los tokens del Sistema de Diseño Armacero (tokens.json).
+    TXT, GRIS, BORDE, FONDO = (41, 45, 50), (104, 117, 130), (217, 221, 227), (243, 244, 246)
+    VERDE, ROJO, AMBAR, AZUL = (36, 132, 71), (220, 38, 38), (217, 119, 6), (16, 79, 158)
+    CHIP = {"Resuelto": ((36, 132, 71), (232, 245, 236)), "No aplica": ((104, 117, 130), (236, 239, 241)),
+            "Pendiente": ((217, 119, 6), (255, 244, 230)), "Comentario": ((104, 117, 130), (236, 239, 241))}
+    X0, W = 12, 186
+    PIE = 277                     # hasta dónde se escribe: lo de abajo es del pie
+    COLS = 3                      # tejas por fila (el usuario: «queda más compacto»)
+    PAD, GAP, TI, LH, ETQ = 2.0, 2.5, 2.0, 3.4, 9.0
 
     def __init__(self, aud):
         from fpdf import FPDF
         self.a = aud
-        self.pdf = FPDF(orientation="P", unit="mm", format="A4")
-        self.pdf.set_auto_page_break(auto=True, margin=16)
+        s, borde, gris = self._s, self.BORDE, self.GRIS
+        hoy = datetime.now(timezone.utc).strftime("%d-%m-%Y")
+
+        class _Hoja(FPDF):
+            def footer(hoja):
+                hoja.set_y(-16)
+                hoja.set_draw_color(*borde)
+                hoja.line(12, hoja.get_y(), 198, hoja.get_y())
+                hoja.set_font("Helvetica", "", 6.5)
+                hoja.set_text_color(*gris)
+                hoja.cell(0, 5, s("Generado por ArmaHub el %s · página %d de {nb}" % (hoy, hoja.page_no())))
+
+        self.pdf = _Hoja(orientation="P", unit="mm", format="A4")
+        self.pdf.set_margins(12, 12, 12)
+        self.pdf.set_auto_page_break(False)
         self.pdf.add_page()
-        self.pdf.set_margins(15, 15, 15)
-        self.w = 180
+        self.tw = (self.W - 2 * self.PAD - (self.COLS - 1) * self.GAP) / self.COLS
 
     @staticmethod
     def _s(t):
@@ -3983,228 +4072,244 @@ class _InformePDF:
         if t is None:
             return ""
         t = str(t)
-        for a, b in (("→", "->"), ("—", "-"), ("–", "-"), ("·", "-"),
-                     ("…", "..."), ("↱", "(gancho)"), ("’", "'")):
+        for a, b in (("→", "->"), ("—", "-"), ("–", "-"), ("…", "..."), ("↱", "(gancho)"),
+                     ("’", "'"), ("φ", "ø")):
             t = t.replace(a, b)
         return t.encode("latin-1", "replace").decode("latin-1")
 
+    @staticmethod
+    def _fecha(iso):
+        if not iso:
+            return "-"
+        y, m, d = str(iso)[:10].split("-")
+        return "%s-%s-%s" % (d, m, y)
+
     def build(self) -> bytes:
         import io
+        cuadros, sin = tejas_informe(self.a)
         self._encabezado()
-        self._ficha()
-        self._resultado()
-        self._hallazgos()
-        self._acciones()
-        self._cobertura()
-        self._conclusion()
+        self._titulo("Hallazgos por código")
+        if not cuadros:
+            self._linea("Sin hallazgos en la muestra revisada.", "I", self.GRIS)
+        for c in cuadros:
+            self._cuadro(c)
+        if sin:
+            self._linea("Sin hallazgos: " + ", ".join(sin), "I", self.GRIS)
+        self._resumen(cuadros)
         buf = io.BytesIO()
         self.pdf.output(buf)
         buf.seek(0)
         return buf.read()
 
-    def _titulo(self, texto, color=(21, 101, 192)):
+    def _titulo(self, texto):
         p = self.pdf
-        p.ln(2)
         p.set_font("Helvetica", "B", 10)
-        p.set_text_color(*color)
-        p.cell(0, 6, self._s(texto), new_x="LMARGIN", new_y="NEXT")
-        p.set_text_color(40, 40, 40)
+        p.set_text_color(*self.AZUL)
+        p.cell(0, 5, self._s(texto), new_x="LMARGIN", new_y="NEXT")
+        p.ln(1)
+
+    def _linea(self, texto, estilo="", color=None):
+        p = self.pdf
+        p.set_font("Helvetica", estilo, 7.5)
+        p.set_text_color(*(color or self.TXT))
+        p.multi_cell(self.W, 3.8, self._s(texto), align="L", new_x="LMARGIN", new_y="NEXT")
+        p.ln(2)
 
     def _encabezado(self):
-        p, a = self.pdf, self.a
-        p.set_font("Helvetica", "B", 16)
-        p.set_text_color(21, 101, 192)
-        p.cell(0, 9, self._s("Informe de auditoria %s" % a["codigo"]), new_x="LMARGIN", new_y="NEXT")
-        p.set_font("Helvetica", "", 10)
-        p.set_text_color(90, 90, 90)
-        p.cell(0, 5, self._s("%s   -   auditoria de cubicacion" % a["obra"]), new_x="LMARGIN", new_y="NEXT")
-        p.set_draw_color(21, 101, 192)
-        p.line(15, p.get_y() + 1, 195, p.get_y() + 1)
-        p.ln(3)
-        p.set_text_color(40, 40, 40)
-
-    def _ficha(self):
-        p, a = self.pdf, self.a
-        self._titulo("1. Alcance y muestra")
-        datos = [
-            ("Obra", a["obra"]),
-            ("Origen de la muestra", "ArmaHub (barras en el sistema)" if a.get("origen") != "asa" else "aSa (items del pedido)"),
-            ("Alcance", self._alcance()),
-            ("Muestra", "%d elementos de %d en el alcance (semilla %s)" % (a["n"], a["total_rango"], a["semilla"])),
-            ("Audita", a["auditor"]),
-            ("Fechas", "creada %s - plazo %s - inicio %s - cierre %s" % (
-                a["creada"] or "-", a["plazo"] or "-", a["inicio"] or "-", a["cierre"] or "-")),
-            ("Estado", {"planificada": "Planificada", "en_curso": "En curso", "cerrada": "Cerrada"}.get(a["estado"], a["estado"])),
-        ]
-        p.set_font("Helvetica", "", 9)
-        for k, v in datos:
-            p.set_font("Helvetica", "B", 9)
-            p.cell(42, 5, self._s(k), border=0)
-            p.set_font("Helvetica", "", 9)
-            p.multi_cell(self.w - 42, 5, self._s(v), new_x="LMARGIN", new_y="NEXT")
-
-    def _alcance(self):
-        a = self.a
-        if a.get("origen") == "asa":
-            partes = [", ".join(a.get("sectores") or []) or "todos los anios",
-                      ", ".join(a.get("pisos") or []) or "todos los estados",
-                      ", ".join(a.get("ciclos") or []) or "todos los cubicadores"]
-        else:
-            partes = [", ".join(a.get("sectores") or []) or "todos los tipos",
-                      ", ".join(a.get("pisos") or []) or "todos los pisos",
-                      ", ".join(a.get("ciclos") or []) or "todos los ciclos"]
-        return " - ".join(partes)
-
-    # LAS MISMAS TRES CUENTAS DE LA PANTALLA (9-nov). Acá se contaban ELEMENTOS por
-    # severidad —«Hallazgo 1», «Conforme 4»— mientras la pantalla decía «2 hallazgos»
-    # contando barras: el mismo nombre para dos cosas, y el informe contradecía a la página.
-    # La severidad del elemento ya no existe (cada barra con su tratamiento): el informe
-    # lee `resumen`, lo mismo que pinta la pantalla.
-    def _resultado(self):
-        p, a = self.pdf, self.a
-        r = a.get("resumen") or {}
-        self._titulo("2. Resultado")
-        p.set_font("Helvetica", "", 9)
-        rev = r.get("elementos_auditados") or 0
-        if not rev:
-            p.cell(0, 5, self._s("Sin elementos revisados todavia."), new_x="LMARGIN", new_y="NEXT")
-            return
-        for nombre, n, alerta in (("Elementos auditados", rev, False),
-                                  ("Items auditados", r.get("items_auditados") or 0, False),
-                                  ("Hallazgos", r.get("hallazgos") or 0, True)):
-            if alerta and n:
-                p.set_font("Helvetica", "B", 9)
-                p.set_text_color(*self.COLOR["hallazgo"])
-            else:
-                p.set_font("Helvetica", "", 9)
-            p.cell(52, 5, self._s(nombre), border=0)
-            p.cell(16, 5, self._s("%d" % n), border=0, align="R", new_x="LMARGIN", new_y="NEXT")
-            p.set_text_color(40, 40, 40)
-        p.ln(1)
-        p.set_font("Helvetica", "", 8)
-        p.set_text_color(110, 110, 110)
-        p.cell(0, 4, self._s("Revisados %d de %d elementos de la muestra. Cada hallazgo es una barra "
-                             "marcada por el auditor." % (rev, a["n"])),
-               new_x="LMARGIN", new_y="NEXT")
-        p.set_text_color(40, 40, 40)
-
-    def _hallazgos(self):
-        p, a = self.pdf, self.a
-        # Primero lo que importa: las no conformidades, después las observaciones.
-        orden = {"hallazgo": 0, "observacion": 1, "conforme": 2, None: 3}
-        els = sorted(a.get("elementos") or [], key=lambda e: (orden.get(e.get("hallazgo"), 4), e["nombre"]))
-        con = [e for e in els if e.get("hallazgo") and e["hallazgo"] != "conforme"]
-        self._titulo("3. Hallazgos")
-        if not con:
-            p.set_font("Helvetica", "", 9)
-            p.cell(0, 5, self._s("Sin observaciones ni no conformidades en la muestra revisada."),
-                   new_x="LMARGIN", new_y="NEXT")
-        for e in con:
-            p.set_fill_color(*self.COLOR[e["hallazgo"]])
-            p.cell(3, 5, "", fill=True, border=0)
-            p.set_font("Helvetica", "B", 9)
-            titulo = " · ".join(x for x in (e.get("cc"), e["nombre"]) if x)
-            p.cell(0, 5, self._s("  %s - %s" % (self.NOMBRE[e["hallazgo"]], titulo)),
-                   new_x="LMARGIN", new_y="NEXT")
-            p.set_font("Helvetica", "", 9)
-            p.set_x(18)
-            # Lo que se encontró, junto: la observación del elemento y lo de cada
-            # barra. Se arma acá y no se guarda armado (ver que_se_encontro).
-            p.multi_cell(self.w - 3, 4.5, self._s(que_se_encontro(e)), new_x="LMARGIN", new_y="NEXT")
-            pie = []
-            # Dónde está, primero: es lo que el auditado necesita para ir a buscarlo.
-            if _ubicacion_txt(e):
-                pie.append(_ubicacion_txt(e))
-            if e.get("causa"):
-                pie.append("causa %s" % e["causa"])
-            if e.get("cubicado_por"):
-                pie.append("cubico %s" % e["cubicado_por"])
-            if e.get("revisado_el"):
-                pie.append("revisado %s" % str(e["revisado_el"])[:10])
-            if pie:
-                p.set_x(18)
-                p.set_font("Helvetica", "I", 8)
-                p.set_text_color(110, 110, 110)
-                p.cell(0, 4, self._s(" - ".join(pie)), new_x="LMARGIN", new_y="NEXT")
-                p.set_text_color(40, 40, 40)
-            p.ln(1)
-
-    def _acciones(self):
-        p, a = self.pdf, self.a
-        acc = [e for e in (a.get("elementos") or []) if e.get("accion_estado")]
-        if not acc:
-            return
-        self._titulo("4. Acciones")
-        p.set_font("Helvetica", "", 8)
-        p.set_text_color(110, 110, 110)
-        p.multi_cell(self.w, 4, self._s(
-            "La correccion la ejecuta quien cubico, en su cubicacion; el auditor verifica. "
-            "Una accion no se cierra sola."), new_x="LMARGIN", new_y="NEXT")
-        p.set_text_color(40, 40, 40)
+        p, a, s = self.pdf, self.a, self._s
+        p.set_font("Helvetica", "B", 15)
+        p.set_text_color(*self.TXT)
+        p.cell(150, 8, s("Informe de auditoría %s" % a["codigo"]))
         p.set_font("Helvetica", "B", 8)
-        for t, w in (("Elemento", 74), ("Responsable", 50), ("Estado", 26), ("Fecha", 30)):
-            p.cell(w, 5, self._s(t), border="B")
-        p.ln(5)
-        p.set_font("Helvetica", "", 8)
-        for e in acc:
-            # Con el código delante: esta tabla se lee sola, sin volver a la de hallazgos.
-            quien = " · ".join(x for x in (e.get("cc"), e["nombre"]) if x)
-            p.cell(74, 5, self._s(quien[:44]), border=0)
-            p.cell(50, 5, self._s((e.get("cubicado_por") or "")[:32]), border=0)
-            p.cell(26, 5, self._s({"pendiente": "Pendiente", "corregida": "Corregida",
-                                   "verificada": "Verificada"}.get(e["accion_estado"], "")), border=0)
-            p.cell(30, 5, self._s(str(e.get("accion_el") or "")[:10]), border=0)
-            p.ln(5)
-
-    def _cobertura(self):
-        c = self.a.get("cobertura")
-        if not c or not c.get("total"):
-            return
-        p = self.pdf
-        self._titulo("5. Cobertura de la obra")
-        p.set_font("Helvetica", "", 9)
-        p.multi_cell(self.w, 5, self._s(
-            "Contando TODAS las auditorias de esta obra: %d de %d %s(s) AUDITABLES revisados "
-            "(%d%%), que son el %d%% de sus kilos. Sobre el total de la obra (%d, incluyendo "
-            "lo ya despachado, que no se puede auditar) es un %d%%." % (
-                c["auditados"], c["auditable"], c["unidad"], c["pct"], c["pct_kg"],
-                c["total"], c["pct_total"])),
-            new_x="LMARGIN", new_y="NEXT")
-        # Barra de cobertura: se lee antes que el numero.
-        p.set_fill_color(236, 239, 241)
-        p.cell(self.w, 4, "", fill=True, border=0, new_x="LMARGIN", new_y="NEXT")
-        if c["pct"]:
-            p.set_y(p.get_y() - 4)
-            p.set_fill_color(21, 101, 192)
-            p.cell(max(0.5, self.w * c["pct"] / 100), 4, "", fill=True, border=0, new_x="LMARGIN", new_y="NEXT")
-        p.ln(1)
-
-    def _conclusion(self):
-        p, a = self.pdf, self.a
+        p.set_fill_color(*(self.VERDE if a.get("estado") == "cerrada" else self.AMBAR))
+        p.set_text_color(255, 255, 255)
+        p.cell(36, 6, s(ESTADO_INFORME.get(a.get("estado"), str(a.get("estado") or "").upper())),
+               align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
+        p.set_fill_color(255, 255, 255)
+        p.set_font("Helvetica", "", 9.5)
+        p.set_text_color(*self.GRIS)
+        p.cell(0, 5, s("%s · auditoría de cubicación" % a.get("obra", "")), new_x="LMARGIN", new_y="NEXT")
+        p.ln(1.5)
         r = a.get("resumen") or {}
-        rev = r.get("elementos_auditados") or 0
-        self._titulo("6. Conclusion")
-        p.set_font("Helvetica", "", 9)
-        if not rev:
-            texto = "La auditoria esta planificada y todavia no se revisa ningun elemento."
+        ficha = [("Auditor", _quien_corto(a.get("auditor"))),
+                 ("Fechas", "creada %s · cerrada %s" % (self._fecha(a.get("creada")), self._fecha(a.get("cierre")))),
+                 ("Muestra", "%d elementos · %d barras revisadas · %s kg" % (
+                     r.get("elementos_auditados") or 0, r.get("items_auditados") or 0,
+                     "{:,.0f}".format(a.get("kg") or 0).replace(",", ".")))]
+        y0 = p.get_y()
+        for i, (k, v) in enumerate(ficha):
+            p.set_xy(self.X0 + (i % 2) * 93, y0 + (i // 2) * 5)
+            self._dato(k, v, 76)
+        # Los códigos a lo ancho: una auditoría de aSa trae ocho o nueve y no caben en media hoja.
+        p.set_xy(self.X0, y0 + 10)
+        self._dato("Códigos", ", ".join(a.get("ccs") or []) or "-", self.W - 17, multi=True)
+        p.set_draw_color(*self.BORDE)
+        p.line(self.X0, p.get_y() + 1, self.X0 + self.W, p.get_y() + 1)
+        p.set_xy(self.X0, p.get_y() + 4)
+
+    def _dato(self, k, v, ancho, multi=False):
+        p = self.pdf
+        p.set_font("Helvetica", "B", 8)
+        p.set_text_color(*self.GRIS)
+        p.cell(17, 5, self._s(k))
+        p.set_font("Helvetica", "", 8)
+        p.set_text_color(*self.TXT)
+        if multi:
+            p.multi_cell(ancho, 5, self._s(v), align="L", new_x="LMARGIN", new_y="NEXT")
         else:
-            # Con las cuentas de la pantalla, como el resultado (9-nov).
-            nh = r.get("hallazgos") or 0
-            texto = ("Se auditaron %d elementos de la muestra (%d items). %s" % (
-                rev, r.get("items_auditados") or 0,
-                ("Se detectaron %d hallazgo(s), con su accion asignada." % nh) if nh
-                else "No se detectaron hallazgos."))
-            if a["estado"] != "cerrada":
-                texto += " La auditoria sigue abierta."
-        p.multi_cell(self.w, 5, self._s(texto), new_x="LMARGIN", new_y="NEXT")
-        p.ln(3)
-        p.set_font("Helvetica", "I", 7)
-        p.set_text_color(130, 130, 130)
-        p.multi_cell(self.w, 3.5, self._s(
-            "Generado por ArmaHub el %s. Muestra sorteada al azar dentro del alcance (semilla %s), "
-            "reproducible. Terminologia segun ISO 19011." % (
-                datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC"), a["semilla"])),
-            new_x="LMARGIN", new_y="NEXT")
+            p.cell(ancho, 5, self._s(v))
+
+    # ── El cuadro de un código y sus tejas ──────────────────────────────────────────────
+    def _lineas(self, txt, tam=7.5):
+        from fpdf.enums import MethodReturnValue
+        if not txt:
+            return []
+        self.pdf.set_font("Helvetica", "", tam)
+        return self.pdf.multi_cell(self.tw - 2 * self.TI - self.ETQ, self.LH, self._s(txt), align="L",
+                                   dry_run=True, output=MethodReturnValue.LINES)
+
+    def _alto_teja(self, t):
+        h = self.TI + 4.2
+        h += max(1, len(self._lineas(t["obs"]))) * self.LH
+        h += max(1, len(self._lineas(t["res"] or "-"))) * self.LH
+        if t["asa"]:
+            h += len(self._lineas(t["asa"], 7)) * self.LH
+        return h + self.TI - 0.6
+
+    def _filas(self, c):
+        ts = c["tejas"]
+        return [ts[i:i + self.COLS] for i in range(0, len(ts), self.COLS)]
+
+    def _cabecera_cc(self, c, y, cont=False):
+        p, s = self.pdf, self._s
+        p.set_fill_color(*self.FONDO)
+        p.rect(self.X0, y, self.W, 6.2, style="F")
+        p.set_xy(self.X0 + self.PAD, y + 1)
+        p.set_font("Helvetica", "B", 9)
+        p.set_text_color(*self.TXT)
+        p.cell(p.get_string_width(s(c["cc"])) + 3, 4.2, s(c["cc"]))
+        p.set_font("Helvetica", "", 7.5)
+        p.set_text_color(*self.GRIS)
+        p.cell(110, 4.2, s(c["descr"] + (" (continuación)" if cont else "")))
+        n = len([t for t in c["tejas"] if t["est"] != "Comentario"])
+        p.set_xy(self.X0 + self.W - self.PAD - 70, y + 1)
+        p.cell(70, 4.2, s("cubicó %s · %d hallazgo%s" % (", ".join(c["cubs"]) or "-", n, "" if n == 1 else "s")),
+               align="R")
+        p.set_fill_color(255, 255, 255)
+        return y + 6.2
+
+    def _cuadro(self, c):
+        p = self.pdf
+        filas = [(f, max(self._alto_teja(t) for t in f)) for f in self._filas(c)]
+        alto = 6.2 + 2 * self.PAD + sum(h for _, h in filas) + self.GAP * (len(filas) - 1)
+        y = p.get_y()
+        # UN CUADRO NO SE PARTE SI CABE ENTERO EN UNA HOJA NUEVA: partido, dejaba una teja
+        # sola arriba de la hoja siguiente.
+        if (y + alto > self.PIE and alto <= self.PIE - 12) or y + 6.2 + 20 > self.PIE:
+            p.add_page()
+            y = p.get_y()
+        top = y
+        y = self._cabecera_cc(c, y) + self.PAD
+        for f, h in filas:
+            if y + h + self.PAD > self.PIE:
+                p.set_draw_color(*self.BORDE)
+                p.rect(self.X0, top, self.W, y - top, style="D")
+                p.add_page()
+                top = p.get_y()
+                y = self._cabecera_cc(c, top, True) + self.PAD
+            for j, t in enumerate(f):
+                self._teja(self.X0 + self.PAD + j * (self.tw + self.GAP), y, t, h)
+            y += h + self.GAP
+        y += self.PAD - self.GAP
+        p.set_draw_color(*self.BORDE)
+        p.rect(self.X0, top, self.W, y - top, style="D")
+        p.set_xy(self.X0, y + 3)
+
+    def _teja(self, x, y, t, h):
+        p, s, TI = self.pdf, self._s, self.TI
+        p.set_draw_color(*self.BORDE)
+        p.rect(x, y, self.tw, h, style="D", round_corners=True, corner_radius=1.2)
+        p.set_xy(x + TI, y + TI - 0.4)
+        p.set_font("Helvetica", "B", 8.5)
+        p.set_text_color(*self.TXT)
+        p.cell(p.get_string_width(s(t["item"])) + 2, 4, s(t["item"]))
+        p.set_font("Helvetica", "", 7)
+        p.set_text_color(*self.GRIS)
+        p.cell(24, 4, s(t["el"])[:18])
+        # El estado en un chip, a la derecha: se lee de un vistazo sin leer la resolución.
+        fg, bg = self.CHIP.get(t["est"], self.CHIP["Comentario"])
+        p.set_font("Helvetica", "B", 6.5)
+        w = p.get_string_width(s(t["est"])) + 3.2
+        p.set_fill_color(*bg)
+        p.set_text_color(*fg)
+        p.set_xy(x + self.tw - TI - w, y + TI)
+        p.cell(w, 3.6, s(t["est"]), align="C", fill=True)
+        p.set_fill_color(255, 255, 255)
+        yy = self._campo(x + TI, y + TI + 4.6, "Obs.", t["obs"], self.TXT)
+        col = {"Resuelto": self.VERDE, "Pendiente": self.AMBAR}.get(t["est"], self.GRIS)
+        yy = self._campo(x + TI, yy, "Resol.", t["res"] or "-", col)
+        if t["asa"]:
+            p.set_xy(x + TI + self.ETQ, yy)
+            p.set_font("Helvetica", "", 7)
+            p.set_text_color(*(self.ROJO if t["asa"].startswith("Idéntica")
+                               else self.VERDE if t["asa"].startswith("Editada") else self.GRIS))
+            p.multi_cell(self.tw - 2 * TI - self.ETQ, self.LH, s(t["asa"]), align="L", new_x="LEFT", new_y="NEXT")
+
+    def _campo(self, x, y, etq, txt, color):
+        p = self.pdf
+        p.set_xy(x, y)
+        p.set_font("Helvetica", "B", 6.5)
+        p.set_text_color(*self.GRIS)
+        p.cell(self.ETQ, self.LH, self._s(etq))
+        p.set_font("Helvetica", "", 7.5)
+        p.set_text_color(*color)
+        p.set_xy(x + self.ETQ, y)
+        p.multi_cell(self.tw - 2 * self.TI - self.ETQ, self.LH, self._s(txt or "-"), align="L",
+                     new_x="LEFT", new_y="NEXT")
+        return p.get_y()
+
+    # ── El resumen: lo que aplicó y lo que no ───────────────────────────────────────────
+    def _resumen(self, cuadros):
+        from fpdf.fonts import FontFace
+        p, s = self.pdf, self._s
+        por, tot = resumen_informe(cuadros)
+        if p.get_y() + 14 + 4.5 * (len(por) + 2) + 12 > self.PIE:
+            p.add_page()
+        self._titulo("Resumen de hallazgos")
+        cab = FontFace(emphasis="BOLD", color=self.GRIS, fill_color=self.FONDO, size_pt=7.5)
+        p.set_font("Helvetica", "", 8)
+        p.set_text_color(*self.TXT)
+        with p.table(col_widths=(46, 28, 28, 28, 28, 28), width=self.W, line_height=3.6, padding=(0.7, 1),
+                     text_align=("LEFT", "RIGHT", "RIGHT", "RIGHT", "RIGHT", "RIGHT"),
+                     borders_layout="HORIZONTAL_LINES", headings_style=cab, first_row_as_headings=True) as t:
+            fila = t.row()
+            for x in ("Cubicador", "Hallazgos", "Aplican", "No aplican", "Pendientes", "Validados en aSa"):
+                fila.cell(s(x))
+
+            def una(nombre, d, negrita=False):
+                e = "BOLD" if negrita else None
+                fila = t.row()
+                fila.cell(s(nombre), style=FontFace(emphasis=e))
+                fila.cell(str(d["n"]), style=FontFace(emphasis=e))
+                fila.cell(str(d["aplica"]), style=FontFace(emphasis=e, color=self.VERDE))
+                fila.cell(str(d["nap"]), style=FontFace(emphasis=e, color=self.GRIS))
+                fila.cell(str(d["pend"]), style=FontFace(emphasis=e, color=self.AMBAR if d["pend"] else self.TXT))
+                fila.cell(s("%d de %d" % (d["val"], d["aplica"])) if d["aplica"] else "-", style=FontFace(emphasis=e))
+            for c in sorted(por, key=lambda c: -por[c]["n"]):
+                una(c, por[c])
+            if len(por) > 1:
+                una("Total", tot, True)
+        p.ln(2)
+        r = self.a.get("resumen") or {}
+        rev = r.get("items_auditados") or 0
+        self._linea("De %d barras revisadas, %d tuvieron hallazgo (%d%%). %d aplican y se resolvieron; "
+                    "%d no aplican; %d pendientes. aSa confirmó la edición de %d de las %d que aplican." % (
+                        rev, tot["n"], round(100.0 * tot["n"] / rev) if rev else 0, tot["aplica"], tot["nap"],
+                        tot["pend"], tot["val"], tot["aplica"]))
+
+
+# Cómo dice el estado la etiqueta de arriba a la derecha del informe.
+ESTADO_INFORME = {"planificada": "PLANIFICADA", "en_curso": "EN CURSO", "enviada": "ENVIADA", "cerrada": "CERRADA"}
 
 
 @router.delete("/auditorias/{auditoria_id}")
