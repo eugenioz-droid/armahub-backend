@@ -360,6 +360,12 @@
       <div class="card audc revreglasc">
         <div class="audh">Qué se revisa <span class="muted" id="revReglasN"></span></div>
         <ul id="revReglas"></ul>
+        <!-- LAS EXCEPCIONES (12-nov): la regla que le cambia el límite a otra para una
+             figura, en su propio grupo y plegable, después de las reglas. -->
+        <details class="revmas revexc" id="revExc" hidden>
+          <summary>Excepciones <span class="muted" id="revExcN"></span></summary>
+          <ul class="regls" id="revExcL"></ul>
+        </details>
       </div>
 
     </div><!-- fin sub-tab revisión -->
@@ -781,6 +787,10 @@
   .regalc i{display:block; font-style:normal; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
             color:#78909c; margin-bottom:2px;}
   @media (max-width:860px){ .revreglasc li.regl{grid-template-columns:1fr;} .regalc{border-left:none; padding-left:0;} }
+  /* Las excepciones: el mismo molde de tres columnas, dentro de su plegable. */
+  .revreglasc .revexc ul.regls{margin:0 12px 4px;}
+  .regtxt .regde{display:inline-block; margin-top:5px; font-size:10.5px; color:#455a64; background:#f7f9fb;
+                 border-radius:4px; padding:2px 7px;}
   /* Las cajas de herramienta, plegadas. */
   .revmas{margin-top:10px; border:1px solid #cfd8dc; border-radius:6px; background:#fff;}
   .revmas > summary{cursor:pointer; padding:8px 12px; font-size:12px; font-weight:600; color:#37474f;}

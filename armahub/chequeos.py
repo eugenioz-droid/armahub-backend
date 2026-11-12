@@ -685,7 +685,7 @@ REGLAS = [
      "necesita": ("lados", "diam"),
      "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
                 "el diámetro, con piso de 7,5 cm. Las alturas de los soportes de losa 26 y 305A en "
-                "φ8, φ10 y φ12 tienen su propia regla.",
+                "φ8, φ10 y φ12 tienen su excepción (ver Excepciones).",
      "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
                  "marcar": ["C"], "leyenda": "C < 10 φ"},
      "fn": r_lado_corto},
@@ -729,7 +729,12 @@ REGLAS = [
      "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
                  "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B ≠ D por más de 1 cm"},
      "fn": r_patas_suple},
+    # UNA EXCEPCIÓN DE «lado_corto» (12-nov): `excepcion_de` dice a qué regla le cambia el
+    # límite, y el menú la muestra aparte, en el grupo de Excepciones, con su dibujo. El
+    # usuario: «a continuación de las reglas pongas las excepciones, así también pones el
+    # render de la figura». Revisa y señala igual que cualquier regla.
     {"codigo": "altura_soporte_losa",
+     "excepcion_de": "lado_corto",
      "corto": "Soporte losa: altura",
      "nombre": "Soporte de losa con una altura bajo el mínimo",
      "porque": "Las alturas del soporte de losa se doblan en un segundo proceso, con bulón, y pueden "
@@ -745,7 +750,7 @@ REGLAS = [
      "ejemplo": {"espacial": True,
                  "lados": [("A", 300, (1, 0, 0)), ("B", 250, (0, 0, 1)), ("C", 300, (0, 1, 0)),
                            ("D", 250, (0, 0, -1)), ("E", 300, (1, 0, 0))],
-                 "diam": 8, "pin": 48, "marcar": ["B", "D"], "leyenda": "B o D < altura mínima del φ"},
+                 "diam": 8, "pin": 48, "marcar": ["B", "D"], "leyenda": "B y D ≥ altura mínima del φ"},
      "fn": r_altura_soporte_losa},
     {"codigo": "no_cabe_camion",
      # «Camión: …» en las tres: son tres reglas del mismo motivo, y en los encabezados del

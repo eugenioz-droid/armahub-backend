@@ -1521,7 +1521,7 @@ check("las leyendas nombran la dimensión y el límite, sin cifras del ejemplo",
       and _ley["patas_suple"] == "B ≠ D por más de 1 cm"
       and all(set(_re.findall(r"\d+", t)) <= {"250", "10", "1", "8"} for t in _ley.values()))
 check("la leyenda va BAJO el dibujo, dentro de la celda del dibujo",
-      "_svgRegla(ej) +\n          (ej && ej.leyenda ? '<span class=\"umb\">'" in JS and ".regfig .umb{" in HTM
+      "_svgRegla(ej, color) +\n        (ej && ej.leyenda ? '<span class=\"umb\">'" in JS and ".regfig .umb{" in HTM
       and ".regtxt .umb{" not in HTM)
 e = C.ejemplo_dibujado(por["patas_suple"])
 check("el ejemplo del suple se traza con el motor de las barras reales: cinco rectos, B y D marcados",
@@ -1721,7 +1721,7 @@ rs = {r["codigo"]: r for r in C.REGLAS}["altura_soporte_losa"]
 check("es una regla del menú, con su nombre corto, su alcance y la fuente",
       rs["corto"] == "Soporte losa: altura" and "26 (alturas C y E)" in rs["alcance"]
       and "305A (alturas B y D)" in rs["alcance"] and "25-ago-2025" in rs["alcance"]
-      and "propia regla" in {r["codigo"]: r for r in C.REGLAS}["lado_corto"]["alcance"])
+      and "su excepción (ver Excepciones)" in {r["codigo"]: r for r in C.REGLAS}["lado_corto"]["alcance"])
 check("ya no hay «excepciones» dentro de una regla: ni en la regla, ni en el menú",
       all("excepciones" not in r for r in C.REGLAS) and "excepciones" not in API
       and "regexc" not in JS and "regexc" not in HTM)
@@ -1741,6 +1741,30 @@ check("el texto de la regla tampoco usa términos coloquiales",
       not _re.search(r"\b(pata|patas|pie|pies|horquilla|cuerpo)\b",
                      " ".join([rs["nombre"], rs["corto"], rs["porque"], rs["alcance"],
                                rs["ejemplo"]["leyenda"]]).lower()))
+
+# ── 14. Las excepciones, en su propio grupo del menú (12-nov) ─────────────────────────
+# El usuario: «a continuación de las reglas pongas las excepciones, así también pones el
+# render de la figura … puedes renderizar con rojo las barras para diferenciar de las
+# excepciones … separar en un grupo distinto con su desplegable».
+print("\n14. Las excepciones van aparte, plegables, y las reglas se dibujan en rojo")
+_exc = [r for r in C.REGLAS if r.get("excepcion_de")]
+check("la de los soportes de losa es la única excepción, y es del lado corto",
+      [(r["codigo"], r["excepcion_de"]) for r in _exc] == [("altura_soporte_losa", "lado_corto")]
+      and all(r["excepcion_de"] in por for r in _exc))
+check("el endpoint dice de qué regla es excepción", '"excepcion_de": r.get("excepcion_de")' in API)
+check("la pantalla las separa: las reglas en la lista, las excepciones en su plegable",
+      "!REV.reglas[k].excepcion_de" in JS and 'id="revExc"' in HTM and 'id="revExcL"' in HTM
+      and '<details class="revmas revexc" id="revExc" hidden>' in HTM and "bx.hidden = false;" in JS)
+check("...y la excepción nombra la regla a la que le cambia el límite",
+      "Excepción a «' + esc(de.nombre) + '»</span>" in JS and ".regtxt .regde{" in HTM)
+check("las reglas se dibujan en rojo; las excepciones, con la tinta de siempre, banda incluida",
+      "_filaRegla(REV.reglas[k], ROJO_REGLA)" in JS and "_filaRegla(REV.reglas[k], null)" in JS
+      and "var ROJO_REGLA = '#c62828';" in JS and "color_resalte: color || M.TINTA" in JS
+      and "var tinta = opts.color || TINTA;" in DIS and "opts.color_resalte ||" in DIS)
+check("en el nivel de elementos el plegable no aparece",
+      JS.index("if (bx) bx.hidden = true;") < JS.index("if (REVS.nivel === 'elemento') {\n      // EN DOS GRUPOS"))
+check("la leyenda de la excepción dice el límite propio, sin cifras",
+      por["altura_soporte_losa"]["ejemplo"]["leyenda"] == "B y D ≥ altura mínima del φ")
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

@@ -112,7 +112,8 @@ def listar_reglas(user=Depends(get_current_user)):
     # motor que las barras reales, para que la pantalla sólo lo dibuje.
     return {"reglas": [{"codigo": r["codigo"], "nombre": r["nombre"],
                         "corto": r.get("corto") or r["nombre"], "porque": r["porque"],
-                        "alcance": r.get("alcance") or "", "ejemplo": ejemplo_dibujado(r)}
+                        "alcance": r.get("alcance") or "", "ejemplo": ejemplo_dibujado(r),
+                        "excepcion_de": r.get("excepcion_de")}
                        for r in REGLAS]}
 
 

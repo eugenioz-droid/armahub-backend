@@ -76,6 +76,8 @@
     var el = $('revReglas');
     if (!el) return;
     var ks = Object.keys(REV.reglas);
+    var bx = $('revExc');
+    if (bx) bx.hidden = true;
     if (REVS.nivel === 'elemento') {
       // EN DOS GRUPOS (4-nov): lo que vale para todas las obras y lo que sólo tiene
       // sentido en edificación. El usuario: «separa las reglas que valdría la pena
@@ -98,24 +100,47 @@
     // … el alcance». El dibujo es el ejemplo que declara la regla, trazado por el backend
     // con el mismo motor que las barras reales; acá se dibuja y se marcan los lados que
     // la regla compara. La regla que no mira la figura lo dice en vez de dejar el hueco.
+    //
+    // LAS EXCEPCIONES, APARTE (12-nov). La que le cambia el límite a otra regla para una
+    // figura (`excepcion_de`) va en su propio grupo, plegable, después de las reglas. El
+    // usuario: «a continuación de las reglas pongas las excepciones, así también pones el
+    // render de la figura … separar en un grupo distinto con su desplegable». Y las reglas
+    // se dibujan en ROJO —muestran la barra mala— y las excepciones con la tinta de
+    // siempre: «puedes renderizar con rojo las barras para diferenciar de las excepciones».
     el.className = 'regls';
-    $('revReglasN').textContent = ks.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
-    el.innerHTML = ks.map(function (k) {
-      var r = REV.reglas[k], ej = r.ejemplo;
-      // La leyenda va BAJO el dibujo, no al final de la explicación (el usuario, 10-nov:
-      // «ese quedaría muy bien bajo el renderizado»).
-      return '<li class="regl">' +
-        '<div class="regfig">' + _svgRegla(ej) +
-          (ej && ej.leyenda ? '<span class="umb">' + esc(ej.leyenda) + '</span>' : '') + '</div>' +
-        '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p></div>' +
-        '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') + '</div></li>';
-    }).join('');
+    var reglas = ks.filter(function (k) { return !REV.reglas[k].excepcion_de; });
+    var excs = ks.filter(function (k) { return REV.reglas[k].excepcion_de; });
+    $('revReglasN').textContent = reglas.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
+    el.innerHTML = reglas.map(function (k) { return _filaRegla(REV.reglas[k], ROJO_REGLA); }).join('');
+    if (bx && excs.length) {
+      bx.hidden = false;
+      $('revExcN').textContent = '· ' + excs.length + ' · figuras con un límite propio en vez del de la regla general';
+      $('revExcL').innerHTML = excs.map(function (k) { return _filaRegla(REV.reglas[k], null); }).join('');
+    }
+  }
+
+  // El rojo de las reglas es el de la celda mala de la grilla de lados (.mal) y el de la
+  // banda que marca los lados: una sola cosa. null = la tinta por defecto del motor.
+  var ROJO_REGLA = '#c62828';
+
+  // Una fila del menú: dibujo | regla | dónde aplica. La excepción dice además a qué regla
+  // le cambia el límite.
+  function _filaRegla(r, color) {
+    var ej = r.ejemplo, de = r.excepcion_de && REV.reglas[r.excepcion_de];
+    // La leyenda va BAJO el dibujo, no al final de la explicación (el usuario, 10-nov:
+    // «ese quedaría muy bien bajo el renderizado»).
+    return '<li class="regl">' +
+      '<div class="regfig">' + _svgRegla(ej, color) +
+        (ej && ej.leyenda ? '<span class="umb">' + esc(ej.leyenda) + '</span>' : '') + '</div>' +
+      '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p>' +
+        (de ? '<span class="regde">Excepción a «' + esc(de.nombre) + '»</span>' : '') + '</div>' +
+      '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') + '</div></li>';
   }
 
   // El dibujo de una regla: el eje que mandó el backend (figura_de_lados), por el mismo
   // camino que svgEje en auditorias/index.js, con las LETRAS de rótulo —la leyenda habla
   // de B y D, no de centímetros— y los lados que la regla compara en una banda roja.
-  function _svgRegla(ej) {
+  function _svgRegla(ej, color) {
     var M = global.disenadorMotor;
     if (!ej || !ej.eje || !(ej.eje.puntos || []).length) return '<span class="regsin">no mira la figura</span>';
     if (!M || !M.svgDesdePuntos) return '';
@@ -146,7 +171,9 @@
           return g.texto != null ? { tipo: g.tipo, texto: g.texto, x: g.x / 10, y: g.y / 10 }
                                  : { tipo: g.tipo, x1: g.x1 / 10, y1: g.y1 / 10, x2: g.x2 / 10, y2: g.y2 / 10 };
         }),
-        diam_mm: ej.diam, metrico: true });
+        // La banda de los lados marcados va en la tinta de la figura: roja en una regla,
+        // la de siempre en una excepción (ahí no marca nada malo, sólo de qué lados habla).
+        diam_mm: ej.diam, metrico: true, color: color || null, color_resalte: color || M.TINTA });
     } catch (e) { return ''; }
   }
 
