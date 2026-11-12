@@ -127,9 +127,9 @@ check("...con el piso de 7,5 cm para los diámetros chicos",
       abs(C._minimo_fabricacion(6.0) - 75.0) < 0.01)
 # LA COMPARACIÓN ES ESTRICTA Y ESO NO SE TOCA.
 check("la comparación es ESTRICTA: con «menor o igual» todos los ganchos serían errores",
-      # (11-nov) cada lado compara contra SU mínimo —el de fabricación o el de la excepción
-      # de soportes de losa—, pero la comparación sigue siendo estricta.
-      'l["largo"] < rige[l["nombre"]][0] - 0.01' in SRC)
+      'l["largo"] < minimo - 0.01' in SRC
+      # (11-nov) y la regla de los soportes de losa compara igual de estricto.
+      and '0 < l["largo"] < minimo - 0.01' in SRC)
 b = barra([("A", 900, "B", None), ("B", 900, "B", 90)], diam=10.0)
 check("una barra sana no dice nada", C.r_lado_corto(b, [b]) == [])
 
@@ -1673,11 +1673,12 @@ check("ningún texto visible usa pata, pie, horquilla ni cuerpo",
 s105 = C.r_patas_suple(suple(130, 170, 2280, 130, 640), [])
 check("...tampoco el texto de la señal del suple", "pata" not in s105[0]["texto"] and s105[0]["texto"].startswith("B y D"))
 
-# ── 13. Excepción: las alturas de los soportes de losa (11-nov) ────────────────────
+# ── 13. Las alturas de los soportes de losa: su propia regla (11-nov) ─────────────────
 # Producción (25-ago-2025): las patas de losa se doblan con bulón en un segundo proceso; φ8
 # desde 6 cm, φ10 desde 8 cm, φ12 desde 10 cm. Sólo las alturas (C y E en la 26, B y D en la
-# 305A), sólo esos φ. Las 63 señales que hubo en esas figuras eran esas alturas.
-print("\n13. Las alturas de los soportes de losa tienen su propio mínimo")
+# 305A), sólo esos φ. Nació como excepción dentro del lado corto; el usuario: «una excepción
+# indicada? o una regla de que aplica respecto de esa figura? me suena lo segundo».
+print("\n13. Las alturas de los soportes de losa tienen su propia regla")
 
 
 def silla26(c, e, diam=8.0, b=300, d=300, f=300):
@@ -1690,34 +1691,56 @@ def silla305(b, d, diam=10.0):
                   ("A", 500, "STD", 90)], diam=diam, figura="305A", ref="S305")
 
 
-check("una 26 en φ8 con alturas de 7 cm ya no salta (antes: mínimo 8 cm)", C.r_lado_corto(silla26(70, 70), []) == [])
-check("...ni con 6 cm justos, que es el mínimo de la excepción", C.r_lado_corto(silla26(60, 60), []) == [])
-m = C.r_lado_corto(silla26(50, 70), [])
-check("con 5 cm sí salta, y dice el mínimo de la excepción (60) y por qué no es 10φ",
-      len(m) == 1 and m[0]["lados"] == ["C"] and m[0]["esperado"] == 60
-      and "altura mínima de un soporte de losa en φ8, 60 mm" in m[0]["texto"] and "bulón" in m[0]["texto"])
-check("una 305A en φ10 con alturas de 9 cm ya no salta; en φ12 rige 10 cm",
-      C.r_lado_corto(silla305(90, 90), []) == [] and len(C.r_lado_corto(silla305(90, 90, 12.0), [])) == 1)
-check("los OTROS lados de la silla siguen con 10φ: un apoyo B de 7 cm en φ8 salta como siempre",
-      len(C.r_lado_corto(silla26(70, 70, b=70), [])) == 1
+R = C.r_altura_soporte_losa
+check("una 26 en φ8 con alturas de 7 cm no salta en ninguna de las dos reglas",
+      R(silla26(70, 70), []) == [] and C.r_lado_corto(silla26(70, 70), []) == [])
+check("...ni con 6 cm justos, que es el mínimo de Producción", R(silla26(60, 60), []) == [])
+m = R(silla26(50, 70), [])
+check("con 5 cm salta la regla del soporte, no la del lado corto, y dice el mínimo (60)",
+      len(m) == 1 and m[0]["lados"] == ["C"] and m[0]["esperado"] == 60 and m[0]["valor"] == 50
+      and m[0]["texto"] == "la altura C (50) mide menos que el mínimo de un soporte de losa en φ8, 60 mm"
+      and C.r_lado_corto(silla26(50, 70), []) == [])
+m = R(silla26(50, 40), [])
+check("las dos alturas cortas son un solo hallazgo",
+      len(m) == 1 and m[0]["lados"] == ["C", "E"] and m[0]["valor"] == 40
+      and m[0]["texto"].startswith("las alturas C (50) y E (40) miden menos"))
+check("una 305A en φ10 con alturas de 9 cm no salta; en φ12 rige 10 cm",
+      R(silla305(90, 90), []) == [] and len(R(silla305(90, 90, 12.0), [])) == 1)
+check("los OTROS lados de la silla siguen en el lado corto: un apoyo B de 7 cm en φ8 salta como siempre",
+      len(C.r_lado_corto(silla26(70, 70, b=70), [])) == 1 and R(silla26(70, 70, b=70), []) == []
       and "mínimo de fabricación es 80" in C.r_lado_corto(silla26(70, 70, b=70), [])[0]["texto"])
-check("y los otros diámetros también: una altura de 15 cm en φ16 salta (mínimo 16)",
-      len(C.r_lado_corto(silla305(150, 150, 16.0), [])) == 1)
-check("la excepción es por figura: el mismo lado de 7 cm en una 103A φ8 salta",
+check("y los otros diámetros también: una altura de 15 cm en φ16 es del lado corto (mínimo 16)",
+      len(C.r_lado_corto(silla305(150, 150, 16.0), [])) == 1 and R(silla305(150, 150, 16.0), []) == [])
+check("es por figura: el mismo lado de 7 cm en una 103A φ8 es del lado corto",
       len(C.r_lado_corto(barra([("A", 70, "STD", None), ("B", 900, "STD", 90), ("C", 70, "STD", 90)], diam=8.0,
                                figura="103A"), [])) == 1)
 check("la tabla es la del correo de Producción",
       C.ALTURA_MINIMA_SOPORTE_LOSA == {8.0: 60.0, 10.0: 80.0, 12.0: 100.0}
       and C.ALTURAS_SOPORTE_LOSA == {"26": ("C", "E"), "305A": ("B", "D")})
-rl = {r["codigo"]: r for r in C.REGLAS}["lado_corto"]
-check("la regla declara su excepción y el menú la muestra dentro de la regla, con su fuente",
-      len(rl["excepciones"]) == 1 and "26 y 305A" in rl["excepciones"][0]["titulo"]
-      and rl["excepciones"][0]["fuente"] == "Producción, 25-ago-2025"
-      and '"excepciones": r.get("excepciones") or []' in API
-      and "'<div class=\"regexc\"><i>Excepción · '" in JS and ".regexc{" in HTM)
-check("el texto de la excepción tampoco usa términos coloquiales",
+rs = {r["codigo"]: r for r in C.REGLAS}["altura_soporte_losa"]
+check("es una regla del menú, con su nombre corto, su alcance y la fuente",
+      rs["corto"] == "Soporte losa: altura" and "26 (alturas C y E)" in rs["alcance"]
+      and "305A (alturas B y D)" in rs["alcance"] and "25-ago-2025" in rs["alcance"]
+      and "propia regla" in {r["codigo"]: r for r in C.REGLAS}["lado_corto"]["alcance"])
+check("ya no hay «excepciones» dentro de una regla: ni en la regla, ni en el menú",
+      all("excepciones" not in r for r in C.REGLAS) and "excepciones" not in API
+      and "regexc" not in JS and "regexc" not in HTM)
+es = C.ejemplo_dibujado(rs)
+P = es["eje"]["puntos"]
+check("se dibuja en isométrica como el catálogo: B y D verticales, A y C inclinados en sentidos opuestos",
+      es["eje"]["tridimensional"] and len(P) == 6 and P[1][0] == P[2][0] and P[3][0] == P[4][0]
+      and P[2][1] > P[1][1] and P[4][1] < P[3][1]
+      and (P[1][1] - P[0][1]) < 0 < (P[3][1] - P[2][1]))
+let = [g for g in es["guias"] if g["tipo"] == "letra"]
+check("las cinco letras van a mano y por fuera; la pantalla apaga las automáticas",
+      es["letras_a_mano"] and [g["texto"] for g in let] == ["A", "B", "C", "D", "E"]
+      and "var auto = completo && !ej.letras_a_mano;" in JS and es["marcar"] == ["B", "D"])
+check("...cada una del lado de afuera de su lado (B a la izquierda, C arriba, D a la derecha)",
+      let[1]["x"] < P[1][0] and let[2]["y"] > (P[2][1] + P[3][1]) / 2 and let[3]["x"] > P[3][0])
+check("el texto de la regla tampoco usa términos coloquiales",
       not _re.search(r"\b(pata|patas|pie|pies|horquilla|cuerpo)\b",
-                     (rl["excepciones"][0]["titulo"] + " " + rl["excepciones"][0]["texto"]).lower()))
+                     " ".join([rs["nombre"], rs["corto"], rs["porque"], rs["alcance"],
+                               rs["ejemplo"]["leyenda"]]).lower()))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

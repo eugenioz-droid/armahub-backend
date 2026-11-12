@@ -108,12 +108,7 @@
         '<div class="regfig">' + _svgRegla(ej) +
           (ej && ej.leyenda ? '<span class="umb">' + esc(ej.leyenda) + '</span>' : '') + '</div>' +
         '<div class="regtxt"><b>' + esc(r.nombre) + '</b><p>' + esc(r.porque) + '</p></div>' +
-        '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') +
-          // LAS EXCEPCIONES, DENTRO DE LA REGLA (11-nov): una por bloque, con su fuente.
-          (r.excepciones || []).map(function (x) {
-            return '<div class="regexc"><i>Excepción · ' + esc(x.titulo || '') + '</i>' + esc(x.texto || '') +
-              (x.fuente ? '<span>' + esc(x.fuente) + '</span>' : '') + '</div>';
-          }).join('') + '</div></li>';
+        '<div class="regalc"><i>Dónde aplica</i>' + esc(r.alcance || '') + '</div></li>';
     }).join('');
   }
 
@@ -128,6 +123,10 @@
     var pts = eje.puntos.map(function (p) { return { x: p[0] / 10, y: p[1] / 10 }; });
     var completo = tramos.length === pts.length - 1;
     var tipos = tramos.map(function (s) { return s.tipo === 'arco' ? 'arco' : 'recto'; });
+    // La figura en el espacio trae sus letras puestas a mano en las guías, por fuera del
+    // dibujo (chequeos.py::_letras_afuera): las automáticas se apagan, como en el modo
+    // etiqueta-manda del catálogo.
+    var auto = completo && !ej.letras_a_mano;
     // El alto sigue la proporción de la figura (entre 40 y 104 px): una barra recta o una U
     // chata no deja un hueco de aire entre el dibujo y su leyenda.
     var alto = Math.max(40, Math.min(104, Math.round(134 * (eje.alto || 0) / Math.max(1, eje.ancho || 1)) + 36));
@@ -136,8 +135,8 @@
         tipos_seg: completo ? tipos : null,
         radios_seg: completo ? tramos.map(function (s) { return s.tipo === 'arco' ? (s.radio || 0) / 10 : 0; }) : null,
         sweeps_seg: completo ? tramos.map(function (s) { return s.sweep == null ? 1 : 1 - s.sweep; }) : null,
-        labels: completo ? tramos.map(function (s) { return s.tipo === 'recto' ? (s.lado || '') : ''; }) : [],
-        labels_auto: completo, angulos: false, cotas_arco_iso: [],
+        labels: auto ? tramos.map(function (s) { return s.tipo === 'recto' ? (s.lado || '') : ''; }) : [],
+        labels_auto: auto, angulos: false, cotas_arco_iso: [],
         resaltar_seg: completo ? tramos.map(function (s, i) { return marcar.indexOf(s.lado) !== -1 ? i : -1; })
                                        .filter(function (i) { return i >= 0; }) : [],
         // Las líneas de apoyo que manda la regla (la diagonal y la altura del camión): mismas

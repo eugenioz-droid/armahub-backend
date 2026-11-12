@@ -30,7 +30,8 @@ import math
 import re
 from typing import Optional
 
-from .figura_asa import GANCHO_MAXIMO_PHI, _direcciones, _giro, _legs, envolvente_declarada, figura_de_lados
+from .figura_asa import (GANCHO_MAXIMO_PHI, _direcciones, _giro, _legs, envolvente_declarada,
+                         figura_de_lados, figura_espacial_de_lados)
 from .modelador_config import GANCHO_FABRICACION
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,9 +177,9 @@ def _minimo_fabricacion(diam_mm: float) -> float:
     return max(GANCHO_FABRICACION["factor"] * diam_mm, GANCHO_FABRICACION["min"] * 10.0)
 
 
-# EXCEPCIÓN: LAS ALTURAS DE LOS SOPORTES DE LOSA (11-nov). Las «patas de losa» —figuras 26 y
-# 305A, las sillas tridimensionales— se doblan en un SEGUNDO PROCESO, con bulón no normado, y
-# por eso sus alturas pueden bajar del mínimo de 10φ. Producción lo dejó escrito (correo del
+# LAS ALTURAS DE LOS SOPORTES DE LOSA TIENEN SU PROPIA REGLA (11-nov). Las «patas de losa»
+# —figuras 26 y 305A, las sillas tridimensionales— se doblan en un SEGUNDO PROCESO, con bulón
+# no normado, y por eso sus alturas pueden bajar del mínimo de 10φ. Producción lo dejó escrito (correo del
 # 25-ago-2025): «8mm → altura mínima 6cm, 10mm → 8cm, 12mm → 10cm… como la pata losa no es un
 # elemento estructural no debería haber problemas». El usuario: «las patas de losa en general
 # tienen un segundo proceso y sí permiten mínimos de doblado menores a 10 veces el diámetro».
@@ -189,19 +190,49 @@ def _minimo_fabricacion(diam_mm: float) -> float:
 # señales de lado corto que hubo en esas dos figuras eran todas esas alturas, todas dentro
 # de la tabla, y todas se aceptaron a mano con «corresponde a soportes de losa».
 #
+# UNA REGLA POR FIGURA, NO UNA EXCEPCIÓN DENTRO DEL LADO CORTO. Nació como excepción, y el
+# usuario, viéndola en el menú: «que quedará entonces en el listado de reglas? una excepción
+# indicada? o una regla de que aplica respecto de esa figura? me suena lo segundo». Como la
+# del suple 105A: tiene su dibujo, y cuando salta la señal dice qué regla es en vez de un
+# «lado corto» con asterisco. El lado corto deja esas alturas a esta regla y nada más.
+#
 # En los textos visibles se dice «soporte de losa» (la tipología SP del catálogo) y no «pata
 # de losa»: el usuario pidió no usar «pata» (ver test_chequeos §12).
 ALTURA_MINIMA_SOPORTE_LOSA = {8.0: 60.0, 10.0: 80.0, 12.0: 100.0}     # φ mm → altura mínima mm
 ALTURAS_SOPORTE_LOSA = {"26": ("C", "E"), "305A": ("B", "D")}       # figura → lados que son altura
 
 
-def _minimo_del_lado(barra, lado, minimo) -> tuple:
-    """El mínimo que rige para ESTE lado: el de fabricación, salvo la altura de un soporte de
-    losa en φ8, φ10 o φ12. Devuelve (mínimo mm, es_excepción)."""
-    alturas = ALTURAS_SOPORTE_LOSA.get((barra.get("figura") or "").strip().upper())
-    if alturas and lado["nombre"] in alturas and barra["diam"] in ALTURA_MINIMA_SOPORTE_LOSA:
-        return ALTURA_MINIMA_SOPORTE_LOSA[barra["diam"]], True
-    return minimo, False
+def _alturas_soporte_losa(barra) -> tuple:
+    """Los lados que son altura de soporte de losa en ESTA barra, o () si no le toca la
+    regla: otra figura, u otro diámetro (un φ16 sigue con 10φ)."""
+    if barra["diam"] not in ALTURA_MINIMA_SOPORTE_LOSA:
+        return ()
+    return ALTURAS_SOPORTE_LOSA.get((barra.get("figura") or "").strip().upper(), ())
+
+
+def r_altura_soporte_losa(barra, hermanas) -> list:
+    """UNA ALTURA DE SOPORTE DE LOSA BAJO EL MÍNIMO DE PRODUCCIÓN: 6 cm en φ8, 8 en φ10, 10 en
+    φ12. Medido al crearla, sobre las 152 sillas de los 44 códigos que tuvieron señales en
+    estas figuras: no salta ninguna. Las que saltaban eran del lado corto, a 10φ."""
+    alturas = _alturas_soporte_losa(barra)
+    if not alturas:
+        return []
+    minimo = ALTURA_MINIMA_SOPORTE_LOSA[barra["diam"]]
+    cortos = [l for l in barra["lados"]
+              if l["nombre"] in alturas and not l["arco"] and 0 < l["largo"] < minimo - 0.01]
+    if not cortos:
+        return []
+    partes = ["%s (%d)" % (l["nombre"], round(l["largo"])) for l in cortos]
+    nombres = [l["nombre"] for l in cortos]
+    peor = min(l["largo"] for l in cortos)
+    return [{
+        "texto": ("%s %s menos que el mínimo de un soporte de losa en φ%g, %d mm"
+                  % (("la altura " + partes[0]) if len(partes) == 1 else ("las alturas " + _y(partes)),
+                     "mide" if len(partes) == 1 else "miden", barra["diam"], round(minimo))),
+        "lados": nombres,
+        "valor": round(peor), "esperado": round(minimo),
+        "clave": tuple(sorted(nombres)) + (round(peor),),
+    }]
 
 
 def r_lado_corto(barra, hermanas) -> list:
@@ -222,34 +253,14 @@ def r_lado_corto(barra, hermanas) -> list:
     if diam <= 0:
         return []
     minimo = _minimo_fabricacion(diam)
-    # Cada lado con SU mínimo: el de fabricación, o el de la excepción de soportes de losa.
-    rige = {l["nombre"]: _minimo_del_lado(barra, l, minimo) for l in barra["lados"]}
+    # Las alturas de un soporte de losa en φ8, φ10 y φ12 las revisa su propia regla, con el
+    # mínimo de Producción (r_altura_soporte_losa). Todos los demás lados, acá.
+    alturas = _alturas_soporte_losa(barra)
     cortos = [l for l in barra["lados"]
-              if not l["arco"] and l["largo"] > 0 and l["largo"] < rige[l["nombre"]][0] - 0.01]
+              if not l["arco"] and l["largo"] > 0 and l["largo"] < minimo - 0.01
+              and l["nombre"] not in alturas]
     if not cortos:
         return []
-    exc = [l for l in cortos if rige[l["nombre"]][1]]
-    if exc:
-        # Una altura de soporte de losa por debajo incluso de la excepción. El texto dice el
-        # mínimo de la excepción, que es el que rige, y por qué no es 10φ.
-        partes = ["%s (%d)" % (l["nombre"], round(l["largo"])) for l in exc]
-        texto = ("%s %s menos que la altura mínima de un soporte de losa en φ%g, %d mm (se dobla con bulón)"
-                 % (("la altura " + partes[0]) if len(partes) == 1 else ("las alturas " + _y(partes)),
-                    "mide" if len(partes) == 1 else "miden", diam, round(rige[exc[0]["nombre"]][0])))
-        otros = [l for l in cortos if not rige[l["nombre"]][1]]
-        if otros:
-            texto += (" · %s %s menos que el mínimo de fabricación, %d mm (%g × φ%g)"
-                      % (("el lado " if len(otros) == 1 else "los lados ")
-                         + _y(["%s (%d)" % (l["nombre"], round(l["largo"])) for l in otros]),
-                         "mide" if len(otros) == 1 else "miden",
-                         round(minimo), GANCHO_FABRICACION["factor"], diam))
-        peor = min(cortos, key=lambda l: l["largo"])
-        nombres = [l["nombre"] for l in cortos]
-        return [{
-            "texto": texto, "lados": nombres,
-            "valor": round(peor["largo"]), "esperado": round(rige[peor["nombre"]][0]),
-            "clave": tuple(sorted(nombres)) + (round(peor["largo"]),),
-        }]
     # UNA BARRA ES UN HALLAZGO, aunque le fallen tres lados. Lo pidió el usuario (14-oct)
     # viendo la misma barra dos veces en la lista, una por cada lado: «aunque sean 2 cosas
     # para una barra, creo que es mejor dejarlo como un único hallazgo».
@@ -656,6 +667,8 @@ def r_no_cabe_camion_radio(barra, hermanas) -> list:
 # una 101A recta: lo que salta lo dice su leyenda.
 #   ejemplo = {"lados": [(nombre, mm, giro, gancho?), ...], "diam": φ, "pin": mandril,
 #              "marcar": [lados que compara], "leyenda": "lo que se lee bajo el dibujo",
+#              "espacial": True (opcional: lados (nombre, mm, (dx, dy, dz)), una figura doblada
+#                          en dos planos, que se dibuja en isométrica como en el catálogo),
 #   LA LEYENDA NOMBRA LA DIMENSIÓN Y EL LÍMITE, SIN CIFRAS DEL EJEMPLO (11-nov). El usuario:
 #   «pones medidas arbitrarias mayores a 250, eso confunde, mejor poner el nombre de la
 #   dimensión». El ejemplo se dibuja con medidas inventadas; la leyenda dice la REGLA.
@@ -671,16 +684,8 @@ REGLAS = [
                "ni anclar. Ningún lado se excluye, tampoco los ganchos.",
      "necesita": ("lados", "diam"),
      "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
-                "el diámetro, con piso de 7,5 cm.",
-     # LAS EXCEPCIONES VAN DENTRO DE LA REGLA (11-nov): el menú las muestra bajo «Dónde aplica».
-     # El usuario lo dejó a criterio; una sección aparte complicaba el menú para una línea.
-     "excepciones": [
-         {"titulo": "Soportes de losa (figuras 26 y 305A)",
-          "texto": "Sus alturas (C y E en la 26, B y D en la 305A) se doblan en un segundo proceso, "
-                   "con bulón, y pueden bajar del mínimo: φ8 desde 6 cm, φ10 desde 8 cm, φ12 desde "
-                   "10 cm. Los demás lados y los otros diámetros siguen con 10 φ.",
-          "fuente": "Producción, 25-ago-2025"},
-     ],
+                "el diámetro, con piso de 7,5 cm. Las alturas de los soportes de losa 26 y 305A en "
+                "φ8, φ10 y φ12 tienen su propia regla.",
      "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
                  "marcar": ["C"], "leyenda": "C < 10 φ"},
      "fn": r_lado_corto},
@@ -724,6 +729,24 @@ REGLAS = [
      "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
                  "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B ≠ D por más de 1 cm"},
      "fn": r_patas_suple},
+    {"codigo": "altura_soporte_losa",
+     "corto": "Soporte losa: altura",
+     "nombre": "Soporte de losa con una altura bajo el mínimo",
+     "porque": "Las alturas del soporte de losa se doblan en un segundo proceso, con bulón, y pueden "
+               "bajar de 10 φ, pero no del mínimo de Producción: 6 cm en φ8, 8 cm en φ10 y 10 cm "
+               "en φ12.",
+     "necesita": ("lados", "diam"),
+     "alcance": "Sólo las figuras 26 (alturas C y E) y 305A (alturas B y D), en φ8, φ10 y φ12. Sus "
+                "otros lados, y estas figuras en otros diámetros, siguen con la regla de 10 φ. "
+                "Mínimos de Producción, correo del 25-ago-2025.",
+     # Se dibuja EN EL ESPACIO, en isométrica como el catálogo: es una silla doblada en dos
+     # planos, y de frente B y D quedan de canto. Es una 305A real (SURV 10mmA15): A por X,
+     # B sube, C por Y, D baja, E por X.
+     "ejemplo": {"espacial": True,
+                 "lados": [("A", 300, (1, 0, 0)), ("B", 250, (0, 0, 1)), ("C", 300, (0, 1, 0)),
+                           ("D", 250, (0, 0, -1)), ("E", 300, (1, 0, 0))],
+                 "diam": 8, "pin": 48, "marcar": ["B", "D"], "leyenda": "B o D < altura mínima del φ"},
+     "fn": r_altura_soporte_losa},
     {"codigo": "no_cabe_camion",
      # «Camión: …» en las tres: son tres reglas del mismo motivo, y en los encabezados del
      # reporte tienen que distinguirse.
@@ -805,16 +828,46 @@ def _guias(tipo, puntos, base=None) -> list:
     return guias
 
 
+def _letras_afuera(eje) -> list:
+    """Las letras de los lados puestas a mano: al medio de cada lado, del lado contrario al
+    centro de la figura. Es para la figura en el espacio. El motor pone cada letra a la
+    izquierda del sentido del trazo, y en la silla proyectada en isométrica dos letras caen
+    siempre adentro, una encima de la otra (C y D recorriéndola desde A; A y B desde E)."""
+    pts = eje.get("puntos") or []
+    if len(pts) < 2:
+        return []
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    off = 0.07 * max(eje.get("ancho") or 0, eje.get("alto") or 0, 1)
+    letras = []
+    for t in eje.get("tramos") or []:
+        a, b = pts[t["desde"]], pts[t["hasta"]]
+        mx, my = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
+        n = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+        nx, ny = -(b[1] - a[1]) / n, (b[0] - a[0]) / n
+        if (mx - cx) * nx + (my - cy) * ny < 0:
+            nx, ny = -nx, -ny
+        letras.append({"tipo": "letra", "texto": t["lado"], "x": round(mx + nx * off, 1), "y": round(my + ny * off, 1)})
+    return letras
+
+
 def ejemplo_dibujado(regla) -> Optional[dict]:
     """El ejemplo de una regla, trazado con el mismo motor que las barras reales, listo
-    para que la pantalla lo dibuje y marque los lados. None si la regla no mira la figura."""
+    para que la pantalla lo dibuje y marque los lados. None si la regla no mira la figura.
+    `letras_a_mano`: la figura en el espacio trae sus letras en `guias` (ver _letras_afuera)
+    y la pantalla apaga las automáticas."""
     ej = regla.get("ejemplo")
     if not ej:
         return None
-    eje = figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0))
+    espacial = bool(ej.get("espacial"))
+    eje = (figura_espacial_de_lados(ej["lados"]) if espacial
+           else figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0)))
+    guias = _guias(ej.get("guias"), eje.get("muestra") or eje.get("puntos") or [], ej.get("base"))
+    if espacial:
+        guias += _letras_afuera(eje)
     return {"eje": eje, "marcar": list(ej.get("marcar") or []), "leyenda": ej.get("leyenda") or "",
             "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]],
-            "guias": _guias(ej.get("guias"), eje.get("muestra") or eje.get("puntos") or [], ej.get("base"))}
+            "guias": guias, "letras_a_mano": espacial}
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

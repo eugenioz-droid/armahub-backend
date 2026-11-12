@@ -570,6 +570,50 @@ def figura_de_lados(lados, pin_diam: float = 0.0, diam_mm: float = 0.0, pasos_ar
             "ancho": round(max(xs) - min(xs)), "alto": round(max(ys) - min(ys))}
 
 
+# LA CÁMARA ISOMÉTRICA DEL CATÁLOGO: azimut 45°, elevación 30°, Z arriba. Es la de
+# disenador3d.js::_isoBasis y la de svgIso (auditorias/index.js): una figura doblada en dos
+# planos se ve igual en el menú de reglas que en el catálogo y en la auditoría.
+ISO_AZIMUT, ISO_ELEVACION = 45.0, 30.0
+
+
+def _base_iso():
+    """Los ejes de pantalla de la cámara (derecha, arriba), como _isoBasis."""
+    el, az = math.radians(ISO_ELEVACION), math.radians(ISO_AZIMUT)
+    f = (-math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), -math.sin(el))
+    n = math.hypot(f[1], f[0]) or 1.0
+    r = (f[1] / n, -f[0] / n, 0.0)
+    u = (r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0])
+    n = math.sqrt(u[0] ** 2 + u[1] ** 2 + u[2] ** 2) or 1.0
+    return r, (u[0] / n, u[1] / n, u[2] / n)
+
+
+def figura_espacial_de_lados(lados) -> dict:
+    """Una figura doblada en dos planos (las sillas 26 y 305A) desde lados escritos a mano:
+    `[(nombre, largo_mm, (dx, dy, dz)), ...]`, cada lado con su dirección en el espacio, con
+    el lado largo por X y Z arriba, como el editor 3D del catálogo.
+
+    Es para el ejemplo de una regla de revisión (chequeos.py, 11-nov). Devuelve el eje YA
+    PROYECTADO en isométrica, en el formato de figura_de_lados, y la pantalla lo dibuja con
+    el mismo motor 2D: es como el catálogo dibuja la vista previa de una figura 3D
+    (disenador3dNodos2D → svgDesdePuntos). La Y no se invierte: el motor la invierte al
+    dibujar, y así Z queda hacia arriba."""
+    r, u = _base_iso()
+    p, pts3 = (0.0, 0.0, 0.0), [(0.0, 0.0, 0.0)]
+    for _nombre, largo, d in lados:
+        n = math.sqrt(d[0] ** 2 + d[1] ** 2 + d[2] ** 2) or 1.0
+        p = (p[0] + d[0] / n * largo, p[1] + d[1] / n * largo, p[2] + d[2] / n * largo)
+        pts3.append(p)
+    puntos = [[round(q[0] * r[0] + q[1] * r[1] + q[2] * r[2], 1),
+               round(q[0] * u[0] + q[1] * u[1] + q[2] * u[2], 1)] for q in pts3]
+    tramos = [{"tipo": "recto", "radio": 0, "sweep": None, "lado": str(l[0]), "largo": round(float(l[1])),
+               "gancho": False, "desde": i, "hasta": i + 1} for i, l in enumerate(lados)]
+    xs = [q[0] for q in puntos]
+    ys = [q[1] for q in puntos]
+    return {"ok": True, "motivo": "", "tridimensional": True, "fuente": "ejemplo", "cerrada": False,
+            "puntos": puntos, "tramos": tramos, "muestra": puntos,
+            "ancho": round(max(xs) - min(xs)), "alto": round(max(ys) - min(ys))}
+
+
 def figura_de(shapedims, legangle: Optional[str] = None, pin_diam: float = 0.0,
               diam_mm: float = 0.0, pasos_arco: int = 12) -> dict:
     """La figura de la barra como POLICURVA (ver la cabecera del módulo).
