@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Nota del elemento</title>
+<!--
+  MAQUETA VISUAL — SIN LÓGICA (12-nov). Página suelta para MIRAR y probar el control
+  nuevo de la nota del elemento: no guarda, no lee la base. Datos inventados.
+  Estilos copiados de templates/tabs/auditorias.html (.audt, .audvb, .audlbl, .revi,
+  .audbtn, .audmini) para que se vea como la pantalla real.
+  Versión 2: el usuario pidió algo más chico —«2 botones chicos al lado … o recoger más el
+  cuadro y con un radial»—. Van las dos para comparar: A (botones al lado) y B (radios).
+-->
+<style>
+  body{margin:0; background:#F3F4F6; color:#292D32; font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .pag{max-width:1100px; margin:0 auto; padding:16px;}
+  h1{font-size:16px; margin:0 0 4px;}
+  .intro{font-size:12px; color:#546e7a; margin:0 0 14px;}
+  .quien{font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#78909c; margin:18px 0 6px;}
+  .hoja{background:#fff; border:1px solid #D9DDE3; border-radius:8px; padding:14px 16px;}
+  .muted{color:#78909c;}
+  .audt{width:100%; border-collapse:collapse; font-size:11px; font-variant-numeric:tabular-nums;}
+  .audt th{background:#fafbfc; text-align:left; color:#546e7a; font-size:10px; padding:4px 6px; border-bottom:1px solid #e8ebef; border-right:1px solid #e8ebef;}
+  .audt td{padding:4px 6px; border-top:1px solid #edf0f3; border-right:1px solid #f2f4f7; vertical-align:top;}
+  .audt td:last-child, .audt th:last-child{border-right:0;}
+  .audref{font-family:ui-monospace,Consolas,monospace; font-weight:700; color:#263238;}
+  .audlbl{font-size:10.5px; font-weight:700; color:#546e7a; display:block; margin:0 0 3px;}
+  textarea{width:100%; box-sizing:border-box; font-size:11.5px; padding:6px 8px; border:1px solid #cfd8dc; border-radius:4px; resize:vertical; font-family:inherit; margin:0;}
+  .audbtn{font-size:12px; font-weight:700; padding:6px 14px; background:#1565C0; color:#fff; border:none; border-radius:5px; cursor:pointer;}
+  .audmini{font-size:10px; font-weight:600; padding:2px 9px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#37474f; cursor:pointer;}
+  .revi{font-size:9.5px; font-weight:700; border-radius:99px; padding:1px 7px; white-space:nowrap;}
+  .revi.abierta{background:#fff8e1; color:#8d6e00;}
+  button:focus-visible, textarea:focus-visible{outline:2px solid #104F9E; outline-offset:2px;}
+  .var{font-size:12px; font-weight:700; color:#263238; margin:0 0 8px;}
+  .var span{font-weight:400; color:#78909c; font-size:11px;}
+  .sep{border:0; border-top:1px dashed #D9DDE3; margin:16px 0;}
+  .pie{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;}
+  .msg{font-size:11px; font-weight:700; color:#c62828;}
+  .msg.ok{color:#2e7d32;}
+
+  /* El texto de ayuda al pasar el mouse (o al llegar con el teclado). La palabra del botón
+     se ve siempre; esto sólo explica qué pasa después. */
+  [data-tip]{position:relative;}
+  [data-tip]:hover::after, [data-tip]:focus-visible::after{content:attr(data-tip); position:absolute; z-index:20;
+     width:250px; padding:6px 8px; border-radius:5px; background:#263238; color:#fff; font-size:10.5px;
+     font-weight:400; line-height:1.35; text-align:left; white-space:normal; pointer-events:none;}
+  .tipizq:hover::after, .tipizq:focus-visible::after{right:calc(100% + 8px); top:50%; transform:translateY(-50%);}
+  .tiparr:hover::after, .tiparr:focus-visible::after{left:0; bottom:calc(100% + 6px);}
+
+  /* Ícono en línea: el globo es «comentario»; la bandera es «hallazgo que se trata». */
+  .ico{width:12px; height:12px; flex:0 0 12px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;}
+
+  /* ── VARIANTE A: dos botones chicos al lado de la nota ──────────────────────── */
+  .na{display:flex; gap:8px; align-items:stretch;}
+  .na textarea{flex:1;}
+  .na-par{display:flex; flex-direction:column; gap:3px; padding:3px; border:1.5px solid transparent; border-radius:6px; width:170px; box-sizing:border-box;}
+  .na-par button{display:flex; align-items:center; gap:6px; flex:1; font:inherit; font-size:10.5px; font-weight:700;
+                 padding:2px 8px; border:1px solid #cfd8dc; border-radius:4px; background:#fff; color:#546e7a; cursor:pointer; text-align:left;}
+  .na-par button:hover:not(:disabled){border-color:#90a4ae; color:#263238;}
+  .na-par button:disabled{opacity:.45; cursor:not-allowed;}
+  .na-par button.com.on{background:#1769C2; border-color:#0d47a1; color:#fff;}
+  .na-par button.res.on{background:#c62828; border-color:#b71c1c; color:#fff;}
+  /* Falta elegir: borde ámbar alrededor del par + «elige uno». Al intentar guardar sin
+     elegir, rojo. */
+  .na-par.pide{border-color:#D97706; border-style:dashed;}
+  .na-par.falta{border-color:#c62828; border-style:solid; box-shadow:0 0 0 2px #ffcdd2;}
+  .na-lbl{display:flex; align-items:baseline;}
+  .na-lbl .audlbl{flex:1;}
+  .na-aviso{font-size:10px; font-weight:700; color:#b45309; width:170px; text-align:center;}
+  .na-aviso.falta{color:#c62828;}
+
+  /* ── VARIANTE B: una línea con dos radios debajo de la nota ─────────────────── */
+  .nb{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:5px; padding:4px 8px;
+      border:1.5px solid transparent; border-radius:6px;}
+  .nb .t{font-size:10.5px; font-weight:700; color:#546e7a;}
+  .nb label{display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:#37474f; cursor:pointer;}
+  .nb input{margin:0; accent-color:#1769C2;}
+  .nb label.res input{accent-color:#c62828;}
+  .nb label.on.com{color:#0d47a1;} .nb label.on.res{color:#b71c1c;}
+  .nb .exp{font-size:10.5px; color:#78909c;}
+  .nb .exp.pide{color:#b45309; font-weight:700;}
+  .nb.apagada label{opacity:.45; cursor:not-allowed;}
+  .nb.pide{border-color:#D97706; border-style:dashed;}
+  .nb.falta{border-color:#c62828; border-style:solid; box-shadow:0 0 0 2px #ffcdd2;}
+  .nb.falta .exp{color:#c62828;}
+
+  /* Lo que ve el cubicador */
+  .comaud{border-left:3px solid #1769C2; background:#e3f2fd; color:#0d3c78; border-radius:0 6px 6px 0;
+          padding:6px 10px; font-size:11.5px; margin-bottom:8px;}
+  .comaud b{display:block; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:#1769C2; margin-bottom:1px;}
+  .espera{font-size:11.5px; color:#90a4ae; font-style:italic; padding:6px 0;}
+
+  /* El informe, en chico */
+  .inf{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .inf .cuadro{border:1px solid #D9DDE3; border-radius:6px; overflow:hidden;}
+  .inf .cab{background:#eef1f4; font-size:10.5px; font-weight:700; padding:4px 8px; color:#37474f;}
+  .inf .tejas{display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:6px;}
+  .teja{border:1px solid #e3e7eb; border-radius:4px; padding:5px 6px; font-size:10px;}
+  .teja .t{display:flex; justify-content:space-between; font-weight:700; margin-bottom:2px;}
+  .chip{font-size:9px; font-weight:700; border-radius:99px; padding:0 6px;}
+  .chip.pe{background:#fff8e1; color:#8d6e00;}
+  .inf .fin{border:1px solid #bbdefb; border-radius:6px; overflow:hidden;}
+  .inf .fin .cab{background:#e3f2fd; color:#0d47a1;}
+  .inf .fin p{margin:0; padding:6px 8px; font-size:10.5px;}
+  .vacio{font-size:10.5px; color:#90a4ae; padding:6px 8px; font-style:italic;}
+  @media (max-width:700px){ .inf{grid-template-columns:1fr;} .na{flex-direction:column;} .na-par, .na-aviso{width:auto;} }
+</style>
+</head>
+<body>
+<div class="pag">
+  <h1>Nota del elemento: ¿comentario o requiere tratamiento?</h1>
+  <p class="intro">Maqueta para probar, dos variantes. Escribe o borra la nota, elige, pasa el mouse por encima de las opciones y aprieta «Guardar revisión». Abajo se ve cómo le llega al cubicador y cómo sale en el informe (según la última variante que tocaste). No guarda nada.</p>
+
+  <div class="quien">1 · Lo que ve el auditor — debajo de las barras, en el modal de revisión</div>
+  <div class="hoja">
+
+    <div class="var">A · Dos botones chicos al lado <span>— la palabra se ve siempre; el mouse encima explica qué pasa</span></div>
+    <div class="na-lbl">
+      <label class="audlbl" for="notaA">Nota del elemento
+        <span class="muted" style="font-weight:400;">— lo que no es de una barra: «falta trabas», «confirmar si es de contención»</span></label>
+      <span class="na-aviso" id="avisoA"></span>
+    </div>
+    <div class="na">
+      <textarea id="notaA" rows="2" placeholder="Opcional. Lo que encontraste en cada barra ya va en su columna.">Falta una traba en el nudo del eje 4.</textarea>
+      <div class="na-par" id="parA" role="radiogroup" aria-label="Cómo se trata la nota">
+        <button type="button" class="com tipizq" role="radio" aria-checked="false" data-op="com"
+                data-tip="COMENTARIO: queda escrito como nota del auditor. Nadie lo responde y sale al final del informe, en azul.">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Comentario</button>
+        <button type="button" class="res tipizq" role="radio" aria-checked="false" data-op="res"
+                data-tip="REQUIERE TRATAMIENTO: es un hallazgo del elemento, igual que una barra no conforme. El cubicador lo resuelve (Resuelto / No aplica) y cuenta en el resumen.">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>Requiere tratamiento</button>
+      </div>
+    </div>
+    <div class="pie"><button class="audbtn" data-guardar="A">Guardar revisión</button><span class="msg" id="msgA"></span></div>
+
+    <hr class="sep">
+
+    <div class="var">B · Una línea con radios, debajo <span>— más recogido</span></div>
+    <label class="audlbl" for="notaB">Nota del elemento
+      <span class="muted" style="font-weight:400;">— lo que no es de una barra: «falta trabas», «confirmar si es de contención»</span></label>
+    <textarea id="notaB" rows="2" placeholder="Opcional. Lo que encontraste en cada barra ya va en su columna.">Falta una traba en el nudo del eje 4.</textarea>
+    <div class="nb" id="parB" role="radiogroup" aria-label="Cómo se trata la nota">
+      <span class="t">Tratamiento:</span>
+      <label class="com tiparr" data-tip="Queda escrito como nota del auditor. Nadie lo responde y sale al final del informe, en azul.">
+        <input type="radio" name="tratB" value="com">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Comentario</label>
+      <label class="res tiparr" data-tip="Es un hallazgo del elemento, igual que una barra no conforme. El cubicador lo resuelve (Resuelto / No aplica) y cuenta en el resumen.">
+        <input type="radio" name="tratB" value="res">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>Requiere tratamiento</label>
+      <span class="exp" id="expB"></span>
+    </div>
+    <div class="pie"><button class="audbtn" data-guardar="B">Guardar revisión</button><span class="msg" id="msgB"></span></div>
+  </div>
+
+  <div class="quien">2 · Lo que ve el cubicador — modal de hallazgos del elemento</div>
+  <div class="hoja" id="cubi"></div>
+
+  <div class="quien">3 · Cómo sale en el informe</div>
+  <div class="hoja" id="informe"></div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var EST = { A: null, B: null };   // null = sin elegir · 'com' · 'res'
+  var ACTIVA = 'A';
+  var EXP = { com: 'Nadie lo responde; sale al final del informe.',
+              res: 'El cubicador lo resuelve, como una barra no conforme.' };
+
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function nota(v) { return $('nota' + v).value.trim(); }
+
+  function pintarA() {
+    var hay = !!nota('A'); if (!hay) EST.A = null;
+    var par = $('parA');
+    par.querySelectorAll('button').forEach(function (b) {
+      var on = EST.A === b.dataset.op;
+      b.disabled = !hay; b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
+    });
+    par.classList.toggle('pide', hay && !EST.A);
+    if (!hay || EST.A) { par.classList.remove('falta'); $('avisoA').classList.remove('falta'); $('msgA').textContent = ''; }
+    $('avisoA').textContent = hay && !EST.A ? 'Elige uno ▾' : '';
+  }
+  function pintarB() {
+    var hay = !!nota('B'); if (!hay) EST.B = null;
+    var par = $('parB');
+    par.classList.toggle('apagada', !hay);
+    par.querySelectorAll('input').forEach(function (i) {
+      i.disabled = !hay; i.checked = EST.B === i.value;
+      i.parentNode.classList.toggle('on', i.checked);
+    });
+    par.classList.toggle('pide', hay && !EST.B);
+    if (!hay || EST.B) { par.classList.remove('falta'); $('msgB').textContent = ''; }
+    var exp = $('expB');
+    exp.className = 'exp' + (hay && !EST.B ? ' pide' : '');
+    exp.textContent = !hay ? 'Escribe la nota para elegir.' : EST.B ? '— ' + EXP[EST.B] : '← elige uno: es obligatorio si hay nota';
+  }
+
+  function pintarAbajo() {
+    var t = esc(nota(ACTIVA)), e = t ? EST[ACTIVA] : null, h = '';
+    if (t && !e) {
+      h = '<div class="espera">Elige arriba cómo se trata la nota para ver cómo le llega.</div>';
+    } else {
+      if (e === 'com') h += '<div class="comaud"><b>Comentario del auditor · no se responde</b>' + t + '</div>';
+      h += '<table class="audt"><tr><th style="width:150px">Barra</th><th>Observación del auditor</th><th style="width:90px">Estado</th><th style="width:300px">Acción</th></tr>';
+      if (e === 'res') h += '<tr><td><span class="audref">elemento</span> <span class="muted">— nota del auditor</span></td><td>' + t +
+                            '</td><td><span class="revi abierta">Por resolver</span></td><td>' + botones() + '</td></tr>';
+      h += '<tr><td class="audref">10mmA33</td><td>cantidad 18</td><td><span class="revi abierta">Por resolver</span></td><td>' + botones() + '</td></tr></table>';
+    }
+    $('cubi').innerHTML = h;
+
+    var tejas = (e === 'res' ? teja('Elemento', t) : '') + teja('10mmA33', 'cantidad 18');
+    var fin = e === 'com' ? '<p><b>ELEV-07 · E-12</b> — ' + t + '</p>'
+                          : '<div class="vacio">Sin comentarios. La sección sólo aparece si hay alguno.</div>';
+    $('informe').innerHTML =
+      '<div class="inf"><div class="cuadro"><div class="cab">CC ELEV-07 · cubicó nlopez · ' + (e === 'res' ? 2 : 1) +
+      ' hallazgo(s)</div><div class="tejas">' + tejas + '</div></div>' +
+      '<div class="fin"><div class="cab">Comentarios del auditor · al final del informe</div>' + fin + '</div></div>';
+  }
+  function botones() {
+    return '<span style="display:inline-flex;gap:4px;flex-wrap:wrap"><button class="audmini">Resuelto en el CC</button>' +
+           '<button class="audmini">Resuelto en nuevo CC</button><button class="audmini">No aplica</button></span>';
+  }
+  function teja(item, obs) {
+    return '<div class="teja"><div class="t"><span>' + item + ' <span class="muted" style="font-weight:400">E-12</span></span>' +
+           '<span class="chip pe">Pendiente</span></div><div><span class="muted">Obs.</span> ' + obs + '</div></div>';
+  }
+  function todo() { pintarA(); pintarB(); pintarAbajo(); }
+
+  $('parA').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'); if (!b || b.disabled) return;
+    EST.A = b.dataset.op; ACTIVA = 'A'; todo();
+  });
+  $('parB').addEventListener('change', function (ev) { EST.B = ev.target.value; ACTIVA = 'B'; todo(); });
+  $('notaA').addEventListener('input', function () { ACTIVA = 'A'; todo(); });
+  $('notaB').addEventListener('input', function () { ACTIVA = 'B'; todo(); });
+  document.querySelectorAll('[data-guardar]').forEach(function (g) {
+    g.addEventListener('click', function () {
+      var v = g.dataset.guardar, msg = $('msg' + v);
+      ACTIVA = v; todo();
+      if (nota(v) && !EST[v]) {
+        $('par' + v).classList.add('falta');
+        if (v === 'A') $('avisoA').classList.add('falta');
+        msg.className = 'msg';
+        msg.textContent = v === 'A' ? 'Elige si la nota es Comentario o Requiere tratamiento.'
+                                    : 'Elige el tratamiento de la nota.';
+        return;
+      }
+      msg.className = 'msg ok';
+      msg.textContent = 'Revisión guardada (maqueta: no guarda nada).';
+      setTimeout(function () { msg.textContent = ''; }, 2500);
+    });
+  });
+  todo();
+})();
+</script>
+</body>
+</html>
