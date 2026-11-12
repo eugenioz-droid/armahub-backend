@@ -1329,7 +1329,7 @@ check("una sola tabla para las tres pantallas: la planilla del auditor, el Resum
       and "global.HojaBarras.tabla({" in REVJS.split("function _tablaGrupo(")[1][:300]
       and APPH.index("auditorias/hoja_barras.js") < APPH.index("auditorias/index.js"))
 check("...con el orden de la planilla del auditor: acción · Marca · φ · Figura · Render · lados · α · R · Largo · Cant · Peso · Elemento · lo propio · texto",
-      HOJA.index("col(cfg.accion.ancho") < HOJA.index("col(ANCHO.marca, 'Marca')")
+      HOJA.index("if (cfg.accion) col(cfg.accion.ancho") < HOJA.index("col(ANCHO.marca, 'Marca')")
       < HOJA.index("col(anchoNotas(c.notas), 'Notes'")
       < HOJA.index("col(ANCHO.diam, 'φ'") < HOJA.index("col(ANCHO.figura, 'Figura'")
       < HOJA.index("col(anchoRender(), 'Render'") < HOJA.index("col(ANCHO.lado")
@@ -1786,6 +1786,37 @@ check("...dos barras del mismo código, una sola lectura a aSa", len(_lecturas) 
 check("...igual a la foto sale idéntica; con un ángulo distinto, editada y dicho en palabras de planta",
       A.comparar({}, _foto, _hoy)[0] == "sigue_igual"
       and A.comparar({}, dict(_foto, angulos=[135], radio=60), _hoy) == ("ok", "La barra cambió en: ángulos, mandril"))
+
+# ── QUÉ CAMBIÓ EN aSa, CON SUS NÚMEROS (12-nov) ──────────────────────────────────────
+# El usuario: «sería bueno que cuando registre el cambio de editado en aSa muestre qué es lo
+# que cambió. Acá por ejemplo el auditor indica que la cantidad debe ser 42». Caso real:
+# A-2026-022, SVIP 12mmA41, foto 46 y aSa 42.
+print("\nQué cambió en aSa, bajo «Editada en aSa»")
+_C = A.cambios_en_asa
+check("la cantidad del caso real: 46 → 42", _C({"cant": 46}, {"cant": 42.0}) == ["cantidad 46 → 42"])
+check("lados y largo en cm, como la tabla",
+      _C({"largo": 4800, "lados": {"A": 500, "B": 4300}}, {"largo": 4300.0, "lados": {"A": 500.0, "B": 3800.0}})
+      == ["largo 480 → 430 cm", "B 430 → 380 cm"])
+check("lo que la foto no tiene no es un cambio (las de antes del 6-nov no traen ángulos ni mandril)",
+      _C({"cant": 46}, {"cant": 46.0, "angulos": [90.0], "radio": 72.0}) == [])
+check("con las tolerancias de la comparación: medio milímetro no es un cambio",
+      _C({"lados": {"A": 1200}}, {"lados": {"A": 1200.4}}) == [])
+check("sin foto o sin lo leído de aSa no dice nada", _C(None, {"cant": 1}) == [] and _C({"cant": 1}, None) == [])
+check("un lado que aparece o se va lo dice", _C({"lados": {"A": 220, "B": 1430}}, {"lados": {"A": 220.0}}) == ["B 143 cm → —"])
+check("el detalle lo manda sólo en las editadas, y la fila lo pone bajo la etiqueta",
+      '"verificado_cambios": cambios_en_asa(orig, (vdato or {}).get("real"))' in SRC
+      and 'if ver == "ok" else []' in SRC
+      and "'<div class=\"audcambio\">' + esc(cb.join(' · ')) + '</div>'" in JS and ".audcambio{" in HTM)
+
+# ── LA COLUMNA «ACCIÓN» SÓLO SI HAY BOTONES (12-nov) ───────────────────────────────────
+# El usuario: «en acción me sale en blanco, qué debería ir en esa fila? me huele que sobra».
+print("\nLa columna Acción se va cuando nadie puede actuar")
+check("los hallazgos del elemento la piden sólo si alguna fila tiene botones",
+      "var conAccion = filas.some(function (f) { return !!f.accion; });" in JS
+      and "accion: conAccion ? { titulo: 'Acción', ancho: 340 } : null," in JS)
+check("la tabla común sabe ir sin ella, y el comentario sigue cruzando las columnas de la barra",
+      "if (cfg.accion) h += '<td class=\"hojaacc\">'" in HOJA
+      and "var nBarra = anchos.length - (cfg.check ? 1 : 0) - (cfg.accion ? 1 : 0) - (c.elemento ? 1 : 0);" in HOJA)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

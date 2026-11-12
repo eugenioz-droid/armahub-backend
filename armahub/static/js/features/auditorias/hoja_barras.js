@@ -76,7 +76,7 @@
 
   // La tabla por dentro (colgroup, encabezado y filas) y el ancho mínimo que necesita.
   //   cfg.check   {titulo}            columna de marcar, para las pantallas con lote
-  //   cfg.accion  {titulo, ancho, title}
+  //   cfg.accion  {titulo, ancho, title}  null = sin columna de acción (nadie puede actuar)
   //   cfg.propias [{titulo, ancho, clase, title}]
   //   cfg.texto   {titulo, title}
   //   cfg.celda   fn(fila, campo, valorHtml, clase) → '<td…>': la celda que se puede
@@ -96,7 +96,7 @@
               '>' + titulo + '</th>');
     }
     if (cfg.check) col(ANCHO.check, cfg.check.titulo || '', 'hojachk');
-    col(cfg.accion.ancho, cfg.accion.titulo || '', 'hojaacc', cfg.accion.title);
+    if (cfg.accion) col(cfg.accion.ancho, cfg.accion.titulo || '', 'hojaacc', cfg.accion.title);
     col(ANCHO.marca, 'Marca');
     if (c.notas) col(anchoNotas(c.notas), 'Notes', '', 'El nombre que le puso a la marca quien cubicó (Notes en aSa)');
     if (c.diam) col(ANCHO.diam, 'φ', 'hojac');
@@ -110,7 +110,7 @@
     if (c.peso) col(ANCHO.peso, 'Peso', 'num');
     if (c.elemento) col(ANCHO.elemento, 'Elemento');
     // Las columnas de la barra, para el comentario que las cruza a lo ancho.
-    var nBarra = anchos.length - (cfg.check ? 2 : 1) - (c.elemento ? 1 : 0);
+    var nBarra = anchos.length - (cfg.check ? 1 : 0) - (cfg.accion ? 1 : 0) - (c.elemento ? 1 : 0);
     (cfg.propias || []).forEach(function (p) { col(p.ancho, p.titulo, p.clase, p.title); });
     var suma = anchos.reduce(function (s, w) { return s + w; }, 0);
     var html = '<colgroup>' + anchos.map(function (w) { return '<col style="width:' + w + 'px">'; }).join('') +
@@ -128,7 +128,7 @@
       : function (campo, valor, clase) { return '<td class="' + clase + '">' + valor + '</td>'; };
     var h = '<tr' + (f.attrs || '') + '>';
     if (cfg.check) h += '<td class="hojachk">' + (f.check || '') + '</td>';
-    h += '<td class="hojaacc">' + (f.accion || '') + '</td>';
+    if (cfg.accion) h += '<td class="hojaacc">' + (f.accion || '') + '</td>';
     if (!b) {
       h += '<td class="hojasin" colspan="' + nBarra + '">' + (f.sinBarra || '') + '</td>';
     } else {

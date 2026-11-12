@@ -1973,13 +1973,17 @@
   function _hojaElemento(e, g, listo) {
     var malas = e.barras_malas || [];
     var filas = malas.length ? malas.map(function (b) { return filaAccion(e, b); }) : [filaComentario(e)];
+    // LA COLUMNA «ACCIÓN» SÓLO SI ALGUNA FILA TIENE BOTONES (12-nov). En una auditoría
+    // cerrada, o para quien sólo mira, quedaba una columna vacía de 340 px. El usuario: «en
+    // acción me sale en blanco … me huele que sobra».
+    var conAccion = filas.some(function (f) { return !!f.accion; });
     var marcables = _actuo() && malas.some(function (b) { return !b.corregido && !b.desestimado; });
     return '<div class="revcc2 audhoja' + (listo ? ' listo' : '') + '" data-grupocc="' + esc(g.cc) + '">' +
       global.HojaBarras.tabla({
         check: { titulo: marcables
           ? '<input type="checkbox" data-aselgrp="' + esc(g.cc) + '" title="Marcar todas las barras ' +
             'por resolver de este elemento">' : '' },
-        accion: { titulo: 'Acción', ancho: 340 },
+        accion: conAccion ? { titulo: 'Acción', ancho: 340 } : null,
         titulos: { lado: function (L) {
           return 'Medida del lado ' + L + ' cuando se auditó. El dibujo es lo que hay en aSa ahora: ' +
                  'si no calzan, la barra ya se editó.'; },
@@ -2042,7 +2046,13 @@
   // comprobar»: no hubo con qué comparar o aSa no respondió; se vuelve a mirar al cerrar.
   function _etiquetaAsa(b) {
     var p = esc(b.verificado_porque || '');
-    if (b.verificado === 'ok') return '<span class="audasa ok" title="' + p + '">Editada en aSa</span>';
+    // QUÉ CAMBIÓ, CON SUS NÚMEROS (12-nov): «cantidad 46 → 42». La tabla muestra la barra
+    // como se auditó, y sin esto no se sabía si quedó como pidió el auditor.
+    if (b.verificado === 'ok') {
+      var cb = b.verificado_cambios || [];
+      return '<span class="audasa ok" title="' + p + '">Editada en aSa</span>' +
+             (cb.length ? '<div class="audcambio">' + esc(cb.join(' · ')) + '</div>' : '');
+    }
     if (b.verificado === 'sigue_igual') {
       return '<span class="audasa mal" title="' + p + '">' +
              (_esperadoTxt(b.esperado) ? 'No coincide en aSa' : 'Idéntica en aSa') + '</span>';

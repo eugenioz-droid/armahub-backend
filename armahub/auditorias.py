@@ -1584,6 +1584,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                      "desestimado_tipo": des_tipo,
                      "original": orig or {},
                      "verificado_porque": (vdato or {}).get("porque") if vdato else None,
+                     # Qué cambió, con sus números: la fila lo dice bajo «Editada en aSa».
+                     "verificado_cambios": cambios_en_asa(orig, (vdato or {}).get("real"))
+                                           if ver == "ok" else [],
                      "desestimado_el": des_el.isoformat() if des_el else None,
                      "corregido_el": corr_el.isoformat() if corr_el else None})
             # QUIÉN PUEDE QUÉ, DICHO POR EL BACKEND. El front no puede deducirlo: saber si
@@ -2838,6 +2841,63 @@ def comparar(esperado: dict, original: dict, real: dict, tipo: str = "item") -> 
     if distintos:
         return "ok", "La barra cambió en: " + ", ".join(NOMBRE_CAMPO.get(c, c) for c in sorted(distintos))
     return "sigue_igual", "La barra está idéntica a cuando se auditó."
+
+
+def _num(v) -> str:
+    """Un número sin el «.0» de sobra: 42.0 → «42», 37.5 → «37.5»."""
+    try:
+        return "%g" % round(float(v), 1)
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def cambios_en_asa(original: Optional[dict], real: Optional[dict]) -> list:
+    """LO QUE CAMBIÓ EN aSa, dicho con sus números (12-nov): [«cantidad 46 → 42», «B 430 → 380 cm»].
+
+    «Editada en aSa» sola no decía qué: el auditor escribió «cantidad deberían ser 42», la
+    columna Cant muestra la foto (46) y no se sabía si había quedado en 42. El usuario:
+    «sería bueno que cuando registre el cambio de editado en aSa muestre qué es lo que
+    cambió». Se compara la FOTO de la auditoría con lo que se leyó de aSa al comprobar
+    (`verificado_dato.real`), con las mismas tolerancias que `comparar`. Sólo los campos que
+    la foto tiene: las de antes del 6-nov no traen ángulos ni mandril, y eso no es un cambio.
+    Lados y largo en cm, como la tabla. Función pura."""
+    if not original or not real:
+        return []
+    out = []
+    for campo in CAMPOS_COMPARABLES:
+        antes, ahora = original.get(campo), real.get(campo)
+        if antes is None or antes == "":
+            continue
+        if campo == "lados":
+            if not isinstance(antes, dict):
+                continue
+            ahora = ahora or {}
+            for letra in sorted(set(antes) | set(ahora)):
+                a, b = antes.get(letra), ahora.get(letra)
+                if a is not None and b is not None and _igual(a, b, "largo"):
+                    continue
+                if a is not None and b is not None:
+                    out.append("%s %s → %s cm" % (letra, _num(float(a) / 10), _num(float(b) / 10)))
+                else:   # el lado apareció o se fue
+                    out.append("%s %s → %s" % (letra, "—" if a is None else _num(float(a) / 10) + " cm",
+                                               "—" if b is None else _num(float(b) / 10) + " cm"))
+            continue
+        if _igual(antes, ahora, campo):
+            continue
+        if campo == "cant":
+            out.append("cantidad %s → %s" % (_num(antes), _num(ahora)))
+        elif campo == "diam":
+            out.append("φ%s → φ%s" % (_num(antes), _num(ahora)))
+        elif campo == "largo":
+            out.append("largo %s → %s cm" % (_num(float(antes) / 10), _num(float(ahora or 0) / 10)))
+        elif campo == "angulos":
+            out.append("ángulos %s → %s" % (", ".join(_num(x) + "°" for x in antes or []) or "—",
+                                            ", ".join(_num(x) + "°" for x in ahora or []) or "—"))
+        elif campo == "radio":
+            out.append("mandril %s → %s mm" % (_num(antes), _num(ahora)))
+        else:
+            out.append("%s %s → %s" % (NOMBRE_CAMPO.get(campo, campo), antes, ahora or "—"))
+    return out
 
 
 def _barra_hoy(cc: str, marca: str, cache: Optional[dict] = None) -> Optional[dict]:
