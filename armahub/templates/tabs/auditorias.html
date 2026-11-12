@@ -361,8 +361,9 @@
         <div class="audh">Qué se revisa <span class="muted" id="revReglasN"></span></div>
         <ul id="revReglas"></ul>
         <!-- LAS EXCEPCIONES (12-nov): la regla que le cambia el límite a otra para una
-             figura, en su propio grupo y plegable, después de las reglas. -->
-        <details class="revmas revexc" id="revExc" hidden>
+             figura, en su propio grupo y plegable, después de las reglas. Arranca ABIERTO:
+             plegado al fondo de la tarjeta el usuario no lo vio. -->
+        <details class="revmas revexc" id="revExc" hidden open>
           <summary>Excepciones <span class="muted" id="revExcN"></span></summary>
           <ul class="regls" id="revExcL"></ul>
         </details>
@@ -791,7 +792,9 @@
   @media (max-width:860px){ .revreglasc li.regl{grid-template-columns:1fr;} .regalc{border-left:none; padding-left:0;} }
   /* Las excepciones: el mismo molde de tres columnas, dentro de su plegable. */
   .revreglasc .revexc ul.regls{margin:0 12px 4px;}
-  .regtxt .regde{display:inline-block; margin-top:5px; font-size:10.5px; color:#455a64; background:#f7f9fb;
+  /* En el ámbar de las excepciones (el de «advertencia» del Sistema de Diseño), como su dibujo. */
+  .revreglasc .revexc > summary{color:#b45309;}
+  .regtxt .regde{display:inline-block; margin-top:5px; font-size:10.5px; color:#b45309; background:#fff7ed;
                  border-radius:4px; padding:2px 7px;}
   /* Las cajas de herramienta, plegadas. */
   .revmas{margin-top:10px; border:1px solid #cfd8dc; border-radius:6px; background:#fff;}

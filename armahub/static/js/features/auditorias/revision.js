@@ -104,24 +104,27 @@
     // LAS EXCEPCIONES, APARTE (12-nov). La que le cambia el límite a otra regla para una
     // figura (`excepcion_de`) va en su propio grupo, plegable, después de las reglas. El
     // usuario: «a continuación de las reglas pongas las excepciones, así también pones el
-    // render de la figura … separar en un grupo distinto con su desplegable». Y las reglas
-    // se dibujan en ROJO —muestran la barra mala— y las excepciones con la tinta de
-    // siempre: «puedes renderizar con rojo las barras para diferenciar de las excepciones».
+    // render de la figura … separar en un grupo distinto con su desplegable». Las reglas
+    // van con la tinta de siempre y las EXCEPCIONES en ámbar. Primero lo entendí al revés
+    // (reglas en rojo) y el usuario corrigió: «era para las excepciones … el rojo no queda
+    // bien, renderiza las barras color naranjo/amarillo … que dé la impresión de excepción».
     el.className = 'regls';
     var reglas = ks.filter(function (k) { return !REV.reglas[k].excepcion_de; });
     var excs = ks.filter(function (k) { return REV.reglas[k].excepcion_de; });
     $('revReglasN').textContent = reglas.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
-    el.innerHTML = reglas.map(function (k) { return _filaRegla(REV.reglas[k], ROJO_REGLA); }).join('');
+    el.innerHTML = reglas.map(function (k) { return _filaRegla(REV.reglas[k], null); }).join('');
     if (bx && excs.length) {
       bx.hidden = false;
       $('revExcN').textContent = '· ' + excs.length + ' · figuras con un límite propio en vez del de la regla general';
-      $('revExcL').innerHTML = excs.map(function (k) { return _filaRegla(REV.reglas[k], null); }).join('');
+      $('revExcL').innerHTML = excs.map(function (k) { return _filaRegla(REV.reglas[k], TINTA_EXC); }).join('');
     }
   }
 
-  // El rojo de las reglas es el de la celda mala de la grilla de lados (.mal) y el de la
-  // banda que marca los lados: una sola cosa. null = la tinta por defecto del motor.
-  var ROJO_REGLA = '#c62828';
+  // LA TINTA DE LAS EXCEPCIONES: el ámbar de «advertencia» del Sistema de Diseño (tokens:
+  // #D97706), en el trazo y en la banda de los lados que mira. Las letras van en un ámbar
+  // más oscuro: el claro no alcanza contraste en texto chico sobre blanco. null (las
+  // reglas) = la tinta por defecto del motor, con la banda roja de siempre.
+  var TINTA_EXC = { trazo: '#d97706', letras: '#b45309' };
 
   // Una fila del menú: dibujo | regla | dónde aplica. La excepción dice además a qué regla
   // le cambia el límite.
@@ -171,9 +174,10 @@
           return g.texto != null ? { tipo: g.tipo, texto: g.texto, x: g.x / 10, y: g.y / 10 }
                                  : { tipo: g.tipo, x1: g.x1 / 10, y1: g.y1 / 10, x2: g.x2 / 10, y2: g.y2 / 10 };
         }),
-        // La banda de los lados marcados va en la tinta de la figura: roja en una regla,
-        // la de siempre en una excepción (ahí no marca nada malo, sólo de qué lados habla).
-        diam_mm: ej.diam, metrico: true, color: color || null, color_resalte: color || M.TINTA });
+        // En una excepción la banda de los lados marcados va en su ámbar: ahí no marca
+        // nada malo, sólo de qué lados habla. En una regla, la roja de siempre.
+        diam_mm: ej.diam, metrico: true, color: color ? color.trazo : null,
+        color_resalte: color ? color.trazo : null, color_letras: color ? color.letras : null });
     } catch (e) { return ''; }
   }
 

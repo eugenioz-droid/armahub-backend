@@ -1754,13 +1754,17 @@ check("la de los soportes de losa es la única excepción, y es del lado corto",
 check("el endpoint dice de qué regla es excepción", '"excepcion_de": r.get("excepcion_de")' in API)
 check("la pantalla las separa: las reglas en la lista, las excepciones en su plegable",
       "!REV.reglas[k].excepcion_de" in JS and 'id="revExc"' in HTM and 'id="revExcL"' in HTM
-      and '<details class="revmas revexc" id="revExc" hidden>' in HTM and "bx.hidden = false;" in JS)
+      and '<details class="revmas revexc" id="revExc" hidden open>' in HTM and "bx.hidden = false;" in JS)
 check("...y la excepción nombra la regla a la que le cambia el límite",
       "Excepción a «' + esc(de.nombre) + '»</span>" in JS and ".regtxt .regde{" in HTM)
-check("las reglas se dibujan en rojo; las excepciones, con la tinta de siempre, banda incluida",
-      "_filaRegla(REV.reglas[k], ROJO_REGLA)" in JS and "_filaRegla(REV.reglas[k], null)" in JS
-      and "var ROJO_REGLA = '#c62828';" in JS and "color_resalte: color || M.TINTA" in JS
-      and "var tinta = opts.color || TINTA;" in DIS and "opts.color_resalte ||" in DIS)
+# El usuario corrigió (12-nov): «cambiaste todos los renders a rojo, te equivocaste, era
+# para las excepciones … el rojo no queda bien, renderiza las barras color naranjo/amarillo».
+check("las reglas van con la tinta de siempre; las excepciones en ámbar, banda y letras incluidas",
+      "_filaRegla(REV.reglas[k], null)" in JS and "_filaRegla(REV.reglas[k], TINTA_EXC)" in JS
+      and "var TINTA_EXC = { trazo: '#d97706', letras: '#b45309' };" in JS and "ROJO_REGLA" not in JS
+      and "color_resalte: color ? color.trazo : null, color_letras: color ? color.letras : null" in JS
+      and "var tinta = opts.color || TINTA;" in DIS and "opts.color_resalte ||" in DIS
+      and "(opts.color_letras || tinta)" in DIS and "Object.assign({}, oR, { color: opts.color_letras })" in DIS)
 check("en el nivel de elementos el plegable no aparece",
       JS.index("if (bx) bx.hidden = true;") < JS.index("if (REVS.nivel === 'elemento') {\n      // EN DOS GRUPOS"))
 check("la leyenda de la excepción dice el límite propio, sin cifras",

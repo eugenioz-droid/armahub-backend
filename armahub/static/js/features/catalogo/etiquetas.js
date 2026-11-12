@@ -168,7 +168,7 @@
   // Texto (letra/ángulo): halo blanco + color del tipo. p = posición.
   function dibujarTexto(tipo, texto, p, opt) {
     opt = opt || {}; var fs = opt.fs || 13, halo = opt.halo || 3, dy = opt.dy || 4;
-    var col = color(tipo), t = _escTxt(texto);
+    var col = opt.color || color(tipo), t = _escTxt(texto);
     var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:move;"') : '';
     return '<text x="'+p.x+'" y="'+(p.y+dy)+'" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="'+halo+'" font-size="'+fs+'" font-weight="800"'+ia+'>'+t+'</text>' +
       '<text x="'+p.x+'" y="'+(p.y+dy)+'" text-anchor="middle" fill="'+col+'" font-size="'+fs+'" font-weight="800"'+ia+'>'+t+'</text>';

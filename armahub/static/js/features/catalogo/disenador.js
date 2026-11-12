@@ -417,8 +417,10 @@
           // El rótulo va con la MISMA tinta que el trazo (en la grilla el rótulo ES la
           // medida del lado): son la figura, no una anotación sobre ella. Los α rojos y
           // las cotas de arco sí conservan su color, porque ahí el color significa algo.
+          // `color_letras` (12-nov): quien pinta la figura de un color claro puede pedir
+          // las letras más oscuras para que se lean (el ámbar de las excepciones de reglas).
           svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + ROT_DY).toFixed(1) +
-            '" text-anchor="middle" fill="' + tinta + '" font-size="' + ROT_FS + '" font-weight="700">' + lbl + '</text>';
+            '" text-anchor="middle" fill="' + (opts.color_letras || tinta) + '" font-size="' + ROT_FS + '" font-weight="700">' + lbl + '</text>';
         }
       }
     }
@@ -475,8 +477,10 @@
              : REG().dibujarRadioDiam(e.tipo, p1, p2, oR);
         return;
       }
-      // Texto (letra/ángulo).
-      svg += REG().dibujarTexto(e.tipo, e.texto, tx({x:e.x, y:e.y}), oR);
+      // Texto (letra/ángulo). Las letras puestas a mano siguen `color_letras` si lo piden,
+      // como las automáticas; sin él, el color de su tipo, como siempre.
+      svg += REG().dibujarTexto(e.tipo, e.texto, tx({x:e.x, y:e.y}),
+                                (opts.color_letras && e.tipo === 'letra') ? Object.assign({}, oR, { color: opts.color_letras }) : oR);
     });
     svg += '</svg>';
     return svg;
