@@ -3974,7 +3974,8 @@ def tejas_informe(aud: dict) -> tuple:
             else:
                 est, res = "Pendiente", ""
             tejas.append({"item": b.get("ref") or b.get("marca") or "", "el": e.get("nombre") or "",
-                          "obs": b.get("observacion") or "", "est": est, "res": res, "asa": asa})
+                          "obs": b.get("observacion") or "", "est": est, "res": res, "asa": asa,
+                          "rca": _rca_de(b)})
         if (e.get("texto") or "").strip():
             if e.get("comentario_suelto"):
                 ae = e.get("accion_estado") or "pendiente"
@@ -3985,7 +3986,8 @@ def tejas_informe(aud: dict) -> tuple:
             else:
                 est, res = "Comentario", "Sin respuesta propia: va con las barras del elemento."
             tejas.insert(0, {"item": "Elemento", "el": e.get("nombre") or "", "obs": e["texto"].strip(),
-                             "est": est, "res": res, "asa": ""})
+                             "est": est, "res": res, "asa": "",
+                             "rca": _rca_de(e) if e.get("comentario_suelto") else None})
         if not tejas:
             sin.append(" · ".join(x for x in (e.get("cc"), e.get("nombre")) if x))
             continue
@@ -3998,6 +4000,36 @@ def tejas_informe(aud: dict) -> tuple:
             ix[k]["cubs"].append(c)
         ix[k]["tejas"].extend(tejas)
     return cuadros, sin
+
+
+def _rca_de(x) -> Optional[tuple]:
+    """La causa de una barra o de un elemento: (código, nombre, categoría), o None."""
+    if not (x.get("causa") or "").strip():
+        return None
+    return (x["causa"].strip(), (x.get("causa_texto") or "").strip(), (x.get("causa_categoria") or "").strip())
+
+
+def rca_informe(cuadros: list) -> list:
+    """LAS CAUSAS DE LO QUE APLICÓ (12-nov), de la más repetida a la menos:
+    [{codigo, causa, categoria, n}]. El usuario: «agrega al final del informe un resumen con
+    los RCA». Sólo lo resuelto: lo que no aplica no se clasifica (el RCA se pide al resolver
+    y el backend lo quita en el «no aplica»). Lo resuelto sin causa —auditorías de antes de
+    que se pidiera— va al final como «Sin RCA», para que la suma cierre con «Aplican».
+    Función pura."""
+    cuenta, sin = {}, 0
+    for c in cuadros:
+        for t in c["tejas"]:
+            if t["est"] != "Resuelto":
+                continue
+            if t.get("rca"):
+                cuenta[t["rca"]] = cuenta.get(t["rca"], 0) + 1
+            else:
+                sin += 1
+    filas = [{"codigo": k[0], "causa": k[1], "categoria": k[2], "n": n}
+             for k, n in sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0][0]))]
+    if sin:
+        filas.append({"codigo": "", "causa": "Sin RCA", "categoria": "", "n": sin})
+    return filas
 
 
 def resumen_informe(cuadros: list) -> tuple:
@@ -4096,6 +4128,7 @@ class _InformePDF:
         if sin:
             self._linea("Sin hallazgos: " + ", ".join(sin), "I", self.GRIS)
         self._resumen(cuadros)
+        self._causas(cuadros)
         buf = io.BytesIO()
         self.pdf.output(buf)
         buf.seek(0)
@@ -4297,8 +4330,8 @@ class _InformePDF:
                 fila.cell(s("%d de %d" % (d["val"], d["aplica"])) if d["aplica"] else "-", style=FontFace(emphasis=e))
             for c in sorted(por, key=lambda c: -por[c]["n"]):
                 una(c, por[c])
-            if len(por) > 1:
-                una("Total", tot, True)
+            # El total va siempre: es el resumen, aunque haya un solo cubicador.
+            una("Total", tot, True)
         p.ln(2)
         r = self.a.get("resumen") or {}
         rev = r.get("items_auditados") or 0
@@ -4306,6 +4339,40 @@ class _InformePDF:
                     "%d no aplican; %d pendientes. aSa confirmó la edición de %d de las %d que aplican." % (
                         rev, tot["n"], round(100.0 * tot["n"] / rev) if rev else 0, tot["aplica"], tot["nap"],
                         tot["pend"], tot["val"], tot["aplica"]))
+
+    # ── Las causas (RCA) de lo que aplicó ───────────────────────────────────────────────
+    def _causas(self, cuadros):
+        from fpdf.fonts import FontFace
+        from .admin import NOMBRES_CATEGORIAS
+        p, s = self.pdf, self._s
+        filas = rca_informe(cuadros)
+        if not filas:
+            return
+        total = sum(f["n"] for f in filas)
+        if p.get_y() + 14 + 4.5 * (len(filas) + 2) > self.PIE:
+            p.add_page()
+        self._titulo("Causas (RCA) de los hallazgos que aplican")
+        cab = FontFace(emphasis="BOLD", color=self.GRIS, fill_color=self.FONDO, size_pt=7.5)
+        p.set_font("Helvetica", "", 8)
+        p.set_text_color(*self.TXT)
+        with p.table(col_widths=(18, 96, 36, 18, 18), width=self.W, line_height=3.6, padding=(0.7, 1),
+                     text_align=("LEFT", "LEFT", "LEFT", "RIGHT", "RIGHT"),
+                     borders_layout="HORIZONTAL_LINES", headings_style=cab, first_row_as_headings=True) as t:
+            fila = t.row()
+            for x in ("Código", "Causa", "Categoría", "Hallazgos", "%"):
+                fila.cell(s(x))
+            for f in filas:
+                gris = FontFace(color=self.GRIS) if not f["codigo"] else None
+                fila = t.row()
+                fila.cell(s(f["codigo"] or "-"), style=FontFace(emphasis="BOLD") if f["codigo"] else gris)
+                fila.cell(s(f["causa"] or "-"), style=gris)
+                fila.cell(s(NOMBRES_CATEGORIAS.get(f["categoria"], f["categoria"]) or "-"), style=gris)
+                fila.cell(str(f["n"]), style=gris)
+                fila.cell("%d%%" % round(100.0 * f["n"] / total), style=gris)
+            fila = t.row()
+            for x in ("Total", "", "", str(total), "100%"):
+                fila.cell(s(x), style=FontFace(emphasis="BOLD"))
+        p.ln(2)
 
 
 # Cómo dice el estado la etiqueta de arriba a la derecha del informe.

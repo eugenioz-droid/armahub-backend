@@ -1861,13 +1861,38 @@ check("el comentario de un elemento CON barras es «Comentario», sin respuesta,
       and "Sin respuesta propia" in _t1["Elemento"]["res"])
 check("el comentario de un elemento SIN barras es el hallazgo, con su respuesta",
       _cu[1]["tejas"] == [{"item": "Elemento", "el": "L1", "obs": "faltan suples", "est": "Resuelto",
-                            "res": "agregados", "asa": ""}])
+                            "res": "agregados", "asa": "", "rca": None}])
 check("lo que no tuvo hallazgos se nombra aparte", _sin == ["CC2 · L2"])
 _por, _tot = A.resumen_informe(_cu)
 check("el resumen: por cubicador, lo que aplica, lo que no, lo pendiente y lo que confirmó aSa",
       _por["nlopez"] == {"n": 4, "aplica": 2, "nap": 1, "pend": 1, "val": 1}
       and _por["eramirez"] == {"n": 1, "aplica": 1, "nap": 0, "pend": 0, "val": 0}
       and _tot == {"n": 5, "aplica": 3, "nap": 1, "pend": 1, "val": 1})
+# 12-nov, el usuario: «agrega al final del informe un resumen con los RCA».
+_aud["elementos"][0]["barras_malas"][0].update(causa="MO08", causa_texto="Error de interpretación",
+                                                causa_categoria="mano_de_obra")
+_aud["elementos"][1]["barras_malas"][0].update(causa="MO08", causa_texto="Error de interpretación",
+                                                causa_categoria="mano_de_obra")
+_aud["elementos"][2].update(causa="ME02", causa_texto="Plano desactualizado", causa_categoria="metodo")
+_cu, _sin = A.tejas_informe(_aud)
+check("las causas de lo que aplicó, de la más repetida a la menos, con su categoría",
+      A.rca_informe(_cu) == [
+          {"codigo": "MO08", "causa": "Error de interpretación", "categoria": "mano_de_obra", "n": 2},
+          {"codigo": "ME02", "causa": "Plano desactualizado", "categoria": "metodo", "n": 1}])
+_aud["elementos"][1]["barras_malas"][0]["causa"] = None
+_cu, _sin = A.tejas_informe(_aud)
+check("lo resuelto sin causa va al final como «Sin RCA», y la suma cierra con «Aplican»",
+      A.rca_informe(_cu)[-1] == {"codigo": "", "causa": "Sin RCA", "categoria": "", "n": 1}
+      and sum(f["n"] for f in A.rca_informe(_cu)) == A.resumen_informe(_cu)[1]["aplica"])
+check("lo que no aplica ni lo pendiente se clasifica",
+      all(t["est"] == "Resuelto" or not t.get("rca") for c in _cu for t in c["tejas"]
+          if t["item"] in ("10mmA83", "10mmA90")))
+check("van al final del informe, después del resumen, con el nombre de la categoría del Ishikawa",
+      "self._resumen(cuadros)\n        self._causas(cuadros)" in SRC.replace("\r\n", "\n")
+      and "from .admin import NOMBRES_CATEGORIAS" in SRC
+      and 'self._titulo("Causas (RCA) de los hallazgos que aplican")' in SRC)
+check("el resumen de hallazgos trae su fila Total siempre, aunque haya un solo cubicador",
+      '            una("Total", tot, True)' in SRC and "if len(por) > 1:" not in SRC)
 _pdf = A._InformePDF(_aud).build()
 check("el PDF sale, en una hoja, con tres tejas por fila",
       _pdf[:4] == b"%PDF" and _pdf.count(b"/Type /Page\n") + _pdf.count(b"/Type /Page>") + _pdf.count(b"/Type /Page ") >= 1
