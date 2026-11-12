@@ -1942,11 +1942,15 @@ check("la respuesta del auditado va al estado de la nota, y el del elemento se d
       "nota_estado = %s, accion_nota = %s" in SRC
       and "(_accion_de_items(cur, elemento_id), elemento_id))\n            _recalcular(cur, auditoria_id)"
           in SRC.replace("\r\n", "\n"))
-check("la migración agrega las dos columnas y deja lo de antes como estaba",
+# 12-nov, el usuario: «tengo todas las auditorías cerradas… marcar los comentarios como
+# comentarios, ya que no se usó esa lógica. Para las siguientes ya aplicará».
+check("la migración agrega las dos columnas y las notas de lo ya enviado quedan como comentario",
       "ADD COLUMN IF NOT EXISTS nota_trato" in MIG164 and "ADD COLUMN IF NOT EXISTS nota_estado" in MIG164
-      and "SET nota_trato = 'tratamiento', nota_estado = COALESCE(e.accion_estado, 'pendiente')" in MIG164
+      and "SET nota_trato = 'tratamiento'" not in MIG164
       and "SET nota_trato = 'comentario'" in MIG164
-      and "(a.enviada_el IS NOT NULL OR a.estado = 'cerrada')" in MIG164)
+      and MIG164.count("(a.enviada_el IS NOT NULL OR a.estado = 'cerrada')") == 2)
+check("...y el elemento sin barras cuya nota pasó a comentario queda sin acción, como lo deriva el backend",
+      "SET accion_estado = NULL" in MIG164 and "AND e.nota_trato = 'comentario' AND e.accion_estado IS NOT NULL" in MIG164)
 check("la pantalla: dos botones chicos al lado de la nota, con su palabra y su explicación al pasar el mouse",
       'id="audNotaPar"' in HTML and 'data-trato="comentario"' in HTML and 'data-trato="tratamiento"' in HTML
       and ">Comentario</button>" in HTML and ">Requiere tratamiento</button>" in HTML
