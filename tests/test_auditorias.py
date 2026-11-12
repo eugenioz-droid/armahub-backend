@@ -1970,6 +1970,26 @@ check("el informe cierra con los comentarios del auditor, en el azul de informac
       and 's("Comentarios del auditor")' in SRC)
 _pdf2 = A._InformePDF(_aud).build()
 check("...y el PDF sale con ellos", _pdf2[:4] == b"%PDF" and len(_pdf2) > 1000)
+# 12-nov, el usuario: «no debe cerrarse sola, el auditor puede comentar y marcar eso como
+# hallazgo». La nota a tratar es un hallazgo en todo el flujo, no sólo en el cierre.
+check("la auditoría cuyo único hallazgo es una nota no se cierra sola: la nota cuenta como abierta y resuelta",
+      A.estado_de(5, 5, True, resueltas=0, abiertas=1) == "enviada"
+      and A.estado_de(5, 5, True, resueltas=1, abiertas=0) == "enviada"
+      and "resueltas = (resueltas or 0) + (n_res or 0)" in SRC)
+check("...la franja cuenta las notas, sin decir «se cierra sola» cuando hay una",
+      "if (!e.nota_tratamiento) return;" in JS and "Enviada, sin barras con hallazgo. Se cierra sola." not in JS
+      and "</b> hallazgo(s) resueltos'" in JS)
+check("...y quien respondió una nota puede firmar el cierre",
+      "WHERE e.auditoria_id = %s AND e.accion_por = %s AND \"\"\" + SQL_NOTA_SE_TRATA" in SRC
+      and "resolvi += cur.fetchone()[0]" in SRC)
+# «Las causas RCA de acá no deben cruzarse con las que salen de los reclamos … mantener eso
+# separado.» La causa de la nota entra al Pareto de AUDITORÍAS y a ningún otro.
+check("la causa de la nota entra al Pareto de auditorías, y ningún módulo de reclamos lee estas tablas",
+      "WHERE {cond} AND {SQL_NOTA_SE_TRATA}) t" in SRC and "params + params" in SRC
+      and not any("auditoria_items" in open(os.path.join(ROOT, "armahub", f), encoding="utf-8").read()
+                  or "auditoria_elementos" in open(os.path.join(ROOT, "armahub", f), encoding="utf-8").read()
+                  for f in os.listdir(os.path.join(ROOT, "armahub"))
+                  if f.endswith(".py") and "reclamo" in f.lower()))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

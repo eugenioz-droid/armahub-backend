@@ -1309,15 +1309,26 @@ def indicadores(desde: str = "", hasta: str = "", user=Depends(get_current_user)
             #
             # «Sin clasificar» se cuenta y no se esconde: es la medida de cuánto del Pareto
             # todavía no sirve para decidir nada.
+            #
+            # LA NOTA QUE REQUIERE TRATAMIENTO ES UN HALLAZGO MÁS (12-nov) y su causa se cuenta
+            # acá, igual que la de una barra. Esto es el Pareto de AUDITORÍAS: no se cruza con
+            # el de los reclamos —el usuario: «esto es un método distinto … mantener eso
+            # separado»—; ningún reporte de reclamos lee estas tablas.
             cur.execute(
-                f"""SELECT COALESCE(NULLIF(CONCAT_WS(' · ', i.causa, i.causa_texto), ''),
-                                    '(sin clasificar)'),
-                           COUNT(*)
-                      FROM auditoria_items i
-                      JOIN auditoria_elementos e ON e.id = i.elemento_id
-                      JOIN auditorias a ON a.id = e.auditoria_id
-                     WHERE {cond} AND i.conforme IS FALSE
-                     GROUP BY 1 ORDER BY 2 DESC""", params)
+                f"""SELECT causa, COUNT(*) FROM (
+                        SELECT COALESCE(NULLIF(CONCAT_WS(' · ', i.causa, i.causa_texto), ''),
+                                        '(sin clasificar)') AS causa
+                          FROM auditoria_items i
+                          JOIN auditoria_elementos e ON e.id = i.elemento_id
+                          JOIN auditorias a ON a.id = e.auditoria_id
+                         WHERE {cond} AND i.conforme IS FALSE
+                        UNION ALL
+                        SELECT COALESCE(NULLIF(CONCAT_WS(' · ', e.causa, e.causa_texto), ''),
+                                        '(sin clasificar)')
+                          FROM auditoria_elementos e
+                          JOIN auditorias a ON a.id = e.auditoria_id
+                         WHERE {cond} AND {SQL_NOTA_SE_TRATA}) t
+                     GROUP BY 1 ORDER BY 2 DESC""", params + params)
             # `kg` se mantiene en cero y no se quita: lo lee el front y los kilos son del
             # elemento, no de la barra — repartirlos sería inventar un número.
             causas = [{"causa": r[0], "n": r[1], "kg": 0.0} for r in cur.fetchall()]
@@ -2579,6 +2590,12 @@ def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_curre
                     WHERE e.auditoria_id = %s AND (i.corregido_por = %s OR i.desestimado_por = %s)""",
                 (auditoria_id, email, email))
             resolvi = cur.fetchone()[0]
+            # Y quien respondió una nota a tratar (12-nov), que es un hallazgo igual que una barra.
+            cur.execute(
+                """SELECT COUNT(*) FROM auditoria_elementos e
+                    WHERE e.auditoria_id = %s AND e.accion_por = %s AND """ + SQL_NOTA_SE_TRATA,
+                (auditoria_id, email))
+            resolvi += cur.fetchone()[0]
             if user.get("role") not in ROLES_ADMINISTRAN and not mias and not notas_mias and not resolvi:
                 raise HTTPException(
                     status_code=403,

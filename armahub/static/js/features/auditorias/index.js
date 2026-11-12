@@ -646,13 +646,22 @@
     if (AUD.cerrada_a_mano) {
       return 'Cerrada a mano. <span class="muted">' + esc(AUD.cerrada_motivo || '') + '</span>';
     }
-    if (!malas) return 'Enviada, sin barras con hallazgo. Se cierra sola.';
+    // LAS NOTAS QUE REQUIEREN TRATAMIENTO SON HALLAZGOS IGUAL QUE LAS BARRAS (12-nov). Sin
+    // contarlas, una auditoría cuyo único hallazgo era una nota decía «sin barras con
+    // hallazgo. Se cierra sola», y no se cierra sola: la cierra quien respondió.
+    (AUD.elementos || []).forEach(function (e) {
+      if (!e.nota_tratamiento) return;
+      malas++;
+      if ((e.nota_estado || 'pendiente') !== 'pendiente') ok++;
+      if (e.nota_estado === 'desestimada') des++;
+    });
+    if (!malas) return 'Enviada, sin hallazgos que resolver. Se cierra sola.';
     var abiertas = malas - ok;
-    return '<b>' + ok + ' de ' + malas + '</b> barra(s) resueltas' +
+    return '<b>' + ok + ' de ' + malas + '</b> hallazgo(s) resueltos' +
       (des ? ' · ' + des + ' sin efecto por quien cubicó' : '') +
       (abiertas > 0
-        ? ' · quedan <b>' + abiertas + '</b>. Cuando no quede ninguna, quien respondió la cierra.'
-        : ' · sin barras abiertas: quien respondió puede cerrarla.');
+        ? ' · quedan <b>' + abiertas + '</b>. Cuando no quede ninguno, quien respondió la cierra.'
+        : ' · sin hallazgos abiertos: quien respondió puede cerrarla.');
   }
 
   function _flujoBotones() {
