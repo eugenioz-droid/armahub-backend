@@ -82,7 +82,7 @@
       // EN DOS GRUPOS (4-nov): lo que vale para todas las obras y lo que sólo tiene
       // sentido en edificación. El usuario: «separa las reglas que valdría la pena
       // aplicar a todas las obras vs sólo las de edificación, así no mezclamos».
-      $('revReglasN').textContent = ks.length + ' criterio(s) · la máquina marca, la decisión es de quien mira';
+      $('revReglasN').textContent = '— ' + ks.length + ' criterio(s) · la máquina marca, la decisión es de quien mira';
       el.className = 'elcrit';
       el.innerHTML = ['todas', 'edificacion'].map(function (g) {
         return '<li><h4><i class="' + g + '">' + (g === 'todas' ? 'Todas las obras' : 'Sólo edificación') + '</i>' +
@@ -111,11 +111,11 @@
     el.className = 'regls';
     var reglas = ks.filter(function (k) { return !REV.reglas[k].excepcion_de; });
     var excs = ks.filter(function (k) { return REV.reglas[k].excepcion_de; });
-    $('revReglasN').textContent = reglas.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
+    $('revReglasN').textContent = '— ' + reglas.length + ' regla(s) · la máquina marca, la decisión es de quien mira';
     el.innerHTML = reglas.map(function (k) { return _filaRegla(REV.reglas[k], null); }).join('');
     if (bx && excs.length) {
       bx.hidden = false;
-      $('revExcN').textContent = '· ' + excs.length + ' · figuras con un límite propio en vez del de la regla general';
+      $('revExcN').textContent = '— ' + excs.length + ' · figuras con un límite propio en vez del de la regla general';
       $('revExcL').innerHTML = excs.map(function (k) { return _filaRegla(REV.reglas[k], TINTA_EXC); }).join('');
     }
   }

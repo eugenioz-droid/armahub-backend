@@ -685,7 +685,7 @@ REGLAS = [
      "necesita": ("lados", "diam"),
      "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
                 "el diámetro, con piso de 7,5 cm. Las alturas de los soportes de losa 26 y 305A en "
-                "φ8, φ10 y φ12 tienen su excepción (ver Excepciones).",
+                "φ8, φ10 y φ12 tienen su excepción (ver Excepciones de reglas).",
      "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
                  "marcar": ["C"], "leyenda": "C < 10 φ"},
      "fn": r_lado_corto},

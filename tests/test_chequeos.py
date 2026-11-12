@@ -1721,7 +1721,7 @@ rs = {r["codigo"]: r for r in C.REGLAS}["altura_soporte_losa"]
 check("es una regla del menú, con su nombre corto, su alcance y la fuente",
       rs["corto"] == "Soporte losa: altura" and "26 (alturas C y E)" in rs["alcance"]
       and "305A (alturas B y D)" in rs["alcance"] and "25-ago-2025" in rs["alcance"]
-      and "su excepción (ver Excepciones)" in {r["codigo"]: r for r in C.REGLAS}["lado_corto"]["alcance"])
+      and "su excepción (ver Excepciones de reglas)" in {r["codigo"]: r for r in C.REGLAS}["lado_corto"]["alcance"])
 check("ya no hay «excepciones» dentro de una regla: ni en la regla, ni en el menú",
       all("excepciones" not in r for r in C.REGLAS) and "excepciones" not in API
       and "regexc" not in JS and "regexc" not in HTM)
@@ -1755,6 +1755,12 @@ check("el endpoint dice de qué regla es excepción", '"excepcion_de": r.get("ex
 check("la pantalla las separa: las reglas en la lista, las excepciones en su plegable",
       "!REV.reglas[k].excepcion_de" in JS and 'id="revExc"' in HTM and 'id="revExcL"' in HTM
       and '<details class="revmas revexc" id="revExc" hidden open>' in HTM and "bx.hidden = false;" in JS)
+# El usuario (12-nov): «1 desplegable que diga Reglas de revisión; abajo de este, no adentro,
+# 1 desplegable que dice Excepciones de reglas».
+_ir, _ie = HTM.index('<details class="revmas" id="revReglasD" open>'), HTM.index('id="revExc"')
+check("dos desplegables hermanos: «Reglas de revisión» y, debajo y no adentro, «Excepciones de reglas»",
+      "<summary>Reglas de revisión <span" in HTM and "<summary>Excepciones de reglas <span" in HTM
+      and _ir < _ie and "</details>" in HTM[_ir:_ie] and "Qué se revisa <span" not in HTM)
 check("...y la excepción nombra la regla a la que le cambia el límite",
       "Excepción a «' + esc(de.nombre) + '»</span>" in JS and ".regtxt .regde{" in HTM)
 # El usuario corrigió (12-nov): «cambiaste todos los renders a rojo, te equivocaste, era

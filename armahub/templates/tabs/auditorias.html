@@ -354,18 +354,20 @@
       </div>
       </details>
 
-      <!-- QUÉ SE REVISA, A LA VISTA Y EN UNA LÍNEA POR REGLA. Estaba plegado y en
-           tarjetas: quien mira un hallazgo necesita saber qué regla lo levantó sin
-           tener que abrir nada. -->
-      <div class="card audc revreglasc">
-        <div class="audh">Qué se revisa <span class="muted" id="revReglasN"></span></div>
-        <ul id="revReglas"></ul>
-        <!-- LAS EXCEPCIONES (12-nov): la regla que le cambia el límite a otra para una
-             figura, en su propio grupo y plegable, después de las reglas. Arranca ABIERTO:
-             plegado al fondo de la tarjeta el usuario no lo vio. -->
+      <!-- QUÉ SE REVISA, EN DOS DESPLEGABLES HERMANOS (12-nov), con el patrón de «Reporte
+           por obra». El usuario: «1 desplegable que diga Reglas de revisión; abajo de este,
+           no adentro, 1 desplegable que dice Excepciones de reglas». Los dos arrancan
+           ABIERTOS: quien mira un hallazgo necesita saber qué regla lo levantó sin abrir
+           nada, y plegadas las excepciones no se vieron. -->
+      <div class="revreglasc">
+        <details class="revmas" id="revReglasD" open>
+          <summary>Reglas de revisión <span class="muted" id="revReglasN"></span></summary>
+          <div class="card audc"><ul id="revReglas"></ul></div>
+        </details>
+        <!-- La regla que le cambia el límite a otra para una figura (excepcion_de). -->
         <details class="revmas revexc" id="revExc" hidden open>
-          <summary>Excepciones <span class="muted" id="revExcN"></span></summary>
-          <ul class="regls" id="revExcL"></ul>
+          <summary>Excepciones de reglas <span class="muted" id="revExcN"></span></summary>
+          <div class="card audc"><ul class="regls" id="revExcL"></ul></div>
         </details>
       </div>
 
@@ -790,8 +792,8 @@
   .regalc i{display:block; font-style:normal; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
             color:#78909c; margin-bottom:2px;}
   @media (max-width:860px){ .revreglasc li.regl{grid-template-columns:1fr;} .regalc{border-left:none; padding-left:0;} }
-  /* Las excepciones: el mismo molde de tres columnas, dentro de su plegable. */
-  .revreglasc .revexc ul.regls{margin:0 12px 4px;}
+  /* Las reglas y las excepciones, cada una en su desplegable: el mismo molde de tres columnas. */
+  .revreglasc .revmas ul.regls{margin:0;}
   /* En el ámbar de las excepciones (el de «advertencia» del Sistema de Diseño), como su dibujo. */
   .revreglasc .revexc > summary{color:#b45309;}
   .regtxt .regde{display:inline-block; margin-top:5px; font-size:10.5px; color:#b45309; background:#fff7ed;
