@@ -614,7 +614,7 @@ check("...porque ése es el único caso que el sistema NO puede comprobar solo",
       "la barra vieja va" in SRC and "NO puede" in SRC)
 check("el estado del elemento se DERIVA de sus barras, no se elige",
       "def _accion_de_items(" in SRC
-      and 'return "corregida" if corregidas >= malas else "pendiente"' in SRC)
+      and 'else "corregida" if corregidas >= malas else "pendiente")' in SRC)
 check("y «verificada» la pone la comprobación, no una persona",
       "verificadas >= malas" in SRC and "comprobar es del sistema" in SRC)
 
@@ -779,8 +779,8 @@ print("\n8c. El cierre se deriva, con una válvula a mano")
 check("lo resuelto es lo que dijo quien lo hizo, no lo que comprobó un barrido",
       "COUNT(*) FILTER (WHERE i.desestimado OR i.corregido)" in SRC
       and "COUNT(*) FILTER (WHERE i.desestimado OR i.verificado = 'ok')" not in SRC)
-check("...y los comentarios de elemento sin responder cuentan como abiertos",
-      "abiertas = (abiertas or 0) + (cur.fetchone()[0] or 0)" in SRC)
+check("...y las notas de elemento sin responder cuentan como abiertas (y las respondidas, como resueltas)",
+      "abiertas = (abiertas or 0) + (n_abi or 0)" in SRC and "resueltas = (resueltas or 0) + (n_res or 0)" in SRC)
 check("hay cierre a mano con motivo, para lo que el sistema no puede comprobar",
       '@router.post("/auditorias/{auditoria_id}/cerrar")' in SRC
       and "Di por qué se cierra sin resolver" in SRC)
@@ -1116,7 +1116,8 @@ check("el formulario del auditor se bloquea entero y DICE por qué",
       and "if (!_puedoEditar()) { aviso(_porQueNoEdito()); return; }" in JS)
 check("la tabla de lo que salió es POR BARRA, no por elemento",
       "function filaAccion(" in JS
-      and "malas.length ? malas.map(function (b) { return filaAccion(e, b); }) : [filaComentario(e)]" in JS)
+      and "var filas = malas.map(function (b) { return filaAccion(e, b); });" in JS
+      and "if (e.nota_tratamiento) filas.unshift(filaComentario(e));" in JS)
 # 9-nov: «el auditado debiera tener algo similar: resumen de los elementos revisados; los que
 # tienen hallazgos les hace click y se abre el modal con el detalle. Ese botón de abrir
 # resumen me sobra». Y: el RCA va en la acción; sin columnas Elemento ni «Debería decir».
@@ -1404,7 +1405,7 @@ check("...sin inventar lo que marcó el auditor: se le manda el conteo y vuelve 
 # auditor de ESA auditoría. Acá se congela que ES esa guarda la que cubre este caso.
 check("la guarda que lo impide está en el endpoint que guarda la revisión barra por barra",
       "_solo_antes_de_enviar(cur, auditoria_id, user)" in
-      SRC.split('@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")')[1][:2500])
+      SRC.split('@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")')[1][:4500])
 # Y SI VUELVE A PASAR POR DONDE SEA, SE VE: el detalle marca el veredicto ajeno y la
 # pantalla lo pinta en rojo. Un cierre «sin hallazgos» sobre eso ya no pasa en silencio.
 check("el detalle marca los veredictos que no son del auditor",
@@ -1427,8 +1428,10 @@ print("\nEL COMENTARIO QUE NO ES DE NINGUNA BARRA")
 # y hasta hoy ese comentario no tenía dónde resolverse —el auditado lo leía y el elemento
 # quedaba pendiente para siempre—. El usuario: «el comentario general queda para que lo
 # trate el auditado, pero falta algún check para resolver el comentario que quede».
-check("el backend dice cuál elemento tiene comentario y ninguna barra marcada",
-      '"comentario_suelto"' in SRC and "and not e[\"barras_malas\"]" in SRC)
+# 12-NOV: YA NO DEPENDE DE LAS BARRAS. Lo decide el auditor: Comentario o Requiere
+# tratamiento. Ver la sección «La nota del elemento» al final.
+check("el backend dice cuál elemento tiene una nota que requiere tratamiento",
+      'e["nota_tratamiento"] = nota_se_trata(e)' in SRC and "comentario_suelto" not in SRC)
 check("el auditado lo resuelve con las mismas tres cosas que una barra",
       "/elementos/{elemento_id}/resolucion" in SRC and "class ResolucionBody" in SRC
       and all(c in SRC.split("class ResolucionBody")[1][:700]
@@ -1441,14 +1444,15 @@ check("...no se da por corregido sin RCA, igual que la barra",
       "Antes de darlo por corregido, clasifica por qué pasó (RCA)" in _res)
 check("...y «no aplica» sin motivo es borrar el hallazgo: se rechaza",
       "es borrar el hallazgo" in _res and 'if not nota:' in _res)
-check("si el elemento SÍ tiene barras marcadas, se resuelven una por una",
-      "se resuelven una por una" in SRC.split("def _elemento_del_auditado(")[1][:2200])
-check("el estado del elemento sin barras sale de lo que dejó el auditado, no de NULL",
-      'return fila[2] or "pendiente"' in SRC.split("def _accion_de_items(")[1][:2200])
-check("cerrar cuenta los comentarios pendientes, no sólo las barras",
-      "comentario(s) de elemento" in SRC and "sueltos_pend" in SRC)
-check("...y el detalle los suma a lo que falta por resolver",
-      'aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)' in SRC)
+check("la nota se responde sólo si el auditor pidió tratamiento, tenga o no barras",
+      "Esa nota es un comentario del auditor: no se responde." in SRC.split("def _elemento_del_auditado(")[1][:2600]
+      and "se resuelven una por una" not in SRC.split("def _elemento_del_auditado(")[1][:2600])
+check("el estado de la nota sale de lo que dejó el auditado, no de NULL",
+      '(fila[3] or "pendiente")' in SRC.split("def _accion_de_items(")[1][:2600])
+check("cerrar cuenta las notas pendientes, no sólo las barras",
+      "nota(s) de elemento" in SRC and "notas_pend" in SRC)
+check("...y el detalle las suma a lo que falta por resolver",
+      'aud["barras_pendientes"] = len(pendientes) + len(notas_pend)' in SRC)
 check("la pantalla le pone al comentario las mismas tres salidas que a una barra",
       "function filaComentario(" in JS and "var lin = 'e' + e.id" in JS
       and "'data-ecausa'" in JS and "function _celdaCausa(" in JS
@@ -1833,12 +1837,13 @@ _aud = {"codigo": "A-T", "obra": "OBRA", "estado": "cerrada", "auditor": "x@y", 
                  {"ref": "10mmA83", "observacion": "medida", "desestimado": True, "desestimado_motivo": "va en otro cc"},
                  {"ref": "10mmA90", "observacion": "falta", "corregido": False}]},
             {"cc": "CC1", "descr_cc": "ELEV P1", "nombre": "J-29", "cubicado_por": "nlopez@x",
-             "texto": "falta un cabezal", "comentario_suelto": False,
+             "texto": "falta un cabezal", "nota_trato": "comentario", "nota_tratamiento": False,
              "barras_malas": [{"ref": "10mmA118", "observacion": "cantidad 10", "corregido": True,
                                "tipo_correccion": "nuevo", "cc_nuevo": "CC9", "item_nuevo": "A1",
                                "nota_correccion": "rehecha", "verificado": "sigue_igual"}]},
             {"cc": "CC2", "descr_cc": "LOSA", "nombre": "L1", "cubicado_por": "eramirez@x",
-             "texto": "faltan suples", "comentario_suelto": True, "accion_estado": "corregida",
+             "texto": "faltan suples", "nota_trato": "tratamiento", "nota_tratamiento": True,
+             "nota_estado": "corregida", "accion_estado": "corregida",
              "accion_nota": "agregados", "barras_malas": []},
             {"cc": "CC2", "descr_cc": "LOSA", "nombre": "L2", "cubicado_por": "eramirez@x", "texto": "",
              "barras_malas": []}]}
@@ -1856,10 +1861,12 @@ check("la teja dice lo que dijo aSa, con sus números",
       and _t1["10mmA118"]["asa"] == "Idéntica en aSa: no se editó" and _t1["10mmA83"]["asa"] == "")
 check("lo resuelto en otro código dice dónde quedó",
       _t1["10mmA118"]["res"] == "en CC9 · A1: rehecha")
-check("el comentario de un elemento CON barras es «Comentario», sin respuesta, y no cuenta como hallazgo",
-      _t1["Elemento"]["est"] == "Comentario" and _t1["Elemento"]["obs"] == "falta un cabezal"
-      and "Sin respuesta propia" in _t1["Elemento"]["res"])
-check("el comentario de un elemento SIN barras es el hallazgo, con su respuesta",
+# 12-nov: el usuario no entendió la teja «Comentario · sin respuesta propia». El comentario
+# del auditor sale del cuadro y va al final; la nota que requiere tratamiento es una teja.
+check("el comentario del auditor no es una teja: va aparte, al final del informe",
+      "Elemento" not in _t1 and not any(t["est"] == "Comentario" for c in _cu for t in c["tejas"])
+      and A.comentarios_informe(_aud) == [{"donde": "CC1 · J-29", "texto": "falta un cabezal"}])
+check("la nota que requiere tratamiento es el hallazgo, con su respuesta",
       _cu[1]["tejas"] == [{"item": "Elemento", "el": "L1", "obs": "faltan suples", "est": "Resuelto",
                             "res": "agregados", "asa": "", "rca": None}])
 check("lo que no tuvo hallazgos se nombra aparte", _sin == ["CC2 · L2"])
@@ -1899,6 +1906,66 @@ check("el PDF sale, en una hoja, con tres tejas por fila",
       and A._InformePDF.COLS == 3 and "self.tw = (self.W - 2 * self.PAD - (self.COLS - 1) * self.GAP) / self.COLS" in SRC)
 check("un cuadro no se parte si cabe entero en una hoja nueva",
       "if (y + alto > self.PIE and alto <= self.PIE - 12) or y + 6.2 + 20 > self.PIE:" in SRC)
+
+# ── LA NOTA DEL ELEMENTO: COMENTARIO O REQUIERE TRATAMIENTO (12-nov) ──────────────────────
+# El usuario: «el auditor puede seleccionar si requiere tratamiento, sino queda como
+# comentario del auditor». Elegido sobre maqueta (variante A: dos botones chicos al lado de
+# la nota, obligatorio elegir si hay nota, y no se envía sin eso).
+print("\nLa nota del elemento: comentario o requiere tratamiento")
+HTML = open(os.path.join(ROOT, "armahub", "templates", "tabs", "auditorias.html"), encoding="utf-8").read()
+MIG164 = open(os.path.join(ROOT, "armahub", "migrations",
+                           "164_nota_del_elemento_comentario_o_tratamiento.sql"), encoding="utf-8").read()
+check("se trata sólo si el auditor lo eligió, con nota escrita y como hallazgo",
+      A.nota_se_trata({"hallazgo": "hallazgo", "texto": "falta un cabezal", "nota_trato": "tratamiento"})
+      and not A.nota_se_trata({"hallazgo": "hallazgo", "texto": "falta un cabezal", "nota_trato": "comentario"})
+      and not A.nota_se_trata({"hallazgo": "hallazgo", "texto": "  ", "nota_trato": "tratamiento"})
+      and not A.nota_se_trata({"hallazgo": "hallazgo", "texto": "x", "nota_trato": None}))
+check("el elemento queda pendiente mientras falte la nota o alguna barra",
+      A.estado_elemento("corregida", "pendiente") == "pendiente"
+      and A.estado_elemento("pendiente", "corregida") == "pendiente"
+      and A.estado_elemento("verificada", "corregida") == "verificada"
+      and A.estado_elemento("corregida", "desestimada") == "corregida")
+check("...sin barras manda la nota, y sin nota mandan las barras",
+      A.estado_elemento(None, "desestimada") == "desestimada" and A.estado_elemento(None, None) is None
+      and A.estado_elemento("verificada", None) == "verificada")
+_rev = SRC.split('@router.put("/auditorias/{auditoria_id}/elementos/{elemento_id}/revision")')[1][:7000]
+check("guardar la revisión exige elegir si hay nota, y la nota a tratar vuelve hallazgo al elemento",
+      "if texto and trato not in NOTA_TRATOS:" in _rev and "hallazgo = HALLAZGO_ABRE_ACCION" in _rev
+      and "nota_trato = %s" in _rev and "_accion_de_items(cur, elemento_id) if es_nc else None" in _rev)
+_env = SRC.split('@router.post("/auditorias/{auditoria_id}/enviar")')[1][:6000]
+check("no se envía con notas sin elegir, y el aviso cuenta también las notas a tratar",
+      "AND nota_trato IS NULL" in _env and "ábrelas y elige antes de enviar" in _env
+      and "porcub[quien] = porcub.get(quien, 0) + n" in _env)
+check("todas las cuentas usan UNA definición SQL de nota a tratar",
+      SRC.count("SQL_NOTA_SE_TRATA") >= 4 and "NOT EXISTS (SELECT 1 FROM auditoria_items i" not in SRC)
+check("la respuesta del auditado va al estado de la nota, y el del elemento se deriva",
+      "nota_estado = %s, accion_nota = %s" in SRC
+      and "(_accion_de_items(cur, elemento_id), elemento_id))\n            _recalcular(cur, auditoria_id)"
+          in SRC.replace("\r\n", "\n"))
+check("la migración agrega las dos columnas y deja lo de antes como estaba",
+      "ADD COLUMN IF NOT EXISTS nota_trato" in MIG164 and "ADD COLUMN IF NOT EXISTS nota_estado" in MIG164
+      and "SET nota_trato = 'tratamiento', nota_estado = COALESCE(e.accion_estado, 'pendiente')" in MIG164
+      and "SET nota_trato = 'comentario'" in MIG164
+      and "(a.enviada_el IS NOT NULL OR a.estado = 'cerrada')" in MIG164)
+check("la pantalla: dos botones chicos al lado de la nota, con su palabra y su explicación al pasar el mouse",
+      'id="audNotaPar"' in HTML and 'data-trato="comentario"' in HTML and 'data-trato="tratamiento"' in HTML
+      and ">Comentario</button>" in HTML and ">Requiere tratamiento</button>" in HTML
+      and HTML.count("data-tip=") >= 2 and ".audntrpar button[data-tip]:hover::after" in HTML)
+check("...con nota y sin elegir, el par se marca y guardar no sigue",
+      "par.classList.toggle('pide', pide);" in JS and "av.textContent = pide ? 'Elige uno ▾' : '';" in JS
+      and "if (nota && !NOTA_TRATO) {" in JS and "nota_trato: nota ? NOTA_TRATO : null" in JS)
+check("...la lista dice qué es cada nota, y enviar se apaga con notas sin elegir",
+      "function _chipNota(e)" in JS and "_chipNota(e) +" in JS
+      and "falta > 0 || _notasSinElegir() ? ' disabled' : ''" in JS)
+check("...y quien cubicó ve el comentario arriba en azul, sin botones",
+      '<div class="audntrcom"><b>Comentario del auditor · no se responde</b>' in JS
+      and "return com + '<div class=\"revcc2 audhoja'" in JS)
+check("el informe cierra con los comentarios del auditor, en el azul de información",
+      "self._comentarios(comentarios_informe(self.a))" in SRC
+      and "INFO, INFO_FONDO = (23, 105, 194), (227, 242, 253)" in SRC
+      and 's("Comentarios del auditor")' in SRC)
+_pdf2 = A._InformePDF(_aud).build()
+check("...y el PDF sale con ellos", _pdf2[:4] == b"%PDF" and len(_pdf2) > 1000)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

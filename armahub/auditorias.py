@@ -82,6 +82,15 @@ HALLAZGO_ABRE_ACCION = "hallazgo"
 # a medias. Toda consulta que cuente barras por corregir usa este fragmento (alias i, e).
 SQL_ELEMENTO_CON_ACCION = "e.hallazgo = '%s'" % HALLAZGO_ABRE_ACCION
 SQL_BARRA_CON_ACCION = "i.conforme IS FALSE AND " + SQL_ELEMENTO_CON_ACCION
+# LA NOTA DEL ELEMENTO (12-nov): el auditor elige si es un COMENTARIO —nadie lo responde, va
+# al final del informe— o si REQUIERE TRATAMIENTO —es un hallazgo del elemento, igual que una
+# barra no conforme, y el auditado lo resuelve—. Antes se respondía sólo si el elemento no
+# tenía barras marcadas; con barras no la contestaba nadie.
+NOTA_COMENTARIO, NOTA_TRATAMIENTO = "comentario", "tratamiento"
+NOTA_TRATOS = (NOTA_COMENTARIO, NOTA_TRATAMIENTO)
+# La única definición SQL de «nota que se trata» (alias e), como la de la barra.
+SQL_NOTA_SE_TRATA = ("e.hallazgo = '%s' AND e.nota_trato = '%s' AND TRIM(COALESCE(e.texto, '')) <> ''"
+                     % (HALLAZGO_ABRE_ACCION, NOTA_TRATAMIENTO))
 # El área cuyo Ishikawa da las causas de una no conformidad (tabla `areas`).
 AREA_CUBICACIONES = "Cubicaciones"
 # De dónde sale la muestra. 'armahub' = las barras de acá; 'asa' = los ítems de aSa, para
@@ -211,6 +220,28 @@ def feriados_de(cur) -> frozenset:
         # Si la tabla todavía no existe, el plazo igual se calcula saltando el fin de
         # semana. Un feriado de más no puede tumbar la creación de una auditoría.
         return frozenset()
+
+
+def nota_se_trata(e: dict) -> bool:
+    """¿La nota de este elemento es trabajo del auditado? Sí si el auditor eligió que
+    requiere tratamiento —tenga o no barras marcadas el elemento—. Lo mismo que
+    SQL_NOTA_SE_TRATA, para lo que ya está en la mano. Función pura."""
+    return bool(e.get("hallazgo") == HALLAZGO_ABRE_ACCION and (e.get("texto") or "").strip()
+                and e.get("nota_trato") == NOTA_TRATAMIENTO)
+
+
+def estado_elemento(barras: Optional[str], nota: Optional[str]) -> Optional[str]:
+    """EL ESTADO DEL ELEMENTO CON SUS BARRAS Y SU NOTA (12-nov). Pendiente si cualquiera de
+    las dos lo está; si no, manda el de las barras: la nota no se comprueba en aSa, así que
+    no la sube a «verificada» ni la baja. Sin barras, el de la nota —que puede ser
+    «desestimada», no aplica—; sin nota, el de las barras. Función pura."""
+    if not barras:
+        return nota
+    if nota is None:
+        return barras
+    if "pendiente" in (barras, nota):
+        return "pendiente"
+    return barras
 
 
 def estado_de(revisados: int, total: int, enviada: bool = False,
@@ -1484,7 +1515,9 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                           -- verlo en la lista, no descubrirlo al abrir el elemento.
                           p.estado, p.proj_ship_date,
                           -- 30: dónde quedó resuelto el comentario, si fue en otro código.
-                          e.accion_cc_nuevo
+                          e.accion_cc_nuevo,
+                          -- 31-32: la nota del elemento, comentario o tratamiento (12-nov).
+                          e.nota_trato, e.nota_estado
                      FROM auditoria_elementos e
                      LEFT JOIN asa_pedidos p ON p.control_code = e.cc
                     WHERE e.auditoria_id = %s ORDER BY e.id""", (auditoria_id,))
@@ -1516,7 +1549,8 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                  # INDEPENDENCIA: no se bloquea, se avisa. Bloquear sería inútil en una
                  # obra que cubicó una sola persona; lo que importa es que se vea.
                  "conflicto": (e[9] or "").strip() in auditor_alias,
-                 "accion_cc_nuevo": e[30]}
+                 "accion_cc_nuevo": e[30],
+                 "nota_trato": e[31], "nota_estado": e[32]}
                 for e in cur.fetchall()]
             # LO QUE SE ENCONTRÓ EN CADA BARRA, por su nombre. Va aparte de `texto` —que es
             # la observación del elemento entero— porque son dos cosas distintas y
@@ -1615,21 +1649,22 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
                 # pase en silencio.
                 rp = e.get("revisado_por")
                 e["revisado_por_ajeno"] = bool(rp and rp != aud.get("auditor") and rp not in admins)
-                # EL COMENTARIO QUE NO ES DE NINGUNA BARRA (15-oct). Un hallazgo con texto
-                # y sin barras marcadas —«falta trabas de muro»: la barra que falta no
-                # está— es la unidad de trabajo del auditado en ese elemento. Lo dice el
-                # backend y no el front, igual que el resto de quién-puede-qué.
-                e["comentario_suelto"] = bool(e.get("hallazgo") == HALLAZGO_ABRE_ACCION
-                                              and (e.get("texto") or "").strip()
-                                              and not e["barras_malas"])
+                # LA NOTA QUE REQUIERE TRATAMIENTO (12-nov; antes «comentario suelto»,
+                # 15-oct). Lo que no es de ninguna barra —«falta trabas de muro»: la barra
+                # que falta no está— el auditor lo escribe en la nota del elemento, y elige
+                # si es un comentario o si requiere tratamiento. Si lo requiere, es una
+                # línea más del trabajo del auditado, tenga o no barras marcadas el
+                # elemento. Lo dice el backend y no el front, igual que el resto de
+                # quién-puede-qué.
+                e["nota_tratamiento"] = nota_se_trata(e)
                 for b in e["barras_malas"]:
                     actor = b.get("corregido_por") or b.get("desestimado_por") or b.get("causa_por")
                     b["resuelto_por_otro"] = actor if _es_ajeno(actor, e.get("cubicado_por")) else None
                 e["resuelto_por_otro"] = (e.get("accion_por")
-                                          if e["comentario_suelto"]
+                                          if e["nota_tratamiento"]
                                           and _es_ajeno(e.get("accion_por"), e.get("cubicado_por"))
                                           else None)
-                if (e["barras_malas"] or e["comentario_suelto"]) and (e["mio"] or soy_admin):
+                if (e["barras_malas"] or e["nota_tratamiento"]) and (e["mio"] or soy_admin):
                     tengo_barras = True
             # PUEDO CERRAR: lo dice el backend con la misma regla que valida el endpoint,
             # para que el botón no ofrezca algo que va a dar 400. Cierra quien respondió,
@@ -1639,15 +1674,14 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
             # dejaba un «quedan N» imposible de bajar y la auditoría no cerraba.
             todas = [b for e in aud["elementos"] if e.get("accion_estado") for b in e["barras_malas"]]
             pendientes = [b for b in todas if not b["corregido"] and not b["desestimado"]]
-            # Los comentarios sueltos cuentan igual que una barra: son trabajo del auditado
-            # y, si quedan pendientes, la auditoría no está resuelta.
-            sueltos = [e for e in aud["elementos"] if e.get("comentario_suelto")]
-            sueltos_pend = [e for e in sueltos
-                            if (e.get("accion_estado") or "pendiente") == "pendiente"]
-            aud["barras_pendientes"] = len(pendientes) + len(sueltos_pend)
+            # Las notas que requieren tratamiento cuentan igual que una barra: son trabajo
+            # del auditado y, si quedan pendientes, la auditoría no está resuelta.
+            notas = [e for e in aud["elementos"] if e.get("nota_tratamiento")]
+            notas_pend = [e for e in notas if (e.get("nota_estado") or "pendiente") == "pendiente"]
+            aud["barras_pendientes"] = len(pendientes) + len(notas_pend)
             aud["puedo_cerrar"] = bool(aud.get("enviada") and aud.get("estado") != "cerrada"
-                                       and (todas or sueltos)
-                                       and not pendientes and not sueltos_pend and tengo_barras)
+                                       and (todas or notas)
+                                       and not pendientes and not notas_pend and tengo_barras)
     # TRES CUENTAS EN VEZ DE LA COBERTURA (20-oct). Acá iba «cobertura de la obra», con
     # porcentajes sobre dos denominadores que se movían solos —lo auditable cambia cada vez
     # que un código se despacha— y que el usuario no podía interpretar: «están un poco
@@ -1661,10 +1695,11 @@ def detalle(auditoria_id: int, user=Depends(get_current_user)):
         "elementos_auditados": len(con_veredicto),
         "elementos": len(elementos),
         "items_auditados": sum(int(e.get("items") or 0) for e in elementos),
-        # Un hallazgo es una barra marcada; el comentario que no es de ninguna barra cuenta
-        # como uno, porque es una cosa que hay que resolver igual que una barra.
+        # Un hallazgo es una barra marcada; la nota que requiere tratamiento cuenta como
+        # uno, porque es una cosa que hay que resolver igual que una barra. El comentario
+        # del auditor no: nadie lo responde.
         "hallazgos": sum(int(e.get("items_malos") or 0) for e in elementos)
-                     + len([e for e in elementos if e.get("comentario_suelto")]),
+                     + len([e for e in elementos if e.get("nota_tratamiento")]),
     }
     return aud
 
@@ -2195,21 +2230,22 @@ def _accion_de_items(cur, elemento_id: int) -> Optional[str]:
              FROM auditoria_items WHERE elemento_id = %s AND conforme IS FALSE""",
         (elemento_id,))
     malas, corregidas, verificadas = cur.fetchone()
+    # LA NOTA QUE REQUIERE TRATAMIENTO ES UNA LÍNEA MÁS (12-nov). El hallazgo que no es de
+    # ninguna barra —«falta trabas de muro»— vive en la nota del elemento y lo resuelve el
+    # auditado ahí mismo, con su propio estado (`nota_estado`). Antes sólo existía sin
+    # barras marcadas; ahora también con ellas, y el elemento queda pendiente mientras
+    # falte cualquiera de las dos. Sin nota a tratar y sin barras no hay nada que
+    # corregir, y queda en NULL como siempre.
+    cur.execute("""SELECT hallazgo, COALESCE(texto, ''), nota_trato, nota_estado
+                     FROM auditoria_elementos WHERE id = %s""", (elemento_id,))
+    fila = cur.fetchone() or (None, "", None, None)
+    nota = ((fila[3] or "pendiente")
+            if nota_se_trata({"hallazgo": fila[0], "texto": fila[1], "nota_trato": fila[2]}) else None)
     if not malas:
-        # SIN BARRAS MARCADAS, PERO CON COMENTARIO (15-oct). El hallazgo que no es de
-        # ninguna barra —«falta trabas de muro»— vive en el comentario del elemento y lo
-        # resuelve el auditado ahí mismo. Entonces el estado no se deriva de las barras: es
-        # el que él dejó. Sin comentario y sin barras no hay nada que corregir, y queda en
-        # NULL como siempre.
-        cur.execute("""SELECT hallazgo, COALESCE(texto, ''), accion_estado
-                         FROM auditoria_elementos WHERE id = %s""", (elemento_id,))
-        fila = cur.fetchone() or (None, "", None)
-        if fila[0] == HALLAZGO_ABRE_ACCION and fila[1].strip():
-            return fila[2] or "pendiente"
-        return None
-    if verificadas >= malas:
-        return "verificada"
-    return "corregida" if corregidas >= malas else "pendiente"
+        return nota
+    barras = ("verificada" if verificadas >= malas
+              else "corregida" if corregidas >= malas else "pendiente")
+    return estado_elemento(barras, nota)
 
 
 def _recalcular(cur, auditoria_id: int) -> bool:
@@ -2252,16 +2288,18 @@ def _recalcular(cur, auditoria_id: int) -> bool:
             WHERE e.auditoria_id = %s AND i.conforme IS FALSE AND e.hallazgo = %s""",
         (auditoria_id, HALLAZGO_ABRE_ACCION))
     resueltas, abiertas = cur.fetchone()
-    # Los comentarios de elemento sin barras cuentan igual: son trabajo del auditado.
+    # Las notas que requieren tratamiento cuentan igual: son trabajo del auditado. Y las
+    # resueltas cuentan como resueltas (12-nov): antes una auditoría cuyo único hallazgo era
+    # un comentario ya respondido quedaba en cero y cero y se cerraba sola, sin la firma de
+    # quien respondió.
     cur.execute(
-        """SELECT COUNT(*) FILTER (WHERE COALESCE(e.accion_estado, 'pendiente') = 'pendiente')
+        """SELECT COUNT(*) FILTER (WHERE COALESCE(e.nota_estado, 'pendiente') <> 'pendiente'),
+                  COUNT(*) FILTER (WHERE COALESCE(e.nota_estado, 'pendiente') = 'pendiente')
              FROM auditoria_elementos e
-            WHERE e.auditoria_id = %s AND e.hallazgo = %s
-              AND TRIM(COALESCE(e.texto, '')) <> ''
-              AND NOT EXISTS (SELECT 1 FROM auditoria_items i
-                               WHERE i.elemento_id = e.id AND i.conforme IS FALSE)""",
-        (auditoria_id, HALLAZGO_ABRE_ACCION))
-    abiertas = (abiertas or 0) + (cur.fetchone()[0] or 0)
+            WHERE e.auditoria_id = %s AND """ + SQL_NOTA_SE_TRATA, (auditoria_id,))
+    n_res, n_abi = cur.fetchone()
+    resueltas = (resueltas or 0) + (n_res or 0)
+    abiertas = (abiertas or 0) + (n_abi or 0)
     estado = estado_de(revisados, total, enviada, resueltas or 0, abiertas or 0, a_mano)
     cur.execute(
         """UPDATE auditorias
@@ -2324,6 +2362,20 @@ def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(ge
                     status_code=400,
                     detail="Faltan %d de %d elementos por revisar: una auditoría se envía "
                            "terminada." % (total - revisados, total))
+            # LA NOTA SIN ELEGIR NO SE ENVÍA (12-nov). Si el auditor escribió una nota del
+            # elemento, tiene que decir si es un comentario o si requiere tratamiento: sin
+            # eso el auditado no sabe si tiene que responderla. Pasa con las notas que
+            # quedaron escritas en borradores de antes de que existiera la pregunta.
+            cur.execute(
+                """SELECT COUNT(*) FROM auditoria_elementos
+                    WHERE auditoria_id = %s AND TRIM(COALESCE(texto, '')) <> ''
+                      AND nota_trato IS NULL""", (auditoria_id,))
+            sin_elegir = cur.fetchone()[0]
+            if sin_elegir:
+                raise HTTPException(
+                    status_code=400,
+                    detail="%d nota(s) de elemento sin elegir si son Comentario o Requieren "
+                           "tratamiento: ábrelas y elige antes de enviar." % sin_elegir)
             # EL PLAZO DE CORRECCIÓN ARRANCA ACÁ, no cuando se creó la auditoría: hasta
             # este segundo el auditado no podía hacer nada.
             vence = vence_en(datetime.now(timezone.utc), HORAS_CORRECCION, feriados_de(cur))
@@ -2342,13 +2394,22 @@ def enviar(auditoria_id: int, body: EnvioBody, request: Request, user=Depends(ge
                     WHERE e.auditoria_id = %s AND """ + SQL_BARRA_CON_ACCION + """
                       AND COALESCE(TRIM(e.cubicado_por), '') <> ''
                     GROUP BY 1""", (auditoria_id,))
-            porcub = cur.fetchall()
+            porcub = dict(cur.fetchall())
+            # Y las notas que requieren tratamiento, que son trabajo suyo igual (12-nov): sin
+            # esto, quien sólo tenía una nota que responder no se enteraba.
+            cur.execute(
+                """SELECT TRIM(e.cubicado_por), COUNT(*) FROM auditoria_elementos e
+                    WHERE e.auditoria_id = %s AND """ + SQL_NOTA_SE_TRATA + """
+                      AND COALESCE(TRIM(e.cubicado_por), '') <> ''
+                    GROUP BY 1""", (auditoria_id,))
+            for quien, n in cur.fetchall():
+                porcub[quien] = porcub.get(quien, 0) + n
             audit(email, "auditoria_enviada",
-                  "%s · %s: %d elementos, %d persona(s) con barras por corregir"
+                  "%s · %s: %d elementos, %d persona(s) con hallazgos por corregir"
                   % (codigo, obra, total, len(porcub)), "auditoria", str(auditoria_id))
     fecha = vence.strftime("%d-%m a las %H:%M")
-    for quien, n in porcub:
-        _avisar(quien, "Auditoría %s · %s: %d barra(s) tuyas por corregir. Tienes %d horas: "
+    for quien, n in porcub.items():
+        _avisar(quien, "Auditoría %s · %s: %d hallazgo(s) tuyos por corregir. Tienes %d horas: "
                        "vence el %s." % (codigo, obra, n, HORAS_CORRECCION, fecha))
     return detalle(auditoria_id, user)
 
@@ -2498,21 +2559,19 @@ def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_curre
                     WHERE e.auditoria_id = %s AND """ + SQL_BARRA_CON_ACCION + """""",
                 (mios, auditoria_id))
             pendientes, total, mias = cur.fetchone()
-            # LOS COMENTARIOS SUELTOS CUENTAN IGUAL (15-oct). Un hallazgo que no es de
-            # ninguna barra se resuelve en el elemento, y si queda pendiente la auditoría
-            # tampoco está resuelta: cerrarla dejaría el comentario sin respuesta.
+            # LAS NOTAS QUE REQUIEREN TRATAMIENTO CUENTAN IGUAL (15-oct; 12-nov con o sin
+            # barras). Un hallazgo que no es de ninguna barra se resuelve en el elemento, y
+            # si queda pendiente la auditoría tampoco está resuelta: cerrarla dejaría la
+            # nota sin respuesta.
             cur.execute(
-                """SELECT COUNT(*) FILTER (WHERE COALESCE(e.accion_estado, 'pendiente') = 'pendiente'),
+                """SELECT COUNT(*) FILTER (WHERE COALESCE(e.nota_estado, 'pendiente') = 'pendiente'),
                           COUNT(*),
                           COUNT(*) FILTER (WHERE TRIM(COALESCE(e.cubicado_por, '')) = ANY(%s))
                      FROM auditoria_elementos e
-                    WHERE e.auditoria_id = %s AND e.hallazgo = %s
-                      AND TRIM(COALESCE(e.texto, '')) <> ''
-                      AND NOT EXISTS (SELECT 1 FROM auditoria_items i
-                                       WHERE i.elemento_id = e.id AND i.conforme IS FALSE)""",
-                (mios, auditoria_id, HALLAZGO_ABRE_ACCION))
-            sueltos_pend, sueltos, sueltos_mios = cur.fetchone()
-            total = (total or 0) + (sueltos or 0)
+                    WHERE e.auditoria_id = %s AND """ + SQL_NOTA_SE_TRATA,
+                (mios, auditoria_id))
+            notas_pend, notas, notas_mias = cur.fetchone()
+            total = (total or 0) + (notas or 0)
             # También cierra quien resolvió algo acá en lugar del dueño (21-oct): si pudo
             # resolver, puede firmar que terminó. El registro guarda quién cerró.
             cur.execute(
@@ -2520,16 +2579,16 @@ def cerrar_resueltas(auditoria_id: int, request: Request, user=Depends(get_curre
                     WHERE e.auditoria_id = %s AND (i.corregido_por = %s OR i.desestimado_por = %s)""",
                 (auditoria_id, email, email))
             resolvi = cur.fetchone()[0]
-            if user.get("role") not in ROLES_ADMINISTRAN and not mias and not sueltos_mios and not resolvi:
+            if user.get("role") not in ROLES_ADMINISTRAN and not mias and not notas_mias and not resolvi:
                 raise HTTPException(
                     status_code=403,
                     detail="Cierra quien tuvo barras que corregir en esta auditoría, o quien las resolvió.")
-            if pendientes or sueltos_pend:
+            if pendientes or notas_pend:
                 falta = []
                 if pendientes:
                     falta.append("%d barra(s)" % pendientes)
-                if sueltos_pend:
-                    falta.append("%d comentario(s) de elemento" % sueltos_pend)
+                if notas_pend:
+                    falta.append("%d nota(s) de elemento" % notas_pend)
                 raise HTTPException(
                     status_code=400,
                     detail="Todavía quedan %s sin resolver: cada uno tiene que quedar "
@@ -3032,6 +3091,8 @@ class RevisionBody(BaseModel):
     # quien lo hizo, y lo clasifica al responder — por ítem, no por elemento. Vive en
     # `auditoria_items.causa` y entra por /items/{id}/causa.
     texto: Optional[str] = None        # opcional: lo que se encontró ya está en las barras
+    # Si hay nota: «comentario» o «tratamiento» (12-nov). Con nota es obligatorio elegir.
+    nota_trato: Optional[str] = None
 
 
 def severidad_derivada(items, severidad: Optional[str]) -> str:
@@ -3081,6 +3142,16 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
     # que lo explique, que es el caso de un elemento marcado sin revisar sus barras.
     if hallazgo != "conforme" and not texto and not malas:
         raise HTTPException(status_code=400, detail="Di qué encontraste: un hallazgo sin texto no es evidencia.")
+    # LA NOTA: COMENTARIO O TRATAMIENTO (12-nov). La elige el auditor, y si escribió nota es
+    # obligatorio elegir: sin eso el auditado no sabe si tiene que responderla. Si requiere
+    # tratamiento es un hallazgo del elemento aunque todas sus barras estén bien: «falta un
+    # cabezal» no se puede marcar en ninguna barra, porque la que falta no está.
+    trato = ((body.nota_trato or "").strip() or None) if texto else None
+    if texto and trato not in NOTA_TRATOS:
+        raise HTTPException(status_code=400,
+                            detail="Elige si la nota del elemento es un Comentario o Requiere tratamiento.")
+    if trato == NOTA_TRATAMIENTO:
+        hallazgo = HALLAZGO_ABRE_ACCION
     es_nc = hallazgo in ("hallazgo",)
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -3114,17 +3185,22 @@ def guardar_revision(auditoria_id: int, elemento_id: int, body: RevisionBody,
                       _json(it.esperado) if it.esperado else None,
                       _json(it.original) if it.original else None, email)
                      for it in body.items])
-            accion = None
-            if es_nc:
-                accion = accion_previa if accion_previa in ("corregida", "verificada") else "pendiente"
             # `causa` no se toca: el auditor dejó de escribirla, y la columna se conserva
             # porque las auditorías viejas la tienen y borrarla sería perder lo clasificado.
+            # La nota que pasa a requerir tratamiento parte pendiente; si vuelve a ser
+            # comentario, lo que ya respondió el auditado se conserva: no es nuestro.
             cur.execute(
                 """UPDATE auditoria_elementos
                       SET hallazgo = %s, texto = %s, revisado_por = %s, revisado_el = now(),
-                          accion_estado = %s
+                          nota_trato = %s,
+                          nota_estado = CASE WHEN %s = 'tratamiento'
+                                             THEN COALESCE(nota_estado, 'pendiente') ELSE nota_estado END
                     WHERE id = %s""",
-                (hallazgo, texto or None, email, accion, elemento_id))
+                (hallazgo, texto or None, email, trato, trato, elemento_id))
+            # EL ESTADO DEL ELEMENTO SE DERIVA de sus barras y de su nota (12-nov), con la
+            # misma regla que usa todo el resto.
+            cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                        (_accion_de_items(cur, elemento_id) if es_nc else None, elemento_id))
             cerro = _recalcular(cur, auditoria_id)
             audit(email, "auditoria_revision",
                   "%s · %s: %s (%d barras, %d no conformes)" % (codigo, nombre, hallazgo,
@@ -3270,30 +3346,28 @@ def _elemento_del_auditado(cur, auditoria_id: int, elemento_id: int, user) -> tu
     siempre. El usuario lo dijo así: «el comentario general queda para que lo trate el
     auditado, pero falta algún check para resolver el comentario que quede».
 
-    Mismo dueño que la barra: quien cubicó, o administración. Y sólo cuando el elemento NO
-    tiene barras marcadas: si las tiene, el flujo es por barra y éste sobra."""
+    Mismo dueño que la barra: quien cubicó, o administración. Y sólo si el auditor eligió
+    que la nota requiere tratamiento (12-nov), tenga o no barras marcadas el elemento."""
     cur.execute(
         """SELECT e.cubicado_por, e.nombre, e.hallazgo, e.texto, e.causa, e.accion_estado,
-                  a.codigo, a.auditor,
-                  (SELECT COUNT(*) FROM auditoria_items i
-                    WHERE i.elemento_id = e.id AND i.conforme IS FALSE)
+                  a.codigo, a.auditor, e.nota_trato
              FROM auditoria_elementos e
              JOIN auditorias a ON a.id = e.auditoria_id
             WHERE e.id = %s AND e.auditoria_id = %s""", (elemento_id, auditoria_id))
     fila = cur.fetchone()
     if not fila:
         raise HTTPException(status_code=404, detail="Ese elemento no es de esta auditoría.")
-    cubico, nombre, hallazgo, texto, _causa, _accion, _codigo, _auditor, malas = fila
+    cubico, nombre, hallazgo, texto, _causa, _accion, _codigo, _auditor, trato = fila
     if hallazgo != HALLAZGO_ABRE_ACCION:
         raise HTTPException(status_code=400, detail="Ese elemento no tiene una no conformidad.")
-    if malas:
-        raise HTTPException(
-            status_code=400,
-            detail="Ese elemento tiene barras marcadas: se resuelven una por una, que es "
-                   "donde está la observación.")
     if not (texto or "").strip():
         raise HTTPException(status_code=400,
-                            detail="Ese elemento no tiene comentario que resolver.")
+                            detail="Ese elemento no tiene nota que resolver.")
+    # TENGA O NO BARRAS MARCADAS (12-nov): decide lo que eligió el auditor. Antes se
+    # respondía sólo sin barras marcadas, y con barras la nota no la contestaba nadie.
+    if trato != NOTA_TRATAMIENTO:
+        raise HTTPException(status_code=400,
+                            detail="Esa nota es un comentario del auditor: no se responde.")
     # Igual que la barra (21-oct): cualquiera lo resuelve; al dueño, aviso.
     return fila
 
@@ -3363,7 +3437,7 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
             cur.execute(
                 """UPDATE auditoria_elementos
                       SET causa = %s, causa_categoria = %s, causa_texto = %s,
-                          accion_estado = %s, accion_nota = %s, accion_por = %s,
+                          nota_estado = %s, accion_nota = %s, accion_por = %s,
                           accion_el = now(), accion_cc_nuevo = %s
                     WHERE id = %s""",
                 (causa, (body.causa_categoria or "").strip() or None,
@@ -3371,6 +3445,9 @@ def resolver_comentario(auditoria_id: int, elemento_id: int, body: ResolucionBod
                  (body.cc_nuevo or "").strip() or None
                  if estado == "corregida" and body.tipo == "nuevo" else None,
                  elemento_id))
+            # El estado del ELEMENTO se deriva (12-nov): la nota y, si tiene, sus barras.
+            cur.execute("UPDATE auditoria_elementos SET accion_estado = %s WHERE id = %s",
+                        (_accion_de_items(cur, elemento_id), elemento_id))
             _recalcular(cur, auditoria_id)
             audit(email, "auditoria_resolucion",
                   "%s · %s: %s%s" % (codigo, nombre, estado,
@@ -3944,12 +4021,12 @@ def tejas_informe(aud: dict) -> tuple:
     Cada cuadro es un código de control con sus hallazgos, y cada hallazgo una «teja»
     {item, el, obs, est, res, asa}. El usuario: «un cuadro por CC, compacto. Una "teja" por
     hallazgo que tenga Item - Observación - Resolución». `est` es Resuelto, No aplica,
-    Pendiente o Comentario; `asa`, lo que dijo aSa al resolver, con sus números.
+    o Pendiente; `asa`, lo que dijo aSa al resolver, con sus números.
 
-    EL COMENTARIO DEL ELEMENTO. Si el elemento no tiene barras marcadas, el comentario ES el
-    hallazgo y tiene su respuesta. Si las tiene, es una observación general que el flujo no
-    le pide responder a nadie: va como «Comentario», sin resolución, y no se cuenta como
-    hallazgo. Función pura."""
+    LA NOTA DEL ELEMENTO (12-nov). Si el auditor eligió que requiere tratamiento, es un
+    hallazgo más del elemento, con su respuesta, y va primera en su cuadro. Si la dejó como
+    comentario no va acá sino al final del informe (`comentarios_informe`): antes salía acá
+    como «Comentario · sin respuesta propia» y el usuario no la entendió. Función pura."""
     cuadros, ix, sin = [], {}, []
     for e in aud.get("elementos") or []:
         tejas = []
@@ -3976,18 +4053,14 @@ def tejas_informe(aud: dict) -> tuple:
             tejas.append({"item": b.get("ref") or b.get("marca") or "", "el": e.get("nombre") or "",
                           "obs": b.get("observacion") or "", "est": est, "res": res, "asa": asa,
                           "rca": _rca_de(b)})
-        if (e.get("texto") or "").strip():
-            if e.get("comentario_suelto"):
-                ae = e.get("accion_estado") or "pendiente"
-                est = ("No aplica" if ae == "desestimada"
-                       else "Resuelto" if ae in ("corregida", "verificada") else "Pendiente")
-                res = ((("en %s: " % e["accion_cc_nuevo"]) if e.get("accion_cc_nuevo") else "")
-                       + (e.get("accion_nota") or "")) if est != "Pendiente" else ""
-            else:
-                est, res = "Comentario", "Sin respuesta propia: va con las barras del elemento."
+        if e.get("nota_tratamiento"):
+            ne = e.get("nota_estado") or "pendiente"
+            est = ("No aplica" if ne == "desestimada"
+                   else "Resuelto" if ne in ("corregida", "verificada") else "Pendiente")
+            res = ((("en %s: " % e["accion_cc_nuevo"]) if e.get("accion_cc_nuevo") else "")
+                   + (e.get("accion_nota") or "")) if est != "Pendiente" else ""
             tejas.insert(0, {"item": "Elemento", "el": e.get("nombre") or "", "obs": e["texto"].strip(),
-                             "est": est, "res": res, "asa": "",
-                             "rca": _rca_de(e) if e.get("comentario_suelto") else None})
+                             "est": est, "res": res, "asa": "", "rca": _rca_de(e)})
         if not tejas:
             sin.append(" · ".join(x for x in (e.get("cc"), e.get("nombre")) if x))
             continue
@@ -4000,6 +4073,17 @@ def tejas_informe(aud: dict) -> tuple:
             ix[k]["cubs"].append(c)
         ix[k]["tejas"].extend(tejas)
     return cuadros, sin
+
+
+def comentarios_informe(aud: dict) -> list:
+    """LOS COMENTARIOS DEL AUDITOR (12-nov): las notas de elemento que el auditor dejó como
+    comentario. Nadie las responde y no son hallazgo, así que van al final del informe, en
+    azul. El usuario: «ese comentario igual deberás tirarlo al final del informe, puede ir
+    hasta otro color». [{donde, texto}]. Función pura."""
+    return [{"donde": " · ".join(x for x in (e.get("cc"), e.get("nombre")) if x),
+             "texto": e["texto"].strip()}
+            for e in aud.get("elementos") or []
+            if (e.get("texto") or "").strip() and not e.get("nota_tratamiento")]
 
 
 def _rca_de(x) -> Optional[tuple]:
@@ -4035,14 +4119,12 @@ def rca_informe(cuadros: list) -> list:
 def resumen_informe(cuadros: list) -> tuple:
     """El cierre del informe: por cubicador, cuántos hallazgos, cuántos aplican (resueltos),
     cuántos no, cuántos siguen pendientes y de los que aplican cuántos confirmó aSa. Los
-    comentarios generales no cuentan: no son un hallazgo con respuesta. Función pura:
-    ({cubicador: cuentas}, total)."""
+    comentarios del auditor no están acá: no son hallazgo (`comentarios_informe`). Función
+    pura: ({cubicador: cuentas}, total)."""
     por = {}
     for c in cuadros:
         quien = ", ".join(c["cubs"]) or "-"
         for t in c["tejas"]:
-            if t["est"] == "Comentario":
-                continue
             d = por.setdefault(quien, {"n": 0, "aplica": 0, "nap": 0, "pend": 0, "val": 0})
             d["n"] += 1
             if t["est"] == "No aplica":
@@ -4070,7 +4152,9 @@ class _InformePDF:
     TXT, GRIS, BORDE, FONDO = (41, 45, 50), (104, 117, 130), (217, 221, 227), (243, 244, 246)
     VERDE, ROJO, AMBAR, AZUL = (36, 132, 71), (220, 38, 38), (217, 119, 6), (16, 79, 158)
     CHIP = {"Resuelto": ((36, 132, 71), (232, 245, 236)), "No aplica": ((104, 117, 130), (236, 239, 241)),
-            "Pendiente": ((217, 119, 6), (255, 244, 230)), "Comentario": ((104, 117, 130), (236, 239, 241))}
+            "Pendiente": ((217, 119, 6), (255, 244, 230))}
+    # «Información» de tokens.json: los comentarios del auditor, al final, en azul.
+    INFO, INFO_FONDO = (23, 105, 194), (227, 242, 253)
     X0, W = 12, 186
     PIE = 277                     # hasta dónde se escribe: lo de abajo es del pie
     COLS = 3                      # tejas por fila (el usuario: «queda más compacto»)
@@ -4129,6 +4213,7 @@ class _InformePDF:
             self._linea("Sin hallazgos: " + ", ".join(sin), "I", self.GRIS)
         self._resumen(cuadros)
         self._causas(cuadros)
+        self._comentarios(comentarios_informe(self.a))
         buf = io.BytesIO()
         self.pdf.output(buf)
         buf.seek(0)
@@ -4224,7 +4309,7 @@ class _InformePDF:
         p.set_font("Helvetica", "", 7.5)
         p.set_text_color(*self.GRIS)
         p.cell(110, 4.2, s(c["descr"] + (" (continuación)" if cont else "")))
-        n = len([t for t in c["tejas"] if t["est"] != "Comentario"])
+        n = len(c["tejas"])
         p.set_xy(self.X0 + self.W - self.PAD - 70, y + 1)
         p.cell(70, 4.2, s("cubicó %s · %d hallazgo%s" % (", ".join(c["cubs"]) or "-", n, "" if n == 1 else "s")),
                align="R")
@@ -4270,7 +4355,7 @@ class _InformePDF:
         p.set_text_color(*self.GRIS)
         p.cell(24, 4, s(t["el"])[:18])
         # El estado en un chip, a la derecha: se lee de un vistazo sin leer la resolución.
-        fg, bg = self.CHIP.get(t["est"], self.CHIP["Comentario"])
+        fg, bg = self.CHIP.get(t["est"], self.CHIP["No aplica"])
         p.set_font("Helvetica", "B", 6.5)
         w = p.get_string_width(s(t["est"])) + 3.2
         p.set_fill_color(*bg)
@@ -4373,6 +4458,56 @@ class _InformePDF:
             for x in ("Total", "", "", str(total), "100%"):
                 fila.cell(s(x), style=FontFace(emphasis="BOLD"))
         p.ln(2)
+
+
+    # ── Los comentarios del auditor, al final y en azul ─────────────────────────────────
+    def _comentarios(self, lista):
+        """LAS NOTAS QUE EL AUDITOR DEJÓ COMO COMENTARIO (12-nov). Nadie las responde y no
+        son hallazgo: van al final, en el azul de «información», para que se lean como lo
+        que son."""
+        from fpdf.enums import MethodReturnValue
+        if not lista:
+            return
+        p, s = self.pdf, self._s
+        ETQ, LH, PAD = 46, 3.6, 1.8
+        wt = self.W - ETQ - 2 * PAD - 2
+
+        def alto(c):
+            p.set_font("Helvetica", "", 7.5)
+            n = len(p.multi_cell(wt, LH, s(c["texto"]), align="L", dry_run=True,
+                                 output=MethodReturnValue.LINES))
+            return max(1, n) * LH + 2 * PAD
+
+        if p.get_y() + 12 + alto(lista[0]) > self.PIE:
+            p.add_page()
+        p.set_font("Helvetica", "B", 10)
+        p.set_text_color(*self.INFO)
+        p.cell(0, 5, s("Comentarios del auditor"), new_x="LMARGIN", new_y="NEXT")
+        p.set_font("Helvetica", "", 7)
+        p.set_text_color(*self.GRIS)
+        p.cell(0, 3.6, s("Notas generales de elemento. No son hallazgos: nadie las responde."),
+               new_x="LMARGIN", new_y="NEXT")
+        p.ln(1.5)
+        for c in lista:
+            h = alto(c)
+            y = p.get_y()
+            if y + h > self.PIE:
+                p.add_page()
+                y = p.get_y()
+            p.set_fill_color(*self.INFO_FONDO)
+            p.rect(self.X0, y, self.W, h, style="F")
+            p.set_fill_color(*self.INFO)
+            p.rect(self.X0, y, 0.9, h, style="F")
+            p.set_xy(self.X0 + PAD + 1, y + PAD)
+            p.set_font("Helvetica", "B", 7.5)
+            p.set_text_color(*self.INFO)
+            p.cell(ETQ, LH, s(c["donde"])[:34])
+            p.set_xy(self.X0 + PAD + 1 + ETQ, y + PAD)
+            p.set_font("Helvetica", "", 7.5)
+            p.set_text_color(*self.TXT)
+            p.multi_cell(wt, LH, s(c["texto"]), align="L", new_x="LMARGIN", new_y="NEXT")
+            p.set_fill_color(255, 255, 255)
+            p.set_xy(self.X0, y + h + 1.2)
 
 
 # Cómo dice el estado la etiqueta de arriba a la derecha del informe.

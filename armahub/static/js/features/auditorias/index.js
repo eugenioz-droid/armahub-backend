@@ -101,6 +101,9 @@
   // muestra al cerrar el modal —ahí se escriben tipo, piso y ciclo en aSa—; REV_ABIERTA
   // dice si el modal está a la vista y SUCIO si hay algo marcado sin guardar.
   var REV_ABIERTA = false, SUCIO = false;
+  // CÓMO SE TRATA LA NOTA DEL ELEMENTO abierto (12-nov): 'comentario', 'tratamiento' o null
+  // (sin elegir). Con nota escrita, guardar pide que se elija.
+  var NOTA_TRATO = null;
   // LOS HALLAZGOS DE UN ELEMENTO EN SU MODAL (9-nov): el id del elemento a la vista.
   var ACC_EL = null;
 
@@ -330,7 +333,16 @@
     $('audRevGuardar').addEventListener('click', guardarHallazgo);
     $('audRevCerrar').addEventListener('click', cerrarRevision);
     $('audRevModal').addEventListener('click', function (e) { if (e.target === $('audRevModal')) cerrarRevision(); });
-    $('audRevTexto').addEventListener('input', function () { SUCIO = true; });
+    $('audRevTexto').addEventListener('input', function () {
+      SUCIO = true; _pintarNotaTrato(_puedoEditar()); _pintarCuentaRev();
+    });
+    $('audNotaPar').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-trato]');
+      if (!b || b.disabled) return;
+      NOTA_TRATO = b.dataset.trato; SUCIO = true;
+      $('audRevMsg').textContent = '';
+      _pintarNotaTrato(_puedoEditar()); _pintarCuentaRev();
+    });
     // El PDF se baja con fetch y no con un enlace: el token va en la cabecera, y un
     // <a href> no la lleva (daría 401). Mismo camino que el informe de reclamos.
     $('audPdf').addEventListener('click', async function () {
@@ -622,6 +634,11 @@
         return '<b>Faltan ' + falta + ' de ' + AUD.n + ' elementos</b> por revisar. ' +
                'Una auditoría se envía terminada: mientras no se mande, el auditado no la ve.';
       }
+      var sinElegir = _notasSinElegir();
+      if (sinElegir) {
+        return '<b>' + sinElegir + ' nota(s) de elemento sin elegir</b> si son Comentario o Requieren ' +
+               'tratamiento. Ábrelas (chip «nota: elige») y elige: sin eso no se envía.';
+      }
       return 'Todo revisado. Al enviarla, quien cubicó recibe sus barras y empieza a correr el plazo.';
     }
     var malas = AUD.barras_malas || 0, ok = AUD.barras_resueltas || 0;
@@ -656,7 +673,7 @@
         return '<span class="muted" style="font-size:10px">la envía ' +
                esc((AUD.auditor || 'su auditor').split('@')[0]) + ', que es quien la audita</span>';
       }
-      return '<button class="audenviar" id="audBtnEnviar"' + (falta > 0 ? ' disabled' : '') +
+      return '<button class="audenviar" id="audBtnEnviar"' + (falta > 0 || _notasSinElegir() ? ' disabled' : '') +
              '>Enviar al auditado</button>' +
              '<span class="audborrador" title="Mientras no se envíe, el auditado no ve nada.">borrador</span>';
     }
@@ -862,7 +879,7 @@
         // la tabla de acciones, que es donde se trabaja; acá va en el title.
         '<td title="' + esc(queSeEncontro(e)) + '">' + (e.hallazgo
           ? '<span class="audhz ' + esc(e.hallazgo) + '">' + esc(HALLAZGO_TXT[e.hallazgo]) + '</span>'
-          : '<span class="muted">pendiente</span>') +
+          : '<span class="muted">pendiente</span>') + _chipNota(e) +
           // UN VEREDICTO QUE NO ES DEL AUDITOR SE MARCA EN ROJO. Pasó el 11-oct: el auditado
           // guardó cuatro elementos como «conforme» desde este mismo formulario y la
           // auditoría se cerró «sin hallazgos» sin que nadie lo viera. El backend ya no lo
@@ -1637,9 +1654,6 @@
     if (pan) pan.classList.toggle('audsololeer', !puedo);
     if ($('audRevGuardar')) $('audRevGuardar').style.display = puedo ? '' : 'none';
     if ($('audRevTexto')) $('audRevTexto').readOnly = !puedo;
-    var c = cuentaBarras();
-    $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
-      (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '');
     // SIN SEVERIDAD DEL ELEMENTO (9-nov). Se elegía Observación u Hallazgo para el
     // conjunto, y Observación dejaba sin acción las barras marcadas con Hallazgo. El
     // usuario: «no me cuadra. Cada barra con su propio tratamiento». Una barra con
@@ -1655,10 +1669,44 @@
     if (ta && ta.dataset.de !== String(ELEM.id)) {
       ta.value = ELEM.texto || '';
       ta.dataset.de = String(ELEM.id);
+      NOTA_TRATO = ELEM.nota_trato || null;
     }
+    _pintarNotaTrato(puedo);
+    _pintarCuentaRev();
     $('audRevMsg').textContent = ELEM.revisado_el
       ? 'Registrado ' + ddmm(ELEM.revisado_el) + (ELEM.revisado_por ? ' por ' + ELEM.revisado_por.split('@')[0] : '')
       : '';
+  }
+
+  // CUÁNTO VA REVISADO, abajo del modal, y si la nota pide respuesta: lo que se va a
+  // guardar, dicho antes de guardarlo.
+  function _pintarCuentaRev() {
+    var c = cuentaBarras(), ta = $('audRevTexto');
+    var nota = !!(ta && ta.value.trim());
+    $('audRevCuenta').innerHTML = c.revisadas + ' de ' + c.total + ' barras revisadas' +
+      (c.malas ? ' · <b style="color:#c62828">' + c.malas + ' no conforme(s)</b>' : '') +
+      (nota && NOTA_TRATO === 'tratamiento' ? ' · <b style="color:#c62828">nota por responder</b>' : '') +
+      (nota && NOTA_TRATO === 'comentario' ? ' · nota como comentario' : '');
+  }
+
+  // LOS DOS BOTONES DE LA NOTA (12-nov). Apagados sin nota —no hay nada que elegir—; con
+  // nota y sin elegir, el par se rodea en ámbar con «Elige uno»: es obligatorio y se tiene
+  // que ver antes de apretar guardar, no después. Al elegir, el aviso se va.
+  function _pintarNotaTrato(puedo) {
+    var par = $('audNotaPar'), ta = $('audRevTexto'), av = $('audNotaAviso');
+    if (!par || !ta || !av) return;
+    var hay = !!ta.value.trim();
+    if (!hay) NOTA_TRATO = null;
+    par.querySelectorAll('button[data-trato]').forEach(function (b) {
+      var on = NOTA_TRATO === b.dataset.trato;
+      b.disabled = !hay || puedo === false;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    var pide = hay && !NOTA_TRATO && puedo !== false;
+    par.classList.toggle('pide', pide);
+    if (!pide) { par.classList.remove('falta'); av.classList.remove('falta'); }
+    av.textContent = pide ? 'Elige uno ▾' : '';
   }
 
   async function guardarHallazgo() {
@@ -1670,6 +1718,12 @@
       return VERED[r].conforme === false && !(VERED[r].observacion || '').trim();
     });
     if (faltan.length) { $('audRevMsg').textContent = 'Di qué tienen las barras ' + faltan.join(', ') + '.'; return; }
+    var nota = $('audRevTexto').value.trim();
+    if (nota && !NOTA_TRATO) {
+      $('audNotaPar').classList.add('falta'); $('audNotaAviso').classList.add('falta');
+      $('audRevMsg').textContent = 'Elige si la nota es Comentario o Requiere tratamiento.';
+      return;
+    }
     var items = Object.keys(VERED).map(function (r) {
       var i = -1;
       BARRAS.forEach(function (x, k) { if (x.ref === r) i = k; });
@@ -1685,7 +1739,7 @@
     $('audRevGuardar').disabled = true;
     try {
       AUD = await req('PUT', '/auditorias/' + AUD.id + '/elementos/' + ELEM.id + '/revision', {
-        items: items, texto: $('audRevTexto').value });
+        items: items, texto: $('audRevTexto').value, nota_trato: nota ? NOTA_TRATO : null });
       ok('Revisión guardada');
       // Guardar cierra el modal: de vuelta a la muestra, con el elemento al día.
       REV_ABIERTA = false; SUCIO = false;
@@ -1832,18 +1886,41 @@
   }
 
   // CUÁNTAS LÍNEAS TIENE UN ELEMENTO Y CUÁNTAS ESTÁN LISTAS (resueltas o no aplican). Una
-  // línea es una barra con hallazgo, o el comentario del elemento cuando no hay barras.
+  // línea es una barra con hallazgo, o la nota del elemento si el auditor pidió que se
+  // trate (12-nov: con o sin barras marcadas).
   function _cuentaLineas(e) {
     var total = 0, listas = 0, mias = 0;
     (e.barras_malas || []).forEach(function (b) {
       total++;
       if (b.corregido || b.desestimado) listas++; else if (e.mio) mias++;
     });
-    if (e.comentario_suelto) {
+    if (e.nota_tratamiento) {
       total++;
-      if ((e.accion_estado || 'pendiente') !== 'pendiente') listas++; else if (e.mio) mias++;
+      if ((e.nota_estado || 'pendiente') !== 'pendiente') listas++; else if (e.mio) mias++;
     }
     return { total: total, listas: listas, mias: mias };
+  }
+
+  // LA NOTA DEL ELEMENTO EN LA LISTA (12-nov). Comentario: chip azul, y el texto en el
+  // title, porque nadie lo abre para responderlo. Requiere tratamiento: chip rojo. Sin
+  // elegir: chip ámbar, que es lo que falta para poder enviar.
+  function _chipNota(e) {
+    var t = String(e.texto || '').trim();
+    if (!t) return '';
+    if (!e.nota_trato) {
+      return ' <span class="audntrchip pide" title="Esta nota no dice si es un comentario o si requiere ' +
+             'tratamiento. Abre el elemento y elige: sin eso la auditoría no se envía.">nota: elige</span>';
+    }
+    return e.nota_trato === 'comentario'
+      ? ' <span class="audntrchip com" title="Comentario del auditor (no se responde): ' + esc(t) + '">comentario</span>'
+      : ' <span class="audntrchip res" title="Nota que requiere tratamiento: ' + esc(t) + '">nota a tratar</span>';
+  }
+
+  // Las notas escritas sin elegir qué son: con alguna, no se envía.
+  function _notasSinElegir() {
+    return ((AUD && AUD.elementos) || []).filter(function (e) {
+      return String(e.texto || '').trim() && !e.nota_trato;
+    }).length;
   }
 
   // LOS HALLAZGOS DE UN ELEMENTO, EN SU MODAL (9-nov). El Resumen Hallazgos era una hoja
@@ -1972,13 +2049,21 @@
   // que encontró con un texto; si además corrigió un número, va debajo de ese texto.
   function _hojaElemento(e, g, listo) {
     var malas = e.barras_malas || [];
-    var filas = malas.length ? malas.map(function (b) { return filaAccion(e, b); }) : [filaComentario(e)];
+    // LA NOTA QUE REQUIERE TRATAMIENTO VA PRIMERO (12-nov), con las mismas salidas que una
+    // barra, tenga o no barras el elemento. Antes iba sólo sin barras marcadas, y con
+    // barras no se veía en ninguna parte.
+    var filas = malas.map(function (b) { return filaAccion(e, b); });
+    if (e.nota_tratamiento) filas.unshift(filaComentario(e));
+    // El comentario del auditor no se responde: va arriba, en azul y sin botones.
+    var com = (e.nota_trato === 'comentario' && String(e.texto || '').trim())
+      ? '<div class="audntrcom"><b>Comentario del auditor · no se responde</b>' + esc(String(e.texto).trim()) + '</div>'
+      : '';
     // LA COLUMNA «ACCIÓN» SÓLO SI ALGUNA FILA TIENE BOTONES (12-nov). En una auditoría
     // cerrada, o para quien sólo mira, quedaba una columna vacía de 340 px. El usuario: «en
     // acción me sale en blanco … me huele que sobra».
     var conAccion = filas.some(function (f) { return !!f.accion; });
     var marcables = _actuo() && malas.some(function (b) { return !b.corregido && !b.desestimado; });
-    return '<div class="revcc2 audhoja' + (listo ? ' listo' : '') + '" data-grupocc="' + esc(g.cc) + '">' +
+    return com + '<div class="revcc2 audhoja' + (listo ? ' listo' : '') + '" data-grupocc="' + esc(g.cc) + '">' +
       global.HojaBarras.tabla({
         check: { titulo: marcables
           ? '<input type="checkbox" data-aselgrp="' + esc(g.cc) + '" title="Marcar todas las barras ' +
@@ -2167,11 +2252,12 @@
   // queda dicho cuál, sin marca, porque no hay barra. En la tabla común cruza a lo ancho
   // las columnas de la barra.
   function filaComentario(e) {
-    var est = e.accion_estado || 'pendiente';
+    // La nota tiene su propio estado (12-nov): el del elemento sale de ella y de sus barras.
+    var est = e.nota_estado || 'pendiente';
     var resuelto = est === 'corregida' || est === 'verificada';
     var nap = est === 'desestimada';
     var abierta = !resuelto && !nap;
-    var puede = !!(e.comentario_suelto && _actuo());
+    var puede = !!(e.nota_tratamiento && _actuo());
     var lin = 'e' + e.id;
     var estado = nap
       ? '<span class="revi aceptada" title="' + esc(e.accion_nota || '') + '">No aplica</span>'
@@ -2184,7 +2270,8 @@
       accion: _accionesAud(lin, abierta, puede, false, null),
       barra: null,
       sinBarra: '<span class="audref" title="Este hallazgo no es de una barra en particular: es ' +
-                'del elemento.">elemento</span> <span class="muted">— no es de una barra en particular</span>',
+                'del elemento, y el auditor pidió que se responda.">elemento</span> <span class="muted">— ' +
+                'nota del auditor, no es de una barra en particular</span>',
       propias: [esc(e.texto || ''), estado + _porOtro(e.resuelto_por_otro),
                 _celdaRca(e, resuelto, nap, 'data-ecausa', e.id, puede && abierta, 'darlo por resuelto')],
       texto: _textoAud(lin, abierta, puede, false, firma)
