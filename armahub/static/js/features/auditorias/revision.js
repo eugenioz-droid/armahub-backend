@@ -354,11 +354,27 @@
              pct: apl ? Math.round((c.resueltos || 0) / apl * 100) : null };
   }
 
+  // LAS CORRIDAS QUE NO ENCONTRARON NADA NO SE LISTAN (13-nov): el reloj corre todas las
+  // noches y casi siempre sale limpio, así que la lista era una pared de «sin hallazgos».
+  // No se pierden: el servidor las cuenta por año y acá se dice cuántas fueron y cuándo
+  // fue la última, que es lo que prueba que la revisión sigue corriendo.
+  function _sinHallazgos() {
+    var n = 0, ultima = null;
+    ((REVS.total || {}).sin_hallazgos || []).forEach(function (v) {
+      if (REVS.anio && String(v.anio) !== String(REVS.anio)) return;
+      n += v.n || 0;
+      if (v.ultima && (!ultima || v.ultima > ultima)) ultima = v.ultima;
+    });
+    return { n: n, ultima: ultima,
+             txt: n ? n + ' corrida(s) sin hallazgos' + (ultima ? ', la última el ' + _fechaHora(ultima) : '') : '' };
+  }
+
   function pintarRevisiones() {
     var el = $('revLista');
     if (!el) return;
-    var vis = _visibles();
-    $('revListaN').textContent = vis.length + ' revisión(es)' + (REVS.filtro_cub ? ' · ' + nomCub(REVS.filtro_cub) : '');
+    var vis = _visibles(), vac = _sinHallazgos();
+    $('revListaN').textContent = vis.length + ' revisión(es)' + (REVS.filtro_cub ? ' · ' + nomCub(REVS.filtro_cub) : '') +
+      (vac.n ? ' · no se listan ' + vac.txt : '');
     // El filtro de año sólo aparece cuando hay más de uno: con un año solo es un control
     // que no decide nada.
     var anios = _anios();
@@ -376,9 +392,12 @@
       });
     }
     if (!vis.length) {
-      el.innerHTML = '<div class="revvacio">' + (REVS.lista.length
-        ? 'No hay revisiones de ese año.'
-        : 'Todavía no se ha hecho ninguna revisión. Apreta «Nueva revisión».') + '</div>';
+      // Con corridas hechas y ninguna con hallazgos, «no se ha hecho ninguna» sería falso.
+      el.innerHTML = '<div class="revvacio">' + (vac.n
+        ? 'Ninguna revisión ha encontrado hallazgos' + (REVS.anio ? ' ese año' : '') + ': ' + vac.txt + '.'
+        : REVS.lista.length
+          ? 'No hay revisiones de ese año.'
+          : 'Todavía no se ha hecho ninguna revisión. Apreta «Nueva revisión».') + '</div>';
       return;
     }
     // LA TABLA NO SE MUEVE: las columnas son siempre las mismas, estés filtrando o no.
@@ -1847,6 +1866,7 @@
     }
   };
 
-  global.__revisionTest = { REV: REV, estadoTxt: ESTADO_TXT };
+  global.__revisionTest = { REV: REV, estadoTxt: ESTADO_TXT, REVS: REVS,
+                            pintarRevisiones: pintarRevisiones };
 
 })(window);

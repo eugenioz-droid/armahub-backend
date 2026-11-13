@@ -1550,6 +1550,16 @@ def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_use
             # EL AVANCE DE CADA REVISIÓN, contado sobre SUS señales: una revisión sin
             # resolver no se arrastra a la siguiente —lo pidió el usuario— así que la suya
             # tiene que mostrar que sigue abierta.
+            #
+            # SE LISTAN LAS QUE ENCONTRARON ALGO (13-nov). El reloj corre todas las noches y
+            # casi siempre no encuentra nada: en «Revisión de elementos» 19 de 25 filas eran
+            # «sin hallazgos» y tapaban las seis con trabajo. El usuario: «limpia esas
+            # revisiones que no tienen nada». NO SE BORRAN: la misma corrida puede tener
+            # hallazgos en el otro nivel, y que se revisó y no salió nada también es un
+            # dato; se cuentan aparte, abajo, y la pantalla lo dice en el encabezado. El
+            # filtro va ANTES del tope de 60: si no, las vacías sacarían de la lista a las
+            # que sí tienen algo. Es por lo que la corrida encontró en ESTE nivel, nunca
+            # por el filtro de cubicador: con el filtro puesto la fila sigue ahí, en gris.
             cur.execute(
                 """SELECT r.id, r.id_proyecto, r.obra, r.lanzada_por, r.arrancada, r.terminada,
                           r.ccs, r.ccs_error, r.barras, r.senales_nuevas, r.senales_vistas,
@@ -1576,8 +1586,21 @@ def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_use
                      LEFT JOIN chequeo_senales s ON s.revision_id = r.id AND s.nivel = %s
                     WHERE (%s = '' OR r.id_proyecto = %s)
                     GROUP BY r.id
+                   HAVING COUNT(s.id) > 0
                     ORDER BY r.arrancada DESC LIMIT 60""", (_nivel(nivel), job, job))
             filas = cur.fetchall()
+            # Las corridas que no encontraron nada en este nivel, por año —la lista se
+            # filtra por año y la cuenta tiene que seguirla—, con la fecha de la última:
+            # es la prueba de que el reloj sigue corriendo.
+            cur.execute(
+                """SELECT EXTRACT(YEAR FROM r.arrancada)::int, COUNT(*), MAX(r.arrancada)
+                     FROM chequeo_revisiones r
+                    WHERE (%s = '' OR r.id_proyecto = %s)
+                      AND NOT EXISTS (SELECT 1 FROM chequeo_senales s
+                                       WHERE s.revision_id = r.id AND s.nivel = %s)
+                    GROUP BY 1 ORDER BY 1 DESC""", (job, job, _nivel(nivel)))
+            vacias = [{"anio": a, "n": n, "ultima": u.isoformat() if u else None}
+                      for a, n, u in cur.fetchall()]
             # EL DESGLOSE POR CUBICADOR, para la matriz: una columna por persona, y las
             # personas salen del dato, no de una lista. Si mañana aparece alguien nuevo,
             # su columna aparece sola; si un año no tiene hallazgos de alguien, su columna
@@ -1665,6 +1688,8 @@ def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_use
             a["viejas"] += c.get("viejas", 0); a["ccs"] += c.get("ccs", 0); a["obras"] += c.get("obras", 0)
     total["barras"] = sum(r["barras"] or 0 for r in revs)
     total["ccs"] = sum(r["ccs"] or 0 for r in revs)
-    total["revisiones"] = len(revs)
+    # «Corridas» son TODAS las que se hicieron, hayan encontrado algo o no.
+    total["revisiones"] = len(revs) + sum(v["n"] for v in vacias)
+    total["sin_hallazgos"] = vacias
     total["por_cubicador"] = cubs
     return {"revisiones": revs, "total": total}

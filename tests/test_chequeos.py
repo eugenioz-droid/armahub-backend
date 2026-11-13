@@ -1776,5 +1776,57 @@ check("en el nivel de elementos el plegable no aparece",
 check("la leyenda de la excepción dice el límite propio, sin cifras",
       por["altura_soporte_losa"]["ejemplo"]["leyenda"] == "B y D ≥ altura mínima del φ")
 
+# ── 8. La lista muestra las revisiones que encontraron algo (13-nov) ────────────────
+# EL CASO: «Revisión de elementos» listaba 25 revisiones y 19 decían «automática · sin
+# hallazgos». El usuario: «limpia esas revisiones que no tienen nada». No se borran —la
+# misma corrida puede tener hallazgos de barras, y que se revisó también es un dato—: se
+# dejan de listar y se cuentan aparte.
+print("\nLA LISTA MUESTRA LAS REVISIONES QUE ENCONTRARON ALGO (13-nov)")
+import datetime as _dt  # noqa: E402
+
+_LISTADO = API.split("def revisiones(")[1]
+check("las corridas sin hallazgos en ese nivel no se listan, y se filtran ANTES del tope de 60",
+      "HAVING COUNT(s.id) > 0" in _LISTADO
+      and _LISTADO.index("HAVING COUNT(s.id) > 0") < _LISTADO.index("ORDER BY r.arrancada DESC LIMIT 60"))
+check("...por lo que la corrida encontró, no por el filtro de cubicador: la fila sin nada de esa persona sigue en gris",
+      "var apagada = !t.n;" in JS and "cubico = %s" not in _LISTADO.split("HAVING COUNT(s.id) > 0")[0])
+
+
+class _CursorLista(_CursorContable):
+    """El listado contra una base de mentira: 2 corridas con hallazgos y, aparte, las que no."""
+    def fetchall(self):
+        if "NOT EXISTS" in self.ultima:
+            return [(2026, 19, _dt.datetime(2026, 11, 12, 23, 1, tzinfo=_dt.timezone.utc)),
+                    (2025, 2, _dt.datetime(2025, 12, 30, 23, 0, tzinfo=_dt.timezone.utc))]
+        if "FROM chequeo_revisiones r" in self.ultima:
+            ahora = _dt.datetime(2026, 11, 4, 23, 1, tzinfo=_dt.timezone.utc)
+            return [(17, None, "Revisión automática", "reloj", ahora, ahora, 40, 0, 900, 3, 0,
+                     3, 3, 0, 1, 0, 0, 2026),
+                    (20, None, "Revisión automática", "reloj", ahora, ahora, 35, 0, 800, 5, 0,
+                     5, 0, 0, 2, 0, 0, 2026)]
+        return []
+
+    def fetchone(self):
+        return tuple([0] * _columnas(self.ultima))
+
+
+class _ConnLista(_ConnContable):
+    def cursor(self):
+        return _CursorLista(self.b)
+
+
+_A.get_conn = lambda *a, **k: _ConnLista([])
+try:
+    _resp = _A.revisiones(job="", nivel="elemento", user=_u)
+finally:
+    _A.get_conn = _real
+check("el listado trae sólo las que tienen hallazgos, y cuenta aparte las que no, por año y con la última",
+      [r["id"] for r in _resp["revisiones"]] == [17, 20]
+      and _resp["total"]["sin_hallazgos"] == [
+          {"anio": 2026, "n": 19, "ultima": "2026-11-12T23:01:00+00:00"},
+          {"anio": 2025, "n": 2, "ultima": "2025-12-30T23:00:00+00:00"}])
+check("...y «corridas» siguen siendo todas las que se hicieron: 2 listadas + 21 sin hallazgos",
+      _resp["total"]["revisiones"] == 23)
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

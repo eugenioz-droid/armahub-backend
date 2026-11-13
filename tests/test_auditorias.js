@@ -159,5 +159,60 @@ check('la reconstruccion que cuadra no lleva marca ninguna',
 check('la pantalla no vuelve a escalar el trazo: esa decision vive en el backend',
       fuente.indexOf('svgTrazoAsa') === -1 && fuente.indexOf('asa_figuras_catalogo') === -1);
 
+// ── LA LISTA DE REVISIONES NO MUESTRA LAS CORRIDAS VACÍAS (13-nov) ────────────────────
+// «Revisión de elementos» listaba 25 revisiones y 19 decían «sin hallazgos». El servidor ya
+// no las manda en la lista: las cuenta por año. Acá se EJECUTA la pantalla de verdad
+// (revision.js) contra un DOM de mentira y se lee lo que deja escrito.
+console.log('\n7. La lista de revisiones: las corridas sin hallazgos se cuentan, no se listan');
+const nodos = {};
+const nodo = (id) => nodos[id] || (nodos[id] = {
+  id, textContent: '', innerHTML: '', style: { setProperty() {} }, dataset: {},
+  querySelector: () => null, querySelectorAll: () => [], addEventListener() {} });
+const sbRev = {
+  console, setTimeout, clearTimeout, document: { getElementById: nodo, querySelectorAll: () => [] },
+  nomCub: (q) => String(q).toUpperCase(), cargarNomCub: () => Promise.resolve(),
+  authHeaders: () => ({}), currentRole: 'admin',
+};
+sbRev.window = sbRev;
+vm.createContext(sbRev);
+const rutaRev = path.join(__dirname, '..', 'armahub', 'static', 'js', 'features', 'auditorias', 'revision.js');
+vm.runInContext(fs.readFileSync(rutaRev, 'utf8'), sbRev, { filename: rutaRev });
+const R = sbRev.__revisionTest;
+check('revision.js carga y deja pintar la lista', !!R && typeof R.pintarRevisiones === 'function');
+const corrida = (id, anio, por) => ({
+  id, anio, por: 'reloj', obra: 'Revisión automática', arrancada: anio + '-11-04T23:01:00+00:00',
+  detectados: 3, no_aplica: 0, resueltas: 0, aplican: 3, pct: 0, por_cubicador: por });
+R.REVS.filtro_cub = null;
+R.REVS.lista = [corrida(17, 2026, { eramirez: { n: 3, no_aplica: 0, resueltos: 0, cerrados: 0 } }),
+                corrida(20, 2026, { nlopez: { n: 3, no_aplica: 0, resueltos: 0, cerrados: 0 } })];
+R.REVS.total = { por_cubicador: { eramirez: { n: 3 }, nlopez: { n: 3 } },
+                 sin_hallazgos: [{ anio: 2026, n: 19, ultima: '2026-11-12T23:01:00+00:00' },
+                                 { anio: 2025, n: 2, ultima: '2025-12-30T23:00:00+00:00' }] };
+R.pintarRevisiones();
+check('el encabezado dice cuántas se listan y cuántas corridas sin hallazgos no, con la fecha de la última',
+      /^2 revisión\(es\) · no se listan 21 corrida\(s\) sin hallazgos, la última el \d\d-11 \d\d:\d\d$/
+        .test(nodos.revListaN.textContent));
+check('...y la tabla trae sólo las dos filas con hallazgos',
+      (nodos.revLista.innerHTML.match(/class="revmatf/g) || []).length === 2);
+// La matriz no se mueve con el filtro (2-nov): la fila sin nada de esa persona sigue, en gris.
+R.REVS.filtro_cub = 'eramirez';
+R.pintarRevisiones();
+check('con el filtro de cubicador la fila sin nada de esa persona NO desaparece: va en gris',
+      (nodos.revLista.innerHTML.match(/class="revmatf/g) || []).length === 2
+      && (nodos.revLista.innerHTML.match(/revmatf apagada/g) || []).length === 1
+      && nodos.revListaN.textContent.indexOf('2 revisión(es) · ERAMIREZ · no se listan 21 ') === 0);
+// El filtro de año manda también sobre la cuenta de las vacías.
+R.REVS.filtro_cub = null; R.REVS.anio = '2025';
+R.pintarRevisiones();
+check('con un año elegido, la cuenta de las vacías es la de ese año, y no dice «no se ha hecho ninguna»',
+      nodos.revListaN.textContent.indexOf('0 revisión(es) · no se listan 2 corrida(s) sin hallazgos') === 0
+      && nodos.revLista.innerHTML.indexOf('Ninguna revisión ha encontrado hallazgos ese año: 2 corrida(s) sin hallazgos') !== -1
+      && nodos.revLista.innerHTML.indexOf('Todavía no se ha hecho ninguna') === -1);
+R.REVS.anio = null; R.REVS.lista = []; R.REVS.total = { sin_hallazgos: [] };
+R.pintarRevisiones();
+check('sin ninguna corrida hecha sigue invitando a hacer la primera',
+      nodos.revListaN.textContent === '0 revisión(es)'
+      && nodos.revLista.innerHTML.indexOf('Todavía no se ha hecho ninguna revisión') !== -1);
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exit(fallos ? 1 : 0);
