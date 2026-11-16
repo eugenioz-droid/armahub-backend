@@ -173,8 +173,12 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
 def _puede_ver_reclamo(rec: dict, user: dict, cur=None) -> bool:
     """
     True si el usuario puede ver este reclamo.
-    admin/admin_calidad/cubicador → todo. usc/externo → solo propios.
-    jefe_servicio/miembro → reclamos del área a la que pertenecen (requiere cur).
+    admin/admin_calidad → todo. usc/externo → solo propios.
+    jefe_servicio/miembro → los suyos (es el responsable) y los del área a la que
+    pertenecen (requiere cur). Los suyos, porque la lista de Presentaciones se los
+    muestra por ser el responsable: sin esto el cubicador elegía un reclamo de la lista y
+    la ficha le contestaba «No tiene permiso» cuando el reclamo era de otra área o no
+    tenía (16-nov).
     cliente → sin acceso.
     """
     role = user.get("role", "")
@@ -186,6 +190,8 @@ def _puede_ver_reclamo(rec: dict, user: dict, cur=None) -> bool:
     if role == "externo":
         return _es_propietario_cubicador(rec, email)
     if role in ("jefe_servicio", "miembro"):
+        if _es_propietario_cubicador(rec, email):
+            return True
         reclamo_area = rec.get("area_id")
         if not reclamo_area or cur is None:
             return False
@@ -2916,12 +2922,13 @@ def ver_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
         with conn.cursor(row_factory=dict_row) as cur:
             # 1) Validar permiso de ver ESTE reclamo
             cur.execute("""
-                SELECT creado_por, asignado_a, cubicador_asignado, respuesta_por
+                SELECT creado_por, asignado_a, cubicador_asignado, respuesta_por, area_id
                 FROM reclamos WHERE id = %s
             """, (reclamo_id,))
             rec = cur.fetchone()
             if not rec:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+            # Sin area_id, a jefe_servicio y miembro se les negaba toda imagen.
             if not _puede_ver_reclamo(rec, user, cur):
                 raise HTTPException(status_code=403, detail="No tiene permiso para ver esta imagen")
 

@@ -244,6 +244,8 @@ function _renderPresentacionImagenes(detail) {
   if (imgRespDiv) imgRespDiv.innerHTML = '';
 
   setTimeout(function() {
+    // Si en estos 200 ms ya eligieron otro reclamo, estas imágenes ya no son las de la ficha.
+    if (String(detail.id) !== document.getElementById('presReclamoSelect').value) return;
     if (imagenesRegistro.length > 0) {
       imageRenderer.renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
     } else if (imgRecDiv) {
@@ -282,14 +284,16 @@ function _renderPresentacionEstado(detail) {
   }
 }
 
-function _renderPresentacionDetail(detail) {
+// sinFormulario: cuando llega el detalle del reclamo que ya está a la vista, el formulario
+// de la presentación no se repinta: lo que el usuario alcanzó a marcar se queda.
+function _renderPresentacionDetail(detail, sinFormulario) {
   document.getElementById('presAntecedentes').style.display = '';
   _renderPresentacionHeader(detail);
   _renderPresentacionRegistro(detail);
   _renderPresentacionAnalisis(detail);
   _renderPresentacionAcciones(detail);
   _renderPresentacionImagenes(detail);
-  _renderPresentacionEstado(detail);
+  if (!sinFormulario) _renderPresentacionEstado(detail);
 }
 
 async function seleccionarReclamoPres() {
@@ -308,10 +312,18 @@ async function seleccionarReclamoPres() {
   var rec = _presData.reclamos.find(function(r) { return r.id === id; });
   if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
 
+  // Al toque, con lo que ya trae la lista: toda la ficha y el formulario de la
+  // presentación. Las acciones y las imágenes llegan con el detalle; mientras, la ficha
+  // queda atenuada. Así nunca se ve el reclamo anterior bajo el nombre del nuevo.
+  _renderPresentacionDetail(_adaptLegacyPresentacionRecord(rec, _normalizeReclamoDetail(rec)));
+  antDiv.style.opacity = '0.5';
+
   var detail = await apiGet('/reclamos/' + id);
+  if (sel.value !== String(id)) return;  // ya eligieron otro: esa respuesta es la que manda
+  antDiv.style.opacity = '';
   if (!detail) return;
   detail = _adaptLegacyPresentacionRecord(rec, _normalizeReclamoDetail(detail));
-  _renderPresentacionDetail(detail);
+  _renderPresentacionDetail(detail, true);
 }
 
 function getFileIcon(filename) {
