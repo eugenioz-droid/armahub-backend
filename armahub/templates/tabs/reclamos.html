@@ -990,19 +990,28 @@
               </div>
             </div>
             <div class="dshbarra">
+              <span class="dshbl">Año</span>
+              <div id="presAnios" class="dshchips"></div>
+              <span class="dshsep"></span>
+              <span class="dshbl">Mes</span>
+              <div id="presMeses" class="dshchips"></div>
+              <span class="muted" style="font-size:10px;">por fecha de detección</span>
+              <span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>
+            </div>
+            <div class="dshbarra">
               <span class="dshbl">Presentación</span>
               <div id="presChips" class="dshchips">
                 <button data-f="pend" class="on" onclick="presFiltrarEstado('pend')">Por presentar<i>0</i></button>
                 <button data-f="hecho" onclick="presFiltrarEstado('hecho')">Presentados<i>0</i></button>
                 <button data-f="todos" onclick="presFiltrarEstado('todos')">Todos<i>0</i></button>
               </div>
+              <span class="dshsep"></span>
               <span class="dshbl">Buscar</span>
               <input type="text" id="presBuscar" class="ahcub" placeholder="🔍 código, obra o título" oninput="presFiltrarTexto()">
             </div>
             <div id="presFiltroCubWrap" class="dshbarra" style="display:none;">
               <span class="dshbl">Cubicador</span>
               <div id="presCubChips" class="dshchips"></div>
-              <span class="muted" style="font-size:10px; margin-left:auto;">clic = sólo ése · Ctrl+clic = sumar · clic en el encendido = todos</span>
             </div>
             <div style="margin-bottom:10px;">
               <label style="font-size:11px; color:#666;">Seleccionar reclamo para presentar</label>

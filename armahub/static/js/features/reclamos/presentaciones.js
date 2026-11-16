@@ -6,6 +6,8 @@ var _presChartPorPresentar = null;
 var _presChartPresentados = null;
 var _presColors = ['#7B1FA2','#1565C0','#e53935','#ff9800','#2e7d32','#00897B','#795548','#607D8B','#F44336','#009688'];
 var _presCubs = [];             // cubicadores elegidos (vacío = todos)
+var _presAnio = null;           // año elegido (0 = todos); al cargar, el más reciente
+var _presMeses = [];            // meses elegidos (vacío = todos), por fecha de detección
 var _presFiltroEstado = 'pend';  // pend | hecho | todos
 var _presTexto = '';            // lo escrito en Buscar, sin tildes y en minúsculas
 var _presFijo = null;           // el recién presentado sigue a la vista aunque el filtro lo saque
@@ -17,6 +19,7 @@ async function loadPresentaciones() {
     reclamos: (data.data || data.reclamos || []).map(_normalizeReclamoListItem)
   });
 
+  _renderPresPeriodo();
   _renderPresFiltroCub();
   _renderPresChips();
   _renderPresReclamoOptions(false);
@@ -57,18 +60,69 @@ function _presSinTildes(s) {
 function _presPasaCub(r) { return !_presCubs.length || _presCubs.indexOf(_presCubKey(r)) >= 0; }
 
 function _presPasaTexto(r) {
-  return !_presTexto || _presSinTildes([r.correlativo, r.titulo, r.nombre_proyecto].join(' ')).indexOf(_presTexto) >= 0;
+  return !_presTexto || _presSinTildes([_formatCorrelativoCalidad(r), r.correlativo, r.titulo, r.nombre_proyecto].join(' ')).indexOf(_presTexto) >= 0;
+}
+
+// sinMes: para contar los chips de mes, que no se filtran a sí mismos.
+function _presPasaPeriodo(r, sinMes) {
+  return (!_presAnio || r.anio === _presAnio)
+    && (sinMes || !_presMeses.length || _presMeses.indexOf(r.mes) >= 0);
+}
+
+function _presChip(cont, texto, n, on, alClic) {
+  var b = document.createElement('button');
+  b.textContent = texto;
+  var i = document.createElement('i');
+  i.textContent = n;
+  b.appendChild(i);
+  if (on) b.className = 'on';
+  b.addEventListener('click', alClic);
+  cont.appendChild(b);
+}
+
+// Año y mes, como en los dashboards de programación: el año es un interruptor (tocar el
+// encendido = todos los años) y parte en el más reciente; los meses se eligen con rhMarcar.
+function _renderPresPeriodo() {
+  var reclamos = (_presData && _presData.reclamos) || [];
+  var porAnio = {}, porMes = {};
+  reclamos.forEach(function(r) {
+    if (!r.anio) return;
+    if (!(r.anio in porAnio)) porAnio[r.anio] = 0;
+    if (!_presPasaCub(r) || !_presPasaEstado(r) || !_presPasaTexto(r)) return;
+    porAnio[r.anio]++;
+    if (_presPasaPeriodo(r, true)) porMes[r.mes] = (porMes[r.mes] || 0) + 1;
+  });
+  var anios = Object.keys(porAnio).map(Number).sort(function(a, b) { return b - a; });
+  if (_presAnio === null || (_presAnio && anios.indexOf(_presAnio) < 0)) _presAnio = anios[0] || 0;
+  var contA = document.getElementById('presAnios');
+  var contM = document.getElementById('presMeses');
+  if (!contA || !contM) return;
+  contA.innerHTML = '';
+  anios.forEach(function(a) {
+    _presChip(contA, String(a), porAnio[a], a === _presAnio, function() {
+      _presAnio = (_presAnio === a) ? 0 : a;
+      _presAplicarFiltros();
+    });
+  });
+  contM.innerHTML = '';
+  MESES_C.forEach(function(nombre, i) {
+    var m = i + 1;
+    _presChip(contM, nombre, porMes[m] || 0, _presMeses.indexOf(m) >= 0, function(ev) {
+      rhMarcar(_presMeses, m, ev);
+      _presAplicarFiltros();
+    });
+  });
 }
 
 function _presPasaEstado(r) {
   return _presFiltroEstado === 'todos' || (_presFiltroEstado === 'hecho') === !!r.presentacion_realizada;
 }
 
-// Los conteos de los chips cuentan lo que dejan pasar el cubicador y la búsqueda.
+// Los conteos de los chips cuentan lo que dejan pasar el período, el cubicador y la búsqueda.
 function _renderPresChips() {
   var n = { pend: 0, hecho: 0, todos: 0 };
   ((_presData && _presData.reclamos) || []).forEach(function(r) {
-    if (!_presPasaCub(r) || !_presPasaTexto(r)) return;
+    if (!_presPasaPeriodo(r) || !_presPasaCub(r) || !_presPasaTexto(r)) return;
     n.todos++;
     n[r.presentacion_realizada ? 'hecho' : 'pend']++;
   });
@@ -90,7 +144,7 @@ function _renderPresFiltroCub() {
   (_presData.reclamos || []).forEach(function(r) {
     var k = _presCubKey(r);
     var c = cubs[k] || (cubs[k] = { nombre: r.cubicador_nombre || 'Sin asignar', n: 0 });
-    if (_presPasaEstado(r) && _presPasaTexto(r)) c.n++;
+    if (_presPasaPeriodo(r) && _presPasaEstado(r) && _presPasaTexto(r)) c.n++;
   });
   _presCubs = _presCubs.filter(function(k) { return cubs[k]; });
   var keys = Object.keys(cubs).sort(function(a, b) {
@@ -110,7 +164,10 @@ function _renderPresFiltroCub() {
     });
     cont.appendChild(b);
   });
-  wrap.style.display = keys.length > 1 ? '' : 'none';
+  // Sólo para quien ve a todos. Al cubicador la lista le trae lo suyo y lo que él
+  // respondió de otros; botones con esos nombres parecían un error (16-nov, Emilio).
+  var veTodos = currentRole === 'admin' || currentRole === 'admin_calidad';
+  wrap.style.display = (veTodos && keys.length > 1) ? '' : 'none';
 }
 
 // La lista de reclamos: sólo lo que dejan pasar los filtros. ◀ ▶ recorren esta lista.
@@ -119,11 +176,11 @@ function _renderPresReclamoOptions(mantener) {
   var actual = sel.value;
   sel.innerHTML = '<option value="">— Seleccionar reclamo —</option>';
   (_presData.reclamos || []).forEach(function(r) {
-    if (r.id !== _presFijo && !(_presPasaCub(r) && _presPasaEstado(r) && _presPasaTexto(r))) return;
+    if (r.id !== _presFijo && !(_presPasaPeriodo(r) && _presPasaCub(r) && _presPasaEstado(r) && _presPasaTexto(r))) return;
     var badge = r.presentacion_realizada ? '✅ ' : '⏳ ';
     var opt = document.createElement('option');
     opt.value = r.id;
-    opt.textContent = badge + (r.correlativo || '#' + r.id) + ' — ' + (r.titulo || '').substring(0, 50) + ' [' + r.cubicador_nombre + ']';
+    opt.textContent = badge + (_formatCorrelativoCalidad(r) || r.correlativo || '#' + r.id) + ' — ' + (r.titulo || '').substring(0, 50) + ' [' + r.cubicador_nombre + ']';
     sel.appendChild(opt);
   });
   if (!mantener) return;
@@ -135,9 +192,11 @@ function _presAplicarFiltros() {
   _presFijo = null;
   var sel = document.getElementById('presReclamoSelect');
   var antes = sel.value;
+  _renderPresPeriodo();
   _renderPresChips();
   _renderPresFiltroCub();
   _renderPresReclamoOptions(true);
+  loadPresStats();
   if (antes && sel.value !== antes) seleccionarReclamoPres();  // el abierto quedó fuera: se cierra
 }
 
@@ -535,52 +594,59 @@ async function guardarPresentacion() {
   }
 }
 
-async function loadPresStats() {
-  var data = await apiGet('/reclamos/presentaciones-stats');
-  if (!data) return;
+// Los contadores y los gráficos salen de la misma lista, con el período y el cubicador
+// elegidos; no con «Presentación» ni «Buscar», porque muestran las dos cosas y la búsqueda
+// es para encontrar un reclamo. Antes los traía otra consulta que no seguía ningún filtro.
+function loadPresStats() {
+  var pres = {}, pend = {}, nPres = 0, nPend = 0;
+  ((_presData && _presData.reclamos) || []).forEach(function(r) {
+    if (!_presPasaPeriodo(r) || !_presPasaCub(r)) return;
+    var g = r.presentacion_realizada ? pres : pend;
+    var k = _presCubKey(r);
+    g[k] = g[k] || { nombre: r.cubicador_nombre || 'Sin asignar', total: 0 };
+    g[k].total++;
+    if (r.presentacion_realizada) nPres++; else nPend++;
+  });
+  document.getElementById('presDashPresentados').textContent = nPres;
+  document.getElementById('presDashPorPresentar').textContent = nPend;
+  _presChartPorPresentar = _presGraficoCub(_presChartPorPresentar, 'presChartPorPresentar', pend);
+  _presChartPresentados = _presGraficoCub(_presChartPresentados, 'presChartPresentados', pres);
+}
 
-  document.getElementById('presDashPresentados').textContent = data.presentados || 0;
-  document.getElementById('presDashPorPresentar').textContent = data.por_presentar || 0;
-
-  var ppData = data.por_presentar_por_cubicador || [];
-  var ctxPP = document.getElementById('presChartPorPresentar');
-  if (ctxPP) {
-    _presChartPorPresentar = replaceChart(_presChartPorPresentar, ctxPP, {
-      type: 'bar',
-      data: {
-        labels: ppData.map(function(d) { return d.nombre; }),
-        datasets: [{
-          data: ppData.map(function(d) { return d.total; }),
-          backgroundColor: ppData.map(function(d, i) { return _presColors[i % _presColors.length]; }),
-          borderRadius: 3
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-        plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
-      }
-    });
+// Cada cubicador con SU color en los dos gráficos y con cualquier filtro (DESIGN_RULES):
+// sale de su lugar en la lista completa, no del orden de las barras.
+function _presColorCub(k) {
+  if (!_presData._colores) {
+    var nombres = {};
+    _presData.reclamos.forEach(function(r) { nombres[_presCubKey(r)] = r.cubicador_nombre || ''; });
+    _presData._colores = {};
+    Object.keys(nombres).sort(function(a, b) { return nombres[a].localeCompare(nombres[b], 'es'); })
+      .forEach(function(c, i) { _presData._colores[c] = _presColors[i % _presColors.length]; });
   }
+  return _presData._colores[k] || '#90a4ae';
+}
 
-  var prData = data.presentados_por_cubicador || [];
-  var ctxPR = document.getElementById('presChartPresentados');
-  if (ctxPR) {
-    _presChartPresentados = replaceChart(_presChartPresentados, ctxPR, {
-      type: 'bar',
-      data: {
-        labels: prData.map(function(d) { return d.nombre; }),
-        datasets: [{
-          data: prData.map(function(d) { return d.total; }),
-          backgroundColor: prData.map(function(d, i) { return _presColors[i % _presColors.length]; }),
-          borderRadius: 3
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-        plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
-      }
-    });
-  }
+function _presGraficoCub(chart, canvasId, grupos) {
+  var ctx = document.getElementById(canvasId);
+  if (!ctx) return chart;
+  var keys = Object.keys(grupos).sort(function(a, b) { return grupos[b].total - grupos[a].total; });
+  // 20 px por cubicador: con 160 px fijos se perdía la mitad de los nombres.
+  ctx.parentElement.style.height = Math.max(70, keys.length * 20 + 40) + 'px';
+  return replaceChart(chart, ctx, {
+    type: 'bar',
+    data: {
+      labels: keys.map(function(k) { return grupos[k].nombre; }),
+      datasets: [{
+        data: keys.map(function(k) { return grupos[k].total; }),
+        backgroundColor: keys.map(_presColorCub),
+        borderRadius: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } },
+                y: { ticks: { font: { size: 10 }, autoSkip: false } } }
+    }
+  });
 }

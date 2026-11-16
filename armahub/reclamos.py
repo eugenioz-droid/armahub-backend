@@ -1549,6 +1549,16 @@ def reclamos_validacion_kpis(user=Depends(get_current_user)):
 # NOTE: These routes MUST be declared before /reclamos/{reclamo_id}
 # otherwise FastAPI matches "para-presentar" as {reclamo_id} → 422 error.
 
+# PRESENTACIONES TRABAJA DESDE ESTE AÑO. Los reclamos de años anteriores (los históricos
+# cargados de planilla) todavía no están estandarizados: el usuario los dejó fuera hasta
+# que la BD esté al día, y entonces abrirá 2025 bajando este número (16-nov). Es un piso y
+# no «el año en curso» para que en enero no desaparezcan los de 2026 que falten.
+PRESENTACIONES_DESDE_ANIO = 2026
+_PRES_ANIO_SQL = ("COALESCE(r.anio_calidad, "
+                  "EXTRACT(YEAR FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::int)")
+_PRES_MES_SQL = "EXTRACT(MONTH FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::int"
+
+
 @router.get("/reclamos/para-presentar")
 def reclamos_para_presentar(user=Depends(get_current_user)):
     """Lista de reclamos elegibles para presentación.
@@ -1583,14 +1593,17 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
                        r.presentacion_asistentes,
                        r.presentacion_comentarios,
                        r.detectado_por, r.area_aplica,
-                       r.kilos_mal_fabricados
+                       r.kilos_mal_fabricados,
+                       {_PRES_ANIO_SQL} AS anio, {_PRES_MES_SQL} AS mes,
+                       r.anio_calidad, r.numero_calidad
                 FROM reclamos r
                 LEFT JOIN users uc ON uc.email = r.cubicador_asignado
                 LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
                 WHERE r.estado = 'cerrado'
+                  AND {_PRES_ANIO_SQL} >= %s
                   {role_filter}
                 ORDER BY r.presentacion_realizada ASC NULLS FIRST, r.id DESC
-            """, params)
+            """, [PRESENTACIONES_DESDE_ANIO] + list(params))
             rows = cur.fetchall()
 
             # Lista para el selector de asistentes: miembros del área Cubicaciones
@@ -1623,6 +1636,8 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
                 "presentacion_asistentes": r[19], "presentacion_comentarios": r[20],
                 "detectado_por": r[21], "area_aplica": r[22],
                 "kilos_mal_fabricados": r[23],
+                "anio": r[24], "mes": r[25],
+                "anio_calidad": r[26], "numero_calidad": r[27],
             }
             for r in rows
         ],
@@ -1652,8 +1667,10 @@ def presentaciones_stats(user=Depends(get_current_user)):
                 FROM reclamos r
                 LEFT JOIN users uc ON uc.email = r.cubicador_asignado
                 WHERE r.estado = 'cerrado'
+                  AND {_PRES_ANIO_SQL} >= %s
                   {role_filter}
             """
+            params = [PRESENTACIONES_DESDE_ANIO] + list(params)
 
             # Presentados por cubicador
             cur.execute(f"""
