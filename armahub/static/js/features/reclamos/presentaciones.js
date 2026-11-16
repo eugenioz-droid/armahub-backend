@@ -5,6 +5,7 @@ var _presData = null;
 var _presChartPorPresentar = null;
 var _presChartPresentados = null;
 var _presColors = ['#7B1FA2','#1565C0','#e53935','#ff9800','#2e7d32','#00897B','#795548','#607D8B','#F44336','#009688'];
+var _presFiltroCub = '';  // cubicador elegido en el filtro ('' = todos)
 
 async function loadPresentaciones() {
   var data = await apiGet('/reclamos/para-presentar');
@@ -13,15 +14,8 @@ async function loadPresentaciones() {
     reclamos: (data.data || data.reclamos || []).map(_normalizeReclamoListItem)
   });
 
-  var sel = document.getElementById('presReclamoSelect');
-  sel.innerHTML = '<option value="">— Seleccionar reclamo —</option>';
-  (_presData.reclamos || []).forEach(function(r) {
-    var badge = r.presentacion_realizada ? '✅ ' : '⏳ ';
-    var opt = document.createElement('option');
-    opt.value = r.id;
-    opt.textContent = badge + (r.correlativo || '#' + r.id) + ' — ' + (r.titulo || '').substring(0, 50) + ' [' + r.cubicador_nombre + ']';
-    sel.appendChild(opt);
-  });
+  _renderPresFiltroCub();
+  _renderPresReclamoOptions(false);
 
   var checkDiv = document.getElementById('presAsistentesCheckboxes');
   checkDiv.innerHTML = '';
@@ -46,6 +40,62 @@ async function loadPresentaciones() {
   document.getElementById('presAntecedentes').style.display = 'none';
   document.getElementById('presRegistroCard').style.display = 'none';
   loadPresStats();
+}
+
+function _presCubKey(r) {
+  return r.cubicador_asignado || r.cubicador_nombre || '—';
+}
+
+// El filtro: un cubicador por opción, con cuántos tiene por presentar. Si la lista
+// trae uno solo (el cubicador ve sólo los suyos), no se muestra.
+function _renderPresFiltroCub() {
+  var wrap = document.getElementById('presFiltroCubWrap');
+  var sel = document.getElementById('presFiltroCub');
+  if (!wrap || !sel) return;
+  var cubs = {};
+  var totalPend = 0;
+  (_presData.reclamos || []).forEach(function(r) {
+    var k = _presCubKey(r);
+    var c = cubs[k] || (cubs[k] = { nombre: r.cubicador_nombre || 'Sin asignar', pend: 0 });
+    if (!r.presentacion_realizada) { c.pend++; totalPend++; }
+  });
+  var keys = Object.keys(cubs).sort(function(a, b) {
+    return cubs[a].nombre.localeCompare(cubs[b].nombre, 'es');
+  });
+  if (_presFiltroCub && !cubs[_presFiltroCub]) _presFiltroCub = '';
+  sel.innerHTML = '';
+  sel.appendChild(new Option('Todos (' + totalPend + ' ⏳)', ''));
+  keys.forEach(function(k) {
+    sel.appendChild(new Option(cubs[k].nombre + ' (' + cubs[k].pend + ' ⏳)', k));
+  });
+  sel.value = _presFiltroCub;
+  wrap.style.display = keys.length > 1 ? '' : 'none';
+}
+
+// La lista de reclamos, sólo los del cubicador elegido. ◀ ▶ recorren esta lista.
+function _renderPresReclamoOptions(mantener) {
+  var sel = document.getElementById('presReclamoSelect');
+  var actual = sel.value;
+  sel.innerHTML = '<option value="">— Seleccionar reclamo —</option>';
+  (_presData.reclamos || []).forEach(function(r) {
+    if (_presFiltroCub && _presCubKey(r) !== _presFiltroCub) return;
+    var badge = r.presentacion_realizada ? '✅ ' : '⏳ ';
+    var opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = badge + (r.correlativo || '#' + r.id) + ' — ' + (r.titulo || '').substring(0, 50) + ' [' + r.cubicador_nombre + ']';
+    sel.appendChild(opt);
+  });
+  if (!mantener) return;
+  sel.value = actual;
+  if (sel.value !== actual) sel.value = '';
+}
+
+function presFiltrarCubicador() {
+  _presFiltroCub = document.getElementById('presFiltroCub').value;
+  var sel = document.getElementById('presReclamoSelect');
+  var antes = sel.value;
+  _renderPresReclamoOptions(true);
+  if (antes && sel.value !== antes) seleccionarReclamoPres();  // el abierto quedó fuera: se cierra
 }
 
 function togglePresSection(sectionId) {

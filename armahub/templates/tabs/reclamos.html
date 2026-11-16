@@ -1167,11 +1167,19 @@
                 <button onclick="presNavNext()" style="font-size:13px; padding:3px 8px; min-width:28px;" title="Siguiente">▶</button>
               </div>
             </div>
-            <div style="margin-bottom:10px;">
-              <label style="font-size:11px; color:#666;">Seleccionar reclamo para presentar</label>
-              <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="width:100%; font-size:12px;">
-                <option value="">— Seleccionar reclamo —</option>
-              </select>
+            <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:10px;">
+              <div id="presFiltroCubWrap" style="display:none; flex:0 0 230px;">
+                <label style="font-size:11px; color:#666;">Cubicador</label>
+                <select id="presFiltroCub" onchange="presFiltrarCubicador()" style="width:100%; font-size:12px;">
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div style="flex:1; min-width:0;">
+                <label style="font-size:11px; color:#666;">Seleccionar reclamo para presentar</label>
+                <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="width:100%; font-size:12px;">
+                  <option value="">— Seleccionar reclamo —</option>
+                </select>
+              </div>
             </div>
 
             <!-- Antecedentes viewer (hidden until selection) -->
