@@ -5,7 +5,10 @@ var _presData = null;
 var _presChartPorPresentar = null;
 var _presChartPresentados = null;
 var _presColors = ['#7B1FA2','#1565C0','#e53935','#ff9800','#2e7d32','#00897B','#795548','#607D8B','#F44336','#009688'];
-var _presFiltroCub = '';  // cubicador elegido en el filtro ('' = todos)
+var _presFiltroCub = '';        // cubicador elegido en el filtro ('' = todos)
+var _presFiltroEstado = 'pend';  // pend | hecho | todos
+var _presTexto = '';            // lo escrito en Buscar, sin tildes y en minúsculas
+var _presFijo = null;           // el recién presentado sigue a la vista aunque el filtro lo saque
 
 async function loadPresentaciones() {
   var data = await apiGet('/reclamos/para-presentar');
@@ -15,6 +18,7 @@ async function loadPresentaciones() {
   });
 
   _renderPresFiltroCub();
+  _renderPresChips();
   _renderPresReclamoOptions(false);
 
   var checkDiv = document.getElementById('presAsistentesCheckboxes');
@@ -46,6 +50,35 @@ function _presCubKey(r) {
   return r.cubicador_asignado || r.cubicador_nombre || '—';
 }
 
+function _presSinTildes(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function _presPasaCub(r) { return !_presFiltroCub || _presCubKey(r) === _presFiltroCub; }
+
+function _presPasaTexto(r) {
+  return !_presTexto || _presSinTildes([r.correlativo, r.titulo, r.nombre_proyecto].join(' ')).indexOf(_presTexto) >= 0;
+}
+
+function _presPasaEstado(r) {
+  return _presFiltroEstado === 'todos' || (_presFiltroEstado === 'hecho') === !!r.presentacion_realizada;
+}
+
+// Los conteos de los chips cuentan lo que dejan pasar el cubicador y la búsqueda.
+function _renderPresChips() {
+  var n = { pend: 0, hecho: 0, todos: 0 };
+  ((_presData && _presData.reclamos) || []).forEach(function(r) {
+    if (!_presPasaCub(r) || !_presPasaTexto(r)) return;
+    n.todos++;
+    n[r.presentacion_realizada ? 'hecho' : 'pend']++;
+  });
+  document.querySelectorAll('#presChips button').forEach(function(b) {
+    b.classList.toggle('on', b.dataset.f === _presFiltroEstado);
+    var i = b.querySelector('i');
+    if (i) i.textContent = n[b.dataset.f];
+  });
+}
+
 // El filtro: un cubicador por opción, con cuántos tiene por presentar. Si la lista
 // trae uno solo (el cubicador ve sólo los suyos), no se muestra.
 function _renderPresFiltroCub() {
@@ -69,16 +102,16 @@ function _renderPresFiltroCub() {
     sel.appendChild(new Option(cubs[k].nombre + ' (' + cubs[k].pend + ' ⏳)', k));
   });
   sel.value = _presFiltroCub;
-  wrap.style.display = keys.length > 1 ? '' : 'none';
+  wrap.style.display = keys.length > 1 ? 'inline-flex' : 'none';
 }
 
-// La lista de reclamos, sólo los del cubicador elegido. ◀ ▶ recorren esta lista.
+// La lista de reclamos: sólo lo que dejan pasar los filtros. ◀ ▶ recorren esta lista.
 function _renderPresReclamoOptions(mantener) {
   var sel = document.getElementById('presReclamoSelect');
   var actual = sel.value;
   sel.innerHTML = '<option value="">— Seleccionar reclamo —</option>';
   (_presData.reclamos || []).forEach(function(r) {
-    if (_presFiltroCub && _presCubKey(r) !== _presFiltroCub) return;
+    if (r.id !== _presFijo && !(_presPasaCub(r) && _presPasaEstado(r) && _presPasaTexto(r))) return;
     var badge = r.presentacion_realizada ? '✅ ' : '⏳ ';
     var opt = document.createElement('option');
     opt.value = r.id;
@@ -90,12 +123,28 @@ function _renderPresReclamoOptions(mantener) {
   if (sel.value !== actual) sel.value = '';
 }
 
-function presFiltrarCubicador() {
-  _presFiltroCub = document.getElementById('presFiltroCub').value;
+function _presAplicarFiltros() {
+  _presFijo = null;
   var sel = document.getElementById('presReclamoSelect');
   var antes = sel.value;
+  _renderPresChips();
   _renderPresReclamoOptions(true);
   if (antes && sel.value !== antes) seleccionarReclamoPres();  // el abierto quedó fuera: se cierra
+}
+
+function presFiltrarCubicador() {
+  _presFiltroCub = document.getElementById('presFiltroCub').value;
+  _presAplicarFiltros();
+}
+
+function presFiltrarEstado(f) {
+  _presFiltroEstado = f;
+  _presAplicarFiltros();
+}
+
+function presFiltrarTexto() {
+  _presTexto = _presSinTildes(document.getElementById('presBuscar').value.trim());
+  _presAplicarFiltros();
 }
 
 function togglePresSection(sectionId) {
@@ -460,6 +509,7 @@ async function guardarPresentacion() {
   if (data.ok) {
     msg.textContent = '✅ Presentación registrada';
     msg.style.color = '#2e7d32';
+    _presFijo = id;
     await loadPresentaciones();
     sel.value = id;
     seleccionarReclamoPres();
