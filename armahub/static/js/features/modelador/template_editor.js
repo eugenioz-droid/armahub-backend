@@ -3281,7 +3281,7 @@
     EC: '#f9a825', TC: '#ffb300', CB: '#c62828',
     // LOSA / FUNDACION
     Fi: '#1565c0', Fs: '#00897b', "F'i": '#42a5f5', "F's": '#26a69a',
-    F: '#5e35b1', "F'": '#7e57c2', SP: '#607d8b', Rp: '#607d8b', TRL: '#7b1fa2',
+    F: '#5e35b1', "F'": '#7e57c2', SP: '#607d8b', Rp: '#607d8b', TRL: '#7b1fa2', ESL: '#e65100',
     SPF: '#607d8b', TRF: '#7b1fa2',
     // COLUMNA
     CB2: '#42a5f5', CBn: '#64b5f6', TRC: '#7b1fa2', ESC: '#e65100'
@@ -13495,7 +13495,7 @@
     LOSA: [['Fi', 'Malla Inferior i'], ['Fs', 'Malla Inferior s'], ["F'i", 'Malla Superior i'],
            ["F's", 'Malla Superior s'], ['F', 'Refuerzo o Suple Inferior'],
            ["F'", 'Refuerzo o Suple Superior'], ['SP', 'Soporte Losa'], ['Rp', 'Reparticion'],
-           ['TRL', 'Traba Losa']],
+           ['TRL', 'Traba Losa'], ['ESL', 'Estribo Losa']],
     VIGA: [['CBS', 'Cabezal Superior primera capa'], ['CBS2', 'Cabezal Superior segunda capa'],
            ['CBSn', 'Cabezal Superior n capa'], ['CBI', 'Cabezal Inferior primera capa'],
            ['CBI2', 'Cabezal Inferior segunda capa'], ['CBIn', 'Cabezal Inferior n capa'],

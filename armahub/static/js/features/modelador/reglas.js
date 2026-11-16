@@ -53,7 +53,7 @@
     CB: 'puntual', CBS: 'puntual', CBI: 'puntual', CBS2: 'puntual', CBI2: 'puntual',
     CBSN: 'puntual', CBIN: 'puntual', LT: 'puntual', L: 'puntual',
     // Estribos / trabas de confinamiento → LINEAL
-    ES: 'lineal', ESC: 'lineal', EC: 'lineal',
+    ES: 'lineal', ESC: 'lineal', EC: 'lineal', ESL: 'lineal',
     TRV: 'lineal', TR: 'lineal', TC: 'lineal', TRC: 'lineal', TRL: 'lineal', TRF: 'lineal',
     // MALLAS DE MURO (MH = Malla Horizontal, MV = Malla Vertical — los códigos
     // REALES del catálogo, TIPOLOGIAS.MURO) → LINEAL, no 'arreglo'. Decisión
@@ -5277,7 +5277,7 @@
   //  pasaban quedan compatibles: JS ignora los argumentos extra.)
   function _rolDeTipologia(tip) {
     var t = (tip || '').toUpperCase();
-    if (t === 'ES' || t === 'ESC' || t === 'EC') return 'estribo';
+    if (t === 'ES' || t === 'ESC' || t === 'EC' || t === 'ESL') return 'estribo';
     if (t === 'TRV' || t === 'TR' || t === 'TC' || t === 'TRC' || t === 'TRL' || t === 'TRF') return 'traba';
     return 'cabezal';   // CBS/CBI/CB/LT/… longitudinales
   }

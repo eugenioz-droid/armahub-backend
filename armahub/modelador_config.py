@@ -72,14 +72,14 @@ _MODO_POR_TIPOLOGIA = {
     "CB": "puntual", "CBS": "puntual", "CBI": "puntual", "CBS2": "puntual", "CBI2": "puntual",
     "CBSN": "puntual", "CBIN": "puntual", "LT": "puntual", "L": "puntual",
     # Estribos / trabas → LINEAL
-    "ES": "lineal", "ESC": "lineal", "EC": "lineal",
+    "ES": "lineal", "ESC": "lineal", "EC": "lineal", "ESL": "lineal",
     "TRV": "lineal", "TR": "lineal", "TC": "lineal", "TRC": "lineal", "TRL": "lineal", "TRF": "lineal",
     # Mallas de muro → LINEAL (distribución "MH φ8 @20", no arreglo)
     "MH": "lineal", "MV": "lineal",
     "MA": "arreglo", "MALLA": "arreglo", "TM": "arreglo", "TRM": "arreglo",
 }
 # Lo que NO está en la tabla de arriba. reglas.modoDefaultDeTipologia cae al ROL, y
-# _rolDeTipologia sólo devuelve 'estribo'/'traba' para ES/ESC/EC/TRV/TR/TC/TRC/TRL/TRF
+# _rolDeTipologia sólo devuelve 'estribo'/'traba' para ES/ESC/EC/ESL/TRV/TR/TC/TRC/TRL/TRF
 # — que YA están todas listadas. O sea: para cualquier otra tipología el fallback por
 # rol da 'cabezal' → 'puntual', SIEMPRE. Por eso acá basta la constante y no hay que
 # duplicar la tabla de roles del motor.

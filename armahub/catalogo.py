@@ -107,7 +107,7 @@ _TIPOLOGIAS_SEED = {
     "LOSA": [("Fi", "Malla Inferior i"), ("Fs", "Malla Inferior s"), ("F'i", "Malla Superior i"),
              ("F's", "Malla Superior s"), ("F", "Refuerzo o Suple Inferior"),
              ("F'", "Refuerzo o Suple Superior"), ("SP", "Soporte Losa"), ("Rp", "Reparticion"),
-             ("TRL", "Traba Losa")],
+             ("TRL", "Traba Losa"), ("ESL", "Estribo Losa")],
     "VIGA": [("CBS", "Cabezal Superior primera capa"), ("CBS2", "Cabezal Superior segunda capa"),
              ("CBSn", "Cabezal Superior n capa"), ("CBI", "Cabezal Inferior primera capa"),
              ("CBI2", "Cabezal Inferior segunda capa"), ("CBIn", "Cabezal Inferior n capa"),
@@ -137,6 +137,9 @@ _FIGURAS_POR_TIPO_SEED = {
     "LOSA-SP": ["101A"],
     "LOSA-Rp": ["101A", "102A"],
     "LOSA-TRL": ["101A", "102A", "103A", "104A"],
+    # Estribo en losa (lo marca ArmaScanner con «E.» en el plano): el cerrado con dos ganchos
+    # y las figuras de estribo de VIGA-ES. Es lo que se sugiere, no una restricción.
+    "LOSA-ESL": ["106A", "103H", "103E", "104D", "104O", "104P"],
     "VIGA-CBS": ["101A", "102A", "102B", "102C", "103A", "103B", "103C", "103D"],
     "VIGA-CBS2": ["101A", "102A", "102B", "102C", "103A"],
     "VIGA-CBSn": ["101A", "102A", "102B", "102C", "103A"],
