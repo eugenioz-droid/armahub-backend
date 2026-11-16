@@ -5,7 +5,7 @@ var _presData = null;
 var _presChartPorPresentar = null;
 var _presChartPresentados = null;
 var _presColors = ['#7B1FA2','#1565C0','#e53935','#ff9800','#2e7d32','#00897B','#795548','#607D8B','#F44336','#009688'];
-var _presFiltroCub = '';        // cubicador elegido en el filtro ('' = todos)
+var _presCubs = [];             // cubicadores elegidos (vacío = todos)
 var _presFiltroEstado = 'pend';  // pend | hecho | todos
 var _presTexto = '';            // lo escrito en Buscar, sin tildes y en minúsculas
 var _presFijo = null;           // el recién presentado sigue a la vista aunque el filtro lo saque
@@ -54,7 +54,7 @@ function _presSinTildes(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-function _presPasaCub(r) { return !_presFiltroCub || _presCubKey(r) === _presFiltroCub; }
+function _presPasaCub(r) { return !_presCubs.length || _presCubs.indexOf(_presCubKey(r)) >= 0; }
 
 function _presPasaTexto(r) {
   return !_presTexto || _presSinTildes([r.correlativo, r.titulo, r.nombre_proyecto].join(' ')).indexOf(_presTexto) >= 0;
@@ -79,30 +79,38 @@ function _renderPresChips() {
   });
 }
 
-// El filtro: un cubicador por opción, con cuántos tiene por presentar. Si la lista
-// trae uno solo (el cubicador ve sólo los suyos), no se muestra.
+// Un botón por cubicador, con cuántos le deja ver el resto de los filtros. Se eligen
+// como en los dashboards (rhMarcar): clic = sólo ése, Ctrl+clic suma, clic en el
+// encendido = todos. Si la lista trae uno solo (el cubicador ve sólo los suyos), no se muestra.
 function _renderPresFiltroCub() {
   var wrap = document.getElementById('presFiltroCubWrap');
-  var sel = document.getElementById('presFiltroCub');
-  if (!wrap || !sel) return;
+  var cont = document.getElementById('presCubChips');
+  if (!wrap || !cont) return;
   var cubs = {};
-  var totalPend = 0;
   (_presData.reclamos || []).forEach(function(r) {
     var k = _presCubKey(r);
-    var c = cubs[k] || (cubs[k] = { nombre: r.cubicador_nombre || 'Sin asignar', pend: 0 });
-    if (!r.presentacion_realizada) { c.pend++; totalPend++; }
+    var c = cubs[k] || (cubs[k] = { nombre: r.cubicador_nombre || 'Sin asignar', n: 0 });
+    if (_presPasaEstado(r) && _presPasaTexto(r)) c.n++;
   });
+  _presCubs = _presCubs.filter(function(k) { return cubs[k]; });
   var keys = Object.keys(cubs).sort(function(a, b) {
     return cubs[a].nombre.localeCompare(cubs[b].nombre, 'es');
   });
-  if (_presFiltroCub && !cubs[_presFiltroCub]) _presFiltroCub = '';
-  sel.innerHTML = '';
-  sel.appendChild(new Option('Todos (' + totalPend + ' ⏳)', ''));
+  cont.innerHTML = '';
   keys.forEach(function(k) {
-    sel.appendChild(new Option(cubs[k].nombre + ' (' + cubs[k].pend + ' ⏳)', k));
+    var b = document.createElement('button');
+    if (_presCubs.indexOf(k) >= 0) b.className = 'on';
+    b.textContent = cubs[k].nombre;
+    var i = document.createElement('i');
+    i.textContent = cubs[k].n;
+    b.appendChild(i);
+    b.addEventListener('click', function(ev) {
+      rhMarcar(_presCubs, k, ev);
+      _presAplicarFiltros();
+    });
+    cont.appendChild(b);
   });
-  sel.value = _presFiltroCub;
-  wrap.style.display = keys.length > 1 ? 'inline-flex' : 'none';
+  wrap.style.display = keys.length > 1 ? '' : 'none';
 }
 
 // La lista de reclamos: sólo lo que dejan pasar los filtros. ◀ ▶ recorren esta lista.
@@ -128,13 +136,9 @@ function _presAplicarFiltros() {
   var sel = document.getElementById('presReclamoSelect');
   var antes = sel.value;
   _renderPresChips();
+  _renderPresFiltroCub();
   _renderPresReclamoOptions(true);
   if (antes && sel.value !== antes) seleccionarReclamoPres();  // el abierto quedó fuera: se cierra
-}
-
-function presFiltrarCubicador() {
-  _presFiltroCub = document.getElementById('presFiltroCub').value;
-  _presAplicarFiltros();
 }
 
 function presFiltrarEstado(f) {
