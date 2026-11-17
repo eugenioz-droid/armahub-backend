@@ -107,7 +107,8 @@ _TIPOLOGIAS_SEED = {
     "LOSA": [("Fi", "Malla Inferior i"), ("Fs", "Malla Inferior s"), ("F'i", "Malla Superior i"),
              ("F's", "Malla Superior s"), ("F", "Refuerzo o Suple Inferior"),
              ("F'", "Refuerzo o Suple Superior"), ("SP", "Soporte Losa"), ("Rp", "Reparticion"),
-             ("TRL", "Traba Losa"), ("ESL", "Estribo Losa")],
+             ("TRL", "Traba Losa"), ("ESL", "Estribo Losa"),
+             ("F+F'", "Refuerzo o Suple Inferior y Superior")],
     "VIGA": [("CBS", "Cabezal Superior primera capa"), ("CBS2", "Cabezal Superior segunda capa"),
              ("CBSn", "Cabezal Superior n capa"), ("CBI", "Cabezal Inferior primera capa"),
              ("CBI2", "Cabezal Inferior segunda capa"), ("CBIn", "Cabezal Inferior n capa"),
@@ -134,6 +135,9 @@ _FIGURAS_POR_TIPO_SEED = {
     "LOSA-F's": ["101A", "102A", "103A", "104A", "105A"],
     "LOSA-F": ["101A", "102A", "103A"],
     "LOSA-F'": ["101A", "102A", "103A"],
+    # «F=F'=n∅d» del calculista: la misma barra n veces abajo y n arriba, en una sola etiqueta
+    # (lo marca ArmaScanner). Las figuras de F y F'.
+    "LOSA-F+F'": ["101A", "102A", "103A"],
     "LOSA-SP": ["101A"],
     "LOSA-Rp": ["101A", "102A"],
     "LOSA-TRL": ["101A", "102A", "103A", "104A"],

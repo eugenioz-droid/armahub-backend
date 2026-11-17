@@ -53,7 +53,7 @@ var AC2_ESTRUCT_POR_SECTOR={
 function ac2EstructValida(e, s){ if(!s) return true; var v=AC2_ESTRUCT_POR_SECTOR[s]; return !v || v.indexOf(e)>=0; }
 var AC2_TIPOS_MAP={
   MURO:[{codigo:'MH'},{codigo:'MV'},{codigo:'TR'},{codigo:'EC'},{codigo:'TC'},{codigo:'CB'}],
-  LOSA:[{codigo:'Fi'},{codigo:'Fs'},{codigo:"F'i"},{codigo:"F's"},{codigo:'F'},{codigo:"F'"},{codigo:'SP'},{codigo:'Rp'},{codigo:'TRL'},{codigo:'ESL'}],
+  LOSA:[{codigo:'Fi'},{codigo:'Fs'},{codigo:"F'i"},{codigo:"F's"},{codigo:'F'},{codigo:"F'"},{codigo:"F+F'"},{codigo:'SP'},{codigo:'Rp'},{codigo:'TRL'},{codigo:'ESL'}],
   VIGA:[{codigo:'CBS'},{codigo:'CBS2'},{codigo:'CBSn'},{codigo:'CBI'},{codigo:'CBI2'},{codigo:'CBIn'},{codigo:'LT'},{codigo:'ES'},{codigo:'TRV'}],
   COLUMNA:[{codigo:'CB'},{codigo:'CB2'},{codigo:'CBn'},{codigo:'TRC'},{codigo:'ESC'}],
   FUNDACION:[{codigo:'Fi'},{codigo:'Fs'},{codigo:"F'i"},{codigo:"F's"},{codigo:'SPF'},{codigo:'TRF'}],

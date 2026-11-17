@@ -30,7 +30,7 @@
   'use strict';
 
   var VERSION = '2026-11-16';   // fecha en que se generó el espejo
-  var SHA = '283f3e6eecbc';           // huella de la data del seed (detecta desfases)
+  var SHA = '1db6a08971a3';           // huella de la data del seed (detecta desfases)
   var FUENTE = 'armahub/catalogo.py::_FIGURAS_SEED';
 
   // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@
   // estructura → [{ codigo, nombre }]
   var TIPOLOGIAS = {
     'MURO': [{ codigo: 'MH', nombre: 'Malla Horizontal' }, { codigo: 'MV', nombre: 'Malla Vertical' }, { codigo: 'TR', nombre: 'Traba Muro' }, { codigo: 'EC', nombre: 'Estribo Confinamiento' }, { codigo: 'TC', nombre: 'Traba Confinamiento' }, { codigo: 'CB', nombre: 'Cabezal' }],
-    'LOSA': [{ codigo: 'Fi', nombre: 'Malla Inferior i' }, { codigo: 'Fs', nombre: 'Malla Inferior s' }, { codigo: 'F\'i', nombre: 'Malla Superior i' }, { codigo: 'F\'s', nombre: 'Malla Superior s' }, { codigo: 'F', nombre: 'Refuerzo o Suple Inferior' }, { codigo: 'F\'', nombre: 'Refuerzo o Suple Superior' }, { codigo: 'SP', nombre: 'Soporte Losa' }, { codigo: 'Rp', nombre: 'Reparticion' }, { codigo: 'TRL', nombre: 'Traba Losa' }, { codigo: 'ESL', nombre: 'Estribo Losa' }],
+    'LOSA': [{ codigo: 'Fi', nombre: 'Malla Inferior i' }, { codigo: 'Fs', nombre: 'Malla Inferior s' }, { codigo: 'F\'i', nombre: 'Malla Superior i' }, { codigo: 'F\'s', nombre: 'Malla Superior s' }, { codigo: 'F', nombre: 'Refuerzo o Suple Inferior' }, { codigo: 'F\'', nombre: 'Refuerzo o Suple Superior' }, { codigo: 'SP', nombre: 'Soporte Losa' }, { codigo: 'Rp', nombre: 'Reparticion' }, { codigo: 'TRL', nombre: 'Traba Losa' }, { codigo: 'ESL', nombre: 'Estribo Losa' }, { codigo: 'F+F\'', nombre: 'Refuerzo o Suple Inferior y Superior' }],
     'VIGA': [{ codigo: 'CBS', nombre: 'Cabezal Superior primera capa' }, { codigo: 'CBS2', nombre: 'Cabezal Superior segunda capa' }, { codigo: 'CBSn', nombre: 'Cabezal Superior n capa' }, { codigo: 'CBI', nombre: 'Cabezal Inferior primera capa' }, { codigo: 'CBI2', nombre: 'Cabezal Inferior segunda capa' }, { codigo: 'CBIn', nombre: 'Cabezal Inferior n capa' }, { codigo: 'LT', nombre: 'Lateral' }, { codigo: 'ES', nombre: 'Estribo' }, { codigo: 'TRV', nombre: 'Traba Viga' }],
     'COLUMNA': [{ codigo: 'CB', nombre: 'Cabezal' }, { codigo: 'CB2', nombre: 'Cabezal 2' }, { codigo: 'CBn', nombre: 'Cabezal n' }, { codigo: 'TRC', nombre: 'Traba Columna' }, { codigo: 'ESC', nombre: 'Estribo Columna' }],
     'FUNDACION': [{ codigo: 'Fi', nombre: 'Malla Inferior i' }, { codigo: 'Fs', nombre: 'Malla Inferior s' }, { codigo: 'F\'i', nombre: 'Malla Superior i' }, { codigo: 'F\'s', nombre: 'Malla Superior s' }, { codigo: 'SPF', nombre: 'Soporte Fundacion' }, { codigo: 'TRF', nombre: 'Traba Fundacion' }],
@@ -130,6 +130,7 @@
     'LOSA-F\'s': ['101A', '102A', '103A', '104A', '105A'],
     'LOSA-F': ['101A', '102A', '103A'],
     'LOSA-F\'': ['101A', '102A', '103A'],
+    'LOSA-F+F\'': ['101A', '102A', '103A'],
     'LOSA-SP': ['101A'],
     'LOSA-Rp': ['101A', '102A'],
     'LOSA-TRL': ['101A', '102A', '103A', '104A'],

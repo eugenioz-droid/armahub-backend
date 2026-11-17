@@ -54,7 +54,7 @@ _TIPOLOGIAS_ORDEN = [
     # MURO
     "MH", "MV", "TR", "EC", "TC", "CB",
     # LOSA
-    "Fi", "Fs", "F'i", "F's", "F", "F'", "SP", "Rp", "TRL", "ESL",
+    "Fi", "Fs", "F'i", "F's", "F", "F'", "F+F'", "SP", "Rp", "TRL", "ESL",
     # VIGA
     "CBS", "CBS2", "CBSn", "CBI", "CBI2", "CBIn", "LT", "ES", "TRV",
     # COLUMNA
