@@ -1006,8 +1006,8 @@ el protocolo.
 **Respuestas del usuario (19-nov).**
 - Va en el panel de la obra (caluga «Obras», SPECS §5), pestaña Protocolo, donde también
   entra el cliente y aprueba. Ese panel une programa, protocolo, planos, pedidos y terreno.
-- Firma: el cliente aprueba con su usuario en la plataforma (nombre, fecha, versión en la
-  auditoría). No se contrata firma electrónica. La firma dibujada queda para Terreno.
+- Firma: por ahora valida el cubicador tras la reunión de obra y envía el informe PDF por
+  correo. Con el dominio pagado, el cliente valida por enlace. Sin firma electrónica pagada.
 - Sin maqueta: se construye directo en la página.
 - Los detalles de elevaciones (cierre de MV, MH, encuentros, trabas) se definen desde aquí
   (filas del 19-nov en la tabla de arriba).
@@ -1060,19 +1060,22 @@ versiones nuevas se instalan con el botón «Actualizar» dentro de ArmaScanner.
 | D5 | Carga de planos por arrastre, con registro y versiones automáticos | Falta |
 | D6 | Planos en ArmaHub: subir, tomar, aviso de versión, respaldo, vista previa PDF (SPECS §5.4) | Falta |
 
-### 8.13 Panel de la obra: orden de construcción (19-nov, por validar)
+### 8.13 Orden de construcción: ArmaScanner + panel de la obra (19-nov, 2ª vuelta)
 
-Diseño en SPECS §5. Cada paso deja algo usable; el cliente entra al final, con revisión de
-seguridad previa.
+Diseño en SPECS §5 (Obras) y §13 (ArmaScanner). Nombre de la caluga «Obras»: aprobado.
 
-| Paso | Qué | Depende de |
-|---|---|---|
-| O1 | Pedido ArmaScanner → ArmaHub (D1) | 4 definiciones del usuario |
-| O2 | Caluga «Obras»: lista de obras asignadas, encabezado, pestañas Resumen y Pedidos (datos que ya existen) | — |
-| O3 | Carga por arrastre en ArmaScanner (D5) + Planos en ArmaHub (D6) + pestaña Planos con vista previa | O2, D3 instalador |
-| O4 | Pestaña Protocolo: criterios como datos, versiones, PDF; ArmaScanner lo lee | O2 |
-| O5 | Pestaña Programa (reusa `tareas_programacion`); el pedido marca cubicado solo | O1, O2 |
-| O6 | Acceso del cliente (7.12) + aprobación del protocolo + pestaña Terreno (protocolo de entrega) → App Terreno (F13) | O4 |
+| Paso | Qué |
+|---|---|
+| 1 | Subir plano desde ArmaScanner: obra con filtro de texto, versión del plano + carga de sus barras por elemento constructivo, reemplazo por plano, estado de cada barra, exportación bloqueada con barras sin aprobar o con duda |
+| 2 | Caluga ArmaScanner limpia: Mis obras (cargas por elemento), Instalar, Licencias (sale la columna de Gestión de usuarios), Uso, Versiones |
+| 3 | Instalador por usuario sin administrador + botón «Actualizar» (D3, D4) |
+| 4 | Carga de planos por arrastre + ventana de planos rediseñada: elemento con botones, mover planos entre elementos, hojas repetidas (D5) |
+| 5 | Elevaciones (respuestas del 19-nov, valores por defecto del protocolo) |
+| 6 | Colaboración: tomar, aviso de versión, respaldo, vista previa PDF (D6, SPECS §5.4) |
+| 7 | Caluga Obras: Resumen, Pedidos, Planos con visor |
+| 8 | Protocolo: criterios como datos, validado por el cubicador, informe PDF por correo |
+| 9 | Programa dentro de la obra |
+| 10 | Cliente: con el dominio pagado, validación por enlace, acceso a su obra (revisión 7.12), Terreno → App (F13) |
 
 ---
 

@@ -1260,9 +1260,10 @@ compactas.
 | Pedidos | Cargas de despiece de la obra (`imports`) con su origen (ArmaScanner, A Detailer, manual), plano, ciclo, kg | Ve | No |
 | Terreno | Protocolo de entrega de enfierradura por elemento y ciclo: lista de chequeo, fotos, observaciones y aprobación. Pensada para pasar a la App Terreno (F13) | Ve | Revisa y aprueba |
 
-**Aprobación del cliente.** El cliente entra con su usuario (rol `cliente` en la obra) y
-aprueba con un botón: queda su nombre, la fecha y la versión aprobada, en el registro de
-auditoría. Eso es la firma; no hace falta un servicio de firma electrónica. En Terreno se
+**Validación (19-nov).** Por ahora valida el cubicador: presenta el protocolo en la reunión
+de obra, lo deja validado (nombre, fecha, versión en la auditoría) y envía el informe PDF por
+correo. Con el dominio de ArmaHub pagado (correo propio), el cliente valida desde un enlace
+en el correo o con su usuario; no hace falta un servicio de firma electrónica. En Terreno se
 puede agregar la firma dibujada en el celular. Un cambio de criterio después de aprobado
 abre una versión nueva que se vuelve a aprobar.
 
@@ -1971,32 +1972,38 @@ recubrimientos. No abordar hasta que se decida explícitamente.
 
 ---
 
-## 13. CALUGA: ARMASCANNER (licencias, instalación, pedido) — DISEÑO 19-nov
+## 13. CALUGA: ARMASCANNER — DISEÑO 19-nov (2ª vuelta)
 
-### 13.1 Propósito
-Página del producto ArmaScanner dentro de ArmaHub. La ve sólo quien tiene licencia (y el
-administrador). Nombre de la caluga: «ArmaScanner»; si después hay más herramientas pasa a
-«Herramientas». Referencia visual: `static/demo/armascanner.html` (no se hacen más maquetas:
-se construye directo en la página, usuario 19-nov).
+Visible para quien tiene licencia y para el administrador. Pantalla limpia (skill
+`armacero-ui`): KPIs, tablas, poco texto. La maqueta `static/demo/armascanner.html` quedó
+verbosa y no es la referencia.
 
-### 13.2 Pestañas
 | Pestaña | Contenido | Quién |
 |---------|-----------|-------|
-| Instalar y actualizar | Descargar el instalador (enlace firmado de vida corta), pasos, novedades de la versión, requisitos, mi licencia y mis equipos (2 por licencia) | Con licencia |
-| Pedidos enviados | Pedidos que el usuario envió desde ArmaScanner (obra, plano, ciclo, kg, fecha) | Con licencia |
-| Usuarios | Licencias, vencimiento, equipos, último uso | Administrador |
-| Uso | KPIs de uso: planos escaneados, barras aprobadas, % aprobado sin corrección, kg enviados por semana | Administrador |
-| Versiones | Versión publicada, obligatoria o no, retirar una versión | Administrador |
+| Mis obras | Filtro buscable de obra. Una línea por **carga de cada elemento constructivo** (lógica de despieces, no se rompe): obra, plano, elemento, piso, ciclo, ítems, kg, estado (aprobadas / con duda), subido por, fecha | Con licencia |
+| Instalar | Botón «Descargar», versión vigente, mis equipos (2) | Con licencia |
+| Licencias | Buscar un usuario existente y agregarlo; vencimiento; equipos con «Liberar»; quitar | Administrador |
+| Uso | KPIs de uso | Administrador |
+| Versiones | Versión publicada, obligatoria, retirar | Administrador |
 
-### 13.3 Reglas fijas
-- Licencia **por usuario** (no por empresa), máximo **2 equipos**, liberables por el
-  administrador en Gestión de usuarios (mig 166). **3 días sin conexión**: pasado ese plazo
-  ArmaScanner no deja trabajar hasta volver a validar; con internet valida solo, sin clave
-  (la clave se pide sólo si la ficha del equipo, 30 días, caducó o se liberó el equipo).
-- Instalar desde la página sin descargar un archivo no es posible sin firma de código
-  (MSIX). La primera vez se descarga el instalador; después actualiza el botón «Actualizar»
-  dentro de ArmaScanner.
-- El pedido llega siempre a ArmaHub (programa §8.12, D1).
+- La columna «ArmaScanner» de Gestión de usuarios **se quita**: las licencias se administran
+  aquí.
+- Licencia por usuario, 2 equipos, 3 días sin conexión (pasado el plazo valida sola con
+  internet; la clave se pide sólo si caducó la ficha de 30 días o se liberó el equipo).
+- Instalación sin permisos de administrador (instalador por usuario en
+  `%LOCALAPPDATA%\Programs\ArmaScanner`). Sin firma de código, Windows avisa la primera vez
+  («Windows protegió su PC» → «Más información» → «Ejecutar de todas formas»); las
+  actualizaciones desde el botón «Actualizar» no muestran el aviso.
+
+### 13.1 Subir plano (el pedido llega a ArmaHub)
+- La obra se elige en ArmaScanner con filtro de texto sobre las obras de ArmaHub.
+- **Subir el plano** = guardar su versión en ArmaHub (§5.4) + cargar sus barras como la carga
+  de ese plano en su elemento constructivo. Volver a subir el mismo plano reemplaza sólo las
+  barras de ese plano; nunca toca las de otro plano ni las de A Detailer o manuales.
+- Sube todas las barras con su estado (aprobada · con duda · sin revisar). ArmaHub **bloquea
+  la exportación** de una carga mientras tenga barras sin aprobar o con duda, y lo dice.
+- Cualquier usuario con licencia y asignado a la obra sube sus planos (trabajo
+  colaborativo). Un plano tomado por otro no se puede subir encima.
 
 ---
 
