@@ -106,8 +106,9 @@
     if (!b.dataset.listo) { b.addEventListener('click', descargar); b.dataset.listo = '1'; }
     var v = await global.apiGet('/armascanner/descarga');
     b.disabled = !(v && v.version);
+    // Un ZIP: se descomprime y se abre ArmaScanner.exe, que se instala solo (instalacion.py).
     document.getElementById('ascDescargaLinea').textContent = v && v.version
-      ? 'Versión ' + v.version + ' · ' + fecha(v.publicada_el) + ' · ' + mb(v.tamano)
+      ? 'Versión ' + v.version + ' · ' + mb(v.tamano) + ' · Descomprime y abre ArmaScanner.exe'
       : 'Sin versión publicada.';
     var d = await global.apiGet('/armascanner/mi-licencia');
     if (!d) return;

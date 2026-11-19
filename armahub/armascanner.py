@@ -350,7 +350,9 @@ def _vigente(cur):
 
 
 def _nombre_instalador(version: str) -> str:
-    return f"ArmaScanner-{version}-instalar.exe"
+    """El ZIP que se publica: la aplicación en su carpeta; se instala sola al abrirla. No un
+    instalador de un solo .exe: ése lo borra el antivirus de la empresa (Trend Micro, 19-nov)."""
+    return f"ArmaScanner-{version}.zip"
 
 
 def _enlace(fila) -> str:
@@ -409,14 +411,14 @@ def versiones(admin=Depends(require_admin_or_admin_calidad)):
 @router.post("/armascanner/versiones")
 def publicar(archivo: UploadFile = File(...), version: str = Form(...), notas: str = Form(""),
                    obligatoria: bool = Form(False), admin=Depends(require_admin_or_admin_calidad)):
-    """Publicar una versión: el instalador (construir.py) va a R2 y queda vigente."""
+    """Publicar una versión: el ZIP (ArmaScanner/empaquetar/construir.py) va a R2 y queda vigente."""
     import re
     from . import storage
     version = (version or "").strip()
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", version):
         raise HTTPException(status_code=400, detail="La versión va como AAAA-MM-DD (o AAAA-MM-DD.2).")
-    if not (archivo.filename or "").lower().endswith(".exe"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser el instalador (.exe).")
+    if not (archivo.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser el ZIP de ArmaScanner (.zip).")
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM armascanner_versiones WHERE version = %s", (version,))
@@ -426,7 +428,7 @@ def publicar(archivo: UploadFile = File(...), version: str = Form(...), notas: s
     archivo.file.seek(0, 2)
     tamano = archivo.file.tell()
     archivo.file.seek(0)
-    storage.upload_fileobj(clave, archivo.file, "application/vnd.microsoft.portable-executable")
+    storage.upload_fileobj(clave, archivo.file, "application/zip")
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO armascanner_versiones (version, archivo, tamano, notas, obligatoria, publicada_por)
