@@ -1008,6 +1008,36 @@ el protocolo.
 Primer paso propuesto: la maqueta de la pestaña (sin lógica), con los criterios del Excel
 como datos, para validar la estructura antes de programar.
 
+### 8.12 ArmaScanner en ArmaHub: caluga, distribución y pedido (19-nov)
+
+**Decidido por el usuario (19-nov).**
+- Caluga **ArmaScanner** en el inicio, visible sólo para quien tiene licencia: instalar y
+  actualizar, novedades, mis equipos; el administrador ve además usuarios, KPIs de uso y
+  versiones. Maqueta: `armahub/static/demo/armascanner.html`.
+- **El pedido llega siempre a ArmaHub** (no un CSV suelto) y va **antes de seguir con las
+  elevaciones**. Entra por la lógica de despieces de hoy (importación de A Detailer:
+  `imports` + `barras.import_id`, reemplazo por eje|piso|ciclo), marcado con su origen
+  (ArmaScanner, plano, ciclo, versión, equipo).
+- Máximo **2 equipos por licencia**, liberables por el administrador — **hecho** (a93f896,
+  mig 166).
+- Sin firma de código por ahora (Windows avisará «editor desconocido» al instalar).
+- Seguridad: la de la propuesta (ejecutable compilado, licencia firmada por el servidor,
+  cupo de equipos, el pedido en el servidor); los usuarios iniciales son de confianza.
+
+**Instalar «desde la página» sin descargar un archivo:** no se puede con un programa de
+escritorio (el navegador no instala programas; lo que lo permite —MSIX/App Installer—
+exige firma de código). La primera vez se descarga y abre un instalador; desde ahí, las
+versiones nuevas se instalan con el botón «Actualizar» dentro de ArmaScanner.
+
+**Etapas.**
+| Etapa | Qué | Estado |
+|---|---|---|
+| D1 | Pedido de ArmaScanner → ArmaHub (envío, obra destino, reemplazo por ciclo, origen) | Diseño |
+| D2 | Caluga y página ArmaScanner (maqueta → implementación) | Maqueta |
+| D3 | ArmaScanner empaquetado (Nuitka) + instalador por usuario; datos en Documentos | Falta |
+| D4 | Descarga con enlace temporal (R2) y botón «Actualizar» (versión en la validación) | Falta |
+| D5 | Carga de planos por arrastre, con registro y versiones automáticos | Decisión |
+
 ---
 
 ## FASE 9 — Cubicación: consolidar y conectar con Obra
