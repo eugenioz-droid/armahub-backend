@@ -235,6 +235,7 @@ async function loadUsers() {
   html += '<th style="padding:5px 6px;">Email / Nombre</th>';
   html += '<th style="padding:5px 6px;">Rol global</th>';
   html += '<th style="padding:5px 6px;">Áreas asignadas</th>';
+  html += '<th style="padding:5px 6px;" title="Licencia de la herramienta de escritorio ArmaScanner. Se valida con internet cada vez que se abre.">ArmaScanner</th>';
   html += '<th style="padding:5px 6px;">Estado</th>';
   html += '<th style="padding:5px 6px;">Acciones</th></tr>';
 
@@ -293,6 +294,9 @@ async function loadUsers() {
     }
     html += '</td>';
 
+    // Licencia de ArmaScanner: casilla + vencimiento (vacío = sin vencimiento) + último uso
+    html += '<td style="padding:4px 6px; white-space:nowrap;">' + celdaLicencia(u, canOperate) + '</td>';
+
     // Estado
     html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
 
@@ -311,6 +315,54 @@ async function loadUsers() {
   html += '<div class="muted" style="font-size:11px; margin-top:6px;">Total: ' + data.users.length + ' usuario(s)</div>';
 
   container.innerHTML = html;
+}
+
+// LICENCIA DE ARMASCANNER (18-nov). El usuario: «en el portal debo poder al usuario asignarle
+// una licencia en el menú de gestión de usuarios». Casilla = tiene licencia; la fecha es el
+// vencimiento (vacía, sin vencimiento). Cada cambio se guarda al tiro; ArmaScanner lo nota la
+// próxima vez que se abre con internet. Abajo, la última vez que la herramienta se validó.
+function celdaLicencia(u, canOperate) {
+  var lic = (u.licencias || {}).armascanner || null;
+  var activa = !!(lic && lic.activa);
+  var vence = (lic && lic.vence) || '';
+  var vencida = activa && vence && vence < new Date().toISOString().slice(0, 10);
+  var html = '';
+  if (canOperate) {
+    html += '<label style="display:inline-flex; align-items:center; gap:4px; font-size:11px; cursor:pointer;">' +
+      '<input type="checkbox" id="licAS_' + u.id + '"' + (activa ? ' checked' : '') +
+      ' onchange="guardarLicenciaUsuario(' + u.id + ')" />' + (activa ? 'Con licencia' : 'Sin licencia') + '</label>';
+    html += ' <input type="date" id="licASv_' + u.id + '" value="' + vence + '"' + (activa ? '' : ' disabled') +
+      ' title="Vence (vacío: sin vencimiento)" onchange="guardarLicenciaUsuario(' + u.id + ')"' +
+      ' style="font-size:11px; padding:1px 4px; border:1px solid #ddd; border-radius:3px;' + (vencida ? ' color:#DC2626;' : '') + '" />';
+  } else {
+    html += '<span style="font-size:11px;">' + (activa ? 'Con licencia' + (vence ? ' hasta ' + fechaCorta(vence) : '') : 'Sin licencia') + '</span>';
+  }
+  if (vencida) html += '<div style="font-size:10px; color:#DC2626;">Vencida</div>';
+  if (lic && lic.ultimo_uso) {
+    html += '<div class="muted" style="font-size:10px;" title="' + (lic.version ? 'Versión ' + lic.version : '') + '">Último uso ' +
+      fechaCorta(lic.ultimo_uso.slice(0, 10)) + (lic.ultimo_equipo ? ' · ' + lic.ultimo_equipo : '') + '</div>';
+  }
+  return html;
+}
+
+function fechaCorta(iso) {
+  var p = (iso || '').split('-');
+  return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : iso;
+}
+
+async function guardarLicenciaUsuario(userId) {
+  var chk = document.getElementById('licAS_' + userId);
+  var fecha = document.getElementById('licASv_' + userId);
+  if (!chk) return;
+  var res = await fetch(apiUrl('/admin/users/' + userId + '/licencias/armascanner'), {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activa: chk.checked, vence: (chk.checked && fecha && fecha.value) ? fecha.value : null })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
+  await loadUsers();
 }
 
 async function asignarAreaInline(userId) {

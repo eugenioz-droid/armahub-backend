@@ -41,6 +41,7 @@ from .asistente import router as asistente_router
 from .auditorias import router as auditorias_router
 from .chequeos_api import router as chequeos_router
 from .control_auditorias import router as control_auditorias_router
+from .licencias import router as licencias_router
 
 
 def create_app() -> FastAPI:
@@ -109,6 +110,8 @@ def create_app() -> FastAPI:
     # Auditorías de cubicación (Calidad): hoy maqueta, sólo lecturas sobre las barras.
     app.include_router(auditorias_router)
     app.include_router(chequeos_router)
+    # Licencias de ArmaScanner: casilla en Gestión de usuarios y validación desde la herramienta.
+    app.include_router(licencias_router)
 
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
@@ -124,6 +127,7 @@ def create_app() -> FastAPI:
         auditorias_router,
         chequeos_router,
         control_auditorias_router,
+        licencias_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

@@ -149,6 +149,10 @@ def get_current_user(request: Request,
         raise HTTPException(status_code=401, detail="Sesión expirada. Vuelve a iniciar sesión.")
     except Exception:
         raise HTTPException(status_code=401, detail="Token inválido")
+    # La ficha de licencia de ArmaScanner (licencias.py) se firma con el mismo secreto, pero
+    # sólo sirve para validar la licencia: no es una sesión del portal.
+    if payload.get("tipo") == "licencia":
+        raise HTTPException(status_code=401, detail="Token inválido")
     # EL ROL SE LEE DE LA BASE, NO DEL TOKEN —para que cambiar el rol de alguien valga sin
     # esperar a que su sesión venza—, PERO NO EN CADA PETICIÓN (21-oct). Esta consulta
     # corría en todas las llamadas de la API y cada ida a Supabase cuesta 0,15–0,3 s:
@@ -438,6 +442,8 @@ def admin_list_users(admin=Depends(require_admin_or_admin_calidad)):
                 FROM users ORDER BY nombre, apellido, email
             """)
             rows = cur.fetchall()
+            from .licencias import licencias_por_usuario
+            licencias = licencias_por_usuario(cur)
             # Áreas por usuario en una sola query
             cur.execute("""
                 SELECT au.user_id, a.id, a.nombre
@@ -459,7 +465,8 @@ def admin_list_users(admin=Depends(require_admin_or_admin_calidad)):
             {"id": r[0], "email": r[1], "role": r[2], "nombre": r[3], "apellido": r[4],
              "activo": r[5] if r[5] is not None else True,
              "fecha_creacion": r[6],
-             "areas": areas_por_usuario.get(r[0], [])}
+             "areas": areas_por_usuario.get(r[0], []),
+             "licencias": licencias.get(r[0], {})}
             for r in rows
         ]
     }
