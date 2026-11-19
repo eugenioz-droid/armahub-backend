@@ -611,7 +611,7 @@
       // EL RESULTADO, AL FINAL Y DESTACADO (19-nov): cuántas observaciones aplicaban de
       // verdad. Sólo las ya resueltas —corregidas en aSa—: lo que está por resolver
       // todavía no se sabe y lo descartado no aplicaba.
-      [num(v.res), 'observaciones que aplicaban', 'clave',
+      [num(v.res), 'Aplican', 'clave',
        pend ? 'resueltas · sin contar las ' + pend + ' por resolver' : 'resueltas']
     ];
     var tit = (sel

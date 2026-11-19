@@ -994,7 +994,7 @@ check("cuatro tarjetas: lo que falta, lo que envejece, lo cerrado y lo que no ap
       "'por resolver'" in JS and "'abiertas hace más de 7 días'" in JS
       and "'cerrado'" in JS and "'no aplican'" in JS)
 check("al final y destacada: las observaciones que aplicaban, solo las resueltas (19-nov)",
-      "[num(v.res), 'observaciones que aplicaban', 'clave'," in JS
+      "[num(v.res), 'Aplican', 'clave'," in JS
       and ".revkpi.clave{" in HTM and "border:2px solid #7EBA27" in HTM)
 check("...lo accionable se ve: ambar lo que falta, rojo lo que lleva mas de una semana",
       ".revkpi.ocupa b{color:#e65100;}" in HTM and ".revkpi.urge b{color:#c62828;}" in HTM
