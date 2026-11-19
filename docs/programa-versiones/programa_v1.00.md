@@ -933,6 +933,81 @@ Objetivo: USC programa la obra; cubicadores dan cumplimiento (auto o manual + va
 
 **Criterio de salida:** USC puede programar una obra y ver su avance real.
 
+### 8.11 Protocolo de cubicaciones: propuesta (18-nov, por validar)
+
+El usuario, 18-nov: «una herramienta de uso de los cubicadores con el cliente. En esta el
+cubicador deja por escrito y le saca la firma al cliente de los criterios que logró entender
+del plano, viendo especificaciones técnicas. Acá el desafío estará en construir bien una base
+de conocimientos técnicos que puedas transformar en un algoritmo… el chat agéntico que
+creemos podrá ayudarnos a finalizar la tarea».
+
+**Qué es hoy.** El Excel «Protocolo 2025» (ArmaScanner/entrada), hoja «Protocolo 2024»,
+versión 3.0, título «ACTA DE INICIO DE CUBICACIONES»: datos de la obra (pisos, m², toneladas,
+ciclos con fecha de entrega); detalles de losas (trabas de muro por espesor con φ, α, β, b y
+unidades por m²; reparticiones; soportes por piso y espesor); detalles de muros por croquis
+(MH en muro simple, encuentros en L y en T, remates superiores e inferiores de MV, cambio de
+espesor), cada uno con 2 a 4 tipos para marcar; un check list de 15 criterios (empalmes 60φ+10,
+lado mínimo 10φ, trabas de 8 mm o del φ de la malla, recubrimientos por elemento, estribos
+verticales piso a piso…); notas; firmas de Obra, Cubicador y USC.
+
+**Dónde va.** Dentro de la obra (tabla `proyectos`), como una pestaña «Protocolo» de la
+caluga de la obra, junto al programa. Una obra tiene un protocolo vigente con versiones
+(se firma la 1; un cambio acordado después es la 2, con lo que cambió). No va en Calculistas.
+
+**El corazón: cada criterio es un dato, no un texto.** Cada pregunta del protocolo es un
+criterio con nombre, opciones y valor por defecto, y cada opción dice qué cambia en la
+cubicación. Ejemplos:
+
+| Criterio | Opciones | Lo usa |
+|----------|----------|--------|
+| Empalme de mallas | 60φ+10 (defecto) · otro k·φ+c | ArmaScanner (MV, MH), modelador (`_empalme_auto`) |
+| Empalme con cambio de φ | el del φ menor · el del mayor | ídem |
+| Trabas de muro | φ de la malla · siempre 8 mm; abrazan H y V · sólo V; unidades por m² por espesor | TR |
+| MH en muro simple | tipo 1 · tipo 2 (croquis) | figura de la MH |
+| Encuentro en L / en T | tipo 1–4 | figura en el encuentro |
+| Remate superior / inferior de MV | tipo 1–4 / 1–3, perimetral o interior | coronación y arranque de MV |
+| Recubrimientos | por elemento (muro perimetral ≠ interior, losa, fundación, pilar, viga) | todo |
+| Estribos de elementos verticales | piso a piso · doble altura · alturas del cliente | EC, cabezales |
+| Lado mínimo | 10φ · NCh 211 · criterio cliente | regla `lado_corto` (chequeos.py) |
+| Barras variables | criterio de ajuste a cm | losas |
+| Soportes de losa | por piso y espesor: un/m², a, b, c | soportes |
+
+Así el mismo protocolo firmado alimenta tres cosas: (1) las reglas de ArmaScanner
+(elevaciones: `CRITERIOS` en elevaciones.py; losas), (2) el modelador y su asistente, y (3) la
+revisión automática (chequeos), que puede marcar una barra que no cumple el protocolo de
+SU obra. Hoy los mismos valores viven repetidos y a veces se contradicen (60φ en el
+conocimiento del asistente y 60φ+10 en el código y el protocolo; gancho 6φ en el documento y
+10φ en el motor): el protocolo pasa a ser la única fuente por obra, y lo de la empresa queda
+como el valor por defecto.
+
+**Flujo.**
+1. El cubicador abre el protocolo de la obra: viene con los valores por defecto de la empresa.
+2. Con los planos y las especificaciones técnicas, marca lo que entendió. El asistente
+   (chat) propone respuestas leyendo las especificaciones y las notas de los planos, siempre
+   con la fuente («EETT punto 5.3», «nota del plano 409»), y el cubicador confirma.
+3. Reunión con el cliente: se revisa en pantalla, se anotan acuerdos y se firma en la misma
+   pantalla (firma dibujada, como el protocolo de terreno M5.5) o se envía un enlace para firmar.
+4. Sale el PDF (fpdf2, como el informe de reclamos), queda en R2 y se manda por correo.
+5. Los criterios firmados quedan disponibles para ArmaScanner (por la licencia, con la obra)
+   y para la revisión.
+
+**Base de conocimientos → algoritmo.** Cada criterio tiene: la pregunta, las opciones, el
+croquis, la norma o fuente, el valor por defecto y la regla que lo aplica. Se arma de a poco:
+cuando un reclamo cae en «MD02 Criterios de cubicación no estandarizados» o «MD03 Falta
+información en protocolo», el análisis agrega o afina un criterio. Así los reclamos alimentan
+el protocolo.
+
+**Decisiones abiertas.**
+1. ¿Pestaña de la obra o módulo propio con lista de protocolos pendientes por firmar?
+2. ¿Firma en pantalla, por enlace al cliente, o las dos?
+3. ¿Quién firma: Obra, Cubicador y USC como hoy, o también el calculista?
+4. ¿Se mantienen los 15 criterios del check list tal cual o se ordenan por elemento?
+5. ¿El cliente puede ver el protocolo después (portal Mis Proyectos)?
+6. ¿Un cambio de criterio después de firmado obliga a una nueva firma?
+
+Primer paso propuesto: la maqueta de la pestaña (sin lógica), con los criterios del Excel
+como datos, para validar la estructura antes de programar.
+
 ---
 
 ## FASE 9 — Cubicación: consolidar y conectar con Obra
