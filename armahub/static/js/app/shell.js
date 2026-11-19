@@ -22,7 +22,11 @@
     asa_data: 'aSa Data',
     clientes: 'Clientes',
     catalogo: 'Catálogo',
-    admin: 'Admin'
+    admin: 'Admin',
+    asc_obras: 'Mis obras',
+    asc_instalar: 'Instalar',
+    asc_licencias: 'Licencias',
+    asc_uso: 'Uso'
   };
 
   window.currentModule = 'hub';
@@ -113,7 +117,11 @@
     clientes: 'loadClientesModule',
     catalogo: 'loadCatalogoModule',
     agregar2: 'loadAgregarCubicacion2', // 5N.20: creador de lotes v2 (contexto real)
-    muros: 'loadMurosTab'               // muros consolidados de la obra (despiece banderado)
+    muros: 'loadMurosTab',              // muros consolidados de la obra (despiece banderado)
+    asc_obras: 'ascCargarObras',        // ArmaScanner (19-nov): cada pestaña carga lo suyo
+    asc_instalar: 'ascCargarInstalar',
+    asc_licencias: 'ascCargarLicencias',
+    asc_uso: 'ascCargarUso'
   };
 
   window.switchTab = function switchTab(tabName) {
@@ -197,6 +205,16 @@
       if (procBtn) procBtn.style.display = esAdmin ? '' : 'none';
       var setBtn = document.getElementById('recShellBtnSettings');
       if (setBtn) setBtn.style.display = esAdmin ? '' : 'none';
+    }
+
+    if (mod === 'armascanner') {
+      // Licencias y Uso: sólo administración (el backend lo valida igual).
+      var adminAsc = ['admin', 'admin_calidad'].indexOf(window.currentRole) !== -1;
+      ['asc_licencias', 'asc_uso'].forEach(function (t) {
+        document.querySelectorAll("[onclick=\"switchTab('" + t + "')\"]").forEach(function (b) {
+          b.style.display = adminAsc ? '' : 'none';
+        });
+      });
     }
 
     if (mod === 'admin') {

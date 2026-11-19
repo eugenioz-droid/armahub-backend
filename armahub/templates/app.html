@@ -9,6 +9,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <script>Chart.defaults.plugins.datalabels = false;</script>
   <link rel="stylesheet" href="/static/css/app.css?v={{ cache_bust }}">
+  <!-- Sistema de Diseño Armacero: opt-in, sólo afecta a lo que está dentro de .arm-ds -->
+  <link rel="stylesheet" href="/static/css/armacero-theme.css?v={{ cache_bust }}">
 </head>
 <body>
   <!-- Header -->
@@ -146,6 +148,11 @@
       <button class="tab-btn mod-clientes" onclick="switchTab('clientes')" style="display:none;">🏢 Clientes</button>
       <!-- Catálogo Armacero tab -->
       <button class="tab-btn mod-catalogo" onclick="switchTab('catalogo')" style="display:none;">🔧 Catálogo</button>
+      <!-- ArmaScanner (19-nov): Licencias y Uso sólo administración (shell.js) -->
+      <button class="tab-btn mod-armascanner" onclick="switchTab('asc_obras')" style="display:none;">Mis obras</button>
+      <button class="tab-btn mod-armascanner" onclick="switchTab('asc_instalar')" style="display:none;">Instalar</button>
+      <button class="tab-btn mod-armascanner" onclick="switchTab('asc_licencias')" style="display:none;">Licencias</button>
+      <button class="tab-btn mod-armascanner" onclick="switchTab('asc_uso')" style="display:none;">Uso</button>
       <!-- Admin tabs -->
       <button class="tab-btn mod-admin" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
     </div>
@@ -167,6 +174,7 @@
     {% include 'tabs/clientes.html' %}
     {% include 'tabs/catalogo.html' %}
     {% include 'tabs/admin.html' %}
+    {% include 'tabs/armascanner.html' %}
   </div>
 
   <!-- MODAL: Template Editor (Colocador por proyecciones). Overlay a pantalla completa;
@@ -344,6 +352,7 @@
 <script src="/static/js/shared/modals.js?v={{ cache_bust }}"></script>
 <script src="/static/js/shared/toast.js?v={{ cache_bust }}"></script>
 <script src="/static/js/shared/uploads.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/armascanner/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/dashboards.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/mensual.js?v={{ cache_bust }}"></script>

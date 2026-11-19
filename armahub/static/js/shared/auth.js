@@ -11,6 +11,8 @@
     currentUserName = displayName || me.email || '';
     currentAreas = Array.isArray(me.areas) ? me.areas : [];
     localStorage.setItem('armahub_email', currentUserEmail);
+    // Herramientas con licencia vigente: abren su caluga aunque el rol no (registry.js).
+    global.currentLicencias = Array.isArray(me.licencias) ? me.licencias : [];
     global.currentRole = currentRole;
     global.currentUserEmail = currentUserEmail;
     global.currentUserName = currentUserName;

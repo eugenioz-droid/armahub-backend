@@ -18,7 +18,8 @@
       hubOrder: definition.hubOrder || 0,
       hubDescription: definition.hubDescription || '',
       hubAccent: definition.hubAccent || '',
-      hubIcon: definition.hubIcon || '🧩'
+      hubIcon: definition.hubIcon || '🧩',
+      licencia: definition.licencia || ''
     };
   }
 
@@ -55,6 +56,11 @@
     var definition = modules[id];
     if (!definition) {
       return false;
+    }
+    // Una caluga con `licencia` la abre también quien tiene esa licencia vigente, sea cual
+    // sea su rol (GET /me → licencias). [ArmaScanner, 19-nov]
+    if (definition.licencia && (window.currentLicencias || []).indexOf(definition.licencia) !== -1) {
+      return true;
     }
     return definition.allowedRoles.indexOf(role) !== -1;
   }
@@ -144,6 +150,24 @@
     hubDescription: 'Programa semanal del area: que sector cubica cada quien y para cuando.',
     hubAccent: '#00897b',
     hubIcon: '🗓️'
+  });
+
+  // ARMASCANNER (19-nov, SPECS §13). La herramienta de escritorio: mis obras con lo subido,
+  // instalar, y para la administración licencias y uso. La ve quien tiene licencia, sea cual
+  // sea su rol (`licencia`), y el administrador.
+  registerModule({
+    id: 'armascanner',
+    title: 'ArmaScanner',
+    css: 'mod-armascanner',
+    defaultTab: 'asc_obras',
+    allowedRoles: ['admin', 'admin_calidad'],
+    licencia: 'armascanner',
+    loaderFunction: 'loadArmaScannerModule',
+    hubCardId: 'hubCardArmaScanner',
+    hubOrder: 14,
+    hubDescription: 'Planos subidos por obra, instalación y licencias.',
+    hubAccent: '#7EBA27',
+    hubIcon: '🛰️'
   });
 
   registerModule({

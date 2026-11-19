@@ -7,6 +7,16 @@ y subir el plano. [Usuario 19-nov, programa §8.13 paso 1]
     GET  /armascanner/obras          las obras de ArmaHub, para el filtro de texto de ArmaScanner
     POST /armascanner/subir-plano    el plano entra como una carga de despiece más
 
+Y lo que muestra la caluga ArmaScanner del portal (sesión del portal; SPECS §13) [Usuario 19-nov:
+«Más que pedidos enviados debiera ver sus obras y ojalá una línea por cada carga de elemento
+constructivo… Con su cantidad de Items, kilos y lo típico que usamos. La licencia capaz la
+dejamos acá, aquí buscamos un usuario existente y lo agregamos»]:
+
+    GET  /armascanner/cargas         Mis obras: una línea por carga (plano = un elemento)
+    GET  /armascanner/mi-licencia    Instalar: mi licencia y mis equipos
+    GET  /armascanner/licencias      Licencias (administración): quién la tiene
+    GET  /armascanner/uso            Uso (administración): KPIs y uso por usuario
+
 SUBIR UN PLANO es la importación de A Detailer de siempre (importer.import_armadetailer), con
 tres reglas propias:
   - Reemplaza sólo las barras de ESE plano (por su PLANO_CODE, estable por plano). Nunca toca
@@ -28,6 +38,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials
 
+from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import audit, get_conn
 from .licencias import _bearer, estado_licencia, leer_ficha
 
@@ -151,3 +162,145 @@ async def subir_plano(
     return {"ok": True, "import_id": import_id, "obra": res.get("proyecto"), "barras": res.get("barras"),
             "kilos": res.get("kilos"), "reemplazadas": res.get("barras_eliminadas_previo"),
             "pendientes": n_pend, "rechazadas": res.get("rejected") or []}
+
+
+# ══════ La caluga ArmaScanner del portal ══════
+
+def licencias_vigentes(cur, email: str) -> list:
+    """Los productos con licencia vigente hoy para ese correo (GET /me: la caluga ArmaScanner
+    sólo se muestra a quien la tiene, y al administrador)."""
+    from datetime import datetime, timezone
+    cur.execute("""
+        SELECT l.producto, l.activa, l.vence, COALESCE(u.activo, TRUE)
+          FROM licencias l JOIN users u ON u.id = l.user_id
+         WHERE u.email = %s
+    """, (email,))
+    hoy = datetime.now(timezone.utc).date()
+    return [p for p, activa, vence, activo in cur.fetchall() if estado_licencia((activa, vence, activo), hoy)[0]]
+
+
+def _es_admin(user) -> bool:
+    return user.get("role") in ("admin", "admin_calidad")
+
+
+def _con_licencia_o_admin(cur, user):
+    if not _es_admin(user) and PRODUCTO not in licencias_vigentes(cur, user.get("email", "")):
+        raise HTTPException(status_code=403, detail="Requiere licencia de ArmaScanner.")
+
+
+def pendientes_de(pend) -> int:
+    return sum(int(n or 0) for n in (pend or {}).values())
+
+
+@router.get("/armascanner/cargas")
+def cargas(user=Depends(get_current_user)):
+    """Mis obras: una línea por carga vigente de ArmaScanner (cada plano es la carga de un
+    elemento constructivo). El cubicador ve las obras donde subió planos —con lo que subieron
+    todos en ellas: el trabajo es colaborativo—; el administrador, todas."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            filtro, params = "", []
+            if not _es_admin(user):
+                filtro = """AND i.id_proyecto IN (SELECT id_proyecto FROM imports
+                                                    WHERE herramienta = 'ArmaScanner' AND usuario = %s)"""
+                params.append(user.get("email", ""))
+            cur.execute(f"""
+                SELECT i.id, i.id_proyecto, p.nombre_proyecto, MAX(b.nombre_plano), i.usuario, i.fecha,
+                       i.herramienta_version, i.pendientes, COUNT(*), COALESCE(SUM(b.peso_total), 0),
+                       string_agg(DISTINCT b.sector, ', '), string_agg(DISTINCT b.piso, ', '),
+                       string_agg(DISTINCT b.ciclo, ', ' ORDER BY b.ciclo)
+                  FROM imports i
+                  JOIN proyectos p ON p.id_proyecto = i.id_proyecto
+                  JOIN barras b ON b.import_id = i.id
+                 WHERE i.herramienta = 'ArmaScanner' {filtro}
+                 GROUP BY i.id, p.nombre_proyecto
+                 ORDER BY i.id DESC
+                 LIMIT 1000
+            """, params)
+            filas = cur.fetchall()
+    out = []
+    for (iid, obra, nombre_obra, plano, usuario, fecha, version, pend, items, kg,
+         sector, piso, ciclos) in filas:
+        plano = (plano or "").rsplit(".dwg", 1)[0]
+        out.append({"id": iid, "obra": obra, "obra_nombre": nombre_obra, "plano": plano,
+                    "elemento": sector or "", "piso": piso or "", "ciclos": ciclos or "",
+                    "items": items, "kg": round(float(kg), 1), "pendientes": pendientes_de(pend),
+                    "usuario": usuario, "fecha": fecha, "version": version})
+    return {"cargas": out}
+
+
+@router.get("/armascanner/mi-licencia")
+def mi_licencia(user=Depends(get_current_user)):
+    """Instalar: mi licencia (vencimiento) y mis equipos."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            cur.execute("""
+                SELECT l.id, l.activa, l.vence, COALESCE(l.max_equipos, 2)
+                  FROM licencias l JOIN users u ON u.id = l.user_id
+                 WHERE u.email = %s AND l.producto = %s
+            """, (user.get("email", ""), PRODUCTO))
+            row = cur.fetchone()
+            equipos = []
+            if row:
+                cur.execute("""SELECT equipo, ultimo_uso, version FROM licencia_equipos
+                                WHERE licencia_id = %s ORDER BY primer_uso""", (row[0],))
+                equipos = [{"equipo": e, "ultimo_uso": u.isoformat() if u else None, "version": v}
+                           for e, u, v in cur.fetchall()]
+    return {"activa": bool(row and row[1]), "vence": row[2].isoformat() if row and row[2] else None,
+            "max_equipos": row[3] if row else 2, "equipos": equipos}
+
+
+@router.get("/armascanner/licencias")
+def licencias(admin=Depends(require_admin_or_admin_calidad)):
+    """Licencias: quién la tiene (también las retiradas, para volver a darlas)."""
+    from .licencias import licencias_por_usuario
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            por_usuario = licencias_por_usuario(cur)
+            ids = [uid for uid, prods in por_usuario.items() if PRODUCTO in prods]
+            usuarios = {}
+            if ids:
+                cur.execute("""SELECT id, email, nombre, apellido, role, COALESCE(activo, TRUE)
+                                 FROM users WHERE id = ANY(%s)""", (ids,))
+                usuarios = {r[0]: r for r in cur.fetchall()}
+    out = []
+    for uid in ids:
+        u = usuarios.get(uid)
+        if not u:
+            continue
+        lic = por_usuario[uid][PRODUCTO]
+        out.append({"user_id": uid, "email": u[1], "nombre": ((u[2] or "") + " " + (u[3] or "")).strip() or u[1],
+                    "role": u[4], "usuario_activo": u[5], **lic})
+    out.sort(key=lambda x: (not x["activa"], x["nombre"].lower()))
+    return {"licencias": out}
+
+
+@router.get("/armascanner/uso")
+def uso(admin=Depends(require_admin_or_admin_calidad)):
+    """Uso: KPIs de los últimos 30 días y el uso por usuario (cargas vigentes de ArmaScanner)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT COUNT(*) FROM licencias
+                            WHERE producto = %s AND activa AND (vence IS NULL OR vence >= CURRENT_DATE)""",
+                        (PRODUCTO,))
+            activas = cur.fetchone()[0]
+            cur.execute("""
+                SELECT i.usuario, COUNT(DISTINCT i.id), COUNT(b.*), COALESCE(SUM(b.peso_total), 0),
+                       COUNT(b.*) FILTER (WHERE b.revision = 'aprobada'), MAX(i.fecha)
+                  FROM imports i JOIN barras b ON b.import_id = i.id
+                 WHERE i.herramienta = 'ArmaScanner'
+                   AND i.fecha >= to_char(NOW() - INTERVAL '30 days', 'YYYY-MM-DD')
+                 GROUP BY i.usuario
+                 ORDER BY 4 DESC
+            """)
+            filas = cur.fetchall()
+    por_usuario = [{"usuario": u, "planos": pl, "items": it, "kg": round(float(kg), 1),
+                    "aprobadas_pct": round(100.0 * ap / it, 1) if it else 0.0, "ultima": ul}
+                   for u, pl, it, kg, ap, ul in filas]
+    items, aprobadas = sum(f[2] for f in filas), sum(f[4] for f in filas)
+    return {"licencias_activas": activas, "planos": sum(f[1] for f in filas),
+            "kg": round(sum(float(f[3]) for f in filas), 1),
+            "aprobadas_pct": round(100.0 * aprobadas / items, 1) if items else 0.0,
+            "por_usuario": por_usuario}

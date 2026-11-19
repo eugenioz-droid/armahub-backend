@@ -1,0 +1,120 @@
+<!-- ARMASCANNER (19-nov, SPECS §13) — la caluga de la herramienta de escritorio.
+     Primera pantalla con el Sistema de Diseño Armacero (.arm-ds, armacero-theme.css).
+     La ve quien tiene licencia (registry.js, `licencia`) y el administrador; «Licencias» y
+     «Uso», sólo el administrador (shell.js). Lógica: features/armascanner/index.js. -->
+<style>
+  .asc { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .asc .asc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .asc .asc-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .asc .asc-barra .asc-rotulo { font-size: 12px; color: var(--arm-text-muted); }
+  .asc .arm-button, .asc .arm-input { font-size: 13px; }
+  .asc .asc-barra .cb-wrap { width: auto; }
+  .asc .asc-seg { display: inline-flex; gap: 4px; }
+  .asc .asc-seg .arm-button { min-height: 32px; padding: 4px 12px; font-weight: 500; }
+  .asc .asc-seg .arm-button.is-on { background: var(--arm-green-tint); border-color: var(--arm-green); color: #3F6B12; font-weight: 600; }
+  .asc .arm-table td.num, .asc .arm-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .asc .arm-table td.corto { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asc .asc-vacio { padding: 24px; text-align: center; color: var(--arm-text-muted); font-size: 13px; }
+  .asc h3 { margin: 0 0 12px 0; font-size: 15px; }
+  .asc .asc-linea { font-size: 12px; color: var(--arm-text-muted); }
+  .asc .asc-dos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
+  @media (max-width: 900px) { .asc .asc-kpis, .asc .asc-dos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+
+<div id="tab-asc_obras" class="tab-content">
+  <div class="arm-ds asc">
+    <div class="asc-kpis">
+      <div class="arm-kpi"><div class="arm-kpi__label">Planos</div><div class="arm-kpi__value" id="ascKpiPlanos">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Ítems</div><div class="arm-kpi__value" id="ascKpiItems">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Kilos</div><div class="arm-kpi__value" id="ascKpiKg">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Sin aprobar</div><div class="arm-kpi__value" id="ascKpiPend">—</div></div>
+    </div>
+    <div class="arm-card">
+      <div class="asc-barra">
+        <span class="asc-rotulo">Obra</span>
+        <input type="text" id="ascObraInput" list="ascObraDatalist" class="arm-input" placeholder="Todas"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+               data-lpignore="true" data-form-type="other" style="width:260px;">
+        <datalist id="ascObraDatalist"></datalist>
+        <select id="ascObraSelect" style="display:none;"></select>
+        <span class="asc-rotulo" style="margin-left:8px;">Elemento</span>
+        <div class="asc-seg" id="ascElemento">
+          <button class="arm-button is-on" data-el="">Todos</button>
+          <button class="arm-button" data-el="FUND">FUND</button>
+          <button class="arm-button" data-el="ELEV">ELEV</button>
+          <button class="arm-button" data-el="LCIELO">LCIELO</button>
+          <button class="arm-button" data-el="VCIELO">VCIELO</button>
+        </div>
+      </div>
+      <table class="arm-table">
+        <thead><tr>
+          <th>Obra</th><th>Plano</th><th>Elemento</th><th>Piso</th><th>Ciclos</th>
+          <th class="num">Ítems</th><th class="num">Kg</th><th class="num">PPI</th>
+          <th>Estado</th><th>Subido por</th><th>Fecha</th>
+        </tr></thead>
+        <tbody id="ascCargas"></tbody>
+      </table>
+      <div id="ascCargasVacio" class="asc-vacio" style="display:none;">Sin planos subidos desde ArmaScanner.</div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-asc_instalar" class="tab-content">
+  <div class="arm-ds asc">
+    <div class="asc-dos">
+      <div class="arm-card">
+        <h3>ArmaScanner</h3>
+        <button class="arm-button arm-button--primary" id="ascDescargar" disabled>Descargar</button>
+        <div class="asc-linea" style="margin-top:8px;">Instalador en preparación.</div>
+      </div>
+      <div class="arm-card">
+        <h3>Mi licencia <span id="ascMiEstado"></span></h3>
+        <table class="arm-table">
+          <thead><tr><th>Equipo</th><th>Último uso</th><th>Versión</th></tr></thead>
+          <tbody id="ascMisEquipos"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-asc_licencias" class="tab-content">
+  <div class="arm-ds asc">
+    <div class="arm-card">
+      <div class="asc-barra">
+        <input type="text" id="ascUsuarioInput" class="arm-input" placeholder="Buscar usuario" style="width:300px;">
+        <span class="asc-rotulo">Vence</span>
+        <input type="date" id="ascVence" class="arm-input">
+        <button class="arm-button arm-button--primary" id="ascAgregar">Agregar</button>
+      </div>
+      <table class="arm-table">
+        <thead><tr>
+          <th>Usuario</th><th>Estado</th><th>Vence</th><th>Equipos</th><th>Último uso</th><th></th>
+        </tr></thead>
+        <tbody id="ascLicencias"></tbody>
+      </table>
+      <div id="ascLicenciasVacio" class="asc-vacio" style="display:none;">Sin licencias.</div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-asc_uso" class="tab-content">
+  <div class="arm-ds asc">
+    <div class="asc-kpis">
+      <div class="arm-kpi"><div class="arm-kpi__label">Licencias activas</div><div class="arm-kpi__value" id="ascUsoLic">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Planos · 30 días</div><div class="arm-kpi__value" id="ascUsoPlanos">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Kilos · 30 días</div><div class="arm-kpi__value" id="ascUsoKg">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Ítems aprobados</div><div class="arm-kpi__value" id="ascUsoAprob">—</div></div>
+    </div>
+    <div class="arm-card">
+      <table class="arm-table">
+        <thead><tr>
+          <th>Usuario</th><th class="num">Planos</th><th class="num">Ítems</th><th class="num">Kg</th>
+          <th class="num">Aprobados</th><th>Última subida</th>
+        </tr></thead>
+        <tbody id="ascUso"></tbody>
+      </table>
+      <div id="ascUsoVacio" class="asc-vacio" style="display:none;">Sin uso en los últimos 30 días.</div>
+    </div>
+  </div>
+</div>
