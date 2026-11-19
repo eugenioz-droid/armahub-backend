@@ -1991,10 +1991,16 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
   aquí.
 - Licencia por usuario, 2 equipos, 3 días sin conexión (pasado el plazo valida sola con
   internet; la clave se pide sólo si caducó la ficha de 30 días o se liberó el equipo).
-- Instalación sin permisos de administrador (instalador por usuario en
-  `%LOCALAPPDATA%\Programs\ArmaScanner`). Sin firma de código, Windows avisa la primera vez
-  («Windows protegió su PC» → «Más información» → «Ejecutar de todas formas»); las
-  actualizaciones desde el botón «Actualizar» no muestran el aviso.
+- Instalación sin permisos de administrador: se publica un **ZIP** (pestaña Versiones) con la
+  aplicación compilada (Nuitka) en su carpeta; se descomprime y al abrir `ArmaScanner.exe` se
+  instala sola en `%LOCALAPPDATA%\Programs\ArmaScanner` (accesos en menú Inicio y escritorio,
+  entrada en Aplicaciones con «Desinstalar»). Los datos del instalado van en
+  `Documentos\ArmaScanner`. No se usa un instalador de un solo `.exe`: el antivirus de la
+  empresa (Trend Micro) lo borró al crearlo (19-nov). Sin firma de código, Windows puede
+  avisar la primera vez («Más información» → «Ejecutar de todas formas»).
+- «Actualizar a …» (ventana de planos de ArmaScanner, instalado): baja el ZIP vigente, el
+  nuevo espera que se cierre el viejo, se instala encima y se vuelve a abrir. La copia
+  instalada exige licencia siempre (`licencia.exigida`).
 
 ### 13.1 Subir plano (el pedido llega a ArmaHub)
 - La obra se elige en ArmaScanner con filtro de texto sobre las obras de ArmaHub.
