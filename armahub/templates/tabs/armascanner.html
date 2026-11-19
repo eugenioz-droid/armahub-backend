@@ -65,7 +65,7 @@
       <div class="arm-card">
         <h3>ArmaScanner</h3>
         <button class="arm-button arm-button--primary" id="ascDescargar" disabled>Descargar</button>
-        <div class="asc-linea" style="margin-top:8px;">Instalador en preparación.</div>
+        <div class="asc-linea" id="ascDescargaLinea" style="margin-top:8px;">Sin versión publicada.</div>
       </div>
       <div class="arm-card">
         <h3>Mi licencia <span id="ascMiEstado"></span></h3>
@@ -94,6 +94,28 @@
         <tbody id="ascLicencias"></tbody>
       </table>
       <div id="ascLicenciasVacio" class="asc-vacio" style="display:none;">Sin licencias.</div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-asc_versiones" class="tab-content">
+  <div class="arm-ds asc">
+    <div class="arm-card">
+      <div class="asc-barra">
+        <input type="file" id="ascVerArchivo" accept=".exe" class="arm-input" style="width:300px;">
+        <input type="text" id="ascVerVersion" class="arm-input" placeholder="AAAA-MM-DD" style="width:130px;">
+        <input type="text" id="ascVerNotas" class="arm-input" placeholder="Novedades" style="width:300px;">
+        <label class="asc-rotulo"><input type="checkbox" id="ascVerOblig"> Obligatoria</label>
+        <button class="arm-button arm-button--primary" id="ascVerPublicar">Publicar</button>
+        <span class="asc-linea" id="ascVerEstado"></span>
+      </div>
+      <table class="arm-table">
+        <thead><tr>
+          <th>Versión</th><th>Publicada</th><th class="num">Tamaño</th><th>Novedades</th><th>Estado</th><th></th>
+        </tr></thead>
+        <tbody id="ascVersiones"></tbody>
+      </table>
+      <div id="ascVersionesVacio" class="asc-vacio" style="display:none;">Sin versiones publicadas.</div>
     </div>
   </div>
 </div>

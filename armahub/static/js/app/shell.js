@@ -26,7 +26,8 @@
     asc_obras: 'Mis obras',
     asc_instalar: 'Instalar',
     asc_licencias: 'Licencias',
-    asc_uso: 'Uso'
+    asc_uso: 'Uso',
+    asc_versiones: 'Versiones'
   };
 
   window.currentModule = 'hub';
@@ -121,7 +122,8 @@
     asc_obras: 'ascCargarObras',        // ArmaScanner (19-nov): cada pestaña carga lo suyo
     asc_instalar: 'ascCargarInstalar',
     asc_licencias: 'ascCargarLicencias',
-    asc_uso: 'ascCargarUso'
+    asc_uso: 'ascCargarUso',
+    asc_versiones: 'ascCargarVersiones'
   };
 
   window.switchTab = function switchTab(tabName) {
@@ -210,7 +212,7 @@
     if (mod === 'armascanner') {
       // Licencias y Uso: sólo administración (el backend lo valida igual).
       var adminAsc = ['admin', 'admin_calidad'].indexOf(window.currentRole) !== -1;
-      ['asc_licencias', 'asc_uso'].forEach(function (t) {
+      ['asc_licencias', 'asc_uso', 'asc_versiones'].forEach(function (t) {
         document.querySelectorAll("[onclick=\"switchTab('" + t + "')\"]").forEach(function (b) {
           b.style.display = adminAsc ? '' : 'none';
         });

@@ -109,6 +109,14 @@ def upload_file(key: str, data: bytes, content_type: str = "application/octet-st
     return key
 
 
+def upload_fileobj(key: str, fileobj, content_type: str = "application/octet-stream") -> str:
+    """Sube un archivo abierto a R2 por partes, sin cargarlo entero en memoria (instaladores de
+    ArmaScanner, decenas de MB). Devuelve la key."""
+    client = _get_client()
+    client.upload_fileobj(fileobj, R2_BUCKET, key, ExtraArgs={"ContentType": content_type})
+    return key
+
+
 def download_file(key: str) -> bytes:
     """Descarga el contenido de `key` como bytes."""
     client = _get_client()
@@ -126,16 +134,20 @@ def delete_file(key: str) -> None:
         pass
 
 
-def generate_presigned_url(key: str, expires: int = 3600, content_type: Optional[str] = None) -> str:
+def generate_presigned_url(key: str, expires: int = 3600, content_type: Optional[str] = None,
+                           descargar_como: Optional[str] = None) -> str:
     """
     Genera una URL temporal firmada para LECTURA de `key`.
     Sirve para mostrar imágenes/planos en el navegador sin exponer credenciales
     ni hacer el objeto público. `expires` en segundos (default 1h).
+    `descargar_como`: el navegador lo guarda como archivo con ese nombre (no lo abre).
     """
     client = _get_client()
     params = {"Bucket": R2_BUCKET, "Key": key}
     if content_type:
         params["ResponseContentType"] = content_type
+    if descargar_como:
+        params["ResponseContentDisposition"] = f'attachment; filename="{descargar_como}"'
     return client.generate_presigned_url("get_object", Params=params, ExpiresIn=expires)
 
 

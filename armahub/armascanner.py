@@ -16,6 +16,9 @@ dejamos acá, aquí buscamos un usuario existente y lo agregamos»]:
     GET  /armascanner/mi-licencia    Instalar: mi licencia y mis equipos
     GET  /armascanner/licencias      Licencias (administración): quién la tiene
     GET  /armascanner/uso            Uso (administración): KPIs y uso por usuario
+    GET  /armascanner/descarga       Instalar: la versión vigente y su enlace de descarga
+    GET  /armascanner/actualizacion  (ficha) ¿hay una versión más nueva? → «Actualizar» en ArmaScanner
+    GET/POST/PATCH /armascanner/versiones   Versiones (administración): publicar, retirar, obligatoria
 
 SUBIR UN PLANO es la importación de A Detailer de siempre (importer.import_armadetailer), con
 tres reglas propias:
@@ -34,9 +37,11 @@ no), con licencia vigente.
 
 import json
 from io import BytesIO
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel
 
 from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import audit, get_conn
@@ -330,3 +335,131 @@ def uso(admin=Depends(require_admin_or_admin_calidad)):
             "kg": round(sum(float(f[3]) for f in filas), 1),
             "aprobadas_pct": round(100.0 * aprobadas / items, 1) if items else 0.0,
             "por_usuario": por_usuario}
+
+
+# ══════ Versiones: descargar, publicar y actualizar (mig 168) ══════
+# La vigente es la activa más nueva. Las versiones se comparan como texto: AAAA-MM-DD (y
+# AAAA-MM-DD.N si sale más de una el mismo día), que es licencia.VERSION en ArmaScanner.
+DESCARGA_SEGUNDOS = 600
+
+
+def _vigente(cur):
+    cur.execute("""SELECT id, version, archivo, tamano, notas, obligatoria, publicada_el
+                     FROM armascanner_versiones WHERE activa ORDER BY version DESC LIMIT 1""")
+    return cur.fetchone()
+
+
+def _nombre_instalador(version: str) -> str:
+    return f"ArmaScanner-{version}-instalar.exe"
+
+
+def _enlace(fila) -> str:
+    from . import storage
+    return storage.generate_presigned_url(fila[2], expires=DESCARGA_SEGUNDOS,
+                                          descargar_como=_nombre_instalador(fila[1]))
+
+
+def _version_dict(fila, con_enlace=False) -> dict:
+    d = {"id": fila[0], "version": fila[1], "tamano": fila[3], "notas": fila[4] or "",
+         "obligatoria": bool(fila[5]), "publicada_el": fila[6].isoformat() if fila[6] else None}
+    if con_enlace:
+        d["url"] = _enlace(fila)
+    return d
+
+
+@router.get("/armascanner/descarga")
+def descarga(user=Depends(get_current_user)):
+    """Instalar: la versión vigente y su enlace de descarga (vale DESCARGA_SEGUNDOS)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            fila = _vigente(cur)
+    if not fila:
+        return {"version": None}
+    audit(user.get("email", "?"), "armascanner_descarga", fila[1], "armascanner", fila[1])
+    return _version_dict(fila, con_enlace=True)
+
+
+@router.get("/armascanner/actualizacion")
+def actualizacion(version: str = "", credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """ArmaScanner pregunta, con su ficha, si hay una versión más nueva que la suya. Si la hay,
+    va con su enlace de descarga: el botón «Actualizar» la baja e instala."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _usuario(cur, credentials.credentials)
+            fila = _vigente(cur)
+    if not fila or not version or fila[1] <= version.strip():
+        return {"hay": False, "version": fila[1] if fila else None}
+    return dict(_version_dict(fila, con_enlace=True), hay=True)
+
+
+@router.get("/armascanner/versiones")
+def versiones(admin=Depends(require_admin_or_admin_calidad)):
+    """Versiones: todas, la más nueva primero."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, version, archivo, tamano, notas, obligatoria, publicada_el, activa, publicada_por
+                             FROM armascanner_versiones ORDER BY version DESC""")
+            filas = cur.fetchall()
+            vig = _vigente(cur)
+    return {"vigente": vig[1] if vig else None,
+            "versiones": [dict(_version_dict(f), activa=f[7], publicada_por=f[8]) for f in filas]}
+
+
+@router.post("/armascanner/versiones")
+def publicar(archivo: UploadFile = File(...), version: str = Form(...), notas: str = Form(""),
+                   obligatoria: bool = Form(False), admin=Depends(require_admin_or_admin_calidad)):
+    """Publicar una versión: el instalador (construir.py) va a R2 y queda vigente."""
+    import re
+    from . import storage
+    version = (version or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", version):
+        raise HTTPException(status_code=400, detail="La versión va como AAAA-MM-DD (o AAAA-MM-DD.2).")
+    if not (archivo.filename or "").lower().endswith(".exe"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser el instalador (.exe).")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM armascanner_versiones WHERE version = %s", (version,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail=f"La versión {version} ya está publicada.")
+    clave = f"armascanner/versiones/{version}/{_nombre_instalador(version)}"
+    archivo.file.seek(0, 2)
+    tamano = archivo.file.tell()
+    archivo.file.seek(0)
+    storage.upload_fileobj(clave, archivo.file, "application/vnd.microsoft.portable-executable")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO armascanner_versiones (version, archivo, tamano, notas, obligatoria, publicada_por)
+                           VALUES (%s, %s, %s, %s, %s, %s)""",
+                        (version, clave, tamano, (notas or "").strip()[:2000] or None, obligatoria, admin.get("email")))
+    audit(admin.get("email", "?"), "armascanner_publicar", f"{version} ({tamano / 1e6:.1f} MB)"
+          + (" obligatoria" if obligatoria else ""), "armascanner", version)
+    return {"ok": True, "version": version, "tamano": tamano}
+
+
+class CambioVersion(BaseModel):
+    activa: Optional[bool] = None
+    obligatoria: Optional[bool] = None
+
+
+@router.patch("/armascanner/versiones/{vid}")
+def cambiar_version(vid: int, datos: CambioVersion, admin=Depends(require_admin_or_admin_calidad)):
+    """Retirar (activa=false) o volver a poner una versión; marcarla obligatoria o no."""
+    sets, valores = [], []
+    for campo in ("activa", "obligatoria"):
+        v = getattr(datos, campo)
+        if v is not None:
+            sets.append(f"{campo} = %s")
+            valores.append(v)
+    if not sets:
+        return {"ok": True}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE armascanner_versiones SET {', '.join(sets)} WHERE id = %s RETURNING version",
+                        valores + [vid])
+            fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Versión no encontrada.")
+    audit(admin.get("email", "?"), "armascanner_version", f"{fila[0]}: {datos.model_dump(exclude_none=True)}",
+          "armascanner", fila[0])
+    return {"ok": True}
