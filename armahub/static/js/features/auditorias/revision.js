@@ -607,7 +607,12 @@
       [pcent(cerr) + '%', 'cerrado', pcent(cerr) === 100 ? 'listo' : '',
        '<i style="width:' + pcent(cerr) + '%"></i>', v.res + ' resueltos · ' + v.nap + ' no aplican'],
       // LA CALIDAD DE LAS REGLAS: lo que se descarta es lo que la máquina marcó de más.
-      [pcent(v.nap) + '%', 'no aplican', '', '', v.nap + ' de ' + v.det + ' detectado(s)']
+      [pcent(v.nap) + '%', 'no aplican', '', '', v.nap + ' de ' + v.det + ' detectado(s)'],
+      // EL RESULTADO, AL FINAL Y DESTACADO (19-nov): cuántas observaciones aplicaban de
+      // verdad. Sólo las ya resueltas —corregidas en aSa—: lo que está por resolver
+      // todavía no se sabe y lo descartado no aplicaba.
+      [num(v.res), 'observaciones que aplicaban', 'clave',
+       pend ? 'resueltas · sin contar las ' + pend + ' por resolver' : 'resueltas']
     ];
     var tit = (sel
       ? '<span class="revtit">Revisión #' + sel.id + '</span> <span class="muted">' + _fechaHora(sel.arrancada) +
