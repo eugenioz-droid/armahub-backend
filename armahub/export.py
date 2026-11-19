@@ -150,6 +150,22 @@ def _build_sheet(wb: Workbook, sheet_name: str, rows: list, sector: str, piso: s
         ws.column_dimensions[get_column_letter(col_idx)].width = max(len(label) + 2, 8)
 
 
+def combinaciones_bloqueadas(cur, id_proyecto: str) -> dict:
+    """{"SECTOR|PISO|CICLO": n} con barras sin aprobar en las cargas vigentes de ArmaScanner
+    (imports.pendientes; armascanner.py). Una carga sin barras en la base ya no cuenta."""
+    cur.execute("""
+        SELECT i.pendientes FROM imports i
+         WHERE i.id_proyecto = %s AND i.pendientes IS NOT NULL
+           AND EXISTS (SELECT 1 FROM barras b WHERE b.import_id = i.id)
+    """, (id_proyecto,))
+    out = {}
+    for (pend,) in cur.fetchall():
+        for k, n in (pend or {}).items():
+            if n:
+                out[k] = out.get(k, 0) + int(n)
+    return out
+
+
 @router.get("/proyectos/{id_proyecto}/exportar")
 def exportar_proyecto(
     id_proyecto: str,
@@ -203,6 +219,16 @@ def exportar_proyecto(
 
             if not combos:
                 raise HTTPException(status_code=404, detail="No hay barras para exportar en este proyecto")
+
+            # Planos subidos desde ArmaScanner con barras sin aprobar: esa combinación no se
+            # exporta hasta que el plano vuelva a subir con todo aprobado. [Usuario 19-nov]
+            pendientes = combinaciones_bloqueadas(cur, id_proyecto)
+            bloqueadas = [c for c in combos if "|".join(str(x or "").upper() for x in c) in pendientes]
+            if bloqueadas:
+                raise HTTPException(status_code=409, detail=(
+                    "No se puede exportar: hay planos de ArmaScanner con barras sin aprobar en "
+                    + ", ".join(f"{s} {p} {c}" for s, p, c in bloqueadas)
+                    + ". Apruébalas en ArmaScanner y vuelve a subir el plano."))
 
             # Construir ZIP en memoria
             zip_buffer = BytesIO()

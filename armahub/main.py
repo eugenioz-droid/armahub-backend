@@ -42,6 +42,7 @@ from .auditorias import router as auditorias_router
 from .chequeos_api import router as chequeos_router
 from .control_auditorias import router as control_auditorias_router
 from .licencias import router as licencias_router
+from .armascanner import router as armascanner_router
 
 
 def create_app() -> FastAPI:
@@ -112,6 +113,8 @@ def create_app() -> FastAPI:
     app.include_router(chequeos_router)
     # Licencias de ArmaScanner: casilla en Gestión de usuarios y validación desde la herramienta.
     app.include_router(licencias_router)
+    # Subir plano desde ArmaScanner (con la ficha de su licencia).
+    app.include_router(armascanner_router)
 
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
@@ -128,6 +131,7 @@ def create_app() -> FastAPI:
         chequeos_router,
         control_auditorias_router,
         licencias_router,
+        armascanner_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

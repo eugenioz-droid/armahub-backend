@@ -838,6 +838,7 @@ async def import_armadetailer(
         "obras_conflicto": obras_conflicto,
         "fund_misplaced": fund_misplaced_list,
         "cod_prod_corregidos": cod_prod_corregidos,
+        "import_id": import_id,
     }
 
 
