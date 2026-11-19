@@ -886,6 +886,9 @@ Sin este discovery, ambas calugas se construyen sobre supuestos que luego hay qu
 
 ## FASE 7 — Caluga Mis Proyectos (expediente, cliente + interno)
 
+> **19-nov:** F7 y F8 se unen en una caluga «Obras», el panel de cada obra (SPECS §5). El
+> orden de construcción vigente es el de §8.13; estas tablas quedan como inventario de tareas.
+
 Objetivo: expediente de obra donde cliente y armacero ven y editan según permisos.
 
 | N° | Descripción | Realizado | Quién |
@@ -970,6 +973,9 @@ cubicación. Ejemplos:
 | Estribos de elementos verticales | piso a piso · doble altura · alturas del cliente | EC, cabezales |
 | Lado mínimo | 10φ · NCh 211 · criterio cliente | regla `lado_corto` (chequeos.py) |
 | Barras variables | criterio de ajuste a cm | losas |
+| MV: arranque, intermedios y cierre (19-nov) | intermedios siempre con empalme hacia arriba si el muro sigue; cierre arriba simétrico (defecto, ayuda a fabricar) · asimétrico | ArmaScanner (elevaciones) |
+| MH: figura (19-nov) | 104B (defecto) · condición especial para muros largos / perimetrales | ArmaScanner (elevaciones) |
+| Trabas de muro: cantidad (19-nov) | 6 por m² (defecto, editable); se descuenta el muro que cruza y las capas de cabezales | TR |
 | Soportes de losa | por piso y espesor: un/m², a, b, c | soportes |
 
 Así el mismo protocolo firmado alimenta tres cosas: (1) las reglas de ArmaScanner
@@ -997,16 +1003,25 @@ cuando un reclamo cae en «MD02 Criterios de cubicación no estandarizados» o �
 información en protocolo», el análisis agrega o afina un criterio. Así los reclamos alimentan
 el protocolo.
 
+**Respuestas del usuario (19-nov).**
+- Va en el panel de la obra (caluga «Obras», SPECS §5), pestaña Protocolo, donde también
+  entra el cliente y aprueba. Ese panel une programa, protocolo, planos, pedidos y terreno.
+- Firma: el cliente aprueba con su usuario en la plataforma (nombre, fecha, versión en la
+  auditoría). No se contrata firma electrónica. La firma dibujada queda para Terreno.
+- Sin maqueta: se construye directo en la página.
+- Los detalles de elevaciones (cierre de MV, MH, encuentros, trabas) se definen desde aquí
+  (filas del 19-nov en la tabla de arriba).
+
 **Decisiones abiertas.**
-1. ¿Pestaña de la obra o módulo propio con lista de protocolos pendientes por firmar?
-2. ¿Firma en pantalla, por enlace al cliente, o las dos?
+1. ~~¿Pestaña de la obra o módulo propio?~~ Pestaña del panel de la obra (19-nov).
+2. ~~¿Firma en pantalla o por enlace?~~ Aprobación con el usuario del cliente (19-nov).
 3. ¿Quién firma: Obra, Cubicador y USC como hoy, o también el calculista?
 4. ¿Se mantienen los 15 criterios del check list tal cual o se ordenan por elemento?
 5. ¿El cliente puede ver el protocolo después (portal Mis Proyectos)?
 6. ¿Un cambio de criterio después de firmado obliga a una nueva firma?
 
-Primer paso propuesto: la maqueta de la pestaña (sin lógica), con los criterios del Excel
-como datos, para validar la estructura antes de programar.
+Primer paso: la pestaña Protocolo directo en la página (sin maqueta, 19-nov), con los
+criterios del Excel como datos.
 
 ### 8.12 ArmaScanner en ArmaHub: caluga, distribución y pedido (19-nov)
 
@@ -1023,6 +1038,12 @@ como datos, para validar la estructura antes de programar.
 - Sin firma de código por ahora (Windows avisará «editor desconocido» al instalar).
 - Seguridad: la de la propuesta (ejecutable compilado, licencia firmada por el servidor,
   cupo de equipos, el pedido en el servidor); los usuarios iniciales son de confianza.
+- Licencia **por usuario**; **3 días sin conexión** (después no deja trabajar hasta validar;
+  con internet valida solo, sin clave). Sin maquetas en adelante: directo en la página.
+- **Carga de planos por arrastre** (D5 decidido): el cubicador arrastra los DWG al menú
+  inicial, ArmaScanner los ordena y registra solo; la obra viene de ArmaHub (de aSa).
+- Planos trabajados en ArmaHub: subir, tomar, aviso de versión, una sola copia, vista previa
+  PDF (SPECS §5.4).
 
 **Instalar «desde la página» sin descargar un archivo:** no se puede con un programa de
 escritorio (el navegador no instala programas; lo que lo permite —MSIX/App Installer—
@@ -1033,10 +1054,25 @@ versiones nuevas se instalan con el botón «Actualizar» dentro de ArmaScanner.
 | Etapa | Qué | Estado |
 |---|---|---|
 | D1 | Pedido de ArmaScanner → ArmaHub (envío, obra destino, reemplazo por ciclo, origen) | Diseño |
-| D2 | Caluga y página ArmaScanner (maqueta → implementación) | Maqueta |
+| D2 | Caluga y página ArmaScanner (SPECS §13), directo en la página | Falta |
 | D3 | ArmaScanner empaquetado (Nuitka) + instalador por usuario; datos en Documentos | Falta |
 | D4 | Descarga con enlace temporal (R2) y botón «Actualizar» (versión en la validación) | Falta |
-| D5 | Carga de planos por arrastre, con registro y versiones automáticos | Decisión |
+| D5 | Carga de planos por arrastre, con registro y versiones automáticos | Falta |
+| D6 | Planos en ArmaHub: subir, tomar, aviso de versión, respaldo, vista previa PDF (SPECS §5.4) | Falta |
+
+### 8.13 Panel de la obra: orden de construcción (19-nov, por validar)
+
+Diseño en SPECS §5. Cada paso deja algo usable; el cliente entra al final, con revisión de
+seguridad previa.
+
+| Paso | Qué | Depende de |
+|---|---|---|
+| O1 | Pedido ArmaScanner → ArmaHub (D1) | 4 definiciones del usuario |
+| O2 | Caluga «Obras»: lista de obras asignadas, encabezado, pestañas Resumen y Pedidos (datos que ya existen) | — |
+| O3 | Carga por arrastre en ArmaScanner (D5) + Planos en ArmaHub (D6) + pestaña Planos con vista previa | O2, D3 instalador |
+| O4 | Pestaña Protocolo: criterios como datos, versiones, PDF; ArmaScanner lo lee | O2 |
+| O5 | Pestaña Programa (reusa `tareas_programacion`); el pedido marca cubicado solo | O1, O2 |
+| O6 | Acceso del cliente (7.12) + aprobación del protocolo + pestaña Terreno (protocolo de entrega) → App Terreno (F13) | O4 |
 
 ---
 

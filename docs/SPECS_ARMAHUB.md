@@ -19,8 +19,8 @@
 3. [Caluga: Reclamos](#3-caluga-reclamos)
 4. [Caluga: Cubicación](#4-caluga-cubicacion)
 4A. [Caluga: Catálogo Armacero](#4a-caluga-catálogo-armacero)
-5. [Caluga: Mis Proyectos (Discovery Obra)](#5-caluga-mis-proyectos-discovery-obra)
-6. [Caluga: Programa de Obra](#6-caluga-programa-de-obra)
+5. [Caluga: Obras — panel de cada obra](#5-caluga-obras--el-panel-de-cada-obra-diseño-19-nov-por-validar)
+6. [Caluga: Programa de Obra (absorbida por §5)](#6-caluga-programa-de-obra)
 7. [Caluga: Admin](#7-caluga-admin)
 8. [Caluga: CRM](#8-caluga-crm)
 9. [Servicios transversales](#9-servicios-transversales)
@@ -1214,31 +1214,126 @@ pero el render pasa a ser SVG iso para todas.)
 
 ---
 
-## 5. CALUGA: MIS PROYECTOS (DISCOVERY OBRA)
+## 5. CALUGA: OBRAS — el panel de cada obra (DISEÑO 19-nov, por validar)
 
-> Caluga en diseño — discovery pendiente (F6 del programa).
+> Reemplaza los borradores «Mis Proyectos» (F7) y «Programa de Obra» (F8): eran la misma obra
+> vista dos veces. Origen: usuario 19-nov, respuestas 14 y 17–19: *«tenemos que ir pensando en
+> la caluga que tenemos definida de programaciones de obra… después queremos agregar
+> programaciones, control de documentos… conviene un control de documentos trabajados con la
+> herramienta… Esta caluga es donde creo debe poder meterse el cliente, capaz las aprobaciones
+> del cliente las hacemos en este mismo panel. Así como disponibilizar un tab (que después pueda
+> enviarse a una APP) para que el cliente pueda ir a hacer sus revisiones en terreno».*
+> Sin maqueta: se construye directo en la página (usuario 19-nov, respuesta 16).
 
-### 5.1 Propósito (borrador)
+### 5.1 Propósito
 
-Vista resumen de las obras asignadas al usuario. Panel de entrada al portal desde donde el usuario accede a su obra activa y puede ver estado general.
+Un solo lugar por obra donde trabajan el área de cubicación, la obra y, después, el cliente:
+qué se programa, con qué criterios se cubica, qué planos se trabajaron y cuál es su última
+versión, qué pedidos salieron y cómo se recibió el fierro en terreno.
 
-### 5.2 Pendientes
+La caluga **Programación** (28-sep) sigue siendo la vista del área (todas las obras, por
+semana). La pestaña Programa de esta caluga muestra los mismos datos (`tareas_programacion`)
+filtrados por la obra: no hay dos programas.
 
-- Discovery con el usuario: qué información necesita cada rol al entrar.
-- Definir si hay KPIs por obra (reclamos abiertos, kilos cubicados, etc.).
-- Definir acceso rápido a otras calugas desde la tarjeta de obra.
+### 5.2 Qué es una obra
+
+- La obra **viene de aSa Studio**: se adopta desde el espejo `asa_obras` y queda en
+  `proyectos` con su `asa_job_id` ([integracion_asa.md](integracion_asa.md) §4.1). En ArmaHub
+  no se crean ni administran clientes.
+- Ficha: nombre, cliente y constructora (de aSa), usuarios asignados con su rol en la obra
+  (`proyecto_usuarios`: admin · usc · cubicador · externo · cliente), estado.
+- Acceso: cada usuario ve sólo las obras asignadas (admin y admin_calidad, todas). El
+  ownership se valida en backend.
+
+### 5.3 Pestañas
+
+Estructura de pantalla según DESIGN_RULES: encabezado de la obra (nombre, cliente, estado) →
+pestañas con indicador verde → filtros → contenido. Tarjetas blancas sobre fondo gris, tablas
+compactas.
+
+| Pestaña | Contenido | Interno | Cliente |
+|---------|-----------|---------|---------|
+| Resumen | Ficha; KPIs en grupo de 4: kg pedidos, planos trabajados / vigentes, ciclos cubicados / programados, reclamos abiertos; últimos movimientos | Ve | Ve (sin reclamos) |
+| Programa | Ciclos y sectores con fecha de despacho y estado (disponible · programada · cubicada). El pedido enviado desde ArmaScanner marca cubicado solo | USC edita | Ve fechas |
+| Protocolo | Criterios de cubicación de la obra por versión (programa §8.11) y su aprobación | Cubicador edita | Aprueba |
+| Planos | Planos trabajados con ArmaScanner: versión en línea, quién lo tiene tomado, historial, vista previa (§5.4) | Ve, descarga en ArmaScanner | Vista previa (después) |
+| Pedidos | Cargas de despiece de la obra (`imports`) con su origen (ArmaScanner, A Detailer, manual), plano, ciclo, kg | Ve | No |
+| Terreno | Protocolo de entrega de enfierradura por elemento y ciclo: lista de chequeo, fotos, observaciones y aprobación. Pensada para pasar a la App Terreno (F13) | Ve | Revisa y aprueba |
+
+**Aprobación del cliente.** El cliente entra con su usuario (rol `cliente` en la obra) y
+aprueba con un botón: queda su nombre, la fecha y la versión aprobada, en el registro de
+auditoría. Eso es la firma; no hace falta un servicio de firma electrónica. En Terreno se
+puede agregar la firma dibujada en el celular. Un cambio de criterio después de aprobado
+abre una versión nueva que se vuelve a aprobar.
+
+### 5.4 Planos en ArmaHub (control de los planos trabajados con ArmaScanner)
+
+**Qué se guarda:** sólo los planos trabajados con ArmaScanner (respuesta 19). Los originales
+del calculista no se suben; la gestión documental completa (todo lo subido y cuándo) llega
+cuando entre el cliente.
+
+**Flujo.**
+1. **Carga.** El cubicador arrastra los DWG del calculista al menú inicial de ArmaScanner y
+   elige la obra (la lista de obras de ArmaHub). ArmaScanner los copia a su propio orden en
+   `Documentos\ArmaScanner\<obra>\`, lee número y revisión de la viñeta y deja el registro
+   hecho: plano vigente, revisiones anteriores, hojas repetidas comprobadas. El cubicador no
+   edita nada a mano.
+2. **Trabajo** en el equipo, como hoy.
+3. **Subir.** El cubicador marca los planos terminados (o los que quiera dejar en línea) y
+   «Subir a ArmaHub». Sube un paquete: copia de trabajo, su estado (ciclos, aprobaciones,
+   elemento) y una vista previa en PDF que imprime GStarCAD al subir. Queda como la versión en
+   línea del plano (v1, v2…).
+4. **Tomar.** Otro usuario con acceso a la obra ve en ArmaScanner los planos «En ArmaHub» y lo
+   toma: se descarga y queda a su nombre. Mientras está tomado, nadie más puede subir encima
+   (dos versiones de un DWG no se pueden juntar). Al subir, el plano queda libre con la versión
+   siguiente. Un plano tomado lo libera el jefe o el administrador (respuesta 17).
+5. **Aviso de versión.** Al abrir un plano, ArmaScanner compara su versión con la de ArmaHub.
+   Si hay una más nueva: «Hay una versión más nueva en ArmaHub (v4, de N. N., 20-11-2026).
+   Actualizar». La copia vieja no se puede subir.
+6. **Una sola copia.** En R2 queda una copia vigente por plano. Respaldo sólo cuando (a) llega
+   una entrega nueva del calculista: se guarda la última versión trabajada de la revisión
+   anterior, o (b) el cubicador lo pide al subir por un cambio grande («Guardar respaldo de la
+   versión anterior»).
+
+**Vista previa sin CAD.** Convertir DWG en el servidor exige un servicio pagado (Autodesk APS u
+ODA; §0.6 del programa). En cambio ArmaScanner ya tiene GStarCAD abierto: al subir imprime el
+plano a PDF y lo sube junto al DWG. ArmaHub lo muestra en un modal con el visor del navegador
+(zoom, búsqueda de texto). Es la foto del plano al momento de subirlo, con las barras y ciclos
+dibujados; no es el DWG navegable por capas.
+
+**Almacenamiento.** Un bucket, carpetas por obra (programa §0.3):
+`obras/{id}/planos/{plano}/actual/` (DWG, estado, PDF) y `obras/{id}/planos/{plano}/respaldo/{fecha}/`.
+Descarga y subida con enlaces firmados de vida corta, previa validación de acceso a la obra.
+
+**Datos.** Tabla `planos_obra`: obra, número, título, revisión, elemento (ELEV · LCIELO ·
+VCIELO · FUND), versión, tomado_por / tomado_el, subido_por / subido_el, barras, aprobadas,
+kg, tamaño, huella del archivo. Tabla `planos_obra_respaldos`: plano, versión, motivo, fecha,
+carpeta.
+
+### 5.5 Permisos
+
+| Acción | Quién |
+|--------|-------|
+| Ver la obra | Usuarios asignados a la obra; admin y admin_calidad |
+| Subir y tomar planos | Con licencia de ArmaScanner y asignado a la obra |
+| Liberar un plano tomado | Jefe de cubicaciones o administrador |
+| Editar el programa | USC de la obra, admin |
+| Editar el protocolo | Cubicador de la obra, admin |
+| Aprobar protocolo y entregas | Cliente de la obra |
+
+Antes del primer cliente real: mini-revisión de seguridad (programa 7.12).
+
+### 5.6 Orden de construcción
+
+Ver programa §8.13. El pedido desde ArmaScanner (D1) va primero; el panel se arma sobre los
+datos que ya existen y crece por pestaña.
 
 ---
 
 ## 6. CALUGA: PROGRAMA DE OBRA
 
-> Caluga en diseño — pendiente (F8 del programa).
-
-### 6.1 Propósito (borrador)
-
-Cronograma o hitos de la obra. Permite registrar fechas clave, avance y alertas.
-
-> Detalle se define en discovery F8.
+> Absorbida por §5: es la pestaña Programa del panel de la obra (19-nov). La vista del área
+> por semana sigue en la caluga Programación.
 
 ---
 
@@ -1873,6 +1968,35 @@ mientras sus dimensiones se configuren bien* — una barra podría nacer en una 
 morir en una distinta, tomando el **recubrimiento de la caja donde muere**. El contorno libre
 (polígono extruido) queda descartado como camino: obligaría a rehacer colocador/caras/
 recubrimientos. No abordar hasta que se decida explícitamente.
+
+---
+
+## 13. CALUGA: ARMASCANNER (licencias, instalación, pedido) — DISEÑO 19-nov
+
+### 13.1 Propósito
+Página del producto ArmaScanner dentro de ArmaHub. La ve sólo quien tiene licencia (y el
+administrador). Nombre de la caluga: «ArmaScanner»; si después hay más herramientas pasa a
+«Herramientas». Referencia visual: `static/demo/armascanner.html` (no se hacen más maquetas:
+se construye directo en la página, usuario 19-nov).
+
+### 13.2 Pestañas
+| Pestaña | Contenido | Quién |
+|---------|-----------|-------|
+| Instalar y actualizar | Descargar el instalador (enlace firmado de vida corta), pasos, novedades de la versión, requisitos, mi licencia y mis equipos (2 por licencia) | Con licencia |
+| Pedidos enviados | Pedidos que el usuario envió desde ArmaScanner (obra, plano, ciclo, kg, fecha) | Con licencia |
+| Usuarios | Licencias, vencimiento, equipos, último uso | Administrador |
+| Uso | KPIs de uso: planos escaneados, barras aprobadas, % aprobado sin corrección, kg enviados por semana | Administrador |
+| Versiones | Versión publicada, obligatoria o no, retirar una versión | Administrador |
+
+### 13.3 Reglas fijas
+- Licencia **por usuario** (no por empresa), máximo **2 equipos**, liberables por el
+  administrador en Gestión de usuarios (mig 166). **3 días sin conexión**: pasado ese plazo
+  ArmaScanner no deja trabajar hasta volver a validar; con internet valida solo, sin clave
+  (la clave se pide sólo si la ficha del equipo, 30 días, caducó o se liberó el equipo).
+- Instalar desde la página sin descargar un archivo no es posible sin firma de código
+  (MSIX). La primera vez se descarga el instalador; después actualiza el botón «Actualizar»
+  dentro de ArmaScanner.
+- El pedido llega siempre a ArmaHub (programa §8.12, D1).
 
 ---
 
