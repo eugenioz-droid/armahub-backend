@@ -1064,18 +1064,76 @@ versiones nuevas se instalan con el botón «Actualizar» dentro de ArmaScanner.
 
 Diseño en SPECS §5 (Obras) y §13 (ArmaScanner). Nombre de la caluga «Obras»: aprobado.
 
-| Paso | Qué |
-|---|---|
-| 1 | Subir plano desde ArmaScanner: obra con filtro de texto, versión del plano + carga de sus barras por elemento constructivo, reemplazo por plano, estado de cada barra, exportación bloqueada con barras sin aprobar o con duda |
-| 2 | Caluga ArmaScanner limpia: Mis obras (cargas por elemento), Instalar, Licencias (sale la columna de Gestión de usuarios), Uso, Versiones |
-| 3 | Instalador por usuario sin administrador + botón «Actualizar» (D3, D4) |
-| 4 | Carga de planos por arrastre + ventana de planos rediseñada: elemento con botones, mover planos entre elementos, hojas repetidas (D5) |
-| 5 | Elevaciones (respuestas del 19-nov, valores por defecto del protocolo) |
-| 6 | Colaboración: tomar, aviso de versión, respaldo, vista previa PDF (D6, SPECS §5.4) |
-| 7 | Caluga Obras: Resumen, Pedidos, Planos con visor |
-| 8 | Protocolo: criterios como datos, validado por el cubicador, informe PDF por correo |
-| 9 | Programa dentro de la obra |
-| 10 | Cliente: con el dominio pagado, validación por enlace, acceso a su obra (revisión 7.12), Terreno → App (F13) |
+Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
+
+| # | Tarea | Estado |
+|---|---|---|
+| **1** | **Subir plano desde ArmaScanner** | |
+| 1.1 | ArmaHub: lista de obras asignadas al usuario de la licencia (para el filtro de texto) | ☐ |
+| 1.2 | ArmaScanner: vincular la obra local con la obra de ArmaHub (filtro de texto, se recuerda) | ☐ |
+| 1.3 | ArmaHub: migración — estado de revisión por barra (aprobada · con duda · sin revisar) y origen de la carga (ArmaScanner, versión, equipo, plano) | ☐ |
+| 1.4 | ArmaHub: recibir el plano con la ficha de licencia y cargarlo por la importación de despieces, reemplazando sólo las barras de ese plano; exige estar asignado a la obra | ☐ |
+| 1.5 | ArmaScanner: botón «Subir plano» en la ventana de planos, con segundero y resultado | ☐ |
+| 1.6 | ArmaHub: exportación bloqueada mientras la carga tenga barras sin aprobar o con duda, con aviso | ☐ |
+| 1.7 | Tests: reemplazo por plano sin tocar A Detailer ni manuales; bloqueo de exportación | ☐ |
+| 1.8 | Prueba del usuario con un plano real | ☐ |
+| **2** | **Caluga ArmaScanner limpia (skill armacero-ui)** | |
+| 2.1 | Caluga visible por licencia (no por rol) + administrador | ☐ |
+| 2.2 | Mis obras: filtro de obra y una línea por carga de elemento constructivo (plano, elemento, piso, ciclo, ítems, kg, estado, subido por, fecha) | ☐ |
+| 2.3 | Instalar: descargar, versión vigente, mis equipos | ☐ |
+| 2.4 | Licencias: buscar usuario existente y agregar, vencimiento, equipos con «Liberar», quitar | ☐ |
+| 2.5 | Quitar la columna ArmaScanner de Gestión de usuarios | ☐ |
+| 2.6 | Uso (KPIs) y Versiones | ☐ |
+| 2.7 | Borrar la maqueta static/demo/armascanner.html | ☐ |
+| **3** | **Instalador sin administrador y «Actualizar»** | |
+| 3.1 | Empaquetar ArmaScanner (ejecutable, sin Python) con escaneo, lectores y reglas de A Detailer | ☐ |
+| 3.2 | Datos del usuario fuera de la carpeta del programa (Documentos), con traspaso de lo actual | ☐ |
+| 3.3 | Instalador por usuario en %LOCALAPPDATA%, sin permisos de administrador | ☐ |
+| 3.4 | Versión publicada en R2 y descarga con enlace temporal desde la caluga | ☐ |
+| 3.5 | Botón «Actualizar» en ArmaScanner (versión nueva avisada en la validación de licencia) | ☐ |
+| 3.6 | Prueba en el equipo de otro usuario: aviso de Windows y políticas de la empresa | ☐ |
+| **4** | **Carga de planos por arrastre y ventana de planos** | |
+| 4.1 | Menú inicial con zona «Arrastra planos aquí» | ☐ |
+| 4.2 | Copia a su orden propio, lectura de número y revisión, registro automático | ☐ |
+| 4.3 | Revisiones: vigente y anteriores, sin editar a mano | ☐ |
+| 4.4 | Hojas repetidas: se comprueba el mismo modelo y se agrega una | ☐ |
+| 4.5 | Ventana de planos: botones por elemento con contador sobre las dos listas actuales (mejoradas) | ☐ |
+| 4.6 | Mover planos entre elementos con botones y arrastrando; sale el desplegable | ☐ |
+| **5** | **Elevaciones (respuestas del 19-nov)** | |
+| 5.1 | Ciclo del muro desde la planta, editable por piso; fundación con el eje | ☐ |
+| 5.2 | MV en 3 etapas, cierre simétrico por defecto; MH 104B | ☐ |
+| 5.3 | Trabas 6/m² editable, con descuentos por encuentros y cabezales | ☐ |
+| 5.4 | Vanos por la silueta del hormigón (MH en dos paños, MV partida) | ☐ |
+| 5.5 | Fachadas: muros separados y nombre por ejes; hojas sin niveles | ☐ |
+| 5.6 | Vigas: estribo con varias distribuciones en una barra | ☐ |
+| 5.7 | Dibujo en el plano con línea de distribución para validar cantidades; revisión | ☐ |
+| 5.8 | Subir plano ELEV a ArmaHub | ☐ |
+| **6** | **Colaboración y vista previa** | |
+| 6.1 | ArmaHub: planos en línea por obra (tabla + R2, una copia vigente) | ☐ |
+| 6.2 | Subir plano también guarda copia de trabajo, estado y PDF | ☐ |
+| 6.3 | PDF legible en blanco: plano del calculista en gris, barras y ciclos en colores oscuros; medir el tiempo | ☐ |
+| 6.4 | Tomar plano (bloqueo) y liberar por jefe o administrador | ☐ |
+| 6.5 | Aviso de versión más nueva y «Actualizar» del plano | ☐ |
+| 6.6 | Respaldo con entrega nueva o a pedido | ☐ |
+| 6.7 | Sólo si el PDF no basta: probar conversor gratuito ODA + ezdxf | ☐ |
+| **7** | **Caluga Obras** | |
+| 7.1 | Caluga y lista de obras asignadas con filtro | ☐ |
+| 7.2 | Resumen con KPIs | ☐ |
+| 7.3 | Pedidos (cargas con su origen) | ☐ |
+| 7.4 | Planos con visor PDF en modal | ☐ |
+| **8** | **Protocolo** | |
+| 8.1 | Criterios como datos (desde el Excel «Protocolo 2025») | ☐ |
+| 8.2 | Pestaña Protocolo con versiones | ☐ |
+| 8.3 | Validación del cubicador + informe PDF | ☐ |
+| 8.4 | ArmaScanner lee los criterios de la obra | ☐ |
+| **9** | **Programa en la obra** | |
+| 9.1 | Pestaña Programa (tareas_programacion de la obra) | ☐ |
+| 9.2 | Subir plano marca la tarea como cubicada | ☐ |
+| **10** | **Cliente** | |
+| 10.1 | Dominio de ArmaHub pagado y correo propio (usuario) | ☐ |
+| 10.2 | Validación del cliente por enlace | ☐ |
+| 10.3 | Revisión de seguridad antes del primer cliente | ☐ |
+| 10.4 | Pestaña Terreno (protocolo de entrega) → App | ☐ |
 
 ---
 
