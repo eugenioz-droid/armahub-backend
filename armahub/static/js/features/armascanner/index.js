@@ -83,7 +83,14 @@
       if (!vistas[c.obra]) { vistas[c.obra] = 1; obras.push({ id: c.obra, nombre: c.obra_nombre }); }
     });
     if (est.buscadorObra) est.buscadorObra.setProyectos(obras);
+    // El select oculto guarda el id elegido (BuscadorObra): sin sus opciones no filtra nada.
+    document.getElementById('ascObraSelect').innerHTML = '<option value=""></option>' + obras.map(function (o) {
+      return '<option value="' + esc(o.id) + '">' + esc(o.nombre) + '</option>';
+    }).join('');
     pintarCargas();
+    // Si ArmaHub no contestó, se dice: la lista vacía haría creer que no hay nada subido.
+    document.getElementById('ascCargasVacio').textContent = d ? 'Sin planos subidos desde ArmaScanner.'
+      : 'No se pudo leer lo subido. Recarga la página.';
   }
 
   // ── Instalar ──

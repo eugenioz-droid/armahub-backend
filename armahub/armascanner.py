@@ -85,12 +85,24 @@ def pendientes_por_combinacion(barras: list) -> dict:
 
 @router.get("/armascanner/obras")
 def obras(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """Las obras de ArmaHub (id y nombre), para elegir con filtro de texto en ArmaScanner."""
+    """Las obras COMO ESTÁN EN aSa (el espejo `asa_obras`), para elegir con filtro de texto en
+    ArmaScanner: la misma lista que los selectores de obra del portal (programacion.asa_espejo).
+    [Usuario 19-nov: «hay que traer las obras de aSa, no las que creamos en la plataforma»;
+    decisión del 13-oct, mig 143] La que ya existe en ArmaHub trae su `id_proyecto` (una obra
+    antigua enlazada a su job de aSa); las demás se adoptan solas al subir el primer plano."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             _usuario(cur, credentials.credentials)
-            cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos ORDER BY nombre_proyecto")
-            return {"obras": [{"id": r[0], "nombre": r[1]} for r in cur.fetchall()]}
+            cur.execute("""
+                SELECT a.asa_job_id, a.nombre, a.cliente, a.estado,
+                       (SELECT MIN(p.id_proyecto) FROM proyectos p WHERE p.asa_job_id = a.asa_job_id)
+                  FROM asa_obras a
+                 WHERE NOT a.excluida
+                   AND a.asa_job_id !~ 'B$'                 -- el gemelo «- BARRAS» no es otra obra
+                 ORDER BY (COALESCE(a.estado, '') = 'Open') DESC, a.ultima_actividad DESC NULLS LAST, a.nombre
+            """)
+            return {"obras": [{"asa": r[0], "nombre": r[1], "cliente": r[2] or "", "estado": r[3] or "",
+                               "id": r[4] or ""} for r in cur.fetchall()]}
 
 
 @router.post("/armascanner/subir-plano")
@@ -108,12 +120,16 @@ async def subir_plano(
     except ValueError:
         raise HTTPException(status_code=400, detail="Datos del plano ilegibles.")
     obra, plano_code = (d.get("obra") or "").strip(), (d.get("plano_code") or "").strip()
-    if not obra or not plano_code:
+    job = (d.get("asa") or "").strip()
+    if not (obra or job) or not plano_code:
         raise HTTPException(status_code=400, detail="Falta la obra o el código del plano.")
     revision = {k: v for k, v in (d.get("revision") or {}).items() if v in REVISIONES}
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
+            if job:  # la obra de aSa: la que ya existe en ArmaHub, o se adopta (programacion.adoptar_obra)
+                from .programacion import adoptar_obra
+                obra = adoptar_obra(cur, job, user["email"], en_cubicacion=True)
             # Códigos anteriores del mismo plano (se limpió y se escaneó de nuevo): sus barras se
             # reemplazan también. Sólo códigos de cargas de ArmaScanner de esta obra: por aquí no
             # se pueden borrar barras de A Detailer ni de otra obra.
@@ -159,7 +175,8 @@ async def subir_plano(
     audit(user["email"], "armascanner_subir_plano",
           f"{plano_code} → {res.get('proyecto')}: {res.get('barras')} barras, {res.get('kilos')} kg, "
           f"{n_pend} sin aprobar", "proyecto", obra)
-    return {"ok": True, "import_id": import_id, "obra": res.get("proyecto"), "barras": res.get("barras"),
+    return {"ok": True, "import_id": import_id, "obra": res.get("proyecto"), "id_proyecto": obra,
+            "barras": res.get("barras"),
             "kilos": res.get("kilos"), "reemplazadas": res.get("barras_eliminadas_previo"),
             "pendientes": n_pend, "rechazadas": res.get("rejected") or []}
 
@@ -205,16 +222,25 @@ def cargas(user=Depends(get_current_user)):
                 filtro = """AND i.id_proyecto IN (SELECT id_proyecto FROM imports
                                                     WHERE herramienta = 'ArmaScanner' AND usuario = %s)"""
                 params.append(user.get("email", ""))
+            # Las barras se resumen aparte, por carga, y se cruzan después: la consulta no depende
+            # de que `imports` tenga llave primaria para agrupar (el 19-nov la pantalla quedó
+            # vacía con el plano ya subido). La obra con LEFT JOIN: una carga no se pierde de la
+            # lista si su obra cambió de id.
             cur.execute(f"""
-                SELECT i.id, i.id_proyecto, p.nombre_proyecto, MAX(b.nombre_plano), i.usuario, i.fecha,
-                       i.herramienta_version, i.pendientes, COUNT(*), COALESCE(SUM(b.peso_total), 0),
-                       string_agg(DISTINCT b.sector, ', '), string_agg(DISTINCT b.piso, ', '),
-                       string_agg(DISTINCT b.ciclo, ', ' ORDER BY b.ciclo)
+                SELECT i.id, i.id_proyecto, COALESCE(p.nombre_proyecto, i.nombre_proyecto, i.id_proyecto),
+                       b.plano, i.usuario, i.fecha, i.herramienta_version, i.pendientes,
+                       b.items, b.kg, b.sectores, b.pisos, b.ciclos
                   FROM imports i
-                  JOIN proyectos p ON p.id_proyecto = i.id_proyecto
-                  JOIN barras b ON b.import_id = i.id
+                  LEFT JOIN proyectos p ON p.id_proyecto = i.id_proyecto
+                  JOIN (SELECT import_id, MAX(nombre_plano) AS plano, COUNT(*) AS items,
+                               COALESCE(SUM(peso_total), 0) AS kg,
+                               string_agg(DISTINCT sector, ', ') AS sectores,
+                               string_agg(DISTINCT piso, ', ') AS pisos,
+                               string_agg(DISTINCT ciclo, ', ' ORDER BY ciclo) AS ciclos
+                          FROM barras
+                         WHERE import_id IN (SELECT id FROM imports WHERE herramienta = 'ArmaScanner')
+                         GROUP BY import_id) b ON b.import_id = i.id
                  WHERE i.herramienta = 'ArmaScanner' {filtro}
-                 GROUP BY i.id, p.nombre_proyecto
                  ORDER BY i.id DESC
                  LIMIT 1000
             """, params)
