@@ -1076,7 +1076,7 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 1.5 | ArmaScanner: botón «Subir a ArmaHub» en la ventana de planos (uno o varios), con segundero y resultado; estado «En ArmaHub» / «Cambios sin subir» | ☑ |
 | 1.6 | ArmaHub: exportación bloqueada mientras la carga tenga barras sin aprobar o con duda, con aviso | ☑ |
 | 1.7 | Tests: `tests/test_armascanner.py` + prueba de punta a punta con base simulada (envío, reemplazo, revisión, pendientes) y preparación con barras de prueba | ☑ |
-| 1.8 | Prueba del usuario con un plano real | ☐ |
+| 1.8 | Prueba del usuario con un plano real: el 215 de Martín de Solier aparece en Mis obras (19-nov) | ☑ |
 | **2** | **Caluga ArmaScanner limpia (skill armacero-ui)** | |
 | 2.1 | Caluga visible por licencia (no por rol) + administrador (`/me` → licencias; registry `licencia`) | ☑ |
 | 2.2 | Mis obras: filtro de obra y una línea por carga de elemento constructivo (plano, elemento, piso, ciclo, ítems, kg, estado, subido por, fecha) + KPIs y elemento con botones | ☑ |
@@ -1087,7 +1087,7 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 2.7 | Borrar la maqueta static/demo/armascanner.html | ☑ |
 | **3** | **Instalador sin administrador y «Actualizar»** | |
 | 3.1 | Empaquetar ArmaScanner (ejecutable, sin Python) con escaneo, lectores y reglas de A Detailer — Nuitka, `ArmaScanner/empaquetar/construir.py`; el escaneo corre dentro (`--tarea`) | ☑ |
-| 3.2 | Datos del usuario fuera de la carpeta del programa: el instalado usa Documentos\ArmaScanner; la copia de desarrollo sigue con sus datos donde están (sin traspaso) | ☑ |
+| 3.2 | Datos del usuario fuera de la carpeta del programa: el equipo anota su carpeta de obras y la comparten el instalado y la copia de desarrollo (las obras no se copian ni se mueven); sin nada anotado, Documentos\ArmaScanner. «Instalar» muestra la carpeta y cuántas obras tiene, y deja cambiarla | ☑ |
 | 3.3 | Instalación por usuario en %LOCALAPPDATA%, sin administrador: se reparte un ZIP y ArmaScanner se instala solo al abrirlo (accesos, Aplicaciones, desinstalar). El instalador de un solo .exe lo borra Trend Micro (19-nov) | ☑ |
 | 3.4 | Versión publicada en R2 (pestaña Versiones) y descarga con enlace temporal desde la caluga | ☑ |
 | 3.5 | Botón «Actualizar a …» en la ventana de planos: baja el ZIP, el nuevo se instala encima y se reabre | ☑ |
@@ -1098,7 +1098,7 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 4.3 | Revisiones: vigente y anteriores, sin editar a mano | ☐ |
 | 4.4 | Hojas repetidas: se comprueba el mismo modelo y se agrega una | ☐ |
 | 4.5 | Ventana de planos: botones por elemento con contador sobre las dos listas actuales | ☑ |
-| 4.6 | Mover planos entre elementos con botones y arrastrando; sale el desplegable | ☑ |
+| 4.6 | Mover planos entre elementos: vista «Por elemento» (un cuadro por elemento; se arrastran de uno a otro) o arrastrando sobre el botón del filtro; salen el desplegable y «Mover a» | ☑ |
 | **5** | **Elevaciones (respuestas del 19-nov)** | |
 | 5.1 | Ciclo del muro desde la planta, editable por piso; fundación con el eje | ☐ |
 | 5.2 | MV en 3 etapas, cierre simétrico por defecto; MH 104B | ☐ |
