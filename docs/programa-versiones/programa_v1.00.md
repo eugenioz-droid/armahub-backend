@@ -1078,13 +1078,13 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 1.7 | Tests: `tests/test_armascanner.py` + prueba de punta a punta con base simulada (envío, reemplazo, revisión, pendientes) y preparación con barras de prueba | ☑ |
 | 1.8 | Prueba del usuario con un plano real | ☐ |
 | **2** | **Caluga ArmaScanner limpia (skill armacero-ui)** | |
-| 2.1 | Caluga visible por licencia (no por rol) + administrador | ☐ |
-| 2.2 | Mis obras: filtro de obra y una línea por carga de elemento constructivo (plano, elemento, piso, ciclo, ítems, kg, estado, subido por, fecha) | ☐ |
-| 2.3 | Instalar: descargar, versión vigente, mis equipos | ☐ |
-| 2.4 | Licencias: buscar usuario existente y agregar, vencimiento, equipos con «Liberar», quitar | ☐ |
-| 2.5 | Quitar la columna ArmaScanner de Gestión de usuarios | ☐ |
-| 2.6 | Uso (KPIs) y Versiones | ☐ |
-| 2.7 | Borrar la maqueta static/demo/armascanner.html | ☐ |
+| 2.1 | Caluga visible por licencia (no por rol) + administrador (`/me` → licencias; registry `licencia`) | ☑ |
+| 2.2 | Mis obras: filtro de obra y una línea por carga de elemento constructivo (plano, elemento, piso, ciclo, ítems, kg, estado, subido por, fecha) + KPIs y elemento con botones | ☑ |
+| 2.3 | Instalar: mi licencia y mis equipos ☑; «Descargar» queda apagado hasta el instalador (paso 3) | ☑ |
+| 2.4 | Licencias: buscar usuario existente y agregar, vencimiento, equipos con «Liberar», quitar | ☑ |
+| 2.5 | Quitar la columna ArmaScanner de Gestión de usuarios | ☑ |
+| 2.6 | Uso (KPIs) ☑ · Versiones, con el instalador (paso 3) | ☐ |
+| 2.7 | Borrar la maqueta static/demo/armascanner.html | ☑ |
 | **3** | **Instalador sin administrador y «Actualizar»** | |
 | 3.1 | Empaquetar ArmaScanner (ejecutable, sin Python) con escaneo, lectores y reglas de A Detailer | ☐ |
 | 3.2 | Datos del usuario fuera de la carpeta del programa (Documentos), con traspaso de lo actual | ☐ |

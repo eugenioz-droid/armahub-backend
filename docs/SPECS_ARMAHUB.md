@@ -1975,8 +1975,9 @@ recubrimientos. No abordar hasta que se decida explícitamente.
 ## 13. CALUGA: ARMASCANNER — DISEÑO 19-nov (2ª vuelta)
 
 Visible para quien tiene licencia y para el administrador. Pantalla limpia (skill
-`armacero-ui`): KPIs, tablas, poco texto. La maqueta `static/demo/armascanner.html` quedó
-verbosa y no es la referencia.
+`armacero-ui`): KPIs, tablas, poco texto. Primera pantalla con el Sistema de Diseño
+(`.arm-ds`, `static/css/armacero-theme.css`): `templates/tabs/armascanner.html` +
+`static/js/features/armascanner/index.js`; rutas en `armascanner.py`. La maqueta se borró.
 
 | Pestaña | Contenido | Quién |
 |---------|-----------|-------|
