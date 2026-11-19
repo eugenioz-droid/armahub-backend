@@ -1095,8 +1095,8 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | **4** | **Carga de planos por arrastre y ventana de planos** | |
 | 4.1 | Soltar DWG sobre la ventana de planos («Arrastra planos aquí» en la lista vacía) y «Agregar planos» | ☑ |
 | 4.2 | Copia a la carpeta propia de la obra (planos/), lectura de número y revisión y registro como siempre; el mismo nombre con otro contenido guarda el anterior y marca «Original modificado» | ☑ |
-| 4.3 | Revisiones: vigente y anteriores, sin editar a mano | ☐ |
-| 4.4 | Hojas repetidas: se comprueba el mismo modelo y se agrega una | ☐ |
+| 4.3 | Revisiones: vigente y anteriores, sin editar a mano — número y revisión salen de la viñeta; la más nueva es la vigente y las otras quedan «Versión anterior» y no pasan a trabajo (prueba con obra simulada, 19-nov) | ☑ |
+| 4.4 | Hojas repetidas: el mismo modelo (huella del dibujo) se marca «Mismo modelo que …» y «Agregar» deja pasar una sola; en «Por elemento» se ve el estado de cada hoja | ☑ |
 | 4.5 | Ventana de planos: botones por elemento con contador sobre las dos listas actuales | ☑ |
 | 4.6 | Mover planos entre elementos: vista «Por elemento» (un cuadro por elemento; se arrastran de uno a otro) o arrastrando sobre el botón del filtro; salen el desplegable y «Mover a» | ☑ |
 | **5** | **Elevaciones (respuestas del 19-nov)** | |
