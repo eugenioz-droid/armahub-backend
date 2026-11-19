@@ -1069,13 +1069,13 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | # | Tarea | Estado |
 |---|---|---|
 | **1** | **Subir plano desde ArmaScanner** | |
-| 1.1 | ArmaHub: lista de obras asignadas al usuario de la licencia (para el filtro de texto) | ☐ |
-| 1.2 | ArmaScanner: vincular la obra local con la obra de ArmaHub (filtro de texto, se recuerda) | ☐ |
-| 1.3 | ArmaHub: migración — estado de revisión por barra (aprobada · con duda · sin revisar) y origen de la carga (ArmaScanner, versión, equipo, plano) | ☐ |
-| 1.4 | ArmaHub: recibir el plano con la ficha de licencia y cargarlo por la importación de despieces, reemplazando sólo las barras de ese plano; exige estar asignado a la obra | ☐ |
-| 1.5 | ArmaScanner: botón «Subir plano» en la ventana de planos, con segundero y resultado | ☐ |
-| 1.6 | ArmaHub: exportación bloqueada mientras la carga tenga barras sin aprobar o con duda, con aviso | ☐ |
-| 1.7 | Tests: reemplazo por plano sin tocar A Detailer ni manuales; bloqueo de exportación | ☐ |
+| 1.1 | ArmaHub: lista de obras para el filtro de texto (`GET /armascanner/obras`; todas, como el selector de obras del portal) | ☑ |
+| 1.2 | ArmaScanner: vincular la obra local con la obra de ArmaHub (filtro de texto, se recuerda) | ☑ |
+| 1.3 | ArmaHub: migración — estado de revisión por barra (aprobada · con duda · sin revisar) y origen de la carga (ArmaScanner, versión, equipo, plano) — mig 167 | ☑ |
+| 1.4 | ArmaHub: recibir el plano con la ficha de licencia y cargarlo por la importación de despieces, reemplazando sólo las barras de ese plano (y de sus escaneos anteriores). Puede subir quien puede importar en el portal (usuario interno) con licencia; la asignación por obra llega con la caluga Obras | ☑ |
+| 1.5 | ArmaScanner: botón «Subir a ArmaHub» en la ventana de planos (uno o varios), con segundero y resultado; estado «En ArmaHub» / «Cambios sin subir» | ☑ |
+| 1.6 | ArmaHub: exportación bloqueada mientras la carga tenga barras sin aprobar o con duda, con aviso | ☑ |
+| 1.7 | Tests: `tests/test_armascanner.py` + prueba de punta a punta con base simulada (envío, reemplazo, revisión, pendientes) y preparación con barras de prueba | ☑ |
 | 1.8 | Prueba del usuario con un plano real | ☐ |
 | **2** | **Caluga ArmaScanner limpia (skill armacero-ui)** | |
 | 2.1 | Caluga visible por licencia (no por rol) + administrador | ☐ |

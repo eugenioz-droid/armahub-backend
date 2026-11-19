@@ -2002,8 +2002,9 @@ verbosa y no es la referencia.
   barras de ese plano; nunca toca las de otro plano ni las de A Detailer o manuales.
 - Sube todas las barras con su estado (aprobada · con duda · sin revisar). ArmaHub **bloquea
   la exportación** de una carga mientras tenga barras sin aprobar o con duda, y lo dice.
-- Cualquier usuario con licencia y asignado a la obra sube sus planos (trabajo
-  colaborativo). Un plano tomado por otro no se puede subir encima.
+- Sube sus planos cualquier usuario interno con licencia (la misma regla que importar en el
+  portal; trabajo colaborativo). La asignación por obra llega con la caluga Obras. Un plano
+  tomado por otro no se puede subir encima (paso 6).
 
 ---
 
