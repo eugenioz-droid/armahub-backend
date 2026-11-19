@@ -22,6 +22,10 @@ ruta de la API. Dura FICHA_DIAS y se renueva en cada validación: quien abre Arm
 menos una vez al mes no vuelve a escribir su clave. Revocar (quitar la casilla, vencer,
 desactivar al usuario) vale en la siguiente validación con internet.
 
+EQUIPOS. Cada licencia admite hasta `max_equipos` equipos (2 por defecto: oficina y casa)
+[Usuario 19-nov]. Un equipo nuevo entra si hay cupo; si no, 403 con los equipos que la usan.
+El administrador libera uno en Gestión de usuarios.
+
 Sin internet, ArmaScanner deja trabajar hasta SIN_CONEXION_DIAS desde la última validación
 buena (y nunca pasado el vencimiento). Ese plazo lo manda el servidor en cada respuesta, para
 cambiarlo sin publicar otra versión de la herramienta.
@@ -72,6 +76,16 @@ def estado_licencia(fila, hoy: date):
     return True, ""
 
 
+def admite_equipo(registrados, equipo: str, maximo: int):
+    """Si el equipo puede usar la licencia. Función pura (se prueba sin base).
+    registrados = los equipos ya anotados en la licencia. Devuelve (sí, motivo o "")."""
+    if equipo in registrados or len(registrados) < maximo:
+        return True, ""
+    return False, (f"Tu licencia de ArmaScanner ya está en uso en {len(registrados)} equipo"
+                   f"{'s' if len(registrados) != 1 else ''} ({', '.join(registrados)}). Pide al "
+                   "administrador de ArmaHub que libere uno.")
+
+
 def crear_ficha(email: str, producto: str, ahora: datetime = None) -> str:
     ahora = ahora or datetime.now(timezone.utc)
     return jwt.encode({"email": email, "producto": producto, "tipo": TIPO_FICHA,
@@ -95,7 +109,8 @@ def leer_ficha(token: str, producto: str) -> str:
 def _respuesta(cur, email: str, producto: str, equipo: str, version: str):
     """Revisa la licencia del correo; si vale, anota el uso y devuelve la ficha nueva."""
     cur.execute("""
-        SELECT u.id, u.nombre, u.apellido, COALESCE(u.activo, TRUE), l.activa, l.vence
+        SELECT u.id, u.nombre, u.apellido, COALESCE(u.activo, TRUE), l.activa, l.vence, l.id,
+               COALESCE(l.max_equipos, 2)
           FROM users u
           LEFT JOIN licencias l ON l.user_id = u.id AND l.producto = %s
          WHERE u.email = %s
@@ -103,15 +118,24 @@ def _respuesta(cur, email: str, producto: str, equipo: str, version: str):
     row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=403, detail="El usuario ya no existe en ArmaHub.")
-    uid, nombre, apellido, usuario_activo, activa, vence = row
+    uid, nombre, apellido, usuario_activo, activa, vence, lic_id, max_equipos = row
     vale, motivo = estado_licencia(None if activa is None else (activa, vence, usuario_activo),
                                    datetime.now(timezone.utc).date())
     if not vale:
         raise HTTPException(status_code=403, detail=motivo)
+    equipo, version = (equipo or "")[:120] or "?", (version or "")[:40] or None
+    cur.execute("SELECT equipo FROM licencia_equipos WHERE licencia_id = %s ORDER BY primer_uso", (lic_id,))
+    vale, motivo = admite_equipo([r[0] for r in cur.fetchall()], equipo, max_equipos)
+    if not vale:
+        raise HTTPException(status_code=403, detail=motivo)
+    cur.execute("""
+        INSERT INTO licencia_equipos (licencia_id, equipo, version) VALUES (%s, %s, %s)
+        ON CONFLICT (licencia_id, equipo) DO UPDATE SET ultimo_uso = NOW(), version = EXCLUDED.version
+    """, (lic_id, equipo, version))
     cur.execute("""
         UPDATE licencias SET ultimo_uso = NOW(), ultimo_equipo = %s, version = %s
          WHERE user_id = %s AND producto = %s
-    """, ((equipo or "")[:120] or None, (version or "")[:40] or None, uid, producto))
+    """, (equipo, version, uid, producto))
     return {
         "ok": True,
         "ficha": crear_ficha(email, producto),
@@ -176,14 +200,23 @@ class Asignar(BaseModel):
 def licencias_por_usuario(cur):
     """{user_id: {producto: {...}}} para la lista de Gestión de usuarios."""
     cur.execute("""
-        SELECT user_id, producto, activa, vence, ultimo_uso, ultimo_equipo, version
+        SELECT e.licencia_id, e.equipo, e.ultimo_uso, e.version
+          FROM licencia_equipos e ORDER BY e.primer_uso
+    """)
+    equipos = {}
+    for lic_id, equipo, uso, version in cur.fetchall():
+        equipos.setdefault(lic_id, []).append({"equipo": equipo, "ultimo_uso": uso.isoformat() if uso else None,
+                                               "version": version})
+    cur.execute("""
+        SELECT user_id, producto, activa, vence, ultimo_uso, ultimo_equipo, version, id, COALESCE(max_equipos, 2)
           FROM licencias
     """)
     out = {}
-    for uid, prod, activa, vence, uso, equipo, version in cur.fetchall():
+    for uid, prod, activa, vence, uso, equipo, version, lic_id, maximo in cur.fetchall():
         out.setdefault(uid, {})[prod] = {
             "activa": activa, "vence": vence.isoformat() if vence else None,
-            "ultimo_uso": uso.isoformat() if uso else None, "ultimo_equipo": equipo, "version": version}
+            "ultimo_uso": uso.isoformat() if uso else None, "ultimo_equipo": equipo, "version": version,
+            "equipos": equipos.get(lic_id, []), "max_equipos": maximo}
     return out
 
 
@@ -214,3 +247,33 @@ def asignar(user_id: int, producto: str, datos: Asignar, admin=Depends(require_a
     audit(admin.get("email", "?"), "licencia_asignar", detalle, "usuario", str(user_id))
     return {"ok": True, "id": user_id, "producto": producto, "activa": datos.activa,
             "vence": datos.vence.isoformat() if datos.vence else None}
+
+
+class Liberar(BaseModel):
+    equipo: str
+
+
+@router.post("/admin/users/{user_id}/licencias/{producto}/liberar")
+def liberar_equipo(user_id: int, producto: str, datos: Liberar, admin=Depends(require_admin_or_admin_calidad)):
+    """Libera un equipo de la licencia: su cupo queda libre. Si ese equipo vuelve a abrir la
+    herramienta, entra de nuevo sólo si hay cupo."""
+    producto = _producto(producto)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT email, role FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            if admin.get("role") != "admin" and row[1] in ("admin", "admin_calidad"):
+                raise HTTPException(status_code=403,
+                                    detail="Admin Calidad no puede modificar usuarios admin o admin_calidad")
+            cur.execute("""
+                DELETE FROM licencia_equipos e USING licencias l
+                 WHERE e.licencia_id = l.id AND l.user_id = %s AND l.producto = %s AND e.equipo = %s
+            """, (user_id, producto, datos.equipo))
+            n = cur.rowcount
+    if not n:
+        raise HTTPException(status_code=404, detail="Ese equipo no está en la licencia")
+    audit(admin.get("email", "?"), "licencia_liberar_equipo", f"{row[0]}: {PRODUCTOS[producto]} en {datos.equipo}",
+          "usuario", str(user_id))
+    return {"ok": True}

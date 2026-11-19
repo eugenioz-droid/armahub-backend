@@ -77,5 +77,15 @@ check("una firma ajena no pasa", codigo(L.leer_ficha, ficha[:-3] + "abc", "armas
 print("\n3. Plazos")
 check("sin conexión se trabaja menos que lo que dura la ficha", L.SIN_CONEXION_DIAS < L.FICHA_DIAS)
 
+print("\n4. Equipos (máximo 2 por licencia, 19-nov)")
+check("primer equipo: entra", L.admite_equipo([], "PC-OFICINA · ana", 2) == (True, ""))
+check("segundo equipo: entra", L.admite_equipo(["PC-OFICINA · ana"], "PC-CASA · ana", 2)[0])
+check("un equipo ya anotado vuelve a entrar con el cupo lleno",
+      L.admite_equipo(["PC-OFICINA · ana", "PC-CASA · ana"], "PC-CASA · ana", 2)[0])
+entra, motivo = L.admite_equipo(["PC-OFICINA · ana", "PC-CASA · ana"], "PC-OTRO · ana", 2)
+check("tercer equipo: no entra, y dice cuáles la usan y a quién pedir",
+      not entra and "PC-OFICINA · ana" in motivo and "PC-CASA · ana" in motivo and "administrador" in motivo, motivo)
+check("con 3 de máximo, el tercero entra", L.admite_equipo(["a", "b"], "c", 3)[0])
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

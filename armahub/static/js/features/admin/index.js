@@ -338,11 +338,39 @@ function celdaLicencia(u, canOperate) {
     html += '<span style="font-size:11px;">' + (activa ? 'Con licencia' + (vence ? ' hasta ' + fechaCorta(vence) : '') : 'Sin licencia') + '</span>';
   }
   if (vencida) html += '<div style="font-size:10px; color:#DC2626;">Vencida</div>';
-  if (lic && lic.ultimo_uso) {
-    html += '<div class="muted" style="font-size:10px;" title="' + (lic.version ? 'Versión ' + lic.version : '') + '">Último uso ' +
-      fechaCorta(lic.ultimo_uso.slice(0, 10)) + (lic.ultimo_equipo ? ' · ' + lic.ultimo_equipo : '') + '</div>';
+  // Equipos que usan la licencia (máximo max_equipos): cada uno con su último uso y «Liberar»
+  var equipos = (lic && lic.equipos) || [];
+  if (lic && (activa || equipos.length)) {
+    html += '<div class="muted" style="font-size:10px; margin-top:2px;">Equipos ' + equipos.length + ' de ' + (lic.max_equipos || 2) + '</div>';
+    equipos.forEach(function(e, k) {
+      html += '<div style="font-size:10px; display:flex; align-items:center; gap:4px;" title="' + (e.version ? 'Versión ' + e.version : '') + '">' +
+        '<span>' + escAttrLic(e.equipo) + (e.ultimo_uso ? ' · ' + fechaCorta(e.ultimo_uso.slice(0, 10)) : '') + '</span>' +
+        (canOperate ? '<button class="secondary" style="font-size:10px; padding:0 6px;" onclick="liberarEquipoLicencia(' + u.id + ', ' + k + ')">Liberar</button>' : '') +
+        '</div>';
+    });
+    window._equiposLic = window._equiposLic || {};
+    window._equiposLic[u.id] = equipos.map(function(e) { return e.equipo; });
   }
   return html;
+}
+
+function escAttrLic(t) {
+  return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function liberarEquipoLicencia(userId, k) {
+  var equipo = ((window._equiposLic || {})[userId] || [])[k];
+  if (!equipo) return;
+  if (!confirm('¿Liberar el equipo «' + equipo + '»? Su cupo queda libre; si vuelve a abrir ArmaScanner, entra sólo si hay cupo.')) return;
+  var res = await fetch(apiUrl('/admin/users/' + userId + '/licencias/armascanner/liberar'), {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ equipo: equipo })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
+  await loadUsers();
 }
 
 function fechaCorta(iso) {
