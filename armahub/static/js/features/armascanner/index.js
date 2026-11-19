@@ -61,7 +61,23 @@
         '<td>' + fecha(c.fecha) + '</td></tr>';
     }).join('');
     document.getElementById('ascCargas').innerHTML = html;
-    document.getElementById('ascCargasVacio').style.display = filas.length ? 'none' : '';
+    var vacio = document.getElementById('ascCargasVacio');
+    vacio.style.display = filas.length ? 'none' : '';
+    // Si ArmaHub no contestó, se dice: la lista vacía haría creer que no hay nada subido.
+    vacio.textContent = est.sinRespuesta ? 'No se pudo leer lo subido. Recarga la página.'
+      : est.cargas.length ? 'Sin cargas con este filtro.' : 'Sin planos subidos desde ArmaScanner.';
+    // Cada botón de elemento con cuántas cargas tiene en la obra elegida: el que no tiene se ve en 0.
+    var obra = est.buscadorObra ? est.buscadorObra.getId() : '';
+    var cuenta = { '': 0 };
+    est.cargas.forEach(function (c) {
+      if (obra && c.obra !== obra) return;
+      cuenta[''] += 1;
+      (c.elemento || '').split(', ').forEach(function (el) { cuenta[el] = (cuenta[el] || 0) + 1; });
+    });
+    document.querySelectorAll('#ascElemento .arm-button').forEach(function (b) {
+      var el = b.getAttribute('data-el') || '';
+      b.textContent = (el || 'Todos') + ' ' + (cuenta[el] || 0);
+    });
     poner('ascKpiPlanos', entero(filas.length));
     poner('ascKpiItems', entero(items));
     poner('ascKpiKg', entero(kg) + ' kg');
@@ -77,6 +93,7 @@
     }
     var d = await global.apiGet('/armascanner/cargas');
     est.cargas = (d && d.cargas) || [];
+    est.sinRespuesta = !d;
     var vistas = {};
     var obras = [];
     est.cargas.forEach(function (c) {
@@ -88,9 +105,6 @@
       return '<option value="' + esc(o.id) + '">' + esc(o.nombre) + '</option>';
     }).join('');
     pintarCargas();
-    // Si ArmaHub no contestó, se dice: la lista vacía haría creer que no hay nada subido.
-    document.getElementById('ascCargasVacio').textContent = d ? 'Sin planos subidos desde ArmaScanner.'
-      : 'No se pudo leer lo subido. Recarga la página.';
   }
 
   // ── Instalar ──
@@ -109,7 +123,8 @@
     // Un ZIP: se descomprime y se abre ArmaScanner.exe, que se instala solo (instalacion.py).
     document.getElementById('ascDescargaLinea').textContent = v && v.version
       ? 'Versión ' + v.version + ' · ' + mb(v.tamano) + ' · Descomprime y abre ArmaScanner.exe'
-      : 'Sin versión publicada.';
+      : ['admin', 'admin_calidad'].indexOf(global.currentRole) !== -1
+        ? 'Sin versión publicada. Se publica en la pestaña Versiones.' : 'Sin versión publicada.';
     var d = await global.apiGet('/armascanner/mi-licencia');
     if (!d) return;
     document.getElementById('ascMiEstado').innerHTML = d.activa
