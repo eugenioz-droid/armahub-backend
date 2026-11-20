@@ -2025,6 +2025,11 @@ check("...la lista dice qué es cada nota, y enviar se apaga con notas sin elegi
 check("...y quien cubicó ve el comentario arriba en azul, sin botones",
       '<div class="audntrcom"><b>Comentario del auditor · no se responde</b>' in JS
       and "return com + '<div class=\"revcc2 audhoja'" in JS)
+check("el comentario del auditor se lee en la lista, en su línea bajo el elemento, no en un title (20-nov)",
+      "function _filaComentario(e, ncol)" in JS and "_filaComentario(e, ncol);" in JS
+      and "var ncol = html.split('</th>').length - 1;" in JS
+      and "title=\"Comentario del auditor (no se responde)" not in JS
+      and ".audt tbody tr.audcomfila td{" in HTML and ".audntrcom.enfila{" in HTML)
 check("el informe cierra con los comentarios del auditor, en el azul de información",
       "self._comentarios(comentarios_informe(self.a))" in SRC
       and "INFO, INFO_FONDO = (23, 105, 194), (227, 242, 253)" in SRC

@@ -863,6 +863,7 @@
       '<th>Elemento</th>' + (esAsa ? '<th>Descripción del código</th>' : '') +
       '<th>Tipo</th><th>Piso</th><th>Ciclo</th><th>Eje</th>' +
       '<th class="num">Barras</th><th class="num">Kilos</th><th>Cubicó</th><th>Hallazgo</th><th>Acción</th></tr></thead><tbody>';
+    var ncol = html.split('</th>').length - 1;
     (AUD.elementos || []).forEach(function (e) {
       var abierto = ELEM && ELEM.id === e.id;
       // Después del envío la fila abre los hallazgos del elemento, si los tiene.
@@ -900,7 +901,8 @@
             : '') + '</td>' +
         '<td>' + (e.accion_estado ? '<span class="audacc1 ' + esc(e.accion_estado) + '">' + esc(ACCION_TXT[e.accion_estado]) + '</span>' : '') +
           (conHall ? ' <span class="muted" title="Resueltas y no aplican, sobre las líneas del elemento.">' +
-                     lin.listas + '/' + lin.total + '</span>' : '') + '</td></tr>';
+                     lin.listas + '/' + lin.total + '</span>' : '') + '</td></tr>' +
+        _filaComentario(e, ncol);
     });
     // ANTES DEL ENVÍO LA LISTA ES DEL AUDITOR: es su herramienta. DESPUÉS LA VEN TODOS
     // (9-nov), y el clic abre los hallazgos del elemento, no el formulario del auditor: el
@@ -1920,9 +1922,21 @@
       return ' <span class="audntrchip pide" title="Esta nota no dice si es un comentario o si requiere ' +
              'tratamiento. Abre el elemento y elige: sin eso la auditoría no se envía.">nota: elige</span>';
     }
-    return e.nota_trato === 'comentario'
-      ? ' <span class="audntrchip com" title="Comentario del auditor (no se responde): ' + esc(t) + '">comentario</span>'
+    // El comentario no lleva chip: se lee entero en su línea, debajo del elemento.
+    return e.nota_trato === 'comentario' ? ''
       : ' <span class="audntrchip res" title="Nota que requiere tratamiento: ' + esc(t) + '">nota a tratar</span>';
+  }
+
+  // EL COMENTARIO DEL AUDITOR, A LA VISTA (20-nov). Iba sólo en el title de un chip: un
+  // elemento conforme no abre nada, así que nadie —ni el auditado— podía leerlo. El
+  // usuario: «no puedo ver ese comentario … ¿el auditado tampoco lo ve?». Va en su propia
+  // línea debajo del elemento, en el azul de los comentarios, para todos los que ven la
+  // lista (antes del envío, el auditor; después, todos).
+  function _filaComentario(e, ncol) {
+    var t = String(e.texto || '').trim();
+    if (!t || e.nota_trato !== 'comentario') return '';
+    return '<tr class="audcomfila"><td colspan="' + ncol + '"><div class="audntrcom enfila">' +
+      '<b>Comentario del auditor</b>' + esc(t) + '</div></td></tr>';
   }
 
   // Las notas escritas sin elegir qué son: con alguna, no se envía.
