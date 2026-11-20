@@ -909,16 +909,40 @@ def codigos_de_control(job: str, user=Depends(get_current_user)):
             "con_auditoria": sum(1 for c in ccs if c["auditados"])}
 
 
+# REPARTIR LA MUESTRA obliga a abrir tantos códigos como elementos (hasta 20), y cada uno
+# le cuesta a aSa de 1 a 11 s: de a uno eran minutos. Se piden de a cuatro a la vez —cada
+# pedido es chico, un solo código— y con un tope por si muchos ya están auditados enteros.
+ASA_EN_PARALELO = 4
+TOPE_CODIGOS_ASA = 40
+
+
+def _repartir(por_cc, n: int) -> list:
+    """La muestra REPARTIDA entre los códigos: la primera vuelta toma un elemento de cada
+    código (en el orden sorteado), la segunda otro, y así hasta juntar `n`. Cada lista
+    viene ya barajada, así que lo que aporta cada código es al azar. Función pura."""
+    muestra, vuelta = [], 0
+    while len(muestra) < n:
+        tomados = [els[vuelta] for els in por_cc if vuelta < len(els)]
+        if not tomados:
+            break
+        muestra.extend(tomados[:n - len(muestra)])
+        vuelta += 1
+    return muestra
+
+
 def _sortear_asa(cur, job: str, n, ccs, semilla: str):
-    """La muestra sobre aSa: `n` ELEMENTOS al azar, sacados de los códigos que se
-    eligieron. Dos pasos, porque los ítems no están espejados:
+    """La muestra sobre aSa: `n` ELEMENTOS al azar, REPARTIDOS entre los códigos que se
+    eligieron. Los ítems no están espejados, así que:
 
       1. se barajan los códigos elegidos (azar reproducible por semilla);
-      2. se les piden los ítems a aSa uno por uno —1 a 11 s cada uno, la parte lenta—
-         hasta juntar elementos de sobra, y de esa bolsa se sortean los `n` finales.
+      2. se les piden los ítems a aSa a los que hagan falta: uno por elemento si hay más
+         códigos que elementos, todos si hay menos;
+      3. cada código aporta un elemento al azar por vuelta (`_repartir`).
 
-    Son ELEMENTOS, no códigos: si un código trae 22 elementos, puede aportar más de uno.
-    El tope de consultas existe porque cada código le cuesta segundos a aSa."""
+    Son ELEMENTOS, no códigos: con 3 códigos y una muestra de 10, cada código aporta 3 o 4.
+    Antes se juntaba una bolsa hasta tener 3×n elementos y se sorteaba de ahí: un código
+    con 30 elementos llenaba la bolsa solo y la muestra salía entera de él (20-nov,
+    A-2026-028: 5 códigos elegidos, los 5 elementos de uno)."""
     n = max(1, min(int(n or MUESTRA_POR_DEFECTO), MUESTRA_MAXIMA_ASA))
     semilla = (semilla or secrets.token_hex(4)).strip()
     elegidos = [str(c).strip() for c in (ccs or []) if str(c).strip()]
@@ -935,22 +959,31 @@ def _sortear_asa(cur, job: str, n, ccs, semilla: str):
         raise HTTPException(status_code=400,
                             detail="Esos códigos no están en el espejo, o ya fueron despachados.")
     candidatos.sort(key=lambda c: _orden_azar(c[0], semilla))
-    bolsa = []
-    for cc, descr, quien in candidatos[:MUESTRA_MAXIMA_ASA]:
-        bolsa.extend(_elementos_de_items(_items_de(cc), cc, descr, quien))
-        if len(bolsa) >= n * 3:
-            break
-    if not bolsa:
-        raise HTTPException(status_code=502, detail="aSa no devolvió ítems para esos códigos de control.")
     # Fuera los que ya salieron en otra auditoría de la obra: una obra grande necesita
-    # varias auditorías y repetir elementos deja partes sin mirar nunca.
+    # varias auditorías y repetir elementos deja partes sin mirar nunca. Un código con
+    # todo auditado no cuenta, y se abre el siguiente.
     vistos = _ya_auditados(cur, job)
-    bolsa = [e for e in bolsa if _clave_elemento(e) not in vistos]
-    if not bolsa:
+    meta = min(n, len(candidatos))
+    por_cc, pendientes, leidos, hubo = [], list(candidatos), 0, 0
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=ASA_EN_PARALELO) as pool:
+        while len(por_cc) < meta and pendientes and leidos < TOPE_CODIGOS_ASA:
+            lote = pendientes[:min(meta - len(por_cc), TOPE_CODIGOS_ASA - leidos)]
+            pendientes, leidos = pendientes[len(lote):], leidos + len(lote)
+            for (cc, descr, quien), items in zip(lote, pool.map(lambda c: _items_de(c[0]), lote)):
+                els = _elementos_de_items(items, cc, descr, quien)
+                hubo += len(els)
+                els = [e for e in els if _clave_elemento(e) not in vistos]
+                if els:
+                    els.sort(key=lambda e: _orden_azar(e["cc"] + "|" + e["eje"], semilla))
+                    por_cc.append(els)
+    if not hubo:
+        raise HTTPException(status_code=502, detail="aSa no devolvió ítems para esos códigos de control.")
+    if not por_cc:
         raise HTTPException(status_code=400,
                             detail="Todos los elementos de esos códigos ya fueron auditados. Elige otros códigos.")
-    bolsa.sort(key=lambda e: _orden_azar(e["cc"] + "|" + e["eje"], semilla))
-    return len(candidatos), bolsa[:n], semilla, min(n, len(bolsa))
+    muestra = _repartir(por_cc, n)
+    return len(candidatos), muestra, semilla, len(muestra)
 
 
 @router.get("/auditorias/elemento-asa")

@@ -359,9 +359,70 @@ check("...y el alcance es solo los codigos de control: la caja de tipo/piso/cicl
       and "/auditorias/universo" not in JS)
 check("...acotado, porque cada elemento cuesta una consulta a aSa",
       "MUESTRA_MAXIMA_ASA = 20" in SRC and "tope de este endpoint es 500" in SRC)
-check("la muestra son ELEMENTOS al azar dentro de los códigos elegidos",
-      "bolsa.sort(key=lambda e: _orden_azar(" in SRC and "return len(candidatos), bolsa[:n]" in SRC
-      and "Son ELEMENTOS, no códigos" in SRC)
+check("la muestra son ELEMENTOS al azar, REPARTIDOS entre los códigos elegidos",
+      "def _repartir(por_cc, n: int)" in SRC and "muestra = _repartir(por_cc, n)" in SRC
+      and "Son ELEMENTOS, no códigos" in SRC and "n * 3" not in SRC)
+
+
+# EL SORTEO REPARTE (20-nov). El usuario: «en vez de tomar elementos al azar desde los
+# códigos de control seleccionados, está eligiendo todos los elementos de un solo código».
+# La bolsa se cortaba al juntar 3×n elementos, y un código grande la llenaba solo
+# (A-2026-028: 5 códigos, los 5 elementos de uno). Se corre el sorteo con un aSa falso.
+class _CurSorteo:
+    def __init__(self, ccs, vistos=()):
+        self.ccs, self.vistos, self.r = ccs, list(vistos), []
+
+    def execute(self, sql, params=None):
+        if "FROM asa_pedidos" in sql:
+            self.r = [(cc, "desc " + cc, "") for cc in self.ccs if cc in params[1]]
+        else:
+            self.r = self.vistos
+
+    def fetchall(self):
+        return self.r
+
+
+_TAMANOS = {"CC1": 40, "CC2": 3, "CC3": 5, "CC4": 2, "CC5": 30}
+_pedidos = []
+
+
+def _items_falsos(cc):
+    _pedidos.append(cc)
+    return [{"cc": cc, "eje": "%02d" % i} for i in range(_TAMANOS.get(cc, 0))]
+
+
+def _elementos_falsos(items, cc, descr, quien):
+    return [{"cc": cc, "sector": "", "piso": "", "ciclo": "", "eje": it["eje"]} for it in items]
+
+
+_reales = (A._items_de, A._elementos_de_items)
+A._items_de, A._elementos_de_items = _items_falsos, _elementos_falsos
+try:
+    _, m5, _, n5 = A._sortear_asa(_CurSorteo(list(_TAMANOS)), "J", 5, list(_TAMANOS), "s1")
+    _pedidos.clear()
+    _, m3, _, _ = A._sortear_asa(_CurSorteo(list(_TAMANOS)), "J", 3, list(_TAMANOS), "s1")
+    pedidos3 = list(_pedidos)
+    _, m10, _, _ = A._sortear_asa(_CurSorteo(["CC2", "CC4", "CC5"]), "J", 10, ["CC2", "CC4", "CC5"], "s1")
+    # Un código con todo auditado no cuenta: se abre otro.
+    vistos = [("CC2", "", "", "", "%02d" % i) for i in range(3)]
+    _, mv, _, _ = A._sortear_asa(_CurSorteo(["CC2", "CC3"], vistos), "J", 2, ["CC2", "CC3"], "s1")
+    _, otra, _, _ = A._sortear_asa(_CurSorteo(list(_TAMANOS)), "J", 5, list(_TAMANOS), "s1")
+finally:
+    A._items_de, A._elementos_de_items = _reales
+_por_cc = lambda m: sorted({e["cc"] for e in m})
+check("5 códigos y muestra de 5: un elemento de cada código, no 5 del más grande",
+      n5 == 5 and _por_cc(m5) == ["CC1", "CC2", "CC3", "CC4", "CC5"])
+check("...con más códigos que elementos se abren sólo los que hacen falta",
+      len(pedidos3) == 3 and len(_por_cc(m3)) == 3)
+check("...con menos códigos que elementos, todos aportan y el grande completa lo que a los chicos les falta",
+      {c: sum(1 for e in m10 if e["cc"] == c) for c in ("CC2", "CC4", "CC5")} == {"CC2": 3, "CC4": 2, "CC5": 5})
+check("...un código con todo auditado no cuenta y la muestra sale de los demás",
+      len(mv) == 2 and _por_cc(mv) == ["CC3"])
+check("...y con la misma semilla sale la misma muestra",
+      [(e["cc"], e["eje"]) for e in m5] == [(e["cc"], e["eje"]) for e in otra])
+check("_repartir: una vuelta por código antes de repetir",
+      A._repartir([[1, 2, 3], [4], [5, 6]], 5) == [1, 4, 5, 2, 6]
+      and A._repartir([[1], [2]], 5) == [1, 2] and A._repartir([[1, 2], [3, 4]], 1) == [1])
 check("...con el mismo azar reproducible que el sorteo en SQL",
       "def _orden_azar(" in SRC and "hashlib.md5" in SRC)
 check("el selector lista una fila por JOB de aSa, no por nombre (hay obras con dos)",
