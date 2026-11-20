@@ -406,7 +406,7 @@ def soltar_plano(datos: PlanoEnLinea, credentials: HTTPAuthorizationCredentials 
     return {"ok": True}
 
 
-# ══════ El ciclo de trabajo: guardar el plano, su avance y el pedido aparte (mig 170; SPECS §5.4) ══════
+# ══════ El ciclo de trabajo: guardar el plano, su avance y el pedido aparte (mig 171; SPECS §5.4) ══════
 # [Usuario 20-nov: «¿cómo separamos subir el plano no terminado de subir las barras?… un usuario
 # pueda cerrar su trabajo, para que quede en la plataforma y lo tome otro usuario o el mismo…
 # guardar el avance en ArmaHub, así puedo tener control sobre lo que se está haciendo… al enviar
