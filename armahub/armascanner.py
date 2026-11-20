@@ -773,6 +773,24 @@ def reportes(admin=Depends(require_admin_or_admin_calidad)):
                           "el": _cuando(f[8])} for f in filas]}
 
 
+@router.get("/armascanner/reportes-ficha")
+def reportes_ficha(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Los reportes, con la ficha de ArmaScanner de un administrador (para leerlos desde el equipo de
+    desarrollo sin la clave del portal): la lista y el enlace de descarga de cada uno."""
+    from . import storage
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+            if not _es_admin(user):
+                raise HTTPException(status_code=403, detail="Sólo un administrador.")
+            cur.execute("""SELECT id, email, equipo, version, obra, plano, comentario, tamano, creado_el, archivo
+                             FROM armascanner_reportes ORDER BY id DESC LIMIT 50""")
+            filas = cur.fetchall()
+    return {"reportes": [{"id": f[0], "usuario": f[1], "equipo": f[2] or "", "version": f[3] or "", "obra": f[4] or "",
+                          "plano": f[5] or "", "comentario": f[6] or "", "tamano": f[7] or 0, "el": _cuando(f[8]),
+                          "url": storage.generate_presigned_url(f[9], expires=DESCARGA_SEGUNDOS)} for f in filas]}
+
+
 @router.get("/armascanner/reportes/{rid}/descarga")
 def descargar_reporte(rid: int, admin=Depends(require_admin_or_admin_calidad)):
     from . import storage
