@@ -10,6 +10,9 @@ y subir el plano. [Usuario 19-nov, programa §8.13 paso 1]
     GET  /armascanner/planos         los planos en línea, con quién tiene tomado cada uno
     POST /armascanner/planos/tomar   tomar un plano: queda a su nombre y se baja su copia de trabajo
     POST /armascanner/planos/soltar  soltarlo sin subir (quien lo tomó, o un administrador)
+    POST /armascanner/planos/guardar guarda el plano con su avance (versión nueva; sigue en edición)
+    POST /armascanner/planos/pedido  «Enviar pedido»: sus barras pasan a los despieces de la obra
+    GET/POST /armascanner/planos-linea…  la pestaña Planos del portal (avance, barras, liberar, pedido)
 
 Y lo que muestra la caluga ArmaScanner del portal (sesión del portal; SPECS §13) [Usuario 19-nov:
 «Más que pedidos enviados debiera ver sus obras y ojalá una línea por cada carga de elemento
@@ -114,6 +117,52 @@ def obras(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
                                "id": r[4] or ""} for r in cur.fetchall()]}
 
 
+async def _cargar_barras(user, obra, plano_code, reemplaza, revision, sin_subir, contenido: bytes, nombre,
+                         version, equipo):
+    """Las barras de un plano de ArmaScanner (el CSV de A Detailer) entran a los despieces de la
+    obra como la carga de ese plano, con su estado de revisión. Devuelve (respuesta de la
+    importación, barras sin aprobar)."""
+    from .importer import import_armadetailer
+    # Códigos anteriores del mismo plano (se limpió y se escaneó de nuevo): sus barras se
+    # reemplazan también. Sólo códigos de cargas de ArmaScanner de esta obra: por aquí no
+    # se pueden borrar barras de A Detailer ni de otra obra.
+    anteriores = [c.strip() for c in (reemplaza or []) if isinstance(c, str) and c.strip() and ";" not in c]
+    if anteriores:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT DISTINCT plano_code FROM imports
+                     WHERE id_proyecto = %s AND herramienta = 'ArmaScanner' AND plano_code = ANY(%s)
+                """, (obra, anteriores))
+                anteriores = [r[0] for r in cur.fetchall()]
+    reemplazar = ";".join(dict.fromkeys([plano_code] + anteriores))
+    res = await import_armadetailer(
+        file=UploadFile(BytesIO(contenido), filename=nombre or f"{plano_code}.csv"),
+        user=user, obra_destino=obra, reasignar_a=None, forzar=True, calculista=None,
+        confirmar_nuevo=False, constructora_id=None, asignar_a=None, owner_id=None,
+        proyecto_nombre_manual=None, proyecto_nombre_override=None,
+        replace_keys=None, replace_full_planos=reemplazar,
+    )
+    if not res.get("ok"):
+        raise HTTPException(status_code=422, detail=res.get("error") or res.get("mensaje") or "La carga no entró.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            import_id = res["import_id"]
+            cur.execute("SELECT id_unico, sector, piso, ciclo FROM barras WHERE import_id = %s", (import_id,))
+            filas = cur.fetchall()
+            estado = [{"sector": s, "piso": p, "ciclo": c, "revision": revision.get(u, "pendiente")}
+                      for u, s, p, c in filas]
+            cur.executemany("UPDATE barras SET revision = %s WHERE import_id = %s AND id_unico = %s",
+                            [(revision.get(u, "pendiente"), import_id, u) for u, *_ in filas])
+            pend = pendientes_por_combinacion(estado + [dict(b, revision="duda") for b in (sin_subir or [])])
+            cur.execute("""
+                UPDATE imports SET herramienta = 'ArmaScanner', herramienta_version = %s, equipo = %s,
+                                   pendientes = %s::jsonb
+                 WHERE id = %s
+            """, ((version or "")[:40] or None, (equipo or "")[:120] or None, json.dumps(pend), import_id))
+    return res, sum(pend.values())
+
+
 @router.post("/armascanner/subir-plano")
 async def subir_plano(
     archivo: UploadFile = File(...),
@@ -127,7 +176,6 @@ async def subir_plano(
     trabajo y su estado) y en `datos` plano, version_base (la versión en línea de la que sale la
     copia), numero, titulo, rev, elemento y aprobadas: queda como la versión en línea siguiente
     del plano, libre. No sube encima de un plano tomado por otro ni de una versión más nueva."""
-    from .importer import import_armadetailer
     try:
         d = json.loads(datos)
     except ValueError:
@@ -150,48 +198,9 @@ async def subir_plano(
                 motivo = motivo_para_subir(en_linea, user["email"], d.get("version_base"))
                 if motivo:
                     raise HTTPException(status_code=409, detail=motivo)
-            # Códigos anteriores del mismo plano (se limpió y se escaneó de nuevo): sus barras se
-            # reemplazan también. Sólo códigos de cargas de ArmaScanner de esta obra: por aquí no
-            # se pueden borrar barras de A Detailer ni de otra obra.
-            anteriores = [c.strip() for c in (d.get("reemplaza") or []) if isinstance(c, str) and c.strip()
-                          and ";" not in c]
-            if anteriores:
-                cur.execute("""
-                    SELECT DISTINCT plano_code FROM imports
-                     WHERE id_proyecto = %s AND herramienta = 'ArmaScanner' AND plano_code = ANY(%s)
-                """, (obra, anteriores))
-                anteriores = [r[0] for r in cur.fetchall()]
-    reemplazar = ";".join(dict.fromkeys([plano_code] + anteriores))
-
-    contenido = await archivo.read()
-    res = await import_armadetailer(
-        file=UploadFile(BytesIO(contenido), filename=archivo.filename or f"{plano_code}.csv"),
-        user=user, obra_destino=obra, reasignar_a=None, forzar=True, calculista=None,
-        confirmar_nuevo=False, constructora_id=None, asignar_a=None, owner_id=None,
-        proyecto_nombre_manual=None, proyecto_nombre_override=None,
-        replace_keys=None, replace_full_planos=reemplazar,
-    )
-    if not res.get("ok"):
-        raise HTTPException(status_code=422, detail=res.get("error") or res.get("mensaje") or "La carga no entró.")
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            import_id = res["import_id"]
-            cur.execute("SELECT id_unico, sector, piso, ciclo FROM barras WHERE import_id = %s", (import_id,))
-            filas = cur.fetchall()
-            estado = [{"sector": s, "piso": p, "ciclo": c, "revision": revision.get(u, "pendiente")}
-                      for u, s, p, c in filas]
-            cur.executemany("UPDATE barras SET revision = %s WHERE import_id = %s AND id_unico = %s",
-                            [(revision.get(u, "pendiente"), import_id, u) for u, *_ in filas])
-            sin_subir = [dict(b, revision="duda") for b in (d.get("sin_subir") or [])]
-            pend = pendientes_por_combinacion(estado + sin_subir)
-            cur.execute("""
-                UPDATE imports SET herramienta = 'ArmaScanner', herramienta_version = %s, equipo = %s,
-                                   pendientes = %s::jsonb
-                 WHERE id = %s
-            """, ((d.get("version") or "")[:40] or None, (d.get("equipo") or "")[:120] or None,
-                  json.dumps(pend), import_id))
-    n_pend = sum(pend.values())
+    res, n_pend = await _cargar_barras(user, obra, plano_code, d.get("reemplaza"), revision, d.get("sin_subir"),
+                                       await archivo.read(), archivo.filename, d.get("version"), d.get("equipo"))
+    import_id = res["import_id"]
     version = _guardar_paquete(obra, plano, await paquete.read(), en_linea, user["email"], d, res) if plano else None
     audit(user["email"], "armascanner_subir_plano",
           f"{plano_code} → {res.get('proyecto')}: {res.get('barras')} barras, {res.get('kilos')} kg, "
@@ -327,7 +336,7 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
             cur.execute(f"""
                 SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), COALESCE(pr.asa_job_id, ''),
                        p.plano, p.numero, p.titulo, p.revision, p.elemento, p.version, p.barras, p.aprobadas,
-                       p.kg, p.tamano, p.subido_por, p.subido_el, p.tomado_por, p.tomado_el
+                       p.kg, p.tamano, p.subido_por, p.subido_el, p.tomado_por, p.tomado_el, p.pedido_version
                   FROM planos_obra p
                   LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
                   {filtro}
@@ -342,7 +351,7 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
          "kg": round(float(f[11]), 1) if f[11] is not None else None, "tamano": f[12],
          "subido_por": nombres.get(f[13], f[13] or ""), "subido_el": _cuando(f[14]),
          "tomado_por": nombres.get(f[15], f[15]) if f[15] else "", "tomado_el": _cuando(f[16]),
-         "tomado_por_mi": f[15] == yo} for f in filas]}
+         "tomado_por_mi": f[15] == yo, "pedido": estado_pedido(f[8], f[17])} for f in filas]}
 
 
 class PlanoEnLinea(BaseModel):
@@ -395,6 +404,279 @@ def soltar_plano(datos: PlanoEnLinea, credentials: HTTPAuthorizationCredentials 
         audit(user["email"], "armascanner_soltar_plano",
               datos.plano + (f" (lo tenía {antes['tomado_por']})" if otro else ""), "proyecto", datos.obra)
     return {"ok": True}
+
+
+# ══════ El ciclo de trabajo: guardar el plano, su avance y el pedido aparte (mig 170; SPECS §5.4) ══════
+# [Usuario 20-nov: «¿cómo separamos subir el plano no terminado de subir las barras?… un usuario
+# pueda cerrar su trabajo, para que quede en la plataforma y lo tome otro usuario o el mismo…
+# guardar el avance en ArmaHub, así puedo tener control sobre lo que se está haciendo… al enviar
+# el pedido lo estamos pasando a los despieces asociados a la obra»]
+# Guardar NO carga barras: deja la versión nueva del plano (sigue en edición por quien lo guarda)
+# y sus barras a la vista. «Enviar pedido» pasa las barras de la versión guardada a los despieces
+# de la obra, con su procedencia (ArmaScanner); lo envía quien tiene el plano en edición, quien lo
+# guardó por última vez o un administrador.
+CAMPOS_BARRA = ("id", "marca", "figura", "diam", "cant", "largo", "kg", "ciclo", "eje", "rev", "motivo")
+
+
+def barras_a_la_vista(lista) -> list:
+    """Lo que ArmaScanner manda de cada barra, acotado: sólo los campos conocidos, texto corto."""
+    out = []
+    for b in (lista or [])[:5000]:
+        if isinstance(b, dict):
+            fila = {k: (v[:200] if isinstance(v, str) else v) for k, v in b.items()
+                    if k in CAMPOS_BARRA and isinstance(v, (str, int, float)) and not isinstance(v, bool)}
+            fila["rev"] = fila.get("rev") if fila.get("rev") in REVISIONES else "pendiente"
+            out.append(fila)
+    return out
+
+
+def resumen_de(barras, extra=None) -> dict:
+    """{barras, aprobadas, consultas, pendientes, kg} de las barras a la vista (+ ciclos y etapa que
+    manda ArmaScanner). «consultas» = con duda. Función pura."""
+    r = {"barras": len(barras), "aprobadas": sum(1 for b in barras if b.get("rev") == "aprobada"),
+         "consultas": sum(1 for b in barras if b.get("rev") == "duda"),
+         "kg": round(sum(float(b.get("kg") or 0) for b in barras), 1)}
+    r["pendientes"] = r["barras"] - r["aprobadas"] - r["consultas"]
+    extra = extra or {}
+    if isinstance(extra.get("ciclos"), int):
+        r["ciclos"] = extra["ciclos"]
+    if isinstance(extra.get("etapa"), str):
+        r["etapa"] = extra["etapa"][:40]
+    return r
+
+
+def puede_enviar(tomado_por, subido_por, email: str, admin: bool) -> bool:
+    """Envía el pedido de un plano quien lo tiene en edición, quien lo guardó por última vez o un
+    administrador: cada cubicador gestiona sus planos. Función pura."""
+    return bool(admin or (email and email in (tomado_por, subido_por)))
+
+
+def estado_pedido(version, pedido_version) -> str:
+    if not pedido_version:
+        return "sin_enviar"
+    return "enviado" if pedido_version >= (version or 0) else "cambios"
+
+
+@router.post("/armascanner/planos/guardar")
+async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
+                        credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Guarda el plano con su avance como la versión siguiente; queda (o sigue) en edición por
+    quien lo guarda. `datos` (JSON): obra | asa, plano, version_base, numero, titulo, rev,
+    elemento, ciclos, etapa, barras [{id, marca, figura, diam, cant, largo, kg, ciclo, eje, rev,
+    motivo}]. 409 si lo tiene otro o si la copia sale de una versión vieja."""
+    from . import storage
+    try:
+        d = json.loads(datos)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Datos del plano ilegibles.")
+    obra, job = (d.get("obra") or "").strip(), (d.get("asa") or "").strip()
+    plano = (d.get("plano") or "").strip()[:300]
+    if not (obra or job) or not plano:
+        raise HTTPException(status_code=400, detail="Falta la obra o el plano.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+            if job:
+                from .programacion import adoptar_obra
+                obra = adoptar_obra(cur, job, user["email"], en_cubicacion=True)
+            antes = _plano_en_linea(cur, obra, plano)
+            motivo = motivo_para_subir(antes, user["email"], d.get("version_base"))
+            if motivo:
+                raise HTTPException(status_code=409, detail=motivo)
+    contenido = await paquete.read()
+    previa = (antes or {}).get("version") or 0
+    nueva = previa + 1
+    clave = clave_paquete(obra, plano, nueva)
+    try:
+        storage.upload_file(clave, contenido, "application/zip")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"El plano no se pudo guardar en ArmaHub ({str(e)[:80]}).")
+    barras = barras_a_la_vista(d.get("barras"))
+    resumen = resumen_de(barras, d)
+
+    def txt(k, largo):
+        return str(d.get(k) or "").strip()[:largo] or None
+
+    email = user["email"]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO planos_obra (id_proyecto, plano, numero, titulo, revision, elemento, version, archivo,
+                                         tamano, barras, aprobadas, kg, subido_por, subido_el, tomado_por, tomado_el,
+                                         resumen, barras_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, NOW(), %s::jsonb, %s::jsonb)
+                ON CONFLICT (id_proyecto, plano) DO UPDATE SET
+                    numero = EXCLUDED.numero, titulo = EXCLUDED.titulo, revision = EXCLUDED.revision,
+                    elemento = EXCLUDED.elemento, version = EXCLUDED.version, archivo = EXCLUDED.archivo,
+                    tamano = EXCLUDED.tamano, barras = EXCLUDED.barras, aprobadas = EXCLUDED.aprobadas,
+                    kg = EXCLUDED.kg, subido_por = EXCLUDED.subido_por, subido_el = NOW(),
+                    tomado_por = EXCLUDED.tomado_por, tomado_el = COALESCE(planos_obra.tomado_el, NOW()),
+                    resumen = EXCLUDED.resumen, barras_json = EXCLUDED.barras_json
+                 WHERE planos_obra.version = %s
+                   AND (planos_obra.tomado_por IS NULL OR planos_obra.tomado_por = %s)
+                RETURNING version
+            """, (obra, plano, txt("numero", 40), txt("titulo", 300), txt("rev", 20), txt("elemento", 20), nueva,
+                  clave, len(contenido), resumen["barras"], resumen["aprobadas"], resumen["kg"], email, email,
+                  json.dumps(resumen), json.dumps(barras), previa, email))
+            ok = cur.fetchone()
+    if not ok:  # mientras subía, otro lo tomó o guardó otra versión
+        storage.delete_file(clave)
+        raise HTTPException(status_code=409, detail="El plano cambió en ArmaHub mientras se guardaba (otro usuario lo "
+                                                    "abrió o lo guardó).")
+    if antes and antes.get("archivo") and antes["archivo"] != clave:
+        storage.delete_file(antes["archivo"])
+    return {"ok": True, "version": nueva, "id_proyecto": obra, "resumen": resumen}
+
+
+async def _enviar_pedido(user: dict, obra: str, plano: str) -> dict:
+    """Las barras de la versión guardada del plano pasan a los despieces de la obra (reemplazan
+    las de ese plano, también las de sus códigos anteriores)."""
+    import zipfile
+    from . import storage
+    admin = user.get("role") in ("admin", "admin_calidad")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT version, archivo, tomado_por, subido_por, codigos FROM planos_obra
+                            WHERE id_proyecto = %s AND plano = %s""", (obra, plano))
+            fila = cur.fetchone()
+    if not fila or not fila[1]:
+        raise HTTPException(status_code=404, detail="Ese plano no está guardado en ArmaHub.")
+    version, archivo, tomado_por, subido_por, codigos = fila
+    if not puede_enviar(tomado_por, subido_por, user.get("email", ""), admin):
+        raise HTTPException(status_code=403, detail="Envía el pedido quien tiene el plano en edición, quien lo guardó "
+                                                    "por última vez o un administrador.")
+    try:
+        z = zipfile.ZipFile(BytesIO(storage.download_file(archivo)))
+        nombres = z.namelist()
+        csv_ = next((n for n in nombres if n.startswith("trabajo/") and n.endswith("_subida.csv")), None)
+        js = next((n for n in nombres if n.startswith("trabajo/") and n.endswith("_subida.json")), None)
+        if not csv_ or not js:
+            raise HTTPException(status_code=422, detail="El plano guardado no tiene barras para enviar.")
+        s = json.loads(z.read(js).decode("utf-8"))
+        contenido = z.read(csv_)
+        registro = json.loads(z.read("paquete.json").decode("utf-8")).get("registro") or {}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo leer el plano guardado ({str(e)[:80]}).")
+    plano_code = (s.get("plano_code") or "").strip()
+    if not plano_code:
+        raise HTTPException(status_code=422, detail="El plano guardado no trae su código.")
+    anteriores = list(codigos or []) + list((registro.get("subida") or {}).get("codigos") or [])
+    revision = {k: v for k, v in (s.get("revision") or {}).items() if v in REVISIONES}
+    nombre = "".join(c for c in plano if c.isascii() and (c.isalnum() or c in "._- ")).strip() or "plano"
+    res, n_pend = await _cargar_barras(user, obra, plano_code, anteriores, revision, s.get("sin_subir"), contenido,
+                                       f"{nombre}_armascanner.csv", registro.get("version_app"), None)
+    todos = list(dict.fromkeys([c for c in anteriores if isinstance(c, str)] + [plano_code]))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""UPDATE planos_obra SET pedido_version = %s, pedido_el = NOW(), pedido_por = %s,
+                                                  codigos = %s::jsonb
+                            WHERE id_proyecto = %s AND plano = %s""",
+                        (version, user.get("email"), json.dumps(todos), obra, plano))
+    audit(user.get("email", "?"), "armascanner_enviar_pedido",
+          f"{plano} v{version} → {res.get('proyecto')}: {res.get('barras')} barras, {res.get('kilos')} kg, "
+          f"{n_pend} sin aprobar", "proyecto", obra)
+    return {"ok": True, "version": version, "import_id": res["import_id"], "obra": res.get("proyecto"),
+            "barras": res.get("barras"), "kilos": res.get("kilos"),
+            "reemplazadas": res.get("barras_eliminadas_previo"), "pendientes": n_pend, "plano_code": plano_code}
+
+
+@router.post("/armascanner/planos/pedido")
+async def enviar_pedido(datos: PlanoEnLinea, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """«Enviar pedido» desde ArmaScanner (ficha de licencia)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+    return await _enviar_pedido(user, datos.obra, datos.plano)
+
+
+# ── La pestaña Planos del portal (sesión del portal): avance, barras, liberar, enviar pedido ──
+def _fila_plano(f, nombres, yo: str, admin: bool) -> dict:
+    (obra, obra_nombre, plano, numero, titulo, revision, elemento, version, tamano, subido_por, subido_el,
+     tomado_por, tomado_el, resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg) = f
+    r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "consultas": 0,
+                    "pendientes": (barras or 0) - (aprobadas or 0), "kg": float(kg or 0)}
+    return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero or "", "titulo": titulo or "",
+            "revision": revision or "", "elemento": elemento or "", "version": version, "tamano": tamano,
+            "guardado_por": nombres.get(subido_por, subido_por or ""), "guardado_el": _cuando(subido_el),
+            "en_edicion_por": nombres.get(tomado_por, tomado_por) if tomado_por else "",
+            "en_edicion_desde": _cuando(tomado_el), "en_edicion_por_mi": bool(tomado_por) and tomado_por == yo,
+            "resumen": r, "pedido": estado_pedido(version, pedido_version), "pedido_version": pedido_version,
+            "pedido_el": _cuando(pedido_el), "pedido_por": nombres.get(pedido_por, pedido_por or ""),
+            "puede_enviar": puede_enviar(tomado_por, subido_por, yo, admin),
+            "puede_liberar": bool(tomado_por) and (admin or tomado_por == yo), "pdf": bool(pdf)}
+
+
+@router.get("/armascanner/planos-linea")
+def planos_linea(obra: str = "", user=Depends(get_current_user)):
+    """Planos (portal): cada plano guardado con su avance (barras, aprobadas, con consulta, por
+    aprobar, kg), su versión, quién lo tiene en edición y el estado de su pedido."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            filtro, params = "", []
+            if obra.strip():
+                filtro, params = "WHERE p.id_proyecto = %s", [obra.strip()]
+            cur.execute(f"""
+                SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), p.plano, p.numero, p.titulo,
+                       p.revision, p.elemento, p.version, p.tamano, p.subido_por, p.subido_el, p.tomado_por,
+                       p.tomado_el, p.resumen, p.pedido_version, p.pedido_el, p.pedido_por, p.pdf,
+                       p.barras, p.aprobadas, p.kg
+                  FROM planos_obra p
+                  LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
+                  {filtro}
+                 ORDER BY 2, p.numero, p.plano
+            """, params)
+            filas = cur.fetchall()
+            nombres = _nombres(cur, [f[9] for f in filas] + [f[11] for f in filas] + [f[16] for f in filas])
+    yo, admin = user.get("email", ""), _es_admin(user)
+    return {"admin": admin, "planos": [_fila_plano(f, nombres, yo, admin) for f in filas]}
+
+
+@router.get("/armascanner/planos-linea/barras")
+def barras_del_plano(obra: str, plano: str, user=Depends(get_current_user)):
+    """Las barras de la versión guardada del plano, como las mandó ArmaScanner (no son despieces
+    de la obra hasta «Enviar pedido»)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            cur.execute("SELECT version, barras_json FROM planos_obra WHERE id_proyecto = %s AND plano = %s",
+                        (obra, plano))
+            fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Ese plano no está guardado en ArmaHub.")
+    return {"version": fila[0], "barras": fila[1] or []}
+
+
+@router.post("/armascanner/planos-linea/liberar")
+def liberar_plano_portal(datos: PlanoEnLinea, user=Depends(get_current_user)):
+    """Liberar un plano desde el portal: quien lo tiene en edición o un administrador."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            antes = _plano_en_linea(cur, datos.obra, datos.plano)
+            if not antes:
+                raise HTTPException(status_code=404, detail="Ese plano no está guardado en ArmaHub.")
+            ajeno = antes["tomado_por"] and antes["tomado_por"] != user.get("email")
+            if ajeno and not _es_admin(user):
+                raise HTTPException(status_code=403, detail=f"Está en edición por {antes['tomado_nombre']}: lo libera "
+                                                            "esa persona o un administrador.")
+            cur.execute("""UPDATE planos_obra SET tomado_por = NULL, tomado_el = NULL
+                            WHERE id_proyecto = %s AND plano = %s""", (datos.obra, datos.plano))
+    if antes["tomado_por"]:
+        audit(user.get("email", "?"), "armascanner_soltar_plano",
+              datos.plano + (f" (lo tenía {antes['tomado_por']})" if ajeno else ""), "proyecto", datos.obra)
+    return {"ok": True}
+
+
+@router.post("/armascanner/planos-linea/pedido")
+async def enviar_pedido_portal(datos: PlanoEnLinea, user=Depends(get_current_user)):
+    """«Enviar pedido» desde el portal."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+    return await _enviar_pedido({"email": user.get("email", ""), "role": user.get("role")}, datos.obra, datos.plano)
 
 
 # ══════ La caluga ArmaScanner del portal ══════

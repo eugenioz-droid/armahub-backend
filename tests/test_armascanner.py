@@ -62,6 +62,28 @@ fuente = inspect.getsource(A.subir_plano)
 check("subir: el bloqueo se revisa antes de tocar las barras",
       fuente.index("motivo_para_subir") < fuente.index("import_armadetailer(") if "import_armadetailer(" in fuente else False)
 check("Mis obras: todos ven todas las obras (sin filtro por usuario)", "usuario = %s" not in inspect.getsource(A.cargas))
+
+print()
+print("TEST: ciclo de trabajo (20-nov): guardar no carga barras, pedido aparte")
+B = A.barras_a_la_vista([{"id": "B-1", "rev": "aprobada", "kg": 10.5, "otro": "x"}, {"id": "B-2", "rev": "duda", "kg": 2},
+                         {"id": "B-3", "kg": 1, "rev": "rara"}, "basura"])
+check("barras a la vista: sólo campos conocidos y revisión válida",
+      len(B) == 3 and "otro" not in B[0] and B[2]["rev"] == "pendiente", B)
+r = A.resumen_de(B, {"ciclos": 3, "etapa": "En revisión"})
+check("resumen: aprobadas, con consulta, por aprobar, kg",
+      (r["barras"], r["aprobadas"], r["consultas"], r["pendientes"], r["kg"], r["ciclos"]) == (3, 1, 1, 1, 13.5, 3), r)
+check("resumen de un plano sin barras", A.resumen_de([])["barras"] == 0 and A.resumen_de([])["pendientes"] == 0)
+check("envía el pedido: quien lo tiene en edición", A.puede_enviar(yo, otro, yo, False))
+check("envía el pedido: quien lo guardó por última vez", A.puede_enviar(None, yo, yo, False))
+check("no lo envía otro cubicador", not A.puede_enviar(otro, otro, yo, False) and not A.puede_enviar(None, None, yo, False))
+check("lo envía el administrador", A.puede_enviar(otro, otro, yo, True))
+check("estado del pedido", (A.estado_pedido(3, None), A.estado_pedido(3, 3), A.estado_pedido(4, 3))
+      == ("sin_enviar", "enviado", "cambios"))
+check("rutas del ciclo y del portal", {"/armascanner/planos/guardar", "/armascanner/planos/pedido",
+      "/armascanner/planos-linea", "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar",
+      "/armascanner/planos-linea/pedido"} <= rutas, rutas)
+check("guardar no carga barras como despiece", "_cargar_barras" not in inspect.getsource(A.guardar_plano))
+check("guardar deja el plano en edición por quien guarda", "tomado_por = EXCLUDED.tomado_por" in inspect.getsource(A.guardar_plano))
 from armahub import export as E  # noqa: E402
 check("la exportación consulta las combinaciones bloqueadas", hasattr(E, "combinaciones_bloqueadas"))
 
