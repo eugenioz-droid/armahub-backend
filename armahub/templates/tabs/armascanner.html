@@ -19,6 +19,17 @@
   .asc .asc-linea { font-size: 12px; color: var(--arm-text-muted); }
   .asc .asc-dos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
   @media (max-width: 900px) { .asc .asc-kpis, .asc .asc-dos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* Planos (20-nov): avance fino, acciones de fila y la ventana de barras. */
+  .asc .asc-avance { width: 90px; height: 4px; background: var(--arm-border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .asc .asc-avance > div { height: 100%; background: var(--arm-green); }
+  .asc .asc-acciones { text-align: right; white-space: nowrap; }
+  .asc .asc-acciones .arm-button { min-height: 28px; padding: 2px 10px; font-size: 12px; }
+  .asc .asc-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 950; align-items: flex-start;
+                    justify-content: center; padding: 24px 0; overflow-y: auto; }
+  .asc .asc-modal__caja { background: var(--arm-surface); border-radius: var(--arm-radius-md); width: 96%; max-width: 1100px;
+                          margin: auto; padding: 16px; }
+  .asc .asc-modal__cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .asc .asc-modal__cabeza h3 { margin: 0; }
 </style>
 
 <div id="tab-asc_obras" class="tab-content">
@@ -55,6 +66,61 @@
         <tbody id="ascCargas"></tbody>
       </table>
       <div id="ascCargasVacio" class="asc-vacio" style="display:none;">Sin planos subidos desde ArmaScanner.</div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-asc_planos" class="tab-content">
+  <div class="arm-ds asc">
+    <div class="asc-kpis">
+      <div class="arm-kpi"><div class="arm-kpi__label">Planos</div><div class="arm-kpi__value" id="ascPlKpiPlanos">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">En edición</div><div class="arm-kpi__value" id="ascPlKpiEdicion">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Barras aprobadas</div><div class="arm-kpi__value" id="ascPlKpiAprob">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Con consulta</div><div class="arm-kpi__value" id="ascPlKpiConsulta">—</div></div>
+    </div>
+    <div class="arm-card">
+      <div class="asc-barra">
+        <span class="asc-rotulo">Obra</span>
+        <input type="text" id="ascPlObraInput" list="ascPlObraDatalist" class="arm-input" placeholder="Todas"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+               data-lpignore="true" data-form-type="other" style="width:260px;">
+        <datalist id="ascPlObraDatalist"></datalist>
+        <select id="ascPlObraSelect" style="display:none;"></select>
+        <span class="asc-rotulo" style="margin-left:8px;">Elemento</span>
+        <div class="asc-seg" id="ascPlElemento">
+          <button class="arm-button is-on" data-el="">Todos</button>
+          <button class="arm-button" data-el="FUND">FUND</button>
+          <button class="arm-button" data-el="ELEV">ELEV</button>
+          <button class="arm-button" data-el="VCIELO">VCIELO</button>
+          <button class="arm-button" data-el="LCIELO">LCIELO</button>
+        </div>
+      </div>
+      <table class="arm-table">
+        <thead><tr>
+          <th>Obra</th><th>N°</th><th>Título</th><th>Elemento</th><th>Versión</th><th>Avance</th>
+          <th class="num">Con consulta</th><th class="num">Por aprobar</th><th class="num">Kg</th>
+          <th>Estado</th><th>Pedido</th><th>Guardado</th><th></th>
+        </tr></thead>
+        <tbody id="ascPlanos"></tbody>
+      </table>
+      <div id="ascPlanosVacio" class="asc-vacio" style="display:none;">Sin planos guardados desde ArmaScanner.</div>
+    </div>
+    <div id="ascBarrasModal" class="asc-modal" style="display:none;">
+      <div class="asc-modal__caja">
+        <div class="asc-modal__cabeza">
+          <div class="asc-seg" id="ascBarrasFiltro"></div>
+          <button class="arm-button" id="ascBarrasCerrar">Cerrar</button>
+        </div>
+        <h3 id="ascBarrasTitulo"></h3>
+        <table class="arm-table">
+          <thead><tr>
+            <th>ID</th><th>Marca</th><th class="num">φ</th><th class="num">Cant.</th><th class="num">Largo</th>
+            <th class="num">Kg</th><th>Ciclo</th><th>Eje</th><th>Revisión</th><th>Motivo</th>
+          </tr></thead>
+          <tbody id="ascBarras"></tbody>
+        </table>
+        <div id="ascBarrasVacio" class="asc-vacio" style="display:none;"></div>
+      </div>
     </div>
   </div>
 </div>

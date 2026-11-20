@@ -24,6 +24,7 @@
     catalogo: 'Catálogo',
     admin: 'Admin',
     asc_obras: 'Mis obras',
+    asc_planos: 'Planos',
     asc_instalar: 'Instalar',
     asc_licencias: 'Licencias',
     asc_uso: 'Uso',
@@ -120,6 +121,7 @@
     agregar2: 'loadAgregarCubicacion2', // 5N.20: creador de lotes v2 (contexto real)
     muros: 'loadMurosTab',              // muros consolidados de la obra (despiece banderado)
     asc_obras: 'ascCargarObras',        // ArmaScanner (19-nov): cada pestaña carga lo suyo
+    asc_planos: 'ascCargarPlanos',
     asc_instalar: 'ascCargarInstalar',
     asc_licencias: 'ascCargarLicencias',
     asc_uso: 'ascCargarUso',

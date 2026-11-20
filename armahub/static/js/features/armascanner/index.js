@@ -6,6 +6,8 @@
  *
  * Pestañas (templates/tabs/armascanner.html):
  *   Mis obras  GET /armascanner/cargas       una línea por carga (cada plano, un elemento)
+ *   Planos     GET /armascanner/planos-linea  avance de cada plano guardado; ver barras, enviar
+ *              pedido y liberar (…/barras, POST …/pedido, POST …/liberar)
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
  *   Uso        GET /armascanner/uso          (administración) KPIs y uso por usuario
@@ -16,7 +18,7 @@
   'use strict';
 
   var est = { cargas: [], elemento: '', buscadorObra: null, usuarios: null, combo: null, usuarioElegido: null,
-              licencias: [] };
+              licencias: [], planos: [], plElemento: '', buscadorPlanos: null, verBarras: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -106,6 +108,206 @@
     }).join('');
     pintarCargas();
   }
+
+  // ── Planos (20-nov): el avance de cada plano guardado desde ArmaScanner ──
+  function decimal(n) { return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('es-CL'); }
+
+  async function postPlano(ruta, p) {
+    var res = await fetch(global.apiUrl(ruta), {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, global.authHeaders()),
+      body: JSON.stringify({ obra: p.obra, plano: p.plano })
+    });
+    if (res.status === 401) { global.logout(); return null; }
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok || !data.ok) { global.showToast((data.detail || 'Error ' + res.status), 'error'); return null; }
+    return data;
+  }
+
+  function planosFiltrados() {
+    var obra = est.buscadorPlanos ? est.buscadorPlanos.getId() : '';
+    return est.planos.filter(function (p) {
+      return (!obra || p.obra === obra) && (!est.plElemento || (p.elemento || '').split(', ').indexOf(est.plElemento) !== -1);
+    });
+  }
+
+  function pintarPlanos() {
+    var filas = planosFiltrados();
+    var edicion = 0, barras = 0, aprob = 0, consultas = 0;
+    var html = filas.map(function (p) {
+      var i = est.planos.indexOf(p);
+      var r = p.resumen || {};
+      var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0;
+      if (p.en_edicion_por) edicion += 1;
+      barras += total; aprob += ok; consultas += Number(r.consultas) || 0;
+      var pct = total ? Math.round(100 * ok / total) : 0;
+      var estado = !p.en_edicion_por ? '<span class="arm-tag">Disponible</span>'
+        : (p.en_edicion_por_mi ? '<span class="arm-tag arm-tag--success">En edición por ti</span>'
+          : '<span class="arm-tag arm-tag--warning">En edición por ' + esc(p.en_edicion_por) + '</span>') +
+          (p.en_edicion_desde ? '<div class="asc-linea">' + esc(p.en_edicion_desde) + '</div>' : '');
+      var pedido = p.pedido === 'enviado'
+        ? '<span class="arm-tag arm-tag--success">Enviado</span>' +
+          '<div class="asc-linea">' + esc(p.pedido_el) + (p.pedido_version ? ' · v' + esc(p.pedido_version) : '') + '</div>'
+        : p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>'
+        : '<span class="arm-tag">Sin enviar</span>';
+      var acciones = '<button class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' +
+        (p.puede_enviar && total > 0
+          ? ' <button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
+        (p.puede_liberar
+          ? ' <button class="arm-button arm-button--danger" onclick="ascLiberarPlano(' + i + ')">Liberar</button>' : '');
+      return '<tr>' +
+        '<td>' + esc(p.obra_nombre) + '</td>' +
+        '<td class="corto" title="' + esc(p.plano) + '">' + esc(p.numero || p.plano) + '</td>' +
+        '<td class="corto" title="' + esc(p.titulo) + '">' + esc(p.titulo) + '</td>' +
+        '<td>' + esc(p.elemento) + '</td>' +
+        '<td>v' + esc(p.version) + '</td>' +
+        '<td style="white-space:nowrap;">' + entero(ok) + ' / ' + entero(total) +
+          '<div class="asc-avance" title="' + pct + ' %"><div style="width:' + pct + '%;"></div></div></td>' +
+        '<td class="num">' + entero(r.consultas) + '</td>' +
+        '<td class="num">' + entero(r.pendientes) + '</td>' +
+        '<td class="num">' + entero(r.kg) + '</td>' +
+        '<td>' + estado + '</td>' +
+        '<td>' + pedido + '</td>' +
+        '<td>' + esc(quien(p.guardado_por)) + '<div class="asc-linea">' + esc(p.guardado_el) + '</div></td>' +
+        '<td class="asc-acciones">' + acciones + '</td></tr>';
+    }).join('');
+    document.getElementById('ascPlanos').innerHTML = html;
+    var vacio = document.getElementById('ascPlanosVacio');
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = est.plSinRespuesta ? 'No se pudieron leer los planos. Recarga la página.'
+      : est.planos.length ? 'Sin planos con este filtro.' : 'Sin planos guardados desde ArmaScanner.';
+    var obra = est.buscadorPlanos ? est.buscadorPlanos.getId() : '';
+    var cuenta = { '': 0 };
+    est.planos.forEach(function (p) {
+      if (obra && p.obra !== obra) return;
+      cuenta[''] += 1;
+      (p.elemento || '').split(', ').forEach(function (el) { cuenta[el] = (cuenta[el] || 0) + 1; });
+    });
+    document.querySelectorAll('#ascPlElemento .arm-button').forEach(function (b) {
+      var el = b.getAttribute('data-el') || '';
+      b.textContent = (el || 'Todos') + ' ' + (cuenta[el] || 0);
+    });
+    poner('ascPlKpiPlanos', entero(filas.length));
+    poner('ascPlKpiEdicion', entero(edicion));
+    poner('ascPlKpiAprob', entero(aprob) + ' de ' + entero(barras) + ' · ' + (barras ? Math.round(100 * aprob / barras) : 0) + ' %');
+    poner('ascPlKpiConsulta', entero(consultas));
+  }
+
+  async function cargarPlanos() {
+    if (!est.buscadorPlanos && global.BuscadorObra) {
+      est.buscadorPlanos = global.BuscadorObra.crear({
+        inputId: 'ascPlObraInput', datalistId: 'ascPlObraDatalist', selectId: 'ascPlObraSelect',
+        onElegir: function () { pintarPlanos(); }
+      });
+      document.getElementById('ascBarrasCerrar').addEventListener('click', cerrarBarras);
+      document.getElementById('ascBarrasModal').addEventListener('click', function (ev) {
+        if (ev.target === this) cerrarBarras();
+      });
+      document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape' && global.isModalOpen && global.isModalOpen('ascBarrasModal')) cerrarBarras();
+      });
+    }
+    var d = await global.apiGet('/armascanner/planos-linea');
+    est.planos = (d && d.planos) || [];
+    est.plSinRespuesta = !d;
+    var vistas = {};
+    var obras = [];
+    est.planos.forEach(function (p) {
+      if (!vistas[p.obra]) { vistas[p.obra] = 1; obras.push({ id: p.obra, nombre: p.obra_nombre }); }
+    });
+    if (est.buscadorPlanos) est.buscadorPlanos.setProyectos(obras);
+    var sel = document.getElementById('ascPlObraSelect');
+    var elegida = sel.value;
+    sel.innerHTML = '<option value=""></option>' + obras.map(function (o) {
+      return '<option value="' + esc(o.id) + '">' + esc(o.nombre) + '</option>';
+    }).join('');
+    sel.value = vistas[elegida] ? elegida : '';  // al recargar tras enviar o liberar, la obra elegida se mantiene
+    pintarPlanos();
+  }
+
+  // Ver barras: ventana con la lista del plano; abre en «Con consulta» si hay alguna (se manda
+  // por correo como pantallazo: título y tabla sin controles).
+  var REV = {
+    aprobada: { txt: 'Aprobada', tag: 'arm-tag arm-tag--success' },
+    duda: { txt: 'Con consulta', tag: 'arm-tag arm-tag--warning' },
+    pendiente: { txt: 'Por aprobar', tag: 'arm-tag' }
+  };
+  var FILTROS_REV = [['', 'Todas'], ['duda', 'Con consulta'], ['pendiente', 'Por aprobar'], ['aprobada', 'Aprobadas']];
+
+  function revDe(b) { return REV[b.rev] ? b.rev : 'pendiente'; }
+
+  function pintarBarras() {
+    var v = est.verBarras;
+    if (!v) return;
+    var cuenta = { '': v.barras.length, aprobada: 0, duda: 0, pendiente: 0 };
+    v.barras.forEach(function (b) { cuenta[revDe(b)] += 1; });
+    document.getElementById('ascBarrasFiltro').innerHTML = FILTROS_REV.map(function (f) {
+      return '<button class="arm-button' + (f[0] === v.filtro ? ' is-on' : '') + '" data-rev="' + f[0] + '">' +
+        f[1] + ' ' + entero(cuenta[f[0]]) + '</button>';
+    }).join('');
+    var filas = v.barras.filter(function (b) { return !v.filtro || revDe(b) === v.filtro; });
+    var nombreFiltro = FILTROS_REV.filter(function (f) { return f[0] === v.filtro; })[0][1];
+    document.getElementById('ascBarrasTitulo').textContent =
+      (v.plano.numero || v.plano.plano) + ' — ' + (v.plano.obra_nombre || v.plano.obra) +
+      (v.version ? ' · v' + v.version : '') + ' · ' + nombreFiltro;
+    document.getElementById('ascBarras').innerHTML = filas.map(function (b) {
+      var r = REV[revDe(b)];
+      return '<tr><td>' + esc(b.id) + '</td><td>' + esc(b.marca) + '</td>' +
+        '<td class="num">' + esc(b.diam) + '</td><td class="num">' + (b.cant == null ? '' : entero(b.cant)) + '</td>' +
+        '<td class="num">' + (b.largo == null ? '' : entero(b.largo)) + '</td>' +
+        '<td class="num">' + (b.kg == null ? '' : decimal(b.kg)) + '</td>' +
+        '<td>' + esc(b.ciclo) + '</td><td>' + esc(b.eje) + '</td>' +
+        '<td><span class="' + r.tag + '">' + r.txt + '</span></td><td>' + esc(b.motivo) + '</td></tr>';
+    }).join('');
+    var vacio = document.getElementById('ascBarrasVacio');
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = v.barras.length ? 'Sin barras con este filtro.' : 'Sin barras en la versión guardada.';
+  }
+
+  function cerrarBarras() {
+    est.verBarras = null;
+    global.hideModal('ascBarrasModal');
+  }
+
+  global.ascVerBarras = async function (i) {
+    var p = est.planos[i];
+    if (!p) return;
+    var d = await global.apiGet('/armascanner/planos-linea/barras?obra=' + encodeURIComponent(p.obra) +
+                                '&plano=' + encodeURIComponent(p.plano));
+    if (!d) { global.showToast('No se pudieron leer las barras del plano.', 'error'); return; }
+    var barras = d.barras || [];
+    est.verBarras = { plano: p, version: d.version, barras: barras,
+                      filtro: barras.some(function (b) { return b.rev === 'duda'; }) ? 'duda' : '' };
+    pintarBarras();
+    global.showModal('ascBarrasModal');
+  };
+
+  global.ascEnviarPedido = async function (i) {
+    var p = est.planos[i];
+    if (!p) return;
+    var r = p.resumen || {};
+    var sin = (Number(r.pendientes) || 0) + (Number(r.consultas) || 0);
+    var texto = '¿Enviar pedido de ' + (p.numero || p.plano) + '?\n\nLas barras de la versión v' + p.version +
+      ' pasan a los despieces de la obra. Reemplazan las de este plano.' +
+      (sin > 0 ? '\n\n' + entero(sin) + ' barras sin aprobar: esas combinaciones no se exportan.' : '');
+    if (!confirm(texto)) return;
+    var data = await postPlano('/armascanner/planos-linea/pedido', p);
+    if (!data) return;
+    global.showToast('Pedido enviado: ' + entero(data.barras) + ' barras · ' + entero(data.kilos) + ' kg', 'success');
+    await cargarPlanos();
+  };
+
+  global.ascLiberarPlano = async function (i) {
+    var p = est.planos[i];
+    if (!p) return;
+    var texto = '¿Liberar ' + (p.numero || p.plano) + '?' + (p.en_edicion_por_mi ? ''
+      : '\n\nEstá en edición por ' + p.en_edicion_por + '. Lo que no haya guardado queda sólo en su equipo.');
+    if (!confirm(texto)) return;
+    if (await postPlano('/armascanner/planos-linea/liberar', p)) {
+      global.showToast('Plano liberado.', 'success');
+      await cargarPlanos();
+    }
+  };
 
   // ── Instalar ──
   function mb(bytes) { return bytes ? (bytes / 1e6).toFixed(1).replace('.', ',') + ' MB' : ''; }
@@ -344,9 +546,25 @@
     document.querySelectorAll('#ascElemento .arm-button').forEach(function (x) { x.classList.toggle('is-on', x === b); });
     pintarCargas();
   });
+  // Lo mismo en Planos, y los filtros de revisión de la ventana de barras.
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('#ascPlElemento .arm-button');
+    if (b) {
+      est.plElemento = b.getAttribute('data-el') || '';
+      document.querySelectorAll('#ascPlElemento .arm-button').forEach(function (x) { x.classList.toggle('is-on', x === b); });
+      pintarPlanos();
+      return;
+    }
+    var f = ev.target.closest && ev.target.closest('#ascBarrasFiltro .arm-button');
+    if (f && est.verBarras) {
+      est.verBarras.filtro = f.getAttribute('data-rev') || '';
+      pintarBarras();
+    }
+  });
 
   global.loadArmaScannerModule = function () {};  // cada pestaña carga lo suyo (shell.js, tabLoaders)
   global.ascCargarObras = cargarObras;
+  global.ascCargarPlanos = cargarPlanos;
   global.ascCargarInstalar = cargarInstalar;
   global.ascCargarLicencias = cargarLicencias;
   global.ascCargarUso = cargarUso;
