@@ -1034,6 +1034,36 @@ def versiones(admin=Depends(require_admin_or_admin_calidad)):
 def publicar(archivo: UploadFile = File(...), version: str = Form(...), notas: str = Form(""),
                    obligatoria: bool = Form(False), admin=Depends(require_admin_or_admin_calidad)):
     """Publicar una versión: el ZIP (ArmaScanner/empaquetar/construir.py) va a R2 y queda vigente."""
+    return _publicar(admin.get("email", ""), archivo, version, notas, obligatoria)
+
+
+@router.post("/armascanner/versiones-ficha")
+def publicar_con_ficha(archivo: UploadFile = File(...), version: str = Form(...), notas: str = Form(""),
+                       obligatoria: bool = Form(False), retirar: str = Form(""),
+                       credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Publicar con la ficha de ArmaScanner de un administrador (desde su equipo, sin la clave del
+    portal), y retirar en el mismo paso las versiones de `retirar` (separadas por coma). Queda en la
+    auditoría como cualquier publicación. [Usuario 20-nov: «no puedes publicar sin mí?» → «sí, dale»]"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+    if not _es_admin(user):
+        raise HTTPException(status_code=403, detail="Publicar una versión es de administrador.")
+    r = _publicar(user["email"], archivo, version, notas, obligatoria)
+    viejas = [v.strip() for v in (retirar or "").split(",") if v.strip() and v.strip() != r["version"]]
+    if viejas:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE armascanner_versiones SET activa = FALSE WHERE version = ANY(%s) RETURNING version",
+                            (viejas,))
+                r["retiradas"] = [f[0] for f in cur.fetchall()]
+        if r["retiradas"]:
+            audit(user["email"], "armascanner_version", f"retiradas: {', '.join(r['retiradas'])}", "armascanner",
+                  r["version"])
+    return r
+
+
+def _publicar(email: str, archivo: UploadFile, version: str, notas: str, obligatoria: bool) -> dict:
     import re
     from . import storage
     version = (version or "").strip()
@@ -1055,8 +1085,8 @@ def publicar(archivo: UploadFile = File(...), version: str = Form(...), notas: s
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO armascanner_versiones (version, archivo, tamano, notas, obligatoria, publicada_por)
                            VALUES (%s, %s, %s, %s, %s, %s)""",
-                        (version, clave, tamano, (notas or "").strip()[:2000] or None, obligatoria, admin.get("email")))
-    audit(admin.get("email", "?"), "armascanner_publicar", f"{version} ({tamano / 1e6:.1f} MB)"
+                        (version, clave, tamano, (notas or "").strip()[:2000] or None, obligatoria, email))
+    audit(email or "?", "armascanner_publicar", f"{version} ({tamano / 1e6:.1f} MB)"
           + (" obligatoria" if obligatoria else ""), "armascanner", version)
     return {"ok": True, "version": version, "tamano": tamano}
 
