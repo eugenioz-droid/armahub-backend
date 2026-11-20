@@ -980,10 +980,19 @@ def uso(admin=Depends(require_admin_or_admin_calidad)):
 DESCARGA_SEGUNDOS = 600
 
 
+def clave_version(version: str) -> tuple:
+    """«2026-11-20.10» → (2026, 11, 20, 10). Las versiones se comparan por sus números: como texto,
+    «.10» queda antes que «.9» y la versión nueva no se ofrecería nunca."""
+    import re
+    return tuple(int(x) for x in re.findall(r"\d+", version or ""))
+
+
 def _vigente(cur):
+    """La versión activa más nueva (por número, no por texto)."""
     cur.execute("""SELECT id, version, archivo, tamano, notas, obligatoria, publicada_el
-                     FROM armascanner_versiones WHERE activa ORDER BY version DESC LIMIT 1""")
-    return cur.fetchone()
+                     FROM armascanner_versiones WHERE activa""")
+    filas = cur.fetchall()
+    return max(filas, key=lambda f: clave_version(f[1])) if filas else None
 
 
 def _nombre_instalador(version: str) -> str:
@@ -1027,7 +1036,7 @@ def actualizacion(version: str = "", credentials: HTTPAuthorizationCredentials =
         with conn.cursor() as cur:
             _usuario(cur, credentials.credentials)
             fila = _vigente(cur)
-    if not fila or not version or fila[1] <= version.strip():
+    if not fila or not version or clave_version(fila[1]) <= clave_version(version):
         return {"hay": False, "version": fila[1] if fila else None}
     return dict(_version_dict(fila, con_enlace=True), hay=True)
 
@@ -1038,8 +1047,8 @@ def versiones(admin=Depends(require_admin_or_admin_calidad)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT id, version, archivo, tamano, notas, obligatoria, publicada_el, activa, publicada_por
-                             FROM armascanner_versiones ORDER BY version DESC""")
-            filas = cur.fetchall()
+                             FROM armascanner_versiones""")
+            filas = sorted(cur.fetchall(), key=lambda f: clave_version(f[1]), reverse=True)
             vig = _vigente(cur)
     return {"vigente": vig[1] if vig else None,
             "versiones": [dict(_version_dict(f), activa=f[7], publicada_por=f[8]) for f in filas]}

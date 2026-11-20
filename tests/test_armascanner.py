@@ -84,6 +84,12 @@ check("rutas del ciclo y del portal", {"/armascanner/planos/guardar", "/armascan
       "/armascanner/planos-linea/pedido"} <= rutas, rutas)
 check("guardar no carga barras como despiece", "_cargar_barras" not in inspect.getsource(A.guardar_plano))
 check("guardar deja el plano en edición por quien guarda", "tomado_por = EXCLUDED.tomado_por" in inspect.getsource(A.guardar_plano))
+check("versiones por número: .10 es más nueva que .9, y sin punto es la más vieja",
+      A.clave_version("2026-11-20.10") > A.clave_version("2026-11-20.9") > A.clave_version("2026-11-20")
+      and A.clave_version("2026-11-21") > A.clave_version("2026-11-20.99"))
+check("la vigente y «hay versión nueva» no comparan texto",
+      "ORDER BY version" not in inspect.getsource(A._vigente)
+      and "clave_version(fila[1]) <= clave_version(version)" in inspect.getsource(A.actualizacion))
 from armahub import export as E  # noqa: E402
 check("la exportación consulta las combinaciones bloqueadas", hasattr(E, "combinaciones_bloqueadas"))
 
