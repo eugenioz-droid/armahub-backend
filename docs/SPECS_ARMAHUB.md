@@ -1281,16 +1281,20 @@ cuando entre el cliente.
    edita nada a mano.
 2. **Trabajo** en el equipo, como hoy.
 3. **Subir.** El cubicador marca los planos terminados (o los que quiera dejar en línea) y
-   «Subir a ArmaHub». Sube un paquete: copia de trabajo, su estado (ciclos, aprobaciones,
-   elemento) y una vista previa en PDF que imprime GStarCAD al subir. Queda como la versión en
-   línea del plano (v1, v2…).
-4. **Tomar.** Otro usuario con acceso a la obra ve en ArmaScanner los planos «En ArmaHub» y lo
-   toma: se descarga y queda a su nombre. Mientras está tomado, nadie más puede subir encima
-   (dos versiones de un DWG no se pueden juntar). Al subir, el plano queda libre con la versión
-   siguiente. Un plano tomado lo libera el jefe o el administrador (respuesta 17).
-5. **Aviso de versión.** Al abrir un plano, ArmaScanner compara su versión con la de ArmaHub.
-   Si hay una más nueva: «Hay una versión más nueva en ArmaHub (v4, de N. N., 20-11-2026).
-   Actualizar». La copia vieja no se puede subir.
+   «Subir a ArmaHub». Sube un paquete: copia de trabajo con su lectura, escaneo y bitácora, el
+   original y su estado (viñeta, ciclos, aprobaciones, elemento, subida). Queda como la versión
+   en línea del plano (v1, v2…), libre. La vista previa en PDF que imprime GStarCAD al subir
+   está pendiente (programa 6.3).
+4. **Tomar.** Cualquier usuario con licencia ve en ArmaScanner («Planos en ArmaHub») los planos
+   en línea de todas las obras y lo toma: baja con su avance a su obra (se crea si no la tiene)
+   y queda a su nombre. Lo que su equipo tenía de ese plano pasa a trabajo\respaldo. Mientras
+   está tomado, nadie más puede subir encima (dos versiones de un DWG no se pueden juntar). Al
+   subir, el plano queda libre con la versión siguiente; «Soltar» lo libera sin subir. Uno
+   tomado por otro lo suelta un administrador (respuesta 17; el jefe de cubicaciones, cuando
+   exista el rol). Hecho el 20-nov. [Usuario 20-nov: «mi usuario Emilio podrá descargar el plano que tengo de martín de solier? el que ya avanzamos? sería clave que pudiera tomarlo y terminar la tarea él»; «pensaba que todos los usuarios tengan acceso a todo, eso sí con los bloqueos respectivos»]
+5. **Aviso de versión.** La lista de planos de ArmaScanner dice «Tomado por …» o «Hay versión
+   nueva», y al abrir un plano así pregunta antes («Planos en ArmaHub» › Tomar trae la nueva).
+   La copia vieja no se puede subir: ArmaHub la rechaza y dice cuál hay y de quién.
 6. **Una sola copia.** En R2 queda una copia vigente por plano. Respaldo sólo cuando (a) llega
    una entrega nueva del calculista: se guarda la última versión trabajada de la revisión
    anterior, o (b) el cubicador lo pide al subir por un cambio grande («Guardar respaldo de la
@@ -1302,13 +1306,16 @@ plano a PDF y lo sube junto al DWG. ArmaHub lo muestra en un modal con el visor 
 (zoom, búsqueda de texto). Es la foto del plano al momento de subirlo, con las barras y ciclos
 dibujados; no es el DWG navegable por capas.
 
-**Almacenamiento.** Un bucket, carpetas por obra (programa §0.3):
-`obras/{id}/planos/{plano}/actual/` (DWG, estado, PDF) y `obras/{id}/planos/{plano}/respaldo/{fecha}/`.
-Descarga y subida con enlaces firmados de vida corta, previa validación de acceso a la obra.
+**Almacenamiento.** Un bucket, carpetas por obra (programa §0.3): el paquete de cada versión en
+`obras/{id}/planos/{huella del nombre}/v{n}.zip`; al subir la nueva, la anterior se borra (una
+sola copia). Respaldo (pendiente): `obras/{id}/planos/{plano}/respaldo/{fecha}/`. Se baja con un
+enlace firmado de vida corta, al tomarlo.
 
-**Datos.** Tabla `planos_obra`: obra, número, título, revisión, elemento (ELEV · LCIELO ·
-VCIELO · FUND), versión, tomado_por / tomado_el, subido_por / subido_el, barras, aprobadas,
-kg, tamaño, huella del archivo. Tabla `planos_obra_respaldos`: plano, versión, motivo, fecha,
+**Datos.** Tabla `planos_obra` (mig 169): obra, plano (nombre en ArmaScanner), número, título,
+revisión, elemento (ELEV · LCIELO · VCIELO · FUND), versión, archivo, tamaño, tomado_por /
+tomado_el, subido_por / subido_el, barras, aprobadas, kg. Rutas (ficha de licencia):
+`GET /armascanner/planos`, `POST /armascanner/planos/tomar`, `POST /armascanner/planos/soltar`;
+la subida va por `POST /armascanner/subir-plano` con el paquete. Tabla `planos_obra_respaldos`: plano, versión, motivo, fecha,
 carpeta.
 
 ### 5.5 Permisos
@@ -1316,8 +1323,8 @@ carpeta.
 | Acción | Quién |
 |--------|-------|
 | Ver la obra | Usuarios asignados a la obra; admin y admin_calidad |
-| Subir y tomar planos | Con licencia de ArmaScanner y asignado a la obra |
-| Liberar un plano tomado | Jefe de cubicaciones o administrador |
+| Subir y tomar planos | Con licencia de ArmaScanner, en todas las obras (usuario 20-nov: «pensaba que todos los usuarios tengan acceso a todo»); la asignación por obra, si hace falta, cuando entre el cliente |
+| Liberar un plano tomado | Quien lo tomó; el de otro, administrador (jefe de cubicaciones cuando exista el rol) |
 | Editar el programa | USC de la obra, admin |
 | Editar el protocolo | Cubicador de la obra, admin |
 | Aprobar protocolo y entregas | Cliente de la obra |
@@ -1981,7 +1988,7 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
 
 | Pestaña | Contenido | Quién |
 |---------|-----------|-------|
-| Mis obras | Filtro buscable de obra; elemento con botones en orden constructivo (FUND, ELEV, VCIELO, LCIELO), cada uno con cuántas cargas tiene. Una línea por **carga de cada elemento constructivo** (lógica de despieces, no se rompe): obra, plano, elemento, piso, ciclo, ítems, kg, estado (aprobadas / con duda), subido por, fecha | Con licencia |
+| Mis obras | Todas las obras, para todos los usuarios con licencia (usuario 20-nov). Filtro buscable de obra; elemento con botones en orden constructivo (FUND, ELEV, VCIELO, LCIELO), cada uno con cuántas cargas tiene. Una línea por **carga de cada elemento constructivo** (lógica de despieces, no se rompe): obra, plano, elemento, piso, ciclo, ítems, kg, estado (aprobadas / con duda), subido por, fecha | Con licencia |
 | Instalar | Botón «Descargar», versión vigente, mis equipos (2) | Con licencia |
 | Licencias | Buscar un usuario existente y agregarlo; vencimiento; equipos con «Liberar»; quitar | Administrador |
 | Uso | KPIs de uso | Administrador |
@@ -2012,8 +2019,12 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
 - Sube todas las barras con su estado (aprobada · con duda · sin revisar). ArmaHub **bloquea
   la exportación** de una carga mientras tenga barras sin aprobar o con duda, y lo dice.
 - Sube sus planos cualquier usuario interno con licencia (la misma regla que importar en el
-  portal; trabajo colaborativo). La asignación por obra llega con la caluga Obras. Un plano
-  tomado por otro no se puede subir encima (paso 6).
+  portal; trabajo colaborativo). Un plano tomado por otro no se puede subir encima, ni una
+  copia de una versión vieja (§5.4, hecho 20-nov).
+- En ArmaScanner, «Planos en ArmaHub»: los planos en línea de todas las obras con quién tiene
+  tomado cada uno; «Tomar» y «Soltar» (§5.4).
+- Publicar una versión: pestaña Versiones o, desde el equipo de desarrollo,
+  `ArmaScanner/empaquetar/publicar.py` (correo y clave del administrador; la clave no se guarda).
 
 ---
 

@@ -1066,6 +1066,8 @@ Diseño en SPECS §5 (Obras) y §13 (ArmaScanner). Nombre de la caluga «Obras»
 
 Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 
+**Orden vigente (usuario 20-nov):** 1–4 → 6 (traspaso de planos entre usuarios) → **8 Protocolo antes que 5 Elevaciones** (o en paralelo): «las elevaciones necesitan mucha información que sale de ahí… mejor hacemos la pega una vez bien». Después 7, 9 y 10.
+
 | # | Tarea | Estado |
 |---|---|---|
 | **1** | **Subir plano desde ArmaScanner** | |
@@ -1092,6 +1094,7 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 3.4 | Versión publicada en R2 (pestaña Versiones) y descarga con enlace temporal desde la caluga | ☑ |
 | 3.5 | Botón «Actualizar a …» en la ventana de planos: baja el ZIP, el nuevo se instala encima y se reabre | ☑ |
 | 3.6 | Prueba en el equipo de otro usuario: aviso de Windows y políticas de la empresa | ☐ |
+| 3.7 | Publicar la versión desde el equipo de desarrollo: `ArmaScanner/empaquetar/publicar.py` (correo y clave del administrador en una ventana; la clave no se guarda) | ☑ |
 | **4** | **Carga de planos por arrastre y ventana de planos** | |
 | 4.1 | Soltar DWG sobre la ventana de planos («Arrastra planos aquí» en la lista vacía) y «Agregar planos» | ☑ |
 | 4.2 | Copia a la carpeta propia de la obra (planos/), lectura de número y revisión y registro como siempre; el mismo nombre con otro contenido guarda el anterior y marca «Original modificado» | ☑ |
@@ -1109,13 +1112,16 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 5.7 | Dibujo en el plano con línea de distribución para validar cantidades; revisión | ☐ |
 | 5.8 | Subir plano ELEV a ArmaHub | ☐ |
 | **6** | **Colaboración y vista previa** | |
-| 6.1 | ArmaHub: planos en línea por obra (tabla + R2, una copia vigente) | ☐ |
-| 6.2 | Subir plano también guarda copia de trabajo, estado y PDF | ☐ |
+| 6.1 | ArmaHub: planos en línea por obra (tabla `planos_obra` + R2, una copia vigente por plano; mig 169) | ☑ |
+| 6.2 | Subir plano también guarda la copia de trabajo y su estado (ciclos, revisión, elemento, bitácora); el PDF va con 6.3 | ☑ |
 | 6.3 | PDF legible en blanco: plano del calculista en gris, barras y ciclos en colores oscuros; medir el tiempo | ☐ |
-| 6.4 | Tomar plano (bloqueo) y liberar por jefe o administrador | ☐ |
-| 6.5 | Aviso de versión más nueva y «Actualizar» del plano | ☐ |
+| 6.4 | Tomar plano (bloqueo: nadie sube encima) y «Soltar»; el de otro lo suelta un administrador (el jefe de cubicaciones cuando exista el rol) | ☑ |
+| 6.5 | Aviso de versión más nueva («Hay versión nueva» en la lista, pregunta al abrir) y «Tomar» la trae; ArmaHub rechaza subir una copia vieja | ☑ |
 | 6.6 | Respaldo con entrega nueva o a pedido | ☐ |
 | 6.7 | Sólo si el PDF no basta: probar conversor gratuito ODA + ezdxf | ☐ |
+| 6.8 | Todos los usuarios con licencia ven y toman los planos de todas las obras; Mis obras sin filtro por usuario (usuario 20-nov) | ☑ |
+| 6.9 | Prueba real: el 215 de Martín de Solier subido con su paquete (v1), tomado desde otro equipo simulado con su avance (171 barras, 5 aprobadas, 3 ciclos) y soltado (20-nov) | ☑ |
+| 6.10 | Prueba del usuario: Emilio instala ArmaScanner, toma el 215 y lo termina | ☐ |
 | **7** | **Caluga Obras** | |
 | 7.1 | Caluga y lista de obras asignadas con filtro | ☐ |
 | 7.2 | Resumen con KPIs | ☐ |
