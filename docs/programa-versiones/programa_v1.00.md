@@ -1156,15 +1156,17 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 6.8 | Todos los usuarios con licencia ven y toman los planos de todas las obras; Mis obras sin filtro por usuario (usuario 20-nov) | ☑ |
 | 6.9 | Prueba real: el 215 de Martín de Solier subido con su paquete (v1), tomado desde otro equipo simulado con su avance (171 barras, 5 aprobadas, 3 ciclos) y soltado (20-nov) | ☑ |
 | 6.10 | Prueba del usuario: Emilio instala ArmaScanner, toma el 215 y lo termina | ☐ |
-| 6.11 | Separar «Guardar en ArmaHub» (el plano con su avance, terminado o no, también sin barras) de «Enviar pedido» (las barras entran como carga desde la versión en línea; desde ArmaScanner o desde la plataforma). Sale «Subir a ArmaHub» | ☐ |
-| 6.12 | «Abrir plano» toma el plano (queda a tu nombre mientras trabajas); no abre uno tomado por otro; si hay versión más nueva la trae antes de abrir (la copia vieja al respaldo) | ☐ |
-| 6.13 | Cerrar el plano = ArmaScanner lo guarda, imprime el PDF, lo cierra en GStarCAD y lo guarda en ArmaHub (sigue a tu nombre). «Soltar» en la lista de planos: guarda antes si hay cambios; cierra en GStarCAD si está abierto | ☐ |
-| 6.14 | Sin internet: abrir sólo lo que ya estaba a tu nombre; lo pendiente se guarda en ArmaHub al volver la conexión | ☐ |
+| 6.11 | Separar «Guardar en ArmaHub» (el plano con su avance, terminado o no, también sin barras) de «Enviar pedido» (las barras entran como carga desde la versión en línea; desde ArmaScanner o desde la plataforma). Sale «Subir a ArmaHub» — hecho 20-nov: `POST /armascanner/planos/guardar` y `/pedido` (mig 171); botón «Enviar pedido» | ☑ |
+| 6.12 | «Abrir plano» toma el plano (queda a tu nombre mientras trabajas); no abre uno tomado por otro; si hay versión más nueva la trae antes de abrir (la copia vieja al respaldo) — hecho 20-nov (espera corta: 12 s; sin respuesta se sigue como sin conexión) | ☑ |
+| 6.13 | Cerrar el plano = ArmaScanner lo guarda, imprime el PDF, lo cierra en GStarCAD y lo guarda en ArmaHub (sigue a tu nombre). «Soltar» en la lista de planos: guarda antes si hay cambios; cierra en GStarCAD si está abierto — hecho 20-nov salvo el PDF (6.3): guardado automático y sin confirmación al cerrar, en segundo plano; «Liberar» con confirmación | ☑ |
+| 6.14 | Sin internet: abrir sólo lo que ya estaba a tu nombre; lo pendiente se guarda en ArmaHub al volver la conexión — hecho 20-nov; además se consulta a ArmaHub cada minuto (lista y plano abierto) y se avisa de inmediato | ☑ |
+| 6.15 | Prueba del usuario del ciclo con clics reales (abrir, cerrar, liberar, enviar pedido) y de Emilio en su equipo | ☐ |
+| 6.16 | Revisión y optimización de código de lo construido el 19 y 20-nov (ventana de planos, `armascanner.py`, consultas a ArmaHub): duplicados, rendimiento, pruebas. Agendada por el usuario para después de pulir el ciclo | ☐ |
 | **7** | **Caluga Obras** | |
 | 7.1 | Caluga Obras: lista de obras con filtro (todas, para todos los usuarios internos); nace con dos pestañas, Planos y Protocolo | ☐ |
 | 7.2 | Resumen con KPIs | ☐ |
 | 7.3 | Pedidos (cargas con su origen) | ☐ |
-| 7.4 | Planos: avance por plano (estado, barras, aprobadas, kg, versión, quién lo tiene, última actividad), PDF en modal, «Soltar» (administrador), «Enviar pedido» | ☐ |
+| 7.4 | Planos: avance por plano (estado, barras, aprobadas, kg, versión, quién lo tiene, última actividad), PDF en modal, «Soltar» (administrador), «Enviar pedido» — hecho 20-nov como pestaña «Planos» de la caluga ArmaScanner (sin PDF todavía); pasa a Obras con 7.1 | ☑ |
 | **8** | **Protocolo** | |
 | 8.1 | Plantilla de la empresa, editable por el administrador: secciones, criterios, tipo de respuesta, opciones con croquis (los 30 del Excel «Protocolo 2025», ya extraídos), sin valores fijos en el código | ☐ |
 | 8.2 | Protocolo por obra: lo que el sistema ya sabe se muestra y no se pide (obra y cliente de aSa; pisos, ciclos y fechas del programa); lo demás editable; versiones; estados borrador · revisado con el cliente · cerrado | ☐ |
