@@ -931,14 +931,20 @@ def publicar(archivo: UploadFile = File(...), version: str = Form(...), notas: s
 class CambioVersion(BaseModel):
     activa: Optional[bool] = None
     obligatoria: Optional[bool] = None
+    notas: Optional[str] = None
 
 
 @router.patch("/armascanner/versiones/{vid}")
 def cambiar_version(vid: int, datos: CambioVersion, admin=Depends(require_admin_or_admin_calidad)):
-    """Retirar (activa=false) o volver a poner una versión; marcarla obligatoria o no."""
+    """Retirar (activa=false) o volver a poner una versión; marcarla obligatoria o no; corregir sus novedades."""
     sets, valores = [], []
-    for campo in ("activa", "obligatoria"):
+    for campo in ("activa", "obligatoria", "notas"):
         v = getattr(datos, campo)
+        if campo == "notas" and v is not None:
+            v = v.strip()[:2000] or None
+            sets.append("notas = %s")
+            valores.append(v)
+            continue
         if v is not None:
             sets.append(f"{campo} = %s")
             valores.append(v)
