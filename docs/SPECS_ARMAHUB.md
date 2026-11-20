@@ -2009,6 +2009,7 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
 | Pestaña | Contenido | Quién |
 |---------|-----------|-------|
 | Mis obras | Todas las obras, para todos los usuarios con licencia (usuario 20-nov). Filtro buscable de obra; elemento con botones en orden constructivo (FUND, ELEV, VCIELO, LCIELO), cada uno con cuántas cargas tiene. Una línea por **carga de cada elemento constructivo** (lógica de despieces, no se rompe): obra, plano, elemento, piso, ciclo, ítems, kg, estado (aprobadas / con duda), subido por, fecha | Con licencia |
+| Planos | Repositorio de planos por obra (20-nov: «elegir la obra primero y luego los planos como tejas o tarjetas pequeñas con algo de data»). KPIs arriba (del alcance: todas o la obra elegida). Sin obra elegida: una tarjeta por obra (planos, en trabajo, en edición, con consulta, avance de aprobación, kg); el buscador de obra filtra las tarjetas; clic abre la obra. Con obra: «← Obras», elemento con botones, «Buscar plano» (N°, archivo, título) y los planos en tarjetas en dos grupos, **En trabajo** (avance, kg, versión, estado de edición y de pedido) y **Cargados** (antecedentes: fecha y quién). Acciones visibles en la tarjeta (Ver barras, Enviar pedido, Liberar, Eliminar) sólo cuando aplican; al pasar el mouse, el detalle (archivo, título completo, versión, guardado, en edición desde, por aprobar, pedido) | Con licencia |
 | Instalar | Botón «Descargar», versión vigente, mis equipos (2) | Con licencia |
 | Licencias | Buscar un usuario existente y agregarlo; vencimiento; equipos con «Liberar»; quitar | Administrador |
 | Uso | KPIs de uso | Administrador |
@@ -2019,12 +2020,13 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
 - Licencia por usuario, 2 equipos, 3 días sin conexión (pasado el plazo valida sola con
   internet; la clave se pide sólo si caducó la ficha de 30 días o se liberó el equipo).
 - Instalación sin permisos de administrador: se publica un **ZIP** (pestaña Versiones) con la
-  aplicación compilada (Nuitka) en su carpeta; se descomprime y al abrir `ArmaScanner.exe` se
+  aplicación en su carpeta (desde la 2026-11-20.11, como A Detailer: `ArmaScanner.exe` es el Python
+  oficial firmado y cada módulo va compilado a `.pyd`; el ejecutable de Nuitka sin firma lo bloqueaba el
+  antivirus); se descomprime y al abrir `ArmaScanner.exe` se
   instala sola en `%LOCALAPPDATA%\Programs\ArmaScanner` (accesos en menú Inicio y escritorio,
   entrada en Aplicaciones con «Desinstalar»). Las obras del instalado: la carpeta de obras
-  anotada en el equipo, que comparte con la copia de desarrollo (instalar no deja las obras
-  atrás), o `Documentos\ArmaScanner`; «Instalar» la muestra con cuántas obras tiene y deja
-  cambiarla. No se usa un instalador de un solo `.exe`: el antivirus de la
+  fija en `%LOCALAPPDATA%\ArmaScanner` (fuera de OneDrive; las de antes se trasladan solas al
+  abrir, 20-nov). No se usa un instalador de un solo `.exe`: el antivirus de la
   empresa (Trend Micro) lo borró al crearlo (19-nov). Sin firma de código, Windows puede
   avisar la primera vez («Más información» → «Ejecutar de todas formas»).
 - «Actualizar a …» (ventana de planos de ArmaScanner, instalado): baja el ZIP vigente, el
