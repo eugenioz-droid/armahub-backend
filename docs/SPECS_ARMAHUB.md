@@ -1255,8 +1255,8 @@ compactas.
 |---------|-----------|---------|---------|
 | Resumen | Ficha; KPIs en grupo de 4: kg pedidos, planos trabajados / vigentes, ciclos cubicados / programados, reclamos abiertos; últimos movimientos | Ve | Ve (sin reclamos) |
 | Programa | Ciclos y sectores con fecha de despacho y estado (disponible · programada · cubicada). El pedido enviado desde ArmaScanner marca cubicado solo | USC edita | Ve fechas |
-| Protocolo | Criterios de cubicación de la obra por versión (programa §8.11) y su aprobación | Cubicador edita | Aprueba |
-| Planos | Planos trabajados con ArmaScanner: versión en línea, quién lo tiene tomado, historial, vista previa (§5.4) | Ve, descarga en ArmaScanner | Vista previa (después) |
+| Protocolo | Plantilla editable de la empresa (secciones, criterios, opciones con croquis); protocolo por obra con versiones y estados (borrador · revisado con el cliente · cerrado); modo reunión; PDF y correo (programa §8.11) | Cubicador edita | Sólo lectura, aprueba (después) |
+| Planos | Avance por plano (estado, barras, aprobadas, kg, versión, quién lo tiene, última actividad), PDF en modal, «Soltar» (administrador), «Enviar pedido» (§5.4) | Ve; toma en ArmaScanner | Vista previa (después) |
 | Pedidos | Cargas de despiece de la obra (`imports`) con su origen (ArmaScanner, A Detailer, manual), plano, ciclo, kg | Ve | No |
 | Terreno | Protocolo de entrega de enfierradura por elemento y ciclo: lista de chequeo, fotos, observaciones y aprobación. Pensada para pasar a la App Terreno (F13) | Ve | Revisa y aprueba |
 
@@ -1299,6 +1299,26 @@ cuando entre el cliente.
    una entrega nueva del calculista: se guarda la última versión trabajada de la revisión
    anterior, o (b) el cubicador lo pide al subir por un cambio grande («Guardar respaldo de la
    versión anterior»).
+
+**Ciclo de trabajo de un plano (propuesta 20-nov, 2ª vuelta; esperando D1–D3).** [Usuario 20-nov: «la idea es que un usuario pueda cerrar su trabajo, para que quede en la plataforma y lo tome otro usuario o el mismo en forma posterior… corremos riesgo de tener duplicados, si luego yo sigo trabajando (ya que tengo toda la data en mi computador)… esto requiere que la app abra y cierre los planos en GStar»]
+Dos cosas distintas que hoy hace un solo botón: **guardar el plano** en la plataforma (con su avance,
+terminado o no, también sin barras) y **enviar el pedido** (sus barras como carga). Y el bloqueo lo
+lleva la herramienta, no el usuario:
+1. **Abrir plano** = tomarlo: queda a tu nombre mientras trabajas. Uno tomado por otro no se abre
+   («Tomado por Emilio desde el …»). Si en ArmaHub hay una versión más nueva, se trae antes de abrir
+   (la copia vieja va al respaldo). Un plano que nunca subió se abre como hoy.
+2. **Cerrar el plano** (ventana del plano): ArmaScanner guarda, imprime el PDF, lo cierra en GStarCAD
+   y lo guarda en ArmaHub como la versión siguiente. Sigue a tu nombre: nadie lo toma hasta que lo
+   sueltes, pero la plataforma ya muestra su avance y su PDF.
+3. **Soltar** (lista de planos): queda libre para otro. Si hay cambios sin guardar en ArmaHub, los
+   guarda primero; si está abierto en GStarCAD, lo cierra. El de otro lo suelta un administrador.
+4. **Enviar pedido** (lista de planos o pestaña Planos de la obra): las barras de la versión en línea
+   entran a ArmaHub como la carga del plano (reemplazan las del mismo plano; la exportación sigue
+   bloqueada con barras sin aprobar). Independiente de soltar.
+5. **Sin internet:** se abre sólo lo que ya estaba a tu nombre; lo guardado queda «Sin subir» y sube
+   al volver la conexión. Sin duplicados posibles: el código del plano y los de sus barras viajan en
+   el paquete (otro usuario reemplaza las mismas barras), ArmaHub no acepta una copia vieja ni una
+   subida encima de un plano tomado por otro, y una copia que ya no es tuya no se abre.
 
 **Vista previa sin CAD.** Convertir DWG en el servidor exige un servicio pagado (Autodesk APS u
 ODA; §0.6 del programa). En cambio ArmaScanner ya tiene GStarCAD abierto: al subir imprime el

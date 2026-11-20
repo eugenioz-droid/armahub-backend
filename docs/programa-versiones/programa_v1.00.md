@@ -1012,6 +1012,40 @@ el protocolo.
 - Los detalles de elevaciones (cierre de MV, MH, encuentros, trabas) se definen desde aquí
   (filas del 19-nov en la tabla de arriba).
 
+**Estructura (20-nov), a partir de lo que ingresa el usuario en el Excel** [Usuario: «debes armar la
+estructura del protocolo pensando en que todo es editable, entonces no me sirve que pongas valores
+fijos. Toma como referencia las cosas que ingresa el usuario… Algunos campos no serán necesarios
+cuando se cubique con ArmaScanner porque ya trae datos de piso, metros cuadrados»].
+
+1. **Plantilla de la empresa** (tabla `protocolo_plantilla`, versionada, la edita el administrador):
+   secciones → criterios. Cada criterio: clave, texto, tipo de respuesta (número con unidad · texto ·
+   una opción · varias opciones · casilla · tabla con filas y columnas), opciones con su croquis,
+   ayuda, origen («sistema» si lo sabe ArmaHub: se muestra y no se pide) y orden. Nada fijo en el
+   código: agregar un criterio o un tipo de encuentro es editar la plantilla.
+2. **Protocolo de la obra** (tabla `protocolos`): obra, versión, plantilla usada, respuestas (JSON por
+   clave), notas, firmantes (Obra: nombre y cargo · Cubicador · USC), estado (borrador · revisado con
+   el cliente · cerrado), cerrado por / el, PDF en R2. Un cambio después de cerrado abre otra versión.
+3. **Lo que trae el Excel**, sección por sección:
+   - Datos de la obra: ID, ubicación, administrador de obra, profesional de terreno, jefe de oficina
+     técnica; subterráneos (un), pisos torre (un), metros construidos (m²), toneladas proyectadas;
+     ciclos constructivos de subterráneo y de torre con fecha de entrega. Del sistema: obra, cliente y
+     código (aSa), pisos, ciclos y fechas (programa). Se piden sólo los demás.
+   - Losas: trabas de muro por espesor (6 filas: espesor, un/m², φ, α, β, b; abrazan H y V o sólo V);
+     reparticiones (φ; según geometría; barras de 12 m); soportes por piso y espesor (6 filas: un/m²,
+     a, b, c).
+   - Muros, cada uno una opción entre croquis: MH muro simple (2; ángulos de gancho α, β), MH
+     encuentro en L (4), MH encuentro en T (4), remate superior de MV (4), remate inferior de MV
+     perimetral (3) e interior (3), disminución de espesor concéntrica (3) y excéntrica (3).
+   - Lista de chequeo: 15 criterios (escalas; empalmes en vigas y pata; elementos adicionales;
+     recubrimientos por elemento; estribos de verticales; lado mínimo 10φ; cabezales; empalme de
+     mallas 60φ+10 u otro; nacientes; postensado; refuerzos de shaft y nervios; traba según φ o 8 mm;
+     traba abraza H y V o sólo V; barras variables; empalme con cambio de φ), cada uno con su respuesta
+     (sí/no/criterio y texto).
+   - Notas y observaciones; firmas.
+4. **Flujo:** el cubicador lo llena en la plataforma → reunión con el cliente compartiendo la pantalla
+   (modo reunión: sólo el protocolo, letra grande) → se cierra → PDF → correo al cliente. Después, el
+   cliente entra con acceso sólo lectura y aprueba desde ahí.
+
 **Decisiones abiertas.**
 1. ~~¿Pestaña de la obra o módulo propio?~~ Pestaña del panel de la obra (19-nov).
 2. ~~¿Firma en pantalla o por enlace?~~ Aprobación con el usuario del cliente (19-nov).
@@ -1066,7 +1100,7 @@ Diseño en SPECS §5 (Obras) y §13 (ArmaScanner). Nombre de la caluga «Obras»
 
 Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 
-**Orden vigente (usuario 20-nov):** 1–4 → 6 (traspaso de planos entre usuarios) → **8 Protocolo antes que 5 Elevaciones** (o en paralelo): «las elevaciones necesitan mucha información que sale de ahí… mejor hacemos la pega una vez bien». Después 7, 9 y 10.
+**Objetivo antes de las elevaciones (usuario 20-nov, 2ª vuelta):** «terminemos de pulir todos estos detalles de uso, de trabajo colaborativo, pero con almacenamientos en cada computador, sincronización, bloqueos… Visualización de los PDF y control del avance a través de la plataforma. Posteriormente (pero anda avanzando), implementación del protocolo». Orden: **6.11–6.14** (ciclo de trabajo) → **7** (Obras: pestaña Planos = avance + PDF) → **8** (Protocolo) → **5** (Elevaciones). El protocolo: el cubicador lo llena en la plataforma, lo revisa con el cliente compartiendo la pantalla, se cierra, sale el PDF y se envía; después el cliente lo ve con acceso sólo lectura. Diseño del ciclo en SPECS §5.4 (esperando D1–D3 del 20-nov).
 
 | # | Tarea | Estado |
 |---|---|---|
@@ -1122,16 +1156,21 @@ Lista de tareas (la que se pega al pedir «avance»: ☑ hecho, ☐ por hacer).
 | 6.8 | Todos los usuarios con licencia ven y toman los planos de todas las obras; Mis obras sin filtro por usuario (usuario 20-nov) | ☑ |
 | 6.9 | Prueba real: el 215 de Martín de Solier subido con su paquete (v1), tomado desde otro equipo simulado con su avance (171 barras, 5 aprobadas, 3 ciclos) y soltado (20-nov) | ☑ |
 | 6.10 | Prueba del usuario: Emilio instala ArmaScanner, toma el 215 y lo termina | ☐ |
+| 6.11 | Separar «Guardar en ArmaHub» (el plano con su avance, terminado o no, también sin barras) de «Enviar pedido» (las barras entran como carga desde la versión en línea; desde ArmaScanner o desde la plataforma). Sale «Subir a ArmaHub» | ☐ |
+| 6.12 | «Abrir plano» toma el plano (queda a tu nombre mientras trabajas); no abre uno tomado por otro; si hay versión más nueva la trae antes de abrir (la copia vieja al respaldo) | ☐ |
+| 6.13 | Cerrar el plano = ArmaScanner lo guarda, imprime el PDF, lo cierra en GStarCAD y lo guarda en ArmaHub (sigue a tu nombre). «Soltar» en la lista de planos: guarda antes si hay cambios; cierra en GStarCAD si está abierto | ☐ |
+| 6.14 | Sin internet: abrir sólo lo que ya estaba a tu nombre; lo pendiente se guarda en ArmaHub al volver la conexión | ☐ |
 | **7** | **Caluga Obras** | |
-| 7.1 | Caluga y lista de obras asignadas con filtro | ☐ |
+| 7.1 | Caluga Obras: lista de obras con filtro (todas, para todos los usuarios internos); nace con dos pestañas, Planos y Protocolo | ☐ |
 | 7.2 | Resumen con KPIs | ☐ |
 | 7.3 | Pedidos (cargas con su origen) | ☐ |
-| 7.4 | Planos con visor PDF en modal | ☐ |
+| 7.4 | Planos: avance por plano (estado, barras, aprobadas, kg, versión, quién lo tiene, última actividad), PDF en modal, «Soltar» (administrador), «Enviar pedido» | ☐ |
 | **8** | **Protocolo** | |
-| 8.1 | Criterios como datos (desde el Excel «Protocolo 2025») | ☐ |
-| 8.2 | Pestaña Protocolo con versiones | ☐ |
-| 8.3 | Validación del cubicador + informe PDF | ☐ |
-| 8.4 | ArmaScanner lee los criterios de la obra | ☐ |
+| 8.1 | Plantilla de la empresa, editable por el administrador: secciones, criterios, tipo de respuesta, opciones con croquis (los 30 del Excel «Protocolo 2025», ya extraídos), sin valores fijos en el código | ☐ |
+| 8.2 | Protocolo por obra: lo que el sistema ya sabe se muestra y no se pide (obra y cliente de aSa; pisos, ciclos y fechas del programa); lo demás editable; versiones; estados borrador · revisado con el cliente · cerrado | ☐ |
+| 8.3 | Modo reunión (pantalla limpia para compartir con el cliente) y cierre | ☐ |
+| 8.4 | PDF (fpdf2) y envío por correo; después, acceso del cliente sólo lectura | ☐ |
+| 8.5 | ArmaScanner lee los criterios de la obra | ☐ |
 | **9** | **Programa en la obra** | |
 | 9.1 | Pestaña Programa (tareas_programacion de la obra) | ☐ |
 | 9.2 | Subir plano marca la tarea como cubicada | ☐ |
