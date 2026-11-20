@@ -60,7 +60,7 @@ check("rutas: planos, tomar y soltar",
 import inspect  # noqa: E402
 fuente = inspect.getsource(A.subir_plano)
 check("subir: el bloqueo se revisa antes de tocar las barras",
-      fuente.index("motivo_para_subir") < fuente.index("import_armadetailer(") if "import_armadetailer(" in fuente else False)
+      fuente.index("motivo_para_subir") < fuente.index("_cargar_barras(") if "_cargar_barras(" in fuente else False)
 check("Mis obras: todos ven todas las obras (sin filtro por usuario)", "usuario = %s" not in inspect.getsource(A.cargas))
 
 print()
