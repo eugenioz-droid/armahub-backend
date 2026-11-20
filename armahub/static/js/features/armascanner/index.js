@@ -18,7 +18,7 @@
   'use strict';
 
   var est = { cargas: [], elemento: '', buscadorObra: null, usuarios: null, combo: null, usuarioElegido: null,
-              licencias: [], planos: [], plElemento: '', buscadorPlanos: null, verBarras: null };
+              licencias: [], planos: [], plElemento: '', plBuscar: '', buscadorPlanos: null, verBarras: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -124,64 +124,134 @@
     return data;
   }
 
+  // Planos: primero las obras, una tarjeta cada una; elegida una, sus planos en tarjetas: los de
+  // trabajo arriba y los sólo cargados (antecedentes) abajo, con el detalle al pasar el mouse.
+  // [Usuario 20-nov: «elegir la obra primero y luego los planos como tejas o tarjetas pequeñas con algo de data»]
+  function obraElegida() { return est.buscadorPlanos ? est.buscadorPlanos.getId() : ''; }
+
   function planosFiltrados() {
-    var obra = est.buscadorPlanos ? est.buscadorPlanos.getId() : '';
+    var obra = obraElegida(), q = obra ? (est.plBuscar || '').trim().toLowerCase() : '';
     return est.planos.filter(function (p) {
-      return (!obra || p.obra === obra) && (!est.plElemento || (p.elemento || '').split(', ').indexOf(est.plElemento) !== -1);
+      return (!obra || p.obra === obra)
+        && (!obra || !est.plElemento || (p.elemento || '').split(', ').indexOf(est.plElemento) !== -1)
+        && (!q || (p.numero + ' ' + p.plano + ' ' + p.titulo).toLowerCase().indexOf(q) !== -1);
     });
   }
 
+  function porNumero(a, b) {
+    return String(a.numero || a.plano).localeCompare(String(b.numero || b.plano), 'es', { numeric: true });
+  }
+
+  function avance(ok, total) {
+    var pct = total ? Math.round(100 * ok / total) : 0;
+    return '<div class="asc-teja__fila"><span>' + entero(ok) + ' / ' + entero(total) + ' aprobadas</span><span>' +
+      pct + ' %</span></div><div class="asc-avance"><div style="width:' + pct + '%;"></div></div>';
+  }
+
+  function tejaObra(o) {
+    return '<button type="button" class="asc-teja asc-teja--obra" data-obra="' + esc(o.id) + '">' +
+      '<div class="asc-teja__num asc-teja__tit">' + esc(o.nombre) + '</div>' +
+      '<div class="asc-teja__fila"><span>' + entero(o.planos) + (o.planos === 1 ? ' plano' : ' planos') + '</span><span>' +
+        entero(o.trabajo) + ' en trabajo</span></div>' +
+      (o.edicion || o.consultas ? '<div class="asc-teja__tags">' +
+        (o.edicion ? '<span class="arm-tag arm-tag--warning">' + entero(o.edicion) + ' en edición</span>' : '') +
+        (o.consultas ? '<span class="arm-tag arm-tag--warning">' + entero(o.consultas) + ' con consulta</span>' : '') +
+        '</div>' : '') +
+      (o.total ? avance(o.ok, o.total) + '<div class="asc-teja__fila"><span>' + entero(o.kg) + ' kg</span></div>' : '') +
+      '</button>';
+  }
+
+  function tejaPlano(p) {
+    var i = est.planos.indexOf(p), r = p.resumen || {};
+    var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0, cons = Number(r.consultas) || 0;
+    var cargado = p.etapa === 'cargado';
+    var tags = (p.en_edicion_por
+        ? (p.en_edicion_por_mi ? '<span class="arm-tag arm-tag--success">En edición por ti</span>'
+          : '<span class="arm-tag arm-tag--warning">En edición por ' + esc(p.en_edicion_por) + '</span>') : '') +
+      (p.pedido === 'enviado' ? '<span class="arm-tag arm-tag--success">Pedido enviado</span>'
+        : p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>' : '') +
+      (cons ? '<span class="arm-tag arm-tag--warning">' + entero(cons) + ' con consulta</span>' : '');
+    var acciones = (total > 0 ? '<button class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' : '') +
+      (p.puede_enviar && total > 0
+        ? '<button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
+      (p.puede_liberar ? '<button class="arm-button arm-button--danger" onclick="ascLiberarPlano(' + i + ')">Liberar</button>' : '') +
+      (p.puede_eliminar ? '<button class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
+    var detalle = [['Archivo', p.plano], ['Título', p.titulo], ['Versión', 'v' + p.version],
+      [cargado ? 'Cargado' : 'Guardado', [quien(p.guardado_por), p.guardado_el].filter(Boolean).join(' · ')],
+      ['En edición desde', p.en_edicion_por ? p.en_edicion_desde : ''],
+      ['Por aprobar', cargado ? '' : entero(r.pendientes)],
+      ['Pedido', p.pedido === 'enviado' ? [p.pedido_el, p.pedido_version ? 'v' + p.pedido_version : '', p.pedido_por]
+        .filter(Boolean).join(' · ') : '']]
+      .filter(function (x) { return x[1]; })
+      .map(function (x) { return '<div><span>' + esc(x[0]) + '</span><span>' + esc(x[1]) + '</span></div>'; }).join('');
+    return '<div class="asc-teja">' +
+      '<div class="asc-teja__cabeza"><span class="asc-teja__num">' + esc(p.numero || p.plano) + '</span>' +
+        (p.revision ? '<span class="asc-linea">Rev. ' + esc(p.revision) + '</span>' : '') +
+        (p.elemento ? '<span class="arm-tag">' + esc(p.elemento) + '</span>' : '') + '</div>' +
+      '<div class="asc-teja__tit">' + esc(p.titulo) + '</div>' +
+      (tags ? '<div class="asc-teja__tags">' + tags + '</div>' : '') +
+      (cargado ? '<div class="asc-teja__fila"><span>Cargado ' + esc(p.guardado_el) + '</span><span>' +
+          esc(quien(p.guardado_por)) + '</span></div>'
+        : avance(ok, total) + '<div class="asc-teja__fila"><span>' + entero(r.kg) + ' kg</span><span>v' + esc(p.version) +
+          '</span></div>') +
+      (acciones ? '<div class="asc-teja__acciones">' + acciones + '</div>' : '') +
+      '<div class="asc-teja__detalle">' + detalle + '</div></div>';
+  }
+
+  function obrasDe(planos) {
+    var por = {}, lista = [];
+    planos.forEach(function (p) {
+      var o = por[p.obra];
+      if (!o) {
+        o = por[p.obra] = { id: p.obra, nombre: p.obra_nombre, planos: 0, trabajo: 0, edicion: 0, consultas: 0, ok: 0, total: 0, kg: 0 };
+        lista.push(o);
+      }
+      var r = p.resumen || {};
+      o.planos += 1;
+      if (p.etapa !== 'cargado') o.trabajo += 1;
+      if (p.en_edicion_por) o.edicion += 1;
+      o.consultas += Number(r.consultas) || 0;
+      o.ok += Number(r.aprobadas) || 0;
+      o.total += Number(r.barras) || 0;
+      o.kg += Number(r.kg) || 0;
+    });
+    return lista.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre), 'es'); });
+  }
+
   function pintarPlanos() {
+    var obra = obraElegida();
     var filas = planosFiltrados();
     var edicion = 0, barras = 0, aprob = 0, consultas = 0;
-    var html = filas.map(function (p) {
-      var i = est.planos.indexOf(p);
+    filas.forEach(function (p) {
       var r = p.resumen || {};
-      var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0;
       if (p.en_edicion_por) edicion += 1;
-      barras += total; aprob += ok; consultas += Number(r.consultas) || 0;
-      var pct = total ? Math.round(100 * ok / total) : 0;
-      var estado = !p.en_edicion_por ? '<span class="arm-tag">' + (p.etapa === 'cargado' ? 'Cargado' : 'Disponible') + '</span>'
-        : (p.en_edicion_por_mi ? '<span class="arm-tag arm-tag--success">En edición por ti</span>'
-          : '<span class="arm-tag arm-tag--warning">En edición por ' + esc(p.en_edicion_por) + '</span>') +
-          (p.en_edicion_desde ? '<div class="asc-linea">' + esc(p.en_edicion_desde) + '</div>' : '');
-      var pedido = p.pedido === 'enviado'
-        ? '<span class="arm-tag arm-tag--success">Enviado</span>' +
-          '<div class="asc-linea">' + esc(p.pedido_el) + (p.pedido_version ? ' · v' + esc(p.pedido_version) : '') + '</div>'
-        : p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>'
-        : '<span class="arm-tag">Sin enviar</span>';
-      var acciones = '<button class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' +
-        (p.puede_enviar && total > 0
-          ? ' <button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
-        (p.puede_liberar
-          ? ' <button class="arm-button arm-button--danger" onclick="ascLiberarPlano(' + i + ')">Liberar</button>' : '') +
-        (p.puede_eliminar
-          ? ' <button class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
-      return '<tr>' +
-        '<td>' + esc(p.obra_nombre) + '</td>' +
-        '<td class="corto" title="' + esc(p.plano) + '">' + esc(p.numero || p.plano) + '</td>' +
-        '<td class="corto" title="' + esc(p.titulo) + '">' + esc(p.titulo) + '</td>' +
-        '<td>' + esc(p.elemento) + '</td>' +
-        '<td>v' + esc(p.version) + '</td>' +
-        '<td style="white-space:nowrap;">' + entero(ok) + ' / ' + entero(total) +
-          '<div class="asc-avance" title="' + pct + ' %"><div style="width:' + pct + '%;"></div></div></td>' +
-        '<td class="num">' + entero(r.consultas) + '</td>' +
-        '<td class="num">' + entero(r.pendientes) + '</td>' +
-        '<td class="num">' + entero(r.kg) + '</td>' +
-        '<td>' + estado + '</td>' +
-        '<td>' + pedido + '</td>' +
-        '<td>' + esc(quien(p.guardado_por)) + '<div class="asc-linea">' + esc(p.guardado_el) + '</div></td>' +
-        '<td class="asc-acciones">' + acciones + '</td></tr>';
-    }).join('');
+      barras += Number(r.barras) || 0; aprob += Number(r.aprobadas) || 0; consultas += Number(r.consultas) || 0;
+    });
+    document.getElementById('ascPlVolver').style.display = obra ? '' : 'none';
+    document.getElementById('ascPlDentro').style.display = obra ? '' : 'none';
+    var html = '', n = 0;
+    if (!obra) {
+      var texto = (document.getElementById('ascPlObraInput').value || '').trim().toLowerCase();
+      var obras = obrasDe(est.planos).filter(function (o) { return !texto || String(o.nombre).toLowerCase().indexOf(texto) !== -1; });
+      n = obras.length;
+      html = n ? '<div class="asc-tejas">' + obras.map(tejaObra).join('') + '</div>' : '';
+    } else {
+      var trabajo = filas.filter(function (p) { return p.etapa !== 'cargado'; }).sort(porNumero);
+      var cargados = filas.filter(function (p) { return p.etapa === 'cargado'; }).sort(porNumero);
+      n = filas.length;
+      [['En trabajo', trabajo], ['Cargados', cargados]].forEach(function (s) {
+        if (s[1].length) html += '<div class="asc-seccion">' + s[0] + ' · ' + entero(s[1].length) + '</div>' +
+          '<div class="asc-tejas">' + s[1].map(tejaPlano).join('') + '</div>';
+      });
+    }
     document.getElementById('ascPlanos').innerHTML = html;
     var vacio = document.getElementById('ascPlanosVacio');
-    vacio.style.display = filas.length ? 'none' : '';
+    vacio.style.display = n ? 'none' : '';
     vacio.textContent = est.plSinRespuesta ? 'No se pudieron leer los planos. Recarga la página.'
-      : est.planos.length ? 'Sin planos con este filtro.' : 'Sin planos guardados desde ArmaScanner.';
-    var obra = est.buscadorPlanos ? est.buscadorPlanos.getId() : '';
+      : est.planos.length ? (obra ? 'Sin planos con este filtro.' : 'Sin obras con ese nombre.') : 'Sin planos guardados desde ArmaScanner.';
     var cuenta = { '': 0 };
     est.planos.forEach(function (p) {
-      if (obra && p.obra !== obra) return;
+      if (p.obra !== obra) return;
       cuenta[''] += 1;
       (p.elemento || '').split(', ').forEach(function (el) { cuenta[el] = (cuenta[el] || 0) + 1; });
     });
@@ -195,11 +265,28 @@
     poner('ascPlKpiConsulta', entero(consultas));
   }
 
+  function elegirObraPlanos(id) {
+    var o = est.planos.filter(function (p) { return p.obra === id; })[0];
+    document.getElementById('ascPlObraSelect').value = id || '';
+    document.getElementById('ascPlObraInput').value = o ? o.obra_nombre : '';
+    est.plElemento = ''; est.plBuscar = '';
+    document.getElementById('ascPlBuscar').value = '';
+    document.querySelectorAll('#ascPlElemento .arm-button').forEach(function (x) { x.classList.toggle('is-on', !x.getAttribute('data-el')); });
+    pintarPlanos();
+  }
+
   async function cargarPlanos() {
     if (!est.buscadorPlanos && global.BuscadorObra) {
       est.buscadorPlanos = global.BuscadorObra.crear({
         inputId: 'ascPlObraInput', datalistId: 'ascPlObraDatalist', selectId: 'ascPlObraSelect',
         onElegir: function () { pintarPlanos(); }
+      });
+      document.getElementById('ascPlObraInput').addEventListener('input', function () { if (!obraElegida()) pintarPlanos(); });
+      document.getElementById('ascPlBuscar').addEventListener('input', function () { est.plBuscar = this.value; pintarPlanos(); });
+      document.getElementById('ascPlVolver').addEventListener('click', function () { elegirObraPlanos(''); });
+      document.getElementById('ascPlanos').addEventListener('click', function (ev) {
+        var o = ev.target.closest('.asc-teja--obra');
+        if (o) elegirObraPlanos(o.getAttribute('data-obra'));
       });
       document.getElementById('ascBarrasCerrar').addEventListener('click', cerrarBarras);
       document.getElementById('ascBarrasModal').addEventListener('click', function (ev) {

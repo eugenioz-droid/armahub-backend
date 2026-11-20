@@ -30,6 +30,34 @@
                           margin: auto; padding: 16px; }
   .asc .asc-modal__cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
   .asc .asc-modal__cabeza h3 { margin: 0; }
+  /* Planos en tarjetas (20-nov): obras primero; elegida una, sus planos. */
+  .asc .asc-tejas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .asc .asc-teja { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px;
+                   background: var(--arm-surface); border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md);
+                   font: inherit; color: inherit; text-align: left; }
+  .asc .asc-teja:hover, .asc .asc-teja:focus-within { border-color: var(--arm-green); }
+  .asc .asc-teja--obra { cursor: pointer; width: 100%; }
+  .asc .asc-teja--obra:focus-visible { outline: 2px solid var(--arm-green); outline-offset: 1px; }
+  .asc .asc-teja__cabeza { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .asc .asc-teja__num { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asc .asc-teja__num.asc-teja__tit { white-space: normal; font-size: 14px; }
+  .asc .asc-teja__cabeza .arm-tag { margin-left: auto; }
+  .asc .asc-teja__tit { font-size: 12px; line-height: 1.3; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2;
+                        -webkit-box-orient: vertical; overflow: hidden; }
+  .asc .asc-teja__fila { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--arm-text-muted); }
+  .asc .asc-teja__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .asc .asc-teja .asc-avance { width: 100%; margin-top: 0; }
+  .asc .asc-teja__acciones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 4px; }
+  .asc .asc-teja__acciones .arm-button { min-height: 26px; padding: 2px 8px; font-size: 12px; }
+  .asc .asc-teja__detalle { display: none; position: absolute; left: -1px; right: -1px; top: calc(100% - 2px); z-index: 20;
+                            background: var(--arm-surface); border: 1px solid var(--arm-green); border-top: 0;
+                            border-radius: 0 0 var(--arm-radius-md) var(--arm-radius-md); padding: 8px 12px; font-size: 12px; }
+  .asc .asc-teja:hover .asc-teja__detalle { display: block; }
+  .asc .asc-teja__detalle div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .asc .asc-teja__detalle span:first-child { color: var(--arm-text-muted); white-space: nowrap; }
+  .asc .asc-teja__detalle span:last-child { text-align: right; word-break: break-all; }
+  .asc .asc-seccion { font-size: 13px; font-weight: 600; margin: 16px 0 8px; }
+  .asc .asc-seccion:first-child { margin-top: 0; }
 </style>
 
 <div id="tab-asc_obras" class="tab-content">
@@ -80,29 +108,27 @@
     </div>
     <div class="arm-card">
       <div class="asc-barra">
+        <button type="button" class="arm-button" id="ascPlVolver" style="display:none;">← Obras</button>
         <span class="asc-rotulo">Obra</span>
-        <input type="text" id="ascPlObraInput" list="ascPlObraDatalist" class="arm-input" placeholder="Todas"
+        <input type="text" id="ascPlObraInput" list="ascPlObraDatalist" class="arm-input" placeholder="Buscar obra"
                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                data-lpignore="true" data-form-type="other" style="width:260px;">
         <datalist id="ascPlObraDatalist"></datalist>
         <select id="ascPlObraSelect" style="display:none;"></select>
-        <span class="asc-rotulo" style="margin-left:8px;">Elemento</span>
-        <div class="asc-seg" id="ascPlElemento">
-          <button class="arm-button is-on" data-el="">Todos</button>
-          <button class="arm-button" data-el="FUND">FUND</button>
-          <button class="arm-button" data-el="ELEV">ELEV</button>
-          <button class="arm-button" data-el="VCIELO">VCIELO</button>
-          <button class="arm-button" data-el="LCIELO">LCIELO</button>
-        </div>
+        <span id="ascPlDentro" style="display:none;">
+          <span class="asc-rotulo" style="margin-left:8px;">Elemento</span>
+          <span class="asc-seg" id="ascPlElemento">
+            <button class="arm-button is-on" data-el="">Todos</button>
+            <button class="arm-button" data-el="FUND">FUND</button>
+            <button class="arm-button" data-el="ELEV">ELEV</button>
+            <button class="arm-button" data-el="VCIELO">VCIELO</button>
+            <button class="arm-button" data-el="LCIELO">LCIELO</button>
+          </span>
+          <input type="text" id="ascPlBuscar" class="arm-input" placeholder="Buscar plano" autocomplete="off"
+                 spellcheck="false" style="width:200px; margin-left:8px;">
+        </span>
       </div>
-      <table class="arm-table">
-        <thead><tr>
-          <th>Obra</th><th>N°</th><th>Título</th><th>Elemento</th><th>Versión</th><th>Avance</th>
-          <th class="num">Con consulta</th><th class="num">Por aprobar</th><th class="num">Kg</th>
-          <th>Estado</th><th>Pedido</th><th>Guardado</th><th></th>
-        </tr></thead>
-        <tbody id="ascPlanos"></tbody>
-      </table>
+      <div id="ascPlanos"></div>
       <div id="ascPlanosVacio" class="asc-vacio" style="display:none;">Sin planos guardados desde ArmaScanner.</div>
     </div>
     <div class="arm-card" id="ascReportesCard" style="display:none;">
