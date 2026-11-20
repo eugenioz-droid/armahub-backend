@@ -110,7 +110,9 @@
   // la mano en estas variables: así sigue habiendo un solo dueño de los filtros.
   global.asaFiltros = function () {
     return { obras: OBRAS.slice(), personas: PERSONAS.slice(),
-             segmentos: SEGS.slice(), tipos: TIPOS.slice() };
+             segmentos: SEGS.slice(), tipos: TIPOS.slice(),
+             // El período, para «Consumo», que pide su data filtrada por año y mes.
+             anio: ANIO, meses: MESES.slice() };
   };
 
   function avisarFiltros() {
@@ -126,6 +128,7 @@
                  ['seg',    'asaSubSeg',    'asaPanelSeg'],
                  ['tipo',   'asaSubTipo',   'asaPanelTipo'],
                  ['mens',   'asaSubMens',   'asaPanelMens'],
+                 ['cons',   'asaSubCons',   'asaPanelCons'],
                  ['atr',    'asaSubAtr',    'asaPanelAtr']];
   var SUB = 'planta';
   global.asaSubTab = function (v) {
@@ -144,7 +147,12 @@
     // el panel se lleva ese ancho.
     // ...y en «Por cubicador» también, para que el gráfico se lleve todo el ancho.
     var col = $('dshColObras');
-    if (col) col.style.display = (v === 'obras' || v === 'atr' || v === 'mes' || v === 'mens') ? 'none' : '';
+    if (col) col.style.display = (v === 'obras' || v === 'atr' || v === 'mes' || v === 'mens' || v === 'cons') ? 'none' : '';
+    // «Consumo» no filtra por cubicador: las barras en punta no las detalla nadie del
+    // área, y con un cubicador marcado desaparecerían. La fila se esconde ahí.
+    var filaDet = $('dshFilaDet');
+    if (filaDet) filaDet.style.display = (v === 'cons') ? 'none' : '';
+    if (v === 'cons') { ELIGIENDO = false; $('dshDetPanel').style.display = 'none'; }
     // Este sub-tab trae su propia data (agregada, y sin filtro de período), así que se
     // pide la primera vez que se abre y no en cada cambio de pestaña.
     // El resumen mensual trae su PROPIA data (los dos años completos, agregados) y tiene
@@ -599,6 +607,11 @@
     if (SUB === 'seg') return pintarPorClave(CFG_SEG);
     if (SUB === 'tipo') return pintarPorClave(CFG_TIPO);
     if (SUB === 'atr') return pintarAtributos();
+    if (SUB === 'cons') {
+      if (global.initConsumo) global.initConsumo();
+      if (global.loadConsumo) global.loadConsumo();
+      return;
+    }
     return pintarPlanta();
   }
 

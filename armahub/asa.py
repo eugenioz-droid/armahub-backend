@@ -298,7 +298,7 @@ def consultar_todo(endpoint: str, select: Optional[List[str]] = None,
 
 def consultar_agregado(endpoint: str, dimensiones: List[str], medida: str,
                        alias: str = "Total", filtro: Optional[str] = None,
-                       carga: bool = False) -> List[dict]:
+                       carga: bool = False, extra: Optional[List[tuple]] = None) -> List[dict]:
     """Pide a aSa que AGREGUE, en vez de traerse el detalle y sumar acá (OData `$apply`).
 
     Es la diferencia entre una consulta viable y una que se atora. `getOrderSummary` viene
@@ -310,12 +310,15 @@ def consultar_agregado(endpoint: str, dimensiones: List[str], medida: str,
     llama tiene que acotar el filtro (por año, típicamente) y no pedir la historia entera.
 
     `carga=True` para la carga de un año completo: espera larga (ver _timeout_carga).
+    `extra` = más sumas en la misma consulta, como pares (campo, alias): el consumo pide
+    kilos y piezas a la vez en vez de pedirle dos veces lo mismo a aSa.
     """
     partes = []
     if filtro:
         partes.append("filter(%s)" % filtro)
-    partes.append("groupby((%s),aggregate(%s with sum as %s))"
-                  % (",".join(dimensiones), medida, alias))
+    sumas = [(medida, alias)] + list(extra or [])
+    partes.append("groupby((%s),aggregate(%s))"
+                  % (",".join(dimensiones), ",".join("%s with sum as %s" % s for s in sumas)))
     return _filas(_pedir(_armar_url(endpoint, {"$apply": "/".join(partes)}),
                          timeout=_timeout_carga() if carga else None))
 

@@ -19,6 +19,7 @@ Catálogo de campos y endpoints de aSa: docs/asa_campos.md
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -434,4 +435,106 @@ def sincronizar_incremental(lanzado_por: str = "sistema") -> dict:
     _cerrar_bitacora(sync_id, True, r["filas"], r["nuevas"])
     r["desde"] = corte
     log.info("aSa incremental desde %s: %d pedidos, %d nuevos", corte, r["filas"], r["nuevas"])
+    # El desglose del consumo, con el MISMO corte. Si falla no tumba lo de arriba: los
+    # pedidos ya quedaron guardados y el consumo se pone al día en el turno siguiente.
+    try:
+        r["consumo"] = sincronizar_consumo_desde(corte, lanzado_por)["filas"]
+    except Exception as e:
+        log.error("aSa incremental: falló el consumo: %s", e)
     return r
+
+
+# ---------------------------------------------------------------------------
+# CONSUMO: C&D vs BARRAS EN PUNTA (20-nov)
+# ---------------------------------------------------------------------------
+# getOrderSummary viene al grano código × diámetro × producto, y el producto dice qué es:
+# «B HORMIGON 12MM 12M A630-420H» es barra en punta (recta, en largo comercial) y
+# «FIERRO A630-420H CYD 12MM» es cortado y doblado. Se espeja ese desglose en
+# `asa_consumo` para el sub-tab «Consumo» de aSa Data. Agregado por aSa ($apply): un
+# trimestre son ~5.000 filas y llegan en 1-2 s.
+DIMS_CONSUMO = ["ControlCode", "Diameter", "ProductDescr"]
+_RE_LARGO_BARRA = re.compile(r"MM\s+(\d+(?:[.,]\d+)?)\s*M(?![A-Z])")
+_RE_DIAM = re.compile(r"(\d+)")
+
+
+def clase_producto(descr: str):
+    """(clase, largo_m) de un producto de aSa. La barra en punta trae su largo comercial
+    en el nombre, después del diámetro: «B HORMIGON 8MM 6M …» → ('barra', 6)."""
+    d = (descr or "").upper()
+    if d.startswith("B HORMIGON"):
+        largos = [m for m in _RE_LARGO_BARRA.findall(d)]
+        return "barra", (float(largos[0].replace(",", ".")) if largos else None)
+    if "CYD" in d.split():
+        return "cyd", None
+    return "otro", None
+
+
+def _guardar_consumo(filas) -> int:
+    """Reemplaza el desglose de cada código que vino: se borra lo que tenía y se escribe
+    lo nuevo, así un diámetro que se sacó del pedido también se va."""
+    por = {}
+    for f in filas:
+        cc = (f.get("ControlCode") or "").strip()
+        if not cc:
+            continue
+        m = _RE_DIAM.search(str(f.get("Diameter") or ""))
+        diam = int(m.group(1)) if m else 0
+        prod = (f.get("ProductDescr") or "").strip()[:120]
+        clase, largo = clase_producto(prod)
+        k = (cc[:60], diam, prod)
+        a = por.setdefault(k, [clase, largo, 0.0, 0.0])
+        a[2] += float(f.get("Kgs") or 0)
+        a[3] += float(f.get("Pcs") or 0)
+    if not por:
+        return 0
+    ccs = sorted({k[0] for k in por})
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM asa_consumo WHERE control_code = ANY(%s)", (ccs,))
+            cur.executemany(
+                """INSERT INTO asa_consumo (control_code, diametro_mm, producto, clase, largo_m, kg, piezas)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                [(k[0], k[1], k[2], v[0], v[1], round(v[2], 2), round(v[3])) for k, v in por.items()])
+        conn.commit()
+    return len(por)
+
+
+def _pedir_consumo(filtro: str):
+    return asa.consultar_agregado("getOrderSummary", DIMS_CONSUMO, "TotalKgs", alias="Kgs",
+                                  filtro=filtro, carga=True, extra=[("TotalPieces", "Pcs")])
+
+
+def sincronizar_consumo(anio: int, lanzado_por: str = "sistema") -> dict:
+    """El desglose de UN AÑO, siempre por trimestres: cada uno pasa en un par de segundos
+    y aSa no se atora (ver TROZOS_ANIO). La bitácora va como «consumo/AAAA», fuera de
+    'getOrderSummary%' a propósito: ésa es la que decide el corte del incremental."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            sync_id = _abrir_bitacora(cur, "consumo/%d" % anio, lanzado_por)
+        conn.commit()
+    n, fallos = 0, []
+    for desde, hasta in TROZOS_ANIO:
+        try:
+            n += _guardar_consumo(_pedir_consumo(
+                "OrderDate ge %d-%s and OrderDate le %d-%s" % (anio, desde, anio, hasta)))
+        except asa.AsaError as e:
+            fallos.append("%s a %s: %s" % (desde, hasta, e))
+    _cerrar_bitacora(sync_id, not fallos, n, 0, detalle=" · ".join(fallos) or None)
+    if fallos and not n:
+        raise asa.AsaError("No se pudo traer el consumo de %d: %s" % (anio, fallos[0]))
+    return {"anio": anio, "filas": n, "incompleto": fallos}
+
+
+def sincronizar_consumo_desde(corte: str, lanzado_por: str = "sistema") -> dict:
+    """Lo que cambió desde `corte` (ISO), para el refresco de todos los días."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            sync_id = _abrir_bitacora(cur, "consumo/incremental", lanzado_por)
+        conn.commit()
+    try:
+        n = _guardar_consumo(_pedir_consumo("LastModified ge %s" % corte))
+    except asa.AsaError as e:
+        _cerrar_bitacora(sync_id, False, detalle=str(e))
+        raise
+    _cerrar_bitacora(sync_id, True, n, 0)
+    return {"filas": n}

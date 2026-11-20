@@ -936,7 +936,7 @@ check("segmento y tipo van en el orden del backend con «(sin)» al final; cubic
 check("la lista de obras por estado vive en «Obras aSa» y ahí se esconde la columna fija",
       HTM.index('id="asaPanelObras"') < HTM.index('id="dshResObras"') < HTM.index('id="dshCc"')
       and 'id="dshColObras"' in HTM
-      and "col.style.display = (v === 'obras' || v === 'atr' || v === 'mes' || v === 'mens') ? 'none' : ''" in DSH
+      and "col.style.display = (v === 'obras' || v === 'atr' || v === 'mes' || v === 'mens' || v === 'cons') ? 'none' : ''" in DSH
       and "pintarListaObras();" in DSH)
 check("...de mayor a menor, barra relativa a la más grande, partida por estado con el nombre real",
       "return b.kg - a.kg || a.obra.localeCompare(b.obra, 'es');" in DSH

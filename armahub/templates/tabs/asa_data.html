@@ -35,6 +35,8 @@
            cómo vamos contra el año pasado, cuántas obras hubo abiertas, y si el trabajo se
            está partiendo en códigos más chicos. -->
       <button id="asaSubMens" onclick="asaSubTab('mens')" class="asasub">Resumen mensual</button>
+      <!-- C&D contra barras en punta, por obra (la «- BARRAS» junto a su gemela). -->
+      <button id="asaSubCons" onclick="asaSubTab('cons')" class="asasub">Consumo</button>
       <!-- El único sub-tab donde se ESCRIBE. Va de otro color para que se note que acá
            no se mira: se cataloga. -->
       <button id="asaSubAtr" onclick="asaSubTab('atr')" class="asasub atr">✎ Atributos de obra</button>
@@ -54,7 +56,7 @@
 
     <!-- Cubicador, en su propia fila. Puesto en la columna lateral ocupaba una columna
          entera para una lista de chips; acá cabe en una línea. -->
-    <div class="dshbarra">
+    <div class="dshbarra" id="dshFilaDet">
       <span class="dshbl" title="DetailPerson de aSa: quien detalló el pedido. No son todos cubicadores del área — por eso el botón de al lado deja elegir a los que sí.">Detallado por</span>
       <!-- NO es un filtro más: configura CUÁLES de los 45 cubicadores de aSa aparecen
            como chips. Por eso se distingue de los chips que tiene al lado — engranaje,
@@ -210,6 +212,35 @@
             <div style="position:relative; height:270px; flex:none;"><canvas id="dshTipoChart"></canvas></div>
             <div class="dshbd" style="height:auto; flex:1; margin-top:8px;">
               <table class="dsht dshpiv" id="dshTipoPiv"></table></div>
+          </div>
+        </div>
+
+        <!-- ══════ CONSUMO ══════
+             C&D contra barras en punta por obra. Arriba los totales, a la izquierda el
+             ranking (clic = sus diámetros), a la derecha los diámetros. -->
+        <div id="asaPanelCons" class="dshpanel" style="display:none;">
+          <div id="consAviso"></div>
+          <div class="dshkpis" id="consKpis"></div>
+          <div class="dshbarra">
+            <span class="dshbl">Composición</span>
+            <div id="consComp" class="dshchips"></div>
+            <span class="dshsep"></span>
+            <span class="dshbl">Orden</span>
+            <div id="consOrden" class="dshchips"></div>
+            <input type="text" id="consBuscar" class="dshbuscar" placeholder="Buscar obra o cliente" style="width:220px; margin-left:auto;">
+          </div>
+          <div class="consgrid">
+            <div class="card dshcard dshcod">
+              <div class="dshth">CONSUMO POR OBRA <span class="muted" id="consN"></span></div>
+              <div class="consley"><i style="background:#7EBA27"></i>C&amp;D<i style="background:#104F9E"></i>Barras en punta<i style="background:#687582"></i>Otros<span>t · % barras</span></div>
+              <div class="dshbd consbd"><div id="consObras"></div></div>
+            </div>
+            <div class="card dshcard dshcod">
+              <div class="dshth">DIÁMETROS <span class="muted" id="consDetN"></span></div>
+              <div class="conslargos" id="consLargos"></div>
+              <div style="position:relative; height:250px; flex:none;"><canvas id="consChart"></canvas></div>
+              <div class="dshbd" style="height:auto; flex:1; margin-top:8px;"><table class="dsht" id="consDiam"></table></div>
+            </div>
           </div>
         </div>
 
@@ -532,4 +563,23 @@
   .stk i{display:block; height:100%;}
   .dshley{display:inline-flex; gap:10px; font-weight:400; font-size:9.5px; letter-spacing:0; align-items:center;}
   .dshley i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:-1px;}
+  /* CONSUMO: ranking a la izquierda, diámetros a la derecha; en pantalla angosta, uno bajo otro. */
+  .consgrid{display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:10px;}
+  .consbd{height:auto; max-height:560px;}
+  .consley{display:flex; align-items:center; gap:5px; font-size:10px; color:#546e7a; margin-bottom:6px;}
+  .consley i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-left:6px;}
+  .consley i:first-child{margin-left:0;}
+  .consley span{margin-left:auto; color:#78909c;}
+  .consfila{display:grid; grid-template-columns:minmax(120px, 34%) 1fr 64px 46px; align-items:center;
+            gap:8px; padding:3px 6px; border-radius:5px; cursor:pointer; font-size:10.5px; color:#292D32;}
+  .consfila:hover{background:#f4f8ee;}
+  .consfila.on{background:#eef6e2; box-shadow:inset 3px 0 0 #7EBA27;}
+  .consnom{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .consbar{display:flex; height:12px; background:#f3f4f6; border-radius:3px; overflow:hidden;}
+  .consbar i{display:block; height:100%;}
+  .consnum{text-align:right; font-variant-numeric:tabular-nums;}
+  .conspct{color:#104F9E; font-weight:600;}
+  .conslargos{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; min-height:4px;}
+  .conslargo{font-size:10.5px; color:#292D32; background:#eef3fa; border:1px solid #d6e2f2; border-radius:4px; padding:1px 7px;}
+  .conslargo b{font-variant-numeric:tabular-nums;}
 </style>

@@ -16,6 +16,7 @@ la cubicación, la tarea entra igual pero queda marcada (`plazo_corto`): el áre
 que se registra es cómo se está planificando. El front sólo muestra lo que el backend decide —
 si la regla cambiara, cambia en un solo sitio.
 """
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -897,6 +898,12 @@ def asa_sincronizar_pedidos(anio: Optional[int] = None, user=Depends(get_current
         r["planta"] = p["filas"]
     except asa.AsaError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    # El desglose del consumo del mismo año (sub-tab «Consumo»). Si falla, los pedidos ya
+    # quedaron: se avisa en la respuesta y no se tumba la carga.
+    try:
+        r["consumo"] = asa_sync.sincronizar_consumo(anio, lanzado_por=user.get("email", "?"))["filas"]
+    except asa.AsaError as e:
+        r["consumo_error"] = str(e)
     audit(user.get("email", "?"), "asa_sync_pedidos",
           f"{anio}: {r['filas']} CC, {r['nuevas']} nuevos, {r['planta']} con planta")
     return dict(r, ok=True)
@@ -1599,3 +1606,145 @@ def asignar_usc(id_proyecto: str, body: AsignarBody, user=Depends(get_current_us
             )
             audit(email, "usc_asignar", f"{id_proyecto} -> user {body.user_id}")
     return {"ok": True, "usc_id": body.user_id}
+
+
+# ---------------------------------------------------------------------------
+# CONSUMO: C&D vs BARRAS EN PUNTA (20-nov)
+# ---------------------------------------------------------------------------
+# Cuánto consume cada obra en cortado y doblado (C&D) y cuánto en barras en punta (barra
+# recta en largo comercial). aSa lleva las barras de una obra en otra obra gemela, «X -
+# BARRAS» (job «2012005B» junto a «2012005»), así que acá se juntan las dos en una fila.
+#
+# LA CLASE LA DICE EL PRODUCTO (ver asa_sync.clase_producto), no el nombre de la obra: así
+# cuentan las barras pedidas en una obra sin gemela y el C&D que va dentro de una obra de
+# barras. El nombre sólo sirve para emparejar.
+#
+# A diferencia del resto de aSa Data, acá las obras «- BARRAS» SÍ entran: son la mitad de
+# lo que se mide. Las de prueba y las excluidas siguen fuera.
+_RE_BARRAS = re.compile(r"(?<![A-Z])BARRAS(?![A-Z])")
+_RE_SUFIJO_BARRAS = re.compile(r"\s*[-–]\s*BARRAS\s*$")
+_RE_FUERA_CONSUMO = re.compile(r"(?<![A-Z])(PRUEBA|NO USAR)(?![A-Z])")
+
+
+def _pareja_de_obras(obras: dict) -> dict:
+    """{asa_job_id: id de la obra con que se junta}. Una obra «- BARRAS» se junta con su
+    gemela: primero por el número sin la «B» final, después por el nombre sin «- BARRAS».
+    Sin gemela queda sola (cliente que sólo compra barras)."""
+    por_nombre = {}
+    for j, o in obras.items():
+        if not o["barras"]:
+            por_nombre.setdefault(o["nombre"].strip().upper(), j)
+    pareja = {}
+    for j, o in obras.items():
+        if not o["barras"]:
+            pareja[j] = j
+            continue
+        sin_b = j[:-1] if j.upper().endswith("B") else None
+        if sin_b and sin_b in obras and not obras[sin_b]["barras"]:
+            pareja[j] = sin_b
+            continue
+        base = _RE_SUFIJO_BARRAS.sub("", o["nombre"].strip().upper()).strip()
+        pareja[j] = por_nombre.get(base, j)
+    return pareja
+
+
+@router.get("/programacion/asa/consumo")
+def asa_consumo(anio: Optional[int] = None, meses: str = "", segmentos: str = "",
+                tipos: str = "", user=Depends(get_current_user)):
+    """Consumo por obra emparejada: kilos de C&D, de barras en punta y otros, con el
+    desglose por diámetro y las barras por largo comercial. Va todo en una respuesta (unas
+    cientos de obras): el clic en una obra no vuelve a pedir nada.
+
+    Período por fecha de pedido, como el resto de aSa Data. Sin los anulados. `anio=0` =
+    toda la historia cargada."""
+    _exigir_lectura(user)
+    todos = (anio is not None and int(anio) == 0)
+    anio = 0 if todos else int(anio or date.today().year)
+    lista_meses = [int(m) for m in meses.split(",") if m.strip().isdigit() and 1 <= int(m) <= 12]
+    segs, tips = _csv(segmentos), _csv(tipos)
+
+    cond, args = ["p.estado IS DISTINCT FROM %s"], [ESTADO_NUNCA]
+    if not todos:
+        cond.append("p.anio = %s")
+        args.append(anio)
+    if lista_meses:
+        cond.append("EXTRACT(MONTH FROM p.order_date)::int = ANY(%s)")
+        args.append(lista_meses)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT asa_job_id, COALESCE(nombre, ''), COALESCE(cliente, ''),
+                                  COALESCE(excluida, false)
+                             FROM asa_obras""")
+            obras = {}
+            for j, nom, cli, excl in cur.fetchall():
+                up = nom.upper()
+                if excl or _RE_FUERA_CONSUMO.search(up):
+                    continue
+                obras[j] = {"nombre": nom, "cliente": cli, "barras": bool(_RE_BARRAS.search(up))}
+            cur.execute("SELECT asa_job_id, tipo, segmento FROM asa_obra_atributos")
+            atr = {j: (t, s) for j, t, s in cur.fetchall()}
+            cur.execute(
+                """SELECT p.asa_job_id, c.diametro_mm, c.clase, c.largo_m,
+                          SUM(c.kg), SUM(c.piezas)
+                     FROM asa_consumo c
+                     JOIN asa_pedidos p ON p.control_code = c.control_code
+                    WHERE """ + " AND ".join(cond) + """
+                    GROUP BY 1, 2, 3, 4""", args)
+            filas = cur.fetchall()
+            # Qué años tienen el desglose cargado: el de un año sin cargar se ve en cero y
+            # hay que poder decir por qué.
+            cur.execute("""SELECT DISTINCT p.anio FROM asa_consumo c
+                             JOIN asa_pedidos p ON p.control_code = c.control_code
+                            WHERE p.anio IS NOT NULL ORDER BY 1""")
+            cargados = [r[0] for r in cur.fetchall()]
+            cur.execute("""SELECT MAX(fin) FROM asa_sync
+                            WHERE ok AND endpoint LIKE 'consumo/%%' AND fin IS NOT NULL""")
+            ultima = cur.fetchone()[0]
+
+    pareja = _pareja_de_obras(obras)
+    grupos = {}
+    for job, diam, clase, largo, kg, pzs in filas:
+        if job not in obras:
+            continue
+        k = pareja.get(job, job)
+        g = grupos.get(k)
+        if g is None:
+            madre = obras.get(k, obras[job])
+            t, s = atr.get(k) or atr.get(job) or (None, None)
+            g = grupos[k] = {"key": k, "nombre": _RE_SUFIJO_BARRAS.sub("", madre["nombre"].strip()).strip() or madre["nombre"],
+                             "cliente": madre["cliente"], "tipo": t, "segmento": s,
+                             "jobs": [], "cyd": 0.0, "barra": 0.0, "otro": 0.0,
+                             "barra_pzs": 0, "diam": {}, "largos": {}}
+        if job not in g["jobs"]:
+            g["jobs"].append(job)
+        kg, pzs = float(kg or 0), int(pzs or 0)
+        g[clase] += kg
+        d = g["diam"].setdefault(int(diam or 0), {"d": int(diam or 0), "cyd": 0.0, "barra": 0.0, "otro": 0.0, "pzs": 0})
+        d[clase] += kg
+        if clase == "barra":
+            g["barra_pzs"] += pzs
+            d["pzs"] += pzs
+            if largo:
+                lm = ("%g" % float(largo))
+                g["largos"][lm] = g["largos"].get(lm, 0) + pzs
+
+    def pasa(g):
+        if segs and (g["segmento"] or SIN_FILTRO) not in segs:
+            return False
+        if tips and (g["tipo"] or SIN_FILTRO) not in tips:
+            return False
+        return True
+
+    salida = []
+    for g in grupos.values():
+        if not pasa(g):
+            continue
+        g["pareada"] = len(g["jobs"]) > 1
+        g["diam"] = sorted(({**v, "cyd": round(v["cyd"]), "barra": round(v["barra"]), "otro": round(v["otro"])}
+                            for v in g["diam"].values()), key=lambda v: v["d"])
+        for c in ("cyd", "barra", "otro"):
+            g[c] = round(g[c])
+        salida.append(g)
+    salida.sort(key=lambda g: -(g["cyd"] + g["barra"] + g["otro"]))
+    return {"anio": anio, "meses": lista_meses, "obras": salida, "anios_cargados": cargados,
+            "ultima": ultima.isoformat() if ultima else None}
