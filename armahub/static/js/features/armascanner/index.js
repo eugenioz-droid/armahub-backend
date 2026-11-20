@@ -141,7 +141,7 @@
       if (p.en_edicion_por) edicion += 1;
       barras += total; aprob += ok; consultas += Number(r.consultas) || 0;
       var pct = total ? Math.round(100 * ok / total) : 0;
-      var estado = !p.en_edicion_por ? '<span class="arm-tag">Disponible</span>'
+      var estado = !p.en_edicion_por ? '<span class="arm-tag">' + (p.etapa === 'cargado' ? 'Cargado' : 'Disponible') + '</span>'
         : (p.en_edicion_por_mi ? '<span class="arm-tag arm-tag--success">En edición por ti</span>'
           : '<span class="arm-tag arm-tag--warning">En edición por ' + esc(p.en_edicion_por) + '</span>') +
           (p.en_edicion_desde ? '<div class="asc-linea">' + esc(p.en_edicion_desde) + '</div>' : '');
@@ -154,7 +154,9 @@
         (p.puede_enviar && total > 0
           ? ' <button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
         (p.puede_liberar
-          ? ' <button class="arm-button arm-button--danger" onclick="ascLiberarPlano(' + i + ')">Liberar</button>' : '');
+          ? ' <button class="arm-button arm-button--danger" onclick="ascLiberarPlano(' + i + ')">Liberar</button>' : '') +
+        (p.puede_eliminar
+          ? ' <button class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
       return '<tr>' +
         '<td>' + esc(p.obra_nombre) + '</td>' +
         '<td class="corto" title="' + esc(p.plano) + '">' + esc(p.numero || p.plano) + '</td>' +
@@ -223,6 +225,7 @@
     }).join('');
     sel.value = vistas[elegida] ? elegida : '';  // al recargar tras enviar o liberar, la obra elegida se mantiene
     pintarPlanos();
+    cargarReportes();
   }
 
   // Ver barras: ventana con la lista del plano; abre en «Con consulta» si hay alguna (se manda
@@ -307,6 +310,42 @@
       global.showToast('Plano liberado.', 'success');
       await cargarPlanos();
     }
+  };
+
+  global.ascEliminarPlano = async function (i) {
+    var p = est.planos[i];
+    if (!p) return;
+    var texto = '¿Eliminar ' + (p.numero || p.plano) + ' de ArmaHub?\n\nSe borran su registro y su copia guardada (v' +
+      p.version + ').' + (p.en_edicion_por ? ' Está en edición por ' + p.en_edicion_por + '.' : '');
+    if (!confirm(texto)) return;
+    var conBarras = p.pedido !== 'sin_enviar' && confirm('Este plano envió un pedido. ¿Eliminar también sus barras de los ' +
+      'despieces de la obra?\n\nAceptar: se eliminan. Cancelar: las barras se conservan.');
+    var data = await global.apiPost('/armascanner/planos-linea/eliminar', { obra: p.obra, plano: p.plano, con_barras: conBarras });
+    if (!data) return;
+    global.showToast('Plano eliminado' + (data.barras_eliminadas ? ' · ' + entero(data.barras_eliminadas) + ' barras' : '') + '.', 'success');
+    await cargarPlanos();
+  };
+
+  // ── Reportes (administrador): lo que el cubicador manda desde ArmaScanner con «Enviar reporte» ──
+  async function cargarReportes() {
+    var card = document.getElementById('ascReportesCard');
+    if (!card) return;
+    var data = await global.apiGet('/armascanner/reportes');
+    if (!data) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    var filas = data.reportes || [];
+    document.getElementById('ascReportes').innerHTML = filas.map(function (r) {
+      return '<tr><td>' + esc(r.el) + '</td><td>' + esc(r.usuario) + '</td><td>' + esc(r.equipo) + '</td><td>' + esc(r.version) +
+        '</td><td>' + esc(r.obra) + (r.plano ? '<div class="asc-linea">' + esc(r.plano) + '</div>' : '') + '</td><td>' +
+        esc(r.comentario) + '</td><td class="num">' + mb(r.tamano) + '</td><td>' +
+        '<button class="arm-button" onclick="ascDescargarReporte(' + r.id + ')">Descargar</button></td></tr>';
+    }).join('');
+    document.getElementById('ascReportesVacio').style.display = filas.length ? 'none' : '';
+  }
+
+  global.ascDescargarReporte = async function (id) {
+    var v = await global.apiGet('/armascanner/reportes/' + id + '/descarga');
+    if (v && v.url) window.location.href = v.url;
   };
 
   // ── Instalar ──

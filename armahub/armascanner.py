@@ -336,7 +336,8 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
             cur.execute(f"""
                 SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), COALESCE(pr.asa_job_id, ''),
                        p.plano, p.numero, p.titulo, p.revision, p.elemento, p.version, p.barras, p.aprobadas,
-                       p.kg, p.tamano, p.subido_por, p.subido_el, p.tomado_por, p.tomado_el, p.pedido_version
+                       p.kg, p.tamano, p.subido_por, p.subido_el, p.tomado_por, p.tomado_el, p.pedido_version,
+                       p.etapa
                   FROM planos_obra p
                   LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
                   {filtro}
@@ -347,6 +348,7 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
     yo = user["email"]
     return {"yo": yo, "admin": user["role"] in ("admin", "admin_calidad"), "planos": [
         {"obra": f[0], "obra_nombre": f[1], "asa": f[2], "plano": f[3], "numero": f[4] or "", "titulo": f[5] or "",
+         "etapa": f[18] or "",
          "revision": f[6] or "", "elemento": f[7] or "", "version": f[8], "barras": f[9], "aprobadas": f[10],
          "kg": round(float(f[11]), 1) if f[11] is not None else None, "tamano": f[12],
          "subido_por": nombres.get(f[13], f[13] or ""), "subido_el": _cuando(f[14]),
@@ -498,26 +500,33 @@ async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
         return str(d.get(k) or "").strip()[:largo] or None
 
     email = user["email"]
+    # etapa «cargado»: el plano del calculista recién cargado en ArmaScanner, sin trabajo; queda en
+    # ArmaHub disponible (no en edición) para que cualquiera lo vea y lo tome. [Usuario 20-nov: «el
+    # cubicador cargue TODOS los planos, para tener un registro de TODOS los antecedentes técnicos»]
+    cargado = (d.get("etapa") or "") == "cargado"
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO planos_obra (id_proyecto, plano, numero, titulo, revision, elemento, version, archivo,
                                          tamano, barras, aprobadas, kg, subido_por, subido_el, tomado_por, tomado_el,
-                                         resumen, barras_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, NOW(), %s::jsonb, %s::jsonb)
+                                         resumen, barras_json, etapa)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, NOW(), %s::jsonb, %s::jsonb, %s)
                 ON CONFLICT (id_proyecto, plano) DO UPDATE SET
                     numero = EXCLUDED.numero, titulo = EXCLUDED.titulo, revision = EXCLUDED.revision,
                     elemento = EXCLUDED.elemento, version = EXCLUDED.version, archivo = EXCLUDED.archivo,
                     tamano = EXCLUDED.tamano, barras = EXCLUDED.barras, aprobadas = EXCLUDED.aprobadas,
                     kg = EXCLUDED.kg, subido_por = EXCLUDED.subido_por, subido_el = NOW(),
-                    tomado_por = EXCLUDED.tomado_por, tomado_el = COALESCE(planos_obra.tomado_el, NOW()),
-                    resumen = EXCLUDED.resumen, barras_json = EXCLUDED.barras_json
+                    tomado_por = EXCLUDED.tomado_por,
+                    tomado_el = CASE WHEN EXCLUDED.tomado_por IS NULL THEN NULL
+                                     ELSE COALESCE(planos_obra.tomado_el, NOW()) END,
+                    resumen = EXCLUDED.resumen, barras_json = EXCLUDED.barras_json, etapa = EXCLUDED.etapa
                  WHERE planos_obra.version = %s
                    AND (planos_obra.tomado_por IS NULL OR planos_obra.tomado_por = %s)
                 RETURNING version
             """, (obra, plano, txt("numero", 40), txt("titulo", 300), txt("rev", 20), txt("elemento", 20), nueva,
-                  clave, len(contenido), resumen["barras"], resumen["aprobadas"], resumen["kg"], email, email,
-                  json.dumps(resumen), json.dumps(barras), previa, email))
+                  clave, len(contenido), resumen["barras"], resumen["aprobadas"], resumen["kg"], email,
+                  None if cargado else email, json.dumps(resumen), json.dumps(barras), "cargado" if cargado else None,
+                  previa, email))
             ok = cur.fetchone()
     if not ok:  # mientras subía, otro lo tomó o guardó otra versión
         storage.delete_file(clave)
@@ -594,7 +603,8 @@ async def enviar_pedido(datos: PlanoEnLinea, credentials: HTTPAuthorizationCrede
 # ── La pestaña Planos del portal (sesión del portal): avance, barras, liberar, enviar pedido ──
 def _fila_plano(f, nombres, yo: str, admin: bool) -> dict:
     (obra, obra_nombre, plano, numero, titulo, revision, elemento, version, tamano, subido_por, subido_el,
-     tomado_por, tomado_el, resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg) = f
+     tomado_por, tomado_el, resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg, *resto) = f
+    etapa = resto[0] if resto else None
     r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "consultas": 0,
                     "pendientes": (barras or 0) - (aprobadas or 0), "kg": float(kg or 0)}
     return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero or "", "titulo": titulo or "",
@@ -605,7 +615,8 @@ def _fila_plano(f, nombres, yo: str, admin: bool) -> dict:
             "resumen": r, "pedido": estado_pedido(version, pedido_version), "pedido_version": pedido_version,
             "pedido_el": _cuando(pedido_el), "pedido_por": nombres.get(pedido_por, pedido_por or ""),
             "puede_enviar": puede_enviar(tomado_por, subido_por, yo, admin),
-            "puede_liberar": bool(tomado_por) and (admin or tomado_por == yo), "pdf": bool(pdf)}
+            "puede_liberar": bool(tomado_por) and (admin or tomado_por == yo), "pdf": bool(pdf),
+            "etapa": etapa or "", "puede_eliminar": admin}
 
 
 @router.get("/armascanner/planos-linea")
@@ -622,7 +633,7 @@ def planos_linea(obra: str = "", user=Depends(get_current_user)):
                 SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), p.plano, p.numero, p.titulo,
                        p.revision, p.elemento, p.version, p.tamano, p.subido_por, p.subido_el, p.tomado_por,
                        p.tomado_el, p.resumen, p.pedido_version, p.pedido_el, p.pedido_por, p.pdf,
-                       p.barras, p.aprobadas, p.kg
+                       p.barras, p.aprobadas, p.kg, p.etapa
                   FROM planos_obra p
                   LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
                   {filtro}
@@ -668,6 +679,110 @@ def liberar_plano_portal(datos: PlanoEnLinea, user=Depends(get_current_user)):
         audit(user.get("email", "?"), "armascanner_soltar_plano",
               datos.plano + (f" (lo tenía {antes['tomado_por']})" if ajeno else ""), "proyecto", datos.obra)
     return {"ok": True}
+
+
+class EliminarPlano(BaseModel):
+    obra: str
+    plano: str
+    con_barras: bool = False
+
+
+@router.post("/armascanner/planos-linea/eliminar")
+def eliminar_plano_portal(datos: EliminarPlano, admin=Depends(require_admin_or_admin_calidad)):
+    """Eliminar un plano de ArmaHub (administrador): su registro y su paquete en R2; con
+    `con_barras`, también las barras que mandó a los despieces de la obra (las de sus códigos de
+    carga). [Usuario 20-nov: limpiar el sistema para partir con obras de aSa]"""
+    from . import storage
+    borradas = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            antes = _plano_en_linea(cur, datos.obra, datos.plano)
+            if not antes:
+                raise HTTPException(status_code=404, detail="Ese plano no está en ArmaHub.")
+            cur.execute("SELECT codigos FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (datos.obra, datos.plano))
+            fila = cur.fetchone()
+            codigos = fila[0] if fila and isinstance(fila[0], list) else []
+            codigos = [c for c in codigos if isinstance(c, str) and c.strip()]
+            if datos.con_barras and codigos:
+                cur.execute("""DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)
+                                AND (origen IS NULL OR origen = 'csv')""", (datos.obra, codigos))
+                borradas = cur.rowcount
+            cur.execute("DELETE FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (datos.obra, datos.plano))
+    if antes.get("archivo"):
+        try:
+            storage.delete_file(antes["archivo"])
+        except Exception:
+            pass
+    audit(admin.get("email", "?"), "armascanner_eliminar_plano",
+          f"{datos.plano} (v{antes.get('version')}" + (f", {borradas} barras" if borradas else "") + ")",
+          "proyecto", datos.obra)
+    return {"ok": True, "barras_eliminadas": borradas}
+
+
+# ── Reportes: el cubicador los manda desde ArmaScanner («Enviar reporte»): diagnóstico del equipo,
+# registro del último escaneo y bitácora del plano, en un ZIP. [Usuario 20-nov: «un sistema que le
+# permita al cubicador enviar el reporte, así puedo trabajar contigo sin enviarnos archivos»]
+REPORTE_MAX = 25 * 1024 * 1024
+
+
+@router.post("/armascanner/reportes")
+async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(...),
+                          credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    import secrets
+    import time
+    try:
+        d = json.loads(datos or "{}")
+    except ValueError:
+        d = {}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+    contenido = await archivo.read()
+    if len(contenido) > REPORTE_MAX:
+        raise HTTPException(status_code=413, detail="El reporte pesa más de 25 MB.")
+    from . import storage
+    clave = f"armascanner/reportes/{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}.zip"
+    storage.upload_file(clave, contenido, "application/zip")
+
+    def txt(k, largo):
+        return str(d.get(k) or "").strip()[:largo] or None
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo, tamano)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (user["email"], txt("equipo", 80), txt("version", 40), txt("obra", 300), txt("plano", 300),
+                         txt("comentario", 2000), clave, len(contenido)))
+            rid = cur.fetchone()[0]
+    audit(user["email"], "armascanner_reporte", f"#{rid} {txt('plano', 80) or ''} {txt('comentario', 80) or ''}".strip(),
+          "armascanner", str(rid))
+    return {"ok": True, "id": rid}
+
+
+@router.get("/armascanner/reportes")
+def reportes(admin=Depends(require_admin_or_admin_calidad)):
+    """Los reportes recibidos, el más nuevo primero (administrador)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, email, equipo, version, obra, plano, comentario, tamano, creado_el
+                             FROM armascanner_reportes ORDER BY id DESC LIMIT 300""")
+            filas = cur.fetchall()
+            nombres = _nombres(cur, [f[1] for f in filas])
+    return {"reportes": [{"id": f[0], "usuario": nombres.get(f[1], f[1] or ""), "equipo": f[2] or "", "version": f[3] or "",
+                          "obra": f[4] or "", "plano": f[5] or "", "comentario": f[6] or "", "tamano": f[7] or 0,
+                          "el": _cuando(f[8])} for f in filas]}
+
+
+@router.get("/armascanner/reportes/{rid}/descarga")
+def descargar_reporte(rid: int, admin=Depends(require_admin_or_admin_calidad)):
+    from . import storage
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT archivo FROM armascanner_reportes WHERE id = %s", (rid,))
+            fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Reporte no encontrado.")
+    return {"url": storage.generate_presigned_url(fila[0], expires=DESCARGA_SEGUNDOS)}
 
 
 @router.post("/armascanner/planos-linea/pedido")
