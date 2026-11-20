@@ -112,10 +112,10 @@
     var tt = total(T);
 
     $('consKpis').innerHTML =
-      kpi(t1(tt) + ' t', 'Consumo') +
-      kpi(t1(T.cyd) + ' t', 'C&D', pct(T.cyd, tt) + ' %') +
-      kpi(t1(T.barra) + ' t', 'Barras en punta', pct(T.barra, tt) + ' %') +
-      kpi(n0(T.pzs), 'Barras (unidades)');
+      kpi(t1(tt) + ' t', 'consumo') +
+      kpi(t1(T.cyd) + ' t', 'C&D · ' + pct(T.cyd, tt) + ' %') +
+      kpi(t1(T.barra) + ' t', 'barras en punta · ' + pct(T.barra, tt) + ' %') +
+      kpi(n0(T.pzs), 'barras en punta (unidades)');
 
     $('consN').innerHTML = '· ' + lista.length + ' obra(s)';
     var max = lista.reduce(function (a, o) { return Math.max(a, total(o)); }, 0) || 1;
@@ -142,9 +142,9 @@
     pintarDetalle(SEL ? lista.filter(function (o) { return o.key === SEL; }) : lista);
   }
 
-  function kpi(valor, etiqueta, extra) {
-    return '<div class="menskpi"><span>' + esc(etiqueta) + '</span><b>' + valor + '</b>' +
-           (extra ? '<span>' + esc(extra) + ' del consumo</span>' : '') + '</div>';
+  // La misma tarjeta del «Resumen mensual»: cifra arriba, etiqueta abajo.
+  function kpi(valor, etiqueta) {
+    return '<div class="menskpi"><b>' + esc(valor) + '</b><span>' + esc(etiqueta) + '</span></div>';
   }
 
   // LOS DIÁMETROS de lo elegido: una obra, o todo lo filtrado. Barras apiladas por clase,
