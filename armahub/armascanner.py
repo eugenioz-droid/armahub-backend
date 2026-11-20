@@ -692,6 +692,21 @@ def eliminar_plano_portal(datos: EliminarPlano, admin=Depends(require_admin_or_a
     """Eliminar un plano de ArmaHub (administrador): su registro y su paquete en R2; con
     `con_barras`, también las barras que mandó a los despieces de la obra (las de sus códigos de
     carga). [Usuario 20-nov: limpiar el sistema para partir con obras de aSa]"""
+    return _eliminar_plano(admin.get("email", "?"), datos)
+
+
+@router.post("/armascanner/planos/eliminar")
+def eliminar_plano_ficha(datos: EliminarPlano, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Lo mismo, con la ficha de ArmaScanner de un administrador (desde su equipo)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+    if not _es_admin(user):
+        raise HTTPException(status_code=403, detail="Eliminar un plano es de administrador.")
+    return _eliminar_plano(user["email"], datos)
+
+
+def _eliminar_plano(email: str, datos: "EliminarPlano") -> dict:
     from . import storage
     borradas = 0
     with get_conn() as conn:
@@ -713,7 +728,7 @@ def eliminar_plano_portal(datos: EliminarPlano, admin=Depends(require_admin_or_a
             storage.delete_file(antes["archivo"])
         except Exception:
             pass
-    audit(admin.get("email", "?"), "armascanner_eliminar_plano",
+    audit(email, "armascanner_eliminar_plano",
           f"{datos.plano} (v{antes.get('version')}" + (f", {borradas} barras" if borradas else "") + ")",
           "proyecto", datos.obra)
     return {"ok": True, "barras_eliminadas": borradas}
