@@ -337,7 +337,7 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
                 SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), COALESCE(pr.asa_job_id, ''),
                        p.plano, p.numero, p.titulo, p.revision, p.elemento, p.version, p.barras, p.aprobadas,
                        p.kg, p.tamano, p.subido_por, p.subido_el, p.tomado_por, p.tomado_el, p.pedido_version,
-                       p.etapa
+                       p.etapa, p.relacion, p.relacion_de
                   FROM planos_obra p
                   LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
                   {filtro}
@@ -345,15 +345,24 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
             """, params)
             filas = cur.fetchall()
             nombres = _nombres(cur, [f[13] for f in filas] + [f[15] for f in filas])
+            # la obra pedida existe: un plano que ArmaScanner tenía en línea y ya no está en la lista
+            # fue eliminado en ArmaHub (sin obra confirmada, ArmaScanner no saca conclusiones)
+            obra_id = None
+            if obra.strip():
+                cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s OR asa_job_id = %s LIMIT 1",
+                            (obra.strip(), obra.strip()))
+                fila = cur.fetchone()
+                obra_id = fila[0] if fila else None
     yo = user["email"]
-    return {"yo": yo, "admin": user["role"] in ("admin", "admin_calidad"), "planos": [
+    return {"yo": yo, "admin": user["role"] in ("admin", "admin_calidad"), "obra_id": obra_id, "planos": [
         {"obra": f[0], "obra_nombre": f[1], "asa": f[2], "plano": f[3], "numero": f[4] or "", "titulo": f[5] or "",
          "etapa": f[18] or "",
          "revision": f[6] or "", "elemento": f[7] or "", "version": f[8], "barras": f[9], "aprobadas": f[10],
          "kg": round(float(f[11]), 1) if f[11] is not None else None, "tamano": f[12],
          "subido_por": nombres.get(f[13], f[13] or ""), "subido_el": _cuando(f[14]),
          "tomado_por": nombres.get(f[15], f[15]) if f[15] else "", "tomado_el": _cuando(f[16]),
-         "tomado_por_mi": f[15] == yo, "pedido": estado_pedido(f[8], f[17])} for f in filas]}
+         "tomado_por_mi": f[15] == yo, "pedido": estado_pedido(f[8], f[17]),
+         "relacion": f[19] or "", "relacion_de": f[20] or ""} for f in filas]}
 
 
 class PlanoEnLinea(BaseModel):
@@ -499,6 +508,8 @@ async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
     def txt(k, largo):
         return str(d.get(k) or "").strip()[:largo] or None
 
+    relacion = txt("relacion", 20) if txt("relacion", 20) in ("reemplaza", "complementa") else None
+
     email = user["email"]
     # etapa «cargado»: el plano del calculista recién cargado en ArmaScanner, sin trabajo; queda en
     # ArmaHub disponible (no en edición) para que cualquiera lo vea y lo tome. [Usuario 20-nov: «el
@@ -509,8 +520,9 @@ async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
             cur.execute("""
                 INSERT INTO planos_obra (id_proyecto, plano, numero, titulo, revision, elemento, version, archivo,
                                          tamano, barras, aprobadas, kg, subido_por, subido_el, tomado_por, tomado_el,
-                                         resumen, barras_json, etapa)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, NOW(), %s::jsonb, %s::jsonb, %s)
+                                         resumen, barras_json, etapa, relacion, relacion_de)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, NOW(), %s::jsonb, %s::jsonb, %s,
+                        %s, %s)
                 ON CONFLICT (id_proyecto, plano) DO UPDATE SET
                     numero = EXCLUDED.numero, titulo = EXCLUDED.titulo, revision = EXCLUDED.revision,
                     elemento = EXCLUDED.elemento, version = EXCLUDED.version, archivo = EXCLUDED.archivo,
@@ -519,14 +531,16 @@ async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
                     tomado_por = EXCLUDED.tomado_por,
                     tomado_el = CASE WHEN EXCLUDED.tomado_por IS NULL THEN NULL
                                      ELSE COALESCE(planos_obra.tomado_el, NOW()) END,
-                    resumen = EXCLUDED.resumen, barras_json = EXCLUDED.barras_json, etapa = EXCLUDED.etapa
+                    resumen = EXCLUDED.resumen, barras_json = EXCLUDED.barras_json, etapa = EXCLUDED.etapa,
+                    relacion = COALESCE(EXCLUDED.relacion, planos_obra.relacion),
+                    relacion_de = COALESCE(EXCLUDED.relacion_de, planos_obra.relacion_de)
                  WHERE planos_obra.version = %s
                    AND (planos_obra.tomado_por IS NULL OR planos_obra.tomado_por = %s)
                 RETURNING version
             """, (obra, plano, txt("numero", 40), txt("titulo", 300), txt("rev", 20), txt("elemento", 20), nueva,
                   clave, len(contenido), resumen["barras"], resumen["aprobadas"], resumen["kg"], email,
                   None if cargado else email, json.dumps(resumen), json.dumps(barras), "cargado" if cargado else None,
-                  previa, email))
+                  relacion, txt("relacion_de", 300) if relacion else None, previa, email))
             ok = cur.fetchone()
     if not ok:  # mientras subía, otro lo tomó o guardó otra versión
         storage.delete_file(clave)
@@ -604,7 +618,7 @@ async def enviar_pedido(datos: PlanoEnLinea, credentials: HTTPAuthorizationCrede
 def _fila_plano(f, nombres, yo: str, admin: bool) -> dict:
     (obra, obra_nombre, plano, numero, titulo, revision, elemento, version, tamano, subido_por, subido_el,
      tomado_por, tomado_el, resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg, *resto) = f
-    etapa = resto[0] if resto else None
+    etapa, relacion, relacion_de = (list(resto) + [None, None, None])[:3]
     r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "consultas": 0,
                     "pendientes": (barras or 0) - (aprobadas or 0), "kg": float(kg or 0)}
     return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero or "", "titulo": titulo or "",
@@ -616,7 +630,7 @@ def _fila_plano(f, nombres, yo: str, admin: bool) -> dict:
             "pedido_el": _cuando(pedido_el), "pedido_por": nombres.get(pedido_por, pedido_por or ""),
             "puede_enviar": puede_enviar(tomado_por, subido_por, yo, admin),
             "puede_liberar": bool(tomado_por) and (admin or tomado_por == yo), "pdf": bool(pdf),
-            "etapa": etapa or "", "puede_eliminar": admin}
+            "etapa": etapa or "", "puede_eliminar": admin, "relacion": relacion or "", "relacion_de": relacion_de or ""}
 
 
 @router.get("/armascanner/planos-linea")
@@ -633,7 +647,7 @@ def planos_linea(obra: str = "", user=Depends(get_current_user)):
                 SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), p.plano, p.numero, p.titulo,
                        p.revision, p.elemento, p.version, p.tamano, p.subido_por, p.subido_el, p.tomado_por,
                        p.tomado_el, p.resumen, p.pedido_version, p.pedido_el, p.pedido_por, p.pdf,
-                       p.barras, p.aprobadas, p.kg, p.etapa
+                       p.barras, p.aprobadas, p.kg, p.etapa, p.relacion, p.relacion_de
                   FROM planos_obra p
                   LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
                   {filtro}

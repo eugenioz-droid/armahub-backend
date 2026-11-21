@@ -161,6 +161,16 @@
       '</button>';
   }
 
+  // Revisiones (programa 4.12): el cubicador indica al cargar si la nueva reemplaza a la anterior o la
+  // complementa; la reemplazada queda aparte, como antecedente.
+  function planoDe(obra, plano) {
+    return est.planos.filter(function (q) { return q.obra === obra && q.plano === plano; })[0];
+  }
+  function reemplazoDe(p) {
+    return est.planos.filter(function (q) { return q.obra === p.obra && q.relacion === 'reemplaza' && q.relacion_de === p.plano; })[0];
+  }
+  function revDeTexto(q, plano) { return q ? (q.numero || q.plano) + (q.revision ? ' rev. ' + q.revision : '') : plano; }
+
   function tejaPlano(p) {
     var i = est.planos.indexOf(p), r = p.resumen || {};
     var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0, cons = Number(r.consultas) || 0;
@@ -170,7 +180,10 @@
           : '<span class="arm-tag arm-tag--warning">En edición por ' + esc(p.en_edicion_por) + '</span>') : '') +
       (p.pedido === 'enviado' ? '<span class="arm-tag arm-tag--success">Pedido enviado</span>'
         : p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>' : '') +
-      (cons ? '<span class="arm-tag arm-tag--warning">' + entero(cons) + ' con consulta</span>' : '');
+      (cons ? '<span class="arm-tag arm-tag--warning">' + entero(cons) + ' con consulta</span>' : '') +
+      (p.relacion ? '<span class="arm-tag arm-tag--info">' + (p.relacion === 'reemplaza' ? 'Reemplaza a ' : 'Complementa a ') +
+        esc(revDeTexto(planoDe(p.obra, p.relacion_de), p.relacion_de)) + '</span>' : '') +
+      (reemplazoDe(p) ? '<span class="arm-tag">Reemplazado por ' + esc(revDeTexto(reemplazoDe(p))) + '</span>' : '');
     var acciones = (total > 0 ? '<button class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' : '') +
       (p.puede_enviar && total > 0
         ? '<button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
@@ -236,10 +249,12 @@
       n = obras.length;
       html = n ? '<div class="asc-tejas">' + obras.map(tejaObra).join('') + '</div>' : '';
     } else {
-      var trabajo = filas.filter(function (p) { return p.etapa !== 'cargado'; }).sort(porNumero);
-      var cargados = filas.filter(function (p) { return p.etapa === 'cargado'; }).sort(porNumero);
+      var vigentes = filas.filter(function (p) { return !reemplazoDe(p); });
+      var trabajo = vigentes.filter(function (p) { return p.etapa !== 'cargado'; }).sort(porNumero);
+      var cargados = vigentes.filter(function (p) { return p.etapa === 'cargado'; }).sort(porNumero);
+      var reemplazados = filas.filter(function (p) { return reemplazoDe(p); }).sort(porNumero);
       n = filas.length;
-      [['En trabajo', trabajo], ['Cargados', cargados]].forEach(function (s) {
+      [['En trabajo', trabajo], ['Cargados', cargados], ['Reemplazados', reemplazados]].forEach(function (s) {
         if (s[1].length) html += '<div class="asc-seccion">' + s[0] + ' · ' + entero(s[1].length) + '</div>' +
           '<div class="asc-tejas">' + s[1].map(tejaPlano).join('') + '</div>';
       });
