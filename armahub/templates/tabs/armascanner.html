@@ -2,8 +2,8 @@
      Primera pantalla con el Sistema de Diseño Armacero (.arm-ds, armacero-theme.css).
      La ve quien tiene licencia (registry.js, `licencia`) y el administrador; «Licencias», «Uso» y
      «Versiones», sólo el administrador (shell.js). Lógica: features/armascanner/index.js.
-     Mis obras (22-nov): las obras con sus KPIs; cada obra abre su ventana con Planos, aSa, Protocolo y
-     Terreno (los planos van dentro de la obra: ya no hay pestaña Planos). -->
+     Mis obras (22-nov): las obras con sus KPIs; cada obra abre su ventana con Planos, Por piso, aSa,
+     Protocolo y Terreno (los planos van dentro de la obra: ya no hay pestaña Planos). -->
 <style>
   .asc { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .asc .asc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -56,7 +56,11 @@
   .asc .asc-reserva { border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md); padding: 16px; }
   .asc .asc-reserva__cabeza { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-weight: 600; }
   .asc .asc-teja--inactiva { background: var(--arm-background); color: var(--arm-text-muted); font-weight: 600; }
-  @media (max-width: 900px) { .asc .asc-obra .asc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .asc .asc-obra .asc-kpis.con-fund { grid-template-columns: repeat(6, minmax(0, 1fr)); }  /* + Fundaciones */
+  /* Por piso: tabla angosta; la fila de fundaciones, separada de los pisos */
+  .asc .asc-pisos { max-width: 760px; }
+  .asc .asc-pisos tr.asc-pisos__fund td { border-top: 2px solid var(--arm-border); }
+  @media (max-width: 900px) { .asc .asc-obra .asc-kpis, .asc .asc-obra .asc-kpis.con-fund { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
 
 <div id="tab-asc_obras" class="tab-content">
@@ -92,15 +96,17 @@
           </div>
           <button type="button" class="arm-button" id="ascObraCerrar">Cerrar</button>
         </div>
-        <div class="asc-kpis">
+        <div class="asc-kpis" id="ascObKpis">
           <div class="arm-kpi"><div class="arm-kpi__label">Kilos</div><div class="arm-kpi__value" id="ascObKg">—</div></div>
           <div class="arm-kpi"><div class="arm-kpi__label">m² de losa</div><div class="arm-kpi__value" id="ascObM2">—</div></div>
           <div class="arm-kpi"><div class="arm-kpi__label">kg/m²</div><div class="arm-kpi__value" id="ascObKgM2">—</div></div>
           <div class="arm-kpi"><div class="arm-kpi__label">PPI</div><div class="arm-kpi__value" id="ascObPpi">—</div></div>
           <div class="arm-kpi"><div class="arm-kpi__label">Ø prom</div><div class="arm-kpi__value" id="ascObDiam">—</div></div>
+          <div class="arm-kpi" id="ascObFundKpi" style="display:none;"><div class="arm-kpi__label">Fundaciones</div><div class="arm-kpi__value" id="ascObFund">—</div></div>
         </div>
         <div class="arm-tabs" role="tablist" id="ascObraTabs">
           <button type="button" class="arm-tab is-active" role="tab" data-sec="planos">Planos</button>
+          <button type="button" class="arm-tab" role="tab" data-sec="pisos">Por piso</button>
           <button type="button" class="arm-tab" role="tab" data-sec="asa">aSa</button>
           <button type="button" class="arm-tab" role="tab" data-sec="protocolo">Protocolo</button>
           <button type="button" class="arm-tab" role="tab" data-sec="terreno">Terreno</button>
@@ -126,6 +132,17 @@
             <tbody id="ascPlanos"></tbody>
           </table>
           <div id="ascPlanosVacio" class="asc-vacio" style="display:none;"></div>
+        </div>
+
+        <div class="asc-sec" data-sec="pisos" style="display:none;">
+          <table class="arm-table asc-pisos" id="ascPisosTabla">
+            <thead><tr>
+              <th>Piso</th><th class="num">Kg losa</th><th class="num">Kg elevación</th><th class="num">Kg total</th>
+              <th class="num">m²</th><th class="num">kg/m²</th>
+            </tr></thead>
+            <tbody id="ascPisos"></tbody>
+          </table>
+          <div id="ascPisosVacio" class="asc-vacio" style="display:none;"></div>
         </div>
 
         <div class="asc-sec" data-sec="asa" style="display:none;">

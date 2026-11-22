@@ -25,7 +25,8 @@ Y lo que muestra la caluga ArmaScanner del portal (sesión del portal; SPECS §1
 constructivo… Con su cantidad de Items, kilos y lo típico que usamos. La licencia capaz la
 dejamos acá, aquí buscamos un usuario existente y lo agregamos»]:
 
-    GET  /armascanner/obras-linea      Mis obras: las obras con planos, con sus KPIs (kg, m², kg/m², PPI, Ø)
+    GET  /armascanner/obras-linea      Mis obras: las obras con planos, con sus KPIs (kg, m², kg/m², PPI, Ø,
+                                       fundaciones) y su tabla por piso
     GET  /armascanner/obras-linea/asa  la ventana de la obra, sección aSa: qué parte de cada plano está en aSa
                                        y con qué códigos (CC)
     GET  /armascanner/planos-linea/dwg el DWG del plano (la copia de trabajo o el del calculista)
@@ -477,7 +478,8 @@ def soltar_plano(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
 # barras en los despieces: eso es «Enviar pedido», que pasa las barras de la entrega a la obra, con su
 # procedencia (ArmaScanner). Lo envía quien terminó el plano o un administrador.
 # [Usuario 20-nov: «al enviar el pedido lo estamos pasando a los despieces asociados a la obra»]
-CAMPOS_BARRA = ("id", "marca", "figura", "diam", "cant", "largo", "kg", "ciclo", "eje", "rev", "motivo")
+# (piso y sector, los de la etiqueta de cada barra, desde el 22-nov: el kg por piso de Mis obras)
+CAMPOS_BARRA = ("id", "marca", "figura", "diam", "cant", "largo", "kg", "ciclo", "eje", "rev", "motivo", "piso", "sector")
 
 
 def barras_a_la_vista(lista) -> list:
@@ -495,8 +497,8 @@ def barras_a_la_vista(lista) -> list:
 def resumen_de(barras, extra=None) -> dict:
     """{barras, aprobadas, consultas, pendientes, kg} de las barras a la vista (+ ciclos, etapa, la
     versión de ArmaScanner que lo manda: `version_app`, que el pedido deja registrada; el Ø promedio
-    `diam_prom`, y los m² de losa `m2` y `m2_ciclos` si ArmaScanner los manda). «consultas» = con
-    duda. Función pura."""
+    `diam_prom`; los m² de losa `m2` y `m2_ciclos` si ArmaScanner los manda, y los kg por piso y
+    sector `por_piso` si las barras traen su piso). «consultas» = con duda. Función pura."""
     r = {"barras": len(barras), "aprobadas": sum(1 for b in barras if b.get("rev") == "aprobada"),
          "consultas": sum(1 for b in barras if b.get("rev") == "duda"),
          "kg": round(sum(float(b.get("kg") or 0) for b in barras), 1)}
@@ -513,6 +515,8 @@ def resumen_de(barras, extra=None) -> dict:
     losa = m2_enviados(extra)
     if losa:
         r["m2"], r["m2_ciclos"] = losa
+    if any("piso" in b for b in barras):  # un ArmaScanner anterior al 22-nov no los manda
+        r["por_piso"] = kg_por_piso(barras, elemento=extra.get("elemento"))
     return r
 
 
@@ -521,7 +525,7 @@ def resumen_de(barras, extra=None) -> dict:
 #   PPI = Peso Promedio por Ítem = kg / ítems (entradas de la lista, no barras físicas)
 #   Ø prom = ponderado por peso, Σ(φ·kg) / Σkg
 # y los de la losa: m² = el área de losa que lee ArmaScanner en los planos de losa (LCIELO; las
-# elevaciones no traen contornos de losa) y kg/m² = kg / m².
+# elevaciones no traen contornos de losa) y kg/m² = kg sin fundaciones / m² (el kg por piso, abajo).
 def _numero(v):
     """El número de `v` si es uno finito (no un booleano), o None."""
     import math
@@ -567,27 +571,143 @@ def es_losa(elemento) -> bool:
     return "LCIELO" in [t.strip().upper() for t in str(elemento or "").split(",")]
 
 
-def plano_para_kpis(resumen, elemento, diam=None) -> dict:
-    """Lo que un plano aporta a los KPIs: {items, kg, diam_prom, m2}. Los m² sólo si es de losa.
-    `diam`: el Ø promedio calculado aparte (resumen anterior al 22-nov, que no lo trae)."""
+# ── El kg por piso (Mis obras, 22-nov) ──
+# [Usuario 22-nov: «Se debe sumar todo lo de un piso. Las fundaciones las separamos eso sí… se considera
+# desde donde nace ese fierro, así que es básicamente todo lo de la etiqueta… toca respetar el piso que
+# se señala en cada barra para tener el peso total por piso»]
+#   kg del piso  = Σ kg de las barras con ese piso en su etiqueta, de todos los planos (losa, elevación,
+#                  vigas), salvo las de fundación (sector FUND), que van aparte
+#   m² del piso  = los m² de losa de los planos de losa de ese piso (el piso del plano: el de más kg
+#                  entre sus barras)
+#   kg/m²        = kg del piso / m² del piso; el de la obra, Σ kg sin fundaciones / Σ m² de losa
+# Por piso, además, los kg de losa (losas y vigas de cielo) y los de elevación, por el sector de cada barra.
+def piso_normal(piso) -> str:
+    """El piso como se agrupa: «P5», «S1», «FUND». ArmaScanner lo anota «P5» y, si no lo leyó, «P»;
+    «5» → «P5», «P05» → «P5». "" si no se sabe. Función pura."""
+    import re
+    p = re.sub(r"\s+", "", str(piso or "")).upper().replace("?", "")
+    if p.isdigit():
+        p = "P" + p
+    p = re.sub(r"^([A-Z]+)0+(\d)", r"\1\2", p)
+    return "" if p in ("P", "S") else p[:20]
+
+
+def clase_de(sector, piso="") -> str:
+    """'fund' (fundación: sector o piso FUND), 'elev' (sector ELEV) o 'losa' (el resto: losas y vigas
+    de cielo). Función pura."""
+    s = str(sector or "").strip().upper()
+    if s.startswith("FUND") or piso_normal(piso).startswith("FUND"):
+        return "fund"
+    return "elev" if s.startswith("ELEV") else "losa"
+
+
+def pedido_por_barra(filas) -> dict:
+    """{id de barra: (piso, sector)} de las barras de un plano en los despieces (su pedido enviado), y
+    en la clave None el (piso, sector) con más kg. `filas`: [(plano_code, id_unico, piso, sector, kg)];
+    el id de la barra va al final de su id_unico («PROY-PC1-B-0001» → «B-0001»). Función pura."""
+    out, kg = {}, {}
+    for code, unico, piso, sector, k in filas:
+        par, code, unico = (piso or "", sector or ""), str(code or ""), str(unico or "")
+        if code and code + "-" in unico:
+            out[unico.split(code + "-", 1)[1]] = par
+        kg[par] = kg.get(par, 0.0) + (_numero(k) or 0.0)
+    if kg:
+        out[None] = max(sorted(kg), key=lambda x: kg[x])
+    return out
+
+
+def kg_por_piso(barras, pedido=None, elemento="") -> list:
+    """[{piso, sector, kg}] de las barras a la vista de un plano, sumadas por su piso y su sector (los
+    de su etiqueta). La barra que no los trae (plano terminado antes del 22-nov) toma los suyos del
+    pedido enviado (`pedido`: pedido_por_barra) o, si no está en él, los que más pesan en el pedido;
+    sin pedido, va sin piso ("") y con el sector del plano (`elemento`, el primero). Función pura."""
+    pedido = pedido or {}
+    propio = str(elemento or "").split(",")[0].strip().upper()
+    suma = {}
+    for b in barras or []:
+        if "piso" in b:
+            piso, sector = b.get("piso"), b.get("sector") or propio
+        else:
+            piso, sector = pedido.get(str(b.get("id") or "")) or pedido.get(None) or ("", propio)
+        k = (piso_normal(piso), str(sector or "").strip().upper()[:20])
+        suma[k] = suma.get(k, 0.0) + (_numero(b.get("kg")) or 0.0)
+    return [{"piso": p, "sector": s, "kg": round(kg, 1)} for (p, s), kg in sorted(suma.items())]
+
+
+def piso_del_plano(por_piso) -> str:
+    """El piso de un plano (el de sus m² de losa): el de más kg entre sus barras que no son de
+    fundación, prefiriendo uno conocido; "" si no hay. Función pura."""
+    kg = {}
+    for f in por_piso or []:
+        if clase_de(f.get("sector"), f.get("piso")) != "fund":
+            p = piso_normal(f.get("piso"))
+            kg[p] = kg.get(p, 0.0) + float(f.get("kg") or 0)
+    conocidos = sorted(p for p in kg if p) or sorted(kg)
+    return max(conocidos, key=lambda p: kg[p]) if conocidos else ""
+
+
+def tabla_por_piso(planos) -> dict:
+    """La tabla «Por piso» de una obra: {"pisos": [{piso, kg_losa, kg_elev, kg, m2, kg_m2}], "fund": kg
+    de fundaciones}. `planos`: los de plano_para_kpis (su `por_piso` y sus m² de losa). Los pisos en
+    orden constructivo (orden.piso_order: S3, S2, S1, P1…) y el sin piso ("") al final. Sin dato va
+    None (la pantalla muestra «—»). Función pura."""
+    from .orden import piso_order
+    pisos, fund = {}, 0.0
+
+    def fila(p):
+        return pisos.setdefault(p, {"kg_losa": 0.0, "kg_elev": 0.0, "m2": 0.0})
+
+    for pl in planos:
+        for f in pl.get("por_piso") or []:
+            kg, clase = float(f.get("kg") or 0), clase_de(f.get("sector"), f.get("piso"))
+            if clase == "fund":
+                fund += kg
+            else:
+                fila(piso_normal(f.get("piso")))["kg_" + clase] += kg
+        m2 = _numero(pl.get("m2"))
+        if m2 and m2 > 0:
+            fila(piso_del_plano(pl.get("por_piso")))["m2"] += m2
+    out = []
+    for p in sorted(pisos, key=lambda p: (p == "", piso_order(p), p)):
+        x = pisos[p]
+        kg, m2 = round(x["kg_losa"] + x["kg_elev"], 1), round(x["m2"], 1) or None
+        out.append({"piso": p, "kg_losa": round(x["kg_losa"], 1) or None, "kg_elev": round(x["kg_elev"], 1) or None,
+                    "kg": kg or None, "m2": m2, "kg_m2": round(kg / m2, 1) if m2 and kg else None})
+    return {"pisos": out, "fund": round(fund, 1) or None}
+
+
+def plano_para_kpis(resumen, elemento, diam=None, por_piso=None) -> dict:
+    """Lo que un plano aporta a los KPIs: {items, kg, diam_prom, m2, por_piso, kg_fund}. Los m² sólo
+    si es de losa. `diam` y `por_piso`: el Ø promedio y los kg por piso calculados aparte (resumen
+    anterior al 22-nov, que no los trae: _diam_faltante, _por_piso_faltante). Sin kg por piso, todo el
+    plano va sin piso y con su sector."""
     r = resumen or {}
-    return {"items": int(r.get("barras") or 0), "kg": float(r.get("kg") or 0),
+    kg = float(r.get("kg") or 0)
+    if por_piso is None:
+        por_piso = r["por_piso"] if isinstance(r.get("por_piso"), list) else \
+            kg_por_piso([{"kg": kg}] if kg else [], elemento=elemento)
+    return {"items": int(r.get("barras") or 0), "kg": kg,
             "diam_prom": r.get("diam_prom") if r.get("diam_prom") is not None else diam,
-            "m2": r.get("m2") if es_losa(elemento) else None}
+            "m2": r.get("m2") if es_losa(elemento) else None, "por_piso": por_piso,
+            "kg_fund": round(sum(float(f.get("kg") or 0) for f in por_piso
+                                 if clase_de(f.get("sector"), f.get("piso")) == "fund"), 1)}
 
 
 def kpis_de(planos) -> dict:
-    """{items, kg, ppi, diam_prom, m2, kg_m2} de uno o varios planos (plano_para_kpis). Sin dato va
-    None (la pantalla muestra «—», nunca 0). Función pura."""
+    """{items, kg, ppi, diam_prom, m2, kg_m2, kg_fund} de uno o varios planos (plano_para_kpis). `kg`
+    es todo; `kg_fund`, lo de fundaciones, que no entra al kg/m² (Σ kg sin fundaciones / Σ m² de
+    losa). Sin dato va None (la pantalla muestra «—», nunca 0). Función pura."""
     items = sum(int(p.get("items") or 0) for p in planos)
     kg = round(sum(float(p.get("kg") or 0) for p in planos), 1)
+    fund = round(sum(float(p.get("kg_fund") or 0) for p in planos), 1)
     con_d = [(float(p["diam_prom"]), float(p.get("kg") or 0)) for p in planos if _numero(p.get("diam_prom"))]
     peso_d = sum(k for _, k in con_d)
     m2s = [float(p["m2"]) for p in planos if _numero(p.get("m2"))]
     m2 = round(sum(m2s), 1) if m2s else None
     return {"items": items, "kg": kg, "ppi": round(kg / items, 2) if items else None,
             "diam_prom": round(sum(d * k for d, k in con_d) / peso_d, 1) if peso_d else None,
-            "m2": m2, "kg_m2": round(kg / m2, 1) if m2 and kg else None}
+            "m2": m2, "kg_m2": round((kg - fund) / m2, 1) if m2 and kg - fund > 0 else None,
+            "kg_fund": fund or None}
 
 
 def reemplazados(filas) -> set:
@@ -606,6 +726,33 @@ def _diam_faltante(cur, claves) -> dict:
     cur.execute("SELECT id_proyecto, plano, barras_json FROM planos_obra WHERE id_proyecto = ANY(%s) AND plano = ANY(%s)",
                 (sorted({c[0] for c in claves}), sorted({c[1] for c in claves})))
     return {(o, p): diam_prom(b if isinstance(b, list) else []) for o, p, b in cur.fetchall() if (o, p) in claves}
+
+
+def _por_piso_faltante(cur, claves) -> dict:
+    """{(obra, plano): kg por piso} de los planos cuyo resumen no lo trae (terminados antes del 22-nov
+    o con un ArmaScanner anterior): de sus barras a la vista, con el piso y el sector que cada una
+    tiene en su pedido enviado (los despieces: tabla barras, por los códigos del plano, como la
+    sección aSa) y, sin pedido, sin piso (kg_por_piso)."""
+    claves = set(claves)
+    if not claves:
+        return {}
+    cur.execute("""SELECT id_proyecto, plano, barras_json, codigos, elemento FROM planos_obra
+                    WHERE id_proyecto = ANY(%s) AND plano = ANY(%s)""",
+                (sorted({c[0] for c in claves}), sorted({c[1] for c in claves})))
+    filas = [f for f in cur.fetchall() if (f[0], f[1]) in claves]
+    de_codigo = {(o, c): (o, p) for o, p, _b, codigos, _e in filas
+                 for c in (codigos if isinstance(codigos, list) else []) if isinstance(c, str) and c.strip()}
+    del_pedido = {}
+    if de_codigo:
+        cur.execute("""SELECT id_proyecto, plano_code, id_unico, COALESCE(piso, ''), COALESCE(sector, ''),
+                              COALESCE(peso_total, 0)
+                         FROM barras WHERE id_proyecto = ANY(%s) AND plano_code = ANY(%s)""",
+                    (sorted({k[0] for k in de_codigo}), sorted({k[1] for k in de_codigo})))
+        for o, code, unico, piso, sector, kg in cur.fetchall():
+            if (o, code) in de_codigo:
+                del_pedido.setdefault(de_codigo[(o, code)], []).append((code, unico, piso, sector, kg))
+    return {(o, p): kg_por_piso(b if isinstance(b, list) else [], pedido_por_barra(del_pedido.get((o, p), [])), e)
+            for o, p, b, _c, e in filas}
 
 
 def puede_enviar(autor, email: str, admin: bool) -> bool:
@@ -750,7 +897,7 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
     """El plano terminado (todas sus barras revisadas): queda como la entrega del plano, con sus barras
     a la vista y su PDF. `datos` (JSON): obra | asa, plano, numero, titulo, rev, elemento, ciclos,
     relacion, relacion_de, barras [{id, marca, figura, diam, cant, largo, kg, ciclo, eje, rev,
-    motivo}], version_app.
+    motivo, piso, sector}], version_app, m2, m2_ciclos.
     Una entrega por plano. Sin entrega, o si es la mía, entra (la mía pasa a la versión siguiente). Si
     es de otro, entra sólo si su autor aceptó mi pedido de reemplazo: reemplaza la suya, el pedido queda
     cumplido y a él se le avisa. Si no lo aceptó, 409 «ocupado» y no se guarda nada. Cada subida va a
@@ -1440,9 +1587,9 @@ def obras_linea(user=Depends(get_current_user)):
     """Mis obras: las obras con planos de ArmaScanner, de todas las obras (el trabajo es colaborativo:
     todos los usuarios con licencia ven todo [Usuario 20-nov]), con sus datos (cliente, constructora,
     código de aSa), cuántos planos tiene en cada etapa, lo que espera a alguien (reemplazos pedidos,
-    barras con consulta, pedidos sin enviar) y sus KPIs (kpis_de). Suman los planos con barras que no
-    están reemplazados por otro; los m², sólo los de losa. La de actividad más reciente, primero.
-    [Usuario 22-nov: «un listado de obras con datos mínimos y KPIs»]"""
+    barras con consulta, pedidos sin enviar), sus KPIs (kpis_de) y su tabla por piso (tabla_por_piso).
+    Suman los planos con barras que no están reemplazados por otro; los m², sólo los de losa. La de
+    actividad más reciente, primero. [Usuario 22-nov: «un listado de obras con datos mínimos y KPIs»]"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             _con_licencia_o_admin(cur, user)
@@ -1461,9 +1608,11 @@ def obras_linea(user=Depends(get_current_user)):
                                 WHERE pr.id_proyecto = ANY(%s)""", (ids,))
                 info = {f[0]: f[1:] for f in cur.fetchall()}
             entregas, pedidos = _entregas(cur), _reemplazos(cur)
+            fuera = reemplazados([(f[0], f[1], f[8], f[9]) for f in filas])
             diam = _diam_faltante(cur, [(f[0], f[1]) for f in filas
                                         if f[2] != "cargado" and f[5] and "diam_prom" not in (f[4] or {})])
-    fuera = reemplazados([(f[0], f[1], f[8], f[9]) for f in filas])
+            por_piso = _por_piso_faltante(cur, [(f[0], f[1]) for f in filas if f[2] != "cargado" and f[5]
+                                                and (f[0], f[1]) not in fuera and "por_piso" not in (f[4] or {})])
     obras = {}
     for (obra, plano, etapa, elemento, resumen, barras, aprobadas, kg, _rel, _de, version, pedido_version,
          subido_el) in filas:
@@ -1485,11 +1634,11 @@ def obras_linea(user=Depends(get_current_user)):
         r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "kg": float(kg or 0)}
         o["consultas"] += int(r.get("consultas") or 0)
         o["sin_enviar"] += estado_pedido(version, pedido_version) != "enviado"
-        o["_kpis"].append(plano_para_kpis(r, elemento, diam.get((obra, plano))))
+        o["_kpis"].append(plano_para_kpis(r, elemento, diam.get((obra, plano)), por_piso.get((obra, plano))))
     lista = sorted(obras.values(), key=lambda o: (o["_ultima"] is None, -(o["_ultima"].timestamp() if o["_ultima"]
                                                                          else 0), str(o["nombre"])))
     return {"obras": [dict({k: v for k, v in o.items() if not k.startswith("_")}, ultima=_cuando(o["_ultima"]),
-                           kpis=kpis_de(o["_kpis"])) for o in lista]}
+                           kpis=kpis_de(o["_kpis"]), por_piso=tabla_por_piso(o["_kpis"])) for o in lista]}
 
 
 # ── La sección aSa de la ventana de la obra: qué parte de cada plano está en aSa y con qué códigos ──

@@ -110,9 +110,13 @@ check("el resumen de la entrega lleva el Ø y los m² que manda ArmaScanner",
 check("…y sin diámetro ni m², no los inventa", "diam_prom" not in A.resumen_de(B) and "m2" not in A.resumen_de(B, {}))
 k = A.kpis_de([{"items": 10, "kg": 100, "diam_prom": 12, "m2": 50}, {"items": 30, "kg": 300, "diam_prom": 8, "m2": None}])
 check("KPIs: PPI = kg / ítems, Ø ponderado por kg, kg/m² = kg / m² de losa",
-      k == {"items": 40, "kg": 400.0, "ppi": 10.0, "diam_prom": 9.0, "m2": 50.0, "kg_m2": 8.0}, k)
+      k == {"items": 40, "kg": 400.0, "ppi": 10.0, "diam_prom": 9.0, "m2": 50.0, "kg_m2": 8.0, "kg_fund": None}, k)
 check("KPIs sin dato: None (la pantalla muestra «—», nunca 0)",
-      A.kpis_de([]) == {"items": 0, "kg": 0.0, "ppi": None, "diam_prom": None, "m2": None, "kg_m2": None})
+      A.kpis_de([]) == {"items": 0, "kg": 0.0, "ppi": None, "diam_prom": None, "m2": None, "kg_m2": None,
+                        "kg_fund": None})
+k = A.kpis_de([{"items": 1, "kg": 500, "m2": 50, "kg_fund": 0}, {"items": 1, "kg": 300, "kg_fund": 300}])
+check("KPIs: las fundaciones aparte; no entran al kg/m² (kg sin fundaciones / m² de losa)",
+      (k["kg"], k["kg_fund"], k["kg_m2"]) == (800.0, 300.0, 10.0), k)
 check("los m² cuentan sólo en los planos de losa",
       A.es_losa("LCIELO") and A.es_losa("VCIELO, LCIELO") and not A.es_losa("VCIELO") and not A.es_losa(None)
       and A.plano_para_kpis({"barras": 3, "kg": 10, "m2": 40}, "ELEV")["m2"] is None
@@ -122,6 +126,52 @@ check("un resumen anterior sin Ø toma el calculado aparte",
       and A.plano_para_kpis({"barras": 1, "kg": 5, "diam_prom": 8}, "LCIELO", 10.0)["diam_prom"] == 8)
 check("el plano reemplazado por otro no suma a la obra (el que lo complementa, sí)",
       A.reemplazados([("O", "A", None, None), ("O", "B", "reemplaza", "A"), ("O", "C", "complementa", "B")]) == {("O", "A")})
+
+print("\nTEST: kg por piso (22-nov): el piso de la etiqueta de cada barra; las fundaciones, aparte")
+check("el piso como se agrupa: «5» y «P05» son «P5»; «P?», «P» y vacío, sin piso",
+      [A.piso_normal(x) for x in ("P5", "5", "p05", " s1 ", "FUND", "P?", "P", "", None)]
+      == ["P5", "P5", "P5", "S1", "FUND", "", "", "", ""])
+check("la clase de una barra: fundación (sector o piso FUND), elevación, y el resto losa (losas y vigas)",
+      [A.clase_de(s, p) for s, p in (("FUND", "S1"), ("LCIELO", "FUND"), ("ELEV", "P1"), ("LCIELO", "P1"),
+                                     ("VCIELO", "P1"), ("", ""))] == ["fund", "fund", "elev", "losa", "losa", "losa"])
+B = A.barras_a_la_vista([{"id": "B-1", "kg": 10, "piso": "P5", "sector": "LCIELO"}])
+check("las barras a la vista guardan su piso y su sector", (B[0]["piso"], B[0]["sector"]) == ("P5", "LCIELO"), B)
+check("el resumen lleva el kg por piso y sector si las barras traen su piso (si no, no lo inventa)",
+      A.resumen_de([{"id": "B-1", "kg": 10.04, "piso": "P5", "sector": "LCIELO"}, {"id": "B-2", "kg": 5, "piso": "5",
+                                                                                  "sector": "lcielo"},
+                     {"id": "B-3", "kg": 2, "piso": "P5", "sector": "ELEV"}])["por_piso"]
+      == [{"piso": "P5", "sector": "ELEV", "kg": 2.0}, {"piso": "P5", "sector": "LCIELO", "kg": 15.0}]
+      and "por_piso" not in A.resumen_de([{"id": "B-1", "kg": 10}]))
+PED = A.pedido_por_barra([("PC1", "PROY-PC1-B-0001", "P5", "LCIELO", 30), ("PC1", "PROY-PC1-B-0002", "P6", "ELEV", 10),
+                          ("PC1", "raro", "P5", "LCIELO", 1)])
+check("el pedido enviado: el piso y el sector de cada barra por su id, y los que más pesan",
+      PED == {"B-0001": ("P5", "LCIELO"), "B-0002": ("P6", "ELEV"), None: ("P5", "LCIELO")}, PED)
+check("una barra sin piso (plano anterior al 22-nov): el de su pedido, o el que más pesa en él; sin pedido, sin piso",
+      A.kg_por_piso([{"id": "B-0001", "kg": 4}, {"id": "B-0002", "kg": 3}, {"id": "B-0009", "kg": 2}], PED)
+      == [{"piso": "P5", "sector": "LCIELO", "kg": 6.0}, {"piso": "P6", "sector": "ELEV", "kg": 3.0}]
+      and A.kg_por_piso([{"id": "B-1", "kg": 4}], None, "ELEV, LCIELO") == [{"piso": "", "sector": "ELEV", "kg": 4.0}])
+check("el piso de un plano (sus m² de losa): el de más kg sin las fundaciones, mejor uno conocido",
+      A.piso_del_plano([{"piso": "S1", "sector": "FUND", "kg": 900}, {"piso": "P1", "sector": "LCIELO", "kg": 10},
+                        {"piso": "P2", "sector": "LCIELO", "kg": 20}, {"piso": "", "sector": "LCIELO", "kg": 99}]) == "P2"
+      and A.piso_del_plano([]) == "")
+T = A.tabla_por_piso([
+    {"m2": 100, "por_piso": [{"piso": "S1", "sector": "LCIELO", "kg": 500}, {"piso": "S1", "sector": "VCIELO", "kg": 100}]},
+    {"m2": None, "por_piso": [{"piso": "S1", "sector": "ELEV", "kg": 300}, {"piso": "P1", "sector": "ELEV", "kg": 200},
+                              {"piso": "", "sector": "ELEV", "kg": 50}, {"piso": "S3", "sector": "ELEV", "kg": 10}]},
+    {"m2": None, "por_piso": [{"piso": "S2", "sector": "FUND", "kg": 400}]},
+    {"m2": 80, "por_piso": [{"piso": "P1", "sector": "LCIELO", "kg": 200}]}])
+check("la tabla por piso: losa + elevación del piso, sus m² y kg/m²; en orden (S3, S1, P1, sin piso); fundaciones aparte",
+      T == {"pisos": [{"piso": "S3", "kg_losa": None, "kg_elev": 10.0, "kg": 10.0, "m2": None, "kg_m2": None},
+                      {"piso": "S1", "kg_losa": 600.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
+                      {"piso": "P1", "kg_losa": 200.0, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
+                      {"piso": "", "kg_losa": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],
+            "fund": 400.0}, T)
+check("…sin planos, vacía", A.tabla_por_piso([]) == {"pisos": [], "fund": None})
+P = A.plano_para_kpis({"barras": 1, "kg": 400}, "FUND")
+check("un plano sin kg por piso: todo sin piso, con el sector del plano (un plano de fundación cuenta como fundación)",
+      (P["por_piso"], P["kg_fund"]) == ([{"piso": "", "sector": "FUND", "kg": 400.0}], 400.0)
+      and A.plano_para_kpis({"barras": 1, "kg": 4, "por_piso": [{"piso": "P1", "sector": "ELEV", "kg": 4}]},
+                             "ELEV")["por_piso"] == [{"piso": "P1", "sector": "ELEV", "kg": 4}], P)
 
 print("\nTEST: aSa: el cruce de un plano con los códigos (CC) de su obra")
 check("la ubicación del plano como se compara: el piso de ArmaScanner va sólo con su número",
@@ -613,7 +663,7 @@ BASE.executescript("""CREATE TABLE constructoras (id INTEGER, nombre TEXT);
                                                 order_date DATE);
                       CREATE TABLE asa_sync (fin TIMESTAMPTZ, ok BOOLEAN);
                       CREATE TABLE barras (id_proyecto TEXT, plano_code TEXT, sector TEXT, piso TEXT, ciclo TEXT,
-                                           peso_total NUMERIC, origen TEXT);
+                                           peso_total NUMERIC, origen TEXT, id_unico TEXT);
                       INSERT INTO constructoras VALUES (1, 'EBCO S.A.');
                       INSERT INTO asa_obras VALUES ('A-200', 'EBCO');
                       INSERT INTO proyectos VALUES ('PROY-2', 'EBCO - TORRE NORTE', 'A-200', 1);""")
@@ -641,21 +691,26 @@ check("la lista: la obra con su cliente, su constructora y su código de aSa; la
 check("…cuántos planos en cada etapa", (o["planos"], o["terminados"], o["cargados"], o["en_trabajo"]) == (5, 4, 1, 0), o)
 check("…y sus KPIs: suman los planos con barras no reemplazados; los m², sólo los de losa",
       o["kpis"] == {"items": 4, "kg": 1050.0, "ppi": 262.5,
-                    "diam_prom": round((12 * 300 + 8 * 100 + 16 * 600 + 10 * 50) / 1050, 1), "m2": 350.0, "kg_m2": 3.0},
+                    "diam_prom": round((12 * 300 + 8 * 100 + 16 * 600 + 10 * 50) / 1050, 1), "m2": 350.0, "kg_m2": 3.0,
+                    "kg_fund": None},
       o["kpis"])
+check("…y su tabla por piso: barras sin piso y sin pedido enviado van «sin piso» (losa y elevación por el plano)",
+      o["por_piso"] == {"pisos": [{"piso": "", "kg_losa": 450.0, "kg_elev": 600.0, "kg": 1050.0, "m2": 350.0,
+                                   "kg_m2": 3.0}], "fund": None}, o["por_piso"])
 check("…con lo que espera a alguien: los pedidos sin enviar", (o["reemplazos"], o["consultas"], o["sin_enviar"]) == (0, 0, 3), o)
 pl = {x["plano"]: x for x in web.get("/armascanner/planos-linea", params={"obra": "PROY-2"}).json()["planos"]}
 check("los planos de la obra, cada uno con sus KPIs (m² sólo si es de losa; el cargado, sin KPIs)",
-      pl["L5"]["kpis"] == {"items": 2, "kg": 400.0, "ppi": 200.0, "diam_prom": 11.0, "m2": 200.0, "kg_m2": 2.0}
+      pl["L5"]["kpis"] == {"items": 2, "kg": 400.0, "ppi": 200.0, "diam_prom": 11.0, "m2": 200.0, "kg_m2": 2.0,
+                           "kg_fund": None}
       and pl["E5"]["kpis"]["m2"] is None and pl["E5"]["kpis"]["diam_prom"] == 16.0 and pl["L6"]["kpis"] is None
       and set(pl) == {"L4", "L4R", "L5", "E5", "L6"}, pl)
 
 # aSa: el pedido de L5 dejó sus barras en los despieces (aquí, a mano) y la obra tiene sus códigos en aSa
 con_ficha(EMI, "pedido", obra="PROY-2", plano="L5")
-BASE.executescript("""INSERT INTO barras VALUES ('PROY-2', 'PC-1', 'LCIELO', '5', 'C1', 300, 'csv'),
-                                               ('PROY-2', 'PC-1', 'LCIELO', '5', 'C1', 100, 'csv'),
-                                               ('PROY-2', 'PC-1', 'LCIELO', '5', 'C2', 400, 'csv'),
-                                               ('PROY-1', 'PC-1', 'LCIELO', '5', 'C2', 999, 'csv');
+BASE.executescript("""INSERT INTO barras VALUES ('PROY-2', 'PC-1', 'LCIELO', '5', 'C1', 300, 'csv', 'PROY-2-PC-1-L-1'),
+                                               ('PROY-2', 'PC-1', 'LCIELO', '5', 'C1', 100, 'csv', 'PROY-2-PC-1-L-2'),
+                                               ('PROY-2', 'PC-1', 'LCIELO', '5', 'C2', 400, 'csv', 'PROY-2-PC-1-L-3'),
+                                               ('PROY-1', 'PC-1', 'LCIELO', '5', 'C2', 999, 'csv', 'PROY-1-PC-1-L-1');
                       INSERT INTO asa_pedidos VALUES ('SUQ1', 'A-200', 'LCIELO P5 C1', 410, 'Open', '2026-11-20'),
                                                      ('SUQ2', 'A-200', 'ELEV P5 C1', 900, 'Processed', '2026-11-18'),
                                                      ('SUQ3', 'A-200', 'LCIELO P5 C2', 400, 'Cancelled', '2026-11-19'),
@@ -680,6 +735,38 @@ check("…cada obra con lo suyo: el plano anterior al cambio, con pedido (y camb
 check("…una obra sin código de aSa: sin códigos",
       web.get("/armascanner/obras-linea/asa", params={"obra": "PROY-X"}).json() == {"asa": "", "al": "", "codigos": 0,
                                                                                   "kg": 0, "planos": []})
+
+print("\nTEST: Mis obras: el kg por piso de una obra (el piso de la etiqueta de cada barra; fundaciones aparte)")
+BASE.execute("INSERT INTO proyectos VALUES ('PROY-3', 'EBCO - TORRE SUR', NULL, NULL)")
+BASE.commit()
+r = terminar(EMI, "LS1", paquete(80), [{"id": "B-1", "kg": 500.0, "piso": "S1", "sector": "LCIELO"},
+                                        {"id": "B-2", "kg": 100.0, "piso": "S1", "sector": "VCIELO"}],
+             obra="PROY-3", elemento="LCIELO", m2=100.0).json()
+check("terminar con el piso y el sector de cada barra: el resumen de la entrega lleva el kg por piso",
+      r["resumen"]["por_piso"] == [{"piso": "S1", "sector": "LCIELO", "kg": 500.0},
+                                   {"piso": "S1", "sector": "VCIELO", "kg": 100.0}], r)
+terminar(EMI, "EL", paquete(81), [{"id": "B-1", "kg": 300.0, "piso": "S1", "sector": "ELEV"},
+                                   {"id": "B-2", "kg": 200.0, "piso": "P1", "sector": "ELEV"},
+                                   {"id": "B-3", "kg": 50.0, "piso": "P", "sector": "ELEV"}], obra="PROY-3", elemento="ELEV")
+terminar(EMI, "FU", paquete(82), [{"id": "B-1", "kg": 400.0, "piso": "S2", "sector": "FUND"}], obra="PROY-3", elemento="FUND")
+# un plano terminado antes del 22-nov (sus barras sin piso) con su pedido enviado: el piso, el de sus despieces
+terminar(EMI, "LP1", paquete(83), [{"id": "B-1", "kg": 160.0}, {"id": "B-9", "kg": 40.0}], obra="PROY-3",
+         elemento="LCIELO", m2=80.0)
+con_ficha(EMI, "pedido", obra="PROY-3", plano="LP1")
+BASE.execute("INSERT INTO barras VALUES ('PROY-3', 'PC-1', 'LCIELO', 'P1', 'C1', 160, 'csv', 'PROY-3-PC-1-B-1')")
+BASE.commit()
+o = next(x for x in web.get("/armascanner/obras-linea").json()["obras"] if x["id"] == "PROY-3")
+check("por piso: losa (y vigas) + elevación de cada piso, sus m² de losa y kg/m²; el plano sin piso toma el de su "
+      "pedido; la barra sin piso, aparte; las fundaciones, en su fila",
+      o["por_piso"] == {"pisos": [{"piso": "S1", "kg_losa": 600.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
+                                  {"piso": "P1", "kg_losa": 200.0, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
+                                  {"piso": "", "kg_losa": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],
+                        "fund": 400.0}, o["por_piso"])
+check("…y los KPIs de la obra: kg con todo, fundaciones aparte, kg/m² sin fundaciones",
+      (o["kpis"]["kg"], o["kpis"]["kg_fund"], o["kpis"]["m2"], o["kpis"]["kg_m2"]) == (1750.0, 400.0, 180.0, 7.5), o["kpis"])
+pl = {x["plano"]: x for x in web.get("/armascanner/planos-linea", params={"obra": "PROY-3"}).json()["planos"]}
+check("el plano de fundaciones: todo su kg es de fundación", (pl["FU"]["kpis"]["kg_fund"], pl["FU"]["kpis"]["kg_m2"])
+      == (400.0, None), pl["FU"]["kpis"])
 
 
 def zip_con(archivos):

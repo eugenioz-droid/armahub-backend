@@ -7,10 +7,11 @@
  * un modal»; los planos van dentro de cada obra]
  *
  * Pestañas (templates/tabs/armascanner.html):
- *   Mis obras  GET /armascanner/obras-linea   las obras con sus KPIs (kg, m², kg/m², PPI, Ø prom);
- *              una obra abre su ventana: Planos (GET /armascanner/planos-linea?obra=: ver PDF —visor.js—,
- *              descargar DWG, ver barras, responder un pedido de reemplazo, enviar pedido, eliminar),
- *              aSa (GET /armascanner/obras-linea/asa?obra=), Protocolo y Terreno (por hacer)
+ *   Mis obras  GET /armascanner/obras-linea   las obras con sus KPIs (kg, m², kg/m², PPI, Ø prom,
+ *              fundaciones) y su tabla por piso; una obra abre su ventana: Planos (GET
+ *              /armascanner/planos-linea?obra=: ver PDF —visor.js—, descargar DWG, ver barras, responder
+ *              un pedido de reemplazo, enviar pedido, eliminar), Por piso, aSa (GET
+ *              /armascanner/obras-linea/asa?obra=), Protocolo y Terreno (por hacer)
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
  *   Uso        GET /armascanner/uso          (administración) KPIs, uso por usuario y los reportes
@@ -150,6 +151,34 @@
     poner('ascObKgM2', dec(k.kg_m2, 1));
     poner('ascObPpi', k.ppi != null ? dec(k.ppi, 1) + ' kg' : '—');
     poner('ascObDiam', k.diam_prom != null ? dec(k.diam_prom, 1) + ' mm' : '—');
+    // las fundaciones, aparte (no entran al kg/m²): su KPI sólo si la obra tiene
+    document.getElementById('ascObFundKpi').style.display = k.kg_fund ? '' : 'none';
+    document.getElementById('ascObKpis').classList.toggle('con-fund', !!k.kg_fund);
+    poner('ascObFund', k.kg_fund ? entero(k.kg_fund) + ' kg' : '—');
+    pintarPisos(o.por_piso);
+  }
+
+  // ── Por piso: el kg de cada piso según el piso de la etiqueta de cada barra, de todos los planos de la
+  // obra; las fundaciones, aparte y sin m² (armascanner.tabla_por_piso) ──
+  function kgCelda(n) { return n ? entero(n) : '—'; }
+
+  function pintarPisos(t) {
+    t = t || {};
+    var filas = (t.pisos || []).map(function (x) {
+      return '<tr><td>' + (x.piso ? esc(x.piso) : 'Sin piso') + '</td>' +
+        '<td class="num">' + kgCelda(x.kg_losa) + '</td><td class="num">' + kgCelda(x.kg_elev) + '</td>' +
+        '<td class="num">' + kgCelda(x.kg) + '</td><td class="num">' + dec(x.m2, 1) + '</td>' +
+        '<td class="num">' + dec(x.kg_m2, 1) + '</td></tr>';
+    });
+    if (t.fund) {
+      filas.push('<tr class="asc-pisos__fund"><td>Fundaciones</td><td></td><td></td><td class="num">' + entero(t.fund) +
+                 '</td><td></td><td></td></tr>');
+    }
+    document.getElementById('ascPisos').innerHTML = filas.join('');
+    document.getElementById('ascPisosTabla').style.display = filas.length ? '' : 'none';
+    var vacio = document.getElementById('ascPisosVacio');
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = 'Sin planos terminados.';
   }
 
   function elegirSeccion(sec) {
