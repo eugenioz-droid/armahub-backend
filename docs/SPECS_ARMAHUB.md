@@ -1269,6 +1269,30 @@ abre una versión nueva que se vuelve a aprobar.
 
 ### 5.4 Planos en ArmaHub (control de los planos trabajados con ArmaScanner)
 
+**Desde el 22-nov (ArmaScanner 2026-11-22.2, mig 174): planos sin bloqueo. Lo que sigue en esta sección sobre
+tomar, soltar y guardar el trabajo a medias quedó reemplazado por esto.** [Usuario 21-nov: «no necesitamos tener
+un control tan estricto ya que se rigidiza mucho la plataforma»; 22-nov: el plano nace y se trabaja en el
+computador, nunca se toma desde la página.]
+- **Nadie toma un plano.** Abrirlo en ArmaScanner no pide conexión ni bloquea a nadie.
+- **Antecedentes:** el plano del calculista se carga a ArmaHub (etapa «cargado»); si ya está, no se toca (un
+  segundo cubicador que carga el mismo DWG no recibe error, y cargar nunca rebaja un plano con trabajo).
+- **Terminar** (en la ventana del plano, visible con todas las barras decididas; también en la lista si el PDF
+  está al día): exige ninguna barra aprobada con datos incompletos; genera el PDF del plano con el plano abierto
+  (A0, fondo blanco, calculista en gris, barras y ciclos en color, texto buscable; en el equipo nunca se abre),
+  sube el paquete y el PDF (`POST /armascanner/planos/terminar`) y la copia del equipo pasa a la papelera de la
+  obra (30 días). No hay guardados intermedios del trabajo.
+- **Una sola entrega por plano** (`planos_obra_entregas`). Si otro cubicador ya subió el plano, ArmaHub responde
+  «ocupado» y no guarda nada; se pide el reemplazo (`planos_obra_reemplazos`), el autor lo acepta o lo rechaza
+  al abrir ArmaScanner (o un administrador responde por él en la web) y, aceptado, «Terminar» sube la versión
+  nueva. Aceptar no borra nada; mientras haya un reemplazo aceptado, el pedido de despiece no sale. Avisos en la
+  campana («Reemplazo de plano»). Al abrir un plano que terminó otro, ArmaScanner avisa antes.
+- **R2:** cada subida va a una clave única (uuid); el archivo anterior se borra sólo después de que la base
+  confirmó (antes, dos guardados cruzados podían borrar el archivo del que ganó).
+- **Registro de la obra en ArmaScanner:** escritura atómica y con candado entre hilos; una lectura fallida ya
+  no deja un registro vacío encima del bueno.
+- Etapas en `planos_obra`: cargado · terminado · en_trabajo (sólo lo guardado a medias antes del cambio).
+
+
 **Qué se guarda:** sólo los planos trabajados con ArmaScanner (respuesta 19). Los originales
 del calculista no se suben; la gestión documental completa (todo lo subido y cuándo) llega
 cuando entre el cliente.
@@ -1343,8 +1367,8 @@ carpeta.
 | Acción | Quién |
 |--------|-------|
 | Ver la obra | Usuarios asignados a la obra; admin y admin_calidad |
-| Subir y tomar planos | Con licencia de ArmaScanner, en todas las obras (usuario 20-nov: «pensaba que todos los usuarios tengan acceso a todo»); la asignación por obra, si hace falta, cuando entre el cliente |
-| Liberar un plano tomado | Quien lo tomó; el de otro, administrador (jefe de cubicaciones cuando exista el rol) |
+| Cargar y terminar planos | Con licencia de ArmaScanner, en todas las obras (usuario 20-nov: «pensaba que todos los usuarios tengan acceso a todo»). Nadie toma un plano (22-nov) |
+| Responder un pedido de reemplazo | El autor de la entrega; en su lugar, un administrador (web) |
 | Editar el programa | USC de la obra, admin |
 | Editar el protocolo | Cubicador de la obra, admin |
 | Aprobar protocolo y entregas | Cliente de la obra |
@@ -2009,7 +2033,7 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
 | Pestaña | Contenido | Quién |
 |---------|-----------|-------|
 | Mis obras | Todas las obras, para todos los usuarios con licencia (usuario 20-nov). Filtro buscable de obra; elemento con botones en orden constructivo (FUND, ELEV, VCIELO, LCIELO), cada uno con cuántas cargas tiene. Una línea por **carga de cada elemento constructivo** (lógica de despieces, no se rompe): obra, plano, elemento, piso, ciclo, ítems, kg, estado (aprobadas / con duda), subido por, fecha | Con licencia |
-| Planos | Repositorio de planos por obra (20-nov: «elegir la obra primero y luego los planos como tejas o tarjetas pequeñas con algo de data»). KPIs arriba (del alcance: todas o la obra elegida). Sin obra elegida: una tarjeta por obra (planos, en trabajo, en edición, con consulta, avance de aprobación, kg); el buscador de obra filtra las tarjetas; clic abre la obra. Con obra: «← Obras», elemento con botones, «Buscar plano» (N°, archivo, título) y los planos en tarjetas en grupos: **En trabajo** (avance, kg, versión, estado de edición y de pedido), **Cargados** (antecedentes: fecha y quién) y **Reemplazados** (las revisiones que otra reemplazó; la tarjeta de cada revisión dice «Reemplaza a…» o «Complementa a…», programa 4.12). Acciones visibles en la tarjeta (Ver barras, Enviar pedido, Liberar, Eliminar) sólo cuando aplican; al pasar el mouse, el detalle (archivo, título completo, versión, guardado, en edición desde, por aprobar, pedido) | Con licencia |
+| Planos | Repositorio de planos por obra: sin obra elegida, una tarjeta por obra; elegida, sus planos en tarjetas, en **Terminados**, **En trabajo (anterior al cambio)**, **Cargados** y **Reemplazados**, con filtro de elemento, «Buscar plano» y el detalle al pasar el mouse. KPI «Reemplazos pedidos». Tarjeta del terminado: quién y cuándo, avance, kg, pedido y **«Ver plano»** (el PDF en un visor dentro de la página, `visor.js`). Con un reemplazo pedido: «Reemplazo pedido por X» y, para el administrador o el autor, «Aceptar reemplazo» / «Rechazar». Sin «Liberar» ni «En edición» (22-nov) | Con licencia |
 | Instalar | Botón «Descargar», versión vigente, mis equipos (2) | Con licencia |
 | Licencias | Buscar un usuario existente y agregarlo; vencimiento; equipos con «Liberar»; quitar | Administrador |
 | Uso | KPIs de uso | Administrador |
