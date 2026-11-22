@@ -328,7 +328,9 @@
     var pendiente = pendientesDe(p)[0];
     // Con un reemplazo pedido, lo que destaca es responderlo (el autor o el administrador). Con uno
     // aceptado el plano está por cambiar: el pedido espera la versión nueva (puede_enviar viene en false).
-    var acciones = (p.pdf ? '<button type="button" class="arm-button" onclick="ascVerPlanoDe(' + i + ')">Ver PDF</button>' : '') +
+    // «Ver PDF» siempre a la vista: sin PDF va apagado (nace al «Terminar» en ArmaScanner)
+    var acciones = (p.pdf ? '<button type="button" class="arm-button" onclick="ascVerPlanoDe(' + i + ')">Ver PDF</button>'
+      : '<button type="button" class="arm-button" disabled title="Se genera al terminar el plano en ArmaScanner">Ver PDF</button>') +
       '<button type="button" class="arm-button" onclick="ascDescargarDwg(' + i + ', this)">Descargar DWG</button>' +
       (total > 0 ? '<button type="button" class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' : '') +
       (pendiente && p.puede_responder
