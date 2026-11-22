@@ -155,6 +155,9 @@
       <button class="tab-btn mod-armascanner" onclick="switchTab('asc_licencias')" style="display:none;">Licencias</button>
       <button class="tab-btn mod-armascanner" onclick="switchTab('asc_uso')" style="display:none;">Uso</button>
       <button class="tab-btn mod-armascanner" onclick="switchTab('asc_versiones')" style="display:none;">Versiones</button>
+      <!-- Obras (21-nov): Plantilla sólo administración (shell.js) -->
+      <button class="tab-btn mod-obras" onclick="switchTab('ob_obras')" style="display:none;">Obras</button>
+      <button class="tab-btn mod-obras" onclick="switchTab('ob_plantilla')" style="display:none;">Plantilla</button>
       <!-- Admin tabs -->
       <button class="tab-btn mod-admin" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
     </div>
@@ -177,6 +180,7 @@
     {% include 'tabs/catalogo.html' %}
     {% include 'tabs/admin.html' %}
     {% include 'tabs/armascanner.html' %}
+    {% include 'tabs/obras_panel.html' %}
   </div>
 
   <!-- MODAL: Template Editor (Colocador por proyecciones). Overlay a pantalla completa;
@@ -355,6 +359,9 @@
 <script src="/static/js/shared/toast.js?v={{ cache_bust }}"></script>
 <script src="/static/js/shared/uploads.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/armascanner/index.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/obras/index.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/obras/protocolo.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/obras/plantilla.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/dashboards.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/programacion/mensual.js?v={{ cache_bust }}"></script>

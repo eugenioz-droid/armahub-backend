@@ -170,6 +170,23 @@
     hubIcon: '🛰️'
   });
 
+  // OBRAS (21-nov, SPECS §5). El panel de la obra: nace con el Protocolo de cubicación; la
+  // plantilla de la empresa la edita el administrador (shell.js). Todos los usuarios internos;
+  // el externo ve sólo sus obras (lo decide el backend) y el cliente todavía no entra.
+  registerModule({
+    id: 'obras',
+    title: 'Obras',
+    css: 'mod-obras',
+    defaultTab: 'ob_obras',
+    allowedRoles: ['admin', 'admin_calidad', 'jefe_servicio', 'miembro', 'usc', 'cubicador', 'externo'],
+    loaderFunction: 'loadObrasModule',
+    hubCardId: 'hubCardObras',
+    hubOrder: 13,
+    hubDescription: 'Protocolo de cubicación por obra.',
+    hubAccent: '#7EBA27',
+    hubIcon: '📐'
+  });
+
   registerModule({
     id: 'admin',
     title: 'Administracion',

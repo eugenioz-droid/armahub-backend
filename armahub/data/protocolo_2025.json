@@ -1,0 +1,881 @@
+{
+ "nombre": "Protocolo 2025",
+ "origen": "20250326 - Protocolo 2025.xlsx · hoja «Protocolo 2024» · versión 3.0",
+ "croquis": "protocolo_2025/croquis",
+ "secciones": [
+  {
+   "titulo": "Datos de la obra",
+   "criterios": [
+    {
+     "clave": "ubicacion",
+     "texto": "Ubicación",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "administrador_obra",
+     "texto": "Administrador de obra",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "profesional_terreno",
+     "texto": "Profesional de terreno",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "jefe_oficina_tecnica",
+     "texto": "Jefe de oficina técnica",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "subterraneos",
+     "texto": "Subterráneos",
+     "tipo": "numero",
+     "unidad": "un",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "pisos_torre",
+     "texto": "Pisos torre",
+     "tipo": "numero",
+     "unidad": "un",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "metros_construidos",
+     "texto": "Metros construidos",
+     "tipo": "numero",
+     "unidad": "m²",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "toneladas_proyectadas",
+     "texto": "Toneladas proyectadas",
+     "tipo": "numero",
+     "unidad": "t",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "ciclos_subterraneo",
+     "texto": "Ciclos constructivos subterráneo",
+     "tipo": "si_no",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "ciclos_subterraneo_entrega",
+     "texto": "Ciclos constructivos subterráneo: fecha de entrega",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "ciclos_torre",
+     "texto": "Ciclos constructivos torre",
+     "tipo": "si_no",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "ciclos_torre_entrega",
+     "texto": "Ciclos constructivos torre: fecha de entrega",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    }
+   ]
+  },
+  {
+   "titulo": "Losas",
+   "criterios": [
+    {
+     "clave": "trabas_muro_cantidad",
+     "texto": "Trabas de muro: cantidad",
+     "tipo": "numero",
+     "unidad": "un/m²",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "trabas_muro",
+     "texto": "Trabas de muro: parámetros por espesor",
+     "tipo": "tabla",
+     "unidad": "",
+     "ayuda": "Abrazan al horizontal o al vertical",
+     "croquis": "trabas_muro.png",
+     "opciones": [],
+     "columnas": [
+      {
+       "id": "espesor",
+       "titulo": "Espesor",
+       "unidad": ""
+      },
+      {
+       "id": "diametro",
+       "titulo": "φ",
+       "unidad": ""
+      },
+      {
+       "id": "alfa",
+       "titulo": "α",
+       "unidad": ""
+      },
+      {
+       "id": "beta",
+       "titulo": "β",
+       "unidad": ""
+      },
+      {
+       "id": "b",
+       "titulo": "b",
+       "unidad": ""
+      }
+     ],
+     "filas": []
+    },
+    {
+     "clave": "reparticiones_diametro",
+     "texto": "Reparticiones: φ",
+     "tipo": "numero",
+     "unidad": "mm",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "reparticiones",
+     "texto": "Reparticiones",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "segun_geometria",
+       "texto": "Según geometría",
+       "croquis": ""
+      },
+      {
+       "id": "barras_en_12_mts",
+       "texto": "Barras en 12 mts",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "soportes_losa_cantidad",
+     "texto": "Soportes de losa: cantidad",
+     "tipo": "numero",
+     "unidad": "un/m²",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "soportes_losa",
+     "texto": "Soportes de losa: parámetros por piso y espesor",
+     "tipo": "tabla",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "soportes_losa.png",
+     "opciones": [],
+     "columnas": [
+      {
+       "id": "piso",
+       "titulo": "Piso",
+       "unidad": ""
+      },
+      {
+       "id": "espesor",
+       "titulo": "Espesor",
+       "unidad": ""
+      },
+      {
+       "id": "a",
+       "titulo": "a",
+       "unidad": ""
+      },
+      {
+       "id": "b",
+       "titulo": "b",
+       "unidad": ""
+      },
+      {
+       "id": "c",
+       "titulo": "c",
+       "unidad": ""
+      }
+     ],
+     "filas": []
+    }
+   ]
+  },
+  {
+   "titulo": "Muros",
+   "criterios": [
+    {
+     "clave": "mh_muro_simple",
+     "texto": "Mallas horizontales: muro simple",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "mh_muro_simple__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "mh_muro_simple__tipo_2.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mh_gancho_alfa",
+     "texto": "Ángulos de ganchos: α",
+     "tipo": "numero",
+     "unidad": "°",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mh_gancho_beta",
+     "texto": "Ángulos de ganchos: β",
+     "tipo": "numero",
+     "unidad": "°",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mh_encuentro_l",
+     "texto": "Mallas horizontales: encuentro de muros en L",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "mh_encuentro_l__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "mh_encuentro_l__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "mh_encuentro_l__tipo_3.png"
+      },
+      {
+       "id": "tipo_4",
+       "texto": "Tipo 4",
+       "croquis": "mh_encuentro_l__tipo_4.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mh_encuentro_t",
+     "texto": "Mallas horizontales: encuentro de muros en T",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "mh_encuentro_t__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "mh_encuentro_t__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "mh_encuentro_t__tipo_3.png"
+      },
+      {
+       "id": "tipo_4",
+       "texto": "Tipo 4",
+       "croquis": "mh_encuentro_t__tipo_4.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mv_remate_superior",
+     "texto": "Remates superiores de mallas verticales",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "mv_remate_superior__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "mv_remate_superior__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "mv_remate_superior__tipo_3.png"
+      },
+      {
+       "id": "tipo_4",
+       "texto": "Tipo 4",
+       "croquis": "mv_remate_superior__tipo_4.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mv_remate_inferior_perimetral",
+     "texto": "Remates inferiores de mallas verticales: muros perimetrales",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "mv_remate_inferior_perimetral__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "mv_remate_inferior_perimetral__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "mv_remate_inferior_perimetral__tipo_3.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "mv_remate_inferior_interior",
+     "texto": "Remates inferiores de mallas verticales: muros interiores",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "mv_remate_inferior_interior__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "mv_remate_inferior_interior__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "mv_remate_inferior_interior__tipo_3.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "muro_espesor_concentrico",
+     "texto": "Disminución de espesor de muro concéntrico",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "muro_espesor_concentrico__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "muro_espesor_concentrico__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "muro_espesor_concentrico__tipo_3.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "muro_espesor_excentrico",
+     "texto": "Disminución de espesor de muro excéntrico",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "tipo_1",
+       "texto": "Tipo 1",
+       "croquis": "muro_espesor_excentrico__tipo_1.png"
+      },
+      {
+       "id": "tipo_2",
+       "texto": "Tipo 2",
+       "croquis": "muro_espesor_excentrico__tipo_2.png"
+      },
+      {
+       "id": "tipo_3",
+       "texto": "Tipo 3",
+       "croquis": "muro_espesor_excentrico__tipo_3.png"
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    }
+   ]
+  },
+  {
+   "titulo": "Lista de chequeo",
+   "criterios": [
+    {
+     "clave": "escalas",
+     "texto": "Criterio de escalas (In situ o prefabricadas).",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "in_situ",
+       "texto": "In situ",
+       "croquis": ""
+      },
+      {
+       "id": "prefabricadas",
+       "texto": "Prefabricadas",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "empalmes_vigas",
+     "texto": "Definición de criterios para empalmes en laterales de vigas y vigas de fundación, así como largo de pata y ubicación.",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "elementos_adicionales",
+     "texto": "Existen planos de elementos adicionales (Piscina, Vigas ornamentales o de segunda etapa, PEAS, Estanques especiales u otros).",
+     "tipo": "opciones",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "piscina",
+       "texto": "Piscina",
+       "croquis": ""
+      },
+      {
+       "id": "vigas_ornamentales_o_de_segunda_etapa",
+       "texto": "Vigas ornamentales o de segunda etapa",
+       "croquis": ""
+      },
+      {
+       "id": "peas",
+       "texto": "PEAS",
+       "croquis": ""
+      },
+      {
+       "id": "estanques_especiales",
+       "texto": "Estanques especiales",
+       "croquis": ""
+      },
+      {
+       "id": "otros",
+       "texto": "Otros",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "recubrimientos",
+     "texto": "Confirmar criterios de recubrimientos (Muros perimetrales, losas, fundaciones, muros interiores, pilares, vigas).",
+     "tipo": "tabla",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [
+      {
+       "id": "recubrimiento",
+       "titulo": "Recubrimiento",
+       "unidad": ""
+      }
+     ],
+     "filas": [
+      "Muros perimetrales",
+      "Losas",
+      "Fundaciones",
+      "Muros interiores",
+      "Pilares",
+      "Vigas"
+     ]
+    },
+    {
+     "clave": "estribos_verticales",
+     "texto": "Estribos de elementos verticales (Criterio piso a piso, doble altura o alturas determinadas por cliente).",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "piso_a_piso",
+       "texto": "Piso a piso",
+       "croquis": ""
+      },
+      {
+       "id": "doble_altura",
+       "texto": "Doble altura",
+       "croquis": ""
+      },
+      {
+       "id": "alturas_determinadas_por_cliente",
+       "texto": "Alturas determinadas por cliente",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "lado_minimo",
+     "texto": "Lados menores a 10 veces el diámetro o no definidos, se ajustarán a 10 veces el diámetro, salvo que se aplique algún cuadro de NCh 211 o criterio de cliente.",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "10_veces_el_diametro",
+       "texto": "10 veces el diámetro",
+       "croquis": ""
+      },
+      {
+       "id": "cuadro_de_nch_211",
+       "texto": "Cuadro de NCh 211",
+       "croquis": ""
+      },
+      {
+       "id": "criterio_de_cliente",
+       "texto": "Criterio de cliente",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "detalle_especifico",
+     "texto": "Para dimensiones de cabezales u otros elementos, prevalece siempre el detalle específico por sobre las indicaciones generales.",
+     "tipo": "si_no",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "empalme_mallas",
+     "texto": "Empalmes de mallas horizontales y verticales (considerar 60 veces el diámetro + 10 o se define criterio distinto)",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "60_veces_el_diametro_10",
+       "texto": "60 veces el diámetro + 10",
+       "croquis": ""
+      },
+      {
+       "id": "criterio_distinto",
+       "texto": "Criterio distinto",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "verticales_nacientes",
+     "texto": "Elementos verticales nacientes en losas",
+     "tipo": "si_no",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "postensado",
+     "texto": "Planos de postensado - Definir soportes de cables, sillas de refuerzo u anclajes de cables activos/pasivos, otros)",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "refuerzos_shaft_nervios",
+     "texto": "Refuerzos de shaft y nervios en losas (refuerzos vanos)",
+     "tipo": "si_no",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "trabas_diametro",
+     "texto": "Trabas de acuerdo a diámetro de malla del muro o siempre 8mm.",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "diametro_de_malla_del_muro",
+       "texto": "Diámetro de malla del muro",
+       "croquis": ""
+      },
+      {
+       "id": "siempre_8_mm",
+       "texto": "Siempre 8 mm",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "trabas_abrazan",
+     "texto": "Trabas abrazan al horizontal y vertical o sólo al vertical para evitar problemas de recubrimiento",
+     "tipo": "opcion",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [
+      {
+       "id": "horizontal_y_vertical",
+       "texto": "Horizontal y vertical",
+       "croquis": ""
+      },
+      {
+       "id": "solo_vertical",
+       "texto": "Sólo vertical",
+       "croquis": ""
+      }
+     ],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "barras_variables",
+     "texto": "Barras variables. Revisar criterio de ajuste para que no queden en milímetros",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "empalme_cambio_diametro",
+     "texto": "¿La longitud de empalme traslapos con cambio de diámetro debe ser la correspondiente a la barra de menor diámetro?",
+     "tipo": "si_no",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    }
+   ]
+  },
+  {
+   "titulo": "Notas",
+   "criterios": [
+    {
+     "clave": "notas",
+     "texto": "Notas y observaciones",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    }
+   ]
+  },
+  {
+   "titulo": "Firmas",
+   "criterios": [
+    {
+     "clave": "firma_obra_nombre",
+     "texto": "Obra: nombre",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "firma_obra_cargo",
+     "texto": "Obra: cargo",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "firma_cubicador_nombre",
+     "texto": "Cubicador: nombre",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    },
+    {
+     "clave": "firma_usc_nombre",
+     "texto": "USC: nombre",
+     "tipo": "texto",
+     "unidad": "",
+     "ayuda": "",
+     "croquis": "",
+     "opciones": [],
+     "columnas": [],
+     "filas": []
+    }
+   ]
+  }
+ ]
+}

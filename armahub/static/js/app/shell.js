@@ -28,7 +28,9 @@
     asc_instalar: 'Instalar',
     asc_licencias: 'Licencias',
     asc_uso: 'Uso',
-    asc_versiones: 'Versiones'
+    asc_versiones: 'Versiones',
+    ob_obras: 'Obras',
+    ob_plantilla: 'Plantilla'
   };
 
   window.currentModule = 'hub';
@@ -125,7 +127,9 @@
     asc_instalar: 'ascCargarInstalar',
     asc_licencias: 'ascCargarLicencias',
     asc_uso: 'ascCargarUso',
-    asc_versiones: 'ascCargarVersiones'
+    asc_versiones: 'ascCargarVersiones',
+    ob_obras: 'obrCargarObras',         // Obras (21-nov): lista de obras y, dentro, el Protocolo
+    ob_plantilla: 'obrCargarPlantilla'
   };
 
   window.switchTab = function switchTab(tabName) {
@@ -218,6 +222,14 @@
         document.querySelectorAll("[onclick=\"switchTab('" + t + "')\"]").forEach(function (b) {
           b.style.display = adminAsc ? '' : 'none';
         });
+      });
+    }
+
+    if (mod === 'obras') {
+      // Plantilla del protocolo: sólo administración (el backend lo valida igual).
+      var adminObras = ['admin', 'admin_calidad'].indexOf(window.currentRole) !== -1;
+      document.querySelectorAll("[onclick=\"switchTab('ob_plantilla')\"]").forEach(function (b) {
+        b.style.display = adminObras ? '' : 'none';
       });
     }
 

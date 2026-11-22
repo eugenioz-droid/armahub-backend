@@ -1,0 +1,155 @@
+<!-- OBRAS (21-nov, SPECS §5) — el panel de la obra. Nace con el Protocolo de cubicación
+     (programa §8.13 filas 8.1 y 8.2); las demás pestañas de la obra (Planos, Programa…) se
+     suman dentro de la obra, en la barra `.arm-tabs`.
+     Sistema de Diseño Armacero (.arm-ds, armacero-theme.css). Lógica: features/obras/*.js.
+     Los estilos `.obr-teja*` repiten los de las tarjetas de ArmaScanner › Planos (`.asc-teja*`):
+     cuando Planos pase a esta caluga, quedan en uno solo. -->
+<style>
+  .obr { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .obr .obr-vista { display: flex; flex-direction: column; gap: 16px; }
+  .obr .arm-button, .obr .arm-input { font-size: 13px; }
+  .obr h3 { margin: 0; font-size: 15px; }
+  .obr .obr-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .obr .obr-kpis--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .obr .obr-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .obr .obr-derecha { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .obr .obr-rotulo { font-size: 12px; color: var(--arm-text-muted); }
+  .obr .obr-linea { font-size: 12px; color: var(--arm-text-muted); font-weight: 400; }
+  .obr .obr-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .obr .obr-seg .arm-button { min-height: 32px; padding: 4px 12px; font-weight: 500; }
+  .obr .arm-button.is-on { background: var(--arm-green-tint); border-color: var(--arm-green); color: #3F6B12; font-weight: 600; }
+  .obr .arm-button.is-on:disabled { opacity: 1; }
+  .obr .obr-mini { min-height: 28px; padding: 2px 10px; font-size: 12px; font-weight: 500; }
+  .obr .obr-vacio { padding: 24px; text-align: center; color: var(--arm-text-muted); font-size: 13px; }
+  .obr .obr-vacio .arm-button { margin: 12px 4px 0; }
+  .obr .obr-tag-neutra { background: #EEF0F3; color: #475467; }
+  .obr textarea.arm-input { resize: vertical; line-height: 1.4; width: 100%; max-width: 760px; display: block; }
+
+  /* Lista de obras: una tarjeta por obra. */
+  .obr .obr-tejas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 12px; }
+  .obr .obr-teja { display: flex; flex-direction: column; gap: 6px; padding: 12px; width: 100%; cursor: pointer;
+                   background: var(--arm-surface); border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md);
+                   font: inherit; color: inherit; text-align: left; }
+  .obr .obr-teja:hover { border-color: var(--arm-green); }
+  .obr .obr-teja:focus-visible { outline: 2px solid var(--arm-green); outline-offset: 1px; }
+  .obr .obr-teja__tit { font-weight: 700; font-size: 14px; line-height: 1.3; min-height: 2.6em; display: -webkit-box;
+                        -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .obr .obr-teja__fila { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--arm-text-muted); }
+  .obr .obr-teja__fila span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .obr .obr-teja__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; padding-top: 4px; }
+  .obr .obr-avance { width: 100%; height: 4px; background: var(--arm-border); border-radius: 2px; overflow: hidden; }
+  .obr .obr-avance > div { height: 100%; background: var(--arm-green); }
+
+  /* Una obra: encabezado, pestañas y, en Protocolo, la barra de acciones a la vista. */
+  .obr .obr-cabeza { display: flex; align-items: center; gap: 12px; }
+  .obr .obr-cabeza h2 { margin: 0; font-size: 18px; line-height: 1.3; }
+  .obr .obr-acciones { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+                       padding: 12px 16px; }
+  .obr .obr-grupo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+  /* Criterios del protocolo. */
+  .obr .obr-seccion > h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-bottom: 8px; }
+  .obr .obr-criterio { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; padding: 12px 0;
+                       border-top: 1px solid var(--arm-border); }
+  .obr .obr-n { width: 24px; height: 24px; border-radius: 12px; border: 1px solid var(--arm-border); display: inline-flex;
+                align-items: center; justify-content: center; font-size: 12px; color: var(--arm-text-muted);
+                font-variant-numeric: tabular-nums; background: var(--arm-surface); }
+  .obr .obr-criterio.is-ok .obr-n { background: var(--arm-green-tint); border-color: var(--arm-green); color: #3F6B12; font-weight: 600; }
+  .obr .obr-criterio__cuerpo { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .obr .obr-criterio__cabeza { display: flex; align-items: flex-start; gap: 8px 16px; }
+  .obr .obr-criterio__cabeza > .obr-seg, .obr .obr-criterio__cabeza > .obr-barra { flex: none; flex-wrap: nowrap; }
+  .obr .obr-criterio__cabeza > .obr-mini { flex: none; }
+  .obr .obr-criterio__texto { flex: 1; font-size: 13px; font-weight: 600; line-height: 1.4; padding-top: 3px; }
+  .obr .obr-ayuda { font-size: 12px; color: var(--arm-text-muted); }
+  .obr .obr-croquis { max-width: 100%; max-height: 180px; align-self: flex-start; border: 1px solid var(--arm-border);
+                      border-radius: var(--arm-radius-sm); background: #fff; }
+  .obr .obr-opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+  .obr .obr-opcion { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 8px;
+                     padding: 8px; background: #fff; border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md);
+                     font: inherit; color: inherit; cursor: pointer; }
+  .obr .obr-opcion img { max-width: 100%; max-height: 220px; object-fit: contain; }
+  .obr .obr-opcion__texto { font-size: 13px; font-weight: 600; }
+  .obr .obr-opcion:hover:not(:disabled) { border-color: var(--arm-green); }
+  .obr .obr-opcion:focus-visible { outline: 2px solid var(--arm-blue); outline-offset: 2px; }
+  .obr .obr-opcion__texto { padding: 2px 12px; border-radius: var(--arm-radius-sm); }
+  .obr .obr-opcion.is-on { border-color: var(--arm-green); box-shadow: inset 0 0 0 2px var(--arm-green); }
+  .obr .obr-opcion.is-on .obr-opcion__texto { background: var(--arm-green-tint); color: #3F6B12; }
+  .obr .obr-opcion:disabled { cursor: default; }
+  .obr .obr-opcion:disabled:not(.is-on) { opacity: .5; }
+  .obr .obr-num { width: 140px; text-align: right; font-variant-numeric: tabular-nums; }
+  .obr .obr-tabla { width: auto; align-self: flex-start; border: 0; }
+  .obr .obr-tabla :is(th, td) { padding: 4px 6px; }
+  .obr .obr-tabla .arm-input { min-height: 30px; width: 120px; padding: 4px 8px; }
+  .obr .obr-tabla td.obr-fija { font-weight: 600; white-space: nowrap; }
+  .obr .obr-obs { display: flex; flex-direction: column; gap: 4px; border-left: 3px solid var(--arm-border); padding-left: 8px;
+                  font-size: 13px; }
+  .obr .obr-obs > div { white-space: pre-wrap; }
+  .obr :is(.arm-input, textarea):disabled { background: #F9FAFB; color: var(--arm-text); opacity: 1; }
+
+  /* Plantilla (administrador). */
+  .obr .obr-pl-titulo { flex: 1; min-width: 200px; max-width: 420px; font-weight: 600; }
+  .obr .obr-pl-criterio { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--arm-border); }
+  .obr .obr-pl-criterio__texto { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .obr .obr-pl-criterio__texto.is-vacio { color: var(--arm-text-muted); font-style: italic; }
+  .obr .obr-editor { display: flex; flex-direction: column; gap: 12px; padding: 12px; margin-bottom: 8px; background: #F9FAFB;
+                     border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md); }
+  .obr .obr-campo { display: flex; flex-direction: column; gap: 4px; }
+  .obr .obr-campo > span { font-size: 12px; color: var(--arm-text-muted); }
+  .obr .obr-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .obr .obr-fila .arm-input { flex: 1; min-width: 160px; max-width: 420px; }
+  .obr .obr-fila .arm-input.obr-corto { flex: 0 0 110px; min-width: 110px; }
+  .obr .obr-miniatura { width: 96px; height: 64px; object-fit: contain; border: 1px solid var(--arm-border);
+                        border-radius: var(--arm-radius-sm); background: #fff; flex: none; }
+  .obr .obr-miniatura--vacia { display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
+                               color: var(--arm-text-muted); border-style: dashed; }
+  @media (max-width: 900px) { .obr .obr-kpis, .obr .obr-kpis--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+
+<div id="tab-ob_obras" class="tab-content">
+  <div class="arm-ds obr">
+    <!-- Lista de obras -->
+    <div id="obrLista" class="obr-vista">
+      <div class="obr-kpis">
+        <div class="arm-kpi"><div class="arm-kpi__label">Obras</div><div class="arm-kpi__value" id="obrKpiObras">—</div></div>
+        <div class="arm-kpi"><div class="arm-kpi__label">Borrador</div><div class="arm-kpi__value" id="obrKpiBorrador">—</div></div>
+        <div class="arm-kpi"><div class="arm-kpi__label">Revisado</div><div class="arm-kpi__value" id="obrKpiRevisado">—</div></div>
+        <div class="arm-kpi"><div class="arm-kpi__label">Cerrado</div><div class="arm-kpi__value" id="obrKpiCerrado">—</div></div>
+      </div>
+      <div class="arm-card">
+        <div class="obr-barra">
+          <input type="text" id="obrBuscar" class="arm-input" placeholder="Buscar obra" autocomplete="off"
+                 spellcheck="false" data-lpignore="true" data-form-type="other" style="width:260px;">
+          <span class="obr-rotulo" style="margin-left:8px;">Protocolo</span>
+          <span class="obr-seg" id="obrFiltro">
+            <button type="button" class="arm-button is-on" data-f="">Todas</button>
+            <button type="button" class="arm-button" data-f="con">Con protocolo</button>
+            <button type="button" class="arm-button" data-f="sin">Sin protocolo</button>
+          </span>
+        </div>
+        <div id="obrTejas" class="obr-tejas"></div>
+        <div id="obrListaVacia" class="obr-vacio" style="display:none;"></div>
+      </div>
+    </div>
+    <!-- Una obra -->
+    <div id="obrObra" class="obr-vista" style="display:none;">
+      <div class="obr-cabeza">
+        <button type="button" class="arm-button" id="obrVolver">← Obras</button>
+        <div>
+          <h2 id="obrNombre"></h2>
+          <div class="obr-linea" id="obrDatos"></div>
+        </div>
+      </div>
+      <div class="arm-tabs">
+        <button type="button" class="arm-tab is-active" aria-selected="true">Protocolo</button>
+      </div>
+      <div id="obrProtocolo" class="obr-vista"></div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-ob_plantilla" class="tab-content">
+  <div class="arm-ds obr">
+    <div id="obrPlantilla" class="obr-vista"></div>
+    <input type="file" id="obrCroquisArchivo" accept="image/png,image/jpeg,image/webp" style="display:none;">
+  </div>
+</div>
