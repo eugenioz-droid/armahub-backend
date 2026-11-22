@@ -1,149 +1,166 @@
 <!-- ARMASCANNER (19-nov, SPECS §13) — la caluga de la herramienta de escritorio.
      Primera pantalla con el Sistema de Diseño Armacero (.arm-ds, armacero-theme.css).
-     La ve quien tiene licencia (registry.js, `licencia`) y el administrador; «Licencias» y
-     «Uso», sólo el administrador (shell.js). Lógica: features/armascanner/index.js. -->
+     La ve quien tiene licencia (registry.js, `licencia`) y el administrador; «Licencias», «Uso» y
+     «Versiones», sólo el administrador (shell.js). Lógica: features/armascanner/index.js.
+     Mis obras (22-nov): las obras con sus KPIs; cada obra abre su ventana con Planos, aSa, Protocolo y
+     Terreno (los planos van dentro de la obra: ya no hay pestaña Planos). -->
 <style>
   .asc { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .asc .asc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
   .asc .asc-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
   .asc .asc-barra .asc-rotulo { font-size: 12px; color: var(--arm-text-muted); }
   .asc .arm-button, .asc .arm-input { font-size: 13px; }
-  .asc .asc-barra .cb-wrap { width: auto; }
   .asc .asc-seg { display: inline-flex; gap: 4px; }
   .asc .asc-seg .arm-button { min-height: 32px; padding: 4px 12px; font-weight: 500; }
   .asc .asc-seg .arm-button.is-on { background: var(--arm-green-tint); border-color: var(--arm-green); color: #3F6B12; font-weight: 600; }
-  .asc .arm-table td.num, .asc .arm-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .asc .arm-table td.num, .asc .arm-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .asc .arm-table td.corto { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .asc .asc-vacio { padding: 24px; text-align: center; color: var(--arm-text-muted); font-size: 13px; }
   .asc h3 { margin: 0 0 12px 0; font-size: 15px; }
   .asc .asc-linea { font-size: 12px; color: var(--arm-text-muted); }
   .asc .asc-dos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; }
   @media (max-width: 900px) { .asc .asc-kpis, .asc .asc-dos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  /* Planos (20-nov): avance fino, acciones de fila y la ventana de barras. */
   .asc .asc-avance { width: 90px; height: 4px; background: var(--arm-border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
   .asc .asc-avance > div { height: 100%; background: var(--arm-green); }
-  .asc .asc-acciones { text-align: right; white-space: nowrap; }
-  .asc .asc-acciones .arm-button { min-height: 28px; padding: 2px 10px; font-size: 12px; }
+  .asc .asc-acciones { text-align: right; }
+  .asc .asc-acciones > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+  .asc .asc-acciones .arm-button { min-height: 28px; padding: 2px 10px; font-size: 12px; white-space: nowrap; }
+  .asc .asc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .asc .asc-tags + .asc-tags, .asc .asc-tags + .asc-avance { margin-top: 4px; }
   .asc .asc-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 950; align-items: flex-start;
                     justify-content: center; padding: 24px 0; overflow-y: auto; }
   .asc .asc-modal__caja { background: var(--arm-surface); border-radius: var(--arm-radius-md); width: 96%; max-width: 1100px;
                           margin: auto; padding: 16px; }
   .asc .asc-modal__cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
-  .asc .asc-modal__cabeza h3 { margin: 0; }  /* Planos en tarjetas (20-nov): obras primero; elegida una, sus planos. */
+  .asc .asc-modal__cabeza h3 { margin: 0; }
   .asc .asc-tejas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-  .asc .asc-teja { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px;
-                   background: var(--arm-surface); border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md);
-                   font: inherit; color: inherit; text-align: left; }
-  .asc .asc-teja:hover, .asc .asc-teja:focus-within { border-color: var(--arm-green); }
-  .asc .asc-teja--obra { cursor: pointer; width: 100%; }
-  .asc .asc-teja--obra:focus-visible { outline: 2px solid var(--arm-green); outline-offset: 1px; }
-  .asc .asc-teja__cabeza { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .asc .asc-teja__num { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .asc .asc-teja__num.asc-teja__tit { white-space: normal; font-size: 14px; }
-  .asc .asc-teja__cabeza .arm-tag { margin-left: auto; }
-  .asc .asc-teja__tit { font-size: 12px; line-height: 1.3; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2;
-                        -webkit-box-orient: vertical; overflow: hidden; }
-  .asc .asc-teja__fila { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--arm-text-muted); }
-  .asc .asc-teja__tags { display: flex; flex-wrap: wrap; gap: 4px; }
-  .asc .asc-teja .asc-avance { width: 100%; margin-top: 0; }
-  .asc .asc-teja__acciones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 4px; }
-  .asc .asc-teja__acciones .arm-button { min-height: 26px; padding: 2px 8px; font-size: 12px; }
-  .asc .asc-teja__detalle { display: none; position: absolute; left: -1px; right: -1px; top: calc(100% - 2px); z-index: 20;
-                            background: var(--arm-surface); border: 1px solid var(--arm-green); border-top: 0;
-                            border-radius: 0 0 var(--arm-radius-md) var(--arm-radius-md); padding: 8px 12px; font-size: 12px; }
-  .asc .asc-teja:hover .asc-teja__detalle { display: block; }
-  .asc .asc-teja__detalle div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
-  .asc .asc-teja__detalle span:first-child { color: var(--arm-text-muted); white-space: nowrap; }
-  .asc .asc-teja__detalle span:last-child { text-align: right; word-break: break-all; }
-  .asc .asc-seccion { font-size: 13px; font-weight: 600; margin: 16px 0 8px; }
-  .asc .asc-seccion:first-child { margin-top: 0; }
+  .asc .asc-teja { display: flex; flex-direction: column; gap: 6px; padding: 12px; background: var(--arm-surface);
+                   border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md); font-size: 13px; }
+  /* Mis obras: la lista (fila = obra, se abre con «Abrir» o con un clic) y la ventana de la obra. */
+  .asc .asc-obras tbody tr { cursor: pointer; }
+  .asc .asc-obras tbody tr:hover td { background: var(--arm-green-tint); }
+  .asc .asc-obras td.asc-obra__nom { font-weight: 600; }
+  .asc .asc-obras td.asc-obra__nom .asc-linea { font-weight: 400; }
+  .asc .asc-modal__caja.asc-obra { max-width: 1280px; }
+  .asc .asc-obra .asc-modal__cabeza { align-items: flex-start; }
+  .asc .asc-obra .asc-modal__cabeza h3 { font-size: 17px; }
+  .asc .asc-obra .asc-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .asc .asc-obra .arm-kpi { padding: 8px 12px; }
+  .asc .asc-obra .arm-kpi__value { font-size: 20px; }
+  .asc .asc-obra .arm-tabs { margin-bottom: 16px; }
+  .asc .asc-obra .arm-table td { vertical-align: top; }
+  .asc .asc-pl__num { font-weight: 700; white-space: nowrap; }
+  .asc .asc-pl__tit { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asc .asc-cc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; padding: 1px 0; }
+  .asc .asc-cc b { font-variant-numeric: tabular-nums; }
+  .asc .asc-reserva { border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md); padding: 16px; }
+  .asc .asc-reserva__cabeza { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-weight: 600; }
+  .asc .asc-teja--inactiva { background: var(--arm-background); color: var(--arm-text-muted); font-weight: 600; }
+  @media (max-width: 900px) { .asc .asc-obra .asc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
 
 <div id="tab-asc_obras" class="tab-content">
   <div class="arm-ds asc">
     <div class="asc-kpis">
-      <div class="arm-kpi"><div class="arm-kpi__label">Planos</div><div class="arm-kpi__value" id="ascKpiPlanos">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Ítems</div><div class="arm-kpi__value" id="ascKpiItems">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Obras</div><div class="arm-kpi__value" id="ascKpiObras">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Planos terminados</div><div class="arm-kpi__value" id="ascKpiTerminados">—</div></div>
       <div class="arm-kpi"><div class="arm-kpi__label">Kilos</div><div class="arm-kpi__value" id="ascKpiKg">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Sin aprobar</div><div class="arm-kpi__value" id="ascKpiPend">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">m² de losa</div><div class="arm-kpi__value" id="ascKpiM2">—</div></div>
     </div>
     <div class="arm-card">
       <div class="asc-barra">
-        <span class="asc-rotulo">Obra</span>
-        <input type="text" id="ascObraInput" list="ascObraDatalist" class="arm-input" placeholder="Todas"
+        <input type="text" id="ascObraBuscar" class="arm-input" placeholder="Buscar obra"
                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                data-lpignore="true" data-form-type="other" style="width:260px;">
-        <datalist id="ascObraDatalist"></datalist>
-        <select id="ascObraSelect" style="display:none;"></select>
-        <span class="asc-rotulo" style="margin-left:8px;">Elemento</span>
-        <div class="asc-seg" id="ascElemento">
-          <button class="arm-button is-on" data-el="">Todos</button>
-          <button class="arm-button" data-el="FUND">FUND</button>
-          <button class="arm-button" data-el="ELEV">ELEV</button>
-          <button class="arm-button" data-el="VCIELO">VCIELO</button>
-          <button class="arm-button" data-el="LCIELO">LCIELO</button>
+      </div>
+      <table class="arm-table asc-obras">
+        <thead><tr>
+          <th>Obra</th><th class="num">Terminados</th><th class="num">Kg</th><th class="num">m²</th>
+          <th class="num">kg/m²</th><th class="num">PPI</th><th class="num">Ø prom</th><th>Pendiente</th><th></th>
+        </tr></thead>
+        <tbody id="ascObras"></tbody>
+      </table>
+      <div id="ascObrasVacio" class="asc-vacio" style="display:none;"></div>
+    </div>
+
+    <div id="ascObraModal" class="asc-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="ascObraTitulo">
+      <div class="asc-modal__caja asc-obra">
+        <div class="asc-modal__cabeza">
+          <div>
+            <h3 id="ascObraTitulo"></h3>
+            <div class="asc-linea" id="ascObraDatos"></div>
+          </div>
+          <button type="button" class="arm-button" id="ascObraCerrar">Cerrar</button>
+        </div>
+        <div class="asc-kpis">
+          <div class="arm-kpi"><div class="arm-kpi__label">Kilos</div><div class="arm-kpi__value" id="ascObKg">—</div></div>
+          <div class="arm-kpi"><div class="arm-kpi__label">m² de losa</div><div class="arm-kpi__value" id="ascObM2">—</div></div>
+          <div class="arm-kpi"><div class="arm-kpi__label">kg/m²</div><div class="arm-kpi__value" id="ascObKgM2">—</div></div>
+          <div class="arm-kpi"><div class="arm-kpi__label">PPI</div><div class="arm-kpi__value" id="ascObPpi">—</div></div>
+          <div class="arm-kpi"><div class="arm-kpi__label">Ø prom</div><div class="arm-kpi__value" id="ascObDiam">—</div></div>
+        </div>
+        <div class="arm-tabs" role="tablist" id="ascObraTabs">
+          <button type="button" class="arm-tab is-active" role="tab" data-sec="planos">Planos</button>
+          <button type="button" class="arm-tab" role="tab" data-sec="asa">aSa</button>
+          <button type="button" class="arm-tab" role="tab" data-sec="protocolo">Protocolo</button>
+          <button type="button" class="arm-tab" role="tab" data-sec="terreno">Terreno</button>
+        </div>
+
+        <div class="asc-sec" data-sec="planos">
+          <div class="asc-barra">
+            <span class="asc-seg" id="ascPlElemento">
+              <button type="button" class="arm-button is-on" data-el="">Todos</button>
+              <button type="button" class="arm-button" data-el="FUND">FUND</button>
+              <button type="button" class="arm-button" data-el="ELEV">ELEV</button>
+              <button type="button" class="arm-button" data-el="VCIELO">VCIELO</button>
+              <button type="button" class="arm-button" data-el="LCIELO">LCIELO</button>
+            </span>
+            <input type="text" id="ascPlBuscar" class="arm-input" placeholder="Buscar plano" autocomplete="off"
+                   spellcheck="false" style="width:200px; margin-left:8px;">
+          </div>
+          <table class="arm-table">
+            <thead><tr>
+              <th>Plano</th><th>Elemento</th><th>Estado</th><th class="num">Ítems</th><th class="num">Kg</th>
+              <th class="num">PPI</th><th class="num">m²</th><th>Subido</th><th>Pedido</th><th></th>
+            </tr></thead>
+            <tbody id="ascPlanos"></tbody>
+          </table>
+          <div id="ascPlanosVacio" class="asc-vacio" style="display:none;"></div>
+        </div>
+
+        <div class="asc-sec" data-sec="asa" style="display:none;">
+          <div class="asc-barra"><span class="asc-linea" id="ascAsaLinea"></span></div>
+          <table class="arm-table" id="ascAsaTabla">
+            <thead><tr>
+              <th>Plano</th><th>Pedido</th><th class="num">Kg</th><th>En aSa</th><th>Códigos (CC)</th><th>Sin código</th>
+            </tr></thead>
+            <tbody id="ascAsa"></tbody>
+          </table>
+          <div id="ascAsaVacio" class="asc-vacio" style="display:none;"></div>
+        </div>
+
+        <div class="asc-sec" data-sec="protocolo" style="display:none;">
+          <div class="asc-reserva">
+            <div class="asc-reserva__cabeza">Protocolo de cubicación <span class="arm-tag">Sin protocolo</span></div>
+            <div class="asc-linea">Criterios y reglas para cubicar la obra.</div>
+          </div>
+        </div>
+
+        <div class="asc-sec" data-sec="terreno" style="display:none;">
+          <div class="asc-tejas">
+            <div class="asc-teja asc-teja--inactiva" aria-disabled="true">Llegada del camión</div>
+            <div class="asc-teja asc-teja--inactiva" aria-disabled="true">Protocolo de lo instalado</div>
+            <div class="asc-teja asc-teja--inactiva" aria-disabled="true">Certificados</div>
+          </div>
         </div>
       </div>
-      <table class="arm-table">
-        <thead><tr>
-          <th>Obra</th><th>Plano</th><th>Elemento</th><th>Piso</th><th>Ciclos</th>
-          <th class="num">Ítems</th><th class="num">Kg</th><th class="num">PPI</th>
-          <th>Estado</th><th>Subido por</th><th>Fecha</th>
-        </tr></thead>
-        <tbody id="ascCargas"></tbody>
-      </table>
-      <div id="ascCargasVacio" class="asc-vacio" style="display:none;">Sin planos subidos desde ArmaScanner.</div>
     </div>
-  </div>
-</div>
 
-<div id="tab-asc_planos" class="tab-content">
-  <div class="arm-ds asc">
-    <div class="asc-kpis">
-      <div class="arm-kpi"><div class="arm-kpi__label">Planos</div><div class="arm-kpi__value" id="ascPlKpiPlanos">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Reemplazos pedidos</div><div class="arm-kpi__value" id="ascPlKpiReemplazos">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Barras aprobadas</div><div class="arm-kpi__value" id="ascPlKpiAprob">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Con consulta</div><div class="arm-kpi__value" id="ascPlKpiConsulta">—</div></div>
-    </div>
-    <div class="arm-card">
-      <div class="asc-barra">
-        <button type="button" class="arm-button" id="ascPlVolver" style="display:none;">← Obras</button>
-        <span class="asc-rotulo">Obra</span>
-        <input type="text" id="ascPlObraInput" list="ascPlObraDatalist" class="arm-input" placeholder="Buscar obra"
-               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-               data-lpignore="true" data-form-type="other" style="width:260px;">
-        <datalist id="ascPlObraDatalist"></datalist>
-        <select id="ascPlObraSelect" style="display:none;"></select>
-        <span id="ascPlDentro" style="display:none;">
-          <span class="asc-rotulo" style="margin-left:8px;">Elemento</span>
-          <span class="asc-seg" id="ascPlElemento">
-            <button class="arm-button is-on" data-el="">Todos</button>
-            <button class="arm-button" data-el="FUND">FUND</button>
-            <button class="arm-button" data-el="ELEV">ELEV</button>
-            <button class="arm-button" data-el="VCIELO">VCIELO</button>
-            <button class="arm-button" data-el="LCIELO">LCIELO</button>
-          </span>
-          <input type="text" id="ascPlBuscar" class="arm-input" placeholder="Buscar plano" autocomplete="off"
-                 spellcheck="false" style="width:200px; margin-left:8px;">
-        </span>
-      </div>
-      <div id="ascPlanos"></div>
-      <div id="ascPlanosVacio" class="asc-vacio" style="display:none;">Sin planos cargados desde ArmaScanner.</div>
-    </div>
-    <div class="arm-card" id="ascReportesCard" style="display:none;">
-      <div class="asc-barra"><span class="asc-rotulo">Reportes de ArmaScanner</span></div>
-      <table class="arm-table">
-        <thead><tr><th>Fecha</th><th>Usuario</th><th>Equipo</th><th>Versión</th><th>Obra</th><th>Comentario</th>
-          <th class="num">Tamaño</th><th></th></tr></thead>
-        <tbody id="ascReportes"></tbody>
-      </table>
-      <div id="ascReportesVacio" class="asc-vacio" style="display:none;">Sin reportes.</div>
-    </div>
     <div id="ascBarrasModal" class="asc-modal" style="display:none;">
       <div class="asc-modal__caja">
         <div class="asc-modal__cabeza">
           <div class="asc-seg" id="ascBarrasFiltro"></div>
-          <button class="arm-button" id="ascBarrasCerrar">Cerrar</button>
+          <button type="button" class="arm-button" id="ascBarrasCerrar">Cerrar</button>
         </div>
         <h3 id="ascBarrasTitulo"></h3>
         <table class="arm-table">
@@ -237,6 +254,15 @@
         <tbody id="ascUso"></tbody>
       </table>
       <div id="ascUsoVacio" class="asc-vacio" style="display:none;">Sin uso en los últimos 30 días.</div>
+    </div>
+    <div class="arm-card" id="ascReportesCard" style="display:none;">
+      <div class="asc-barra"><span class="asc-rotulo">Reportes de ArmaScanner</span></div>
+      <table class="arm-table">
+        <thead><tr><th>Fecha</th><th>Usuario</th><th>Equipo</th><th>Versión</th><th>Obra</th><th>Comentario</th>
+          <th class="num">Tamaño</th><th></th></tr></thead>
+        <tbody id="ascReportes"></tbody>
+      </table>
+      <div id="ascReportesVacio" class="asc-vacio" style="display:none;">Sin reportes.</div>
     </div>
   </div>
 </div>

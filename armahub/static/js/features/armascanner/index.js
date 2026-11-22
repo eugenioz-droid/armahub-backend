@@ -3,23 +3,26 @@
  * [Usuario 19-nov: «Más que pedidos enviados debiera ver sus obras y ojalá una línea por cada
  * carga de elemento constructivo… Con su cantidad de Items, kilos y lo típico que usamos. La
  * licencia capaz la dejamos acá, aquí buscamos un usuario existente y lo agregamos»]
+ * [Usuario 22-nov: «un listado de obras con datos mínimos y KPIs… al hacer clic en una obra se abre
+ * un modal»; los planos van dentro de cada obra]
  *
  * Pestañas (templates/tabs/armascanner.html):
- *   Mis obras  GET /armascanner/cargas       una línea por carga (cada plano, un elemento)
- *   Planos     GET /armascanner/planos-linea  los planos de cada obra (terminados, cargados…) con el
- *              avance de su versión; ver barras y plano (…/barras, visor.js), responder un pedido de
- *              reemplazo (POST …/reemplazo/responder), enviar pedido (POST …/pedido) y eliminar
+ *   Mis obras  GET /armascanner/obras-linea   las obras con sus KPIs (kg, m², kg/m², PPI, Ø prom);
+ *              una obra abre su ventana: Planos (GET /armascanner/planos-linea?obra=: ver PDF —visor.js—,
+ *              descargar DWG, ver barras, responder un pedido de reemplazo, enviar pedido, eliminar),
+ *              aSa (GET /armascanner/obras-linea/asa?obra=), Protocolo y Terreno (por hacer)
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
- *   Uso        GET /armascanner/uso          (administración) KPIs y uso por usuario
+ *   Uso        GET /armascanner/uso          (administración) KPIs, uso por usuario y los reportes
+ *   Versiones  GET /armascanner/versiones    (administración) publicar, retirar, obligatoria
  * Los cambios de licencia usan las rutas de siempre: PUT /admin/users/{id}/licencias/armascanner
  * y POST …/liberar.
  */
 (function (global) {
   'use strict';
 
-  var est = { cargas: [], elemento: '', buscadorObra: null, usuarios: null, combo: null, usuarioElegido: null,
-              licencias: [], planos: [], plElemento: '', plBuscar: '', buscadorPlanos: null, verBarras: null };
+  var est = { obras: [], obra: null, sec: 'planos', planos: [], asa: null, usuarios: null, combo: null,
+              usuarioElegido: null, licencias: [], plElemento: '', plBuscar: '', verBarras: null, listo: false };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -33,89 +36,175 @@
   }
   function quien(email) { return String(email || '').split('@')[0]; }
   function poner(id, txt) { var el = document.getElementById(id); if (el) el.textContent = txt; }
+  function decimal(n) { return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('es-CL'); }
+  // Un KPI con sus decimales fijos; sin dato, «—» (nunca 0: se leería «pesa cero»).
+  function dec(n, d) {
+    if (n == null || n === '' || !isFinite(Number(n))) return '—';
+    return Number(n).toLocaleString('es-CL', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function enc(s) { return encodeURIComponent(s == null ? '' : s); }
 
-  // ── Mis obras ──
-  function filtradas() {
-    var obra = est.buscadorObra ? est.buscadorObra.getId() : '';
-    return est.cargas.filter(function (c) {
-      return (!obra || c.obra === obra) && (!est.elemento || (c.elemento || '').split(', ').indexOf(est.elemento) !== -1);
+  // ── KPIs: los de toda la página (Obras, despieces) ──
+  //   PPI = Peso Promedio por Ítem = kg / ítems · Ø prom = Σ(φ·kg)/Σkg · kg/m² = kg / m² de losa
+  // Vienen calculados del servidor (armascanner.kpis_de); acá sólo se escriben, con el formato de Obras.
+  function kpiKg(k) { return k && k.kg ? entero(k.kg) : '—'; }
+  function kpiM2(k) { return k && k.m2 ? dec(k.m2, 1) : '—'; }
+
+  // ── Mis obras: la lista ──
+  function obrasFiltradas() {
+    var q = (document.getElementById('ascObraBuscar').value || '').trim().toLowerCase();
+    return est.obras.filter(function (o) {
+      return !q || (o.nombre + ' ' + o.cliente + ' ' + o.constructora + ' ' + o.asa).toLowerCase().indexOf(q) !== -1;
     });
   }
 
-  function pintarCargas() {
-    var filas = filtradas();
-    var items = 0, kg = 0, pend = 0;
-    var html = filas.map(function (c) {
-      items += c.items; kg += c.kg; pend += c.pendientes;
-      var estado = c.pendientes
-        ? '<span class="arm-tag arm-tag--warning">' + entero(c.pendientes) + ' sin aprobar</span>'
-        : '<span class="arm-tag arm-tag--success">Exportable</span>';
-      return '<tr>' +
-        '<td>' + esc(c.obra_nombre) + '</td>' +
-        '<td class="corto" title="' + esc(c.plano) + '">' + esc(c.plano) + '</td>' +
-        '<td>' + esc(c.elemento) + '</td>' +
-        '<td>' + esc(c.piso) + '</td>' +
-        '<td>' + esc(c.ciclos) + '</td>' +
-        '<td class="num">' + entero(c.items) + '</td>' +
-        '<td class="num">' + entero(c.kg) + '</td>' +
-        '<td class="num">' + (c.items ? (c.kg / c.items).toFixed(1).replace('.', ',') : '—') + '</td>' +
-        '<td>' + estado + '</td>' +
-        '<td>' + esc(quien(c.usuario)) + '</td>' +
-        '<td>' + fecha(c.fecha) + '</td></tr>';
+  function pendientesObra(o) {
+    return (o.reemplazos ? '<span class="arm-tag arm-tag--warning">' + entero(o.reemplazos) +
+        (o.reemplazos === 1 ? ' reemplazo pedido' : ' reemplazos pedidos') + '</span>' : '') +
+      (o.consultas ? '<span class="arm-tag arm-tag--warning">' + entero(o.consultas) + ' con consulta</span>' : '') +
+      (o.sin_enviar ? '<span class="arm-tag">' + entero(o.sin_enviar) +
+        (o.sin_enviar === 1 ? ' pedido sin enviar' : ' pedidos sin enviar') + '</span>' : '');
+  }
+
+  function pintarObras() {
+    var filas = obrasFiltradas();
+    var t = { terminados: 0, kg: 0, m2: 0 };
+    document.getElementById('ascObras').innerHTML = filas.map(function (o) {
+      var k = o.kpis || {};
+      t.terminados += o.terminados; t.kg += Number(k.kg) || 0; t.m2 += Number(k.m2) || 0;
+      var sub = [o.cliente, o.asa ? 'aSa ' + o.asa : ''].filter(Boolean).join(' · ');
+      return '<tr data-obra="' + esc(o.id) + '">' +
+        '<td class="asc-obra__nom">' + esc(o.nombre) + (sub ? '<div class="asc-linea">' + esc(sub) + '</div>' : '') + '</td>' +
+        '<td class="num">' + entero(o.terminados) + ' de ' + entero(o.planos) + '</td>' +
+        '<td class="num">' + kpiKg(k) + '</td>' +
+        '<td class="num">' + kpiM2(k) + '</td>' +
+        '<td class="num">' + dec(k.kg_m2, 1) + '</td>' +
+        '<td class="num">' + dec(k.ppi, 1) + '</td>' +
+        '<td class="num">' + dec(k.diam_prom, 1) + '</td>' +
+        '<td><div class="asc-tags">' + pendientesObra(o) + '</div></td>' +
+        '<td class="asc-acciones"><div><button type="button" class="arm-button">Abrir</button></div></td>' +
+        '</tr>';
     }).join('');
-    document.getElementById('ascCargas').innerHTML = html;
-    var vacio = document.getElementById('ascCargasVacio');
+    var vacio = document.getElementById('ascObrasVacio');
     vacio.style.display = filas.length ? 'none' : '';
     // Si ArmaHub no contestó, se dice: la lista vacía haría creer que no hay nada subido.
-    vacio.textContent = est.sinRespuesta ? 'No se pudo leer lo subido. Recarga la página.'
-      : est.cargas.length ? 'Sin cargas con este filtro.' : 'Sin planos subidos desde ArmaScanner.';
-    // Cada botón de elemento con cuántas cargas tiene en la obra elegida: el que no tiene se ve en 0.
-    var obra = est.buscadorObra ? est.buscadorObra.getId() : '';
-    var cuenta = { '': 0 };
-    est.cargas.forEach(function (c) {
-      if (obra && c.obra !== obra) return;
-      cuenta[''] += 1;
-      (c.elemento || '').split(', ').forEach(function (el) { cuenta[el] = (cuenta[el] || 0) + 1; });
+    vacio.textContent = est.sinRespuesta ? 'No se pudieron leer las obras. Recarga la página.'
+      : est.obras.length ? 'Sin obras con ese nombre.' : 'Sin planos cargados desde ArmaScanner.';
+    poner('ascKpiObras', entero(filas.length));
+    poner('ascKpiTerminados', entero(t.terminados));
+    poner('ascKpiKg', entero(t.kg) + ' kg');
+    poner('ascKpiM2', t.m2 ? dec(t.m2, 1) : '—');
+  }
+
+  function prepararPantalla() {
+    if (est.listo) return;
+    est.listo = true;
+    document.getElementById('ascObraBuscar').addEventListener('input', pintarObras);
+    document.getElementById('ascObras').addEventListener('click', function (ev) {
+      var tr = ev.target.closest('tr[data-obra]');
+      if (tr) abrirObra(tr.getAttribute('data-obra'));
     });
-    document.querySelectorAll('#ascElemento .arm-button').forEach(function (b) {
-      var el = b.getAttribute('data-el') || '';
-      b.textContent = (el || 'Todos') + ' ' + (cuenta[el] || 0);
+    document.getElementById('ascObraCerrar').addEventListener('click', cerrarObra);
+    document.getElementById('ascObraModal').addEventListener('click', function (ev) {
+      if (ev.target === this) cerrarObra();
     });
-    poner('ascKpiPlanos', entero(filas.length));
-    poner('ascKpiItems', entero(items));
-    poner('ascKpiKg', entero(kg) + ' kg');
-    poner('ascKpiPend', entero(pend));
+    document.getElementById('ascObraTabs').addEventListener('click', function (ev) {
+      var b = ev.target.closest('.arm-tab');
+      if (b) elegirSeccion(b.getAttribute('data-sec'));
+    });
+    document.getElementById('ascPlBuscar').addEventListener('input', function () { est.plBuscar = this.value; pintarPlanos(); });
+    document.getElementById('ascBarrasCerrar').addEventListener('click', cerrarBarras);
+    document.getElementById('ascBarrasModal').addEventListener('click', function (ev) {
+      if (ev.target === this) cerrarBarras();
+    });
+    // Esc cierra lo de más arriba: las barras y, si no, la obra (el PDF lo cierra visor.js, que va encima)
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape' || !global.isModalOpen || global.isModalOpen('ascVisorModal')) return;
+      if (global.isModalOpen('ascBarrasModal')) cerrarBarras();
+      else if (global.isModalOpen('ascObraModal')) cerrarObra();
+    });
   }
 
   async function cargarObras() {
-    if (!est.buscadorObra && global.BuscadorObra) {
-      est.buscadorObra = global.BuscadorObra.crear({
-        inputId: 'ascObraInput', datalistId: 'ascObraDatalist', selectId: 'ascObraSelect',
-        onElegir: function () { pintarCargas(); }
-      });
-    }
-    var d = await global.apiGet('/armascanner/cargas');
-    est.cargas = (d && d.cargas) || [];
+    prepararPantalla();
+    var d = await global.apiGet('/armascanner/obras-linea');
+    est.obras = (d && d.obras) || [];
     est.sinRespuesta = !d;
-    var vistas = {};
-    var obras = [];
-    est.cargas.forEach(function (c) {
-      if (!vistas[c.obra]) { vistas[c.obra] = 1; obras.push({ id: c.obra, nombre: c.obra_nombre }); }
-    });
-    if (est.buscadorObra) est.buscadorObra.setProyectos(obras);
-    // El select oculto guarda el id elegido (BuscadorObra): sin sus opciones no filtra nada.
-    document.getElementById('ascObraSelect').innerHTML = '<option value=""></option>' + obras.map(function (o) {
-      return '<option value="' + esc(o.id) + '">' + esc(o.nombre) + '</option>';
-    }).join('');
-    pintarCargas();
+    pintarObras();
+    if (est.obra) pintarCabeza();
   }
 
-  // ── Planos (20-nov; sin bloqueo desde el 21-nov): los planos que ArmaScanner cargó y terminó ──
+  // ── La ventana de la obra ──
+  function obraActual() {
+    return est.obras.filter(function (o) { return o.id === est.obra; })[0] || null;
+  }
+
+  function pintarCabeza() {
+    var o = obraActual() || { nombre: est.obra, kpis: {} };
+    var k = o.kpis || {};
+    poner('ascObraTitulo', o.nombre || est.obra);
+    poner('ascObraDatos', [o.cliente ? 'Cliente ' + o.cliente : '', o.constructora ? 'Constructora ' + o.constructora : '',
+                           o.asa ? 'aSa ' + o.asa : 'Sin código aSa'].filter(Boolean).join(' · '));
+    poner('ascObKg', k.kg ? entero(k.kg) + ' kg' : '—');
+    poner('ascObM2', kpiM2(k));
+    poner('ascObKgM2', dec(k.kg_m2, 1));
+    poner('ascObPpi', k.ppi != null ? dec(k.ppi, 1) + ' kg' : '—');
+    poner('ascObDiam', k.diam_prom != null ? dec(k.diam_prom, 1) + ' mm' : '—');
+  }
+
+  function elegirSeccion(sec) {
+    est.sec = sec;
+    document.querySelectorAll('#ascObraTabs .arm-tab').forEach(function (b) {
+      var on = b.getAttribute('data-sec') === sec;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('#ascObraModal .asc-sec').forEach(function (s) {
+      s.style.display = s.getAttribute('data-sec') === sec ? '' : 'none';
+    });
+  }
+
+  async function abrirObra(id) {
+    est.obra = id;
+    est.planos = []; est.asa = null;
+    est.plElemento = ''; est.plBuscar = '';
+    document.getElementById('ascPlBuscar').value = '';
+    document.querySelectorAll('#ascPlElemento .arm-button').forEach(function (x) { x.classList.toggle('is-on', !x.getAttribute('data-el')); });
+    elegirSeccion('planos');
+    pintarCabeza();
+    est.cargandoObra = true;
+    pintarPlanos(); pintarAsa();
+    global.showModal('ascObraModal');
+    document.getElementById('ascObraCerrar').focus();
+    await recargarObra(false);
+  }
+
+  function cerrarObra() {
+    est.obra = null;
+    global.hideModal('ascObraModal');
+  }
+
+  // Los planos y lo de aSa de la obra abierta. Tras una acción (pedido, reemplazo, eliminar) se
+  // recargan también los KPIs de la lista: `conLista`.
+  async function recargarObra(conLista) {
+    var id = est.obra;
+    if (!id) return;
+    var res = await Promise.all([global.apiGet('/armascanner/planos-linea?obra=' + enc(id)),
+                                 global.apiGet('/armascanner/obras-linea/asa?obra=' + enc(id)),
+                                 conLista ? cargarObras() : null]);
+    if (est.obra !== id) return;  // se cerró, o se abrió otra obra, mientras se pedía
+    est.cargandoObra = false;
+    est.planos = (res[0] && res[0].planos) || [];
+    est.plSinRespuesta = !res[0];
+    est.asa = res[1];
+    pintarPlanos();
+    pintarAsa();
+  }
+
+  // ── Planos de la obra (sin bloqueo desde el 21-nov) ──
   // Nadie toma un plano: el cubicador lo sube al terminarlo, y hay una sola versión por plano. Otro
   // cubicador que también lo terminó pide el reemplazo; el autor lo acepta o rechaza (o, si no está,
   // el administrador responde por él). [Usuario 22-nov: «así se coordinan y evitamos duplicar data»]
-  function decimal(n) { return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('es-CL'); }
-
   async function postPlano(ruta, p, extra) {
     var res = await fetch(global.apiUrl(ruta), {
       method: 'POST',
@@ -132,42 +221,8 @@
     return data;
   }
 
-  // Planos: primero las obras, una tarjeta cada una; elegida una, sus planos en tarjetas: los
-  // terminados arriba y los sólo cargados (antecedentes) abajo, con el detalle al pasar el mouse.
-  // [Usuario 20-nov: «elegir la obra primero y luego los planos como tejas o tarjetas pequeñas con algo de data»]
-  function obraElegida() { return est.buscadorPlanos ? est.buscadorPlanos.getId() : ''; }
-
-  function planosFiltrados() {
-    var obra = obraElegida(), q = obra ? (est.plBuscar || '').trim().toLowerCase() : '';
-    return est.planos.filter(function (p) {
-      return (!obra || p.obra === obra)
-        && (!obra || !est.plElemento || (p.elemento || '').split(', ').indexOf(est.plElemento) !== -1)
-        && (!q || (p.numero + ' ' + p.plano + ' ' + p.titulo).toLowerCase().indexOf(q) !== -1);
-    });
-  }
-
   function porNumero(a, b) {
     return String(a.numero || a.plano).localeCompare(String(b.numero || b.plano), 'es', { numeric: true });
-  }
-
-  function avance(ok, total) {
-    var pct = total ? Math.round(100 * ok / total) : 0;
-    return '<div class="asc-teja__fila"><span>' + entero(ok) + ' / ' + entero(total) + ' aprobadas</span><span>' +
-      pct + ' %</span></div><div class="asc-avance"><div style="width:' + pct + '%;"></div></div>';
-  }
-
-  function tejaObra(o) {
-    return '<button type="button" class="asc-teja asc-teja--obra" data-obra="' + esc(o.id) + '">' +
-      '<div class="asc-teja__num asc-teja__tit">' + esc(o.nombre) + '</div>' +
-      '<div class="asc-teja__fila"><span>' + entero(o.planos) + (o.planos === 1 ? ' plano' : ' planos') + '</span><span>' +
-        entero(o.terminados) + (o.terminados === 1 ? ' terminado' : ' terminados') + '</span></div>' +
-      (o.pedidos || o.consultas ? '<div class="asc-teja__tags">' +
-        (o.pedidos ? '<span class="arm-tag arm-tag--warning">' + entero(o.pedidos) +
-          (o.pedidos === 1 ? ' reemplazo pedido' : ' reemplazos pedidos') + '</span>' : '') +
-        (o.consultas ? '<span class="arm-tag arm-tag--warning">' + entero(o.consultas) + ' con consulta</span>' : '') +
-        '</div>' : '') +
-      (o.total ? avance(o.ok, o.total) + '<div class="asc-teja__fila"><span>' + entero(o.kg) + ' kg</span></div>' : '') +
-      '</button>';
   }
 
   // Revisiones (programa 4.12): el cubicador indica al cargar si la nueva reemplaza a la anterior o la
@@ -185,116 +240,97 @@
     return (p.reemplazos || []).filter(function (x) { return x.estado === 'pendiente'; });
   }
 
-  function tejaPlano(p) {
-    var i = est.planos.indexOf(p), r = p.resumen || {};
+  // El estado del plano, en el orden en que se listan.
+  var ESTADOS = [['terminado', 'Terminado', 'arm-tag arm-tag--success'],
+                 ['en_trabajo', 'En trabajo (anterior al cambio)', 'arm-tag arm-tag--warning'],
+                 ['cargado', 'Cargado', 'arm-tag'],
+                 ['reemplazado', 'Reemplazado', 'arm-tag']];
+  function estadoDe(p) {
+    if (reemplazoDe(p)) return 'reemplazado';
+    return p.etapa === 'terminado' || p.etapa === 'cargado' ? p.etapa : 'en_trabajo';
+  }
+  function ordenEstado(p) {
+    var e = estadoDe(p);
+    return ESTADOS.map(function (x) { return x[0]; }).indexOf(e);
+  }
+
+  function planosFiltrados() {
+    var q = (est.plBuscar || '').trim().toLowerCase();
+    return est.planos.filter(function (p) {
+      return (!est.plElemento || (p.elemento || '').split(', ').indexOf(est.plElemento) !== -1)
+        && (!q || (p.numero + ' ' + p.plano + ' ' + p.titulo).toLowerCase().indexOf(q) !== -1);
+    }).sort(function (a, b) { return ordenEstado(a) - ordenEstado(b) || porNumero(a, b); });
+  }
+
+  function celdaEstado(p, r) {
+    var e = ESTADOS.filter(function (x) { return x[0] === estadoDe(p); })[0];
     var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0, cons = Number(r.consultas) || 0;
-    var cargado = p.etapa === 'cargado', terminado = p.etapa === 'terminado';
-    var hecho = cargado ? 'Cargado' : terminado ? 'Terminado' : 'Guardado';
-    var pendiente = pendientesDe(p)[0];
     var tags = (p.reemplazos || []).map(function (x) {
         return x.estado === 'aceptado'
           ? '<span class="arm-tag arm-tag--info">Reemplazo aceptado: espera la versión de ' + esc(x.solicitante) + '</span>'
           : '<span class="arm-tag arm-tag--warning">Reemplazo pedido por ' + esc(x.solicitante) + '</span>';
       }).join('') +
-      (p.pedido === 'enviado' ? '<span class="arm-tag arm-tag--success">Pedido enviado</span>'
-        : p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>' : '') +
       (cons ? '<span class="arm-tag arm-tag--warning">' + entero(cons) + ' con consulta</span>' : '') +
       (p.relacion ? '<span class="arm-tag arm-tag--info">' + (p.relacion === 'reemplaza' ? 'Reemplaza a ' : 'Complementa a ') +
         esc(revDeTexto(planoDe(p.obra, p.relacion_de), p.relacion_de)) + '</span>' : '') +
-      (reemplazoDe(p) ? '<span class="arm-tag">Reemplazado por ' + esc(revDeTexto(reemplazoDe(p))) + '</span>' : '');
-    // Con un reemplazo pedido, lo que destaca es responderlo (el autor o el administrador). Con uno
-    // aceptado el plano está por cambiar: el pedido espera la versión nueva (puede_enviar viene en false).
-    var acciones = (total > 0 ? '<button class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' : '') +
-      (p.pdf ? '<button class="arm-button" onclick="ascVerPlanoDe(' + i + ')">Ver plano</button>' : '') +
-      (pendiente && p.puede_responder
-        ? '<button class="arm-button arm-button--primary" onclick="ascResponderReemplazo(' + i + ', true)">Aceptar reemplazo</button>' +
-          '<button class="arm-button" onclick="ascResponderReemplazo(' + i + ', false)">Rechazar</button>' : '') +
-      (p.puede_enviar && total > 0
-        ? '<button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
-      (p.puede_eliminar ? '<button class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
-    var detalle = [['Archivo', p.plano], ['Título', p.titulo], ['Versión', 'v' + p.version],
-      [hecho, [quien(p.guardado_por), p.guardado_el].filter(Boolean).join(' · ')],
-      ['Por aprobar', cargado ? '' : entero(r.pendientes)],
-      ['Pedido', p.pedido === 'enviado' ? [p.pedido_el, p.pedido_version ? 'v' + p.pedido_version : '', p.pedido_por]
-        .filter(Boolean).join(' · ') : '']]
-      .concat((p.reemplazos || []).map(function (x) {
-        return ['Reemplazo', [x.estado === 'aceptado' ? 'Aceptado' : 'Pedido', x.solicitante, x.creado_el].join(' · ')];
-      }))
-      .filter(function (x) { return x[1]; })
-      .map(function (x) { return '<div><span>' + esc(x[0]) + '</span><span>' + esc(x[1]) + '</span></div>'; }).join('');
-    return '<div class="asc-teja">' +
-      '<div class="asc-teja__cabeza"><span class="asc-teja__num">' + esc(p.numero || p.plano) + '</span>' +
-        (p.revision ? '<span class="asc-linea">Rev. ' + esc(p.revision) + '</span>' : '') +
-        (p.elemento ? '<span class="arm-tag">' + esc(p.elemento) + '</span>' : '') + '</div>' +
-      '<div class="asc-teja__tit">' + esc(p.titulo) + '</div>' +
-      (tags ? '<div class="asc-teja__tags">' + tags + '</div>' : '') +
-      (cargado || terminado ? '<div class="asc-teja__fila"><span>' + hecho + ' ' + esc(p.guardado_el) + '</span><span>' +
-          esc(quien(p.guardado_por)) + '</span></div>' : '') +
-      (cargado ? '' : avance(ok, total) + '<div class="asc-teja__fila"><span>' + entero(r.kg) + ' kg</span>' +
-          (terminado ? '' : '<span>v' + esc(p.version) + '</span>') + '</div>') +
-      (acciones ? '<div class="asc-teja__acciones">' + acciones + '</div>' : '') +
-      '<div class="asc-teja__detalle">' + detalle + '</div></div>';
+      (reemplazoDe(p) ? '<span class="arm-tag">Por ' + esc(revDeTexto(reemplazoDe(p))) + '</span>' : '');
+    // el trabajo anterior al cambio, a medias: su avance
+    var avance = e[0] === 'en_trabajo' && total
+      ? '<div class="asc-linea">' + entero(ok) + ' de ' + entero(total) + ' aprobadas</div>' +
+        '<div class="asc-avance"><div style="width:' + Math.round(100 * ok / total) + '%;"></div></div>' : '';
+    return '<div class="asc-tags"><span class="' + e[2] + '">' + e[1] + '</span></div>' +
+      (tags ? '<div class="asc-tags">' + tags + '</div>' : '') + avance;
   }
 
-  function obrasDe(planos) {
-    var por = {}, lista = [];
-    planos.forEach(function (p) {
-      var o = por[p.obra];
-      if (!o) {
-        o = por[p.obra] = { id: p.obra, nombre: p.obra_nombre, planos: 0, terminados: 0, pedidos: 0, consultas: 0, ok: 0, total: 0, kg: 0 };
-        lista.push(o);
-      }
-      var r = p.resumen || {};
-      o.planos += 1;
-      if (p.etapa === 'terminado') o.terminados += 1;
-      o.pedidos += pendientesDe(p).length;
-      o.consultas += Number(r.consultas) || 0;
-      o.ok += Number(r.aprobadas) || 0;
-      o.total += Number(r.barras) || 0;
-      o.kg += Number(r.kg) || 0;
-    });
-    return lista.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre), 'es'); });
+  function celdaPedido(p) {
+    if (p.etapa === 'cargado') return '';
+    if (p.pedido === 'enviado') {
+      return '<span class="arm-tag arm-tag--success" title="' + esc([p.pedido_el, p.pedido_version ? 'v' + p.pedido_version : '',
+        p.pedido_por].filter(Boolean).join(' · ')) + '">Enviado</span>';
+    }
+    return p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>'
+      : '<span class="arm-tag">Sin enviar</span>';
+  }
+
+  function filaPlano(p) {
+    var i = est.planos.indexOf(p), r = p.resumen || {}, k = p.kpis;
+    var total = Number(r.barras) || 0;
+    var pendiente = pendientesDe(p)[0];
+    // Con un reemplazo pedido, lo que destaca es responderlo (el autor o el administrador). Con uno
+    // aceptado el plano está por cambiar: el pedido espera la versión nueva (puede_enviar viene en false).
+    var acciones = (p.pdf ? '<button type="button" class="arm-button" onclick="ascVerPlanoDe(' + i + ')">Ver PDF</button>' : '') +
+      '<button type="button" class="arm-button" onclick="ascDescargarDwg(' + i + ', this)">Descargar DWG</button>' +
+      (total > 0 ? '<button type="button" class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' : '') +
+      (pendiente && p.puede_responder
+        ? '<button type="button" class="arm-button arm-button--primary" onclick="ascResponderReemplazo(' + i + ', true)">Aceptar reemplazo</button>' +
+          '<button type="button" class="arm-button" onclick="ascResponderReemplazo(' + i + ', false)">Rechazar</button>' : '') +
+      (p.puede_enviar && total > 0
+        ? '<button type="button" class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
+      (p.puede_eliminar ? '<button type="button" class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
+    return '<tr>' +
+      '<td><div class="asc-pl__num">' + esc(p.numero || p.plano) +
+        (p.revision ? ' <span class="asc-linea">Rev. ' + esc(p.revision) + '</span>' : '') + '</div>' +
+        '<div class="asc-linea asc-pl__tit" title="' + esc(p.titulo || p.plano) + '">' + esc(p.titulo || p.plano) + '</div></td>' +
+      '<td>' + (p.elemento ? '<span class="arm-tag">' + esc(p.elemento) + '</span>' : '') + '</td>' +
+      '<td>' + celdaEstado(p, r) + '</td>' +
+      '<td class="num">' + (k ? entero(k.items) : '—') + '</td>' +
+      '<td class="num">' + (k ? kpiKg(k) : '—') + '</td>' +
+      '<td class="num">' + (k ? dec(k.ppi, 1) : '—') + '</td>' +
+      '<td class="num">' + (k ? kpiM2(k) : '—') + '</td>' +
+      '<td>' + esc(quien(p.guardado_por)) + '<div class="asc-linea">' + esc(p.guardado_el) + '</div></td>' +
+      '<td>' + celdaPedido(p) + '</td>' +
+      '<td class="asc-acciones"><div>' + acciones + '</div></td></tr>';
   }
 
   function pintarPlanos() {
-    var obra = obraElegida();
     var filas = planosFiltrados();
-    var pedidos = 0, barras = 0, aprob = 0, consultas = 0;
-    filas.forEach(function (p) {
-      var r = p.resumen || {};
-      pedidos += pendientesDe(p).length;
-      barras += Number(r.barras) || 0; aprob += Number(r.aprobadas) || 0; consultas += Number(r.consultas) || 0;
-    });
-    document.getElementById('ascPlVolver').style.display = obra ? '' : 'none';
-    document.getElementById('ascPlDentro').style.display = obra ? '' : 'none';
-    var html = '', n = 0;
-    if (!obra) {
-      var texto = (document.getElementById('ascPlObraInput').value || '').trim().toLowerCase();
-      var obras = obrasDe(est.planos).filter(function (o) { return !texto || String(o.nombre).toLowerCase().indexOf(texto) !== -1; });
-      n = obras.length;
-      html = n ? '<div class="asc-tejas">' + obras.map(tejaObra).join('') + '</div>' : '';
-    } else {
-      var de = function (etapa) {
-        return filas.filter(function (p) {
-          return !reemplazoDe(p) && (etapa ? p.etapa === etapa : p.etapa !== 'terminado' && p.etapa !== 'cargado');
-        }).sort(porNumero);
-      };
-      var reemplazados = filas.filter(function (p) { return reemplazoDe(p); }).sort(porNumero);
-      n = filas.length;
-      [['Terminados', de('terminado')], ['En trabajo (anterior al cambio)', de('')], ['Cargados', de('cargado')],
-       ['Reemplazados', reemplazados]].forEach(function (s) {
-        if (s[1].length) html += '<div class="asc-seccion">' + s[0] + ' · ' + entero(s[1].length) + '</div>' +
-          '<div class="asc-tejas">' + s[1].map(tejaPlano).join('') + '</div>';
-      });
-    }
-    document.getElementById('ascPlanos').innerHTML = html;
+    document.getElementById('ascPlanos').innerHTML = filas.map(filaPlano).join('');
     var vacio = document.getElementById('ascPlanosVacio');
-    vacio.style.display = n ? 'none' : '';
-    vacio.textContent = est.plSinRespuesta ? 'No se pudieron leer los planos. Recarga la página.'
-      : est.planos.length ? (obra ? 'Sin planos con este filtro.' : 'Sin obras con ese nombre.') : 'Sin planos cargados desde ArmaScanner.';
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = est.cargandoObra ? 'Cargando…' : est.plSinRespuesta ? 'No se pudieron leer los planos. Recarga la página.'
+      : est.planos.length ? 'Sin planos con este filtro.' : 'Sin planos en esta obra.';
     var cuenta = { '': 0 };
     est.planos.forEach(function (p) {
-      if (p.obra !== obra) return;
       cuenta[''] += 1;
       (p.elemento || '').split(', ').forEach(function (el) { cuenta[el] = (cuenta[el] || 0) + 1; });
     });
@@ -302,62 +338,49 @@
       var el = b.getAttribute('data-el') || '';
       b.textContent = (el || 'Todos') + ' ' + (cuenta[el] || 0);
     });
-    poner('ascPlKpiPlanos', entero(filas.length));
-    poner('ascPlKpiReemplazos', entero(pedidos));
-    poner('ascPlKpiAprob', entero(aprob) + ' de ' + entero(barras) + ' · ' + (barras ? Math.round(100 * aprob / barras) : 0) + ' %');
-    poner('ascPlKpiConsulta', entero(consultas));
+    var tab = document.querySelector('#ascObraTabs .arm-tab[data-sec="planos"]');
+    if (tab) tab.textContent = 'Planos ' + entero(est.planos.length);
   }
 
-  function elegirObraPlanos(id) {
-    var o = est.planos.filter(function (p) { return p.obra === id; })[0];
-    document.getElementById('ascPlObraSelect').value = id || '';
-    document.getElementById('ascPlObraInput').value = o ? o.obra_nombre : '';
-    est.plElemento = ''; est.plBuscar = '';
-    document.getElementById('ascPlBuscar').value = '';
-    document.querySelectorAll('#ascPlElemento .arm-button').forEach(function (x) { x.classList.toggle('is-on', !x.getAttribute('data-el')); });
-    pintarPlanos();
-  }
+  // ── aSa: por plano, qué parte de sus kilos tiene código en aSa y cuáles son (cruce por sector, piso y
+  // ciclo con la descripción del código; armascanner.cruce_asa) ──
+  var ESTADO_CC = { Open: 'arm-tag arm-tag--info', Processed: 'arm-tag arm-tag--success', Shipped: 'arm-tag' };
 
-  async function cargarPlanos() {
-    if (!est.buscadorPlanos && global.BuscadorObra) {
-      est.buscadorPlanos = global.BuscadorObra.crear({
-        inputId: 'ascPlObraInput', datalistId: 'ascPlObraDatalist', selectId: 'ascPlObraSelect',
-        onElegir: function () { pintarPlanos(); }
-      });
-      document.getElementById('ascPlObraInput').addEventListener('input', function () { if (!obraElegida()) pintarPlanos(); });
-      document.getElementById('ascPlBuscar').addEventListener('input', function () { est.plBuscar = this.value; pintarPlanos(); });
-      document.getElementById('ascPlVolver').addEventListener('click', function () { elegirObraPlanos(''); });
-      document.getElementById('ascPlanos').addEventListener('click', function (ev) {
-        var o = ev.target.closest('.asc-teja--obra');
-        if (o) elegirObraPlanos(o.getAttribute('data-obra'));
-      });
-      document.getElementById('ascBarrasCerrar').addEventListener('click', cerrarBarras);
-      document.getElementById('ascBarrasModal').addEventListener('click', function (ev) {
-        if (ev.target === this) cerrarBarras();
-      });
-      // Esc cierra las barras (el plano en PDF lo cierra visor.js, que va encima)
-      document.addEventListener('keydown', function (ev) {
-        if (ev.key !== 'Escape' || !global.isModalOpen || global.isModalOpen('ascVisorModal')) return;
-        if (global.isModalOpen('ascBarrasModal')) cerrarBarras();
-      });
+  function filaAsa(x) {
+    var p = planoDe(est.obra, x.plano) || { plano: x.plano };
+    var plano = '<td><div class="asc-pl__num">' + esc(p.numero || p.plano) + '</div>' +
+      '<div class="asc-linea asc-pl__tit" title="' + esc(p.titulo || p.plano) + '">' + esc(p.titulo || p.plano) + '</div></td>';
+    if (x.pedido === 'sin_enviar') {
+      return '<tr>' + plano + '<td><span class="arm-tag">Sin enviar</span></td><td class="num">—</td><td>—</td><td></td><td></td></tr>';
     }
-    var d = await global.apiGet('/armascanner/planos-linea');
-    est.planos = (d && d.planos) || [];
-    est.plSinRespuesta = !d;
-    var vistas = {};
-    var obras = [];
-    est.planos.forEach(function (p) {
-      if (!vistas[p.obra]) { vistas[p.obra] = 1; obras.push({ id: p.obra, nombre: p.obra_nombre }); }
-    });
-    if (est.buscadorPlanos) est.buscadorPlanos.setProyectos(obras);
-    var sel = document.getElementById('ascPlObraSelect');
-    var elegida = sel.value;
-    sel.innerHTML = '<option value=""></option>' + obras.map(function (o) {
-      return '<option value="' + esc(o.id) + '">' + esc(o.nombre) + '</option>';
+    var pct = x.pct == null ? null : Math.max(0, Math.min(100, Number(x.pct)));
+    var codigos = (x.codigos || []).map(function (c) {
+      return '<div class="asc-cc"><b>' + esc(c.cc) + '</b><span>' + esc(c.descr) + '</span><span class="asc-linea">' +
+        entero(c.kg) + ' kg</span>' + (c.estado ? '<span class="' + (ESTADO_CC[c.estado] || 'arm-tag') + '">' + esc(c.estado) +
+        '</span>' : '') + '</div>';
     }).join('');
-    sel.value = vistas[elegida] ? elegida : '';  // al recargar tras enviar o responder, la obra elegida se mantiene
-    pintarPlanos();
-    cargarReportes();
+    var faltan = (x.faltan || []).map(function (f) { return '<div class="asc-linea">' + esc(f) + '</div>'; }).join('');
+    return '<tr>' + plano +
+      '<td>' + (x.pedido === 'enviado' ? '<span class="arm-tag arm-tag--success">Enviado</span>'
+                                       : '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>') + '</td>' +
+      '<td class="num">' + (x.kg ? entero(x.kg) : '—') + '</td>' +
+      '<td>' + (pct == null ? '—' : pct + ' %<div class="asc-avance"><div style="width:' + pct + '%;"></div></div>') + '</td>' +
+      '<td>' + (codigos || '—') + '</td><td>' + faltan + '</td></tr>';
+  }
+
+  function pintarAsa() {
+    var a = est.asa, tabla = document.getElementById('ascAsaTabla'), vacio = document.getElementById('ascAsaVacio');
+    var filas = a && a.asa ? (a.planos || []).filter(function (x) {
+      var p = planoDe(est.obra, x.plano);
+      return !(p && reemplazoDe(p));
+    }).sort(function (x, y) { return porNumero(planoDe(est.obra, x.plano) || x, planoDe(est.obra, y.plano) || y); }) : [];
+    poner('ascAsaLinea', a && a.asa ? ['aSa ' + a.asa, entero(a.codigos) + (a.codigos === 1 ? ' código' : ' códigos'),
+                                      entero(a.kg) + ' kg', a.al ? 'datos al ' + a.al : ''].filter(Boolean).join(' · ') : '');
+    document.getElementById('ascAsa').innerHTML = filas.map(filaAsa).join('');
+    tabla.style.display = filas.length ? '' : 'none';
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = est.cargandoObra ? 'Cargando…' : !a ? 'No se pudo leer lo de aSa. Recarga la página.'
+      : !a.asa ? 'Obra sin código de aSa.' : 'Sin planos terminados.';
   }
 
   // Ver barras: ventana con la lista del plano; abre en «Con consulta» si hay alguna (se manda
@@ -377,7 +400,7 @@
     var cuenta = { '': v.barras.length, aprobada: 0, duda: 0, pendiente: 0 };
     v.barras.forEach(function (b) { cuenta[revDe(b)] += 1; });
     document.getElementById('ascBarrasFiltro').innerHTML = FILTROS_REV.map(function (f) {
-      return '<button class="arm-button' + (f[0] === v.filtro ? ' is-on' : '') + '" data-rev="' + f[0] + '">' +
+      return '<button type="button" class="arm-button' + (f[0] === v.filtro ? ' is-on' : '') + '" data-rev="' + f[0] + '">' +
         f[1] + ' ' + entero(cuenta[f[0]]) + '</button>';
     }).join('');
     var filas = v.barras.filter(function (b) { return !v.filtro || revDe(b) === v.filtro; });
@@ -407,8 +430,7 @@
   global.ascVerBarras = async function (i) {
     var p = est.planos[i];
     if (!p) return;
-    var d = await global.apiGet('/armascanner/planos-linea/barras?obra=' + encodeURIComponent(p.obra) +
-                                '&plano=' + encodeURIComponent(p.plano));
+    var d = await global.apiGet('/armascanner/planos-linea/barras?obra=' + enc(p.obra) + '&plano=' + enc(p.plano));
     if (!d) { global.showToast('No se pudieron leer las barras del plano.', 'error'); return; }
     var barras = d.barras || [];
     est.verBarras = { plano: p, version: d.version, barras: barras,
@@ -417,11 +439,48 @@
     global.showModal('ascBarrasModal');
   };
 
-  // Ver plano: el PDF que ArmaScanner subió con el plano. La ventana es de visor.js (ascVerPlano).
+  // Ver PDF: el PDF que ArmaScanner subió con el plano. La ventana es de visor.js (ascVerPlano).
   global.ascVerPlanoDe = function (i) {
     var p = est.planos[i];
     if (!p || !global.ascVerPlano) return;
     global.ascVerPlano(p.obra, p.plano, '', (p.numero || p.plano) + ' — ' + (p.obra_nombre || p.obra));
+  };
+
+  // Descargar DWG: ArmaHub lo saca del paquete del plano (la copia de trabajo o el del calculista).
+  function nombreDescarga(cd) {
+    var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || '');
+    if (m) { try { return decodeURIComponent(m[1]); } catch (_) { /* va el simple */ } }
+    m = /filename="([^"]+)"/i.exec(cd || '');
+    return m ? m[1] : '';
+  }
+
+  global.ascDescargarDwg = async function (i, boton) {
+    var p = est.planos[i];
+    if (!p) return;
+    var texto = boton ? boton.textContent : '';
+    if (boton) { boton.disabled = true; boton.textContent = 'Descargando…'; }
+    try {
+      var res = await fetch(global.apiUrl('/armascanner/planos-linea/dwg?obra=' + enc(p.obra) + '&plano=' + enc(p.plano)),
+                            { headers: global.authHeaders() });
+      if (res.status === 401) { global.logout(); return; }
+      if (!res.ok) {
+        var d = await res.json().catch(function () { return {}; });
+        global.showToast((typeof d.detail === 'string' && d.detail) || 'No se pudo descargar el DWG.', 'error');
+        return;
+      }
+      var url = URL.createObjectURL(await res.blob());
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = nombreDescarga(res.headers.get('Content-Disposition')) || (p.plano + '.dwg');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    } catch (e) {
+      global.showToast('No se pudo descargar el DWG.', 'error');
+    } finally {
+      if (boton) { boton.disabled = false; boton.textContent = texto; }
+    }
   };
 
   // Aceptar o rechazar el reemplazo pedido (el más antiguo, si hay más de uno): el autor de la
@@ -440,7 +499,7 @@
     if (!await postPlano('/armascanner/planos-linea/reemplazo/responder', p,
                          { solicitante: x.solicitante_email, acepta: !!acepta })) return;
     global.showToast(acepta ? 'Reemplazo aceptado.' : 'Reemplazo rechazado.', 'success');
-    await cargarPlanos();
+    await recargarObra(true);
   };
 
   global.ascEnviarPedido = async function (i) {
@@ -455,7 +514,7 @@
     var data = await postPlano('/armascanner/planos-linea/pedido', p);
     if (!data) return;
     global.showToast('Pedido enviado: ' + entero(data.barras) + ' barras · ' + entero(data.kilos) + ' kg', 'success');
-    await cargarPlanos();
+    await recargarObra(true);
   };
 
   global.ascEliminarPlano = async function (i) {
@@ -470,7 +529,7 @@
     var data = await postPlano('/armascanner/planos-linea/eliminar', p, { con_barras: conBarras });
     if (!data) return;
     global.showToast('Plano eliminado' + (data.barras_eliminadas ? ' · ' + entero(data.barras_eliminadas) + ' barras' : '') + '.', 'success');
-    await cargarPlanos();
+    await recargarObra(true);
   };
 
   // ── Reportes (administrador): lo que el cubicador manda desde ArmaScanner con «Enviar reporte» ──
@@ -631,6 +690,7 @@
 
   // ── Uso (administración) ──
   async function cargarUso() {
+    cargarReportes();  // (administrador) lo que mandan los cubicadores con «Enviar reporte»
     var d = await global.apiGet('/armascanner/uso');
     if (!d) return;
     poner('ascUsoLic', entero(d.licencias_activas));
@@ -724,15 +784,8 @@
     xhr.send(form);
   }
 
-  // El filtro de elemento: botones (pocas opciones, skill armacero-ui), uno encendido.
-  document.addEventListener('click', function (ev) {
-    var b = ev.target.closest && ev.target.closest('#ascElemento .arm-button');
-    if (!b) return;
-    est.elemento = b.getAttribute('data-el') || '';
-    document.querySelectorAll('#ascElemento .arm-button').forEach(function (x) { x.classList.toggle('is-on', x === b); });
-    pintarCargas();
-  });
-  // Lo mismo en Planos, y los filtros de revisión de la ventana de barras.
+  // Los filtros con botones (pocas opciones, skill armacero-ui), uno encendido: el elemento de los
+  // planos de la obra y la revisión de la ventana de barras.
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('#ascPlElemento .arm-button');
     if (b) {
@@ -750,7 +803,6 @@
 
   global.loadArmaScannerModule = function () {};  // cada pestaña carga lo suyo (shell.js, tabLoaders)
   global.ascCargarObras = cargarObras;
-  global.ascCargarPlanos = cargarPlanos;
   global.ascCargarInstalar = cargarInstalar;
   global.ascCargarLicencias = cargarLicencias;
   global.ascCargarUso = cargarUso;

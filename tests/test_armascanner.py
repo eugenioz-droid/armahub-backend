@@ -83,7 +83,8 @@ check("no lo envía otro cubicador", not A.puede_enviar(otro, yo, False) and not
 check("lo envía el administrador", A.puede_enviar(otro, yo, True))
 check("estado del pedido", (A.estado_pedido(3, None), A.estado_pedido(3, 3), A.estado_pedido(4, 3))
       == ("sin_enviar", "enviado", "cambios"))
-check("Mis obras: todos ven todas las obras (sin filtro por usuario)", "usuario = %s" not in inspect.getsource(A.cargas))
+check("Mis obras: todos ven todas las obras (los planos sin filtro por usuario)",
+      'FROM planos_obra""")' in inspect.getsource(A.obras_linea))
 check("cargar y terminar no cargan barras como despiece (eso es el pedido)",
       "_cargar_barras" not in inspect.getsource(A.guardar_plano) + inspect.getsource(A.terminar_plano))
 check("versiones por número: .10 es más nueva que .9, y sin punto es la más vieja",
@@ -92,6 +93,59 @@ check("versiones por número: .10 es más nueva que .9, y sin punto es la más v
 check("la vigente y «hay versión nueva» no comparan texto",
       "ORDER BY version" not in inspect.getsource(A._vigente)
       and "clave_version(fila[1]) <= clave_version(version)" in inspect.getsource(A.actualizacion))
+
+print("\nTEST: KPIs de Mis obras (22-nov): PPI, Ø prom, m² y kg/m²")
+check("Ø prom ponderado por peso, sólo barras con diámetro y kg",
+      A.diam_prom([{"diam": 12, "kg": 10}, {"diam": 8, "kg": 30}, {"diam": "x", "kg": 5}, {"kg": 3}]) == 9.0
+      and A.diam_prom([{"kg": 3}]) is None and A.diam_prom([]) is None)
+check("m² de losa: el total y los de cada ciclo, sólo números",
+      A.m2_enviados({"m2": 250.04, "m2_ciclos": {"C1": 120, "C2": "x", "": 3}}) == (250.0, {"C1": 120.0})
+      and A.m2_enviados({"m2": 80, "m2_ciclos": "basura"}) == (80.0, {}))
+check("sin m² (elevaciones) o con algo que no es un área: nada",
+      all(A.m2_enviados(d) is None for d in ({}, None, {"m2": True}, {"m2": float("nan")}, {"m2": float("inf")},
+                                               {"m2": -1}, {"m2": 0}, {"m2": "abc"})))
+r = A.resumen_de([{"id": "B-1", "rev": "aprobada", "kg": 10.0, "diam": 12}], {"m2": 40, "m2_ciclos": {"C1": 40}})
+check("el resumen de la entrega lleva el Ø y los m² que manda ArmaScanner",
+      (r["diam_prom"], r["m2"], r["m2_ciclos"]) == (12.0, 40.0, {"C1": 40.0}), r)
+check("…y sin diámetro ni m², no los inventa", "diam_prom" not in A.resumen_de(B) and "m2" not in A.resumen_de(B, {}))
+k = A.kpis_de([{"items": 10, "kg": 100, "diam_prom": 12, "m2": 50}, {"items": 30, "kg": 300, "diam_prom": 8, "m2": None}])
+check("KPIs: PPI = kg / ítems, Ø ponderado por kg, kg/m² = kg / m² de losa",
+      k == {"items": 40, "kg": 400.0, "ppi": 10.0, "diam_prom": 9.0, "m2": 50.0, "kg_m2": 8.0}, k)
+check("KPIs sin dato: None (la pantalla muestra «—», nunca 0)",
+      A.kpis_de([]) == {"items": 0, "kg": 0.0, "ppi": None, "diam_prom": None, "m2": None, "kg_m2": None})
+check("los m² cuentan sólo en los planos de losa",
+      A.es_losa("LCIELO") and A.es_losa("VCIELO, LCIELO") and not A.es_losa("VCIELO") and not A.es_losa(None)
+      and A.plano_para_kpis({"barras": 3, "kg": 10, "m2": 40}, "ELEV")["m2"] is None
+      and A.plano_para_kpis({"barras": 3, "kg": 10, "m2": 40}, "LCIELO")["m2"] == 40)
+check("un resumen anterior sin Ø toma el calculado aparte",
+      A.plano_para_kpis({"barras": 1, "kg": 5}, "LCIELO", 10.0)["diam_prom"] == 10.0
+      and A.plano_para_kpis({"barras": 1, "kg": 5, "diam_prom": 8}, "LCIELO", 10.0)["diam_prom"] == 8)
+check("el plano reemplazado por otro no suma a la obra (el que lo complementa, sí)",
+      A.reemplazados([("O", "A", None, None), ("O", "B", "reemplaza", "A"), ("O", "C", "complementa", "B")]) == {("O", "A")})
+
+print("\nTEST: aSa: el cruce de un plano con los códigos (CC) de su obra")
+check("la ubicación del plano como se compara: el piso de ArmaScanner va sólo con su número",
+      A.clave_ubicacion("LCIELO", "5", "C1") == ("LCIELO", "P5", "C1")
+      and A.clave_ubicacion("LCIELO", "P05", "C01") == ("LCIELO", "P5", "C1"))
+check("la del código, leída de su descripción (las formas que se repiten en aSa)",
+      A.ubicacion_de_codigo("LC P5 C1") == ("LCIELO", "P5", "C1")
+      and A.ubicacion_de_codigo("Losa 5°P (CICLO 2)") == ("LCIELO", "P5", "C2")
+      and A.ubicacion_de_codigo("ELEV- P2 C2") == ("ELEV", "P2", "C2"))
+check("…y no se adivina: sin sector, piso o ciclo, no calza",
+      A.ubicacion_de_codigo("VIGAS+LOSAS P5 C1") is None and A.ubicacion_de_codigo("LCIELO P5") is None
+      and A.ubicacion_de_codigo("") is None)
+CCS = [{"cc": "SUQ1", "descr": "LCIELO P5 C1", "kg": 610.0}, {"cc": "SUQ2", "descr": "ELEV P5 C1", "kg": 900.0},
+       {"cc": "SUQ4", "descr": "LC 5°P C1 complemento", "kg": 20.0}]
+x = A.cruce_asa([("LCIELO", "5", "C1", 600), ("LCIELO", "5", "C2", 400)], CCS)
+check("cruce: qué parte de los kilos del plano tiene código, cuáles y qué falta",
+      (x["kg"], x["kg_en_asa"], x["pct"], [c["cc"] for c in x["codigos"]], x["faltan"])
+      == (1000.0, 600.0, 60, ["SUQ1", "SUQ4"], ["LCIELO P5 C2"]), x)
+check("cruce sin barras: sin porcentaje", A.cruce_asa([], CCS)["pct"] is None)
+check("DWG: la copia de trabajo y, si no viene, el del calculista",
+      A.dwg_del_paquete(["paquete.json", "planos/A.dwg", "trabajo/A_IA.dwg"]) == "trabajo/A_IA.dwg"
+      and A.dwg_del_paquete(["paquete.json", "planos/A.dwg"]) == "planos/A.dwg"
+      and A.dwg_del_paquete(["paquete.json", "trabajo/A_subida.csv"]) is None)
+
 from armahub import export as E  # noqa: E402
 check("la exportación consulta las combinaciones bloqueadas", hasattr(E, "combinaciones_bloqueadas"))
 
@@ -103,7 +157,9 @@ check("rutas del contrato",
        "/armascanner/planos/reemplazo/pedir", "/armascanner/planos/reemplazos", "/armascanner/planos/reemplazo/responder",
        "/armascanner/planos/reemplazo/anular", "/armascanner/planos-linea", "/armascanner/planos-linea/pdf",
        "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido",
-       "/armascanner/planos-linea/reemplazo/responder"} <= rutas, rutas)
+       "/armascanner/planos-linea/reemplazo/responder", "/armascanner/obras-linea", "/armascanner/obras-linea/asa",
+       "/armascanner/planos-linea/dwg"} <= rutas, rutas)
+check("Mis obras ya no lista las cargas sueltas", "/armascanner/cargas" not in rutas and not hasattr(A, "cargas"))
 check("ya no existen subir-plano ni elegir la versión que vale",
       not {"/armascanner/subir-plano", "/armascanner/planos-linea/vale"} & rutas and not hasattr(A, "_guardar_paquete"))
 
@@ -197,9 +253,9 @@ def una(sql, *params):
 
 
 print("\nTEST: migración 174")
-BASE.executescript("""CREATE TABLE proyectos (id_proyecto TEXT, nombre_proyecto TEXT, asa_job_id TEXT);
+BASE.executescript("""CREATE TABLE proyectos (id_proyecto TEXT, nombre_proyecto TEXT, asa_job_id TEXT, constructora_id INTEGER);
                       CREATE TABLE users (email TEXT, nombre TEXT, apellido TEXT);
-                      INSERT INTO proyectos VALUES ('PROY-1', 'INGEVEC - EDIFICIO LOS LILENES', 'A-100');
+                      INSERT INTO proyectos VALUES ('PROY-1', 'INGEVEC - EDIFICIO LOS LILENES', 'A-100', NULL);
                       INSERT INTO users VALUES ('emilio@x.cl', 'Emilio', 'Zalazar'), ('eugenio@x.cl', 'Eugenio', 'Zalazar'),
                                                ('jefa@x.cl', 'Ana', 'Jefa');""")
 for n in (169, 171, 172, 173):
@@ -549,6 +605,108 @@ r = web.post("/armascanner/planos-linea/eliminar", json={"obra": "PROY-1", "plan
 check("eliminar el plano (administrador): se van su fila, su entrega y sus archivos, y sus pedidos dejan de correr",
       r["ok"] and fila("P1", "etapa") is None and entrega("P1") is None and list(R2) == ["obras/PROY-1/planos/x/v4.zip"]
       and not [p for p in pedidos("P1") if p[2] in ("pendiente", "aceptado")], (r, list(R2), pedidos("P1")))
+
+print("\nTEST: Mis obras (22-nov): la lista de obras con sus KPIs, aSa y el DWG")
+BASE.executescript("""CREATE TABLE constructoras (id INTEGER, nombre TEXT);
+                      CREATE TABLE asa_obras (asa_job_id TEXT, cliente TEXT);
+                      CREATE TABLE asa_pedidos (control_code TEXT, asa_job_id TEXT, descr TEXT, kg NUMERIC, estado TEXT,
+                                                order_date DATE);
+                      CREATE TABLE asa_sync (fin TIMESTAMPTZ, ok BOOLEAN);
+                      CREATE TABLE barras (id_proyecto TEXT, plano_code TEXT, sector TEXT, piso TEXT, ciclo TEXT,
+                                           peso_total NUMERIC, origen TEXT);
+                      INSERT INTO constructoras VALUES (1, 'EBCO S.A.');
+                      INSERT INTO asa_obras VALUES ('A-200', 'EBCO');
+                      INSERT INTO proyectos VALUES ('PROY-2', 'EBCO - TORRE NORTE', 'A-200', 1);""")
+L5 = [{"id": "L-1", "rev": "aprobada", "kg": 300.0, "diam": 12}, {"id": "L-2", "rev": "aprobada", "kg": 100.0, "diam": 8}]
+E5 = [{"id": "E-1", "rev": "aprobada", "kg": 600.0, "diam": 16}]
+L4 = [{"id": "V-1", "rev": "aprobada", "kg": 50.0, "diam": 10}]
+r = terminar(EMI, "L5", paquete(70), L5, obra="PROY-2", elemento="LCIELO", m2=200.0, m2_ciclos={"C1": 120.0, "C2": 80.0}).json()
+check("terminar con los m² de losa: quedan en el resumen de la entrega y del plano",
+      (r["resumen"]["m2"], r["resumen"]["m2_ciclos"], r["resumen"]["diam_prom"]) == (200.0, {"C1": 120.0, "C2": 80.0}, 11.0)
+      and una("SELECT resumen FROM planos_obra WHERE plano = 'L5'")[0]["m2"] == 200.0
+      and una("SELECT resumen FROM planos_obra_entregas WHERE plano = 'L5'")[0]["m2_ciclos"] == {"C1": 120.0, "C2": 80.0}, r)
+terminar(EMI, "E5", paquete(71), E5, obra="PROY-2", elemento="ELEV", m2=999.0)
+terminar(EUG, "L4", paquete(72), L4, obra="PROY-2", elemento="LCIELO", m2=150.0)
+terminar(EUG, "L4R", paquete(73), L4, obra="PROY-2", elemento="LCIELO", m2=150.0, relacion="reemplaza", relacion_de="L4")
+cargar(EMI, "L6", b"h" * 80, obra="PROY-2", numero="216")
+# un plano terminado antes del 22-nov: su resumen no trae el Ø (se calcula de sus barras)
+BASE.execute("UPDATE planos_obra SET resumen = ? WHERE plano = 'E5'",
+             (json.dumps({k: v for k, v in A.resumen_de(E5).items() if k != "diam_prom"}),))
+BASE.commit()
+obras_ = web.get("/armascanner/obras-linea").json()["obras"]
+o = next(x for x in obras_ if x["id"] == "PROY-2")
+check("la lista: la obra con su cliente, su constructora y su código de aSa; la de actividad más reciente, primero",
+      obras_[0]["id"] == "PROY-2" and (o["nombre"], o["cliente"], o["constructora"], o["asa"])
+      == ("EBCO - TORRE NORTE", "EBCO", "EBCO S.A.", "A-200") and o["ultima"], o)
+check("…cuántos planos en cada etapa", (o["planos"], o["terminados"], o["cargados"], o["en_trabajo"]) == (5, 4, 1, 0), o)
+check("…y sus KPIs: suman los planos con barras no reemplazados; los m², sólo los de losa",
+      o["kpis"] == {"items": 4, "kg": 1050.0, "ppi": 262.5,
+                    "diam_prom": round((12 * 300 + 8 * 100 + 16 * 600 + 10 * 50) / 1050, 1), "m2": 350.0, "kg_m2": 3.0},
+      o["kpis"])
+check("…con lo que espera a alguien: los pedidos sin enviar", (o["reemplazos"], o["consultas"], o["sin_enviar"]) == (0, 0, 3), o)
+pl = {x["plano"]: x for x in web.get("/armascanner/planos-linea", params={"obra": "PROY-2"}).json()["planos"]}
+check("los planos de la obra, cada uno con sus KPIs (m² sólo si es de losa; el cargado, sin KPIs)",
+      pl["L5"]["kpis"] == {"items": 2, "kg": 400.0, "ppi": 200.0, "diam_prom": 11.0, "m2": 200.0, "kg_m2": 2.0}
+      and pl["E5"]["kpis"]["m2"] is None and pl["E5"]["kpis"]["diam_prom"] == 16.0 and pl["L6"]["kpis"] is None
+      and set(pl) == {"L4", "L4R", "L5", "E5", "L6"}, pl)
+
+# aSa: el pedido de L5 dejó sus barras en los despieces (aquí, a mano) y la obra tiene sus códigos en aSa
+con_ficha(EMI, "pedido", obra="PROY-2", plano="L5")
+BASE.executescript("""INSERT INTO barras VALUES ('PROY-2', 'PC-1', 'LCIELO', '5', 'C1', 300, 'csv'),
+                                               ('PROY-2', 'PC-1', 'LCIELO', '5', 'C1', 100, 'csv'),
+                                               ('PROY-2', 'PC-1', 'LCIELO', '5', 'C2', 400, 'csv'),
+                                               ('PROY-1', 'PC-1', 'LCIELO', '5', 'C2', 999, 'csv');
+                      INSERT INTO asa_pedidos VALUES ('SUQ1', 'A-200', 'LCIELO P5 C1', 410, 'Open', '2026-11-20'),
+                                                     ('SUQ2', 'A-200', 'ELEV P5 C1', 900, 'Processed', '2026-11-18'),
+                                                     ('SUQ3', 'A-200', 'LCIELO P5 C2', 400, 'Cancelled', '2026-11-19'),
+                                                     ('SUQ9', 'A-100', 'LCIELO P5 C2', 400, 'Open', '2026-11-19');
+                      INSERT INTO asa_sync VALUES ('2026-11-22T06:00:00+00:00', 1);""")
+a = web.get("/armascanner/obras-linea/asa", params={"obra": "PROY-2"}).json()
+x = {p["plano"]: p for p in a["planos"]}
+check("aSa: los códigos vivos de la obra (sin los anulados ni los de otra obra)",
+      (a["asa"], a["codigos"], a["kg"]) == ("A-200", 2, 1310.0) and isinstance(a["al"], str), a)
+check("…por plano con pedido: qué parte de sus kilos tiene código, cuáles y qué ciclo falta",
+      (x["L5"]["pedido"], x["L5"]["kg"], x["L5"]["kg_en_asa"], x["L5"]["pct"], [c["cc"] for c in x["L5"]["codigos"]],
+       x["L5"]["faltan"]) == ("enviado", 800.0, 400.0, 50, ["SUQ1"], ["LCIELO P5 C2"])
+      and x["L5"]["codigos"][0] == {"cc": "SUQ1", "descr": "LCIELO P5 C1", "kg": 410.0, "estado": "Open", "fecha": "2026-11-20"},
+      x.get("L5"))
+check("…sin pedido no hay cruce, y el cargado no aparece",
+      x["E5"]["pedido"] == "sin_enviar" and x["E5"]["pct"] is None and x["E5"]["codigos"] == [] and "L6" not in x, x)
+a1 = web.get("/armascanner/obras-linea/asa", params={"obra": "PROY-1"}).json()
+x1 = {p["plano"]: p for p in a1["planos"]}
+check("…cada obra con lo suyo: el plano anterior al cambio, con pedido (y cambios), calza con el código de su obra",
+      (a1["asa"], a1["codigos"], x1["ANTES"]["pedido"], x1["ANTES"]["pct"], [c["cc"] for c in x1["ANTES"]["codigos"]])
+      == ("A-100", 1, "cambios", 100, ["SUQ9"]), a1)
+check("…una obra sin código de aSa: sin códigos",
+      web.get("/armascanner/obras-linea/asa", params={"obra": "PROY-X"}).json() == {"asa": "", "al": "", "codigos": 0,
+                                                                                  "kg": 0, "planos": []})
+
+
+def zip_con(archivos):
+    z = io.BytesIO()
+    with zipfile.ZipFile(z, "w") as f:
+        for nombre, contenido in archivos.items():
+            f.writestr(nombre, contenido)
+    return z.getvalue()
+
+
+ORIGINAL = {"paquete.json": "{}", "planos/D1.dwg": b"DWG-calculista"}
+cargar(EMI, "D1° piso", zip_con(ORIGINAL), obra="PROY-2")
+r = web.get("/armascanner/planos-linea/dwg", params={"obra": "PROY-2", "plano": "D1° piso"})
+check("Descargar DWG de un plano cargado: el del calculista, con su nombre",
+      r.status_code == 200 and r.content == b"DWG-calculista"
+      and r.headers["content-disposition"] == "attachment; filename=\"D1.dwg\"; filename*=UTF-8''D1.dwg",
+      (r.status_code, dict(r.headers)))
+terminar(EMI, "D1° piso", zip_con(dict(ORIGINAL, **{"trabajo/D1°_IA.dwg": b"DWG-trabajo"})), [], obra="PROY-2")
+r = web.get("/armascanner/planos-linea/dwg", params={"obra": "PROY-2", "plano": "D1° piso"})
+check("…terminado: la copia de trabajo (con la cubicación), y el nombre con su letra rara",
+      r.status_code == 200 and r.content == b"DWG-trabajo"
+      and "filename*=UTF-8''D1%C2%B0_IA.dwg" in r.headers["content-disposition"]
+      and 'filename="D1__IA.dwg"' in r.headers["content-disposition"] and AUDITORIA[-1][1] == "armascanner_descargar_dwg",
+      r.headers.get("content-disposition"))
+check("…un paquete sin DWG o un plano que no está: 404",
+      web.get("/armascanner/planos-linea/dwg", params={"obra": "PROY-2", "plano": "L5"}).status_code == 404
+      and web.get("/armascanner/planos-linea/dwg", params={"obra": "PROY-2", "plano": "NO"}).status_code == 404)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

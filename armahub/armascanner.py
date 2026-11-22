@@ -17,15 +17,18 @@ cargar los planos del calculista, subir cada plano cuando lo terminó y enviar s
     POST /armascanner/planos/pedido           «Enviar pedido» (también …/enviar-pedido): las barras de la
                                               entrega pasan a los despieces de la obra
     POST /armascanner/planos/tomar · soltar   ya no hay bloqueo: quedan para un ArmaScanner anterior
-    GET/POST /armascanner/planos-linea…       la pestaña Planos del portal (avance, barras, PDF, responder
-                                              un reemplazo, pedido, eliminar)
+    GET/POST /armascanner/planos-linea…       los planos de una obra en el portal (avance, barras, PDF, DWG,
+                                              responder un reemplazo, pedido, eliminar)
 
 Y lo que muestra la caluga ArmaScanner del portal (sesión del portal; SPECS §13) [Usuario 19-nov:
 «Más que pedidos enviados debiera ver sus obras y ojalá una línea por cada carga de elemento
 constructivo… Con su cantidad de Items, kilos y lo típico que usamos. La licencia capaz la
 dejamos acá, aquí buscamos un usuario existente y lo agregamos»]:
 
-    GET  /armascanner/cargas         Mis obras: una línea por carga (plano = un elemento)
+    GET  /armascanner/obras-linea      Mis obras: las obras con planos, con sus KPIs (kg, m², kg/m², PPI, Ø)
+    GET  /armascanner/obras-linea/asa  la ventana de la obra, sección aSa: qué parte de cada plano está en aSa
+                                       y con qué códigos (CC)
+    GET  /armascanner/planos-linea/dwg el DWG del plano (la copia de trabajo o el del calculista)
     GET  /armascanner/mi-licencia    Instalar: mi licencia y mis equipos
     GET  /armascanner/licencias      Licencias (administración): quién la tiene
     GET  /armascanner/uso            Uso (administración): KPIs y uso por usuario
@@ -490,9 +493,10 @@ def barras_a_la_vista(lista) -> list:
 
 
 def resumen_de(barras, extra=None) -> dict:
-    """{barras, aprobadas, consultas, pendientes, kg} de las barras a la vista (+ ciclos, etapa y la
-    versión de ArmaScanner que lo manda: `version_app`, que el pedido deja registrada).
-    «consultas» = con duda. Función pura."""
+    """{barras, aprobadas, consultas, pendientes, kg} de las barras a la vista (+ ciclos, etapa, la
+    versión de ArmaScanner que lo manda: `version_app`, que el pedido deja registrada; el Ø promedio
+    `diam_prom`, y los m² de losa `m2` y `m2_ciclos` si ArmaScanner los manda). «consultas» = con
+    duda. Función pura."""
     r = {"barras": len(barras), "aprobadas": sum(1 for b in barras if b.get("rev") == "aprobada"),
          "consultas": sum(1 for b in barras if b.get("rev") == "duda"),
          "kg": round(sum(float(b.get("kg") or 0) for b in barras), 1)}
@@ -503,7 +507,105 @@ def resumen_de(barras, extra=None) -> dict:
     for k in ("etapa", "version_app"):
         if isinstance(extra.get(k), str) and extra[k].strip():
             r[k] = extra[k].strip()[:40]
+    d = diam_prom(barras)
+    if d is not None:
+        r["diam_prom"] = d
+    losa = m2_enviados(extra)
+    if losa:
+        r["m2"], r["m2_ciclos"] = losa
     return r
+
+
+# ── Los KPIs de un plano y de una obra (Mis obras, 22-nov) ──
+# Los mismos de toda la página de ArmaHub (Obras, barras.py; despieces, lotes.py):
+#   PPI = Peso Promedio por Ítem = kg / ítems (entradas de la lista, no barras físicas)
+#   Ø prom = ponderado por peso, Σ(φ·kg) / Σkg
+# y los de la losa: m² = el área de losa que lee ArmaScanner en los planos de losa (LCIELO; las
+# elevaciones no traen contornos de losa) y kg/m² = kg / m².
+def _numero(v):
+    """El número de `v` si es uno finito (no un booleano), o None."""
+    import math
+    if isinstance(v, bool):
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return n if math.isfinite(n) else None
+
+
+def diam_prom(barras):
+    """Ø promedio ponderado por peso, Σ(φ·kg)/Σkg, de las barras a la vista que traen φ y kg (1
+    decimal); None si ninguna los trae. Función pura."""
+    suma = peso = 0.0
+    for b in barras or []:
+        d, kg = _numero(b.get("diam")), _numero(b.get("kg"))
+        if d and kg and d > 0 and kg > 0:
+            suma += d * kg
+            peso += kg
+    return round(suma / peso, 1) if peso else None
+
+
+def m2_enviados(d):
+    """(m², {ciclo: m²}) de losa que manda ArmaScanner al terminar un plano de losa; None si no los
+    manda (las elevaciones no traen contornos de losa) o no son un área. Función pura."""
+    m2 = _numero((d or {}).get("m2"))
+    if not m2 or m2 <= 0:
+        return None
+    ciclos = d.get("m2_ciclos") if isinstance(d.get("m2_ciclos"), dict) else {}
+    por = {}
+    for k, v in list(ciclos.items())[:200]:
+        n = _numero(v)
+        if n is not None and n >= 0 and str(k).strip():
+            por[str(k).strip()[:12]] = round(n, 1)
+    return round(m2, 1), por
+
+
+def es_losa(elemento) -> bool:
+    """¿El plano es de losa (sus m² cuentan para la obra)? `elemento` como lo guarda ArmaHub
+    («LCIELO», «LCIELO, VCIELO»). Función pura."""
+    return "LCIELO" in [t.strip().upper() for t in str(elemento or "").split(",")]
+
+
+def plano_para_kpis(resumen, elemento, diam=None) -> dict:
+    """Lo que un plano aporta a los KPIs: {items, kg, diam_prom, m2}. Los m² sólo si es de losa.
+    `diam`: el Ø promedio calculado aparte (resumen anterior al 22-nov, que no lo trae)."""
+    r = resumen or {}
+    return {"items": int(r.get("barras") or 0), "kg": float(r.get("kg") or 0),
+            "diam_prom": r.get("diam_prom") if r.get("diam_prom") is not None else diam,
+            "m2": r.get("m2") if es_losa(elemento) else None}
+
+
+def kpis_de(planos) -> dict:
+    """{items, kg, ppi, diam_prom, m2, kg_m2} de uno o varios planos (plano_para_kpis). Sin dato va
+    None (la pantalla muestra «—», nunca 0). Función pura."""
+    items = sum(int(p.get("items") or 0) for p in planos)
+    kg = round(sum(float(p.get("kg") or 0) for p in planos), 1)
+    con_d = [(float(p["diam_prom"]), float(p.get("kg") or 0)) for p in planos if _numero(p.get("diam_prom"))]
+    peso_d = sum(k for _, k in con_d)
+    m2s = [float(p["m2"]) for p in planos if _numero(p.get("m2"))]
+    m2 = round(sum(m2s), 1) if m2s else None
+    return {"items": items, "kg": kg, "ppi": round(kg / items, 2) if items else None,
+            "diam_prom": round(sum(d * k for d, k in con_d) / peso_d, 1) if peso_d else None,
+            "m2": m2, "kg_m2": round(kg / m2, 1) if m2 and kg else None}
+
+
+def reemplazados(filas) -> set:
+    """{(obra, plano)} de los planos que otro de la misma obra reemplaza (relacion «reemplaza»,
+    relacion_de = ese plano): quedan como antecedente y no suman a la obra. `filas`: [(obra, plano,
+    relacion, relacion_de)]. Función pura."""
+    return {(o, de) for o, _p, rel, de in filas if rel == "reemplaza" and de}
+
+
+def _diam_faltante(cur, claves) -> dict:
+    """{(obra, plano): Ø promedio} de los planos cuyo resumen no lo trae (terminados antes del
+    22-nov): se calcula de sus barras a la vista."""
+    claves = set(claves)
+    if not claves:
+        return {}
+    cur.execute("SELECT id_proyecto, plano, barras_json FROM planos_obra WHERE id_proyecto = ANY(%s) AND plano = ANY(%s)",
+                (sorted({c[0] for c in claves}), sorted({c[1] for c in claves})))
+    return {(o, p): diam_prom(b if isinstance(b, list) else []) for o, p, b in cur.fetchall() if (o, p) in claves}
 
 
 def puede_enviar(autor, email: str, admin: bool) -> bool:
@@ -1019,11 +1121,12 @@ async def enviar_pedido(datos: PlanoEnLinea, credentials: HTTPAuthorizationCrede
 
 
 # ── La pestaña Planos del portal (sesión del portal): avance, barras, PDF, reemplazos, pedido ──
-def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list) -> dict:
+def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list, diam=None) -> dict:
     (obra, obra_nombre, plano, numero, titulo, revision, elemento, version, tamano, subido_por, subido_el,
      resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg, etapa, relacion, relacion_de) = f
     r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "consultas": 0,
                     "pendientes": (barras or 0) - (aprobadas or 0), "kg": float(kg or 0)}
+    kpis = kpis_de([plano_para_kpis(r, elemento, diam)]) if etapa != "cargado" else None
     reemplazos = _reemplazos_dict(entrega, pedidos, nombres, yo)
     por_cambiar = any(x["estado"] == "aceptado" for x in reemplazos)
     return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero or "", "titulo": titulo or "",
@@ -1036,13 +1139,15 @@ def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list) -> dic
             "puede_liberar": False, "pdf": bool(pdf), "etapa": etapa or "", "puede_eliminar": admin,
             "relacion": relacion or "", "relacion_de": relacion_de or "",
             "entrega": _entrega_dict(entrega, nombres, yo), "reemplazos": reemplazos,
-            "puede_responder": bool(entrega) and (admin or entrega["autor"] == yo)}
+            "puede_responder": bool(entrega) and (admin or entrega["autor"] == yo), "kpis": kpis}
 
 
 @router.get("/armascanner/planos-linea")
 def planos_linea(obra: str = "", user=Depends(get_current_user)):
-    """Planos (portal): cada plano con su etapa, el avance de su entrega (barras, aprobadas, con
-    consulta, por aprobar, kg), de quién es, los pedidos de reemplazo y el estado de su pedido."""
+    """Los planos (portal; con `obra`, los de esa obra: la ventana de la obra en Mis obras): cada uno
+    con su etapa, el avance de su entrega (barras, aprobadas, con consulta, por aprobar, kg), sus KPIs
+    (ítems, kg, PPI, Ø, m² si es de losa), de quién es, los pedidos de reemplazo y el estado de su
+    pedido."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             _con_licencia_o_admin(cur, user)
@@ -1065,9 +1170,12 @@ def planos_linea(obra: str = "", user=Depends(get_current_user)):
             nombres = _nombres(cur, [f[9] for f in filas] + [f[14] for f in filas]
                                + [e["autor"] for e in entregas.values()]
                                + [r["solicitante"] for lista in pedidos.values() for r in lista])
+            diam = _diam_faltante(cur, [(f[0], f[2]) for f in filas
+                                        if f[19] != "cargado" and f[16] and "diam_prom" not in (f[11] or {})])
     yo, admin = user.get("email", ""), _es_admin(user)
     return {"admin": admin, "planos": [_fila_plano(f, nombres, yo, admin, entregas.get((f[0], f[2])),
-                                                   pedidos.get((f[0], f[2]), [])) for f in filas]}
+                                                   pedidos.get((f[0], f[2]), []), diam.get((f[0], f[2])))
+                                       for f in filas]}
 
 
 @router.get("/armascanner/planos-linea/barras")
@@ -1098,6 +1206,47 @@ def pdf_del_plano(obra: str, plano: str, user=Depends(get_current_user)):
     if not fila or not fila[0]:
         return {"url": None}
     return {"url": storage.generate_presigned_url(fila[0], expires=DESCARGA_SEGUNDOS, content_type="application/pdf")}
+
+
+def dwg_del_paquete(nombres):
+    """El DWG que se descarga del paquete del plano: la copia de trabajo (trabajo/<plano>_IA.dwg, con
+    la cubicación dibujada) o, si no la trae (un antecedente), el plano del calculista (planos/…).
+    None si el paquete no trae un DWG. Función pura."""
+    dwg = [n for n in nombres if n.lower().endswith(".dwg")]
+    return (next((n for n in dwg if n.startswith("trabajo/")), None)
+            or next((n for n in dwg if n.startswith("planos/")), None) or (dwg[0] if dwg else None))
+
+
+@router.get("/armascanner/planos-linea/dwg")
+def dwg_del_plano(obra: str, plano: str, user=Depends(get_current_user)):
+    """«Descargar DWG»: el DWG del plano, sacado de su paquete en R2: el de la entrega (la copia de
+    trabajo) o, sin entrega, el del antecedente. [Usuario 22-nov: «Descargar DWG (ver el DWG en la
+    web, más adelante)»]"""
+    import zipfile
+    from urllib.parse import quote
+    from fastapi.responses import Response
+    from . import storage
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            entrega = _entrega(cur, obra, plano)
+            fila = _fila_base(cur, obra, plano)
+    archivo = (entrega and entrega["archivo"]) or (fila and fila["archivo"])
+    if not archivo:
+        raise HTTPException(status_code=404, detail="Este plano no tiene DWG en ArmaHub.")
+    try:
+        z = zipfile.ZipFile(BytesIO(storage.download_file(archivo)))
+        miembro = dwg_del_paquete(z.namelist())
+        contenido = z.read(miembro) if miembro else None
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo leer el plano guardado ({str(e)[:80]}).")
+    if not contenido:
+        raise HTTPException(status_code=404, detail="Este plano no tiene DWG en ArmaHub.")
+    nombre = miembro.rsplit("/", 1)[-1]
+    simple = "".join(c if c.isascii() and (c.isalnum() or c in "._-() ") else "_" for c in nombre)
+    audit(user.get("email", "?"), "armascanner_descargar_dwg", f"{plano} ({nombre})", "proyecto", obra)
+    return Response(contenido, media_type="application/octet-stream", headers={
+        "Content-Disposition": f"attachment; filename=\"{simple}\"; filename*=UTF-8''{quote(nombre)}"})
 
 
 @router.post("/armascanner/planos-linea/reemplazo/responder")
@@ -1286,51 +1435,167 @@ def _con_licencia_o_admin(cur, user):
         raise HTTPException(status_code=403, detail="Requiere licencia de ArmaScanner.")
 
 
-def pendientes_de(pend) -> int:
-    return sum(int(n or 0) for n in (pend or {}).values())
-
-
-@router.get("/armascanner/cargas")
-def cargas(user=Depends(get_current_user)):
-    """Mis obras: una línea por carga vigente de ArmaScanner (cada plano es la carga de un
-    elemento constructivo), de todas las obras: el trabajo es colaborativo y todos los usuarios
-    con licencia ven todo [Usuario 20-nov: «pensaba que todos los usuarios tengan acceso a
-    todo»]."""
+@router.get("/armascanner/obras-linea")
+def obras_linea(user=Depends(get_current_user)):
+    """Mis obras: las obras con planos de ArmaScanner, de todas las obras (el trabajo es colaborativo:
+    todos los usuarios con licencia ven todo [Usuario 20-nov]), con sus datos (cliente, constructora,
+    código de aSa), cuántos planos tiene en cada etapa, lo que espera a alguien (reemplazos pedidos,
+    barras con consulta, pedidos sin enviar) y sus KPIs (kpis_de). Suman los planos con barras que no
+    están reemplazados por otro; los m², sólo los de losa. La de actividad más reciente, primero.
+    [Usuario 22-nov: «un listado de obras con datos mínimos y KPIs»]"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             _con_licencia_o_admin(cur, user)
-            # Las barras se resumen aparte, por carga, y se cruzan después: la consulta no depende
-            # de que `imports` tenga llave primaria para agrupar (el 19-nov la pantalla quedó
-            # vacía con el plano ya subido). La obra con LEFT JOIN: una carga no se pierde de la
-            # lista si su obra cambió de id.
-            cur.execute("""
-                SELECT i.id, i.id_proyecto, COALESCE(p.nombre_proyecto, i.nombre_proyecto, i.id_proyecto),
-                       b.plano, i.usuario, i.fecha, i.herramienta_version, i.pendientes,
-                       b.items, b.kg, b.sectores, b.pisos, b.ciclos
-                  FROM imports i
-                  LEFT JOIN proyectos p ON p.id_proyecto = i.id_proyecto
-                  JOIN (SELECT import_id, MAX(nombre_plano) AS plano, COUNT(*) AS items,
-                               COALESCE(SUM(peso_total), 0) AS kg,
-                               string_agg(DISTINCT sector, ', ') AS sectores,
-                               string_agg(DISTINCT piso, ', ') AS pisos,
-                               string_agg(DISTINCT ciclo, ', ' ORDER BY ciclo) AS ciclos
-                          FROM barras
-                         WHERE import_id IN (SELECT id FROM imports WHERE herramienta = 'ArmaScanner')
-                         GROUP BY import_id) b ON b.import_id = i.id
-                 WHERE i.herramienta = 'ArmaScanner'
-                 ORDER BY i.id DESC
-                 LIMIT 1000
-            """)
+            cur.execute("""SELECT id_proyecto, plano, etapa, elemento, resumen, barras, aprobadas, kg, relacion,
+                                  relacion_de, version, pedido_version, subido_el
+                             FROM planos_obra""")
             filas = cur.fetchall()
+            ids = sorted({f[0] for f in filas})
+            info = {}
+            if ids:
+                cur.execute("""SELECT pr.id_proyecto, pr.nombre_proyecto, COALESCE(pr.asa_job_id, ''),
+                                      COALESCE(ao.cliente, ''), COALESCE(co.nombre, '')
+                                 FROM proyectos pr
+                                 LEFT JOIN asa_obras ao ON ao.asa_job_id = pr.asa_job_id
+                                 LEFT JOIN constructoras co ON co.id = pr.constructora_id
+                                WHERE pr.id_proyecto = ANY(%s)""", (ids,))
+                info = {f[0]: f[1:] for f in cur.fetchall()}
+            entregas, pedidos = _entregas(cur), _reemplazos(cur)
+            diam = _diam_faltante(cur, [(f[0], f[1]) for f in filas
+                                        if f[2] != "cargado" and f[5] and "diam_prom" not in (f[4] or {})])
+    fuera = reemplazados([(f[0], f[1], f[8], f[9]) for f in filas])
+    obras = {}
+    for (obra, plano, etapa, elemento, resumen, barras, aprobadas, kg, _rel, _de, version, pedido_version,
+         subido_el) in filas:
+        nombre, asa, cliente, constructora = info.get(obra) or (obra, "", "", "")
+        o = obras.setdefault(obra, {"id": obra, "nombre": nombre or obra, "asa": asa, "cliente": cliente,
+                                    "constructora": constructora, "planos": 0, "terminados": 0, "cargados": 0,
+                                    "en_trabajo": 0, "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
+                                    "_ultima": None, "_kpis": []})
+        o["planos"] += 1
+        etapa = etapa or ""
+        o["terminados" if etapa == "terminado" else "cargados" if etapa == "cargado" else "en_trabajo"] += 1
+        e = entregas.get((obra, plano))
+        o["reemplazos"] += sum(1 for r in pedidos.get((obra, plano), [])
+                               if r["estado"] == "pendiente" and e and r["autor"] == e["autor"])
+        if subido_el and (o["_ultima"] is None or subido_el > o["_ultima"]):
+            o["_ultima"] = subido_el
+        if etapa == "cargado" or (obra, plano) in fuera:
+            continue
+        r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "kg": float(kg or 0)}
+        o["consultas"] += int(r.get("consultas") or 0)
+        o["sin_enviar"] += estado_pedido(version, pedido_version) != "enviado"
+        o["_kpis"].append(plano_para_kpis(r, elemento, diam.get((obra, plano))))
+    lista = sorted(obras.values(), key=lambda o: (o["_ultima"] is None, -(o["_ultima"].timestamp() if o["_ultima"]
+                                                                         else 0), str(o["nombre"])))
+    return {"obras": [dict({k: v for k, v in o.items() if not k.startswith("_")}, ultima=_cuando(o["_ultima"]),
+                           kpis=kpis_de(o["_kpis"])) for o in lista]}
+
+
+# ── La sección aSa de la ventana de la obra: qué parte de cada plano está en aSa y con qué códigos ──
+# En aSa la cubicación es un pedido con su código de control (CC: `control_code` del espejo
+# `asa_pedidos`, refrescado cada día; integracion_asa.md). aSa no tiene sector, piso ni ciclo: el
+# cubicador los escribe en la descripción del código («LCIELO P5 C1»). El plano llega a aSa así: su
+# pedido (Enviar pedido) deja sus barras en los despieces de la obra con su sector, piso y ciclo; la
+# exportación arma un Excel por sector + piso + ciclo (export.py), y ése se carga en aSa como un CC.
+# El cruce, entonces, es por obra (su job de aSa) y por sector + piso + ciclo, leídos de la
+# descripción con las reglas de la auditoría (auditorias._ubicacion_desde_nombre). Es por nombre: un
+# código con otra descripción no se reconoce. El cruce exacto (la columna PLANO de la exportación queda
+# en el ElementDesc de cada barra en aSa) pide consultar aSa barra a barra y no está en el espejo.
+ESTADO_ANULADO = "Cancelled"  # (programacion.ESTADO_NUNCA) un código anulado en aSa no cuenta
+
+
+def clave_ubicacion(sector, piso, ciclo) -> tuple:
+    """(SECTOR, PISO, CICLO) como se comparan con lo leído de un código de aSa: «LCIELO», «P5», «C1».
+    ArmaScanner anota el piso sólo con su número («5»). Función pura."""
+    import re
+    from .auditorias import _ubicacion_desde_nombre
+    u = _ubicacion_desde_nombre(" ".join(str(x or "") for x in (sector, piso, ciclo)), None)
+    p = str(piso or "").strip().upper()
+    s = (u["sector"] or str(sector or "").strip().upper(),
+         ("P" + p) if p.isdigit() else (u["piso"] or p), u["ciclo"] or str(ciclo or "").strip().upper())
+    return tuple(re.sub(r"^([A-Z]+)0+(\d)", r"\1\2", x) for x in s)
+
+
+def ubicacion_de_codigo(descr):
+    """(SECTOR, PISO, CICLO) leídos de la descripción de un código de aSa, o None si falta alguno
+    (no se adivina). Función pura."""
+    import re
+    from .auditorias import _ubicacion_desde_nombre
+    u = _ubicacion_desde_nombre(descr, None)
+    if not (u["sector"] and u["piso"] and u["ciclo"]):
+        return None
+    return tuple(re.sub(r"^([A-Z]+)0+(\d)", r"\1\2", u[k]) for k in ("sector", "piso", "ciclo"))
+
+
+def cruce_asa(combos, codigos) -> dict:
+    """Qué parte de un plano está en aSa. `combos`: [(sector, piso, ciclo, kg)] de las barras que el
+    plano mandó a los despieces; `codigos`: [{cc, descr, kg, estado, fecha}] de la obra en aSa.
+    → {kg, kg_en_asa, pct, codigos (los que calzan), faltan (lo que no tiene código: «LCIELO P5 C3»)}.
+    Un código calza si su descripción dice el mismo sector, piso y ciclo. Función pura."""
+    por = {}
+    for c in codigos:
+        k = ubicacion_de_codigo(c.get("descr"))
+        if k:
+            por.setdefault(k, []).append(c)
+    kg = en = 0.0
+    calzan, faltan = [], []
+    for sector, piso, ciclo, k_kg in combos:
+        k, k_kg = clave_ubicacion(sector, piso, ciclo), float(k_kg or 0)
+        kg += k_kg
+        if k in por:
+            en += k_kg
+            calzan += [c for c in por[k] if c not in calzan]
+        elif " ".join(x for x in k if x) not in faltan:
+            faltan.append(" ".join(x for x in k if x))
+    return {"kg": round(kg, 1), "kg_en_asa": round(en, 1), "pct": round(100 * en / kg) if kg else None,
+            "codigos": calzan, "faltan": faltan}
+
+
+@router.get("/armascanner/obras-linea/asa")
+def asa_de_obra(obra: str, user=Depends(get_current_user)):
+    """La sección aSa de la ventana de la obra: los códigos de la obra en aSa y, por plano con pedido
+    enviado, qué parte de sus kilos tiene código en aSa y cuáles son (cruce_asa). Un plano sin pedido
+    no puede estar en aSa por esta vía: va con `pct` null."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            cur.execute("SELECT COALESCE(asa_job_id, '') FROM proyectos WHERE id_proyecto = %s", (obra,))
+            f = cur.fetchone()
+            job = f[0] if f else ""
+            cur.execute("""SELECT plano, etapa, codigos, version, pedido_version
+                             FROM planos_obra WHERE id_proyecto = %s""", (obra,))
+            planos = cur.fetchall()
+            de_codigo = {c: p[0] for p in planos for c in (p[2] if isinstance(p[2], list) else [])
+                         if isinstance(c, str) and c.strip()}
+            combos = {}
+            if de_codigo:
+                cur.execute("""SELECT plano_code, COALESCE(sector, ''), COALESCE(piso, ''), COALESCE(ciclo, ''),
+                                      COALESCE(SUM(peso_total), 0)
+                                 FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)
+                                GROUP BY plano_code, sector, piso, ciclo""", (obra, sorted(de_codigo)))
+                for code, s, p, c, kg in cur.fetchall():
+                    combos.setdefault(de_codigo[code], []).append((s, p, c, float(kg or 0)))
+            codigos, al = [], None
+            if job:
+                cur.execute("""SELECT control_code, COALESCE(descr, ''), COALESCE(kg, 0), COALESCE(estado, ''), order_date
+                                 FROM asa_pedidos WHERE asa_job_id = %s AND (estado IS NULL OR estado <> %s)
+                                ORDER BY order_date, control_code""", (job, ESTADO_ANULADO))
+                codigos = [{"cc": r[0], "descr": r[1], "kg": round(float(r[2]), 1), "estado": r[3],
+                            "fecha": r[4].isoformat() if hasattr(r[4], "isoformat") else (r[4] or "")}
+                           for r in cur.fetchall()]
+                cur.execute("SELECT MAX(fin) FROM asa_sync WHERE ok")
+                al = cur.fetchone()[0]
     out = []
-    for (iid, obra, nombre_obra, plano, usuario, fecha, version, pend, items, kg,
-         sector, piso, ciclos) in filas:
-        plano = (plano or "").rsplit(".dwg", 1)[0]
-        out.append({"id": iid, "obra": obra, "obra_nombre": nombre_obra, "plano": plano,
-                    "elemento": sector or "", "piso": piso or "", "ciclos": ciclos or "",
-                    "items": items, "kg": round(float(kg), 1), "pendientes": pendientes_de(pend),
-                    "usuario": usuario, "fecha": fecha, "version": version})
-    return {"cargas": out}
+    for plano, etapa, _c, version, pedido_version in planos:
+        if etapa == "cargado":
+            continue
+        pedido = estado_pedido(version, pedido_version)
+        x = cruce_asa(combos.get(plano, []), codigos) if pedido != "sin_enviar" \
+            else {"kg": None, "kg_en_asa": None, "pct": None, "codigos": [], "faltan": []}
+        out.append(dict(x, plano=plano, pedido=pedido))
+    return {"asa": job, "al": _cuando(al) if hasattr(al, "astimezone") else "", "codigos": len(codigos),
+            "kg": round(sum(c["kg"] for c in codigos), 1), "planos": out}
 
 
 @router.get("/armascanner/mi-licencia")
