@@ -131,9 +131,9 @@ print("\nTEST: kg por piso (22-nov): el piso de la etiqueta de cada barra; las f
 check("el piso como se agrupa: «5» y «P05» son «P5»; «P?», «P» y vacío, sin piso",
       [A.piso_normal(x) for x in ("P5", "5", "p05", " s1 ", "FUND", "P?", "P", "", None)]
       == ["P5", "P5", "P5", "S1", "FUND", "", "", "", ""])
-check("la clase de una barra: fundación (sector o piso FUND), elevación, y el resto losa (losas y vigas)",
+check("la clase de una barra: fundación (sector o piso FUND), elevación, vigas (VCIELO) y el resto losa",
       [A.clase_de(s, p) for s, p in (("FUND", "S1"), ("LCIELO", "FUND"), ("ELEV", "P1"), ("LCIELO", "P1"),
-                                     ("VCIELO", "P1"), ("", ""))] == ["fund", "fund", "elev", "losa", "losa", "losa"])
+                                     ("VCIELO", "P1"), ("", ""))] == ["fund", "fund", "elev", "losa", "viga", "losa"])
 B = A.barras_a_la_vista([{"id": "B-1", "kg": 10, "piso": "P5", "sector": "LCIELO"}])
 check("las barras a la vista guardan su piso y su sector", (B[0]["piso"], B[0]["sector"]) == ("P5", "LCIELO"), B)
 check("el resumen lleva el kg por piso y sector si las barras traen su piso (si no, no lo inventa)",
@@ -160,11 +160,11 @@ T = A.tabla_por_piso([
                               {"piso": "", "sector": "ELEV", "kg": 50}, {"piso": "S3", "sector": "ELEV", "kg": 10}]},
     {"m2": None, "por_piso": [{"piso": "S2", "sector": "FUND", "kg": 400}]},
     {"m2": 80, "por_piso": [{"piso": "P1", "sector": "LCIELO", "kg": 200}]}])
-check("la tabla por piso: losa + elevación del piso, sus m² y kg/m²; en orden (S3, S1, P1, sin piso); fundaciones aparte",
-      T == {"pisos": [{"piso": "S3", "kg_losa": None, "kg_elev": 10.0, "kg": 10.0, "m2": None, "kg_m2": None},
-                      {"piso": "S1", "kg_losa": 600.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
-                      {"piso": "P1", "kg_losa": 200.0, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
-                      {"piso": "", "kg_losa": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],
+check("la tabla por piso: losa, vigas y elevación del piso, sus m² y kg/m²; en orden (S3, S1, P1, sin piso); fundaciones aparte",
+      T == {"pisos": [{"piso": "S3", "kg_losa": None, "kg_viga": None, "kg_elev": 10.0, "kg": 10.0, "m2": None, "kg_m2": None},
+                      {"piso": "S1", "kg_losa": 500.0, "kg_viga": 100.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
+                      {"piso": "P1", "kg_losa": 200.0, "kg_viga": None, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
+                      {"piso": "", "kg_losa": None, "kg_viga": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],
             "fund": 400.0}, T)
 check("…sin planos, vacía", A.tabla_por_piso([]) == {"pisos": [], "fund": None})
 P = A.plano_para_kpis({"barras": 1, "kg": 400}, "FUND")
@@ -695,7 +695,7 @@ check("…y sus KPIs: suman los planos con barras no reemplazados; los m², sól
                     "kg_fund": None},
       o["kpis"])
 check("…y su tabla por piso: barras sin piso y sin pedido enviado van «sin piso» (losa y elevación por el plano)",
-      o["por_piso"] == {"pisos": [{"piso": "", "kg_losa": 450.0, "kg_elev": 600.0, "kg": 1050.0, "m2": 350.0,
+      o["por_piso"] == {"pisos": [{"piso": "", "kg_losa": 450.0, "kg_viga": None, "kg_elev": 600.0, "kg": 1050.0, "m2": 350.0,
                                    "kg_m2": 3.0}], "fund": None}, o["por_piso"])
 check("…con lo que espera a alguien: los pedidos sin enviar", (o["reemplazos"], o["consultas"], o["sin_enviar"]) == (0, 0, 3), o)
 pl = {x["plano"]: x for x in web.get("/armascanner/planos-linea", params={"obra": "PROY-2"}).json()["planos"]}
@@ -758,12 +758,12 @@ BASE.commit()
 o = next(x for x in web.get("/armascanner/obras-linea").json()["obras"] if x["id"] == "PROY-3")
 check("por piso: losa (y vigas) + elevación de cada piso, sus m² de losa y kg/m²; el plano sin piso toma el de su "
       "pedido; la barra sin piso, aparte; las fundaciones, en su fila",
-      o["por_piso"] == {"pisos": [{"piso": "S1", "kg_losa": 600.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
-                                  {"piso": "P1", "kg_losa": 200.0, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
-                                  {"piso": "", "kg_losa": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],
+      o["por_piso"] == {"pisos": [{"piso": "S1", "kg_losa": 500.0, "kg_viga": 100.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
+                                  {"piso": "P1", "kg_losa": 200.0, "kg_viga": None, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
+                                  {"piso": "", "kg_losa": None, "kg_viga": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],
                         "fund": 400.0}, o["por_piso"])
-check("…y los KPIs de la obra: kg con todo, fundaciones aparte, kg/m² sin fundaciones",
-      (o["kpis"]["kg"], o["kpis"]["kg_fund"], o["kpis"]["m2"], o["kpis"]["kg_m2"]) == (1750.0, 400.0, 180.0, 7.5), o["kpis"])
+check("…y los KPIs de la obra: kg con todo, fundaciones aparte, kg/m² sólo de los pisos con m² (900 + 400 / 180)",
+      (o["kpis"]["kg"], o["kpis"]["kg_fund"], o["kpis"]["m2"], o["kpis"]["kg_m2"]) == (1750.0, 400.0, 180.0, 7.2), o["kpis"])
 pl = {x["plano"]: x for x in web.get("/armascanner/planos-linea", params={"obra": "PROY-3"}).json()["planos"]}
 check("el plano de fundaciones: todo su kg es de fundación", (pl["FU"]["kpis"]["kg_fund"], pl["FU"]["kpis"]["kg_m2"])
       == (400.0, None), pl["FU"]["kpis"])

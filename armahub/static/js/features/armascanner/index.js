@@ -166,12 +166,13 @@
     t = t || {};
     var filas = (t.pisos || []).map(function (x) {
       return '<tr><td>' + (x.piso ? esc(x.piso) : 'Sin piso') + '</td>' +
-        '<td class="num">' + kgCelda(x.kg_losa) + '</td><td class="num">' + kgCelda(x.kg_elev) + '</td>' +
+        '<td class="num">' + kgCelda(x.kg_losa) + '</td><td class="num">' + kgCelda(x.kg_viga) + '</td>' +
+        '<td class="num">' + kgCelda(x.kg_elev) + '</td>' +
         '<td class="num">' + kgCelda(x.kg) + '</td><td class="num">' + dec(x.m2, 1) + '</td>' +
         '<td class="num">' + dec(x.kg_m2, 1) + '</td></tr>';
     });
     if (t.fund) {
-      filas.push('<tr class="asc-pisos__fund"><td>Fundaciones</td><td></td><td></td><td class="num">' + entero(t.fund) +
+      filas.push('<tr class="asc-pisos__fund"><td>Fundaciones</td><td></td><td></td><td></td><td class="num">' + entero(t.fund) +
                  '</td><td></td><td></td></tr>');
     }
     document.getElementById('ascPisos').innerHTML = filas.join('');

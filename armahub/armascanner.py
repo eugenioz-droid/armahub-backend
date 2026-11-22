@@ -593,12 +593,12 @@ def piso_normal(piso) -> str:
 
 
 def clase_de(sector, piso="") -> str:
-    """'fund' (fundación: sector o piso FUND), 'elev' (sector ELEV) o 'losa' (el resto: losas y vigas
-    de cielo). Función pura."""
+    """'fund' (fundación: sector o piso FUND), 'elev' (sector ELEV), 'viga' (vigas de cielo: VCIELO)
+    o 'losa' (el resto). [Usuario 22-nov: «no, son kilos de vigas»] Función pura."""
     s = str(sector or "").strip().upper()
     if s.startswith("FUND") or piso_normal(piso).startswith("FUND"):
         return "fund"
-    return "elev" if s.startswith("ELEV") else "losa"
+    return "elev" if s.startswith("ELEV") else "viga" if s.startswith(("VCIELO", "VIGA")) else "losa"
 
 
 def pedido_por_barra(filas) -> dict:
@@ -647,7 +647,7 @@ def piso_del_plano(por_piso) -> str:
 
 
 def tabla_por_piso(planos) -> dict:
-    """La tabla «Por piso» de una obra: {"pisos": [{piso, kg_losa, kg_elev, kg, m2, kg_m2}], "fund": kg
+    """La tabla «Por piso» de una obra: {"pisos": [{piso, kg_losa, kg_viga, kg_elev, kg, m2, kg_m2}], "fund": kg
     de fundaciones}. `planos`: los de plano_para_kpis (su `por_piso` y sus m² de losa). Los pisos en
     orden constructivo (orden.piso_order: S3, S2, S1, P1…) y el sin piso ("") al final. Sin dato va
     None (la pantalla muestra «—»). Función pura."""
@@ -655,7 +655,7 @@ def tabla_por_piso(planos) -> dict:
     pisos, fund = {}, 0.0
 
     def fila(p):
-        return pisos.setdefault(p, {"kg_losa": 0.0, "kg_elev": 0.0, "m2": 0.0})
+        return pisos.setdefault(p, {"kg_losa": 0.0, "kg_viga": 0.0, "kg_elev": 0.0, "m2": 0.0})
 
     for pl in planos:
         for f in pl.get("por_piso") or []:
@@ -670,9 +670,10 @@ def tabla_por_piso(planos) -> dict:
     out = []
     for p in sorted(pisos, key=lambda p: (p == "", piso_order(p), p)):
         x = pisos[p]
-        kg, m2 = round(x["kg_losa"] + x["kg_elev"], 1), round(x["m2"], 1) or None
-        out.append({"piso": p, "kg_losa": round(x["kg_losa"], 1) or None, "kg_elev": round(x["kg_elev"], 1) or None,
-                    "kg": kg or None, "m2": m2, "kg_m2": round(kg / m2, 1) if m2 and kg else None})
+        kg, m2 = round(x["kg_losa"] + x["kg_viga"] + x["kg_elev"], 1), round(x["m2"], 1) or None
+        out.append({"piso": p, "kg_losa": round(x["kg_losa"], 1) or None, "kg_viga": round(x["kg_viga"], 1) or None,
+                    "kg_elev": round(x["kg_elev"], 1) or None, "kg": kg or None, "m2": m2,
+                    "kg_m2": round(kg / m2, 1) if m2 and kg else None})
     return {"pisos": out, "fund": round(fund, 1) or None}
 
 
@@ -695,8 +696,10 @@ def plano_para_kpis(resumen, elemento, diam=None, por_piso=None) -> dict:
 
 def kpis_de(planos) -> dict:
     """{items, kg, ppi, diam_prom, m2, kg_m2, kg_fund} de uno o varios planos (plano_para_kpis). `kg`
-    es todo; `kg_fund`, lo de fundaciones, que no entra al kg/m² (Σ kg sin fundaciones / Σ m² de
-    losa). Sin dato va None (la pantalla muestra «—», nunca 0). Función pura."""
+    es todo; `kg_fund`, lo de fundaciones. kg/m² = Σ kg de los pisos que tienen m² de losa / Σ esos m²
+    (tabla_por_piso): un piso sin su losa escaneada no entra, y las fundaciones nunca. [Usuario 22-nov:
+    «tenemos totales por piso que se dividen por el área del piso… se muestra cuando haya m²»] Sin
+    dato va None (la pantalla muestra «—», nunca 0). Función pura."""
     items = sum(int(p.get("items") or 0) for p in planos)
     kg = round(sum(float(p.get("kg") or 0) for p in planos), 1)
     fund = round(sum(float(p.get("kg_fund") or 0) for p in planos), 1)
@@ -704,10 +707,15 @@ def kpis_de(planos) -> dict:
     peso_d = sum(k for _, k in con_d)
     m2s = [float(p["m2"]) for p in planos if _numero(p.get("m2"))]
     m2 = round(sum(m2s), 1) if m2s else None
+    if any(p.get("por_piso") for p in planos):
+        con_m2 = [f for f in tabla_por_piso(planos)["pisos"] if f["m2"] and f["kg"]]
+        m2_pisos = sum(f["m2"] for f in con_m2)
+        kg_m2 = round(sum(f["kg"] for f in con_m2) / m2_pisos, 1) if m2_pisos else None
+    else:  # sin el kg por piso (planos sin datos de piso): kg sin fundaciones / m² de losa
+        kg_m2 = round((kg - fund) / m2, 1) if m2 and kg - fund > 0 else None
     return {"items": items, "kg": kg, "ppi": round(kg / items, 2) if items else None,
             "diam_prom": round(sum(d * k for d, k in con_d) / peso_d, 1) if peso_d else None,
-            "m2": m2, "kg_m2": round((kg - fund) / m2, 1) if m2 and kg - fund > 0 else None,
-            "kg_fund": fund or None}
+            "m2": m2, "kg_m2": kg_m2, "kg_fund": fund or None}
 
 
 def reemplazados(filas) -> set:
