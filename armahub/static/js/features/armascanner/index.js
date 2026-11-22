@@ -7,8 +7,8 @@
  * Pestañas (templates/tabs/armascanner.html):
  *   Mis obras  GET /armascanner/cargas       una línea por carga (cada plano, un elemento)
  *   Planos     GET /armascanner/planos-linea  los planos de cada obra (terminados, cargados…) con el
- *              avance de su versión vigente; ver barras y plano (…/barras, visor.js), elegir la
- *              versión que vale (POST …/vale), enviar pedido (POST …/pedido) y eliminar
+ *              avance de su versión; ver barras y plano (…/barras, visor.js), responder un pedido de
+ *              reemplazo (POST …/reemplazo/responder), enviar pedido (POST …/pedido) y eliminar
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
  *   Uso        GET /armascanner/uso          (administración) KPIs y uso por usuario
@@ -19,8 +19,7 @@
   'use strict';
 
   var est = { cargas: [], elemento: '', buscadorObra: null, usuarios: null, combo: null, usuarioElegido: null,
-              licencias: [], planos: [], plAdmin: false, plElemento: '', plBuscar: '', buscadorPlanos: null,
-              verBarras: null, entregasDe: null };
+              licencias: [], planos: [], plElemento: '', plBuscar: '', buscadorPlanos: null, verBarras: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -112,8 +111,9 @@
   }
 
   // ── Planos (20-nov; sin bloqueo desde el 21-nov): los planos que ArmaScanner cargó y terminó ──
-  // Nadie toma un plano: el cubicador lo sube al terminarlo. Si dos terminan el mismo plano, cada
-  // uno tiene su versión (entrega), el plano queda «por decidir» y el administrador indica cuál vale.
+  // Nadie toma un plano: el cubicador lo sube al terminarlo, y hay una sola versión por plano. Otro
+  // cubicador que también lo terminó pide el reemplazo; el autor lo acepta o rechaza (o, si no está,
+  // el administrador responde por él). [Usuario 22-nov: «así se coordinan y evitamos duplicar data»]
   function decimal(n) { return (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('es-CL'); }
 
   async function postPlano(ruta, p, extra) {
@@ -124,7 +124,11 @@
     });
     if (res.status === 401) { global.logout(); return null; }
     var data = await res.json().catch(function () { return {}; });
-    if (!res.ok || !data.ok) { global.showToast((data.detail || 'Error ' + res.status), 'error'); return null; }
+    if (!res.ok || !data.ok) {
+      var d = data.detail;
+      global.showToast((d && d.mensaje) || (typeof d === 'string' && d) || 'Error ' + res.status, 'error');
+      return null;
+    }
     return data;
   }
 
@@ -157,8 +161,9 @@
       '<div class="asc-teja__num asc-teja__tit">' + esc(o.nombre) + '</div>' +
       '<div class="asc-teja__fila"><span>' + entero(o.planos) + (o.planos === 1 ? ' plano' : ' planos') + '</span><span>' +
         entero(o.terminados) + (o.terminados === 1 ? ' terminado' : ' terminados') + '</span></div>' +
-      (o.decidir || o.consultas ? '<div class="asc-teja__tags">' +
-        (o.decidir ? '<span class="arm-tag arm-tag--warning">' + entero(o.decidir) + ' por decidir</span>' : '') +
+      (o.pedidos || o.consultas ? '<div class="asc-teja__tags">' +
+        (o.pedidos ? '<span class="arm-tag arm-tag--warning">' + entero(o.pedidos) +
+          (o.pedidos === 1 ? ' reemplazo pedido' : ' reemplazos pedidos') + '</span>' : '') +
         (o.consultas ? '<span class="arm-tag arm-tag--warning">' + entero(o.consultas) + ' con consulta</span>' : '') +
         '</div>' : '') +
       (o.total ? avance(o.ok, o.total) + '<div class="asc-teja__fila"><span>' + entero(o.kg) + ' kg</span></div>' : '') +
@@ -175,33 +180,36 @@
   }
   function revDeTexto(q, plano) { return q ? (q.numero || q.plano) + (q.revision ? ' rev. ' + q.revision : '') : plano; }
 
-  // El estado de una versión (entrega) del plano: sin decidir mientras el plano esté por decidir.
-  function estadoEntrega(p, e) {
-    return e.vale === false ? { txt: 'No vigente', tag: 'arm-tag' }
-      : p.por_decidir ? { txt: 'Sin decidir', tag: 'arm-tag arm-tag--warning' }
-      : { txt: 'Vigente', tag: 'arm-tag arm-tag--success', vigente: true };
+  // Los pedidos de reemplazo que corren sobre la versión del plano: pendientes y aceptados.
+  function pendientesDe(p) {
+    return (p.reemplazos || []).filter(function (x) { return x.estado === 'pendiente'; });
   }
 
   function tejaPlano(p) {
-    var i = est.planos.indexOf(p), r = p.resumen || {}, entregas = p.entregas || [];
+    var i = est.planos.indexOf(p), r = p.resumen || {};
     var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0, cons = Number(r.consultas) || 0;
     var cargado = p.etapa === 'cargado', terminado = p.etapa === 'terminado';
     var hecho = cargado ? 'Cargado' : terminado ? 'Terminado' : 'Guardado';
-    var tags = (entregas.length > 1 ? '<span class="arm-tag' + (p.por_decidir ? ' arm-tag--warning' : '') + '">' +
-        entero(entregas.length) + ' versiones</span>' : '') +
+    var pendiente = pendientesDe(p)[0];
+    var tags = (p.reemplazos || []).map(function (x) {
+        return x.estado === 'aceptado'
+          ? '<span class="arm-tag arm-tag--info">Reemplazo aceptado: espera la versión de ' + esc(x.solicitante) + '</span>'
+          : '<span class="arm-tag arm-tag--warning">Reemplazo pedido por ' + esc(x.solicitante) + '</span>';
+      }).join('') +
       (p.pedido === 'enviado' ? '<span class="arm-tag arm-tag--success">Pedido enviado</span>'
         : p.pedido === 'cambios' ? '<span class="arm-tag arm-tag--warning">Cambios sin enviar</span>' : '') +
       (cons ? '<span class="arm-tag arm-tag--warning">' + entero(cons) + ' con consulta</span>' : '') +
       (p.relacion ? '<span class="arm-tag arm-tag--info">' + (p.relacion === 'reemplaza' ? 'Reemplaza a ' : 'Complementa a ') +
         esc(revDeTexto(planoDe(p.obra, p.relacion_de), p.relacion_de)) + '</span>' : '') +
       (reemplazoDe(p) ? '<span class="arm-tag">Reemplazado por ' + esc(revDeTexto(reemplazoDe(p))) + '</span>' : '');
-    // Por decidir, lo que destaca es elegir la versión; el pedido no se ofrece hasta entonces.
+    // Con un reemplazo pedido, lo que destaca es responderlo (el autor o el administrador). Con uno
+    // aceptado el plano está por cambiar: el pedido espera la versión nueva (puede_enviar viene en false).
     var acciones = (total > 0 ? '<button class="arm-button" onclick="ascVerBarras(' + i + ')">Ver barras</button>' : '') +
       (p.pdf ? '<button class="arm-button" onclick="ascVerPlanoDe(' + i + ')">Ver plano</button>' : '') +
-      (est.plAdmin && entregas.length > 1
-        ? '<button class="arm-button' + (p.por_decidir ? ' arm-button--primary' : '') + '" onclick="ascElegirVersion(' + i +
-          ')">Elegir versión</button>' : '') +
-      (p.puede_enviar && total > 0 && !p.por_decidir
+      (pendiente && p.puede_responder
+        ? '<button class="arm-button arm-button--primary" onclick="ascResponderReemplazo(' + i + ', true)">Aceptar reemplazo</button>' +
+          '<button class="arm-button" onclick="ascResponderReemplazo(' + i + ', false)">Rechazar</button>' : '') +
+      (p.puede_enviar && total > 0
         ? '<button class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
       (p.puede_eliminar ? '<button class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
     var detalle = [['Archivo', p.plano], ['Título', p.titulo], ['Versión', 'v' + p.version],
@@ -209,9 +217,9 @@
       ['Por aprobar', cargado ? '' : entero(r.pendientes)],
       ['Pedido', p.pedido === 'enviado' ? [p.pedido_el, p.pedido_version ? 'v' + p.pedido_version : '', p.pedido_por]
         .filter(Boolean).join(' · ') : '']]
-      .concat(entregas.length > 1 ? entregas.map(function (e) {
-        return [quien(e.autor_nombre), estadoEntrega(p, e).txt + ' · ' + e.subido_el];
-      }) : [])
+      .concat((p.reemplazos || []).map(function (x) {
+        return ['Reemplazo', [x.estado === 'aceptado' ? 'Aceptado' : 'Pedido', x.solicitante, x.creado_el].join(' · ')];
+      }))
       .filter(function (x) { return x[1]; })
       .map(function (x) { return '<div><span>' + esc(x[0]) + '</span><span>' + esc(x[1]) + '</span></div>'; }).join('');
     return '<div class="asc-teja">' +
@@ -233,13 +241,13 @@
     planos.forEach(function (p) {
       var o = por[p.obra];
       if (!o) {
-        o = por[p.obra] = { id: p.obra, nombre: p.obra_nombre, planos: 0, terminados: 0, decidir: 0, consultas: 0, ok: 0, total: 0, kg: 0 };
+        o = por[p.obra] = { id: p.obra, nombre: p.obra_nombre, planos: 0, terminados: 0, pedidos: 0, consultas: 0, ok: 0, total: 0, kg: 0 };
         lista.push(o);
       }
       var r = p.resumen || {};
       o.planos += 1;
       if (p.etapa === 'terminado') o.terminados += 1;
-      if (p.por_decidir) o.decidir += 1;
+      o.pedidos += pendientesDe(p).length;
       o.consultas += Number(r.consultas) || 0;
       o.ok += Number(r.aprobadas) || 0;
       o.total += Number(r.barras) || 0;
@@ -251,10 +259,10 @@
   function pintarPlanos() {
     var obra = obraElegida();
     var filas = planosFiltrados();
-    var decidir = 0, barras = 0, aprob = 0, consultas = 0;
+    var pedidos = 0, barras = 0, aprob = 0, consultas = 0;
     filas.forEach(function (p) {
       var r = p.resumen || {};
-      if (p.por_decidir) decidir += 1;
+      pedidos += pendientesDe(p).length;
       barras += Number(r.barras) || 0; aprob += Number(r.aprobadas) || 0; consultas += Number(r.consultas) || 0;
     });
     document.getElementById('ascPlVolver').style.display = obra ? '' : 'none';
@@ -295,7 +303,7 @@
       b.textContent = (el || 'Todos') + ' ' + (cuenta[el] || 0);
     });
     poner('ascPlKpiPlanos', entero(filas.length));
-    poner('ascPlKpiDecidir', entero(decidir));
+    poner('ascPlKpiReemplazos', entero(pedidos));
     poner('ascPlKpiAprob', entero(aprob) + ' de ' + entero(barras) + ' · ' + (barras ? Math.round(100 * aprob / barras) : 0) + ' %');
     poner('ascPlKpiConsulta', entero(consultas));
   }
@@ -327,20 +335,14 @@
       document.getElementById('ascBarrasModal').addEventListener('click', function (ev) {
         if (ev.target === this) cerrarBarras();
       });
-      document.getElementById('ascEntregasCerrar').addEventListener('click', cerrarEntregas);
-      document.getElementById('ascEntregasModal').addEventListener('click', function (ev) {
-        if (ev.target === this) cerrarEntregas();
-      });
-      // Esc cierra la ventana de más arriba: el plano en PDF (visor.js cierra la suya), las barras, las versiones.
+      // Esc cierra las barras (el plano en PDF lo cierra visor.js, que va encima)
       document.addEventListener('keydown', function (ev) {
         if (ev.key !== 'Escape' || !global.isModalOpen || global.isModalOpen('ascVisorModal')) return;
         if (global.isModalOpen('ascBarrasModal')) cerrarBarras();
-        else if (global.isModalOpen('ascEntregasModal')) cerrarEntregas();
       });
     }
     var d = await global.apiGet('/armascanner/planos-linea');
     est.planos = (d && d.planos) || [];
-    est.plAdmin = !!(d && d.admin);
     est.plSinRespuesta = !d;
     var vistas = {};
     var obras = [];
@@ -353,7 +355,7 @@
     sel.innerHTML = '<option value=""></option>' + obras.map(function (o) {
       return '<option value="' + esc(o.id) + '">' + esc(o.nombre) + '</option>';
     }).join('');
-    sel.value = vistas[elegida] ? elegida : '';  // al recargar tras enviar o elegir versión, la obra elegida se mantiene
+    sel.value = vistas[elegida] ? elegida : '';  // al recargar tras enviar o responder, la obra elegida se mantiene
     pintarPlanos();
     cargarReportes();
   }
@@ -382,7 +384,7 @@
     var nombreFiltro = FILTROS_REV.filter(function (f) { return f[0] === v.filtro; })[0][1];
     document.getElementById('ascBarrasTitulo').textContent =
       (v.plano.numero || v.plano.plano) + ' — ' + (v.plano.obra_nombre || v.plano.obra) +
-      (v.autor ? ' · ' + v.autor : '') + (v.version ? ' · v' + v.version : '') + ' · ' + nombreFiltro;
+      (v.version ? ' · v' + v.version : '') + ' · ' + nombreFiltro;
     document.getElementById('ascBarras').innerHTML = filas.map(function (b) {
       var r = REV[revDe(b)];
       return '<tr><td>' + esc(b.id) + '</td><td>' + esc(b.marca) + '</td>' +
@@ -402,72 +404,42 @@
     global.hideModal('ascBarrasModal');
   }
 
-  // Las barras de la versión vigente del plano o, desde «Elegir versión», las de la entrega k.
-  global.ascVerBarras = async function (i, k) {
+  global.ascVerBarras = async function (i) {
     var p = est.planos[i];
     if (!p) return;
-    var e = k == null ? null : (p.entregas || [])[k];
     var d = await global.apiGet('/armascanner/planos-linea/barras?obra=' + encodeURIComponent(p.obra) +
-                                '&plano=' + encodeURIComponent(p.plano) + (e ? '&autor=' + encodeURIComponent(e.autor) : ''));
+                                '&plano=' + encodeURIComponent(p.plano));
     if (!d) { global.showToast('No se pudieron leer las barras del plano.', 'error'); return; }
     var barras = d.barras || [];
-    est.verBarras = { plano: p, autor: e ? e.autor_nombre : '', version: d.version, barras: barras,
+    est.verBarras = { plano: p, version: d.version, barras: barras,
                       filtro: barras.some(function (b) { return b.rev === 'duda'; }) ? 'duda' : '' };
     pintarBarras();
     global.showModal('ascBarrasModal');
   };
 
   // Ver plano: el PDF que ArmaScanner subió con el plano. La ventana es de visor.js (ascVerPlano).
-  global.ascVerPlanoDe = function (i, k) {
+  global.ascVerPlanoDe = function (i) {
     var p = est.planos[i];
     if (!p || !global.ascVerPlano) return;
-    var e = k == null ? null : (p.entregas || [])[k];
-    global.ascVerPlano(p.obra, p.plano, e ? e.autor : '',
-                       (p.numero || p.plano) + ' — ' + (p.obra_nombre || p.obra) + (e ? ' · ' + e.autor_nombre : ''));
+    global.ascVerPlano(p.obra, p.plano, '', (p.numero || p.plano) + ' — ' + (p.obra_nombre || p.obra));
   };
 
-  // Elegir versión (administrador): las entregas del plano, una por autor. «Esta vale» deja ésa como
-  // la vigente y las demás como no vigentes; ArmaHub avisa a sus autores para que las eliminen.
-  function pintarEntregas() {
-    var i = est.entregasDe, p = est.planos[i];
-    if (!p) return;
-    document.getElementById('ascEntregasTitulo').textContent =
-      (p.numero || p.plano) + ' — ' + (p.obra_nombre || p.obra) + ' · Versiones';
-    document.getElementById('ascEntregas').innerHTML = (p.entregas || []).map(function (e, k) {
-      var estado = estadoEntrega(p, e);
-      return '<tr><td>' + esc(e.autor_nombre) + '</td><td>' + esc(e.subido_el) + '</td>' +
-        '<td class="num">' + entero(e.barras) + '</td><td class="num">' + entero(e.kg) + '</td>' +
-        '<td><span class="' + estado.tag + '">' + estado.txt + '</span></td>' +
-        '<td class="asc-acciones">' +
-          (e.barras > 0 ? '<button class="arm-button" onclick="ascVerBarras(' + i + ',' + k + ')">Ver barras</button> ' : '') +
-          (e.pdf ? '<button class="arm-button" onclick="ascVerPlanoDe(' + i + ',' + k + ')">Ver plano</button> ' : '') +
-          (estado.vigente ? ''
-            : '<button class="arm-button arm-button--primary" onclick="ascEstaVale(' + k + ')">Esta vale</button>') +
-        '</td></tr>';
-    }).join('');
-  }
-
-  function cerrarEntregas() {
-    est.entregasDe = null;
-    global.hideModal('ascEntregasModal');
-  }
-
-  global.ascElegirVersion = function (i) {
-    if (!est.planos[i]) return;
-    est.entregasDe = i;
-    pintarEntregas();
-    global.showModal('ascEntregasModal');
-  };
-
-  global.ascEstaVale = async function (k) {
-    var p = est.planos[est.entregasDe];
-    var e = p && (p.entregas || [])[k];
-    if (!e) return;
-    if (!confirm('¿Vale la versión de ' + e.autor_nombre + '?\n\nLas demás quedan como no vigentes. ' +
-                 'ArmaHub avisa a sus autores para que las eliminen.')) return;
-    if (!await postPlano('/armascanner/planos-linea/vale', p, { autor: e.autor })) return;
-    cerrarEntregas();
-    global.showToast('Versión vigente: ' + e.autor_nombre, 'success');
+  // Aceptar o rechazar el reemplazo pedido (el más antiguo, si hay más de uno): el autor de la
+  // versión o, en su lugar, el administrador. Aceptar no borra nada: la versión sigue hasta que el
+  // solicitante suba la suya. ArmaHub le avisa la respuesta.
+  global.ascResponderReemplazo = async function (i, acepta) {
+    var p = est.planos[i];
+    var x = p && pendientesDe(p)[0];
+    if (!x) return;
+    var autor = p.entrega ? p.entrega.autor : p.guardado_por;
+    var texto = acepta
+      ? '¿Aceptar que ' + x.solicitante + ' reemplace la versión de ' + autor + ' de ' + (p.numero || p.plano) + '?\n\n' +
+        'La versión actual sigue hasta que ' + x.solicitante + ' suba la suya.'
+      : '¿Rechazar el reemplazo de ' + (p.numero || p.plano) + ' que pidió ' + x.solicitante + '?';
+    if (!confirm(texto)) return;
+    if (!await postPlano('/armascanner/planos-linea/reemplazo/responder', p,
+                         { solicitante: x.solicitante_email, acepta: !!acepta })) return;
+    global.showToast(acepta ? 'Reemplazo aceptado.' : 'Reemplazo rechazado.', 'success');
     await cargarPlanos();
   };
 
@@ -489,9 +461,8 @@
   global.ascEliminarPlano = async function (i) {
     var p = est.planos[i];
     if (!p) return;
-    var n = (p.entregas || []).length;
     var texto = '¿Eliminar ' + (p.numero || p.plano) + ' de ArmaHub?\n\nSe eliminan su registro y sus archivos' +
-      (n ? ', con ' + (n === 1 ? 'su versión terminada' : 'sus ' + n + ' versiones terminadas') : '') + '.';
+      (p.entrega ? ', con la versión terminada de ' + p.entrega.autor : '') + '.';
     if (!confirm(texto)) return;
     var conBarras = p.pedido !== 'sin_enviar' && confirm('Este plano envió un pedido. ¿Eliminar también sus barras de los ' +
       'despieces de la obra?\n\nAceptar: se eliminan. Cancelar: las barras se conservan.');

@@ -50,7 +50,7 @@ TIPO_EVENTO_LABELS = {
     "reclamo_cerrado": "Reclamo cerrado",
     "reclamo_reabierto": "Reclamo reabierto",
     "cambio_estado": "Cambio de estado",
-    "armascanner_version": "Versión de plano",
+    "armascanner_reemplazo": "Reemplazo de plano",
 }
 
 # ========================= HELPER: CREAR NOTIFICACION =========================

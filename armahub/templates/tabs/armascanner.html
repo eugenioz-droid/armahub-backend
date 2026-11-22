@@ -29,9 +29,7 @@
   .asc .asc-modal__caja { background: var(--arm-surface); border-radius: var(--arm-radius-md); width: 96%; max-width: 1100px;
                           margin: auto; padding: 16px; }
   .asc .asc-modal__cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
-  .asc .asc-modal__cabeza h3 { margin: 0; }
-  .asc .asc-modal__caja--media { max-width: 860px; }
-  /* Planos en tarjetas (20-nov): obras primero; elegida una, sus planos. */
+  .asc .asc-modal__cabeza h3 { margin: 0; }  /* Planos en tarjetas (20-nov): obras primero; elegida una, sus planos. */
   .asc .asc-tejas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
   .asc .asc-teja { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px;
                    background: var(--arm-surface); border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md);
@@ -103,7 +101,7 @@
   <div class="arm-ds asc">
     <div class="asc-kpis">
       <div class="arm-kpi"><div class="arm-kpi__label">Planos</div><div class="arm-kpi__value" id="ascPlKpiPlanos">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Por decidir</div><div class="arm-kpi__value" id="ascPlKpiDecidir">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Reemplazos pedidos</div><div class="arm-kpi__value" id="ascPlKpiReemplazos">—</div></div>
       <div class="arm-kpi"><div class="arm-kpi__label">Barras aprobadas</div><div class="arm-kpi__value" id="ascPlKpiAprob">—</div></div>
       <div class="arm-kpi"><div class="arm-kpi__label">Con consulta</div><div class="arm-kpi__value" id="ascPlKpiConsulta">—</div></div>
     </div>
@@ -140,22 +138,6 @@
         <tbody id="ascReportes"></tbody>
       </table>
       <div id="ascReportesVacio" class="asc-vacio" style="display:none;">Sin reportes.</div>
-    </div>
-    <!-- Elegir versión (administrador): las entregas de un plano que terminó más de un cubicador.
-         Va antes de la ventana de barras: «Ver barras» de una versión se abre encima. -->
-    <div id="ascEntregasModal" class="asc-modal" style="display:none;">
-      <div class="asc-modal__caja asc-modal__caja--media">
-        <div class="asc-modal__cabeza">
-          <h3 id="ascEntregasTitulo"></h3>
-          <button class="arm-button" id="ascEntregasCerrar">Cerrar</button>
-        </div>
-        <table class="arm-table">
-          <thead><tr>
-            <th>Autor</th><th>Terminado</th><th class="num">Barras</th><th class="num">Kg</th><th>Estado</th><th></th>
-          </tr></thead>
-          <tbody id="ascEntregas"></tbody>
-        </table>
-      </div>
     </div>
     <div id="ascBarrasModal" class="asc-modal" style="display:none;">
       <div class="asc-modal__caja">

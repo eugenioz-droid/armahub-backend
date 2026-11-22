@@ -42,31 +42,21 @@ check("la clave va en mayúsculas, como la exportación",
       A.pendientes_por_combinacion([{"sector": "lcielo", "piso": "p5", "ciclo": "c1", "revision": "duda"}])
       == {"LCIELO|P5|C1": 1})
 
-print("\nTEST: reglas de las entregas (21-nov): sin bloqueo, nunca se reescribe")
+print("\nTEST: reglas (22-nov): una entrega por plano; el segundo pide el reemplazo")
 yo, otro = "eugenio@x.cl", "emilio@x.cl"
-e = lambda i, vale: {"id": i, "vale": vale}  # noqa: E731
-check("sin entregas no hay vigente", A.vigente_de([]) is None and not A.por_decidir([]))
-check("una sola entrega: es la vigente y no hay nada que decidir",
-      A.vigente_de([e(1, True)])["id"] == 1 and not A.por_decidir([e(1, True)]))
-check("entra la de otro autor: por decidir, y la vigente sigue siendo la que vale",
-      A.por_decidir([e(1, True), e(2, None)]) and A.vigente_de([e(1, True), e(2, None)])["id"] == 1)
-check("ninguna decidida: la vigente es la más antigua", A.vigente_de([e(1, None), e(2, None)])["id"] == 1)
-check("decidido: vale la elegida aunque sea la más nueva",
-      A.vigente_de([e(1, False), e(2, True)])["id"] == 2 and not A.por_decidir([e(1, False), e(2, True)]))
-check("la que no vale no vuelve a ser vigente mientras haya otra sin decidir",
-      A.vigente_de([e(1, False), e(2, None)])["id"] == 2 and A.por_decidir([e(1, False), e(2, None)]))
-check("entrega única: vale", A.vale_al_entrar(None, 0) is True)
-check("con entregas de otros: queda sin decidir", A.vale_al_entrar(None, 1) is None)
-check("el autor de la vigente la reemplaza: sigue valiendo", A.vale_al_entrar(True, 1) is True)
-check("el autor de una no vigente sube otra: vuelve a decidirse", A.vale_al_entrar(False, 1) is None)
+check("plano sin entrega: entra", A.accion_al_terminar(None, yo, None) == "nueva")
+check("la entrega es mía: la reemplazo (versión siguiente)", A.accion_al_terminar(yo, yo, None) == "mia")
+check("la entrega es de otro y aceptó mi reemplazo: la reemplazo", A.accion_al_terminar(otro, yo, "aceptado") == "reemplaza")
+check("la entrega es de otro sin reemplazo aceptado: ocupado (sin pedir, pendiente o rechazado)",
+      all(A.accion_al_terminar(otro, yo, x) == "ocupado" for x in (None, "pendiente", "rechazado")))
 cargado = {"etapa": "cargado", "tamano": 100}
-check("cargar: el plano no existe, se crea", A.accion_al_cargar(None, 0, 100) == "crear")
-check("cargar: el mismo paquete, ya estaba", A.accion_al_cargar(cargado, 0, 100) == "ya_estaba")
-check("cargar: otro paquete sobre uno sólo cargado, versión nueva", A.accion_al_cargar(cargado, 0, 101) == "version_nueva")
-check("cargar: con entregas o con trabajo no se toca",
-      A.accion_al_cargar(cargado, 1, 101) == "ya_estaba"
-      and A.accion_al_cargar({"etapa": "terminado", "tamano": 100}, 0, 101) == "ya_estaba"
-      and A.accion_al_cargar({"etapa": "en_trabajo", "tamano": 100}, 0, 101) == "ya_estaba")
+check("cargar: el plano no existe, se crea", A.accion_al_cargar(None, False, 100) == "crear")
+check("cargar: el mismo paquete, ya estaba", A.accion_al_cargar(cargado, False, 100) == "ya_estaba")
+check("cargar: otro paquete sobre uno sólo cargado, versión nueva", A.accion_al_cargar(cargado, False, 101) == "version_nueva")
+check("cargar: con entrega o con trabajo no se toca",
+      A.accion_al_cargar(cargado, True, 101) == "ya_estaba"
+      and A.accion_al_cargar({"etapa": "terminado", "tamano": 100}, False, 101) == "ya_estaba"
+      and A.accion_al_cargar({"etapa": "en_trabajo", "tamano": 100}, False, 101) == "ya_estaba")
 check("relación: sin la clave no se toca; con la clave manda el cliente, también para quitarla",
       A.relacion_enviada({}) is None and A.relacion_enviada({"relacion": ""}) == (None, None)
       and A.relacion_enviada({"relacion": "reemplaza", "relacion_de": "215-A"}) == ("reemplaza", "215-A")
@@ -110,10 +100,12 @@ check("rutas del contrato",
       {"/armascanner/obras", "/armascanner/planos", "/armascanner/planos/guardar", "/armascanner/planos/terminar",
        "/armascanner/planos/descargar", "/armascanner/planos/entrega/eliminar", "/armascanner/planos/pedido",
        "/armascanner/planos/enviar-pedido", "/armascanner/planos/tomar", "/armascanner/planos/soltar",
-       "/armascanner/planos-linea", "/armascanner/planos-linea/vale", "/armascanner/planos-linea/pdf",
-       "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido"}
-      <= rutas, rutas)
-check("subir-plano ya no existe", "/armascanner/subir-plano" not in rutas and not hasattr(A, "_guardar_paquete"))
+       "/armascanner/planos/reemplazo/pedir", "/armascanner/planos/reemplazos", "/armascanner/planos/reemplazo/responder",
+       "/armascanner/planos/reemplazo/anular", "/armascanner/planos-linea", "/armascanner/planos-linea/pdf",
+       "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido",
+       "/armascanner/planos-linea/reemplazo/responder"} <= rutas, rutas)
+check("ya no existen subir-plano ni elegir la versión que vale",
+      not {"/armascanner/subir-plano", "/armascanner/planos-linea/vale"} & rutas and not hasattr(A, "_guardar_paquete"))
 
 
 # ══════ Las rutas, contra una base simulada ══════
@@ -221,8 +213,11 @@ BASE.execute("""INSERT INTO planos_obra (id_proyecto, plano, numero, version, ar
              (json.dumps(A.resumen_de(BARRAS_ANTES)), json.dumps(BARRAS_ANTES)))
 s174 = migrar(174)
 check("sólo sentencias que se pueden repetir (CREATE … IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, UPDATE)",
-      all(s.startswith(("CREATE TABLE IF NOT EXISTS", "UPDATE planos_obra SET"))
+      all(s.startswith(("CREATE TABLE IF NOT EXISTS", "CREATE UNIQUE INDEX IF NOT EXISTS", "UPDATE planos_obra SET"))
           or (s.startswith("ALTER TABLE") and "ADD COLUMN IF NOT EXISTS" in s) for s in s174), s174)
+check("una entrega por plano y un pedido que corre por solicitante",
+      "UNIQUE (id_proyecto, plano)\n" in s174[0] and "vale" not in s174[0]
+      and "WHERE estado IN ('pendiente', 'aceptado')" in next(s for s in s174 if "UNIQUE INDEX" in s))
 check("transición: nadie queda con un plano tomado y lo guardado a medias pasa a «en_trabajo»",
       una("SELECT etapa, tomado_por, tomado_el FROM planos_obra WHERE plano = 'ANTES'") == ("en_trabajo", None, None))
 
@@ -312,9 +307,13 @@ def fila(plano, columnas):
     return una(f"SELECT {columnas} FROM planos_obra WHERE id_proyecto = 'PROY-1' AND plano = ?", plano)
 
 
-def entregas(plano):
-    return {f[0]: f[1:] for f in BASE.execute("""SELECT autor, vale, version, archivo, pdf FROM planos_obra_entregas
-                                                   WHERE plano = ? ORDER BY id""", (plano,)).fetchall()}
+def entrega(plano):
+    return una("SELECT autor, version, archivo, pdf FROM planos_obra_entregas WHERE plano = ?", plano)
+
+
+def pedidos(plano):
+    return [tuple(f) for f in BASE.execute("""SELECT solicitante, autor, estado, respondido_por FROM planos_obra_reemplazos
+                                               WHERE plano = ? ORDER BY id""", (plano,)).fetchall()]
 
 
 def lista_ficha(email, plano):
@@ -368,113 +367,164 @@ check("dos subidas cruzadas: el archivo del que ganó sigue en R2 y sólo se bor
       and len(R2) == 3 and 150 not in [len(v) for v in R2.values()], (r, {k: len(v) for k, v in R2.items()}))
 R2.pop(antecedente)  # (el que ganó habría borrado el antecedente anterior)
 
-print("\nTEST: terminar: una entrega por autor, nunca se reescribe")
+print("\nTEST: terminar: una entrega por plano")
 r = terminar(EMI, "P1", paquete(10), B3, pdf=b"%PDF-emilio").json()
-check("primera entrega: vale, y el plano queda terminado con su resumen",
-      (r["ok"], r["version"], r["entregas"], r["por_decidir"], r["vale"]) == (True, 1, 1, False, True)
-      and r["resumen"]["barras"] == 3 and fila("P1", "etapa, version, subido_por, barras, aprobadas, kg") == ("terminado", 4, EMI, 3, 2, 16.5)
+check("primera entrega: entra, y el plano queda terminado con su resumen",
+      (r["ok"], r["version"], r["reemplazo_de"]) == (True, 1, "") and r["resumen"]["barras"] == 3
+      and fila("P1", "etapa, version, subido_por, barras, aprobadas, kg") == ("terminado", 4, EMI, 3, 2, 16.5)
       and fila("P1", "archivo")[0] == "ganador.zip", (r, fila("P1", "etapa, version, subido_por, barras, aprobadas, kg")))
 check("lo que la fila era antes queda guardado (quién cargó el antecedente)",
       fila("P1", "base")[0]["etapa"] == "cargado" and fila("P1", "base")[0]["subido_por"] == EUG, fila("P1", "base"))
-e1 = entregas("P1")[EMI]
+e1 = entrega("P1")
 check("el paquete y el PDF quedan en R2, juntos y con key propia",
       R2[e1[2]] == paquete(10) and R2[e1[3]] == b"%PDF-emilio" and e1[3] == e1[2][:-3] + "pdf" and fila("P1", "pdf")[0] == e1[3])
 x = lista_ficha(EMI, "P1")
-check("lista de ArmaScanner: etapa, pdf, entregas y las claves de antes vacías",
-      (x["etapa"], x["pdf"], x["por_decidir"], x["tomado_por"], x["tomado_el"], x["tomado_por_mi"]) == ("terminado", True, False, "", "", False)
-      and x["entregas"] == [{"autor": "Emilio Zalazar", "mia": True, "version": 1, "subido_el": x["entregas"][0]["subido_el"],
-                             "vale": True, "barras": 3, "kg": 16.5}] and x["subido_por"] == "Emilio Zalazar", x)
-r = terminar(EUG, "P1", paquete(20), B2, pdf=b"%PDF-eugenio").json()
-check("otro autor termina el mismo plano: queda sin decidir y el plano, por decidir",
-      (r["version"], r["entregas"], r["por_decidir"], r["vale"]) == (1, 2, True, None), r)
-check("…y no se reescribió nada: la vigente sigue siendo la primera, con su archivo",
-      fila("P1", "subido_por, version, barras") == (EMI, 4, 3) and R2[e1[2]] == paquete(10)
-      and entregas("P1")[EMI][:2] == (True, 1) and entregas("P1")[EUG][:2] == (None, 1), (fila("P1", "subido_por, version, barras"), entregas("P1")))
-check("lista de ArmaScanner del otro autor: la suya marcada",
-      [(y["autor"], y["mia"], y["vale"]) for y in lista_ficha(EUG, "P1")["entregas"]]
-      == [("Emilio Zalazar", False, True), ("Eugenio Zalazar", True, None)] and lista_ficha(EUG, "P1")["por_decidir"])
-r = con_ficha(EMI, "pedido", plano="P1")
-check("por decidir: el pedido no sale", r.status_code == 409 and "más de una versión" in r.json()["detail"], r.text)
-d1, d2, d3 = (con_ficha(EUG, "descargar", plano="P1", autor=a).json() for a in ("mia", "", "Emilio Zalazar"))
-e2 = entregas("P1")[EUG]
-check("descargar: la mía, la vigente o la de otro autor; sin reservar nada",
-      d1["url"].startswith("https://r2/" + e2[2]) and (d1["autor"], d1["etapa"], d1["version"], d1["tamano"]) == ("Eugenio Zalazar", "terminado", 1, len(paquete(20)))
-      and d2["url"].startswith("https://r2/" + e1[2]) and d3["url"] == d2["url"] and fila("P1", "tomado_por")[0] is None, (d1, d2))
+check("lista de ArmaScanner: etapa, pdf, la entrega y las claves de antes vacías",
+      (x["etapa"], x["pdf"], x["tomado_por"], x["tomado_el"], x["tomado_por_mi"], x["reemplazos"]) == ("terminado", True, "", "", False, [])
+      and x["entrega"] == {"autor": "Emilio Zalazar", "autor_email": EMI, "mia": True, "version": 1,
+                           "subido_el": x["entrega"]["subido_el"], "pdf": True}, x)
+antes_r2 = dict(R2)
+r = terminar(EUG, "P1", paquete(20), B2, pdf=b"%PDF-eugenio")
+d = r.json()["detail"]
+check("otro cubicador termina el mismo plano: 409 «ocupado» y no se guarda nada",
+      r.status_code == 409 and d["codigo"] == "ocupado" and d["autor"] == "Emilio Zalazar" and d["reemplazo"] is None
+      and d["mensaje"] == f"Emilio Zalazar ya subió este plano ({d['subido_el']}). Pídele que acepte el reemplazo."
+      and R2 == antes_r2 and entrega("P1") == e1, r.text)
 r = terminar(EMI, "P1", paquete(30), B3 + [{"id": "B-4", "rev": "aprobada", "kg": 3.5}]).json()
-e1b = entregas("P1")[EMI]
-check("el mismo autor termina de nuevo: reemplaza la suya (v2), con key nueva",
-      (r["version"], r["entregas"], r["vale"]) == (2, 2, True) and e1b[2] != e1[2] and R2[e1b[2]] == paquete(30) and e1b[3] is None, (r, e1b))
-check("…su archivo anterior y su PDF se borran; los del otro autor no se tocan",
-      e1[2] not in R2 and e1[3] not in R2 and R2[e2[2]] == paquete(20) and R2[e2[3]] == b"%PDF-eugenio" and len(R2) == 5, list(R2))
-check("…y como la vigente cambió, la versión del plano sube", fila("P1", "version, barras, pdf") == (5, 4, None))
+e1b = entrega("P1")
+check("el autor termina de nuevo: reemplaza la suya (v2) con key nueva, y sus archivos anteriores se borran",
+      (r["version"], e1b[0], e1b[1]) == (2, EMI, 2) and e1b[2] != e1[2] and R2[e1b[2]] == paquete(30) and e1b[3] is None
+      and e1[2] not in R2 and e1[3] not in R2 and fila("P1", "version, barras, pdf") == (5, 4, None), (r, e1b, list(R2)))
 
-print("\nTEST: portal: el administrador indica cuál vale")
+print("\nTEST: pedir el reemplazo; el autor acepta o rechaza")
+r = con_ficha(EUG, "reemplazo/pedir", plano="P1").json()
+check("pedir: queda pendiente y se avisa al autor",
+      r == {"ok": True, "estado": "pendiente"} and pedidos("P1") == [(EUG, EMI, "pendiente", None)]
+      and AVISOS[-1] == ("Eugenio Zalazar pide reemplazar tu versión de 215 (INGEVEC - EDIFICIO LOS LILENES).", [EMI]),
+      (r, pedidos("P1"), AVISOS[-1:]))
+n_avisos = len(AVISOS)
+check("pedir de nuevo no pide dos veces ni avisa otra vez",
+      con_ficha(EUG, "reemplazo/pedir", plano="P1").json() == {"ok": True, "estado": "pendiente"}
+      and len(pedidos("P1")) == 1 and len(AVISOS) == n_avisos)
+check("el autor no se pide a sí mismo", con_ficha(EMI, "reemplazo/pedir", plano="P1").status_code == 409)
+d = terminar(EUG, "P1", paquete(20), B2).json()["detail"]
+check("con el pedido pendiente sigue ocupado, y dice en qué va", d["codigo"] == "ocupado" and d["reemplazo"] == "pendiente", d)
+x = lista_ficha(EUG, "P1")
+check("lista de ArmaScanner: la entrega es de otro y mi pedido corre",
+      x["entrega"]["mia"] is False and [(y["solicitante"], y["solicitante_email"], y["estado"], y["mio"]) for y in x["reemplazos"]]
+      == [("Eugenio Zalazar", EUG, "pendiente", True)], x)
+rm, ru = (web.get("/armascanner/planos/reemplazos", headers=ficha(c)).json() for c in (EMI, EUG))
+check("reemplazos: el autor lo ve para responder; el solicitante, el suyo",
+      [(y["plano"], y["numero"], y["obra_nombre"], y["solicitante"], y["solicitante_email"]) for y in rm["para_mi"]]
+      == [("P1", "215", "INGEVEC - EDIFICIO LOS LILENES", "Eugenio Zalazar", EUG)] and rm["mios"] == []
+      and ru["para_mi"] == [] and [(y["plano"], y["autor"], y["estado"]) for y in ru["mios"]] == [("P1", "Emilio Zalazar", "pendiente")],
+      (rm, ru))
+check("con el pedido pendiente, el pedido de despiece sale igual", con_ficha(EMI, "pedido", plano="P1").status_code == 200)
+check("responde sólo el autor (ArmaScanner)",
+      con_ficha(EUG, "reemplazo/responder", plano="P1", solicitante=EUG, acepta=True).status_code == 403)
+r = con_ficha(EMI, "reemplazo/responder", plano="P1", solicitante="Eugenio Zalazar", acepta=False).json()
+check("el autor rechaza (por nombre): rechazado, y se avisa al solicitante",
+      r == {"ok": True, "estado": "rechazado"} and pedidos("P1") == [(EUG, EMI, "rechazado", EMI)]
+      and AVISOS[-1] == ("Emilio Zalazar rechazó que reemplaces 215 (INGEVEC - EDIFICIO LOS LILENES).", [EUG]), (r, AVISOS[-1:]))
+d = terminar(EUG, "P1", paquete(20), B2).json()["detail"]
+check("rechazado: sigue ocupado, y lo dice", d["reemplazo"] == "rechazado", d)
+con_ficha(EUG, "reemplazo/pedir", plano="P1")
+r = con_ficha(EUG, "reemplazo/anular", plano="P1").json()
+ru = web.get("/armascanner/planos/reemplazos", headers=ficha(EUG)).json()
+check("pide otra vez y lo anula: queda anulado y ya no aparece entre los suyos",
+      r == {"ok": True} and [p[2] for p in pedidos("P1")] == ["rechazado", "anulado"] and ru["mios"] == [], (r, pedidos("P1"), ru))
+check("anular sin pedido: 404", con_ficha(EUG, "reemplazo/anular", plano="P1").status_code == 404)
+
+print("\nTEST: portal: el administrador responde por el autor; el reemplazo se cumple al terminar")
+con_ficha(EUG, "reemplazo/pedir", plano="P1")
 x = lista_portal("P1")
-check("lista del portal: por decidir, entregas con su autor y sin pedido posible",
-      x["por_decidir"] and not x["puede_enviar"] and not x["puede_liberar"] and x["en_edicion_por"] == ""
-      and [(y["autor"], y["autor_nombre"], y["vale"], y["barras"], y["aprobadas"], y["kg"], y["pdf"]) for y in x["entregas"]]
-      == [(EMI, "Emilio Zalazar", True, 4, 3, 20.0, False), (EUG, "Eugenio Zalazar", None, 2, 2, 12.0, True)], x)
-sesion.update(email=EMI, role="cubicador")
-r = web.post("/armascanner/planos-linea/vale", json={"obra": "PROY-1", "plano": "P1", "autor": EUG})
-check("elegir la versión es de administrador", r.status_code == 403 and entregas("P1")[EUG][0] is None, r.text)
+check("lista del portal: la entrega, el pedido y quién puede responder",
+      x["entrega"]["autor"] == "Emilio Zalazar" and x["entrega"]["autor_email"] == EMI and x["puede_responder"]
+      and [(y["solicitante"], y["estado"]) for y in x["reemplazos"]] == [("Eugenio Zalazar", "pendiente")]
+      and not x["puede_liberar"] and x["en_edicion_por"] == "" and "por_decidir" not in x and "entregas" not in x, x)
+sesion.update(email=EUG, role="cubicador")
+r = web.post("/armascanner/planos-linea/reemplazo/responder",
+             json={"obra": "PROY-1", "plano": "P1", "solicitante": EUG, "acepta": True})
+check("en el portal responde el autor o un administrador", r.status_code == 403 and not lista_portal("P1")["puede_responder"], r.text)
 sesion.update(email="jefa@x.cl", role="admin")
-r = web.post("/armascanner/planos-linea/vale", json={"obra": "PROY-1", "plano": "P1", "autor": EUG})
-check("elegida: ésa vale y la otra no; el plano toma su resumen y sube de versión",
-      r.json()["ok"] and entregas("P1")[EUG][0] is True and entregas("P1")[EMI][0] is False
-      and fila("P1", "subido_por, version, barras, kg, pdf") == (EUG, 6, 2, 12, e2[3]) and not lista_portal("P1")["por_decidir"],
-      (r.text, fila("P1", "subido_por, version, barras, kg, pdf")))
-check("queda quién decidió y cuándo, y en la auditoría",
-      una("SELECT COUNT(*) FROM planos_obra_entregas WHERE plano = 'P1' AND decidido_por = 'jefa@x.cl' AND decidido_el IS NOT NULL")[0] == 2
-      and any(a[1] == "armascanner_elegir_version" and EUG in a[2] for a in AUDITORIA), AUDITORIA[-1])
-check("se avisa al autor de la que no vale",
-      len(AVISOS) == 1 and AVISOS[0][1] == [EMI] and "215" in AVISOS[0][0] and "Eugenio Zalazar" in AVISOS[0][0], AVISOS)
-r = web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": "P1"}).json()
-check("PDF: el de la vigente, para mostrarlo en la página", r["url"] == f"https://r2/{e2[3]}?tipo=application/pdf", r)
-check("PDF: el de un autor; 404 si no tiene",
-      web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": "P1", "autor": EMI}).status_code == 404
-      and web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": "P1", "autor": EUG}).json()["url"] == r["url"])
-r = web.get("/armascanner/planos-linea/barras", params={"obra": "PROY-1", "plano": "P1", "autor": EMI}).json()
-check("barras: las de la vigente o las de un autor",
-      len(r["barras"]) == 4 and r["version"] == 2
-      and [y["id"] for y in web.get("/armascanner/planos-linea/barras", params={"obra": "PROY-1", "plano": "P1"}).json()["barras"]] == ["B-1", "B-9"], r)
-
-print("\nTEST: pedido: sale de la entrega vigente")
+r = web.post("/armascanner/planos-linea/reemplazo/responder",
+             json={"obra": "PROY-1", "plano": "P1", "solicitante": EUG, "acepta": True}).json()
+check("el administrador acepta en lugar del autor: aceptado, en la auditoría y con aviso al solicitante",
+      r == {"ok": True, "estado": "aceptado"} and pedidos("P1")[-1] == (EUG, EMI, "aceptado", "jefa@x.cl")
+      and AUDITORIA[-1][1] == "armascanner_reemplazo" and "en lugar de " + EMI in AUDITORIA[-1][2]
+      and AVISOS[-1] == ("Ana Jefa aceptó que reemplaces 215 (INGEVEC - EDIFICIO LOS LILENES).", [EUG]),
+      (r, AUDITORIA[-1:], AVISOS[-1:]))
+check("aceptar no borra nada: la entrega sigue", entrega("P1") == e1b and e1b[2] in R2)
 r = con_ficha(EMI, "pedido", plano="P1")
-check("no lo envía el autor de la que no vale", r.status_code == 403, r.text)
-r = con_ficha(EUG, "enviar-pedido", plano="P1")
-check("lo envía quien terminó la vigente, desde su paquete y con la versión de ArmaScanner",
-      r.status_code == 200 and r.json()["version"] == 6 and PEDIDOS[-1]["version_app"] == "2026-11-21.3"
-      and PEDIDOS[-1]["plano_code"] == "PC-1" and lista_portal("P1")["pedido"] == "enviado", (r.text, PEDIDOS))
-r = terminar(EMI, "P1", paquete(40), B3).json()
-check("el autor de la que no vale sube otra: vuelve a quedar por decidir, sin tocar la vigente ni el pedido",
-      (r["version"], r["vale"], r["por_decidir"]) == (3, None, True) and fila("P1", "subido_por, version") == (EUG, 6)
-      and lista_portal("P1")["pedido"] == "enviado" and entregas("P1")[EMI][0] is None, r)
+check("aceptado: el pedido de despiece no sale hasta la versión nueva",
+      r.status_code == 409 and r.json()["detail"] == "Se aceptó reemplazar este plano: envía el pedido cuando se suba la "
+      "nueva versión." and not lista_portal("P1")["puede_enviar"], r.text)
+check("…y la lista lo muestra aceptado", [y["estado"] for y in lista_portal("P1")["reemplazos"]] == ["aceptado"])
+recalcular = A._recalcular
 
-print("\nTEST: eliminar mi entrega")
-e1c = entregas("P1")[EMI]
-r = con_ficha(EMI, "entrega/eliminar", plano="P1").json()
-check("queda una sola: ésa vale; se borran sólo mis archivos",
-      (r["ok"], r["entregas"], r["por_decidir"]) == (True, 1, False) and e1c[2] not in R2 and R2[e2[2]] == paquete(20)
-      and list(entregas("P1")) == [EUG] and fila("P1", "subido_por, version, etapa") == (EUG, 6, "terminado"), (r, list(R2)))
-check("sin entrega propia: 404", con_ficha(EMI, "entrega/eliminar", plano="P1").status_code == 404)
+
+def _base_caida(*a):
+    raise RuntimeError("la base no confirmó")
+
+
+A._recalcular, antes_r2 = _base_caida, dict(R2)
+try:
+    terminar(EUG, "P1", paquete(50), B2)
+except RuntimeError:
+    pass
+A._recalcular = recalcular
+check("si la base no confirma: la entrega anterior y su archivo siguen, y lo subido se borra",
+      R2 == antes_r2 and entrega("P1") == e1b and pedidos("P1")[-1][2] == "aceptado", list(R2))
+r = terminar(EUG, "P1", paquete(20), B2, pdf=b"%PDF-eugenio").json()
+e2 = entrega("P1")
+check("con el reemplazo aceptado, termina: su versión reemplaza la del autor (v3)",
+      (r["ok"], r["version"], r["reemplazo_de"]) == (True, 3, EMI) and e2[:2] == (EUG, 3)
+      and fila("P1", "subido_por, barras, kg, etapa") == (EUG, 2, 12, "terminado"), (r, e2))
+check("…los archivos del autor anterior se borran (después de confirmar) y quedan los nuevos",
+      e1b[2] not in R2 and R2[e2[2]] == paquete(20) and R2[e2[3]] == b"%PDF-eugenio", list(R2))
+check("…el pedido queda cumplido y se avisa al autor anterior",
+      pedidos("P1")[-1][2] == "cumplido"
+      and AVISOS[-1] == ("Eugenio Zalazar reemplazó tu versión de 215 (INGEVEC - EDIFICIO LOS LILENES).", [EMI]),
+      (pedidos("P1"), AVISOS[-1:]))
+r = web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": "P1"}).json()
+check("PDF: el de la entrega, para mostrarlo en la página", r == {"url": f"https://r2/{e2[3]}?tipo=application/pdf"}, r)
+check("barras: las de la entrega", [y["id"] for y in web.get("/armascanner/planos-linea/barras",
+                                                              params={"obra": "PROY-1", "plano": "P1"}).json()["barras"]] == ["B-1", "B-9"])
+r = con_ficha(EUG, "enviar-pedido", plano="P1")
+check("el pedido sale de la nueva entrega, con la versión de ArmaScanner",
+      r.status_code == 200 and PEDIDOS[-1]["version_app"] == "2026-11-21.3" and PEDIDOS[-1]["plano_code"] == "PC-1"
+      and lista_portal("P1")["pedido"] == "enviado", r.text)
+check("descargar: la entrega, sin reservar nada; «mia» sólo si es mía",
+      con_ficha(EMI, "descargar", plano="P1").json()["url"].startswith("https://r2/" + e2[2])
+      and con_ficha(EMI, "descargar", plano="P1", autor="mia").status_code == 404
+      and con_ficha(EUG, "descargar", plano="P1", autor="mia").json()["mia"])
+
+print("\nTEST: eliminar mi entrega libera el plano")
+con_ficha(EMI, "reemplazo/pedir", plano="P1")
 r = con_ficha(EUG, "entrega/eliminar", plano="P1").json()
-check("no queda ninguna: el plano vuelve a «cargado», con quien cargó su antecedente",
-      r["entregas"] == 0 and fila("P1", "etapa, subido_por, barras, pdf, base, archivo") == ("cargado", EUG, 0, None, None, "ganador.zip")
-      and fila("P1", "barras_json")[0] == [] and sorted(R2) == sorted(["ganador.zip", "obras/PROY-1/planos/x/v4.zip"]),
-      (r, fila("P1", "etapa, subido_por, barras, pdf, base, archivo"), list(R2)))
-check("…y el pedido que ya había salido queda con cambios sin enviar", lista_portal("P1")["pedido"] == "cambios")
+check("el autor la elimina: el plano vuelve a «cargado», se borran sus archivos y se avisa a quien la pidió",
+      r == {"ok": True, "avisados": 1} and entrega("P1") is None and e2[2] not in R2 and e2[3] not in R2
+      and fila("P1", "etapa, subido_por, barras, pdf, base, archivo") == ("cargado", EUG, 0, None, None, "ganador.zip")
+      and pedidos("P1")[-1][2] == "anulado"
+      and AVISOS[-1] == ("Eugenio Zalazar eliminó su versión de 215 (INGEVEC - EDIFICIO LOS LILENES): ya puedes terminarlo.", [EMI]),
+      (r, fila("P1", "etapa, subido_por, barras, pdf, base, archivo"), AVISOS[-1:]))
+check("…el pedido que ya había salido queda con cambios sin enviar, y sin PDF", lista_portal("P1")["pedido"] == "cambios"
+      and web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": "P1"}).json() == {"url": None})
+check("sin entrega propia: 404", con_ficha(EUG, "entrega/eliminar", plano="P1").status_code == 404)
+r = terminar(EMI, "P1", paquete(60), B3).json()
+check("libre: el que lo pidió termina sin más", r["ok"] and entrega("P1")[0] == EMI and r["reemplazo_de"] == "", r)
 r = terminar(EMI, "P2", paquete(5), B2).json()
 check("terminar un plano que no estaba en ArmaHub: se crea su fila",
-      r["vale"] is True and fila("P2", "etapa, version, archivo, subido_por") == ("terminado", 1, None, EMI), r)
+      fila("P2", "etapa, version, archivo, subido_por") == ("terminado", 1, None, EMI), r)
 con_ficha(EMI, "entrega/eliminar", plano="P2")
-check("…y sin entregas ni antecedente, la fila se va", fila("P2", "etapa") is None and len(R2) == 2, list(R2))
+check("…y sin entrega ni antecedente, la fila se va", fila("P2", "etapa") is None)
 
 print("\nTEST: planos anteriores al cambio (en_trabajo)")
 check("el pedido de un plano anterior al cambio sale como antes (quien lo guardó)",
       con_ficha(EMI, "pedido", plano="ANTES").status_code == 403 and con_ficha(EUG, "pedido", plano="ANTES").json().get("version") == 4
       and PEDIDOS[-1]["version_app"] is None and fila("ANTES", "pedido_version, pedido_por") == (4, EUG))
 r = con_ficha(EMI, "descargar", plano="ANTES").json()
-check("descargar sin entregas: el paquete de la fila", (r["etapa"], r["version"], r["autor"]) == ("en_trabajo", 4, "Eugenio Zalazar")
+check("descargar sin entrega: el paquete de la fila", (r["etapa"], r["version"], r["autor"]) == ("en_trabajo", 4, "Eugenio Zalazar")
       and r["url"].startswith("https://r2/obras/PROY-1/planos/x/v4.zip"), r)
 terminar(EMI, "ANTES", paquete(7), B3)
 check("alguien lo termina: queda terminado y su paquete anterior no se toca",
@@ -493,12 +543,12 @@ check("tomar: 404 «Actualiza ArmaScanner.» (el cliente anterior abre en local)
 check("soltar y liberar: responden bien sin hacer nada",
       con_ficha(EMI, "soltar", plano="P1").json() == {"ok": True}
       and web.post("/armascanner/planos-linea/liberar", json={"obra": "PROY-1", "plano": "P1"}).json() == {"ok": True})
-terminar(EMI, "P1", paquete(1), B2, pdf=b"%PDF-1")
-terminar(EUG, "P1", paquete(2), B2)
+con_ficha(EUG, "reemplazo/pedir", plano="P1")
 check("eliminar un plano no es de cubicador", con_ficha(EMI, "eliminar", plano="P1").status_code == 403)
 r = web.post("/armascanner/planos-linea/eliminar", json={"obra": "PROY-1", "plano": "P1", "con_barras": False}).json()
-check("eliminar el plano (administrador): se van su fila, sus entregas y todos sus archivos",
-      r["ok"] and fila("P1", "etapa") is None and entregas("P1") == {} and list(R2) == ["obras/PROY-1/planos/x/v4.zip"], (r, list(R2)))
+check("eliminar el plano (administrador): se van su fila, su entrega y sus archivos, y sus pedidos dejan de correr",
+      r["ok"] and fila("P1", "etapa") is None and entrega("P1") is None and list(R2) == ["obras/PROY-1/planos/x/v4.zip"]
+      and not [p for p in pedidos("P1") if p[2] in ("pendiente", "aceptado")], (r, list(R2), pedidos("P1")))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
