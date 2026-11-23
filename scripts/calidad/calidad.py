@@ -180,10 +180,13 @@ def _dependencias(arbol) -> set:
     return nombres
 
 
-def _de_rutas(arbol, modulo: str, rutas: set) -> dict:
+def _de_rutas(arbol, modulo: str, rutas: set, modulos: set, es_paquete: bool) -> dict:
     """{módulo de rutas: [nombres]} que este módulo trae de otro módulo de rutas, sin las dependencias de
-    FastAPI (get_current_user en Depends es lo normal entre módulos de rutas)."""
-    paquete = modulo.rsplit(".", 1)[0] if "." in modulo else ""
+    FastAPI (get_current_user en Depends es lo normal entre módulos de rutas).
+    Un paquete (carpeta con __init__.py): traer uno de sus módulos («from .armascanner import comun») se juzga
+    por ese módulo, no por el __init__; y el __init__ que junta las rutas de sus propios módulos las monta,
+    como main.py."""
+    paquete = modulo if es_paquete else (modulo.rsplit(".", 1)[0] if "." in modulo else "")
     deps, salida = _dependencias(arbol), defaultdict(list)
     for n in ast.walk(arbol):
         if isinstance(n, ast.ImportFrom):
@@ -191,8 +194,12 @@ def _de_rutas(arbol, modulo: str, rutas: set) -> dict:
             if destino is None:
                 continue
             for a in n.names:
-                if f"{destino}.{a.name}".strip(".") in rutas:          # from . import armascanner
-                    salida[f"{destino}.{a.name}".strip(".")].append("(el módulo)")
+                sub = f"{destino}.{a.name}".strip(".")
+                if es_paquete and sub.startswith(modulo + "."):     # el paquete monta lo suyo
+                    continue
+                if sub in modulos:                                   # from . import armascanner
+                    if sub in rutas:
+                        salida[sub].append("(el módulo)")
                 elif destino in rutas and (a.asname or a.name) not in deps:
                     salida[destino].append(a.name)
         elif isinstance(n, ast.Import):
@@ -235,13 +242,14 @@ def _medir_py(textos: dict, complejas: dict, lugares: dict) -> dict:
                 cuerpos[huella].append(f"{archivo}:{nombre}")
         muerto += _muerto(texto, archivo)
     rutas = {_modulo(a) for a, t in arboles.items() if _crea_router(t)}
+    modulos = {_modulo(a) for a in arboles}
     capas = []
     for archivo, arbol in sorted(arboles.items()):
         modulo = _modulo(archivo)
         if modulo == "main":
             continue
         # Uno por nombre: traer una cosa más de un módulo de rutas empeora, aunque ya se trajera otra.
-        for r, nombres in sorted(_de_rutas(arbol, modulo, rutas).items()):
+        for r, nombres in sorted(_de_rutas(arbol, modulo, rutas, modulos, archivo.endswith("/__init__.py")).items()):
             capas += [f"{archivo}: trae {x} del módulo de rutas {r}" for x in sorted(set(nombres))]
         if modulo not in rutas and _usa_fastapi(arbol):
             capas.append(f"{archivo}: usa fastapi sin ser un módulo de rutas")
