@@ -1024,6 +1024,16 @@
   .audt.hojab tbody tr.hecho td.hojaacc, .audt.hojab tbody tr.nap td.hojaacc,
   .audt.hojab tbody tr.hecho td.hojachk, .audt.hojab tbody tr.nap td.hojachk{background:#f1f8e9;}
   .audt.hojab tbody tr.falta td.hojaacc, .audt.hojab tbody tr.falta td.hojachk{background:#fff3e0;}
+  /* «EN CONSULTA» (23-nov): la línea en rojo mientras se espera la respuesta. Sigue abierta.
+     El lado malo conserva su celda; la raya roja a la izquierda la marca aunque se corra. */
+  .revcc2 tr.consulta td:not(.mal), .audt.hojab tbody tr.consulta td:not(.mal){background:#ffcdd2;}
+  .revcc2 tr.consulta td:first-child{box-shadow:inset 3px 0 0 #c62828, inset -1px 0 0 #e3e8ef;}
+  .revi.consulta{background:#c62828; color:#fff;}
+  .revcons{color:#b71c1c; font-weight:600;}
+  .revconbtn{border:1px solid #ef9a9a; background:#fff; color:#c62828; font-size:10px; font-weight:600;
+             padding:3px 8px; border-radius:5px; cursor:pointer; white-space:nowrap;}
+  .revconbtn:hover:not(:disabled){background:#ffebee;}
+  .revconbtn.on{background:#c62828; border-color:#c62828; color:#fff;}
   .audt td.g{color:#444;} .audt th.g{color:#78909c;}
   .audfigav{display:inline-block; margin-left:3px; color:#e65100; font-weight:700; cursor:help; vertical-align:middle;}
   /* La figura se dibujó con el trazo que exportó aSa, no con nuestra reconstrucción. No es

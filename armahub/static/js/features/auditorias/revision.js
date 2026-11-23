@@ -257,6 +257,12 @@
   function _porCerrar(i) { return _declarada(i) && !i.cerrada_el; }
   function _noAplica(i) { return i.estado === EST.ACEPTADA; }
   function _confirmada(i) { return i.estado === EST.CORREGIDA; }
+  // EN CONSULTA (23-nov): una marca sobre la abierta, no un estado. Sigue por resolver.
+  function _enConsulta(i) { return i.estado === EST.ABIERTA && !!i.consulta_desde; }
+  function _chipEstado(i) {
+    return _enConsulta(i) ? '<span class="revi consulta">En consulta</span>'
+      : '<span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>';
+  }
   // Resuelta: alguien dijo que la corrigió, la haya confirmado aSa o todavía no. Es lo que
   // pinta la fila de verde: en un barrido se busca lo que falta, y lo que falta es lo abierto.
   function _resuelta(i) { return _confirmada(i) || _declarada(i); }
@@ -1176,7 +1182,32 @@
 
   // LA FIRMA VA AL FINAL DE LA FILA (2-nov), no debajo de la marca: ahí empujaba la
   // columna y separaba la marca de su figura. Acompaña a la decisión que explica.
-  function _firmaDe(i) {
+  function _firmaDe(i) { return _consultaDe(i) + _firmaDecision(i); }
+
+  // «EN CONSULTA» EN LA FIRMA (23-nov). Mientras espera: desde cuándo, cuántos días y
+  // quién la marcó. Resuelta: de qué fecha a qué fecha estuvo esperando. El fin es la
+  // fecha en que se resolvió, que ya se guarda (ver /chequeos/consulta).
+  function _consultaDe(i) {
+    if (!i.consulta_desde) return '';
+    var ini = _fechaHora(i.consulta_desde).slice(0, 5);
+    if (_enConsulta(i)) {
+      var d = _dias(i.consulta_desde, null);
+      return '<span class="revfirma revcons">desde ' + ini + ' · ' + (d < 1 ? 'hoy' : d + (d === 1 ? ' día' : ' días')) +
+             (i.consulta_por ? ' — ' + esc(String(i.consulta_por).split('@')[0]) : '') + '</span> ';
+    }
+    var fin = i.declarada_el || i.resuelto_el;
+    if (!fin) return '';
+    var n = _dias(i.consulta_desde, fin);
+    return '<span class="revfirma">consulta ' + ini + ' → ' + _fechaHora(fin).slice(0, 5) + ' · ' +
+           (n < 1 ? 'mismo día' : n + (n === 1 ? ' día' : ' días')) + '</span> ';
+  }
+
+  function _dias(desde, hasta) {
+    var d = Math.floor(((hasta ? new Date(hasta) : new Date()) - new Date(desde)) / 86400000);
+    return isNaN(d) ? 0 : Math.max(0, d);
+  }
+
+  function _firmaDecision(i) {
     if (_noAplica(i)) {
       return '<span class="revfirma">' + esc(i.nota || '') +
              (i.resuelto_por ? ' — ' + esc(i.resuelto_por.split('@')[0]) : '') + '</span>';
@@ -1203,6 +1234,12 @@
     return '<div class="revaccs">' +
       '<button class="audbres" data-resuelto="' + i.id + '" title="' + t.resuelto + '">Resuelto</button>' +
       '<button class="revnapbtn" data-noaplica="' + i.id + '" title="' + t.noaplica + '">No aplica</button>' +
+      // EN CONSULTA (23-nov): encendido mientras se espera la respuesta; apretarlo de
+      // nuevo la saca de consulta (para la marca puesta por error).
+      '<button class="revconbtn' + (_enConsulta(i) ? ' on' : '') + '" data-consulta="' + i.id + '" data-en="' +
+        (_enConsulta(i) ? '1' : '0') + '" title="' + (_enConsulta(i)
+          ? 'Sacarla de consulta: se borra la fecha desde la que esperaba.'
+          : 'Se preguntó algo y falta la respuesta: la línea queda en rojo, con su fecha.') + '">En consulta</button>' +
       '</div>';
   }
 
@@ -1236,7 +1273,7 @@
       (d.diferencia ? '<div class="m dif"><b>' + esc(d.diferencia.valor) + '</b><span>' + esc(d.diferencia.que) + '</span></div>' : '');
     var lista = (d.lista || []).map(function (x) { return '<span class="' + esc(x.tipo || '') + '">' + esc(x.texto) + '</span>'; });
     if (d.posible_ultimo_piso) lista.push('<span class="aviso">posible último piso: suele ser distinto</span>');
-    return '<tr class="elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '" data-fila="' + i.id + '">' +
+    return '<tr class="elfila' + (hecho ? ' hecho' : nap ? ' nap' : _enConsulta(i) ? ' consulta' : '') + '" data-fila="' + i.id + '">' +
       '<td style="width:22px; vertical-align:top; padding-top:12px">' + _checkDe(i, TXT_ELEMENTO) + '</td>' +
       '<td class="elcel"><div class="elh">' +
         '<div><span class="elregla ' + esc(grupo) + '">' + esc(r.corto || r.nombre) +
@@ -1246,7 +1283,7 @@
           cod(con, igual ? otro : 'piso anterior, mismo ciclo') + '</div>' +
           '<div class="elmed">' + medidas + '</div>' +
           (lista.length ? '<div class="ellista">' + lista.join('') + '</div>' : '') + '</div>' +
-        '<div class="elacc"><span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>' +
+        '<div class="elacc">' + _chipEstado(i) +
           _firmaDe(i) + _accionesDe(i, TXT_ELEMENTO) + _campoNota(i) + '</div>' +
       '</div></td></tr>';
   }
@@ -1265,7 +1302,7 @@
     if (!(det.lados_all || []).length) (det.lados || []).forEach(function (L) { porL[L] = Number(det.valor) / 10; });
     var esp = det.esperado != null ? (i.regla === 'lado_corto' ? 'mín ' : '') + cm(det.esperado / 10) : '';
     return {
-      attrs: ' class="' + (hecho ? 'hecho' : nap ? 'nap' : '') + '" data-fila="' + i.id + '"',
+      attrs: ' class="' + (hecho ? 'hecho' : nap ? 'nap' : _enConsulta(i) ? 'consulta' : '') + '" data-fila="' + i.id + '"',
       check: _checkDe(i, TXT_BARRA),
       accion: _accionesDe(i, TXT_BARRA),
       // La referencia abre el render en grande.
@@ -1278,7 +1315,7 @@
       propias: [esc(esp),
                 '<span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +
                   esc(r.corto || r.nombre) + '</span>',
-                '<span class="revi ' + esc(i.estado) + '">' + esc(ESTADO_TXT[i.estado] || i.estado) + '</span>'],
+                _chipEstado(i)],
       // LA FIRMA VA AL FINAL DE LA FILA (2-nov): acompaña a la decisión que explica. Y
       // mientras la barra está abierta, ahí se escribe el «no aplica».
       texto: _firmaDe(i) + _campoNota(i)
@@ -1370,6 +1407,9 @@
     caja.querySelectorAll('button[data-noaplica]').forEach(function (b) {
       b.addEventListener('click', function () { abrirNoAplica(b.dataset.noaplica); });
     });
+    caja.querySelectorAll('button[data-consulta]').forEach(function (b) {
+      b.addEventListener('click', function () { marcarConsulta(b.dataset.consulta, b); });
+    });
     // El campo del «no aplica»: Enter guarda esa barra, Esc lo deja como estaba.
     caja.querySelectorAll('input[data-nota]').forEach(function (c) {
       c.addEventListener('keydown', function (e) {
@@ -1391,7 +1431,7 @@
     var f = document.querySelector('tr[data-fila="' + _attr(id) + '"]');
     var q = function (sel) { return f ? f.querySelector(sel) : null; };
     return { re: q('button[data-resuelto]'), na: q('button[data-noaplica]'),
-             des: q('button[data-deshacer]'), nota: q('input[data-nota]') };
+             des: q('button[data-deshacer]'), co: q('button[data-consulta]'), nota: q('input[data-nota]') };
   }
 
   // EL BOTÓN TIENE QUE DECIR QUE LO APRETASTE (19-oct): mientras se escribe la explicación,
@@ -1532,7 +1572,7 @@
     // MIENTRAS EL SERVIDOR RESPONDE, SE VE. Son dos viajes (declarar y volver a leer la
     // revisión): sin esto el botón se queda mudo un segundo largo y se vuelve a apretar.
     var b = _botones(id);
-    var tocados = [boton, b.re, b.na, b.des].filter(Boolean);
+    var tocados = [boton, b.re, b.na, b.des, b.co].filter(Boolean);
     tocados.forEach(function (x) { x.disabled = true; x.classList.add('audwait'); });
     try {
       await req('PUT', '/chequeos/declarar', { ids: [Number(id)], estado: estado, nota: nota || null });
@@ -1556,6 +1596,37 @@
       // Se repinta en vez de rehabilitar a mano: el par Aplica|No aplica tiene un botón
       // apagado a propósito según el estado, y devolverlo «a mano» lo dejaba al revés.
       if (hojaAbierta()) pintarItems();
+    }
+  }
+
+  // «EN CONSULTA» (23-nov): pone o saca la marca. Con barras marcadas actúa sobre todas,
+  // como los otros botones de la fila. Sacarla se confirma: borra la fecha de inicio.
+  async function marcarConsulta(id, boton) {
+    var poner = boton.dataset.en !== '1';
+    var ids = _marcados();
+    if (ids.length) {
+      if (!confirm((poner ? '¿Poner en consulta' : '¿Sacar de consulta') + ' las ' + ids.length +
+                   ' barra(s) marcada(s)?')) return;
+    } else {
+      if (!poner && !confirm('¿Sacar esta barra de consulta? Se borra la fecha desde la que esperaba.')) return;
+      ids = [Number(id)];
+    }
+    boton.disabled = true; boton.classList.add('audwait');
+    try {
+      var r = await req('PUT', '/chequeos/consulta', { ids: ids, en_consulta: poner });
+      ok((poner ? 'En consulta: ' : 'Fuera de consulta: ') + (r.afectadas || ids.length));
+      var ahora = new Date().toISOString();
+      ((REVS.detalle || {}).items || []).forEach(function (i) {
+        if (ids.indexOf(Number(i.id)) === -1 || i.estado !== EST.ABIERTA) return;
+        if (!poner) { i.consulta_desde = null; i.consulta_por = null; }
+        else if (!i.consulta_desde) i.consulta_desde = ahora;
+      });
+      REVS.sel_items = {};
+      if (hojaAbierta()) pintarItems();
+      await refrescarRevision();
+    } catch (e) {
+      aviso(e.message);
+      boton.disabled = false; boton.classList.remove('audwait');
     }
   }
 

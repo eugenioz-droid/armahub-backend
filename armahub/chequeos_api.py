@@ -1176,6 +1176,50 @@ def declarar(body: DeclararBody, user=Depends(get_current_user)):
     return {"ok": True, "afectadas": len(ids), "estado": body.estado}
 
 
+class ConsultaBody(BaseModel):
+    ids: List[int]
+    en_consulta: bool = True
+
+
+@router.put("/chequeos/consulta")
+def consulta(body: ConsultaBody, user=Depends(get_current_user)):
+    """«EN CONSULTA» (23-nov). El usuario: «pintará la línea en rojo y dejará una nota de
+    En Consulta. Trazará también la fecha desde que se marcó hasta que se resolvió».
+
+    Es la barra que no se puede resolver todavía porque se preguntó algo. NO es un estado:
+    es una marca sobre la ABIERTA, que sigue por resolver y cuenta así en los totales, en
+    el pie del código y en el cierre. Se guarda desde cuándo y quién; el fin es la fecha en
+    que se resuelve, que ya se guarda (`declarada_el`, o `resuelto_el` en «no aplica» y en
+    lo que aSa confirma solo). Por eso la marca NO se borra al resolver, y «Deshacer» la
+    devuelve a «en consulta» con su fecha de inicio.
+
+    Quitarla (`en_consulta: false`) es para la marca puesta por error: borra la fecha."""
+    _puede_ver(user)
+    email = user.get("email", "?")
+    ids = list(dict.fromkeys(body.ids or []))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No marcaste ninguna barra.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if body.en_consulta:
+                cur.execute(
+                    """UPDATE chequeo_senales SET consulta_desde = now(), consulta_por = %s
+                        WHERE id = ANY(%s) AND estado = 'abierta' AND consulta_desde IS NULL
+                    RETURNING id""", (email, ids))
+            else:
+                cur.execute(
+                    """UPDATE chequeo_senales SET consulta_desde = NULL, consulta_por = NULL
+                        WHERE id = ANY(%s) AND estado = 'abierta' AND consulta_desde IS NOT NULL
+                    RETURNING id""", (ids,))
+            hechas = len(cur.fetchall())
+    if not hechas:
+        raise HTTPException(status_code=400,
+                            detail="Sólo una barra abierta se pone en consulta o se saca de ella.")
+    audit(email, "chequeo_consulta", "%d barra(s) -> %s"
+          % (hechas, "en consulta" if body.en_consulta else "sin consulta"), "chequeo", "lote")
+    return {"ok": True, "afectadas": hechas, "en_consulta": body.en_consulta}
+
+
 # ══════ LAS REVISIONES SON LA UNIDAD ══════
 
 @router.get("/chequeos/revision/{revision_id}")
@@ -1217,7 +1261,7 @@ def detalle_revision(revision_id: int, nivel: str = "barra", user=Depends(get_cu
                        "nota": r[10], "todas": False}
             cur.execute(
                 "SELECT " + _COLS_SENAL + """, s.motivo_tipo, s.declarada_por, s.declarada_el,
-                          s.cierre_confirmado_el
+                          s.cierre_confirmado_el, s.consulta_desde, s.consulta_por
                      FROM chequeo_senales s
                     WHERE ((%s AND s.revision_id IS NOT NULL) OR s.revision_id = %s)
                       AND s.nivel = %s
@@ -1229,7 +1273,11 @@ def detalle_revision(revision_id: int, nivel: str = "barra", user=Depends(get_cu
                 # alguien diciendo «ya la corregí», y hasta cerrarla nadie lo confirmó.
                 d.update({"motivo_tipo": f[20], "declarada_por": f[21],
                           "declarada_el": f[22].isoformat() if f[22] else None,
-                          "cerrada_el": f[23].isoformat() if f[23] else None})
+                          "cerrada_el": f[23].isoformat() if f[23] else None,
+                          # «En consulta»: desde cuándo y quién. Sigue ahí al resolverse,
+                          # para poder decir cuánto duró (ver /chequeos/consulta).
+                          "consulta_desde": f[24].isoformat() if f[24] else None,
+                          "consulta_por": f[25]})
                 items.append(d)
             # SI EL CÓDIGO YA SE FUE, QUE SE VEA (3-nov). Desde que la revisión mira
             # también lo despachado hace poco, en la hoja conviven dos cosas distintas:

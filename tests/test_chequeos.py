@@ -1121,7 +1121,7 @@ check("la celda de la matriz y la suma del encabezado usan ese dato, no la suma 
       and "suma[q].cerr += c.cerrados != null ? c.cerrados :" in JS)
 check("en la hoja, la barra sabe si paso por el cierre: el item trae `cerrada_el`",
       '"cerrada_el": f[23].isoformat() if f[23] else None' in API
-      and "s.cierre_confirmado_el\n                     FROM chequeo_senales s" in API)
+      and "s.cierre_confirmado_el, s.consulta_desde, s.consulta_por\n                     FROM chequeo_senales s" in API)
 
 
 print("\nLO RECIEN DESPACHADO TAMBIEN SE MIRA (3-nov)")
@@ -1306,7 +1306,7 @@ check("la fila de la hoja es la tarjeta estandar: regla y grupo, los dos codigos
       and '<span class="elregla ' in JS and "'<span class=\"flecha\">' + (igual ? '=' : '←') + '</span>'" in JS
       and "posible último piso: suele ser distinto" in JS and ".elh{display:grid; grid-template-columns:150px 1fr 330px" in HTM)
 check("...y es una fila de la misma tabla, con los mismos data-*: el lote, el espejo, el pie y Cerrar codigo sirven igual",
-      "'<tr class=\"elfila' + (hecho ? ' hecho' : nap ? ' nap' : '') + '\" data-fila=\"' + i.id + '\">'" in JS
+      "'<tr class=\"elfila' + (hecho ? ' hecho' : nap ? ' nap' : _enConsulta(i) ? ' consulta' : '') + '\" data-fila=\"' + i.id + '\">'" in JS
       and "_accionesDe(i, TXT_ELEMENTO)" in JS.split("function _filaElemento(i) {")[1][:4000]
       and "data-resuelto=\"' + i.id + '\"" in JS.split("function _accionesDe(i, t) {")[1][:1200]
       and "data-nota=\"' + i.id + '\"" in JS.split("function _campoNota(i) {")[1][:400]
@@ -1830,6 +1830,86 @@ check("el listado trae sólo las que tienen hallazgos, y cuenta aparte las que n
           {"anio": 2025, "n": 2, "ultima": "2025-12-30T23:00:00+00:00"}])
 check("...y «corridas» siguen siendo todas las que se hicieron: 2 listadas + 21 sin hallazgos",
       _resp["total"]["revisiones"] == 23)
+
+# «EN CONSULTA» (23-nov). El usuario: «un nuevo botón para las revisiones de barra. Este
+# botón pintará la línea en rojo y dejará una nota de En Consulta. Trazará también la fecha
+# desde que se marcó hasta que se resolvió». Es una MARCA sobre la abierta, no un estado.
+print("\nEN CONSULTA (23-nov)")
+MIG179 = open(os.path.join(ROOT, "armahub", "migrations", "179_chequeo_en_consulta.sql"), encoding="utf-8").read()
+check("la marca son dos columnas (desde cuándo y quién), sin estado nuevo",
+      "ADD COLUMN IF NOT EXISTS consulta_desde TIMESTAMPTZ" in MIG179
+      and "ADD COLUMN IF NOT EXISTS consulta_por TEXT" in MIG179 and "ck_chequeo_estado" not in MIG179)
+
+
+class _CurConsulta:
+    def __init__(self, log, filas):
+        self.log, self.filas = log, filas
+
+    def execute(self, sql, params=None):
+        self.log.append((" ".join(sql.split()), list(params or [])))
+
+    def fetchall(self):
+        return self.filas
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _ConnConsulta:
+    def __init__(self, log, filas):
+        self.log, self.filas = log, filas
+
+    def cursor(self, **kw):
+        return _CurConsulta(self.log, self.filas)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+_logc = []
+_real_audit = _A.audit
+_A.audit = lambda *a, **k: None
+try:
+    _A.get_conn = lambda *a, **k: _ConnConsulta(_logc, [(7,), (8,)])
+    _rc = _A.consulta(_A.ConsultaBody(ids=[7, 8, 7], en_consulta=True), user=_u)
+    _A.get_conn = lambda *a, **k: _ConnConsulta(_logc, [(7,)])
+    _rq = _A.consulta(_A.ConsultaBody(ids=[7], en_consulta=False), user=_u)
+    _A.get_conn = lambda *a, **k: _ConnConsulta(_logc, [])
+    try:
+        _A.consulta(_A.ConsultaBody(ids=[9], en_consulta=True), user=_u)
+        _err = None
+    except HTTPException as e:
+        _err = e.status_code
+finally:
+    _A.get_conn, _A.audit = _real, _real_audit
+_poner, _sacar = _logc[0], _logc[1]
+check("poner en consulta: fecha y quién, sólo en abiertas que no lo estaban, sin repetir ids",
+      "SET consulta_desde = now(), consulta_por = %s" in _poner[0]
+      and "estado = 'abierta' AND consulta_desde IS NULL" in _poner[0]
+      and _poner[1] == ["test@x", [7, 8]] and _rc["afectadas"] == 2)
+check("...sacarla borra la fecha (es para la marca puesta por error)",
+      "SET consulta_desde = NULL, consulta_por = NULL" in _sacar[0] and _rq["en_consulta"] is False)
+check("...y si ninguna barra estaba abierta, lo dice en vez de responder ok", _err == 400)
+check("resolver NO borra la marca: el fin es la fecha en que se resolvió",
+      "consulta_desde" not in API.split('@router.put("/chequeos/declarar")')[1].split("def consulta(")[0])
+check("la revisión trae la marca de cada barra",
+      "s.cierre_confirmado_el, s.consulta_desde, s.consulta_por" in API
+      and '"consulta_desde": f[24].isoformat() if f[24] else None' in API)
+check("la pantalla: botón en la fila, línea roja, chip «En consulta» y la fecha en la firma",
+      "data-consulta=\"' + i.id" in JS and ">En consulta</button>" in JS
+      and "_enConsulta(i) ? 'consulta' : ''" in JS and "_enConsulta(i) ? ' consulta' : ''" in JS
+      and "'<span class=\"revi consulta\">En consulta</span>'" in JS
+      and "var fin = i.declarada_el || i.resuelto_el;" in JS
+      and "req('PUT', '/chequeos/consulta', { ids: ids, en_consulta: poner })" in JS
+      and ".revcc2 tr.consulta td:not(.mal)" in HTM and ".revconbtn.on{" in HTM)
+check("...y sigue siendo una abierta: los conteos no cambian",
+      "function _enConsulta(i) { return i.estado === EST.ABIERTA && !!i.consulta_desde; }" in JS)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
