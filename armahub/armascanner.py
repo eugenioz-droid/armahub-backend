@@ -186,6 +186,7 @@ async def _cargar_barras(user, obra, plano_code, reemplaza, revision, sin_subir,
 # todas las obras.
 ABIERTOS = ("pendiente", "aceptado")   # pedidos de reemplazo que siguen corriendo
 AVISO = "armascanner_reemplazo"         # tipo de aviso en la campana (notifications.TIPO_EVENTO_LABELS)
+AVISO_DESARROLLO = "armascanner_desarrollo"
 
 
 def _cuando(ts) -> str:
@@ -232,7 +233,7 @@ def _borrar(*claves):
                 logger.warning("R2: no se pudo borrar %s (%s)", clave, e)
 
 
-def _avisar(destinatarios, mensaje: str):
+def _avisar(destinatarios, mensaje: str, tipo: str = AVISO):
     """Aviso en la campana de ArmaHub, después de confirmada la operación. Si falla queda en el log:
     lo ya hecho no se cae por un aviso."""
     destinatarios = [d for d in dict.fromkeys(destinatarios or []) if d]
@@ -240,7 +241,7 @@ def _avisar(destinatarios, mensaje: str):
         return
     try:
         from .notifications import crear_notificacion
-        crear_notificacion(AVISO, None, mensaje, destinatarios_extra=destinatarios)
+        crear_notificacion(tipo, None, mensaje, destinatarios_extra=destinatarios)
     except Exception as e:
         logger.warning("Aviso de ArmaScanner no enviado a %s: %s", destinatarios, e)
 
@@ -1493,10 +1494,24 @@ def _eliminar_plano(email: str, datos: "EliminarPlano") -> dict:
     return {"ok": True, "barras_eliminadas": borradas}
 
 
-# ── Reportes: el cubicador los manda desde ArmaScanner («Enviar reporte»): diagnóstico del equipo,
-# registro del último escaneo y bitácora del plano, en un ZIP. [Usuario 20-nov: «un sistema que le
-# permita al cubicador enviar el reporte, así puedo trabajar contigo sin enviarnos archivos»]
+# ── Desarrollo: lo que llega de ArmaScanner en un ZIP, con su estado (nuevo → en_estudio → resuelto |
+# descartado). Dos tipos: «reporte» («Enviar reporte»: diagnóstico del equipo, registro del último escaneo
+# y bitácora del plano) y «plano» (un plano que el lector no reconoce: el DWG y lo que el lector
+# encontró; lo manda el cubicador con un clic). Al llegar, aviso al administrador; al resolverse, al
+# cubicador. Y las oficinas de cálculo: qué lector lee sus planos. [Usuario 20-nov: «un sistema que le
+# permita al cubicador enviar el reporte, así puedo trabajar contigo sin enviarnos archivos»; 23-nov:
+# «que se guarde el plano… el usuario obtenga un mensaje y un botón de confirmar… a mí me llega un
+# aviso también… un flujo que no dependa de estar enviando planos manualmente sin control ni
+# trazabilidad»; «un pequeño apartado donde listemos las oficinas de cálculo… así se va estableciendo
+# una base de conocimiento»]
 REPORTE_MAX = 25 * 1024 * 1024
+ESTADOS_CASO = ("nuevo", "en_estudio", "resuelto", "descartado")
+CASOS_ABIERTOS = ["nuevo", "en_estudio"]
+
+
+def _admins(cur) -> list:
+    cur.execute("SELECT email FROM users WHERE role = 'admin' AND activo = TRUE")
+    return [r[0] for r in cur.fetchall()]
 
 
 @router.post("/armascanner/reportes")
@@ -1504,65 +1519,213 @@ async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(..
                           credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
     import secrets
     import time
+    """Un caso de Desarrollo. `datos` (JSON): tipo ("plano" | "reporte"), equipo, version, obra, obra_id,
+    plano, comentario, lector (lo que el lector encontró). Un plano que ya tiene un caso abierto no se
+    repite: responde `ya_estaba` sin guardar nada."""
     try:
         d = json.loads(datos or "{}")
     except ValueError:
         d = {}
+
+    def txt(k, largo):
+        return str(d.get(k) or "").strip()[:largo] or None
+
+    tipo = "plano" if d.get("tipo") == "plano" else "reporte"
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
+            if tipo == "plano" and txt("plano", 300):
+                cur.execute("""SELECT id FROM armascanner_reportes
+                                WHERE tipo = 'plano' AND estado = ANY(%s) AND plano = %s AND COALESCE(obra_id, obra) = %s
+                                ORDER BY id DESC LIMIT 1""", (CASOS_ABIERTOS, txt("plano", 300), txt("obra_id", 80) or txt("obra", 300)))
+                ya = cur.fetchone()
+                if ya:
+                    return {"ok": True, "id": ya[0], "ya_estaba": True}
     contenido = await archivo.read()
     if len(contenido) > REPORTE_MAX:
         raise HTTPException(status_code=413, detail="El reporte pesa más de 25 MB.")
     from . import storage
     clave = f"armascanner/reportes/{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}.zip"
     storage.upload_file(clave, contenido, "application/zip")
-
-    def txt(k, largo):
-        return str(d.get(k) or "").strip()[:largo] or None
-
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo, tamano)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo, tamano,
+                                                             tipo, obra_id, lector)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
                         (user["email"], txt("equipo", 80), txt("version", 40), txt("obra", 300), txt("plano", 300),
-                         txt("comentario", 2000), clave, len(contenido)))
+                         txt("comentario", 2000), clave, len(contenido), tipo, txt("obra_id", 80), txt("lector", 1000)))
             rid = cur.fetchone()[0]
-    audit(user["email"], "armascanner_reporte", f"#{rid} {txt('plano', 80) or ''} {txt('comentario', 80) or ''}".strip(),
+            admins = _admins(cur)
+            quien = _nombres(cur, [user["email"]]).get(user["email"], user["email"])
+    audit(user["email"], "armascanner_reporte", f"#{rid} {tipo} {txt('plano', 80) or ''} {txt('comentario', 80) or ''}".strip(),
           "armascanner", str(rid))
-    return {"ok": True, "id": rid}
+    _avisar([a for a in admins if a != user["email"]],
+            f"ArmaScanner · Desarrollo: {quien} envió " + (f"el plano {txt('plano', 80)} (no se lee)" if tipo == "plano"
+                                                           else "un reporte") + ".", AVISO_DESARROLLO)
+    return {"ok": True, "id": rid, "ya_estaba": False}
 
 
-@router.get("/armascanner/reportes")
-def reportes(admin=Depends(require_admin_or_admin_calidad)):
-    """Los reportes recibidos, el más nuevo primero (administrador)."""
+@router.get("/armascanner/desarrollo")
+def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
+    """La pestaña Desarrollo (administrador): los casos (los abiertos primero, el más nuevo arriba), cada
+    uno con la oficina de cálculo de su obra, y las oficinas."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT id, email, equipo, version, obra, plano, comentario, tamano, creado_el
-                             FROM armascanner_reportes ORDER BY id DESC LIMIT 300""")
+            cur.execute("""SELECT r.id, r.tipo, r.estado, r.email, r.equipo, r.version, r.obra, r.obra_id, r.plano,
+                                  r.comentario, r.lector, r.nota, r.version_resuelto, r.tamano, r.creado_el, p.calculista_id
+                             FROM armascanner_reportes r LEFT JOIN proyectos p ON p.id_proyecto = r.obra_id
+                            ORDER BY CASE WHEN r.estado IN ('nuevo', 'en_estudio') THEN 0 ELSE 1 END, r.id DESC LIMIT 300""")
             filas = cur.fetchall()
-            nombres = _nombres(cur, [f[1] for f in filas])
-    return {"reportes": [{"id": f[0], "usuario": nombres.get(f[1], f[1] or ""), "equipo": f[2] or "", "version": f[3] or "",
-                          "obra": f[4] or "", "plano": f[5] or "", "comentario": f[6] or "", "tamano": f[7] or 0,
-                          "el": _cuando(f[8])} for f in filas]}
+            nombres = _nombres(cur, [f[3] for f in filas])
+            oficinas, calculistas = _oficinas(cur, filas)
+    casos = [{"id": f[0], "tipo": f[1], "estado": f[2], "usuario": nombres.get(f[3], f[3] or ""), "equipo": f[4] or "",
+              "version": f[5] or "", "obra": f[6] or "", "obra_id": f[7] or "", "plano": f[8] or "",
+              "comentario": f[9] or "", "lector": f[10] or "", "nota": f[11] or "", "version_resuelto": f[12] or "",
+              "tamano": f[13] or 0, "el": _cuando(f[14]), "oficina": calculistas.get(f[15], "")} for f in filas]
+    return {"casos": casos, "oficinas": oficinas,
+            "otras": sorted(({"id": k, "nombre": v} for k, v in calculistas.items()
+                             if k not in {o["id"] for o in oficinas}), key=lambda x: x["nombre"].lower())}
+
+
+def _oficinas(cur, casos) -> tuple:
+    """Las oficinas de cálculo que importan a ArmaScanner (agregadas a la lista, o con obras o casos en
+    ArmaScanner), con sus obras y sus planos en estudio; y {id: nombre} de todas las oficinas."""
+    cur.execute("""SELECT c.id, c.nombre, o.lector, o.notas, o.calculista_id IS NOT NULL FROM calculistas c
+                     LEFT JOIN armascanner_oficinas o ON o.calculista_id = c.id""")
+    todas = cur.fetchall()
+    cur.execute("""SELECT p.calculista_id, COALESCE(ao.nombre, p.nombre_proyecto, x.id_proyecto)
+                     FROM armascanner_obras x JOIN proyectos p ON p.id_proyecto = x.id_proyecto
+                     LEFT JOIN asa_obras ao ON ao.asa_job_id = p.asa_job_id
+                    WHERE p.calculista_id IS NOT NULL""")
+    obras = {}
+    for cid, nombre in cur.fetchall():
+        obras.setdefault(cid, []).append(nombre)
+    abiertos = {}
+    for f in casos:
+        if f[1] == "plano" and f[2] in CASOS_ABIERTOS and f[15] is not None:
+            abiertos[f[15]] = abiertos.get(f[15], 0) + 1
+    oficinas = [{"id": cid, "nombre": nombre, "lector": lector or "", "notas": notas or "",
+                 "obras": sorted(obras.get(cid, [])), "abiertos": abiertos.get(cid, 0)}
+                for cid, nombre, lector, notas, agregada in todas if agregada or cid in obras or cid in abiertos]
+    return sorted(oficinas, key=lambda o: o["nombre"].lower()), {f[0]: f[1] for f in todas}
+
+
+class CasoDesarrollo(BaseModel):
+    id: int = 0
+    estado: str
+    version: str = ""
+    nota: Optional[str] = None
+
+
+@router.post("/armascanner/desarrollo/{rid}")
+def cambiar_caso_portal(rid: int, datos: CasoDesarrollo, admin=Depends(require_admin_or_admin_calidad)):
+    """En estudio, resuelto (con la versión que lo resolvió) o descartado (administrador)."""
+    return _cambiar_caso(admin.get("email", "?"), rid, datos)
+
+
+@router.post("/armascanner/desarrollo-ficha")
+def cambiar_caso_ficha(datos: CasoDesarrollo, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Lo mismo, con la ficha de ArmaScanner de un administrador (el agente, desde el equipo de desarrollo)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+    if not _es_admin(user):
+        raise HTTPException(status_code=403, detail="Sólo un administrador.")
+    return _cambiar_caso(user["email"], datos.id, datos)
+
+
+def _cambiar_caso(email: str, rid: int, datos: CasoDesarrollo) -> dict:
+    """Cambia el estado de un caso. Al resolverse o descartarse un plano, se le avisa a quien lo mandó."""
+    if datos.estado not in ESTADOS_CASO:
+        raise HTTPException(status_code=400, detail="Estado no válido.")
+    cierra = datos.estado in ("resuelto", "descartado")
+    version = (datos.version or "").strip()[:40] or None
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""UPDATE armascanner_reportes
+                              SET estado = %s, nota = COALESCE(%s, nota),
+                                  version_resuelto = CASE WHEN %s = 'resuelto' THEN %s ELSE NULL END,
+                                  resuelto_por = CASE WHEN %s THEN %s ELSE NULL END,
+                                  resuelto_el = CASE WHEN %s THEN NOW() ELSE NULL END
+                            WHERE id = %s RETURNING email, tipo, plano, nota""",
+                        (datos.estado, (datos.nota or "").strip()[:2000] if datos.nota is not None else None,
+                         datos.estado, version, cierra, email, cierra, rid))
+            fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Caso no encontrado.")
+    autor, tipo, plano, nota = fila
+    audit(email, "armascanner_desarrollo", f"#{rid} {datos.estado}" + (f" {version}" if version else ""), "armascanner", str(rid))
+    if tipo == "plano" and cierra and autor != email:
+        if datos.estado == "resuelto":
+            _avisar([autor], f"ArmaScanner ya lee el plano {plano}" + (f" desde la versión {version}" if version else "")
+                    + ": actualiza y vuelve a escanear.", AVISO_DESARROLLO)
+        else:
+            _avisar([autor], f"El plano {plano} no se podrá leer con ArmaScanner" + (f": {nota}" if nota else "."),
+                    AVISO_DESARROLLO)
+    return {"ok": True}
+
+
+class Oficina(BaseModel):
+    calculista_id: int
+    lector: str = ""
+    notas: str = ""
+
+
+@router.post("/armascanner/oficinas")
+def guardar_oficina(datos: Oficina, admin=Depends(require_admin_or_admin_calidad)):
+    """Lo que se sabe de una oficina de cálculo: qué lector lee sus planos y notas (administrador)."""
+    email = admin.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM calculistas WHERE id = %s", (datos.calculista_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Oficina no encontrada.")
+            cur.execute("""INSERT INTO armascanner_oficinas (calculista_id, lector, notas, actualizado_por, actualizado_el)
+                           VALUES (%s, %s, %s, %s, NOW())
+                           ON CONFLICT (calculista_id) DO UPDATE SET lector = EXCLUDED.lector, notas = EXCLUDED.notas,
+                               actualizado_por = EXCLUDED.actualizado_por, actualizado_el = NOW()""",
+                        (datos.calculista_id, datos.lector.strip()[:40] or None, datos.notas.strip()[:2000] or None, email))
+    audit(email, "armascanner_oficina", f"{datos.lector.strip()[:40]}", "calculista", str(datos.calculista_id))
+    return {"ok": True}
+
+
+@router.get("/armascanner/avisos")
+def avisos(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Al abrir ArmaScanner: si quien lo abre es administrador, cuántos casos nuevos hay en Desarrollo y el
+    enlace a la pestaña. [Usuario 23-nov: «cuando yo abra ArmaScanner, reconozca que soy el administrador
+    y así me tire un aviso»]"""
+    import os
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            user = _usuario(cur, credentials.credentials)
+            if not _es_admin(user):
+                return {"admin": False, "desarrollo": 0, "url": ""}
+            cur.execute("SELECT COUNT(*) FROM armascanner_reportes WHERE estado = 'nuevo'")
+            n = cur.fetchone()[0]
+    base = (os.getenv("APP_URL", "") or "").strip().rstrip("/")
+    return {"admin": True, "desarrollo": n, "url": f"{base}/#mod=armascanner&tab=asc_desarrollo" if base else ""}
 
 
 @router.get("/armascanner/reportes-ficha")
-def reportes_ficha(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """Los reportes, con la ficha de ArmaScanner de un administrador (para leerlos desde el equipo de
-    desarrollo sin la clave del portal): la lista y el enlace de descarga de cada uno."""
+def reportes_ficha(estado: str = "", credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Los casos de Desarrollo, con la ficha de ArmaScanner de un administrador (para leerlos desde el
+    equipo de desarrollo sin la clave del portal; empaquetar/traer_desarrollo.py): la lista, con o sin
+    filtro de estado, y el enlace de descarga de cada uno."""
     from . import storage
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
             if not _es_admin(user):
                 raise HTTPException(status_code=403, detail="Sólo un administrador.")
-            cur.execute("""SELECT id, email, equipo, version, obra, plano, comentario, tamano, creado_el, archivo
-                             FROM armascanner_reportes ORDER BY id DESC LIMIT 50""")
+            cur.execute("""SELECT id, email, equipo, version, obra, plano, comentario, tamano, creado_el, archivo,
+                                  tipo, estado, lector, obra_id
+                             FROM armascanner_reportes WHERE %s = '' OR estado = %s ORDER BY id DESC LIMIT 50""",
+                        (estado, estado))
             filas = cur.fetchall()
     return {"reportes": [{"id": f[0], "usuario": f[1], "equipo": f[2] or "", "version": f[3] or "", "obra": f[4] or "",
                           "plano": f[5] or "", "comentario": f[6] or "", "tamano": f[7] or 0, "el": _cuando(f[8]),
-                          "url": storage.generate_presigned_url(f[9], expires=DESCARGA_SEGUNDOS)} for f in filas]}
+                          "url": storage.generate_presigned_url(f[9], expires=DESCARGA_SEGUNDOS),
+                          "tipo": f[10], "estado": f[11], "lector": f[12] or "", "obra_id": f[13] or ""} for f in filas]}
 
 
 @router.get("/armascanner/reportes/{rid}/descarga")

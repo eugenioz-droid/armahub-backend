@@ -214,7 +214,8 @@ check("rutas del contrato",
        "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido",
        "/armascanner/planos-linea/reemplazo/responder", "/armascanner/obras-linea", "/armascanner/obras-linea/asa",
        "/armascanner/planos-linea/dwg", "/armascanner/obras-asa", "/armascanner/obras-linea/agregar",
-       "/armascanner/obras-linea/quitar"} <= rutas, rutas)
+       "/armascanner/obras-linea/quitar", "/armascanner/desarrollo", "/armascanner/desarrollo/{rid}",
+       "/armascanner/desarrollo-ficha", "/armascanner/oficinas", "/armascanner/avisos"} <= rutas, rutas)
 check("Mis obras ya no lista las cargas sueltas", "/armascanner/cargas" not in rutas and not hasattr(A, "cargas"))
 check("ya no existen subir-plano ni elegir la versión que vale",
       not {"/armascanner/subir-plano", "/armascanner/planos-linea/vale"} & rutas and not hasattr(A, "_guardar_paquete"))
@@ -871,6 +872,77 @@ check("eliminar: además sale de Mis obras y de ArmaScanner",
       r.status_code == 200 and "A-300" not in en_armascanner()
       and "A-300" not in [x["id"] for x in web.get("/armascanner/obras-linea").json()["obras"]]
       and AUDITORIA[-1][1] == "armascanner_eliminar_obra", r.text)
+
+print("\nTEST: Desarrollo (23-nov): planos que el lector no reconoce y reportes, con estado; oficinas; aviso al administrador")
+BASE.executescript("""CREATE TABLE IF NOT EXISTS armascanner_reportes (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, equipo TEXT,
+                          version TEXT, obra TEXT, plano TEXT, comentario TEXT, archivo TEXT NOT NULL, tamano BIGINT,
+                          creado_el TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
+                      INSERT INTO armascanner_reportes (email, obra, archivo) VALUES ('emilio@x.cl', 'VIEJA', 'r/0.zip');
+                      CREATE TABLE IF NOT EXISTS calculistas (id INTEGER PRIMARY KEY, nombre TEXT);
+                      INSERT INTO calculistas VALUES (1, 'DELPORTE'), (2, 'SCAD INGENIEROS'), (3, 'OTRA OFICINA');
+                      ALTER TABLE proyectos ADD COLUMN calculista_id INTEGER;
+                      UPDATE proyectos SET calculista_id = 1 WHERE id_proyecto = 'PROY-2';
+                      ALTER TABLE users ADD COLUMN role TEXT;
+                      ALTER TABLE users ADD COLUMN activo BOOLEAN DEFAULT 1;
+                      UPDATE users SET role = CASE WHEN email = 'jefa@x.cl' THEN 'admin' ELSE 'cubicador' END;""")
+s178 = migrar(178)
+check("migración 178: los reportes de antes quedan en estudio; las oficinas, su tabla",
+      una("SELECT tipo, estado FROM armascanner_reportes WHERE obra = 'VIEJA'") == ("reporte", "en_estudio")
+      and any("CREATE TABLE IF NOT EXISTS armascanner_oficinas" in s for s in s178))
+
+
+def mandar(email, tipo, plano, **datos):
+    d = dict({"tipo": tipo, "obra": "EBCO - TORRE NORTE", "obra_id": "PROY-2", "plano": plano, "version": "2026-11-23.2",
+              "lector": "revit: 0 barras; delporte: 0 barras"}, **datos)
+    return web.post("/armascanner/reportes", headers=ficha(email), data={"datos": json.dumps(d)},
+                    files={"archivo": ("caso.zip", b"ZIP-" + plano.encode(), "application/zip")})
+
+
+avisos_antes = len(AVISOS)
+r = mandar(EMI, "plano", "L-77")
+caso = r.json()["id"]
+check("un plano que no se lee entra como caso nuevo, con lo que vio el lector, y le avisa al administrador",
+      r.status_code == 200 and r.json()["ya_estaba"] is False
+      and una("SELECT tipo, estado, obra_id, lector FROM armascanner_reportes WHERE id = ?", caso)
+      == ("plano", "nuevo", "PROY-2", "revit: 0 barras; delporte: 0 barras")
+      and len(AVISOS) == avisos_antes + 1 and AVISOS[-1][1] == ["jefa@x.cl"] and "L-77" in AVISOS[-1][0], (r.text, AVISOS[-1:]))
+n = una("SELECT COUNT(*) FROM armascanner_reportes")[0]
+r = mandar(EUG, "plano", "L-77")
+check("…el mismo plano con su caso abierto no se repite (ni se guarda otro ZIP)",
+      r.json() == {"ok": True, "id": caso, "ya_estaba": True} and una("SELECT COUNT(*) FROM armascanner_reportes")[0] == n)
+check("…un reporte sí entra siempre", mandar(EUG, "reporte", "L-77").json()["ya_estaba"] is False)
+check("el aviso al abrir ArmaScanner: al administrador, cuántos casos nuevos; al cubicador, nada",
+      web.get("/armascanner/avisos", headers=ficha("jefa@x.cl")).json()["desarrollo"] == 2
+      and web.get("/armascanner/avisos", headers=ficha(EMI)).json() == {"admin": False, "desarrollo": 0, "url": ""})
+sesion.update(email="jefa@x.cl", role="admin")
+dev = web.get("/armascanner/desarrollo").json()
+c = next(x for x in dev["casos"] if x["id"] == caso)
+check("la pestaña: los casos abiertos primero, con la oficina de cálculo de su obra",
+      [x["estado"] for x in dev["casos"]][-1] == "en_estudio" or all(x["estado"] in ("nuevo", "en_estudio") for x in dev["casos"]))
+check("…el caso con su oficina y lo que vio el lector", (c["tipo"], c["oficina"], c["lector"]) ==
+      ("plano", "DELPORTE", "revit: 0 barras; delporte: 0 barras"), c)
+check("…las oficinas que importan: la de una obra en ArmaScanner (con su caso en estudio); las demás, para agregar",
+      [(o["nombre"], o["abiertos"]) for o in dev["oficinas"]] == [("DELPORTE", 1)]
+      and {o["nombre"] for o in dev["otras"]} == {"SCAD INGENIEROS", "OTRA OFICINA"}, dev["oficinas"])
+check("cambiar un caso es de administrador",
+      web.post("/armascanner/desarrollo-ficha", headers=ficha(EMI), json={"id": caso, "estado": "en_estudio"}).status_code == 403)
+check("…con la ficha del administrador (el agente): en estudio",
+      web.post("/armascanner/desarrollo-ficha", headers=ficha("jefa@x.cl"), json={"id": caso, "estado": "en_estudio"}).json()
+      == {"ok": True} and una("SELECT estado FROM armascanner_reportes WHERE id = ?", caso) == ("en_estudio",))
+r = web.post(f"/armascanner/desarrollo/{caso}", json={"estado": "resuelto", "version": "2026-11-24.1"})
+check("resuelto: con la versión, y se le avisa a quien lo mandó",
+      r.json() == {"ok": True} and una("SELECT estado, version_resuelto, resuelto_por FROM armascanner_reportes WHERE id = ?", caso)
+      == ("resuelto", "2026-11-24.1", "jefa@x.cl") and AVISOS[-1][1] == [EMI] and "2026-11-24.1" in AVISOS[-1][0], AVISOS[-1])
+check("…un estado que no existe: 400", web.post(f"/armascanner/desarrollo/{caso}", json={"estado": "listo"}).status_code == 400)
+r = web.post("/armascanner/oficinas", json={"calculista_id": 2, "lector": "scad", "notas": "Planos de SCAD tal cual"})
+dev = web.get("/armascanner/desarrollo").json()
+check("una oficina: su lector y sus notas (base de conocimiento)",
+      r.json() == {"ok": True} and {"nombre": "SCAD INGENIEROS", "lector": "scad", "notas": "Planos de SCAD tal cual"}.items()
+      <= next(o for o in dev["oficinas"] if o["id"] == 2).items(), dev["oficinas"])
+check("…una oficina que no existe: 404", web.post("/armascanner/oficinas", json={"calculista_id": 99}).status_code == 404)
+web.post("/armascanner/oficinas", json={"calculista_id": 3})
+check("«Agregar oficina»: entra a la lista aunque todavía no tenga lector ni notas",
+      3 in [o["id"] for o in web.get("/armascanner/desarrollo").json()["oficinas"]])
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

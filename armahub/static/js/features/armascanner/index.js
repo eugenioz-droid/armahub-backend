@@ -17,7 +17,10 @@
  *              /armascanner/obras-linea/quitar), del administrador. [Usuario 23-nov]
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
- *   Uso        GET /armascanner/uso          (administración) KPIs, uso por usuario y los reportes
+ *   Uso        GET /armascanner/uso          (administración) KPIs y uso por usuario
+ *   Desarrollo GET /armascanner/desarrollo   (administración) los planos que el lector no reconoce y los
+ *              reportes, con su estado (POST /armascanner/desarrollo/{id}); las oficinas de cálculo con el
+ *              lector que lee sus planos (POST /armascanner/oficinas). [Usuario 23-nov]
  *   Versiones  GET /armascanner/versiones    (administración) publicar, retirar, obligatoria
  * Los cambios de licencia usan las rutas de siempre: PUT /admin/users/{id}/licencias/armascanner
  * y POST …/liberar.
@@ -27,7 +30,7 @@
 
   var est = { obras: [], obra: null, sec: 'planos', planos: [], asa: null, usuarios: null, combo: null,
               usuarioElegido: null, licencias: [], plElemento: '', plBuscar: '', verBarras: null, listo: false,
-              admin: false, asaObras: null };
+              admin: false, asaObras: null, dev: null, devVer: 'abiertos', devEditando: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -668,21 +671,124 @@
     await recargarObra(true);
   };
 
-  // ── Reportes (administrador): lo que el cubicador manda desde ArmaScanner con «Enviar reporte» ──
-  async function cargarReportes() {
-    var card = document.getElementById('ascReportesCard');
-    if (!card) return;
-    var data = await global.apiGet('/armascanner/reportes');
-    if (!data) { card.style.display = 'none'; return; }
-    card.style.display = '';
-    var filas = data.reportes || [];
-    document.getElementById('ascReportes').innerHTML = filas.map(function (r) {
-      return '<tr><td>' + esc(r.el) + '</td><td>' + esc(r.usuario) + '</td><td>' + esc(r.equipo) + '</td><td>' + esc(r.version) +
-        '</td><td>' + esc(r.obra) + (r.plano ? '<div class="asc-linea">' + esc(r.plano) + '</div>' : '') + '</td><td>' +
-        esc(r.comentario) + '</td><td class="num">' + mb(r.tamano) + '</td><td>' +
-        '<button class="arm-button" onclick="ascDescargarReporte(' + r.id + ')">Descargar</button></td></tr>';
+  // ── Desarrollo (administrador): los planos que el lector no reconoce y los reportes, con su estado; y
+  // las oficinas de cálculo, con el lector que lee sus planos. [Usuario 23-nov: «un flujo que no dependa
+  // de estar enviando planos manualmente sin control ni trazabilidad»; «un pequeño apartado donde
+  // listemos las oficinas de cálculo… así se va estableciendo una base de conocimiento»] ──
+  var ESTADO_DEV = { nuevo: ['Nuevo', 'arm-tag--warning'], en_estudio: ['En estudio', ''],
+                     resuelto: ['Resuelto', 'arm-tag--success'], descartado: ['Descartado', ''] };
+
+  async function cargarDesarrollo() {
+    if (!est.devListo) {
+      est.devListo = true;
+      document.getElementById('ascDevMostrar').addEventListener('click', function (ev) {
+        var b = ev.target.closest('button[data-ver]');
+        if (!b) return;
+        est.devVer = b.getAttribute('data-ver');
+        this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('is-on', x === b); });
+        pintarCasos();
+      });
+      document.getElementById('ascDevAgregarOf').addEventListener('click', function () {
+        var id = Number(document.getElementById('ascDevOtra').value);
+        if (id) { est.devEditando = id; guardarOficina(id, '', ''); }
+      });
+    }
+    var d = await global.apiGet('/armascanner/desarrollo');
+    est.dev = d || { casos: [], oficinas: [], otras: [] };
+    est.devSinRespuesta = !d;
+    pintarCasos();
+    pintarOficinas();
+  }
+
+  function pintarCasos() {
+    var casos = est.dev.casos || [];
+    var cuenta = function (e) { return casos.filter(function (c) { return c.estado === e; }).length; };
+    poner('ascDevNuevos', entero(cuenta('nuevo')));
+    poner('ascDevEstudio', entero(cuenta('en_estudio')));
+    poner('ascDevResueltos', entero(cuenta('resuelto')));
+    var filas = casos.filter(function (c) { return est.devVer === 'todos' || c.estado === 'nuevo' || c.estado === 'en_estudio'; });
+    document.getElementById('ascDevCasos').innerHTML = filas.map(function (c) {
+      var e = ESTADO_DEV[c.estado] || [c.estado, ''];
+      var acciones = '<button type="button" class="arm-button" onclick="ascDescargarReporte(' + c.id + ')">Descargar</button>' +
+        (c.estado === 'nuevo' ? '<button type="button" class="arm-button" onclick="ascCaso(' + c.id + ', \'en_estudio\')">En estudio</button>' : '') +
+        (c.estado === 'nuevo' || c.estado === 'en_estudio'
+          ? '<button type="button" class="arm-button arm-button--primary" onclick="ascCaso(' + c.id + ', \'resuelto\')">Resuelto</button>' +
+            '<button type="button" class="arm-button" onclick="ascCaso(' + c.id + ', \'descartado\')">Descartar</button>'
+          : '<button type="button" class="arm-button" onclick="ascCaso(' + c.id + ', \'en_estudio\')">Reabrir</button>');
+      var detalle = [c.comentario, c.lector].filter(Boolean).join('\n');
+      var cierre = c.estado === 'resuelto' ? (c.version_resuelto ? 'Resuelto en ' + c.version_resuelto : '') : '';
+      return '<tr><td>' + esc(c.el) + '</td>' +
+        '<td><span class="arm-tag">' + (c.tipo === 'plano' ? 'Plano' : 'Reporte') + '</span></td>' +
+        '<td><span class="arm-tag ' + e[1] + '">' + e[0] + '</span></td>' +
+        '<td>' + esc(c.obra) + (c.plano ? '<div class="asc-linea">' + esc(c.plano) + '</div>' : '') +
+          (c.oficina ? '<div class="asc-linea">' + esc(c.oficina) + '</div>' : '') + '</td>' +
+        '<td>' + esc(c.usuario) + '<div class="asc-linea">' + esc([c.equipo, c.version].filter(Boolean).join(' · ')) + '</div></td>' +
+        '<td><div class="asc-lector">' + esc(detalle) + '</div>' +
+          (c.nota || cierre ? '<div class="asc-linea">' + esc([cierre, c.nota].filter(Boolean).join(' · ')) + '</div>' : '') + '</td>' +
+        '<td class="asc-acciones"><div>' + acciones + '</div></td></tr>';
     }).join('');
-    document.getElementById('ascReportesVacio').style.display = filas.length ? 'none' : '';
+    var vacio = document.getElementById('ascDevVacio');
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = est.devSinRespuesta ? 'No se pudieron leer los casos. Recarga la página.'
+      : est.devVer === 'todos' ? 'Sin casos.' : 'Sin casos abiertos.';
+  }
+
+  global.ascCaso = async function (id, estado) {
+    var cuerpo = { estado: estado };
+    if (estado === 'resuelto') {
+      var v = prompt('Versión de ArmaScanner que lo resuelve (opcional):', '');
+      if (v == null) return;
+      cuerpo.version = v.trim();
+    } else if (estado === 'descartado') {
+      var n = prompt('Motivo (le llega al cubicador):', '');
+      if (n == null) return;
+      cuerpo.nota = n.trim();
+    }
+    var data = await postJson('/armascanner/desarrollo/' + id, cuerpo);
+    if (!data) return;
+    global.showToast(estado === 'resuelto' ? 'Caso resuelto: se avisó al cubicador.' : estado === 'descartado'
+      ? 'Caso descartado: se avisó al cubicador.' : 'Caso en estudio.', 'success');
+    await cargarDesarrollo();
+  };
+
+  function pintarOficinas() {
+    var of = est.dev.oficinas || [];
+    poner('ascDevOficinas', entero(of.length));
+    document.getElementById('ascDevOficinas').innerHTML = of.map(function (o) {
+      if (est.devEditando === o.id) {
+        return '<tr class="asc-of-edit"><td>' + esc(o.nombre) + '</td>' +
+          '<td><input type="text" class="arm-input" id="ascOfLector" list="ascDevLectores" value="' + esc(o.lector) + '"></td>' +
+          '<td>' + esc(o.obras.join(' · ')) + '</td><td class="num">' + entero(o.abiertos) + '</td>' +
+          '<td><input type="text" class="arm-input" id="ascOfNotas" value="' + esc(o.notas) + '"></td>' +
+          '<td class="asc-acciones"><div><button type="button" class="arm-button arm-button--primary" onclick="ascGuardarOficina(' + o.id + ')">Guardar</button>' +
+          '<button type="button" class="arm-button" onclick="ascEditarOficina(0)">Cancelar</button></div></td></tr>';
+      }
+      return '<tr><td>' + esc(o.nombre) + '</td><td>' + (o.lector ? esc(o.lector) : '<span class="asc-linea">Sin lector</span>') + '</td>' +
+        '<td>' + esc(o.obras.join(' · ')) + '</td><td class="num">' + (o.abiertos ? entero(o.abiertos) : '—') + '</td>' +
+        '<td>' + esc(o.notas) + '</td>' +
+        '<td class="asc-acciones"><div><button type="button" class="arm-button" onclick="ascEditarOficina(' + o.id + ')">Editar</button></div></td></tr>';
+    }).join('');
+    document.getElementById('ascDevOfVacio').style.display = of.length ? 'none' : '';
+    document.getElementById('ascDevOtra').innerHTML = '<option value="">Elegir oficina…</option>' +
+      (est.dev.otras || []).map(function (o) { return '<option value="' + o.id + '">' + esc(o.nombre) + '</option>'; }).join('');
+  }
+
+  global.ascEditarOficina = function (id) {
+    est.devEditando = id || null;
+    pintarOficinas();
+    var e = document.getElementById('ascOfLector');
+    if (e) e.focus();
+  };
+
+  global.ascGuardarOficina = function (id) {
+    guardarOficina(id, document.getElementById('ascOfLector').value, document.getElementById('ascOfNotas').value);
+  };
+
+  async function guardarOficina(id, lector, notas) {
+    var data = await postJson('/armascanner/oficinas', { calculista_id: id, lector: lector, notas: notas });
+    if (!data) return;
+    await cargarDesarrollo();
+    global.ascEditarOficina(est.devEditando === id && !lector && !notas ? id : 0);
   }
 
   global.ascDescargarReporte = async function (id) {
@@ -826,7 +932,6 @@
 
   // ── Uso (administración) ──
   async function cargarUso() {
-    cargarReportes();  // (administrador) lo que mandan los cubicadores con «Enviar reporte»
     var d = await global.apiGet('/armascanner/uso');
     if (!d) return;
     poner('ascUsoLic', entero(d.licencias_activas));
@@ -942,5 +1047,6 @@
   global.ascCargarInstalar = cargarInstalar;
   global.ascCargarLicencias = cargarLicencias;
   global.ascCargarUso = cargarUso;
+  global.ascCargarDesarrollo = cargarDesarrollo;
   global.ascCargarVersiones = cargarVersiones;
 })(window);
