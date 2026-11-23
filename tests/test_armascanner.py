@@ -83,8 +83,9 @@ check("no lo envía otro cubicador", not A.puede_enviar(otro, yo, False) and not
 check("lo envía el administrador", A.puede_enviar(otro, yo, True))
 check("estado del pedido", (A.estado_pedido(3, None), A.estado_pedido(3, 3), A.estado_pedido(4, 3))
       == ("sin_enviar", "enviado", "cambios"))
-check("Mis obras: todos ven todas las obras (los planos sin filtro por usuario)",
-      'FROM planos_obra""")' in inspect.getsource(A.obras_linea))
+check("Mis obras: todos ven todas las obras de ArmaScanner (los planos sin filtro por usuario)",
+      'FROM planos_obra WHERE id_proyecto IN (SELECT id_proyecto FROM armascanner_obras)""")'
+      in inspect.getsource(A.obras_linea))
 check("cargar y terminar no cargan barras como despiece (eso es el pedido)",
       "_cargar_barras" not in inspect.getsource(A.guardar_plano) + inspect.getsource(A.terminar_plano))
 check("versiones por número: .10 es más nueva que .9, y sin punto es la más vieja",
@@ -207,15 +208,17 @@ check("la exportación consulta las combinaciones bloqueadas", hasattr(E, "combi
 rutas = {r.path for r in A.router.routes}
 check("rutas del contrato",
       {"/armascanner/obras", "/armascanner/planos", "/armascanner/planos/guardar", "/armascanner/planos/terminar",
-       "/armascanner/planos/descargar", "/armascanner/planos/entrega/eliminar", "/armascanner/planos/pedido",
-       "/armascanner/planos/enviar-pedido", "/armascanner/planos/tomar", "/armascanner/planos/soltar",
-       "/armascanner/planos/reemplazo/pedir", "/armascanner/planos/reemplazos", "/armascanner/planos/reemplazo/responder",
-       "/armascanner/planos/reemplazo/anular", "/armascanner/planos-linea", "/armascanner/planos-linea/pdf",
-       "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido",
+       "/armascanner/planos/descargar", "/armascanner/planos/pedido", "/armascanner/planos/tomar",
+       "/armascanner/planos/soltar", "/armascanner/planos/reemplazo/pedir", "/armascanner/planos/reemplazos",
+       "/armascanner/planos/reemplazo/responder", "/armascanner/planos-linea", "/armascanner/planos-linea/pdf",
+       "/armascanner/planos-linea/barras", "/armascanner/planos-linea/pedido", "/armascanner/planos-linea/eliminar",
        "/armascanner/planos-linea/reemplazo/responder", "/armascanner/obras-linea", "/armascanner/obras-linea/asa",
        "/armascanner/planos-linea/dwg", "/armascanner/obras-asa", "/armascanner/obras-linea/agregar",
        "/armascanner/obras-linea/quitar", "/armascanner/desarrollo", "/armascanner/reportes",
        "/armascanner/desarrollo-ficha", "/armascanner/oficinas", "/armascanner/avisos"} <= rutas, rutas)
+check("fuera las rutas que nadie llama (ningún ArmaScanner publicado desde la .11 ni la página)",
+      not {"/armascanner/planos/entrega/eliminar", "/armascanner/planos/reemplazo/anular", "/armascanner/planos/eliminar",
+           "/armascanner/planos-linea/liberar", "/armascanner/planos/enviar-pedido"} & rutas, rutas)
 check("Mis obras ya no lista las cargas sueltas", "/armascanner/cargas" not in rutas and not hasattr(A, "cargas"))
 check("ya no existen subir-plano ni elegir la versión que vale",
       not {"/armascanner/subir-plano", "/armascanner/planos-linea/vale"} & rutas and not hasattr(A, "_guardar_paquete"))
@@ -246,7 +249,7 @@ BASE.create_function("NOW", 0, lambda: datetime.now(timezone.utc).isoformat())
 
 
 def a_sqlite(sql, params):
-    sql = sql.replace("::jsonb", "").replace(" FOR UPDATE", "")
+    sql = sql.replace("::jsonb", "").replace(" FOR UPDATE", "").replace(" FOR SHARE", "")
     partes, valores = sql.split("%s"), []
     out = [partes[0]]
     for valor, resto in zip(list(params or ()), partes[1:]):
@@ -370,8 +373,13 @@ A.audit = lambda *a: AUDITORIA.append(a)
 N.crear_notificacion = lambda tipo, reclamo, mensaje, destinatarios_extra=None: AVISOS.append((mensaje, destinatarios_extra))
 
 
+al_importar = []  # lo que pasa «mientras se importa» (para cruzar el pedido con un cambio del plano)
+
+
 async def _cargar_barras(user, obra, plano_code, reemplaza, revision, sin_subir, contenido, nombre, version, equipo):
-    PEDIDOS.append({"plano_code": plano_code, "version_app": version, "csv": contenido})
+    PEDIDOS.append({"plano_code": plano_code, "version_app": version, "csv": contenido, "equipo": equipo})
+    while al_importar:
+        al_importar.pop()()
     return {"ok": True, "import_id": 7, "proyecto": obra, "barras": 2, "kilos": 12.0}, 0
 
 
@@ -554,12 +562,6 @@ check("el autor rechaza (por nombre): rechazado, y se avisa al solicitante",
       and AVISOS[-1] == ("Emilio Zalazar rechazó que reemplaces 215 (INGEVEC - EDIFICIO LOS LILENES).", [EUG]), (r, AVISOS[-1:]))
 d = terminar(EUG, "P1", paquete(20), B2).json()["detail"]
 check("rechazado: sigue ocupado, y lo dice", d["reemplazo"] == "rechazado", d)
-con_ficha(EUG, "reemplazo/pedir", plano="P1")
-r = con_ficha(EUG, "reemplazo/anular", plano="P1").json()
-ru = web.get("/armascanner/planos/reemplazos", headers=ficha(EUG)).json()
-check("pide otra vez y lo anula: queda anulado y ya no aparece entre los suyos",
-      r == {"ok": True} and [p[2] for p in pedidos("P1")] == ["rechazado", "anulado"] and ru["mios"] == [], (r, pedidos("P1"), ru))
-check("anular sin pedido: 404", con_ficha(EUG, "reemplazo/anular", plano="P1").status_code == 404)
 
 print("\nTEST: portal: el administrador responde por el autor; el reemplazo se cumple al terminar")
 con_ficha(EUG, "reemplazo/pedir", plano="P1")
@@ -567,7 +569,8 @@ x = lista_portal("P1")
 check("lista del portal: la entrega, el pedido y quién puede responder",
       x["entrega"]["autor"] == "Emilio Zalazar" and x["entrega"]["autor_email"] == EMI and x["puede_responder"]
       and [(y["solicitante"], y["estado"]) for y in x["reemplazos"]] == [("Eugenio Zalazar", "pendiente")]
-      and not x["puede_liberar"] and x["en_edicion_por"] == "" and "por_decidir" not in x and "entregas" not in x, x)
+      and not {"puede_liberar", "en_edicion_por", "en_edicion_desde", "en_edicion_por_mi", "por_decidir", "entregas"} & set(x),
+      x)
 sesion.update(email=EUG, role="cubicador")
 r = web.post("/armascanner/planos-linea/reemplazo/responder",
              json={"obra": "PROY-1", "plano": "P1", "solicitante": EUG, "acepta": True})
@@ -616,7 +619,7 @@ r = web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": 
 check("PDF: el de la entrega, para mostrarlo en la página", r == {"url": f"https://r2/{e2[3]}?tipo=application/pdf"}, r)
 check("barras: las de la entrega", [y["id"] for y in web.get("/armascanner/planos-linea/barras",
                                                               params={"obra": "PROY-1", "plano": "P1"}).json()["barras"]] == ["B-1", "B-9"])
-r = con_ficha(EUG, "enviar-pedido", plano="P1")
+r = con_ficha(EUG, "pedido", plano="P1")
 check("el pedido sale de la nueva entrega, con la versión de ArmaScanner",
       r.status_code == 200 and PEDIDOS[-1]["version_app"] == "2026-11-21.3" and PEDIDOS[-1]["plano_code"] == "PC-1"
       and lista_portal("P1")["pedido"] == "enviado", r.text)
@@ -625,30 +628,29 @@ check("descargar: la entrega, sin reservar nada; «mia» sólo si es mía",
       and con_ficha(EMI, "descargar", plano="P1", autor="mia").status_code == 404
       and con_ficha(EUG, "descargar", plano="P1", autor="mia").json()["mia"])
 
-print("\nTEST: eliminar mi entrega libera el plano")
-con_ficha(EMI, "reemplazo/pedir", plano="P1")
-r = con_ficha(EUG, "entrega/eliminar", plano="P1").json()
-check("el autor la elimina: el plano vuelve a «cargado», se borran sus archivos y se avisa a quien la pidió",
-      r == {"ok": True, "avisados": 1} and entrega("P1") is None and e2[2] not in R2 and e2[3] not in R2
-      and fila("P1", "etapa, subido_por, barras, pdf, base, archivo") == ("cargado", EUG, 0, None, None, "ganador.zip")
-      and pedidos("P1")[-1][2] == "anulado"
-      and AVISOS[-1] == ("Eugenio Zalazar eliminó su versión de 215 (INGEVEC - EDIFICIO LOS LILENES): ya puedes terminarlo.", [EMI]),
-      (r, fila("P1", "etapa, subido_por, barras, pdf, base, archivo"), AVISOS[-1:]))
-check("…el pedido que ya había salido queda con cambios sin enviar, y sin PDF", lista_portal("P1")["pedido"] == "cambios"
-      and web.get("/armascanner/planos-linea/pdf", params={"obra": "PROY-1", "plano": "P1"}).json() == {"url": None})
-check("sin entrega propia: 404", con_ficha(EUG, "entrega/eliminar", plano="P1").status_code == 404)
-r = terminar(EMI, "P1", paquete(60), B3).json()
-check("libre: el que lo pidió termina sin más", r["ok"] and entrega("P1")[0] == EMI and r["reemplazo_de"] == "", r)
+print("\nTEST: el pedido se anota sólo si el plano sigue como se revisó")
+al_importar.append(lambda: (BASE.execute("UPDATE planos_obra SET version = version + 1 WHERE plano = 'P1'"), BASE.commit()))
+antes_pedido = fila("P1", "pedido_version, version")
+r = con_ficha(EUG, "pedido", plano="P1")
+check("otra versión del plano mientras se importaba: 409, el pedido no queda anotado y la auditoría lo dice",
+      r.status_code == 409 and r.json()["detail"].startswith("El plano cambió en ArmaHub mientras se enviaba el pedido")
+      and fila("P1", "pedido_version")[0] == antes_pedido[0] and lista_portal("P1")["pedido"] == "cambios"
+      and "queda por reenviar" in AUDITORIA[-1][2], (r.text, fila("P1", "pedido_version, version"), AUDITORIA[-1:]))
+al_importar.append(lambda: (BASE.execute("""INSERT INTO planos_obra_reemplazos (id_proyecto, plano, solicitante, autor, estado)
+                                            VALUES ('PROY-1', 'P1', 'emilio@x.cl', 'eugenio@x.cl', 'aceptado')"""),
+                            BASE.commit()))
+r = con_ficha(EUG, "pedido", plano="P1")
+check("un reemplazo aceptado mientras se importaba: 409 y el pedido no queda anotado",
+      r.status_code == 409 and fila("P1", "pedido_version")[0] == antes_pedido[0], r.text)
+check("el pedido de ArmaScanner nunca manda el equipo (siempre None)", PEDIDOS[-1]["equipo"] is None)
 r = terminar(EMI, "P2", paquete(5), B2).json()
 check("terminar un plano que no estaba en ArmaHub: se crea su fila",
       fila("P2", "etapa, version, archivo, subido_por") == ("terminado", 1, None, EMI), r)
-con_ficha(EMI, "entrega/eliminar", plano="P2")
-check("…y sin entrega ni antecedente, la fila se va", fila("P2", "etapa") is None)
 
-print("\nTEST: planos anteriores al cambio (en_trabajo)")
-check("el pedido de un plano anterior al cambio sale como antes (quien lo guardó)",
-      con_ficha(EMI, "pedido", plano="ANTES").status_code == 403 and con_ficha(EUG, "pedido", plano="ANTES").json().get("version") == 4
-      and PEDIDOS[-1]["version_app"] is None and fila("ANTES", "pedido_version, pedido_por") == (4, EUG))
+print("\nTEST: planos anteriores al cambio (en_trabajo; en producción ya no queda ninguno)")
+r = con_ficha(EUG, "pedido", plano="ANTES")
+check("un plano sin entrega no tiene barras que enviar", r.status_code == 422 and fila("ANTES", "pedido_version")[0] is None,
+      r.text)
 r = con_ficha(EMI, "descargar", plano="ANTES").json()
 check("descargar sin entrega: el paquete de la fila", (r["etapa"], r["version"], r["autor"]) == ("en_trabajo", 4, "Eugenio Zalazar")
       and r["url"].startswith("https://r2/obras/PROY-1/planos/x/v4.zip"), r)
@@ -656,25 +658,21 @@ terminar(EMI, "ANTES", paquete(7), B3)
 check("alguien lo termina: queda terminado y su paquete anterior no se toca",
       fila("ANTES", "etapa, subido_por, version, archivo") == ("terminado", EMI, 5, "obras/PROY-1/planos/x/v4.zip")
       and "obras/PROY-1/planos/x/v4.zip" in R2)
-con_ficha(EMI, "entrega/eliminar", plano="ANTES")
-check("…y si elimina su entrega, vuelve a como estaba (en trabajo, con su avance y sus barras)",
-      fila("ANTES", "etapa, subido_por, barras, aprobadas, kg, version") == ("en_trabajo", EUG, 2, 1, 12, 6)
-      and fila("ANTES", "barras_json")[0] == BARRAS_ANTES and fila("ANTES", "resumen")[0]["pendientes"] == 1,
-      fila("ANTES", "etapa, subido_por, barras, aprobadas, kg, version"))
+r = con_ficha(EMI, "pedido", plano="ANTES")
+check("…y su pedido sale de la entrega", r.status_code == 200 and fila("ANTES", "pedido_version, pedido_por") == (5, EMI), r.text)
 
-print("\nTEST: lo que queda para un ArmaScanner anterior, y eliminar el plano")
+print("\nTEST: lo que queda para un ArmaScanner hasta la 2026-11-20.10, y eliminar el plano")
 r = con_ficha(EMI, "tomar", plano="P1")
 check("tomar: 404 «Actualiza ArmaScanner.» (el cliente anterior abre en local)",
       r.status_code == 404 and r.json()["detail"] == "Actualiza ArmaScanner.", r.text)
-check("soltar y liberar: responden bien sin hacer nada",
-      con_ficha(EMI, "soltar", plano="P1").json() == {"ok": True}
-      and web.post("/armascanner/planos-linea/liberar", json={"obra": "PROY-1", "plano": "P1"}).json() == {"ok": True})
-con_ficha(EUG, "reemplazo/pedir", plano="P1")
-check("eliminar un plano no es de cubicador", con_ficha(EMI, "eliminar", plano="P1").status_code == 403)
+check("soltar: responde bien sin hacer nada", con_ficha(EMI, "soltar", plano="P1").json() == {"ok": True})
+archivos_p1 = [k for k in entrega("P1")[2:4] if k] + ["ganador.zip"]
 r = web.post("/armascanner/planos-linea/eliminar", json={"obra": "PROY-1", "plano": "P1", "con_barras": False}).json()
 check("eliminar el plano (administrador): se van su fila, su entrega y sus archivos, y sus pedidos dejan de correr",
-      r["ok"] and fila("P1", "etapa") is None and entrega("P1") is None and list(R2) == ["obras/PROY-1/planos/x/v4.zip"]
-      and not [p for p in pedidos("P1") if p[2] in ("pendiente", "aceptado")], (r, list(R2), pedidos("P1")))
+      r["ok"] and fila("P1", "etapa") is None and entrega("P1") is None and not set(archivos_p1) & set(R2)
+      and "obras/PROY-1/planos/x/v4.zip" in R2 and not [p for p in pedidos("P1") if p[2] in ("pendiente", "aceptado")]
+      and AUDITORIA[-1][1] == "armascanner_eliminar_plano" and "con su entrega" in AUDITORIA[-1][2],
+      (r, list(R2), pedidos("P1"), AUDITORIA[-1:]))
 
 print("\nTEST: Mis obras (22-nov): la lista de obras con sus KPIs, aSa y el DWG")
 BASE.executescript("""CREATE TABLE constructoras (id INTEGER, nombre TEXT);
@@ -686,7 +684,14 @@ BASE.executescript("""CREATE TABLE constructoras (id INTEGER, nombre TEXT);
                                            peso_total NUMERIC, origen TEXT, id_unico TEXT);
                       INSERT INTO constructoras VALUES (1, 'EBCO S.A.');
                       INSERT INTO asa_obras VALUES ('A-200', 'EBCO');
-                      INSERT INTO proyectos VALUES ('PROY-2', 'EBCO - TORRE NORTE', 'A-200', 1);""")
+                      INSERT INTO proyectos VALUES ('PROY-2', 'EBCO - TORRE NORTE', 'A-200', 1);
+                      INSERT INTO armascanner_obras (id_proyecto, agregada_por) VALUES ('PROY-2', 'emilio@x.cl');""")
+antes_r2 = dict(R2)
+r = terminar(EMI, "X1", paquete(69), [], obra="PROY-X")
+check("terminar en una obra que nadie agregó a Mis obras: 409, no sube nada y la obra no entra",
+      r.status_code == 409 and r.json()["detail"] == "La obra no está en ArmaHub › Mis obras: agrégala ahí."
+      and R2 == antes_r2 and una("SELECT COUNT(*) FROM armascanner_obras WHERE id_proyecto = 'PROY-X'")[0] == 0
+      and una("SELECT COUNT(*) FROM planos_obra WHERE plano = 'X1'")[0] == 0, r.text)
 L5 = [{"id": "L-1", "rev": "aprobada", "kg": 300.0, "diam": 12}, {"id": "L-2", "rev": "aprobada", "kg": 100.0, "diam": 8}]
 E5 = [{"id": "E-1", "rev": "aprobada", "kg": 600.0, "diam": 16}]
 L4 = [{"id": "V-1", "rev": "aprobada", "kg": 50.0, "diam": 10}]
@@ -749,15 +754,16 @@ check("…sin pedido no hay cruce, y el cargado no aparece",
       x["E5"]["pedido"] == "sin_enviar" and x["E5"]["pct"] is None and x["E5"]["codigos"] == [] and "L6" not in x, x)
 a1 = web.get("/armascanner/obras-linea/asa", params={"obra": "PROY-1"}).json()
 x1 = {p["plano"]: p for p in a1["planos"]}
-check("…cada obra con lo suyo: el plano anterior al cambio, con pedido (y cambios), calza con el código de su obra",
+check("…cada obra con lo suyo: el plano de la otra obra, con pedido, calza con el código de su obra",
       (a1["asa"], a1["codigos"], x1["ANTES"]["pedido"], x1["ANTES"]["pct"], [c["cc"] for c in x1["ANTES"]["codigos"]])
-      == ("A-100", 1, "cambios", 100, ["SUQ9"]), a1)
+      == ("A-100", 1, "enviado", 100, ["SUQ9"]), a1)
 check("…una obra sin código de aSa: sin códigos",
       web.get("/armascanner/obras-linea/asa", params={"obra": "PROY-X"}).json() == {"asa": "", "al": "", "codigos": 0,
                                                                                   "kg": 0, "planos": []})
 
 print("\nTEST: Mis obras: el kg por piso de una obra (el piso de la etiqueta de cada barra; fundaciones aparte)")
 BASE.execute("INSERT INTO proyectos VALUES ('PROY-3', 'EBCO - TORRE SUR', NULL, NULL)")
+BASE.execute("INSERT INTO armascanner_obras (id_proyecto, agregada_por) VALUES ('PROY-3', 'emilio@x.cl')")
 BASE.commit()
 r = terminar(EMI, "LS1", paquete(80), [{"id": "B-1", "kg": 500.0, "piso": "S1", "sector": "LCIELO"},
                                         {"id": "B-2", "kg": 100.0, "piso": "S1", "sector": "VCIELO"}],
@@ -843,8 +849,8 @@ check("abrir o tener un plano no sube nada: cargar un antecedente responde 410",
       cargar(EUG, "L9", b"x" * 10).status_code == 410 and fila("L9", "plano") is None)
 A.CARGA_ANTECEDENTES = True
 antes = en_armascanner()
-check("ArmaScanner ve sólo las obras agregadas (las que subieron planos quedaron solas)",
-      "A-300" not in antes and {"PROY-1", "PROY-2", "PROY-3"} <= set(antes), antes)
+check("ArmaScanner ve sólo las obras agregadas",
+      "A-300" not in antes and {"PROY-1", "PROY-2", "PROY-3"} <= set(antes) and "PROY-X" not in antes, antes)
 sesion.update(email=EMI, role="cubicador")
 r = web.post("/armascanner/obras-linea/agregar", json={"asa": "A-300"})
 check("«Agregar obra»: cualquier cubicador; la obra entra a ArmaHub y ArmaScanner la ve",
@@ -861,17 +867,58 @@ check("limpiar y eliminar son de administrador",
       web.post("/armascanner/obras-linea/quitar", json={"obra": "PROY-3"}).status_code == 403)
 sesion.update(email="jefa@x.cl", role="admin")
 n3 = una("SELECT COUNT(*) FROM planos_obra WHERE id_proyecto = 'PROY-3'")[0]
+claves3 = [k for f in BASE.execute("""SELECT e.archivo, e.pdf FROM planos_obra_entregas e
+                                       WHERE e.id_proyecto = 'PROY-3'""").fetchall() for k in f if k]
+eliminar_plano, vistos = A._eliminar_plano, []
+
+
+def _cae_al_segundo(cur, *a):
+    vistos.append(a)
+    if len(vistos) == 2:
+        raise RuntimeError("la base no confirmó")
+    return eliminar_plano(cur, *a)
+
+
+A._eliminar_plano, antes_r2, n_aud = _cae_al_segundo, dict(R2), len(AUDITORIA)
+try:
+    web.post("/armascanner/obras-linea/quitar", json={"obra": "PROY-3"})
+except RuntimeError:
+    pass
+A._eliminar_plano = eliminar_plano
+check("limpiar es todo o nada: si falla a medias, quedan todos los planos, sus barras y sus archivos",
+      len(vistos) == 2 and una("SELECT COUNT(*) FROM planos_obra WHERE id_proyecto = 'PROY-3'")[0] == n3
+      and una("SELECT COUNT(*) FROM barras WHERE id_proyecto = 'PROY-3'")[0] == 1 and R2 == antes_r2
+      and len(AUDITORIA) == n_aud, (vistos, list(R2)))
 r = web.post("/armascanner/obras-linea/quitar", json={"obra": "PROY-3"})
-check("limpiar: se van sus planos, con las barras que mandaron a los despieces; la obra sigue",
+check("limpiar: se van sus planos, con las barras que mandaron a los despieces y sus archivos; la obra sigue; una sola "
+      "auditoría",
       r.status_code == 200 and n3 > 0 and r.json() == {"ok": True, "planos": n3, "barras_eliminadas": 1}
       and una("SELECT COUNT(*) FROM planos_obra WHERE id_proyecto = 'PROY-3'")[0] == 0
       and una("SELECT COUNT(*) FROM barras WHERE id_proyecto = 'PROY-3'")[0] == 0 and "PROY-3" in en_armascanner()
-      and AUDITORIA[-1][1] == "armascanner_limpiar_obra", r.text)
+      and len(claves3) >= n3 and not set(claves3) & set(R2)
+      and [a[1] for a in AUDITORIA[n_aud:]] == ["armascanner_limpiar_obra"], (r.text, AUDITORIA[n_aud:]))
 r = web.post("/armascanner/obras-linea/quitar", json={"obra": "A-300", "eliminar": True})
 check("eliminar: además sale de Mis obras y de ArmaScanner",
       r.status_code == 200 and "A-300" not in en_armascanner()
       and "A-300" not in [x["id"] for x in web.get("/armascanner/obras-linea").json()["obras"]]
       and AUDITORIA[-1][1] == "armascanner_eliminar_obra", r.text)
+antes_r2 = dict(R2)
+r1, r2 = terminar(EMI, "Z1", paquete(90), [], obra="", asa="A-300"), terminar(EMI, "Z1", paquete(90), [], obra="A-300")
+check("«Terminar» en una obra eliminada: 409 (por su código de aSa o por su id) y la obra no reaparece",
+      r1.status_code == r2.status_code == 409 and r1.json()["detail"] == A.SIN_OBRA and R2 == antes_r2
+      and "A-300" not in en_armascanner() and una("SELECT COUNT(*) FROM armascanner_obras WHERE id_proyecto = 'A-300'")[0] == 0
+      and una("SELECT COUNT(*) FROM planos_obra WHERE plano = 'Z1'")[0] == 0, (r1.text, r2.text))
+r = terminar(EMI, "Z1", paquete(90), [], obra="", asa="A-200")
+check("…y en una que está, por su código de aSa: entra a la obra de ArmaHub enlazada",
+      r.status_code == 200 and r.json()["id_proyecto"] == "PROY-2", r.text)
+al_subir.append(lambda: (BASE.execute("DELETE FROM armascanner_obras WHERE id_proyecto = 'PROY-2'"), BASE.commit()))
+antes_r2 = dict(R2)
+r = terminar(EMI, "Z2", paquete(91), [], obra="PROY-2")
+check("…si la eliminan mientras el plano sube: 409, lo subido se borra y el plano no queda",
+      r.status_code == 409 and r.json()["detail"] == A.SIN_OBRA and R2 == antes_r2
+      and una("SELECT COUNT(*) FROM planos_obra WHERE plano = 'Z2'")[0] == 0, r.text)
+BASE.execute("INSERT INTO armascanner_obras (id_proyecto, agregada_por) VALUES ('PROY-2', 'emilio@x.cl')")
+BASE.commit()
 
 print("\nTEST: Desarrollo (23-nov): planos que el lector no reconoce y reportes, con estado; oficinas; aviso al administrador")
 BASE.executescript("""CREATE TABLE IF NOT EXISTS armascanner_reportes (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, equipo TEXT,
@@ -964,6 +1011,62 @@ check("…una oficina que no existe: 404", web.post("/armascanner/oficinas", jso
 web.post("/armascanner/oficinas", json={"calculista_id": 3})
 check("«Agregar oficina»: entra a la lista aunque todavía no tenga lector ni notas",
       3 in [o["id"] for o in web.get("/armascanner/desarrollo").json()["oficinas"]])
+
+print("\nTEST: Desarrollo: el caso es el plano DE UNA OBRA (dos obras con un plano «E-01»)")
+c1 = mandar(EMI, "plano", "E-01").json()
+c2 = mandar(EUG, "plano", "E-01", obra="EBCO - TORRE SUR", obra_id="PROY-3").json()
+c3 = mandar(EUG, "plano", "E-01", obra="EBCO - TORRE SUR", obra_id="PROY-3").json()
+casos = [x for x in web.get("/armascanner/desarrollo").json()["casos"] if x["plano"] == "E-01"]
+check("dos obras con el mismo plano: dos casos (y en la misma obra, uno solo)",
+      not c1["ya_estaba"] and not c2["ya_estaba"] and c3 == {"ok": True, "id": c2["id"], "ya_estaba": True}
+      and sorted((x["obra_id"], x["estado"], len(x["envios"])) for x in casos) == [("PROY-2", "nuevo", 1), ("PROY-3", "nuevo", 1)],
+      casos)
+check("…el aviso al administrador cuenta los dos", web.get("/armascanner/avisos", headers=JEFA).json()["desarrollo"] == 2)
+caso_a(c1["id"], estado="resuelto", version="2026-11-25.1")
+estados = {x["obra_id"]: x["estado"] for x in web.get("/armascanner/desarrollo").json()["casos"] if x["plano"] == "E-01"}
+check("…resolver el de una obra no toca el de la otra", estados == {"PROY-2": "resuelto", "PROY-3": "nuevo"}, estados)
+
+print("\nTEST: lo que sube a R2 y la base no confirma no queda suelto")
+admins, n, antes_r2 = A._admins, una("SELECT COUNT(*) FROM armascanner_reportes")[0], dict(R2)
+A._admins = _base_caida
+try:
+    mandar(EMI, "reporte", "R-1")
+except RuntimeError:
+    pass
+A._admins = admins
+check("un reporte: sin fila, su ZIP se borra", una("SELECT COUNT(*) FROM armascanner_reportes")[0] == n and R2 == antes_r2,
+      list(set(R2) - set(antes_r2)))
+migrar(168)
+
+
+def _subir_por_partes(clave, archivo, tipo="application/octet-stream"):
+    _subir(clave, archivo.read(), tipo)
+
+
+storage.upload_fileobj = _subir_por_partes
+r = web.post("/armascanner/versiones", data={"version": "2026-12-01"}, files={"archivo": ("a.zip", b"ZIP-1", "application/zip")})
+v1 = una("SELECT archivo FROM armascanner_versiones WHERE version = '2026-12-01'")
+check("publicar: una key por subida, y queda en R2", r.status_code == 200 and v1 and R2.get(v1[0]) == b"ZIP-1"
+      and v1[0].startswith("armascanner/versiones/2026-12-01/") and v1[0].endswith("/ArmaScanner-2026-12-01.zip"), (r.text, v1))
+
+
+def _gana_otra_publicacion():
+    R2["armascanner/versiones/2026-12-02/otra/ArmaScanner-2026-12-02.zip"] = b"ZIP-OTRA"
+    BASE.execute("""INSERT INTO armascanner_versiones (version, archivo, tamano)
+                    VALUES ('2026-12-02', 'armascanner/versiones/2026-12-02/otra/ArmaScanner-2026-12-02.zip', 8)""")
+    BASE.commit()
+
+
+al_subir.append(_gana_otra_publicacion)
+antes_r2 = dict(R2)
+try:
+    web.post("/armascanner/versiones", data={"version": "2026-12-02"}, files={"archivo": ("b.zip", b"ZIP-2", "application/zip")})
+except Exception:
+    pass
+check("dos publicaciones de la misma versión cruzadas: la que no entró borra sólo lo suyo",
+      set(R2) == set(antes_r2) | {"armascanner/versiones/2026-12-02/otra/ArmaScanner-2026-12-02.zip"}
+      and b"ZIP-2" not in R2.values() and R2["armascanner/versiones/2026-12-02/otra/ArmaScanner-2026-12-02.zip"] == b"ZIP-OTRA",
+      list(R2))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

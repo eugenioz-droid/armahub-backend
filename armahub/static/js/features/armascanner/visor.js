@@ -4,9 +4,9 @@
  * las barras y los ciclos en color) y lo guarda en ArmaHub con el plano. Acá se muestra con el
  * visor del navegador (zoom, búsqueda de texto): es la foto del plano, no el DWG.
  *
- *   window.ascVerPlano(obra, plano, autor, titulo)
- *     GET /armascanner/planos-linea/pdf?obra=&plano=&autor=  →  {url}  enlace firmado al PDF
- *     autor (opcional): de quién es la copia; titulo (opcional): lo que se lee arriba (si no, el plano)
+ *   window.ascVerPlano(obra, plano, titulo)
+ *     GET /armascanner/planos-linea/pdf?obra=&plano=  →  {url}  enlace firmado al PDF de la entrega del plano
+ *     titulo (opcional): lo que se lee arriba (si no, el plano)
  *
  * La ventana se arma desde acá (no está en la plantilla) y reutiliza las clases de «Ver barras»
  * (.asc-modal, .asc-modal__caja, .asc-modal__cabeza, .arm-button, .asc-vacio). Va en un contenedor
@@ -94,7 +94,7 @@
     est.foco = null;
   }
 
-  global.ascVerPlano = async function (obra, plano, autor, titulo) {
+  global.ascVerPlano = async function (obra, plano, titulo) {
     armar();
     var pedido = est.pedido += 1;
     est.foco = document.activeElement;
@@ -105,8 +105,7 @@
     var d = null;
     try {
       d = await global.apiGet('/armascanner/planos-linea/pdf?obra=' + encodeURIComponent(obra == null ? '' : obra) +
-                              '&plano=' + encodeURIComponent(plano == null ? '' : plano) +
-                              (autor ? '&autor=' + encodeURIComponent(autor) : ''));
+                              '&plano=' + encodeURIComponent(plano == null ? '' : plano));
     } catch (e) {
       d = null;
     }

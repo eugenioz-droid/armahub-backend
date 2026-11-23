@@ -190,9 +190,13 @@ class Falso:
     """El cliente de Anthropic, falso: devuelve las respuestas de la cola y anota cada pedido."""
 
     def __init__(self):
-        self.cola, self.pedidos = [], []
+        self.cola, self.pedidos, self.opciones = [], [], []
         self.messages = NS(create=lambda **kw: self._crear("messages", kw))
         self.beta = NS(messages=NS(create=lambda **kw: self._crear("beta", kw)))
+
+    def with_options(self, **kw):  # como el SDK: el mismo cliente con otras opciones (se anotan)
+        self.opciones.append(kw)
+        return self
 
     def _crear(self, via, kw):
         self.pedidos.append((via, kw))
@@ -280,6 +284,16 @@ check("propuesta incompleta: vuelve UNA vez a la IA con el motivo, como tool_res
 check("la segunda vale: queda la propuesta corregida",
       d["propuesta"]["parametros"] == {"nota": "largo del lado B"} and d["texto"] == "Corregido.", d)
 check("registro: los tokens de las dos llamadas", fila(d["id"])["tokens_entrada"] == 210 and fila(d["id"])["tokens_salida"] == 40)
+check("la corrección va sin reintento (el peor caso queda bajo el corte de ArmaScanner)",
+      FALSO.opciones[-1] == {"max_retries": 0} and CH.INTENTO * 2 <= CH.PLAZO < 150, FALSO.opciones)
+
+CH.PLAZO, n = 0.0, len(FALSO.pedidos)
+FALSO.cola = [respuesta(texto("Listo."), herramienta({"accion": "observar", "criterio": {"ids": ["3"]}}), stop="tool_use")]
+d = chatear(EUG, "observa la 3").json()
+check("sin plazo para corregirla: no hay segunda llamada; sale el texto con el motivo",
+      len(FALSO.pedidos) == n + 1 and d["propuesta"] is None and "La propuesta venía incompleta: observar sin nota" in d["texto"],
+      d)
+CH.PLAZO = 110.0
 
 FALSO.cola = [respuesta(herramienta({"accion": "observar"}), stop="tool_use"),
               respuesta(herramienta({"accion": "observar"}, "tu_2"), stop="tool_use")]
@@ -301,6 +315,10 @@ check("crear barras: la ficha con lo que dijo el cubicador; el texto, del resume
       and d["texto"] == "10 estribos", d)
 
 print("\nTEST: tope diario por usuario (contado en el registro)")
+from zoneinfo import ZoneInfo  # noqa: E402
+cero = CH._hoy().astimezone(ZoneInfo("America/Santiago"))
+check("el día del tope es el de Chile: cuenta desde las 00:00 de allá",
+      (cero.hour, cero.minute, cero.date()) == (0, 0, datetime.now(ZoneInfo("America/Santiago")).date()), cero)
 CH.TOPE_DIA = 2
 ayer = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 BASE.execute("INSERT INTO armascanner_chat (usuario, creado_el) VALUES (?, ?)", ("nuevo@x.cl", ayer))

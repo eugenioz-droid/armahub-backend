@@ -17,10 +17,13 @@
  *              /armascanner/obras-linea/quitar), del administrador. [Usuario 23-nov]
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
- *   Uso        GET /armascanner/uso          (administración) KPIs y uso por usuario
- *   Desarrollo GET /armascanner/desarrollo   (administración) los planos que el lector no reconoce y los
- *              reportes, con su estado (POST /armascanner/desarrollo/{id}); las oficinas de cálculo con el
- *              lector que lee sus planos (POST /armascanner/oficinas). [Usuario 23-nov]
+ *   Uso        GET /armascanner/uso          (administración) KPIs y uso por usuario; los reportes de errores
+ *              que mandan los cubicadores con «Enviar reporte» (GET /armascanner/reportes, su descarga en
+ *              GET /armascanner/reportes/{id}/descarga)
+ *   Desarrollo GET /armascanner/desarrollo   (administración, sólo lectura) un caso por plano que el lector
+ *              no reconoce (por obra y plano), con sus envíos y su estado; el estado lo cambia el agente con
+ *              la ficha (POST /armascanner/desarrollo-ficha), no esta pestaña. Las oficinas de cálculo con
+ *              el lector que lee sus planos (POST /armascanner/oficinas). [Usuario 23-nov]
  *   Versiones  GET /armascanner/versiones    (administración) publicar, retirar, obligatoria
  * Los cambios de licencia usan las rutas de siempre: PUT /admin/users/{id}/licencias/armascanner
  * y POST …/liberar.
@@ -379,12 +382,11 @@
 
   // El estado del plano, en el orden en que se listan.
   var ESTADOS = [['terminado', 'Terminado', 'arm-tag arm-tag--success'],
-                 ['en_trabajo', 'En trabajo (anterior al cambio)', 'arm-tag arm-tag--warning'],
                  ['cargado', 'Cargado', 'arm-tag'],
                  ['reemplazado', 'Reemplazado', 'arm-tag']];
   function estadoDe(p) {
     if (reemplazoDe(p)) return 'reemplazado';
-    return p.etapa === 'terminado' || p.etapa === 'cargado' ? p.etapa : 'en_trabajo';
+    return p.etapa === 'cargado' ? 'cargado' : 'terminado';
   }
   function ordenEstado(p) {
     var e = estadoDe(p);
@@ -401,7 +403,7 @@
 
   function celdaEstado(p, r) {
     var e = ESTADOS.filter(function (x) { return x[0] === estadoDe(p); })[0];
-    var total = Number(r.barras) || 0, ok = Number(r.aprobadas) || 0, cons = Number(r.consultas) || 0;
+    var cons = Number(r.consultas) || 0;
     var tags = (p.reemplazos || []).map(function (x) {
         return x.estado === 'aceptado'
           ? '<span class="arm-tag arm-tag--info">Reemplazo aceptado: espera la versión de ' + esc(x.solicitante) + '</span>'
@@ -411,12 +413,8 @@
       (p.relacion ? '<span class="arm-tag arm-tag--info">' + (p.relacion === 'reemplaza' ? 'Reemplaza a ' : 'Complementa a ') +
         esc(revDeTexto(planoDe(p.obra, p.relacion_de), p.relacion_de)) + '</span>' : '') +
       (reemplazoDe(p) ? '<span class="arm-tag">Por ' + esc(revDeTexto(reemplazoDe(p))) + '</span>' : '');
-    // el trabajo anterior al cambio, a medias: su avance
-    var avance = e[0] === 'en_trabajo' && total
-      ? '<div class="asc-linea">' + entero(ok) + ' de ' + entero(total) + ' aprobadas</div>' +
-        '<div class="asc-avance"><div style="width:' + Math.round(100 * ok / total) + '%;"></div></div>' : '';
     return '<div class="asc-tags"><span class="' + e[2] + '">' + e[1] + '</span></div>' +
-      (tags ? '<div class="asc-tags">' + tags + '</div>' : '') + avance;
+      (tags ? '<div class="asc-tags">' + tags + '</div>' : '');
   }
 
   function celdaPedido(p) {
@@ -582,7 +580,7 @@
   global.ascVerPlanoDe = function (i) {
     var p = est.planos[i];
     if (!p || !global.ascVerPlano) return;
-    global.ascVerPlano(p.obra, p.plano, '', (p.numero || p.plano) + ' — ' + (p.obra_nombre || p.obra));
+    global.ascVerPlano(p.obra, p.plano, (p.numero || p.plano) + ' — ' + (p.obra_nombre || p.obra));
   };
 
   // Descargar DWG: ArmaHub lo saca del paquete del plano (la copia de trabajo o el del calculista).

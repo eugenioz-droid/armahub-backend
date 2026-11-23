@@ -41,6 +41,7 @@ de la API se explica en castellano, con el detalle técnico detrás.
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import List
 
@@ -76,6 +77,13 @@ NIVELES = ("duda", "aviso", "ok")
 CONSULTAS = ("contar", "kilos", "listar")
 LETRAS = "ABCDEF"
 RESULTADOS = ("aplicado", "cancelado", "cambio", "error")
+
+# Tiempos: ArmaScanner corta el pedido a los 150 s; el servidor contesta antes, siempre. Un intento a la
+# API dura a lo más INTENTO s y hay un reintento (_cliente). La segunda llamada (corregir una propuesta mal
+# armada) va sin reintento y sólo si todavía cabe entera en PLAZO; si no, sale el texto con el motivo.
+# Peor caso: ~2 × INTENTO (+ la espera del reintento).
+INTENTO = 55.0
+PLAZO = 110.0
 
 HISTORIAL_MAX = 12       # turnos que viajan a la API (los últimos)
 TEXTO_MAX = 2000         # caracteres por turno del historial y del mensaje
@@ -379,7 +387,11 @@ def explicar_error(status: int, texto: str) -> str:
 
 # ── el registro ──
 def _hoy():
-    return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    """Las 00:00 de hoy en Chile (dicho en UTC): desde ahí cuenta el tope del día. Con el día UTC, el tope
+    se reiniciaba a las 21:00 de Chile."""
+    from zoneinfo import ZoneInfo
+    return (datetime.now(ZoneInfo("America/Santiago")).replace(hour=0, minute=0, second=0, microsecond=0)
+            .astimezone(timezone.utc))
 
 
 def _tope(cur, email):
@@ -404,15 +416,16 @@ def _registrar(email, cuerpo, modelo, respuesta, propuesta, te, ts, error=None):
 
 
 def _cliente():
-    """El cliente de la API. max_retries=3: los 429/500/529 son pasajeros y el SDK los reintenta con
-    espera creciente (lección del 31-ago en el asistente de muros). Las pruebas lo reemplazan por
-    uno falso: nunca llaman a la API real."""
+    """El cliente de la API: INTENTO segundos por intento y un reintento (max_retries=1): los 429/500/529
+    son pasajeros y el SDK los reintenta con espera (lección del 31-ago en el asistente de muros). Una
+    llamada tarda a lo más ~2 × INTENTO. Las pruebas lo reemplazan por uno falso: nunca llaman a la API
+    real."""
     import anthropic
-    return anthropic.Anthropic(timeout=90.0, max_retries=3)
+    return anthropic.Anthropic(timeout=INTENTO, max_retries=1)
 
 
 def llamar(cliente, modelo, msgs):
-    """Un pedido a la API con el sistema y la herramienta. Sin `thinking` (los cuatro modelos piensan
+    """Un pedido a la API con el sistema y la herramienta. Sin `thinking` (los tres modelos piensan
     solos, adaptativo) y con tool_choice auto: los modelos actuales no aceptan forzar la herramienta.
     Con fallbacks (beta) en los que lo tienen."""
     kw = dict(model=modelo, max_tokens=4000, output_config={"effort": ESFUERZO},
@@ -437,7 +450,8 @@ class ChatBody(BaseModel):
 @router.post("/armascanner/chat")
 def chat(cuerpo: ChatBody, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
     """Un mensaje del cubicador. Devuelve {id, texto, propuesta (o null), modelo}. La propuesta que
-    llega mal armada vuelve UNA vez a la IA con el motivo; si vuelve a fallar, sólo texto."""
+    llega mal armada vuelve UNA vez a la IA con el motivo, si cabe en el plazo (PLAZO); si vuelve a
+    fallar, o no cabe, sólo texto con el motivo."""
     if not (cuerpo.mensaje or "").strip():
         raise HTTPException(status_code=400, detail="Escribe un mensaje.")
     modelo = (cuerpo.modelo or MODELO).strip()
@@ -458,6 +472,7 @@ def chat(cuerpo: ChatBody, credentials: HTTPAuthorizationCredentials = Depends(_
 
     msgs = mensajes_api(cuerpo)
     te = ts = 0
+    inicio = time.monotonic()
     try:
         cliente = _cliente()
         resp = llamar(cliente, modelo, msgs)
@@ -473,8 +488,9 @@ def chat(cuerpo: ChatBody, credentials: HTTPAuthorizationCredentials = Depends(_
                 propuesta = propuesta_de(entrada)
             except ValueError as e:
                 motivo = str(e)
-            if motivo and ids:  # UN reintento con el motivo; la API pide respuesta a cada tool_use
-                resp = llamar(cliente, modelo, msgs + [
+            # UNA corrección con el motivo, si cabe en el plazo; la API pide respuesta a cada tool_use
+            if motivo and ids and time.monotonic() - inicio + INTENTO <= PLAZO:
+                resp = llamar(cliente.with_options(max_retries=0), modelo, msgs + [
                     {"role": "assistant", "content": resp.content},
                     {"role": "user", "content": [{"type": "tool_result", "tool_use_id": t, "is_error": True,
                                                   "content": f"Propuesta no válida: {motivo}. Corrígela y llama "

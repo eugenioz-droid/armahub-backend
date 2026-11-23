@@ -5,18 +5,20 @@ Lo que ArmaScanner hace en ArmaHub con la ficha de su licencia (licencias.py): e
 cargar los planos del calculista, subir cada plano cuando lo terminó y enviar su pedido.
 [Usuario 19-nov, programa §8.13 paso 1; modelo sin bloqueo, 21-nov, mig 174]
 
-    GET  /armascanner/obras                   las obras de aSa, para el filtro de texto de ArmaScanner
+    GET  /armascanner/obras                   las obras agregadas en ArmaHub › Mis obras (sólo ésas)
     GET  /armascanner/planos                  los planos de las obras, con su entrega y sus pedidos de reemplazo
-    POST /armascanner/planos/guardar          carga el plano del calculista como antecedente («cargado»)
-    POST /armascanner/planos/terminar         el plano terminado: la entrega del plano (paquete y PDF); si
-                                              es de otro, sólo con su reemplazo aceptado (si no, 409 «ocupado»)
+    POST /armascanner/planos/terminar         el plano terminado: la entrega del plano (paquete y PDF), sólo
+                                              en una obra de Mis obras (si no, 409); si la entrega es de otro,
+                                              sólo con su reemplazo aceptado (si no, 409 «ocupado»)
     POST /armascanner/planos/descargar        enlace para bajar la entrega o el antecedente
-    POST /armascanner/planos/entrega/eliminar elimina mi entrega
-    POST /armascanner/planos/reemplazo/pedir · responder · anular   pedir al autor que acepte el reemplazo
+    POST /armascanner/planos/reemplazo/pedir · responder   pedir al autor que acepte el reemplazo
     GET  /armascanner/planos/reemplazos       los pedidos para mí y los míos
-    POST /armascanner/planos/pedido           «Enviar pedido» (también …/enviar-pedido): las barras de la
-                                              entrega pasan a los despieces de la obra
-    POST /armascanner/planos/tomar · soltar   ya no hay bloqueo: quedan para un ArmaScanner anterior
+    POST /armascanner/planos/pedido           «Enviar pedido»: las barras de la entrega pasan a los despieces
+                                              de la obra
+    POST /armascanner/reportes                un caso de Desarrollo («plano», que no se lee) o un reporte
+    POST /armascanner/planos/guardar          cargar el antecedente: EN PAUSA (CARGA_ANTECEDENTES), responde 410
+    POST /armascanner/planos/tomar · soltar   ya no hay bloqueo: sólo para un ArmaScanner hasta la 2026-11-20.10
+                                              (tomar responde 404 y ése abre el plano en local; soltar, ok)
     GET/POST /armascanner/planos-linea…       los planos de una obra en el portal (avance, barras, PDF, DWG,
                                               responder un reemplazo, pedido, eliminar)
 
@@ -72,10 +74,17 @@ PRODUCTO = "armascanner"
 REVISIONES = ("aprobada", "duda", "pendiente")
 
 
+def hoy_chile():
+    """La fecha de hoy en Chile. El servidor corre en UTC y de noche allá ya es mañana: con la fecha
+    UTC, una licencia que vence hoy dejaría de valer a las 21:00."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/Santiago")).date()
+
+
 def _usuario(cur, ficha: str) -> dict:
-    """El usuario de la ficha, si su licencia vale hoy. 401 si la ficha no sirve, 403 si la
+    """El usuario de la ficha, si su licencia vale hoy (en Chile). 401 si la ficha no sirve, 403 si la
     licencia no vale o es un cliente."""
-    from datetime import datetime, timezone
     email = leer_ficha(ficha, PRODUCTO)
     cur.execute("""
         SELECT u.role, COALESCE(u.activo, TRUE), l.activa, l.vence
@@ -87,8 +96,7 @@ def _usuario(cur, ficha: str) -> dict:
     if not row:
         raise HTTPException(status_code=403, detail="El usuario ya no existe en ArmaHub.")
     role, activo, activa, vence = row
-    vale, motivo = estado_licencia(None if activa is None else (activa, vence, activo),
-                                   datetime.now(timezone.utc).date())
+    vale, motivo = estado_licencia(None if activa is None else (activa, vence, activo), hoy_chile())
     if not vale:
         raise HTTPException(status_code=403, detail=motivo)
     if role == "cliente":
@@ -178,7 +186,7 @@ async def _cargar_barras(user, obra, plano_code, reemplaza, revision, sin_subir,
 # [Usuario 21-nov] Nadie «toma» un plano. El cubicador carga el plano del calculista (queda como
 # antecedente, etapa «cargado») y lo sube cuando lo terminó: su entrega. Hay UNA entrega por plano. Otro
 # cubicador que termina el mismo plano no puede subirlo mientras el autor de la entrega no acepte el
-# reemplazo (o la elimine): su plano no se carga hasta entonces. [Usuario 22-nov: «la misma herramienta
+# reemplazo (o un administrador responda por él): su plano no se carga hasta entonces. [Usuario 22-nov: «la misma herramienta
 # le da un aviso al cubicador inicial para que, aceptando, acepte que se reemplace la versión de su
 # plano. El plano nuevo no se carga hasta que ocurra esto. Así se coordinan y evitamos duplicar data»]
 # `planos_obra` tiene una fila por plano: el antecedente (archivo) y el resumen de la entrega, que es lo
@@ -407,8 +415,8 @@ def _recalcular(cur, obra: str, plano: str):
 def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
     """Los planos de todas las obras; con `obra` (id de ArmaHub o código de aSa), los de esa obra.
     Cada uno con su etapa (cargado · terminado · en_trabajo), el resumen de su entrega, la entrega
-    (de quién es) y los pedidos de reemplazo que corren sobre ella. `tomado_*` va vacío: lo lee un
-    ArmaScanner anterior al cambio."""
+    (de quién es) y los pedidos de reemplazo que corren sobre ella. `tomado_*` va vacío y NO se quita:
+    las versiones publicadas hasta la 2026-11-22 lo leen como x["tomado_por"] y, sin la clave, se caen."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
@@ -764,8 +772,8 @@ def _por_piso_faltante(cur, claves) -> dict:
 
 
 def puede_enviar(autor, email: str, admin: bool) -> bool:
-    """Envía el pedido de un plano quien lo terminó (el autor de su entrega; en un plano anterior al
-    cambio, quien lo guardó por última vez) o un administrador. Función pura."""
+    """Envía el pedido de un plano quien lo terminó (el autor de su entrega) o un administrador. Función
+    pura."""
     return bool(admin or (email and email == autor))
 
 
@@ -790,17 +798,28 @@ def _datos_plano(datos: str) -> dict:
     return d
 
 
-def _obra_de(cur, d: dict, email: str) -> str:
-    """El id de la obra: con el código de aSa, la que ya existe en ArmaHub o la que se adopta
-    (programacion.adoptar_obra). Queda en las obras de ArmaScanner: un plano no sube a una obra que
-    no esté en Mis obras."""
-    if d["asa"]:
-        from .programacion import adoptar_obra
-        obra = adoptar_obra(cur, d["asa"], email, en_cubicacion=True)
-    else:
-        obra = d["obra"]
-    _registrar_obra(cur, obra, email)
-    return obra
+SIN_OBRA = "La obra no está en ArmaHub › Mis obras: agrégala ahí."
+
+
+def _obra_de(cur, d: dict) -> str:
+    """El id de la obra de ArmaScanner: el que manda (`obra`) o, con el código de aSa, la obra enlazada a
+    ese código. Sólo resuelve: la obra se agrega en ArmaHub › Mis obras (`armascanner_obras`), nunca por
+    aquí. Así un «Terminar» no vuelve a meter una obra que el administrador eliminó, ni sube a una obra
+    que nadie agregó. Si no está, 409."""
+    cur.execute("""SELECT o.id_proyecto FROM armascanner_obras o JOIN proyectos p ON p.id_proyecto = o.id_proyecto
+                    WHERE o.id_proyecto = %s OR p.asa_job_id = %s ORDER BY 1""", (d["obra"] or None, d["asa"] or None))
+    ids = [f[0] for f in cur.fetchall()]
+    if not ids:
+        raise HTTPException(status_code=409, detail=SIN_OBRA)
+    return d["obra"] if d["obra"] in ids else ids[0]
+
+
+def _obra_vigente(cur, obra: str):
+    """La comprobación que vale, dentro de la transacción que guarda: la obra sigue en ArmaScanner, y su
+    fila queda tomada para leer hasta el fin (limpiarla o eliminarla espera, y viceversa). Si no, 409."""
+    cur.execute("SELECT 1 FROM armascanner_obras WHERE id_proyecto = %s FOR SHARE", (obra,))
+    if not cur.fetchone():
+        raise HTTPException(status_code=409, detail=SIN_OBRA)
 
 
 def _registrar_obra(cur, obra: str, email: str) -> bool:
@@ -844,7 +863,7 @@ async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
             if (d.get("etapa") or "") != "cargado":
                 raise HTTPException(status_code=409, detail="Actualiza ArmaScanner: esta versión ya no guarda el "
                                                             "trabajo intermedio en ArmaHub.")
-            obra, plano, email = _obra_de(cur, d, user["email"]), d["plano"], user["email"]
+            obra, plano, email = _obra_de(cur, d), d["plano"], user["email"]
             fila = _fila_base(cur, obra, plano)
             hay_entrega = _entrega(cur, obra, plano) is not None
     contenido = await paquete.read()
@@ -926,7 +945,8 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
     """El plano terminado (todas sus barras revisadas): queda como la entrega del plano, con sus barras
     a la vista y su PDF. `datos` (JSON): obra | asa, plano, numero, titulo, rev, elemento, ciclos,
     relacion, relacion_de, barras [{id, marca, figura, diam, cant, largo, kg, ciclo, eje, rev,
-    motivo, piso, sector}], version_app, m2, m2_ciclos.
+    motivo, piso, sector}], version_app, m2, m2_ciclos. La obra tiene que estar en Mis obras (si no,
+    409 y no se sube nada: _obra_de).
     Una entrega por plano. Sin entrega, o si es la mía, entra (la mía pasa a la versión siguiente). Si
     es de otro, entra sólo si su autor aceptó mi pedido de reemplazo: reemplaza la suya, el pedido queda
     cumplido y a él se le avisa. Si no lo aceptó, 409 «ocupado» y no se guarda nada. Cada subida va a
@@ -936,7 +956,7 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
             d = _datos_plano(datos)
-            obra, plano, email = _obra_de(cur, d, user["email"]), d["plano"], user["email"]
+            obra, plano, email = _obra_de(cur, d), d["plano"], user["email"]
             _accion_o_409(cur, obra, plano, email, _entrega(cur, obra, plano))  # antes de subir nada a R2
     contenido = await paquete.read()
     if not contenido:
@@ -957,6 +977,7 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
+                _obra_vigente(cur, obra)  # mientras subía, el administrador pudo eliminar la obra
                 # la fila del plano existe (si no, se crea vacía) y queda reservada: dos que terminan a la
                 # vez el mismo plano entran de a uno, y el segundo ya ve la entrega del primero
                 cur.execute("""INSERT INTO planos_obra (id_proyecto, plano, version) VALUES (%s, %s, 0)
@@ -1047,34 +1068,6 @@ def descargar_plano(datos: DescargaPlano, credentials: HTTPAuthorizationCredenti
     audit(user["email"], "armascanner_descargar_plano", f"{datos.plano} ({r['etapa']} v{r['version']}, {r['autor']})",
           "proyecto", datos.obra)
     return dict(r, url=storage.generate_presigned_url(archivo, expires=DESCARGA_SEGUNDOS))
-
-
-@router.post("/armascanner/planos/entrega/eliminar")
-def eliminar_mi_entrega(datos: PlanoEnLinea, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """Elimina mi entrega del plano (su registro, su paquete y su PDF): el plano vuelve a «cargado» (o
-    se va, si no tenía antecedente). A quien pidió reemplazarla se le avisa que ya puede terminarlo."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            user = _usuario(cur, credentials.credentials)
-            email = user["email"]
-            _fila_base(cur, datos.obra, datos.plano, exclusiva=True)
-            cur.execute("""DELETE FROM planos_obra_entregas WHERE id_proyecto = %s AND plano = %s AND autor = %s
-                           RETURNING archivo, pdf, version""", (datos.obra, datos.plano, email))
-            mia = cur.fetchone()
-            if not mia:
-                raise HTTPException(status_code=404, detail="No tienes una versión de este plano en ArmaHub.")
-            cur.execute("""UPDATE planos_obra_reemplazos SET estado = 'anulado', respondido_por = %s, respondido_el = NOW()
-                            WHERE id_proyecto = %s AND plano = %s AND autor = %s AND estado IN ('pendiente', 'aceptado')
-                        RETURNING solicitante""", (email, datos.obra, datos.plano, email))
-            esperan = [f[0] for f in cur.fetchall()]
-            aviso = (f"{_nombres(cur, [email]).get(email, email)} eliminó su versión de "
-                     f"{_rotulo(cur, datos.obra, datos.plano)}: ya puedes terminarlo.") if esperan else ""
-            _recalcular(cur, datos.obra, datos.plano)
-    _borrar(mia[0], mia[1])
-    _avisar(esperan, aviso)
-    audit(email, "armascanner_eliminar_entrega", f"{datos.plano} (v{mia[2]})"
-          + (f"; avisados: {', '.join(esperan)}" if esperan else ""), "proyecto", datos.obra)
-    return {"ok": True, "avisados": len(esperan)}
 
 
 # ── Pedidos de reemplazo: el plano lo tiene otro cubicador y yo también lo terminé ──
@@ -1202,32 +1195,17 @@ def responder_reemplazo(datos: RespuestaReemplazo, credentials: HTTPAuthorizatio
     return _responder(user["email"], False, datos)
 
 
-@router.post("/armascanner/planos/reemplazo/anular")
-def anular_reemplazo(datos: PlanoEnLinea, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """El solicitante retira su pedido de reemplazo (pendiente o aceptado)."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            user = _usuario(cur, credentials.credentials)
-            cur.execute("""UPDATE planos_obra_reemplazos SET estado = 'anulado', respondido_por = %s, respondido_el = NOW()
-                            WHERE id_proyecto = %s AND plano = %s AND solicitante = %s
-                              AND estado IN ('pendiente', 'aceptado')
-                        RETURNING id""", (user["email"], datos.obra, datos.plano, user["email"]))
-            if not cur.fetchall():
-                raise HTTPException(status_code=404, detail="No tienes un pedido de reemplazo de este plano.")
-    audit(user["email"], "armascanner_reemplazo", f"{datos.plano}: anula su pedido", "proyecto", datos.obra)
-    return {"ok": True}
-
-
 async def _enviar_pedido(user: dict, obra: str, plano: str) -> dict:
     """Las barras de la entrega del plano pasan a los despieces de la obra (reemplazan las de ese
     plano, también las de sus códigos anteriores). Si se aceptó reemplazar la entrega, no se envía:
-    el plano está por cambiar. Un plano «en_trabajo» (anterior al cambio) envía lo último que guardó."""
+    el plano está por cambiar. Sin entrega no hay barras que enviar. El pedido queda anotado sólo si
+    el plano sigue en la versión revisada y sin reemplazo aceptado (si cambió mientras se importaba,
+    409: las barras de la versión revisada ya entraron y el pedido queda por reenviar)."""
     import zipfile
     from . import storage
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT version, archivo, etapa, subido_por, codigos, resumen FROM planos_obra
-                            WHERE id_proyecto = %s AND plano = %s""", (obra, plano))
+            cur.execute("SELECT version, codigos FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (obra, plano))
             fila = cur.fetchone()
             entrega = _entrega(cur, obra, plano)
             aceptado = None
@@ -1237,14 +1215,13 @@ async def _enviar_pedido(user: dict, obra: str, plano: str) -> dict:
                 aceptado = cur.fetchone()
     if not fila:
         raise HTTPException(status_code=404, detail="Ese plano no está en ArmaHub.")
-    version, archivo, etapa, autor, codigos, resumen = fila
-    if entrega:
-        if aceptado:
-            raise HTTPException(status_code=409, detail="Se aceptó reemplazar este plano: envía el pedido cuando se "
-                                                        "suba la nueva versión.")
-        archivo, autor, resumen = entrega["archivo"], entrega["autor"], entrega["resumen"]
-    elif etapa == "cargado" or not archivo:
+    version, codigos = fila
+    if not entrega:
         raise HTTPException(status_code=422, detail="El plano no tiene barras para enviar.")
+    if aceptado:
+        raise HTTPException(status_code=409, detail="Se aceptó reemplazar este plano: envía el pedido cuando se "
+                                                    "suba la nueva versión.")
+    archivo, autor, resumen = entrega["archivo"], entrega["autor"], entrega["resumen"]
     if not puede_enviar(autor, user.get("email", ""), _es_admin(user)):
         raise HTTPException(status_code=403, detail="Envía el pedido quien terminó el plano o un administrador.")
     try:
@@ -1274,20 +1251,28 @@ async def _enviar_pedido(user: dict, obra: str, plano: str) -> dict:
     todos = list(dict.fromkeys([c for c in anteriores if isinstance(c, str)] + [plano_code]))
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # sólo si el plano sigue como se revisó: la misma versión (la misma entrega) y sin reemplazo aceptado
             cur.execute("""UPDATE planos_obra SET pedido_version = %s, pedido_el = NOW(), pedido_por = %s,
                                                   codigos = %s::jsonb
-                            WHERE id_proyecto = %s AND plano = %s""",
-                        (version, user.get("email"), json.dumps(todos), obra, plano))
+                            WHERE id_proyecto = %s AND plano = %s AND version = %s
+                              AND NOT EXISTS (SELECT 1 FROM planos_obra_reemplazos r
+                                               WHERE r.id_proyecto = planos_obra.id_proyecto AND r.plano = planos_obra.plano
+                                                 AND r.autor = %s AND r.estado = 'aceptado')""",
+                        (version, user.get("email"), json.dumps(todos), obra, plano, version, autor))
+            anotado = cur.rowcount == 1
     audit(user.get("email", "?"), "armascanner_enviar_pedido",
           f"{plano} v{version} → {res.get('proyecto')}: {res.get('barras')} barras, {res.get('kilos')} kg, "
-          f"{n_pend} sin aprobar", "proyecto", obra)
+          f"{n_pend} sin aprobar" + ("" if anotado else "; el plano cambió mientras se enviaba: queda por reenviar"),
+          "proyecto", obra)
+    if not anotado:
+        raise HTTPException(status_code=409, detail="El plano cambió en ArmaHub mientras se enviaba el pedido (otra "
+                                                    "versión o un reemplazo aceptado): revísalo y vuelve a enviarlo.")
     return {"ok": True, "version": version, "import_id": res["import_id"], "obra": res.get("proyecto"),
             "barras": res.get("barras"), "kilos": res.get("kilos"),
             "reemplazadas": res.get("barras_eliminadas_previo"), "pendientes": n_pend, "plano_code": plano_code}
 
 
 @router.post("/armascanner/planos/pedido")
-@router.post("/armascanner/planos/enviar-pedido", include_in_schema=False)
 async def enviar_pedido(datos: PlanoEnLinea, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
     """«Enviar pedido» desde ArmaScanner (ficha de licencia)."""
     with get_conn() as conn:
@@ -1308,11 +1293,10 @@ def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list, diam=N
     return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero or "", "titulo": titulo or "",
             "revision": revision or "", "elemento": elemento or "", "version": version, "tamano": tamano,
             "guardado_por": nombres.get(subido_por, subido_por or ""), "guardado_el": _cuando(subido_el),
-            "en_edicion_por": "", "en_edicion_desde": "", "en_edicion_por_mi": False,
             "resumen": r, "pedido": estado_pedido(version, pedido_version), "pedido_version": pedido_version,
             "pedido_el": _cuando(pedido_el), "pedido_por": nombres.get(pedido_por, pedido_por or ""),
             "puede_enviar": etapa != "cargado" and not por_cambiar and puede_enviar(subido_por, yo, admin),
-            "puede_liberar": False, "pdf": bool(pdf), "etapa": etapa or "", "puede_eliminar": admin,
+            "pdf": bool(pdf), "etapa": etapa or "", "puede_eliminar": admin,
             "relacion": relacion or "", "relacion_de": relacion_de or "",
             "entrega": _entrega_dict(entrega, nombres, yo), "reemplazos": reemplazos,
             "puede_responder": bool(entrega) and (admin or entrega["autor"] == yo), "kpis": kpis}
@@ -1435,12 +1419,6 @@ def responder_reemplazo_portal(datos: RespuestaReemplazo, user=Depends(get_curre
     return _responder(user.get("email", ""), _es_admin(user), datos)
 
 
-@router.post("/armascanner/planos-linea/liberar")
-def liberar_plano_portal(user=Depends(get_current_user)):
-    """Ya no hay planos tomados que liberar: responde bien a una página abierta desde antes del cambio."""
-    return {"ok": True}
-
-
 class EliminarPlano(BaseModel):
     obra: str
     plano: str
@@ -1452,46 +1430,43 @@ def eliminar_plano_portal(datos: EliminarPlano, admin=Depends(require_admin_or_a
     """Eliminar un plano de ArmaHub (administrador): su registro, su entrega y sus archivos en R2;
     con `con_barras`, también las barras que mandó a los despieces de la obra (las de sus códigos de
     carga). [Usuario 20-nov: limpiar el sistema para partir con obras de aSa]"""
-    return _eliminar_plano(admin.get("email", "?"), datos)
-
-
-@router.post("/armascanner/planos/eliminar")
-def eliminar_plano_ficha(datos: EliminarPlano, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """Lo mismo, con la ficha de ArmaScanner de un administrador (desde su equipo)."""
+    email = admin.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            user = _usuario(cur, credentials.credentials)
-    if not _es_admin(user):
-        raise HTTPException(status_code=403, detail="Eliminar un plano es de administrador.")
-    return _eliminar_plano(user["email"], datos)
-
-
-def _eliminar_plano(email: str, datos: "EliminarPlano") -> dict:
-    borradas = 0
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            fila = _fila_base(cur, datos.obra, datos.plano, exclusiva=True)
-            if not fila:
-                raise HTTPException(status_code=404, detail="Ese plano no está en ArmaHub.")
-            cur.execute("SELECT codigos FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (datos.obra, datos.plano))
-            codigos = cur.fetchone()[0]
-            codigos = [c for c in (codigos if isinstance(codigos, list) else []) if isinstance(c, str) and c.strip()]
-            if datos.con_barras and codigos:
-                cur.execute("""DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)
-                                AND (origen IS NULL OR origen = 'csv')""", (datos.obra, codigos))
-                borradas = cur.rowcount
-            cur.execute("""DELETE FROM planos_obra_entregas WHERE id_proyecto = %s AND plano = %s
-                           RETURNING archivo, pdf""", (datos.obra, datos.plano))
-            archivos = [clave for f in cur.fetchall() for clave in f]
-            cur.execute("""UPDATE planos_obra_reemplazos SET estado = 'anulado', respondido_por = %s, respondido_el = NOW()
-                            WHERE id_proyecto = %s AND plano = %s AND estado IN ('pendiente', 'aceptado')""",
-                        (email, datos.obra, datos.plano))
-            cur.execute("DELETE FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (datos.obra, datos.plano))
-    _borrar(fila["archivo"], *archivos)
+            x = _eliminar_plano(cur, email, datos.obra, datos.plano, datos.con_barras)
+    _borrar(*x["claves"])  # recién confirmada la base
     audit(email, "armascanner_eliminar_plano",
-          f"{datos.plano} (v{fila['version']}" + (", con su entrega" if archivos else "")
-          + (f", {borradas} barras" if borradas else "") + ")", "proyecto", datos.obra)
-    return {"ok": True, "barras_eliminadas": borradas}
+          f"{datos.plano} (v{x['version']}" + (", con su entrega" if x["entrega"] else "")
+          + (f", {x['barras']} barras" if x["barras"] else "") + ")", "proyecto", datos.obra)
+    return {"ok": True, "barras_eliminadas": x["barras"]}
+
+
+def _eliminar_plano(cur, email: str, obra: str, plano: str, con_barras: bool) -> dict:
+    """Elimina el plano en la transacción de `cur` (no confirma ni toca R2): su fila, su entrega, sus
+    pedidos de reemplazo que corren (quedan anulados) y, con `con_barras`, las barras que mandó a los
+    despieces (las de sus códigos de carga; nunca lo ingresado a mano). Devuelve {version, entrega (si
+    tenía), barras (borradas), claves (las keys de R2 que quedan sin uso)}: quien llama las borra de R2
+    recién confirmada la base."""
+    borradas = 0
+    fila = _fila_base(cur, obra, plano, exclusiva=True)
+    if not fila:
+        raise HTTPException(status_code=404, detail="Ese plano no está en ArmaHub.")
+    cur.execute("SELECT codigos FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (obra, plano))
+    codigos = cur.fetchone()[0]
+    codigos = [c for c in (codigos if isinstance(codigos, list) else []) if isinstance(c, str) and c.strip()]
+    if con_barras and codigos:
+        cur.execute("""DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)
+                        AND (origen IS NULL OR origen = 'csv')""", (obra, codigos))
+        borradas = cur.rowcount
+    cur.execute("""DELETE FROM planos_obra_entregas WHERE id_proyecto = %s AND plano = %s
+                   RETURNING archivo, pdf""", (obra, plano))
+    entregas = cur.fetchall()
+    cur.execute("""UPDATE planos_obra_reemplazos SET estado = 'anulado', respondido_por = %s, respondido_el = NOW()
+                    WHERE id_proyecto = %s AND plano = %s AND estado IN ('pendiente', 'aceptado')""",
+                (email, obra, plano))
+    cur.execute("DELETE FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (obra, plano))
+    return {"version": fila["version"], "entrega": bool(entregas), "barras": borradas,
+            "claves": [c for c in [fila["archivo"]] + [k for f in entregas for k in f] if c]}
 
 
 # ── Desarrollo: lo que llega de ArmaScanner en un ZIP, con su estado (nuevo → en_estudio → resuelto |
@@ -1513,9 +1488,14 @@ def _eliminar_plano(email: str, datos: "EliminarPlano") -> dict:
 REPORTE_MAX = 25 * 1024 * 1024
 ESTADOS_CASO = ("nuevo", "en_estudio", "resuelto", "descartado")
 CASOS_ABIERTOS = ["nuevo", "en_estudio"]
-# Cuenta planos, no envíos.
-CASOS_NUEVOS = """SELECT COUNT(DISTINCT COALESCE(NULLIF(plano, ''), 'id:' || CAST(id AS TEXT)))
-                    FROM armascanner_reportes WHERE estado = 'nuevo' AND tipo = 'plano'"""
+# El caso es el plano DE UNA OBRA: la llave es (COALESCE(obra_id, obra), plano), porque dos obras pueden
+# tener un plano «E-01». Un envío sin plano es un caso solo. Lo mismo en SQL (CASOS_NUEVOS, que cuenta
+# planos, no envíos; CAST para que valga en Postgres y en SQLite), en recibir_reporte, en _cambiar_caso y
+# en _caso.
+OBRA_CASO = "COALESCE(obra_id, obra, '')"
+CASOS_NUEVOS = f"""SELECT COUNT(DISTINCT CASE WHEN COALESCE(plano, '') = '' THEN 'id:' || CAST(id AS TEXT)
+                                             ELSE 'p:' || {OBRA_CASO} || '|' || plano END)
+                     FROM armascanner_reportes WHERE estado = 'nuevo' AND tipo = 'plano'"""
 
 
 def _admins(cur) -> list:
@@ -1526,11 +1506,12 @@ def _admins(cur) -> list:
 @router.post("/armascanner/reportes")
 async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(...),
                           credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Un caso de Desarrollo. `datos` (JSON): tipo ("plano" | "reporte"), equipo, version, obra, obra_id,
+    plano, comentario, lector (lo que el lector encontró). Un plano que ya tiene un caso abierto en la
+    misma obra no se repite: responde `ya_estaba` sin guardar nada. El ZIP va a R2 antes que la fila; si
+    la base no confirma, se borra."""
     import secrets
     import time
-    """Un caso de Desarrollo. `datos` (JSON): tipo ("plano" | "reporte"), equipo, version, obra, obra_id,
-    plano, comentario, lector (lo que el lector encontró). Un plano que ya tiene un caso abierto no se
-    repite: responde `ya_estaba` sin guardar nada."""
     try:
         d = json.loads(datos or "{}")
     except ValueError:
@@ -1544,9 +1525,10 @@ async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(..
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
             if tipo == "plano" and txt("plano", 300):
-                cur.execute("""SELECT id FROM armascanner_reportes
-                                WHERE tipo = 'plano' AND estado = ANY(%s) AND plano = %s ORDER BY id DESC LIMIT 1""",
-                            (CASOS_ABIERTOS, txt("plano", 300)))
+                cur.execute(f"""SELECT id FROM armascanner_reportes
+                                 WHERE tipo = 'plano' AND estado = ANY(%s) AND plano = %s AND {OBRA_CASO} = %s
+                                 ORDER BY id DESC LIMIT 1""",
+                            (CASOS_ABIERTOS, txt("plano", 300), txt("obra_id", 80) or txt("obra", 300) or ""))
                 ya = cur.fetchone()
                 if ya:
                     return {"ok": True, "id": ya[0], "ya_estaba": True}
@@ -1555,17 +1537,25 @@ async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(..
         raise HTTPException(status_code=413, detail="El reporte pesa más de 25 MB.")
     from . import storage
     clave = f"armascanner/reportes/{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}.zip"
-    storage.upload_file(clave, contenido, "application/zip")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo, tamano,
-                                                             tipo, obra_id, lector)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-                        (user["email"], txt("equipo", 80), txt("version", 40), txt("obra", 300), txt("plano", 300),
-                         txt("comentario", 2000), clave, len(contenido), tipo, txt("obra_id", 80), txt("lector", 1000)))
-            rid = cur.fetchone()[0]
-            admins = _admins(cur)
-            quien = _nombres(cur, [user["email"]]).get(user["email"], user["email"])
+    try:
+        storage.upload_file(clave, contenido, "application/zip")
+    except Exception as e:
+        _borrar(clave)
+        raise HTTPException(status_code=502, detail=f"El reporte no se pudo guardar en ArmaHub ({str(e)[:80]}).")
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo,
+                                                                 tamano, tipo, obra_id, lector)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                            (user["email"], txt("equipo", 80), txt("version", 40), txt("obra", 300), txt("plano", 300),
+                             txt("comentario", 2000), clave, len(contenido), tipo, txt("obra_id", 80), txt("lector", 1000)))
+                rid = cur.fetchone()[0]
+                admins = _admins(cur)
+                quien = _nombres(cur, [user["email"]]).get(user["email"], user["email"])
+    except Exception:
+        _borrar(clave)  # la base no confirmó: el ZIP no queda suelto en R2
+        raise
     audit(user["email"], "armascanner_reporte", f"#{rid} {tipo} {txt('plano', 80) or ''} {txt('comentario', 80) or ''}".strip(),
           "armascanner", str(rid))
     _avisar([a for a in admins if a != user["email"]],
@@ -1590,7 +1580,7 @@ def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
             oficinas, calculistas = _oficinas(cur, filas)
     planos = {}
     for f in filas:  # el más nuevo primero
-        planos.setdefault(_caso(f[8], f[0]), []).append(f)
+        planos.setdefault(_caso(f), []).append(f)
     casos = []
     for envios in planos.values():
         u = envios[0]
@@ -1612,8 +1602,10 @@ def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
                              if k not in {o["id"] for o in oficinas}), key=lambda x: x["nombre"].lower())}
 
 
-def _caso(plano, rid) -> str:
-    return f"p:{plano}" if plano else f"id:{rid}"
+def _caso(f) -> str:
+    """La llave del caso de un envío (fila de desarrollo()): su obra y su plano, como CASOS_NUEVOS."""
+    rid, obra, obra_id, plano = f[0], f[6], f[7], f[8]
+    return f"p:{obra_id or obra or ''}|{plano}" if plano else f"id:{rid}"
 
 
 def _oficinas(cur, casos) -> tuple:
@@ -1632,7 +1624,7 @@ def _oficinas(cur, casos) -> tuple:
     abiertos = {}
     for f in casos:
         if f[2] in CASOS_ABIERTOS and f[15] is not None:
-            abiertos.setdefault(f[15], set()).add(_caso(f[8], f[0]))
+            abiertos.setdefault(f[15], set()).add(_caso(f))
     oficinas = [{"id": cid, "nombre": nombre, "lector": lector or "", "notas": notas or "",
                  "obras": sorted(obras.get(cid, [])), "abiertos": len(abiertos.get(cid, ()))}
                 for cid, nombre, lector, notas, agregada in todas if agregada or cid in obras or cid in abiertos]
@@ -1659,29 +1651,30 @@ def cambiar_caso_ficha(datos: CasoDesarrollo, credentials: HTTPAuthorizationCred
 
 
 def _cambiar_caso(email: str, rid: int, datos: CasoDesarrollo) -> dict:
-    """Cambia el estado del caso del plano del envío `rid` (los envíos del mismo plano y tipo): resolverlo
-    o descartarlo cierra todos sus envíos abiertos; «en estudio» toma los nuevos (y reabre `rid` si
-    estaba cerrado). Al cerrarse, se les avisa a quienes lo mandaron."""
+    """Cambia el estado del caso del plano del envío `rid` (los envíos del mismo plano, de la misma obra y
+    del mismo tipo): resolverlo o descartarlo cierra todos sus envíos abiertos; «en estudio» toma los
+    nuevos (y reabre `rid` si estaba cerrado). Al cerrarse, se les avisa a quienes lo mandaron."""
     if datos.estado not in ESTADOS_CASO:
         raise HTTPException(status_code=400, detail="Estado no válido.")
     cierra = datos.estado in ("resuelto", "descartado")
     version = (datos.version or "").strip()[:40] or None
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT plano, tipo FROM armascanner_reportes WHERE id = %s", (rid,))
+            cur.execute(f"SELECT plano, tipo, {OBRA_CASO} FROM armascanner_reportes WHERE id = %s", (rid,))
             fila = cur.fetchone()
             if not fila:
                 raise HTTPException(status_code=404, detail="Caso no encontrado.")
-            plano, tipo = fila[0] or "", fila[1]
-            cur.execute("""UPDATE armascanner_reportes
-                              SET estado = %s, nota = COALESCE(%s, nota),
-                                  version_resuelto = CASE WHEN %s = 'resuelto' THEN %s ELSE NULL END,
-                                  resuelto_por = CASE WHEN %s THEN %s ELSE NULL END,
-                                  resuelto_el = CASE WHEN %s THEN NOW() ELSE NULL END
-                            WHERE id = %s OR (%s <> '' AND plano = %s AND tipo = %s AND estado = ANY(%s))
-                        RETURNING email, tipo, nota""",
+            plano, tipo, obra = fila[0] or "", fila[1], fila[2]
+            cur.execute(f"""UPDATE armascanner_reportes
+                               SET estado = %s, nota = COALESCE(%s, nota),
+                                   version_resuelto = CASE WHEN %s = 'resuelto' THEN %s ELSE NULL END,
+                                   resuelto_por = CASE WHEN %s THEN %s ELSE NULL END,
+                                   resuelto_el = CASE WHEN %s THEN NOW() ELSE NULL END
+                             WHERE id = %s OR (%s <> '' AND plano = %s AND {OBRA_CASO} = %s AND tipo = %s
+                                               AND estado = ANY(%s))
+                         RETURNING email, tipo, nota""",
                         (datos.estado, (datos.nota or "").strip()[:2000] if datos.nota is not None else None,
-                         datos.estado, version, cierra, email, cierra, rid, plano, plano, tipo,
+                         datos.estado, version, cierra, email, cierra, rid, plano, plano, obra, tipo,
                          CASOS_ABIERTOS if cierra else ["nuevo"]))
             filas = cur.fetchall()
     audit(email, "armascanner_desarrollo", f"#{rid} {datos.estado} ({len(filas)})" + (f" {version}" if version else ""),
@@ -1803,14 +1796,13 @@ async def enviar_pedido_portal(datos: PlanoEnLinea, user=Depends(get_current_use
 
 def licencias_vigentes(cur, email: str) -> list:
     """Los productos con licencia vigente hoy para ese correo (GET /me: la caluga ArmaScanner
-    sólo se muestra a quien la tiene, y al administrador)."""
-    from datetime import datetime, timezone
+    sólo se muestra a quien la tiene, y al administrador). Hoy, en Chile."""
     cur.execute("""
         SELECT l.producto, l.activa, l.vence, COALESCE(u.activo, TRUE)
           FROM licencias l JOIN users u ON u.id = l.user_id
          WHERE u.email = %s
     """, (email,))
-    hoy = datetime.now(timezone.utc).date()
+    hoy = hoy_chile()
     return [p for p, activa, vence, activo in cur.fetchall() if estado_licencia((activa, vence, activo), hoy)[0]]
 
 
@@ -1875,31 +1867,34 @@ class QuitarObra(BaseModel):
 @router.post("/armascanner/obras-linea/quitar")
 def quitar_obra(datos: QuitarObra, admin=Depends(require_admin_or_admin_calidad)):
     """Limpiar (administrador): se eliminan los planos de la obra en ArmaHub, con sus entregas, sus
-    archivos y las barras que mandaron a los despieces (_eliminar_plano, plano a plano). Con `eliminar`,
-    además la obra sale de Mis obras y de ArmaScanner. La obra sigue en ArmaHub para lo demás y en aSa
-    no se toca."""
+    archivos y las barras que mandaron a los despieces (_eliminar_plano). Con `eliminar`, además la obra
+    sale de Mis obras y de ArmaScanner. La obra sigue en ArmaHub para lo demás y en aSa no se toca.
+    Todo o nada: una sola transacción en la base (la fila de la obra queda tomada: un «Terminar» que
+    llega mientras tanto espera, _obra_vigente); los archivos de R2 se borran recién confirmada."""
     email = admin.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM armascanner_obras WHERE id_proyecto = %s FOR UPDATE", (datos.obra,))
             cur.execute("SELECT plano FROM planos_obra WHERE id_proyecto = %s ORDER BY plano", (datos.obra,))
             planos = [r[0] for r in cur.fetchall()]
-    barras = sum(_eliminar_plano(email, EliminarPlano(obra=datos.obra, plano=p, con_barras=True))["barras_eliminadas"]
-                 for p in planos)
-    if datos.eliminar:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
+            hechos = [_eliminar_plano(cur, email, datos.obra, p, True) for p in planos]
+            if datos.eliminar:
                 cur.execute("DELETE FROM armascanner_obras WHERE id_proyecto = %s", (datos.obra,))
+    _borrar(*[c for x in hechos for c in x["claves"]])
+    barras = sum(x["barras"] for x in hechos)
     audit(email, "armascanner_eliminar_obra" if datos.eliminar else "armascanner_limpiar_obra",
-          f"{len(planos)} planos, {barras} barras", "proyecto", datos.obra)
+          f"{len(planos)} planos" + (f" ({', '.join(planos)[:500]})" if planos else "") + f", {barras} barras",
+          "proyecto", datos.obra)
     return {"ok": True, "planos": len(planos), "barras_eliminadas": barras}
 
 
 @router.get("/armascanner/obras-linea")
 def obras_linea(user=Depends(get_current_user)):
-    """Mis obras: las obras agregadas a ArmaScanner y las que tienen planos (el trabajo es colaborativo:
-    todos los usuarios con licencia ven todo [Usuario 20-nov]), con sus datos (cliente, constructora,
-    código de aSa), cuántos planos tiene en cada etapa, lo que espera a alguien (reemplazos pedidos,
-    barras con consulta, pedidos sin enviar), sus KPIs (kpis_de) y su tabla por piso (tabla_por_piso).
+    """Mis obras: las obras agregadas a ArmaScanner (un plano sólo sube a una de ellas: _obra_de; el
+    trabajo es colaborativo: todos los usuarios con licencia ven todo [Usuario 20-nov]), con sus datos
+    (cliente, constructora, código de aSa), cuántos planos tiene en cada etapa, lo que espera a alguien
+    (reemplazos pedidos, barras con consulta, pedidos sin enviar), sus KPIs (kpis_de) y su tabla por piso
+    (tabla_por_piso).
     Suman los planos con barras que no están reemplazados por otro; los m², sólo los de losa. La de
     actividad más reciente, primero. [Usuario 22-nov: «un listado de obras con datos mínimos y KPIs»]"""
     with get_conn() as conn:
@@ -1907,11 +1902,11 @@ def obras_linea(user=Depends(get_current_user)):
             _con_licencia_o_admin(cur, user)
             cur.execute("""SELECT id_proyecto, plano, etapa, elemento, resumen, barras, aprobadas, kg, relacion,
                                   relacion_de, version, pedido_version, subido_el
-                             FROM planos_obra""")
+                             FROM planos_obra WHERE id_proyecto IN (SELECT id_proyecto FROM armascanner_obras)""")
             filas = cur.fetchall()
             cur.execute("SELECT id_proyecto, agregada_el FROM armascanner_obras")
             agregadas = dict(cur.fetchall())
-            ids = sorted({f[0] for f in filas} | set(agregadas))
+            ids = sorted(agregadas)
             info = {}
             if ids:
                 cur.execute("""SELECT pr.id_proyecto, pr.nombre_proyecto, COALESCE(pr.asa_job_id, ''),
@@ -2288,16 +2283,27 @@ def _publicar(email: str, archivo: UploadFile, version: str, notas: str, obligat
             cur.execute("SELECT 1 FROM armascanner_versiones WHERE version = %s", (version,))
             if cur.fetchone():
                 raise HTTPException(status_code=409, detail=f"La versión {version} ya está publicada.")
-    clave = f"armascanner/versiones/{version}/{_nombre_instalador(version)}"
+    # una key por subida (como clave_paquete): si la base no confirma, se borra sólo lo subido aquí, nunca
+    # el archivo de otra publicación de la misma versión que se haya cruzado
+    import uuid
+    clave = f"armascanner/versiones/{version}/{uuid.uuid4().hex[:12]}/{_nombre_instalador(version)}"
     archivo.file.seek(0, 2)
     tamano = archivo.file.tell()
     archivo.file.seek(0)
-    storage.upload_fileobj(clave, archivo.file, "application/zip")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""INSERT INTO armascanner_versiones (version, archivo, tamano, notas, obligatoria, publicada_por)
-                           VALUES (%s, %s, %s, %s, %s, %s)""",
-                        (version, clave, tamano, (notas or "").strip()[:2000] or None, obligatoria, email))
+    try:
+        storage.upload_fileobj(clave, archivo.file, "application/zip")
+    except Exception as e:
+        _borrar(clave)
+        raise HTTPException(status_code=502, detail=f"La versión no se pudo guardar en ArmaHub ({str(e)[:80]}).")
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO armascanner_versiones (version, archivo, tamano, notas, obligatoria, publicada_por)
+                               VALUES (%s, %s, %s, %s, %s, %s)""",
+                            (version, clave, tamano, (notas or "").strip()[:2000] or None, obligatoria, email))
+    except Exception:
+        _borrar(clave)  # la base no confirmó (otra publicación de la misma versión ganó): lo subido no queda suelto
+        raise
     audit(email or "?", "armascanner_publicar", f"{version} ({tamano / 1e6:.1f} MB)"
           + (" obligatoria" if obligatoria else ""), "armascanner", version)
     return {"ok": True, "version": version, "tamano": tamano}
