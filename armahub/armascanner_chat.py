@@ -214,30 +214,44 @@ def criterio_de(c) -> dict:
     («sin fijar»), con los valores revisados. Un estado o nivel que no existe es un ValueError."""
     c = c if isinstance(c, dict) else {}
     out = {}
-    if _textos(c.get("ids")):
-        out["ids"] = _textos(c.get("ids"))
-    for k in ("desde", "hasta"):
-        if _entero(c.get(k)) > 0:
-            out[k] = _entero(c.get(k))
-    for k in ("losa", "marca"):
-        if _textos(c.get(k)):
-            out[k] = _textos(c.get(k))
-    for k in ("ciclo", "diametro"):
-        if _enteros(c.get(k)):
-            out[k] = _enteros(c.get(k))
-    for k, validos in (("estado", ESTADOS), ("nivel", NIVELES)):
-        v = [x.lower() for x in _textos(c.get(k))]
-        malos = [x for x in v if x not in validos]
-        if malos:
-            raise ValueError(f"criterio «{k}» no admite {', '.join(malos)}")
+    for k, leer in (("ids", _textos), ("desde", _positivo), ("hasta", _positivo), ("losa", _textos),
+                    ("marca", _textos), ("ciclo", _enteros), ("diametro", _enteros)):
+        v = leer(c.get(k))
         if v:
             out[k] = v
-    var = str(c.get("variable") or "").strip().lower()
-    if var in ("si", "sí", "true"):
-        out["variable"] = True
-    elif var in ("no", "false"):
-        out["variable"] = False
+    for k, validos in (("estado", ESTADOS), ("nivel", NIVELES)):
+        v = _de_la_lista(k, c.get(k), validos)
+        if v:
+            out[k] = v
+    var = _variable(c.get("variable"))
+    if var is not None:
+        out["variable"] = var
     return out
+
+
+def _positivo(v):
+    """El entero de `v` si es mayor que 0; si no, None (sin fijar)."""
+    n = _entero(v)
+    return n if n > 0 else None
+
+
+def _de_la_lista(k: str, v, validos) -> list:
+    """Los valores de la clave `k` del criterio en minúsculas; uno que no está en `validos` es un ValueError."""
+    v = [x.lower() for x in _textos(v)]
+    malos = [x for x in v if x not in validos]
+    if malos:
+        raise ValueError(f"criterio «{k}» no admite {', '.join(malos)}")
+    return v
+
+
+def _variable(v):
+    """«variable» del criterio: True (sólo las de largo variable), False (sólo las de largo fijo) o None."""
+    var = str(v or "").strip().lower()
+    if var in ("si", "sí", "true"):
+        return True
+    if var in ("no", "false"):
+        return False
+    return None
 
 
 def ficha_de(f) -> dict:
@@ -252,16 +266,35 @@ def ficha_de(f) -> dict:
     figura = str(f.get("figura") or "").strip().upper()
     if figura:
         out["figura"] = figura[:8]
+    out.update(_numeros_de_la_ficha(f))
+    lados = _lados_de_la_ficha(f)
+    if lados:
+        out["lados"] = lados
+    out.update(_textos_de_la_ficha(f))
+    return out
+
+
+def _numeros_de_la_ficha(f: dict) -> dict:
+    """Diámetro, cantidad, espaciamiento y ciclo (enteros), y el largo de la distribución: los mayores que 0."""
+    out = {}
     for k in ("diametro", "cantidad", "espaciamiento", "ciclo"):
         if _entero(f.get(k)) > 0:
             out[k] = _entero(f.get(k))
     if _numero(f.get("distribucion")) > 0:
         out["distribucion"] = round(_numero(f.get("distribucion")), 1)
+    return out
+
+
+def _lados_de_la_ficha(f: dict) -> dict:
+    """{letra: cm} de los lados que fijó el cubicador (A a F, mayores que 0)."""
     lados = f.get("lados") if isinstance(f.get("lados"), dict) else {}
-    lados = {k.upper(): round(_numero(v), 1) for k, v in lados.items()
-             if str(k).upper() in LETRAS and _numero(v) > 0}
-    if lados:
-        out["lados"] = lados
+    return {k.upper(): round(_numero(v), 1) for k, v in lados.items()
+            if str(k).upper() in LETRAS and _numero(v) > 0}
+
+
+def _textos_de_la_ficha(f: dict) -> dict:
+    """Losa, elemento, piso, sector y nota: los que no vienen vacíos, acotados."""
+    out = {}
     for k, largo in (("losa", 30), ("elemento", 40), ("piso", 20), ("sector", 30), ("nota", 300)):
         v = str(f.get(k) or "").strip()
         if v:
@@ -282,23 +315,35 @@ def propuesta_de(inp) -> dict:
         p["parametros"]["ficha"] = ficha_de(inp.get("ficha"))
         return p
     p["criterio"] = criterio_de(inp.get("criterio"))
-    if accion == "observar":
-        nota = str(inp.get("nota") or "").strip()
-        if not nota:
-            raise ValueError("observar sin nota: falta lo que se consulta al cliente")
-        p["parametros"]["nota"] = nota[:500]
-    elif accion == "fabricacion":
-        n = _entero(inp.get("paquete"))
-        if n == 1 or n < 0:
-            raise ValueError("fabricacion: barras por paquete, 2 o más (0 = un largo por barra)")
-        p["parametros"]["paquete"] = n or None
-        p["parametros"]["lado"] = "inicio" if str(inp.get("cierre") or "") == "inicio" else None
-        h = _numero(inp.get("holgura"), -1.0)
-        p["parametros"]["holgura"] = None if h < 0 or not n else h
-    elif accion == "consultar":
-        q = str(inp.get("consulta") or "contar").strip()
-        p["parametros"]["consulta"] = q if q in CONSULTAS else "contar"
+    if accion in _PARAMETROS:
+        p["parametros"] = _PARAMETROS[accion](inp)
     return p
+
+
+def _parametros_observar(inp: dict) -> dict:
+    nota = str(inp.get("nota") or "").strip()
+    if not nota:
+        raise ValueError("observar sin nota: falta lo que se consulta al cliente")
+    return {"nota": nota[:500]}
+
+
+def _parametros_fabricacion(inp: dict) -> dict:
+    n = _entero(inp.get("paquete"))
+    if n == 1 or n < 0:
+        raise ValueError("fabricacion: barras por paquete, 2 o más (0 = un largo por barra)")
+    h = _numero(inp.get("holgura"), -1.0)
+    return {"paquete": n or None, "lado": "inicio" if str(inp.get("cierre") or "") == "inicio" else None,
+            "holgura": None if h < 0 or not n else h}
+
+
+def _parametros_consultar(inp: dict) -> dict:
+    q = str(inp.get("consulta") or "contar").strip()
+    return {"consulta": q if q in CONSULTAS else "contar"}
+
+
+# Los parámetros de cada acción que los lleva (las demás van sin parámetros).
+_PARAMETROS = {"observar": _parametros_observar, "fabricacion": _parametros_fabricacion,
+               "consultar": _parametros_consultar}
 
 
 # ── lo que viaja a la API ──
@@ -311,8 +356,20 @@ def mensajes_api(cuerpo) -> list:
     """El historial corto (los últimos turnos, texto plano) y el mensaje del cubicador con el contexto
     del plano: el resumen y las barras nombradas. El contexto va sólo en el último mensaje: cambia en
     cada turno."""
+    msgs = _historial(cuerpo.historial or [])
+    pedido = _pedido_con_contexto(cuerpo)
+    if msgs and msgs[-1]["role"] == "user":
+        msgs[-1]["content"] += "\n\n" + pedido
+    else:
+        msgs.append({"role": "user", "content": pedido})
+    return msgs
+
+
+def _historial(turnos) -> list:
+    """Los últimos turnos como mensajes de la API: texto plano, el primero del cubicador y los seguidos del
+    mismo rol juntos en uno."""
     msgs = []
-    for t in (cuerpo.historial or [])[-HISTORIAL_MAX:]:
+    for t in turnos[-HISTORIAL_MAX:]:
         if not isinstance(t, dict):
             continue
         texto = str(t.get("texto") or "").strip()[:TEXTO_MAX]
@@ -323,16 +380,16 @@ def mensajes_api(cuerpo) -> list:
             msgs[-1]["content"] += "\n\n" + texto
         else:
             msgs.append({"role": rol, "content": texto})
+    return msgs
+
+
+def _pedido_con_contexto(cuerpo) -> str:
+    """El mensaje del cubicador con el contexto del plano: el resumen y las barras nombradas."""
     contexto = [f"Plano: {cuerpo.plano or '?'} · Obra: {cuerpo.obra or '?'}",
                 "Resumen del plano: " + _compacto(cuerpo.resumen or {}, RESUMEN_MAX)]
     if cuerpo.barras:
         contexto.append("Barras nombradas: " + _compacto(list(cuerpo.barras)[:NOMBRADAS_MAX], RESUMEN_MAX))
-    pedido = "\n".join(contexto) + "\n\nPedido del cubicador: " + (cuerpo.mensaje or "").strip()[:TEXTO_MAX]
-    if msgs and msgs[-1]["role"] == "user":
-        msgs[-1]["content"] += "\n\n" + pedido
-    else:
-        msgs.append({"role": "user", "content": pedido})
-    return msgs
+    return "\n".join(contexto) + "\n\nPedido del cubicador: " + (cuerpo.mensaje or "").strip()[:TEXTO_MAX]
 
 
 def extraer(resp):
@@ -452,15 +509,46 @@ def chat(cuerpo: ChatBody, credentials: HTTPAuthorizationCredentials = Depends(_
     """Un mensaje del cubicador. Devuelve {id, texto, propuesta (o null), modelo}. La propuesta que
     llega mal armada vuelve UNA vez a la IA con el motivo, si cabe en el plazo (PLAZO); si vuelve a
     fallar, o no cabe, sólo texto con el motivo."""
+    modelo = _modelo_pedido(cuerpo)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            email = acceso._usuario(cur, credentials.credentials)["email"]
+            _tope(cur, email)
+    anthropic = _api_lista()
+
+    msgs = mensajes_api(cuerpo)
+    uso = [0, 0]  # tokens de entrada y de salida de las llamadas hechas (también si una falla)
+    inicio = time.monotonic()
+    try:
+        texto, propuesta, motivo = _conversar(_cliente(), modelo, msgs, inicio, uso)
+    except anthropic.APITimeoutError as e:  # antes que APIConnectionError: es una subclase
+        _falla(email, cuerpo, modelo, uso, 504,
+               "La API tardó demasiado en responder. Reenvía el mensaje.  ·  Detalle técnico: " + str(e)[:200])
+    except anthropic.APIConnectionError as e:
+        _falla(email, cuerpo, modelo, uso, 502,
+               "No se pudo conectar con la API (red del servidor). Reenvía en unos segundos.  ·  Detalle técnico: "
+               + str(e)[:200])
+    except anthropic.APIStatusError as e:
+        detalle = explicar_error(getattr(e, "status_code", 0) or 0, str(getattr(e, "message", None) or e))
+        logger.error("chat: error de la API (%s, %s): %s", email, modelo, e)
+        _falla(email, cuerpo, modelo, uso, 402 if "crédito" in detalle or "facturación" in detalle else 502, detalle)
+
+    rid = _registrar(email, cuerpo, modelo, texto, propuesta, uso[0], uso[1], motivo)
+    return {"id": rid, "texto": texto, "propuesta": propuesta, "modelo": modelo}
+
+
+def _modelo_pedido(cuerpo: ChatBody) -> str:
+    """El modelo del pedido (o el de siempre); 400 sin mensaje o con un modelo que no está en la lista."""
     if not (cuerpo.mensaje or "").strip():
         raise HTTPException(status_code=400, detail="Escribe un mensaje.")
     modelo = (cuerpo.modelo or MODELO).strip()
     if modelo not in MODELOS:
         raise HTTPException(status_code=400, detail=f"Modelo «{modelo}» no disponible. Valen: {', '.join(MODELOS)}.")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            email = acceso._usuario(cur, credentials.credentials)["email"]
-            _tope(cur, email)
+    return modelo
+
+
+def _api_lista():
+    """La librería de la API, si el servidor tiene la clave y la librería; si no, 503 con el motivo."""
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise HTTPException(status_code=503, detail="El chat no está configurado en el servidor (falta la clave de la "
                                                     "API). Avisa al administrador.")
@@ -469,68 +557,73 @@ def chat(cuerpo: ChatBody, credentials: HTTPAuthorizationCredentials = Depends(_
     except ImportError:
         raise HTTPException(status_code=503, detail="El chat no está instalado en el servidor (falta la librería). "
                                                     "Avisa al administrador.")
+    return anthropic
 
-    msgs = mensajes_api(cuerpo)
-    te = ts = 0
-    inicio = time.monotonic()
+
+def _falla(email, cuerpo, modelo, uso, status: int, detalle: str):
+    """La API falló: queda registrado con su detalle y responde `status`."""
+    _registrar(email, cuerpo, modelo, None, None, uso[0], uso[1], detalle)
+    raise HTTPException(status_code=status, detail=detalle)
+
+
+def _sumar(uso: list, resp):
+    e, s = tokens(resp)
+    uso[0], uso[1] = uso[0] + e, uso[1] + s
+
+
+def _revisar(entrada) -> tuple:
+    """(la propuesta revisada, None) o (None, el motivo por el que no vale)."""
     try:
-        cliente = _cliente()
-        resp = llamar(cliente, modelo, msgs)
-        e1, s1 = tokens(resp)
-        te, ts = te + e1, ts + s1
-        texto, entrada, ids = extraer(resp)
-        propuesta, motivo = None, None
-        if getattr(resp, "stop_reason", None) == "refusal":
-            texto = "El modelo no respondió este pedido (lo frenaron sus filtros de seguridad). Reformúlalo o elige " \
-                    "otro modelo."
-        elif entrada is not None:
-            try:
-                propuesta = propuesta_de(entrada)
-            except ValueError as e:
-                motivo = str(e)
-            # UNA corrección con el motivo, si cabe en el plazo; la API pide respuesta a cada tool_use
-            if motivo and ids and time.monotonic() - inicio + INTENTO <= PLAZO:
-                resp = llamar(cliente.with_options(max_retries=0), modelo, msgs + [
-                    {"role": "assistant", "content": resp.content},
-                    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": t, "is_error": True,
-                                                  "content": f"Propuesta no válida: {motivo}. Corrígela y llama "
-                                                             "proponer_accion de nuevo."} for t in ids]}])
-                e2, s2 = tokens(resp)
-                te, ts = te + e2, ts + s2
-                texto2, entrada, _ = extraer(resp)
-                texto = texto2 or texto
-                propuesta = None
-                if entrada is not None:
-                    try:
-                        propuesta, motivo = propuesta_de(entrada), None
-                    except ValueError as e:
-                        motivo = str(e)
-        if getattr(resp, "stop_reason", None) == "max_tokens":
-            texto = (texto + "\n\n(La respuesta se cortó por largo.)").strip()
-        if motivo:
-            texto = (texto + f"\n\n(La propuesta venía incompleta: {motivo}.)").strip()
-        if not texto and propuesta:
-            texto = propuesta["resumen"] or "Propuesta lista para revisar."
-        if not texto:
-            texto = "Sin respuesta. Reformula el pedido."
-    except anthropic.APITimeoutError as e:  # antes que APIConnectionError: es una subclase
-        detalle = "La API tardó demasiado en responder. Reenvía el mensaje.  ·  Detalle técnico: " + str(e)[:200]
-        _registrar(email, cuerpo, modelo, None, None, te, ts, detalle)
-        raise HTTPException(status_code=504, detail=detalle)
-    except anthropic.APIConnectionError as e:
-        detalle = ("No se pudo conectar con la API (red del servidor). Reenvía en unos segundos.  ·  Detalle técnico: "
-                   + str(e)[:200])
-        _registrar(email, cuerpo, modelo, None, None, te, ts, detalle)
-        raise HTTPException(status_code=502, detail=detalle)
-    except anthropic.APIStatusError as e:
-        status = getattr(e, "status_code", 0) or 0
-        detalle = explicar_error(status, str(getattr(e, "message", None) or e))
-        logger.error("chat: error de la API (%s, %s): %s", email, modelo, e)
-        _registrar(email, cuerpo, modelo, None, None, te, ts, detalle)
-        raise HTTPException(status_code=402 if "crédito" in detalle or "facturación" in detalle else 502, detail=detalle)
+        return propuesta_de(entrada), None
+    except ValueError as e:
+        return None, str(e)
 
-    rid = _registrar(email, cuerpo, modelo, texto, propuesta, te, ts, motivo)
-    return {"id": rid, "texto": texto, "propuesta": propuesta, "modelo": modelo}
+
+def _conversar(cliente, modelo: str, msgs: list, inicio: float, uso: list) -> tuple:
+    """(texto, propuesta o None, motivo por el que la propuesta no vale o None). La propuesta mal armada
+    vuelve UNA vez a la IA con el motivo, si la llamada cabe entera en el plazo (PLAZO desde `inicio`)."""
+    resp = llamar(cliente, modelo, msgs)
+    _sumar(uso, resp)
+    texto, entrada, ids = extraer(resp)
+    propuesta, motivo = None, None
+    if getattr(resp, "stop_reason", None) == "refusal":
+        texto = "El modelo no respondió este pedido (lo frenaron sus filtros de seguridad). Reformúlalo o elige " \
+                "otro modelo."
+    elif entrada is not None:
+        propuesta, motivo = _revisar(entrada)
+        if motivo and ids and time.monotonic() - inicio + INTENTO <= PLAZO:
+            resp, texto, propuesta, motivo = _corregir(cliente, modelo, msgs, resp, ids, motivo, texto, uso)
+    return _texto_final(texto, resp, propuesta, motivo), propuesta, motivo
+
+
+def _corregir(cliente, modelo: str, msgs: list, resp, ids: list, motivo: str, texto: str, uso: list) -> tuple:
+    """La corrección: el motivo vuelve a la IA como respuesta a cada tool_use (la API pide una por cada uno),
+    sin reintento. Devuelve (la respuesta, el texto, la propuesta o None, el motivo o None)."""
+    resp = llamar(cliente.with_options(max_retries=0), modelo, msgs + [
+        {"role": "assistant", "content": resp.content},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": t, "is_error": True,
+                                      "content": f"Propuesta no válida: {motivo}. Corrígela y llama "
+                                                 "proponer_accion de nuevo."} for t in ids]}])
+    _sumar(uso, resp)
+    texto2, entrada, _ = extraer(resp)
+    propuesta = None
+    if entrada is not None:
+        propuesta, motivo = _revisar(entrada)
+    return resp, texto2 or texto, propuesta, motivo
+
+
+def _texto_final(texto: str, resp, propuesta, motivo) -> str:
+    """El texto que ve el cubicador: avisa si la respuesta se cortó o si la propuesta no vale; sin texto, el
+    resumen de la propuesta."""
+    if getattr(resp, "stop_reason", None) == "max_tokens":
+        texto = (texto + "\n\n(La respuesta se cortó por largo.)").strip()
+    if motivo:
+        texto = (texto + f"\n\n(La propuesta venía incompleta: {motivo}.)").strip()
+    if not texto and propuesta:
+        texto = propuesta["resumen"] or "Propuesta lista para revisar."
+    if not texto:
+        texto = "Sin respuesta. Reformula el pedido."
+    return texto
 
 
 class ResultadoBody(BaseModel):
