@@ -93,6 +93,11 @@ check("versiones por número: .10 es más nueva que .9, y sin punto es la más v
 check("la vigente y «hay versión nueva» no comparan texto",
       "ORDER BY version" not in inspect.getsource(A._vigente)
       and "clave_version(fila[1]) <= clave_version(version)" in inspect.getsource(A.actualizacion))
+check("las versiones hasta la 2026-11-20.10 no se instalan la nueva solas: sus notas dicen cómo hacerlo a mano",
+      A.notas_para("2026-11-20.6", "Novedades") == A.INSTALAR_A_MANO
+      and A.notas_para("2026-11-20.10", "") == A.INSTALAR_A_MANO
+      and A.notas_para("2026-11-20.11", "Novedades") == "Novedades" and A.notas_para("2026-11-22.4", "N") == "N"
+      and "notas_para(version" in inspect.getsource(A.actualizacion))
 
 print("\nTEST: KPIs de Mis obras (22-nov): PPI, Ø prom, m² y kg/m²")
 check("Ø prom ponderado por peso, sólo barras con diámetro y kg",

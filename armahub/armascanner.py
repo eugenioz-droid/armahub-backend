@@ -1985,6 +1985,23 @@ def descarga(user=Depends(get_current_user)):
     return _version_dict(fila, con_enlace=True)
 
 
+# Hasta la 2026-11-20.10 (empaquetada con Nuitka), «Actualizar» abre la versión nueva como «ArmaScanner.exe
+# --instalar --esperar <pid>». Desde la .11, ArmaScanner.exe es el Python oficial (firmado), que rechaza esas
+# opciones: la nueva no arranca, la vieja se cierra y, al abrirla, vuelve a pedir la misma actualización. Ese
+# código está en el equipo del cubicador y no se puede cambiar desde aquí: a esas versiones se les dice, en
+# las notas que su ventana de actualización muestra, cómo instalarla a mano (una sola vez; desde ahí se
+# actualiza sola). [Usuario 23-nov: «siempre le pide actualizar la misma versión, es un bug»]
+SIN_PUENTE = "2026-11-20.11"
+INSTALAR_A_MANO = ("Tu versión no puede instalar ésta sola. Una sola vez: cierra ArmaScanner, entra a ArmaHub › "
+                   "ArmaScanner › Instalar › «Descargar», extrae el ZIP y abre ArmaScanner.exe › «Instalar». "
+                   "Desde ahí se actualiza solo.")
+
+
+def notas_para(version: str, notas: str) -> str:
+    """Las notas de la actualización que ve quien tiene `version`. Función pura."""
+    return INSTALAR_A_MANO if clave_version(version) < clave_version(SIN_PUENTE) else notas
+
+
 @router.get("/armascanner/actualizacion")
 def actualizacion(version: str = "", credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
     """ArmaScanner pregunta, con su ficha, si hay una versión más nueva que la suya. Si la hay,
@@ -1995,7 +2012,8 @@ def actualizacion(version: str = "", credentials: HTTPAuthorizationCredentials =
             fila = _vigente(cur)
     if not fila or not version or clave_version(fila[1]) <= clave_version(version):
         return {"hay": False, "version": fila[1] if fila else None}
-    return dict(_version_dict(fila, con_enlace=True), hay=True)
+    v = _version_dict(fila, con_enlace=True)
+    return dict(v, hay=True, notas=notas_para(version, v["notas"]))
 
 
 @router.get("/armascanner/versiones")
