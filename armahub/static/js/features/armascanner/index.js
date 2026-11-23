@@ -11,7 +11,10 @@
  *              fundaciones) y su tabla por piso; una obra abre su ventana: Planos (GET
  *              /armascanner/planos-linea?obra=: ver PDF —visor.js—, descargar DWG, ver barras, responder
  *              un pedido de reemplazo, enviar pedido, eliminar), Por piso, aSa (GET
- *              /armascanner/obras-linea/asa?obra=), Protocolo y Terreno (por hacer)
+ *              /armascanner/obras-linea/asa?obra=), Protocolo y Terreno (por hacer).
+ *              «Agregar obra» (GET /armascanner/obras-asa, POST /armascanner/obras-linea/agregar): la obra
+ *              se agrega aquí primero y recién ahí ArmaScanner la muestra; Limpiar y Eliminar obra (POST
+ *              /armascanner/obras-linea/quitar), del administrador. [Usuario 23-nov]
  *   Instalar   GET /armascanner/mi-licencia  mi licencia y mis equipos
  *   Licencias  GET /armascanner/licencias    (administración) dar, vencer, quitar, liberar equipos
  *   Uso        GET /armascanner/uso          (administración) KPIs, uso por usuario y los reportes
@@ -23,7 +26,8 @@
   'use strict';
 
   var est = { obras: [], obra: null, sec: 'planos', planos: [], asa: null, usuarios: null, combo: null,
-              usuarioElegido: null, licencias: [], plElemento: '', plBuscar: '', verBarras: null, listo: false };
+              usuarioElegido: null, licencias: [], plElemento: '', plBuscar: '', verBarras: null, listo: false,
+              admin: false, asaObras: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -44,6 +48,7 @@
     return Number(n).toLocaleString('es-CL', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
   function enc(s) { return encodeURIComponent(s == null ? '' : s); }
+  function sinTildes(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
   // ── KPIs: los de toda la página (Obras, despieces) ──
   //   PPI = Peso Promedio por Ítem = kg / ítems · Ø prom = Σ(φ·kg)/Σkg · kg/m² = kg / m² de losa
@@ -90,7 +95,7 @@
     vacio.style.display = filas.length ? 'none' : '';
     // Si ArmaHub no contestó, se dice: la lista vacía haría creer que no hay nada subido.
     vacio.textContent = est.sinRespuesta ? 'No se pudieron leer las obras. Recarga la página.'
-      : est.obras.length ? 'Sin obras con ese nombre.' : 'Sin planos cargados desde ArmaScanner.';
+      : est.obras.length ? 'Sin obras con ese nombre.' : 'Sin obras agregadas.';
     poner('ascKpiObras', entero(filas.length));
     poner('ascKpiTerminados', entero(t.terminados));
     poner('ascKpiKg', entero(t.kg) + ' kg');
@@ -106,6 +111,18 @@
       if (tr) abrirObra(tr.getAttribute('data-obra'));
     });
     document.getElementById('ascObraCerrar').addEventListener('click', cerrarObra);
+    document.getElementById('ascObraLimpiar').addEventListener('click', function () { quitarObra(false); });
+    document.getElementById('ascObraEliminar').addEventListener('click', function () { quitarObra(true); });
+    document.getElementById('ascAgregarObra').addEventListener('click', abrirAgregar);
+    document.getElementById('ascAgregarCerrar').addEventListener('click', cerrarAgregar);
+    document.getElementById('ascAgregarModal').addEventListener('click', function (ev) {
+      if (ev.target === this) cerrarAgregar();
+    });
+    document.getElementById('ascAgregarBuscar').addEventListener('input', pintarAgregar);
+    document.getElementById('ascAgregarLista').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-asa]');
+      if (b) agregarObra(b.getAttribute('data-asa'), b);
+    });
     document.getElementById('ascObraModal').addEventListener('click', function (ev) {
       if (ev.target === this) cerrarObra();
     });
@@ -122,6 +139,7 @@
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape' || !global.isModalOpen || global.isModalOpen('ascVisorModal')) return;
       if (global.isModalOpen('ascBarrasModal')) cerrarBarras();
+      else if (global.isModalOpen('ascAgregarModal')) cerrarAgregar();
       else if (global.isModalOpen('ascObraModal')) cerrarObra();
     });
   }
@@ -130,9 +148,89 @@
     prepararPantalla();
     var d = await global.apiGet('/armascanner/obras-linea');
     est.obras = (d && d.obras) || [];
+    est.admin = !!(d && d.admin);
     est.sinRespuesta = !d;
     pintarObras();
     if (est.obra) pintarCabeza();
+  }
+
+  // ── Agregar obra: la obra se agrega aquí primero, de la lista de aSa Studio, y recién ahí ArmaScanner
+  // la muestra (cualquier cubicador; la ven todos). [Usuario 23-nov: «en el menú mis obras debiéramos
+  // tener un botón de Agregar Obra, ahí buscar de las de aSa Studio»] ──
+  var MAX_AGREGAR = 60;  // la lista de aSa es larga: se ven las primeras y se afina con el filtro
+
+  async function abrirAgregar() {
+    document.getElementById('ascAgregarBuscar').value = '';
+    global.showModal('ascAgregarModal');
+    document.getElementById('ascAgregarBuscar').focus();
+    if (!est.asaObras) {
+      document.getElementById('ascAgregarLista').innerHTML = '';
+      poner('ascAgregarVacio', 'Cargando obras de aSa…');
+      document.getElementById('ascAgregarVacio').style.display = '';
+      var d = await global.apiGet('/armascanner/obras-asa');
+      est.asaObras = (d && d.obras) || null;
+    }
+    pintarAgregar();
+  }
+
+  function cerrarAgregar() { global.hideModal('ascAgregarModal'); }
+
+  function pintarAgregar() {
+    var vacio = document.getElementById('ascAgregarVacio');
+    var palabras = sinTildes(document.getElementById('ascAgregarBuscar').value).split(/\s+/).filter(Boolean);
+    var filas = (est.asaObras || []).filter(function (o) {
+      var t = sinTildes(o.nombre + ' ' + o.cliente + ' ' + o.asa);
+      return palabras.every(function (w) { return t.indexOf(w) !== -1; });
+    });
+    document.getElementById('ascAgregarLista').innerHTML = filas.slice(0, MAX_AGREGAR).map(function (o) {
+      return '<tr><td>' + esc(o.nombre) + '</td><td>' + esc(o.cliente) + '</td><td>' + esc(o.asa) + '</td>' +
+        '<td class="asc-acciones"><div>' + (o.agregada ? '<span class="arm-tag">Agregada</span>'
+          : '<button type="button" class="arm-button arm-button--primary" data-asa="' + esc(o.asa) + '">Agregar</button>') +
+        '</div></td></tr>';
+    }).join('');
+    vacio.style.display = filas.length > MAX_AGREGAR || !filas.length ? '' : 'none';
+    vacio.textContent = !est.asaObras ? 'No se pudieron leer las obras de aSa. Cierra y vuelve a abrir.'
+      : !filas.length ? 'Sin obras con ese nombre.'
+      : entero(filas.length - MAX_AGREGAR) + ' obras más: afina la búsqueda.';
+  }
+
+  async function agregarObra(asa, boton) {
+    boton.disabled = true;
+    var data = await postJson('/armascanner/obras-linea/agregar', { asa: asa });
+    if (!data) { boton.disabled = false; return; }
+    est.asaObras.forEach(function (o) { if (o.asa === asa) o.agregada = true; });
+    pintarAgregar();
+    global.showToast(data.ya_estaba ? 'La obra ya estaba agregada.' : 'Obra agregada: ya aparece en ArmaScanner.', 'success');
+    await cargarObras();
+  }
+
+  // Limpiar (sus planos, con sus archivos y las barras que mandaron a los despieces) o eliminar la obra
+  // (además sale de Mis obras y de ArmaScanner): administrador, escribiendo la palabra. [Usuario 23-nov:
+  // «lo importante es que yo pueda eliminarlas y/o limpiarlas con algún warning»]
+  async function quitarObra(eliminar) {
+    var o = obraActual();
+    if (!o) return;
+    var palabra = eliminar ? 'ELIMINAR' : 'LIMPIAR';
+    var txt = prompt('⚠ ' + (eliminar ? 'Eliminar' : 'Limpiar') + ' «' + o.nombre + '»\n\n' +
+      'Se borran de ArmaHub sus ' + entero(o.planos) + ' planos, con sus archivos y las barras que mandaron a los despieces. ' +
+      (eliminar ? 'La obra sale de Mis obras y de ArmaScanner. ' : 'La obra sigue en Mis obras. ') +
+      'No se puede deshacer; en aSa no se toca nada.\n\nEscribe ' + palabra + ' para confirmar:');
+    if (txt == null) return;
+    if (txt.trim().toUpperCase() !== palabra) {
+      global.showToast('No se hizo nada: hay que escribir ' + palabra + '.', 'error');
+      return;
+    }
+    var data = await postJson('/armascanner/obras-linea/quitar', { obra: o.id, eliminar: eliminar });
+    if (!data) return;
+    global.showToast((eliminar ? 'Obra eliminada' : 'Obra limpia') + ' · ' + entero(data.planos) + ' planos' +
+      (data.barras_eliminadas ? ' · ' + entero(data.barras_eliminadas) + ' barras' : '') + '.', 'success');
+    if (eliminar) {
+      est.asaObras = null;  // vuelve a «Agregar»
+      cerrarObra();
+      await cargarObras();
+    } else {
+      await recargarObra(true);
+    }
   }
 
   // ── La ventana de la obra ──
@@ -144,6 +242,8 @@
     var o = obraActual() || { nombre: est.obra, kpis: {} };
     var k = o.kpis || {};
     poner('ascObraTitulo', o.nombre || est.obra);
+    document.getElementById('ascObraLimpiar').style.display = est.admin ? '' : 'none';
+    document.getElementById('ascObraEliminar').style.display = est.admin ? '' : 'none';
     poner('ascObraDatos', [o.cliente ? 'Cliente ' + o.cliente : '', o.constructora ? 'Constructora ' + o.constructora : '',
                            o.asa ? 'aSa ' + o.asa : 'Sin código aSa'].filter(Boolean).join(' · '));
     poner('ascObKg', k.kg ? entero(k.kg) + ' kg' : '—');
@@ -236,10 +336,14 @@
   // cubicador que también lo terminó pide el reemplazo; el autor lo acepta o rechaza (o, si no está,
   // el administrador responde por él). [Usuario 22-nov: «así se coordinan y evitamos duplicar data»]
   async function postPlano(ruta, p, extra) {
+    return postJson(ruta, Object.assign({ obra: p.obra, plano: p.plano }, extra || {}));
+  }
+
+  async function postJson(ruta, cuerpo) {
     var res = await fetch(global.apiUrl(ruta), {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json' }, global.authHeaders()),
-      body: JSON.stringify(Object.assign({ obra: p.obra, plano: p.plano }, extra || {}))
+      body: JSON.stringify(cuerpo)
     });
     if (res.status === 401) { global.logout(); return null; }
     var data = await res.json().catch(function () { return {}; });

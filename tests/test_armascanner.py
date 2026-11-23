@@ -208,7 +208,8 @@ check("rutas del contrato",
        "/armascanner/planos/reemplazo/anular", "/armascanner/planos-linea", "/armascanner/planos-linea/pdf",
        "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido",
        "/armascanner/planos-linea/reemplazo/responder", "/armascanner/obras-linea", "/armascanner/obras-linea/asa",
-       "/armascanner/planos-linea/dwg"} <= rutas, rutas)
+       "/armascanner/planos-linea/dwg", "/armascanner/obras-asa", "/armascanner/obras-linea/agregar",
+       "/armascanner/obras-linea/quitar"} <= rutas, rutas)
 check("Mis obras ya no lista las cargas sueltas", "/armascanner/cargas" not in rutas and not hasattr(A, "cargas"))
 check("ya no existen subir-plano ni elegir la versión que vale",
       not {"/armascanner/subir-plano", "/armascanner/planos-linea/vale"} & rutas and not hasattr(A, "_guardar_paquete"))
@@ -226,7 +227,12 @@ from armahub.auth import get_current_user, require_admin_or_admin_calidad  # noq
 from armahub.db import _split_sql_statements  # noqa: E402
 
 sqlite3.register_converter("JSONB", json.loads)
-sqlite3.register_converter("TIMESTAMPTZ", lambda v: datetime.fromisoformat(v.decode()))
+def _momento(v):  # TIMESTAMPTZ con zona, como en Postgres (el CURRENT_TIMESTAMP de SQLite viene sin zona: es UTC)
+    m = datetime.fromisoformat(v.decode())
+    return m if m.tzinfo else m.replace(tzinfo=timezone.utc)
+
+
+sqlite3.register_converter("TIMESTAMPTZ", _momento)
 sqlite3.register_converter("BOOLEAN", lambda v: bool(int(v)))
 sqlite3.register_adapter(datetime, lambda d: d.isoformat())
 BASE = sqlite3.connect(":memory:", detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
@@ -327,6 +333,12 @@ check("una entrega por plano y un pedido que corre por solicitante",
 check("transición: nadie queda con un plano tomado y lo guardado a medias pasa a «en_trabajo»",
       una("SELECT etapa, tomado_por, tomado_el FROM planos_obra WHERE plano = 'ANTES'") == ("en_trabajo", None, None))
 
+print("\nTEST: migración 177")
+s177 = migrar(177)
+check("las obras de ArmaScanner: entran las que ya tenían planos",
+      s177[0].startswith("CREATE TABLE IF NOT EXISTS") and BASE.execute("SELECT id_proyecto FROM armascanner_obras").fetchall()
+      == [("PROY-1",)])
+
 # ── ArmaHub simulado: R2, fichas (la ficha es el correo), sesión del portal, auditoría y campana ──
 R2 = {}
 al_subir = []  # lo que pasa «mientras sube» (para cruzar dos subidas)
@@ -358,6 +370,8 @@ async def _cargar_barras(user, obra, plano_code, reemplaza, revision, sin_subir,
 
 
 A._cargar_barras = _cargar_barras
+# La carga de antecedentes está en pausa desde el 23-nov (CARGA_ANTECEDENTES): sus reglas se siguen probando.
+A.CARGA_ANTECEDENTES = True
 
 
 def _solo_admin():
@@ -794,6 +808,64 @@ check("…terminado: la copia de trabajo (con la cubicación), y el nombre con s
 check("…un paquete sin DWG o un plano que no está: 404",
       web.get("/armascanner/planos-linea/dwg", params={"obra": "PROY-2", "plano": "L5"}).status_code == 404
       and web.get("/armascanner/planos-linea/dwg", params={"obra": "PROY-2", "plano": "NO"}).status_code == 404)
+
+print("\nTEST: obras de ArmaScanner (23-nov): se agregan en Mis obras; el administrador las limpia o elimina")
+BASE.executescript("""ALTER TABLE asa_obras ADD COLUMN nombre TEXT;
+                      ALTER TABLE asa_obras ADD COLUMN estado TEXT;
+                      INSERT INTO asa_obras (asa_job_id, cliente, nombre, estado) VALUES ('A-300', 'SOCOVESA', 'SOCOVESA - PARQUE', 'Open');""")
+from armahub import programacion as P  # noqa: E402
+
+
+def _adoptar(cur, job, email, en_cubicacion=False, nombre=None):
+    cur.execute("SELECT id_proyecto FROM proyectos WHERE asa_job_id = %s", (job,))
+    f = cur.fetchone()
+    if f:
+        return f[0]
+    cur.execute("INSERT INTO proyectos VALUES (%s, %s, %s, NULL)", (job, nombre or job, job))
+    return job
+
+
+P.adoptar_obra = _adoptar
+
+
+def en_armascanner():
+    return [o["id"] for o in web.get("/armascanner/obras", headers=ficha(EUG)).json()["obras"]]
+
+
+A.CARGA_ANTECEDENTES = False
+check("abrir o tener un plano no sube nada: cargar un antecedente responde 410",
+      cargar(EUG, "L9", b"x" * 10).status_code == 410 and fila("L9", "plano") is None)
+A.CARGA_ANTECEDENTES = True
+antes = en_armascanner()
+check("ArmaScanner ve sólo las obras agregadas (las que subieron planos quedaron solas)",
+      "A-300" not in antes and {"PROY-1", "PROY-2", "PROY-3"} <= set(antes), antes)
+sesion.update(email=EMI, role="cubicador")
+r = web.post("/armascanner/obras-linea/agregar", json={"asa": "A-300"})
+check("«Agregar obra»: cualquier cubicador; la obra entra a ArmaHub y ArmaScanner la ve",
+      r.status_code == 200 and r.json() == {"ok": True, "id": "A-300", "ya_estaba": False} and "A-300" in en_armascanner()
+      and AUDITORIA[-1][1] == "armascanner_agregar_obra", r.text)
+check("…agregarla otra vez no la duplica",
+      web.post("/armascanner/obras-linea/agregar", json={"asa": "A-300"}).json()["ya_estaba"]
+      and en_armascanner().count("A-300") == 1)
+lista = web.get("/armascanner/obras-linea").json()
+o = next((x for x in lista["obras"] if x["id"] == "A-300"), None)
+check("…y aparece en Mis obras, vacía; el cubicador no es administrador",
+      o is not None and o["planos"] == 0 and o["ultima"] and lista["admin"] is False, lista)
+check("limpiar y eliminar son de administrador",
+      web.post("/armascanner/obras-linea/quitar", json={"obra": "PROY-3"}).status_code == 403)
+sesion.update(email="jefa@x.cl", role="admin")
+n3 = una("SELECT COUNT(*) FROM planos_obra WHERE id_proyecto = 'PROY-3'")[0]
+r = web.post("/armascanner/obras-linea/quitar", json={"obra": "PROY-3"})
+check("limpiar: se van sus planos, con las barras que mandaron a los despieces; la obra sigue",
+      r.status_code == 200 and n3 > 0 and r.json() == {"ok": True, "planos": n3, "barras_eliminadas": 1}
+      and una("SELECT COUNT(*) FROM planos_obra WHERE id_proyecto = 'PROY-3'")[0] == 0
+      and una("SELECT COUNT(*) FROM barras WHERE id_proyecto = 'PROY-3'")[0] == 0 and "PROY-3" in en_armascanner()
+      and AUDITORIA[-1][1] == "armascanner_limpiar_obra", r.text)
+r = web.post("/armascanner/obras-linea/quitar", json={"obra": "A-300", "eliminar": True})
+check("eliminar: además sale de Mis obras y de ArmaScanner",
+      r.status_code == 200 and "A-300" not in en_armascanner()
+      and "A-300" not in [x["id"] for x in web.get("/armascanner/obras-linea").json()["obras"]]
+      and AUDITORIA[-1][1] == "armascanner_eliminar_obra", r.text)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

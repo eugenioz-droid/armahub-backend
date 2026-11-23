@@ -109,24 +109,23 @@ def pendientes_por_combinacion(barras: list) -> dict:
 
 @router.get("/armascanner/obras")
 def obras(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """Las obras COMO ESTÁN EN aSa (el espejo `asa_obras`), para elegir con filtro de texto en
-    ArmaScanner: la misma lista que los selectores de obra del portal (programacion.asa_espejo).
-    [Usuario 19-nov: «hay que traer las obras de aSa, no las que creamos en la plataforma»;
-    decisión del 13-oct, mig 143] La que ya existe en ArmaHub trae su `id_proyecto` (una obra
-    antigua enlazada a su job de aSa); las demás se adoptan solas al subir el primer plano."""
+    """Las obras de ArmaScanner: las agregadas en ArmaHub › Mis obras (`armascanner_obras`), con su
+    nombre de aSa. ArmaScanner ofrece sólo éstas: la obra se agrega primero en ArmaHub y las ven todos
+    los cubicadores. [Usuario 23-nov: «debemos agregar la obra en ArmaHub primero… al agregar que
+    ArmaScanner reconozca la obra automáticamente»]"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             _usuario(cur, credentials.credentials)
             cur.execute("""
-                SELECT a.asa_job_id, a.nombre, a.cliente, a.estado,
-                       (SELECT MIN(p.id_proyecto) FROM proyectos p WHERE p.asa_job_id = a.asa_job_id)
-                  FROM asa_obras a
-                 WHERE NOT a.excluida
-                   AND a.asa_job_id !~ 'B$'                 -- el gemelo «- BARRAS» no es otra obra
-                 ORDER BY (COALESCE(a.estado, '') = 'Open') DESC, a.ultima_actividad DESC NULLS LAST, a.nombre
+                SELECT COALESCE(pr.asa_job_id, ''), COALESCE(ao.nombre, pr.nombre_proyecto, o.id_proyecto) AS nombre,
+                       COALESCE(ao.cliente, ''), COALESCE(ao.estado, ''), o.id_proyecto
+                  FROM armascanner_obras o
+                  JOIN proyectos pr ON pr.id_proyecto = o.id_proyecto
+                  LEFT JOIN asa_obras ao ON ao.asa_job_id = pr.asa_job_id
+                 ORDER BY nombre
             """)
-            return {"obras": [{"asa": r[0], "nombre": r[1], "cliente": r[2] or "", "estado": r[3] or "",
-                               "id": r[4] or ""} for r in cur.fetchall()]}
+            return {"obras": [{"asa": r[0], "nombre": r[1], "cliente": r[2], "estado": r[3], "id": r[4]}
+                              for r in cur.fetchall()]}
 
 
 async def _cargar_barras(user, obra, plano_code, reemplaza, revision, sin_subir, contenido: bytes, nombre,
@@ -792,15 +791,34 @@ def _datos_plano(datos: str) -> dict:
 
 def _obra_de(cur, d: dict, email: str) -> str:
     """El id de la obra: con el código de aSa, la que ya existe en ArmaHub o la que se adopta
-    (programacion.adoptar_obra)."""
+    (programacion.adoptar_obra). Queda en las obras de ArmaScanner: un plano no sube a una obra que
+    no esté en Mis obras."""
     if d["asa"]:
         from .programacion import adoptar_obra
-        return adoptar_obra(cur, d["asa"], email, en_cubicacion=True)
-    return d["obra"]
+        obra = adoptar_obra(cur, d["asa"], email, en_cubicacion=True)
+    else:
+        obra = d["obra"]
+    _registrar_obra(cur, obra, email)
+    return obra
+
+
+def _registrar_obra(cur, obra: str, email: str) -> bool:
+    """La obra queda en ArmaScanner (`armascanner_obras`). True si no estaba."""
+    cur.execute("""INSERT INTO armascanner_obras (id_proyecto, agregada_por) VALUES (%s, %s)
+                   ON CONFLICT (id_proyecto) DO NOTHING""", (obra, email))
+    return cur.rowcount == 1
 
 
 def _texto(d: dict, k: str, largo: int):
     return str(d.get(k) or "").strip()[:largo] or None
+
+
+# La carga de antecedentes (el plano del calculista, etapa «cargado») queda en pausa: abrir o tener un
+# plano en el equipo no sube nada; ArmaHub recibe el plano recién al «Terminar». Vuelve cuando el flujo
+# esté probado y se defina la aprobación del cliente. [Usuario 23-nov: «que tenga abierto un plano en mi
+# computador no tiene nada que ver con que se cargue en ArmaHub»; «Hoy no, cuando esté implementado,
+# probado y estemos conformes, incorporaremos esa regla»]
+CARGA_ANTECEDENTES = False
 
 
 @router.post("/armascanner/planos/guardar")
@@ -814,8 +832,10 @@ async def guardar_plano(datos: str = Form(...), paquete: UploadFile = File(...),
     el paquete es otro, queda como la versión siguiente del antecedente. Ya no guarda trabajo
     intermedio: con otra etapa responde 409 (un ArmaScanner anterior al cambio).
     [Usuario 20-nov: «el cubicador cargue TODOS los planos, para tener un registro de TODOS los
-    antecedentes técnicos»]"""
+    antecedentes técnicos»] En pausa (CARGA_ANTECEDENTES): responde 410."""
     from . import storage
+    if not CARGA_ANTECEDENTES:
+        raise HTTPException(status_code=410, detail="Actualiza ArmaScanner: ArmaHub recibe el plano recién al «Terminar».")
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
@@ -1590,9 +1610,80 @@ def _con_licencia_o_admin(cur, user):
         raise HTTPException(status_code=403, detail="Requiere licencia de ArmaScanner.")
 
 
+# ── Mis obras: la obra se agrega aquí primero (cualquier cubicador, desde la lista de aSa) y recién ahí
+# ArmaScanner la muestra; el administrador la limpia o la elimina, con aviso. [Usuario 23-nov: «en el
+# menú mis obras debiéramos tener un botón de Agregar Obra, ahí buscar de las de aSa Studio»; «lo
+# importante es que yo pueda eliminarlas y/o limpiarlas con algún warning»] ──
+@router.get("/armascanner/obras-asa")
+def obras_asa(user=Depends(get_current_user)):
+    """«Agregar obra»: las obras COMO ESTÁN EN aSa (el espejo `asa_obras`, la misma lista que los
+    selectores de obra del portal), para elegir con filtro de texto; `agregada` si ya está en
+    ArmaScanner. [Usuario 19-nov: «hay que traer las obras de aSa, no las que creamos en la plataforma»]"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            cur.execute("""
+                SELECT a.asa_job_id, a.nombre, a.cliente, a.estado,
+                       EXISTS (SELECT 1 FROM armascanner_obras o JOIN proyectos p ON p.id_proyecto = o.id_proyecto
+                                WHERE p.asa_job_id = a.asa_job_id OR p.id_proyecto = a.asa_job_id)
+                  FROM asa_obras a
+                 WHERE NOT a.excluida
+                   AND a.asa_job_id !~ 'B$'                 -- el gemelo «- BARRAS» no es otra obra
+                 ORDER BY (COALESCE(a.estado, '') = 'Open') DESC, a.ultima_actividad DESC NULLS LAST, a.nombre
+            """)
+            return {"obras": [{"asa": r[0], "nombre": r[1], "cliente": r[2] or "", "estado": r[3] or "",
+                               "agregada": bool(r[4])} for r in cur.fetchall()]}
+
+
+class AgregarObra(BaseModel):
+    asa: str
+
+
+@router.post("/armascanner/obras-linea/agregar")
+def agregar_obra(datos: AgregarObra, user=Depends(get_current_user)):
+    """La obra de aSa entra a ArmaHub (programacion.adoptar_obra, la única puerta) y a ArmaScanner."""
+    from .programacion import adoptar_obra
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _con_licencia_o_admin(cur, user)
+            obra = adoptar_obra(cur, datos.asa, email, en_cubicacion=True)
+            nueva = _registrar_obra(cur, obra, email)
+    if nueva:
+        audit(email, "armascanner_agregar_obra", f"aSa {datos.asa}", "proyecto", obra)
+    return {"ok": True, "id": obra, "ya_estaba": not nueva}
+
+
+class QuitarObra(BaseModel):
+    obra: str
+    eliminar: bool = False
+
+
+@router.post("/armascanner/obras-linea/quitar")
+def quitar_obra(datos: QuitarObra, admin=Depends(require_admin_or_admin_calidad)):
+    """Limpiar (administrador): se eliminan los planos de la obra en ArmaHub, con sus entregas, sus
+    archivos y las barras que mandaron a los despieces (_eliminar_plano, plano a plano). Con `eliminar`,
+    además la obra sale de Mis obras y de ArmaScanner. La obra sigue en ArmaHub para lo demás y en aSa
+    no se toca."""
+    email = admin.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT plano FROM planos_obra WHERE id_proyecto = %s ORDER BY plano", (datos.obra,))
+            planos = [r[0] for r in cur.fetchall()]
+    barras = sum(_eliminar_plano(email, EliminarPlano(obra=datos.obra, plano=p, con_barras=True))["barras_eliminadas"]
+                 for p in planos)
+    if datos.eliminar:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM armascanner_obras WHERE id_proyecto = %s", (datos.obra,))
+    audit(email, "armascanner_eliminar_obra" if datos.eliminar else "armascanner_limpiar_obra",
+          f"{len(planos)} planos, {barras} barras", "proyecto", datos.obra)
+    return {"ok": True, "planos": len(planos), "barras_eliminadas": barras}
+
+
 @router.get("/armascanner/obras-linea")
 def obras_linea(user=Depends(get_current_user)):
-    """Mis obras: las obras con planos de ArmaScanner, de todas las obras (el trabajo es colaborativo:
+    """Mis obras: las obras agregadas a ArmaScanner y las que tienen planos (el trabajo es colaborativo:
     todos los usuarios con licencia ven todo [Usuario 20-nov]), con sus datos (cliente, constructora,
     código de aSa), cuántos planos tiene en cada etapa, lo que espera a alguien (reemplazos pedidos,
     barras con consulta, pedidos sin enviar), sus KPIs (kpis_de) y su tabla por piso (tabla_por_piso).
@@ -1605,7 +1696,9 @@ def obras_linea(user=Depends(get_current_user)):
                                   relacion_de, version, pedido_version, subido_el
                              FROM planos_obra""")
             filas = cur.fetchall()
-            ids = sorted({f[0] for f in filas})
+            cur.execute("SELECT id_proyecto, agregada_el FROM armascanner_obras")
+            agregadas = dict(cur.fetchall())
+            ids = sorted({f[0] for f in filas} | set(agregadas))
             info = {}
             if ids:
                 cur.execute("""SELECT pr.id_proyecto, pr.nombre_proyecto, COALESCE(pr.asa_job_id, ''),
@@ -1622,13 +1715,19 @@ def obras_linea(user=Depends(get_current_user)):
             por_piso = _por_piso_faltante(cur, [(f[0], f[1]) for f in filas if f[2] != "cargado" and f[5]
                                                 and (f[0], f[1]) not in fuera and "por_piso" not in (f[4] or {})])
     obras = {}
+
+    def de(obra):  # la obra en la lista; sin planos, su actividad es la fecha en que se agregó
+        nombre, asa, cliente, constructora = info.get(obra) or (obra, "", "", "")
+        return obras.setdefault(obra, {"id": obra, "nombre": nombre or obra, "asa": asa, "cliente": cliente,
+                                       "constructora": constructora, "planos": 0, "terminados": 0, "cargados": 0,
+                                       "en_trabajo": 0, "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
+                                       "_ultima": agregadas.get(obra), "_kpis": []})
+
+    for obra in agregadas:
+        de(obra)
     for (obra, plano, etapa, elemento, resumen, barras, aprobadas, kg, _rel, _de, version, pedido_version,
          subido_el) in filas:
-        nombre, asa, cliente, constructora = info.get(obra) or (obra, "", "", "")
-        o = obras.setdefault(obra, {"id": obra, "nombre": nombre or obra, "asa": asa, "cliente": cliente,
-                                    "constructora": constructora, "planos": 0, "terminados": 0, "cargados": 0,
-                                    "en_trabajo": 0, "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
-                                    "_ultima": None, "_kpis": []})
+        o = de(obra)
         o["planos"] += 1
         etapa = etapa or ""
         o["terminados" if etapa == "terminado" else "cargados" if etapa == "cargado" else "en_trabajo"] += 1
@@ -1645,7 +1744,8 @@ def obras_linea(user=Depends(get_current_user)):
         o["_kpis"].append(plano_para_kpis(r, elemento, diam.get((obra, plano)), por_piso.get((obra, plano))))
     lista = sorted(obras.values(), key=lambda o: (o["_ultima"] is None, -(o["_ultima"].timestamp() if o["_ultima"]
                                                                          else 0), str(o["nombre"])))
-    return {"obras": [dict({k: v for k, v in o.items() if not k.startswith("_")}, ultima=_cuando(o["_ultima"]),
+    return {"admin": _es_admin(user),
+            "obras": [dict({k: v for k, v in o.items() if not k.startswith("_")}, ultima=_cuando(o["_ultima"]),
                            kpis=kpis_de(o["_kpis"]), por_piso=tabla_por_piso(o["_kpis"])) for o in lista]}
 
 

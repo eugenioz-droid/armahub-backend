@@ -3,12 +3,17 @@
      La ve quien tiene licencia (registry.js, `licencia`) y el administrador; «Licencias», «Uso» y
      «Versiones», sólo el administrador (shell.js). Lógica: features/armascanner/index.js.
      Mis obras (22-nov): las obras con sus KPIs; cada obra abre su ventana con Planos, Por piso, aSa,
-     Protocolo y Terreno (los planos van dentro de la obra: ya no hay pestaña Planos). -->
+     Protocolo y Terreno (los planos van dentro de la obra: ya no hay pestaña Planos).
+     Agregar obra (23-nov): la obra se agrega aquí primero, de la lista de aSa Studio, y recién ahí
+     ArmaScanner la muestra; el administrador la limpia o la elimina desde su ventana. -->
 <style>
   .asc { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .asc .asc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
   .asc .asc-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
   .asc .asc-barra .asc-rotulo { font-size: 12px; color: var(--arm-text-muted); }
+  .asc .asc-barra .asc-derecha { margin-left: auto; }
+  .asc .asc-cabeza-acciones { display: flex; gap: 8px; }
+  .asc .asc-modal__caja.asc-agregar { max-width: 760px; }
   .asc .arm-button, .asc .arm-input { font-size: 13px; }
   .asc .asc-seg { display: inline-flex; gap: 4px; }
   .asc .asc-seg .arm-button { min-height: 32px; padding: 4px 12px; font-weight: 500; }
@@ -76,6 +81,7 @@
         <input type="text" id="ascObraBuscar" class="arm-input" placeholder="Buscar obra"
                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                data-lpignore="true" data-form-type="other" style="width:260px;">
+        <button type="button" class="arm-button arm-button--primary asc-derecha" id="ascAgregarObra">Agregar obra</button>
       </div>
       <table class="arm-table asc-obras">
         <thead><tr>
@@ -87,6 +93,25 @@
       <div id="ascObrasVacio" class="asc-vacio" style="display:none;"></div>
     </div>
 
+    <div id="ascAgregarModal" class="asc-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="ascAgregarTitulo">
+      <div class="asc-modal__caja asc-agregar">
+        <div class="asc-modal__cabeza">
+          <h3 id="ascAgregarTitulo">Agregar obra</h3>
+          <button type="button" class="arm-button" id="ascAgregarCerrar">Cerrar</button>
+        </div>
+        <div class="asc-barra">
+          <input type="text" id="ascAgregarBuscar" class="arm-input" placeholder="Buscar en aSa Studio"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other" style="width:320px;">
+        </div>
+        <table class="arm-table">
+          <thead><tr><th>Obra</th><th>Cliente</th><th>Código aSa</th><th></th></tr></thead>
+          <tbody id="ascAgregarLista"></tbody>
+        </table>
+        <div id="ascAgregarVacio" class="asc-vacio" style="display:none;"></div>
+      </div>
+    </div>
+
     <div id="ascObraModal" class="asc-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="ascObraTitulo">
       <div class="asc-modal__caja asc-obra">
         <div class="asc-modal__cabeza">
@@ -94,7 +119,11 @@
             <h3 id="ascObraTitulo"></h3>
             <div class="asc-linea" id="ascObraDatos"></div>
           </div>
-          <button type="button" class="arm-button" id="ascObraCerrar">Cerrar</button>
+          <div class="asc-cabeza-acciones">
+            <button type="button" class="arm-button arm-button--danger" id="ascObraLimpiar" style="display:none;">Limpiar</button>
+            <button type="button" class="arm-button arm-button--danger" id="ascObraEliminar" style="display:none;">Eliminar obra</button>
+            <button type="button" class="arm-button" id="ascObraCerrar">Cerrar</button>
+          </div>
         </div>
         <div class="asc-kpis" id="ascObKpis">
           <div class="arm-kpi"><div class="arm-kpi__label">Kilos</div><div class="arm-kpi__value" id="ascObKg">—</div></div>
