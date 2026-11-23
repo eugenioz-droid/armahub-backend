@@ -1256,7 +1256,7 @@ compactas.
 | Resumen | Ficha; KPIs en grupo de 4: kg pedidos, planos trabajados / vigentes, ciclos cubicados / programados, reclamos abiertos; últimos movimientos | Ve | Ve (sin reclamos) |
 | Programa | Ciclos y sectores con fecha de despacho y estado (disponible · programada · cubicada). El pedido enviado desde ArmaScanner marca cubicado solo | USC edita | Ve fechas |
 | Protocolo | Plantilla editable de la empresa (secciones, criterios, opciones con croquis); protocolo por obra con versiones y estados (borrador · revisado con el cliente · cerrado); modo reunión; PDF y correo (programa §8.11) | Cubicador edita | Sólo lectura, aprueba (después) |
-| Planos | Avance por plano (estado, barras, aprobadas, kg, versión, quién lo tiene, última actividad), PDF en modal, «Soltar» (administrador), «Enviar pedido» (§5.4) | Ve; toma en ArmaScanner | Vista previa (después) |
+| Planos | Los planos terminados de la obra (autor, versión, barras, kg), «Ver plano» (PDF en modal), reemplazos, «Enviar pedido» (§5.4) | Ve; trabaja en ArmaScanner | Vista previa (después) |
 | Pedidos | Cargas de despiece de la obra (`imports`) con su origen (ArmaScanner, A Detailer, manual), plano, ciclo, kg | Ve | No |
 | Terreno | Protocolo de entrega de enfierradura por elemento y ciclo: lista de chequeo, fotos, observaciones y aprobación. Pensada para pasar a la App Terreno (F13) | Ve | Revisa y aprueba |
 
@@ -1269,98 +1269,54 @@ abre una versión nueva que se vuelve a aprobar.
 
 ### 5.4 Planos en ArmaHub (control de los planos trabajados con ArmaScanner)
 
-**Desde el 22-nov (ArmaScanner 2026-11-22.2, mig 174): planos sin bloqueo. Lo que sigue en esta sección sobre
-tomar, soltar y guardar el trabajo a medias quedó reemplazado por esto.** [Usuario 21-nov: «no necesitamos tener
-un control tan estricto ya que se rigidiza mucho la plataforma»; 22-nov: el plano nace y se trabaja en el
-computador, nunca se toma desde la página.]
-- **Nadie toma un plano.** Abrirlo en ArmaScanner no pide conexión ni bloquea a nadie.
-- **Antecedentes:** el plano del calculista se carga a ArmaHub (etapa «cargado»); si ya está, no se toca (un
-  segundo cubicador que carga el mismo DWG no recibe error, y cargar nunca rebaja un plano con trabajo).
-- **Terminar** (en la ventana del plano, visible con todas las barras decididas; también en la lista si el PDF
-  está al día): exige ninguna barra aprobada con datos incompletos; genera el PDF del plano con el plano abierto
-  (A0, fondo blanco, calculista en gris, barras y ciclos en color, texto buscable; en el equipo nunca se abre),
-  sube el paquete y el PDF (`POST /armascanner/planos/terminar`) y la copia del equipo pasa a la papelera de la
-  obra (30 días). No hay guardados intermedios del trabajo.
-- **Una sola entrega por plano** (`planos_obra_entregas`). Si otro cubicador ya subió el plano, ArmaHub responde
-  «ocupado» y no guarda nada; se pide el reemplazo (`planos_obra_reemplazos`), el autor lo acepta o lo rechaza
-  al abrir ArmaScanner (o un administrador responde por él en la web) y, aceptado, «Terminar» sube la versión
-  nueva. Aceptar no borra nada; mientras haya un reemplazo aceptado, el pedido de despiece no sale. Avisos en la
-  campana («Reemplazo de plano»). Al abrir un plano que terminó otro, ArmaScanner avisa antes.
-- **R2:** cada subida va a una clave única (uuid); el archivo anterior se borra sólo después de que la base
-  confirmó (antes, dos guardados cruzados podían borrar el archivo del que ganó).
-- **Registro de la obra en ArmaScanner:** escritura atómica y con candado entre hilos; una lectura fallida ya
-  no deja un registro vacío encima del bueno.
-- Etapas en `planos_obra`: cargado · terminado · en_trabajo (sólo lo guardado a medias antes del cambio).
+> **Dónde está hoy (22-nov):** el panel de la obra es «Mis obras» de la caluga ArmaScanner (programa 7.6);
+> la caluga «Obras» aparte quedó descartada. Lo que sigue es el modelo vigente; el anterior (19–21 nov:
+> tomar, soltar, guardados intermedios y consulta cada minuto, ArmaScanner ≤ 2026-11-22.1) quedó
+> reemplazado y su detalle está en el programa §8.13 (filas 6.4 y 6.11–6.14).
 
+**Planos sin bloqueo (22-nov, mig 174).** [Usuario 21-nov: «no necesitamos tener un control tan estricto ya
+que se rigidiza mucho la plataforma»; 22-nov: el plano nace y se trabaja en el computador, nunca se toma
+desde la página.]
+- **La obra primero en ArmaHub (23-nov, mig 177).** Se agrega en Mis obras («Agregar obra», de la lista de
+  aSa Studio; cualquier cubicador) y recién ahí ArmaScanner la muestra. El administrador la «Limpia» (sus
+  planos, archivos y barras en despieces) o la «Elimina» (además sale de la lista), escribiendo la palabra.
+- **Nadie toma un plano.** Abrirlo o tenerlo en ArmaScanner no pide conexión, no bloquea a nadie y no sube
+  nada. La carga automática de antecedentes (etapa «cargado») está en pausa: vuelve cuando se defina la
+  aprobación del cliente.
+- **Terminar** (en la ventana del plano, encendido con todas las barras decididas y ninguna observada): genera
+  el PDF del plano con el plano abierto (A0, fondo blanco, calculista en gris, barras y ciclos en color,
+  texto buscable; en el equipo nunca se abre), sube el paquete y el PDF (`POST /armascanner/planos/terminar`)
+  y la copia del equipo pasa a la papelera de la obra (30 días).
+- **Una sola entrega por plano** (`planos_obra_entregas`). Si otro cubicador ya subió el plano, ArmaHub
+  responde «ocupado» y no guarda nada; se pide el reemplazo (`planos_obra_reemplazos`), el autor lo acepta o
+  lo rechaza al abrir ArmaScanner (o un administrador responde por él en la web) y, aceptado, «Terminar» sube
+  la versión nueva. Mientras haya un reemplazo aceptado, el pedido de despiece no sale. Avisos en la campana
+  («Reemplazo de plano»). Al abrir un plano que terminó otro, ArmaScanner avisa antes.
+- **Enviar pedido** (lista de planos de ArmaScanner o ventana de la obra en Mis obras): las barras de la
+  entrega entran a ArmaHub como la carga del plano (reemplazan las del mismo plano). Aparte de Terminar.
 
-**Qué se guarda:** sólo los planos trabajados con ArmaScanner (respuesta 19). Los originales
-del calculista no se suben; la gestión documental completa (todo lo subido y cuándo) llega
-cuando entre el cliente.
+**Qué se guarda.** Sólo los planos terminados con ArmaScanner (respuesta 19). Los originales del calculista
+no se suben; la gestión documental completa llega cuando entre el cliente.
 
-**Flujo.**
-1. **Carga.** El cubicador arrastra los DWG del calculista al menú inicial de ArmaScanner y
-   elige la obra (la lista de obras de ArmaHub). ArmaScanner los copia a su propio orden en
-   `proyectos\<obra>\planos\` (en la carpeta de obras del equipo), lee número y revisión de la viñeta y deja el registro
-   hecho: plano vigente, revisiones anteriores, hojas repetidas comprobadas. El cubicador no
-   edita nada a mano.
-2. **Trabajo** en el equipo, como hoy.
-3. **Subir.** El cubicador marca los planos terminados (o los que quiera dejar en línea) y
-   «Subir a ArmaHub». Sube un paquete: copia de trabajo con su lectura, escaneo y bitácora, el
-   original y su estado (viñeta, ciclos, aprobaciones, elemento, subida). Queda como la versión
-   en línea del plano (v1, v2…), libre. La vista previa en PDF que imprime GStarCAD al subir
-   está pendiente (programa 6.3).
-4. **Tomar.** Cualquier usuario con licencia ve en ArmaScanner («Planos en ArmaHub») los planos
-   en línea de todas las obras y lo toma: baja con su avance a su obra (se crea si no la tiene)
-   y queda a su nombre. Lo que su equipo tenía de ese plano pasa a trabajo\respaldo. Mientras
-   está tomado, nadie más puede subir encima (dos versiones de un DWG no se pueden juntar). Al
-   subir, el plano queda libre con la versión siguiente; «Soltar» lo libera sin subir. Uno
-   tomado por otro lo suelta un administrador (respuesta 17; el jefe de cubicaciones, cuando
-   exista el rol). Hecho el 20-nov. [Usuario 20-nov: «mi usuario Emilio podrá descargar el plano que tengo de martín de solier? el que ya avanzamos? sería clave que pudiera tomarlo y terminar la tarea él»; «pensaba que todos los usuarios tengan acceso a todo, eso sí con los bloqueos respectivos»]
-5. **Aviso de versión.** La lista de planos de ArmaScanner dice «Tomado por …» o «Hay versión
-   nueva», y al abrir un plano así pregunta antes («Planos en ArmaHub» › Tomar trae la nueva).
-   La copia vieja no se puede subir: ArmaHub la rechaza y dice cuál hay y de quién.
-6. **Una sola copia.** En R2 queda una copia vigente por plano. Respaldo sólo cuando (a) llega
-   una entrega nueva del calculista: se guarda la última versión trabajada de la revisión
-   anterior, o (b) el cubicador lo pide al subir por un cambio grande («Guardar respaldo de la
-   versión anterior»).
+**Vista previa sin CAD.** Convertir DWG en el servidor exige un servicio pagado (Autodesk APS u ODA; §0.6
+del programa). ArmaScanner ya tiene GStarCAD abierto: al terminar imprime el plano a PDF y lo sube con el
+DWG. ArmaHub lo muestra en un modal con el visor del navegador (zoom, búsqueda de texto): es la foto del
+plano al terminarlo, con las barras y ciclos dibujados; no es el DWG navegable por capas.
 
-**Ciclo de trabajo de un plano (hecho 20-nov, ArmaScanner 2026-11-20.2; falta el PDF).** **Antecedentes (2026-11-20.6):** todo plano cargado en ArmaScanner va también a ArmaHub en etapa «cargado» (`planos_obra.etapa`): a la vista de todos, disponible, sin edición; el cubicador elige si ahora, con «Cargar ahora» o al cerrar ArmaScanner. **Reportes:** `armascanner_reportes` (mig 172), ZIP en R2, lista y descarga en ArmaScanner › Planos (administrador). Términos de la interfaz, los de un sistema con bloqueo de edición: estado «Disponible» / «En edición por …», acción «Liberar»; no hay botón para tomar (ocurre al abrir). El guardado es automático y sin confirmación (un guardado que depende de aceptar deja la plataforma atrasada); confirman sólo «Liberar» y «Enviar pedido». Envía el pedido quien tiene el plano en edición, quien lo guardó por última vez o un administrador. ArmaScanner consulta a ArmaHub al abrir, al volver a la lista y cada minuto, y avisa de inmediato si el plano dejó de ser suyo. Nada de esto detiene el trabajo: todo corre en segundo plano salvo abrir (una consulta, 12 s de espera máxima). [Usuario 20-nov: «la idea es que un usuario pueda cerrar su trabajo, para que quede en la plataforma y lo tome otro usuario o el mismo en forma posterior… corremos riesgo de tener duplicados, si luego yo sigo trabajando (ya que tengo toda la data en mi computador)… esto requiere que la app abra y cierre los planos en GStar»]
-Dos cosas distintas que hoy hace un solo botón: **guardar el plano** en la plataforma (con su avance,
-terminado o no, también sin barras) y **enviar el pedido** (sus barras como carga). Y el bloqueo lo
-lleva la herramienta, no el usuario:
-1. **Abrir plano** = tomarlo: queda a tu nombre mientras trabajas. Uno tomado por otro no se abre
-   («Tomado por Emilio desde el …»). Si en ArmaHub hay una versión más nueva, se trae antes de abrir
-   (la copia vieja va al respaldo). Un plano que nunca subió se abre como hoy.
-2. **Cerrar el plano** (ventana del plano): ArmaScanner guarda, imprime el PDF, lo cierra en GStarCAD
-   y lo guarda en ArmaHub como la versión siguiente. Sigue a tu nombre: nadie lo toma hasta que lo
-   sueltes, pero la plataforma ya muestra su avance y su PDF.
-3. **Soltar** (lista de planos): queda libre para otro. Si hay cambios sin guardar en ArmaHub, los
-   guarda primero; si está abierto en GStarCAD, lo cierra. El de otro lo suelta un administrador.
-4. **Enviar pedido** (lista de planos o pestaña Planos de la obra): las barras de la versión en línea
-   entran a ArmaHub como la carga del plano (reemplazan las del mismo plano; la exportación sigue
-   bloqueada con barras sin aprobar). Independiente de soltar.
-5. **Sin internet:** se abre sólo lo que ya estaba a tu nombre; lo guardado queda «Sin subir» y sube
-   al volver la conexión. Sin duplicados posibles: el código del plano y los de sus barras viajan en
-   el paquete (otro usuario reemplaza las mismas barras), ArmaHub no acepta una copia vieja ni una
-   subida encima de un plano tomado por otro, y una copia que ya no es tuya no se abre.
+**Almacenamiento.** Un bucket, carpetas por obra (programa §0.3). Cada subida va a una clave única (uuid) y
+el archivo anterior se borra sólo después de que la base confirmó (dos subidas cruzadas no pueden borrar el
+archivo del que ganó). Se baja con un enlace firmado de vida corta.
 
-**Vista previa sin CAD.** Convertir DWG en el servidor exige un servicio pagado (Autodesk APS u
-ODA; §0.6 del programa). En cambio ArmaScanner ya tiene GStarCAD abierto: al subir imprime el
-plano a PDF y lo sube junto al DWG. ArmaHub lo muestra en un modal con el visor del navegador
-(zoom, búsqueda de texto). Es la foto del plano al momento de subirlo, con las barras y ciclos
-dibujados; no es el DWG navegable por capas.
+**Datos.** `planos_obra` (mig 169): obra, plano (nombre en ArmaScanner), número, título, revisión, elemento
+(ELEV · LCIELO · VCIELO · FUND), etapa (cargado · terminado · en_trabajo, ésta sólo para lo guardado a medias
+antes del 22-nov), archivo, PDF, resumen (barras, aprobadas, kg, m², por piso). `planos_obra_entregas` y
+`planos_obra_reemplazos` (mig 174), `armascanner_obras` (mig 177). Las columnas `tomado_por` / `tomado_el`
+quedaron sin uso.
 
-**Almacenamiento.** Un bucket, carpetas por obra (programa §0.3): el paquete de cada versión en
-`obras/{id}/planos/{huella del nombre}/v{n}.zip`; al subir la nueva, la anterior se borra (una
-sola copia). Respaldo (pendiente): `obras/{id}/planos/{plano}/respaldo/{fecha}/`. Se baja con un
-enlace firmado de vida corta, al tomarlo.
-
-**Datos.** Tabla `planos_obra` (mig 169): obra, plano (nombre en ArmaScanner), número, título,
-revisión, elemento (ELEV · LCIELO · VCIELO · FUND), versión, archivo, tamaño, tomado_por /
-tomado_el, subido_por / subido_el, barras, aprobadas, kg. Rutas (ficha de licencia):
-`GET /armascanner/planos`, `POST /armascanner/planos/tomar`, `POST /armascanner/planos/soltar`;
-la subida va por `POST /armascanner/subir-plano` con el paquete. Tabla `planos_obra_respaldos`: plano, versión, motivo, fecha,
-carpeta.
+**Desarrollo (23-nov, mig 178).** Un plano que el lector no reconoce lo manda el cubicador con «Enviar a
+desarrollo» (DWG + lo que ve cada lector); el administrador lo ve en la pestaña Desarrollo, un caso por
+plano, sólo para mirar: los estados los cambia el agente al resolver la lectura. Los reportes de errores van
+en Uso.
 
 ### 5.5 Permisos
 
