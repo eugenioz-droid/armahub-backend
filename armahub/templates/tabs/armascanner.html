@@ -6,8 +6,9 @@
      Protocolo y Terreno (los planos van dentro de la obra: ya no hay pestaña Planos).
      Agregar obra (23-nov): la obra se agrega aquí primero, de la lista de aSa Studio, y recién ahí
      ArmaScanner la muestra; el administrador la limpia o la elimina desde su ventana.
-     Desarrollo (23-nov, administrador): los planos que el lector no reconoce y los reportes que mandan
-     los cubicadores, con su estado; y las oficinas de cálculo con el lector que lee sus planos. -->
+     Desarrollo (23-nov, administrador): un caso por plano (los planos que el lector no reconoce y los
+     reportes que mandan los cubicadores son su historial), con su estado; y las oficinas de cálculo
+     con el lector que lee sus planos. -->
 <style>
   .asc { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .asc .asc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -18,6 +19,7 @@
   .asc .asc-modal__caja.asc-agregar { max-width: 760px; }
   .asc .asc-lector { max-width: 360px; font-size: 12px; color: var(--arm-text-muted); white-space: pre-wrap; }
   .asc .asc-of-edit .arm-input { width: 100%; }
+  .asc .asc-hist td { background: var(--arm-background); font-size: 12px; }
   .asc .arm-button, .asc .arm-input { font-size: 13px; }
   .asc .asc-seg { display: inline-flex; gap: 4px; }
   .asc .asc-seg .arm-button { min-height: 32px; padding: 4px 12px; font-weight: 500; }
@@ -314,7 +316,7 @@
       <div class="arm-kpi"><div class="arm-kpi__label">Nuevos</div><div class="arm-kpi__value" id="ascDevNuevos">—</div></div>
       <div class="arm-kpi"><div class="arm-kpi__label">En estudio</div><div class="arm-kpi__value" id="ascDevEstudio">—</div></div>
       <div class="arm-kpi"><div class="arm-kpi__label">Resueltos</div><div class="arm-kpi__value" id="ascDevResueltos">—</div></div>
-      <div class="arm-kpi"><div class="arm-kpi__label">Oficinas</div><div class="arm-kpi__value" id="ascDevOficinas">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Oficinas</div><div class="arm-kpi__value" id="ascDevNumOf">—</div></div>
     </div>
     <div class="arm-card">
       <div class="asc-barra">
@@ -325,7 +327,7 @@
         </span>
       </div>
       <table class="arm-table">
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Obra · plano</th><th>Cubicador</th><th>Detalle</th><th></th></tr></thead>
+        <thead><tr><th>Estado</th><th>Plano</th><th>Último envío</th><th>Detalle</th><th></th></tr></thead>
         <tbody id="ascDevCasos"></tbody>
       </table>
       <div id="ascDevVacio" class="asc-vacio" style="display:none;"></div>

@@ -48,7 +48,7 @@ check("las acciones de la etapa 1", set(CH.TOOL_PROPONER["input_schema"]["proper
     "aprobar", "quitar_aprobacion", "observar", "quitar_observacion", "excluir", "incluir", "fabricacion",
     "consultar", "crear_barras"})
 check("los modelos del selector, Sonnet 5.5 por defecto",
-      CH.MODELOS == ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1")
+      CH.MODELOS == ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
       and CH.MODELO == "claude-sonnet-5-5")
 check("el prompt de sistema es corto y dice el estándar",
       len(CH.SISTEMA) < 2500 and "Propones y el cubicador confirma" in CH.SISTEMA and "No inventas" in CH.SISTEMA

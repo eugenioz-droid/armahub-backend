@@ -56,7 +56,7 @@ router = APIRouter()
 logger = logging.getLogger("armahub.armascanner_chat")
 
 # Los modelos que el cubicador puede elegir en el chat; el primero es el de siempre.
-MODELOS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1")
+MODELOS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
 MODELO = os.getenv("ARMASCANNER_CHAT_MODELO", MODELOS[0])
 # Esfuerzo: «low» — armar un criterio es extracción simple y el chat tiene que contestar rápido.
 # Si las propuestas salen mal armadas, subir a «medium».

@@ -675,8 +675,12 @@
   // las oficinas de cálculo, con el lector que lee sus planos. [Usuario 23-nov: «un flujo que no dependa
   // de estar enviando planos manualmente sin control ni trazabilidad»; «un pequeño apartado donde
   // listemos las oficinas de cálculo… así se va estableciendo una base de conocimiento»] ──
-  var ESTADO_DEV = { nuevo: ['Nuevo', 'arm-tag--warning'], en_estudio: ['En estudio', ''],
+  // El caso es el plano: sus envíos son el historial; resolverlo resuelve todos. [Usuario 23-nov: «más
+  // que cada prueba que se hizo (que se puede guardar el historial…) es saber que ese plano ya se
+  // resolvió»; «el botón confunde»: los botones dicen lo que hacen]
+  var ESTADO_DEV = { nuevo: ['Nuevo', 'arm-tag--warning'], en_estudio: ['En estudio', 'arm-tag--info'],
                      resuelto: ['Resuelto', 'arm-tag--success'], descartado: ['Descartado', ''] };
+  var TIPO_DEV = { plano: 'No se lee', reporte: 'Reporte' };
 
   async function cargarDesarrollo() {
     if (!est.devListo) {
@@ -700,38 +704,57 @@
     pintarOficinas();
   }
 
+  function abiertoDev(c) { return c.estado === 'nuevo' || c.estado === 'en_estudio'; }
+
+  function botonDev(texto, accion) {
+    return '<button type="button" class="arm-button" onclick="' + accion + '">' + texto + '</button>';
+  }
+
+  function estadoDev(c) {
+    var e = ESTADO_DEV[c.estado] || [c.estado, ''];
+    return '<td><span class="arm-tag ' + e[1] + '">' + e[0] + '</span>' +
+      (c.estado === 'resuelto' && c.version_resuelto ? '<div class="asc-linea">' + esc(c.version_resuelto) + '</div>' : '') + '</td>';
+  }
+
+  function detalleDev(c) {
+    return '<td><div class="asc-lector">' + esc([c.comentario, c.lector].filter(Boolean).join('\n')) + '</div>' +
+      (c.nota ? '<div class="asc-linea">' + esc(c.nota) + '</div>' : '') + '</td>';
+  }
+
   function pintarCasos() {
     var casos = est.dev.casos || [];
     var cuenta = function (e) { return casos.filter(function (c) { return c.estado === e; }).length; };
     poner('ascDevNuevos', entero(cuenta('nuevo')));
     poner('ascDevEstudio', entero(cuenta('en_estudio')));
     poner('ascDevResueltos', entero(cuenta('resuelto')));
-    var filas = casos.filter(function (c) { return est.devVer === 'todos' || c.estado === 'nuevo' || c.estado === 'en_estudio'; });
+    var filas = casos.filter(function (c) { return est.devVer === 'todos' || abiertoDev(c); });
     document.getElementById('ascDevCasos').innerHTML = filas.map(function (c) {
-      var e = ESTADO_DEV[c.estado] || [c.estado, ''];
-      var acciones = '<button type="button" class="arm-button" onclick="ascDescargarReporte(' + c.id + ')">Descargar</button>' +
-        (c.estado === 'nuevo' ? '<button type="button" class="arm-button" onclick="ascCaso(' + c.id + ', \'en_estudio\')">En estudio</button>' : '') +
-        (c.estado === 'nuevo' || c.estado === 'en_estudio'
-          ? '<button type="button" class="arm-button arm-button--primary" onclick="ascCaso(' + c.id + ', \'resuelto\')">Resuelto</button>' +
-            '<button type="button" class="arm-button" onclick="ascCaso(' + c.id + ', \'descartado\')">Descartar</button>'
-          : '<button type="button" class="arm-button" onclick="ascCaso(' + c.id + ', \'en_estudio\')">Reabrir</button>');
-      var detalle = [c.comentario, c.lector].filter(Boolean).join('\n');
-      var cierre = c.estado === 'resuelto' ? (c.version_resuelto ? 'Resuelto en ' + c.version_resuelto : '') : '';
-      return '<tr><td>' + esc(c.el) + '</td>' +
-        '<td><span class="arm-tag">' + (c.tipo === 'plano' ? 'Plano' : 'Reporte') + '</span></td>' +
-        '<td><span class="arm-tag ' + e[1] + '">' + e[0] + '</span></td>' +
-        '<td>' + esc(c.obra) + (c.plano ? '<div class="asc-linea">' + esc(c.plano) + '</div>' : '') +
-          (c.oficina ? '<div class="asc-linea">' + esc(c.oficina) + '</div>' : '') + '</td>' +
-        '<td>' + esc(c.usuario) + '<div class="asc-linea">' + esc([c.equipo, c.version].filter(Boolean).join(' · ')) + '</div></td>' +
-        '<td><div class="asc-lector">' + esc(detalle) + '</div>' +
-          (c.nota || cierre ? '<div class="asc-linea">' + esc([cierre, c.nota].filter(Boolean).join(' · ')) + '</div>' : '') + '</td>' +
-        '<td class="asc-acciones"><div>' + acciones + '</div></td></tr>';
+      var n = c.envios.length, abierto = est.devHistorial === c.id;
+      var acciones = botonDev('Descargar', 'ascDescargarReporte(' + c.id + ')') +
+        (n > 1 ? botonDev(abierto ? 'Ocultar historial' : 'Historial (' + n + ')', 'ascHistorial(' + c.id + ')') : '') +
+        (abiertoDev(c) ? botonDev('Resolver', 'ascCaso(' + c.id + ', \'resuelto\')') + botonDev('Descartar', 'ascCaso(' + c.id + ', \'descartado\')')
+          : botonDev('Reabrir', 'ascCaso(' + c.id + ', \'en_estudio\')'));
+      var fila = '<tr>' + estadoDev(c) +
+        '<td>' + esc(c.plano || 'Sin plano') + '<div class="asc-linea">' + esc([c.obra, c.oficina].filter(Boolean).join(' · ')) + '</div></td>' +
+        '<td>' + esc(c.el) + '<div class="asc-linea">' + esc([c.usuario, c.version].filter(Boolean).join(' · ')) + '</div></td>' +
+        detalleDev(c) + '<td class="asc-acciones"><div>' + acciones + '</div></td></tr>';
+      if (!abierto) return fila;
+      return fila + c.envios.map(function (e) {
+        return '<tr class="asc-hist">' + estadoDev(e) + '<td>' + (TIPO_DEV[e.tipo] || esc(e.tipo)) + '</td>' +
+          '<td>' + esc(e.el) + '<div class="asc-linea">' + esc([e.usuario, e.equipo, e.version].filter(Boolean).join(' · ')) + '</div></td>' +
+          detalleDev(e) + '<td class="asc-acciones"><div>' + botonDev('Descargar', 'ascDescargarReporte(' + e.id + ')') + '</div></td></tr>';
+      }).join('');
     }).join('');
     var vacio = document.getElementById('ascDevVacio');
     vacio.style.display = filas.length ? 'none' : '';
     vacio.textContent = est.devSinRespuesta ? 'No se pudieron leer los casos. Recarga la página.'
       : est.devVer === 'todos' ? 'Sin casos.' : 'Sin casos abiertos.';
   }
+
+  global.ascHistorial = function (id) {
+    est.devHistorial = est.devHistorial === id ? null : id;
+    pintarCasos();
+  };
 
   global.ascCaso = async function (id, estado) {
     var cuerpo = { estado: estado };
@@ -746,14 +769,14 @@
     }
     var data = await postJson('/armascanner/desarrollo/' + id, cuerpo);
     if (!data) return;
-    global.showToast(estado === 'resuelto' ? 'Caso resuelto: se avisó al cubicador.' : estado === 'descartado'
-      ? 'Caso descartado: se avisó al cubicador.' : 'Caso en estudio.', 'success');
+    global.showToast(estado === 'resuelto' ? 'Plano resuelto: se avisó a quienes lo enviaron.' : estado === 'descartado'
+      ? 'Plano descartado: se avisó a quienes lo enviaron.' : 'Caso en estudio.', 'success');
     await cargarDesarrollo();
   };
 
   function pintarOficinas() {
     var of = est.dev.oficinas || [];
-    poner('ascDevOficinas', entero(of.length));
+    poner('ascDevNumOf', entero(of.length));
     document.getElementById('ascDevOficinas').innerHTML = of.map(function (o) {
       if (est.devEditando === o.id) {
         return '<tr class="asc-of-edit"><td>' + esc(o.nombre) + '</td>' +
@@ -791,9 +814,13 @@
     global.ascEditarOficina(est.devEditando === id && !lector && !notas ? id : 0);
   }
 
+  // Descargar un caso nuevo lo pasa a «En estudio» (lo mismo que hace el agente al bajarlo).
   global.ascDescargarReporte = async function (id) {
     var v = await global.apiGet('/armascanner/reportes/' + id + '/descarga');
-    if (v && v.url) window.location.href = v.url;
+    if (!v || !v.url) return;
+    window.location.href = v.url;
+    var c = ((est.dev && est.dev.casos) || []).find(function (x) { return x.envios.some(function (e) { return e.id === id; }); });
+    if (c && c.estado === 'nuevo' && await postJson('/armascanner/desarrollo/' + id, { estado: 'en_estudio' })) await cargarDesarrollo();
   };
 
   // ── Instalar ──
