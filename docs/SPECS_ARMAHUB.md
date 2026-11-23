@@ -1279,7 +1279,9 @@ que se rigidiza mucho la plataforma»; 22-nov: el plano nace y se trabaja en el 
 desde la página.]
 - **La obra primero en ArmaHub (23-nov, mig 177).** Se agrega en Mis obras («Agregar obra», de la lista de
   aSa Studio; cualquier cubicador) y recién ahí ArmaScanner la muestra. El administrador la «Limpia» (sus
-  planos, archivos y barras en despieces) o la «Elimina» (además sale de la lista), escribiendo la palabra.
+  planos, archivos y barras en despieces) o la «Elimina» (además sale de la lista), escribiendo la palabra;
+  es todo o nada (una transacción; R2 se borra después). «Terminar» sólo sube a una obra de Mis obras: nunca
+  la agrega ni vuelve a meter una eliminada (si no está, 409 «agrégala ahí»).
 - **Nadie toma un plano.** Abrirlo o tenerlo en ArmaScanner no pide conexión, no bloquea a nadie y no sube
   nada. La carga automática de antecedentes (etapa «cargado») está en pausa: vuelve cuando se defina la
   aprobación del cliente.
@@ -1293,7 +1295,8 @@ desde la página.]
   la versión nueva. Mientras haya un reemplazo aceptado, el pedido de despiece no sale. Avisos en la campana
   («Reemplazo de plano»). Al abrir un plano que terminó otro, ArmaScanner avisa antes.
 - **Enviar pedido** (lista de planos de ArmaScanner o ventana de la obra en Mis obras): las barras de la
-  entrega entran a ArmaHub como la carga del plano (reemplazan las del mismo plano). Aparte de Terminar.
+  entrega entran a ArmaHub como la carga del plano (reemplazan las del mismo plano). Aparte de Terminar. El
+  pedido queda anotado sólo si el plano no cambió mientras se importaba (si cambió, 409: hay que reenviarlo).
 
 **Qué se guarda.** Sólo los planos terminados con ArmaScanner (respuesta 19). Los originales del calculista
 no se suben; la gestión documental completa llega cuando entre el cliente.
@@ -1315,7 +1318,7 @@ quedaron sin uso.
 
 **Desarrollo (23-nov, mig 178).** Un plano que el lector no reconoce lo manda el cubicador con «Enviar a
 desarrollo» (DWG + lo que ve cada lector); el administrador lo ve en la pestaña Desarrollo, un caso por
-plano, sólo para mirar: los estados los cambia el agente al resolver la lectura. Los reportes de errores van
+plano de cada obra (obra + plano: dos obras con un «E-01» son dos casos), sólo para mirar: los estados los cambia el agente al resolver la lectura. Los reportes de errores van
 en Uso.
 
 ### 5.5 Permisos
