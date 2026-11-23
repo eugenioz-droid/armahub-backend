@@ -1,12 +1,12 @@
 """
 La base de los planos de las obras: `planos_obra` (una fila por plano), su entrega
 (`planos_obra_entregas`) y sus pedidos de reemplazo (`planos_obra_reemplazos`). Leer, reservar la fila del plano,
-ponerla al día y eliminarla.
+ponerla al día y eliminarla. Sin HTTP: quien llama responde.
 """
 
-from fastapi import HTTPException
-
 from .comun import _cuando
+
+NO_ESTA = "Ese plano no está en ArmaHub."
 
 
 # ══════ Planos de las obras: antecedentes y una entrega por plano, sin bloqueo (mig 169 y 174; SPECS §5.4) ══════
@@ -119,11 +119,11 @@ def _eliminar_plano(cur, email: str, obra: str, plano: str, con_barras: bool) ->
     pedidos de reemplazo que corren (quedan anulados) y, con `con_barras`, las barras que mandó a los
     despieces (las de sus códigos de carga; nunca lo ingresado a mano). Devuelve {version, entrega (si
     tenía), barras (borradas), claves (las keys de R2 que quedan sin uso)}: quien llama las borra de R2
-    recién confirmada la base."""
+    recién confirmada la base. None si el plano no está (quien llama responde 404: NO_ESTA)."""
     borradas = 0
     fila = _fila_base(cur, obra, plano, exclusiva=True)
     if not fila:
-        raise HTTPException(status_code=404, detail="Ese plano no está en ArmaHub.")
+        return None
     cur.execute("SELECT codigos FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (obra, plano))
     codigos = cur.fetchone()[0]
     codigos = [c for c in (codigos if isinstance(codigos, list) else []) if isinstance(c, str) and c.strip()]

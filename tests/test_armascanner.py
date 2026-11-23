@@ -89,7 +89,7 @@ check("estado del pedido", (A.estado_pedido(3, None), A.estado_pedido(3, 3), A.e
       == ("sin_enviar", "enviado", "cambios"))
 check("Mis obras: todos ven todas las obras de ArmaScanner (los planos sin filtro por usuario)",
       'FROM planos_obra WHERE id_proyecto IN (SELECT id_proyecto FROM armascanner_obras)""")'
-      in inspect.getsource(A.obras_linea))
+      in inspect.getsource(A._leer_obras))
 check("cargar y terminar no cargan barras como despiece (eso es el pedido)",
       "_cargar_barras" not in inspect.getsource(A.guardar_plano) + inspect.getsource(A.terminar_plano))
 check("versiones por número: .10 es más nueva que .9, y sin punto es la más vieja",

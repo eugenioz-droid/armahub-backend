@@ -4,7 +4,7 @@ en ArmaHub primero, desde la lista de aSa, y recién ahí ArmaScanner la muestra
 elimina. Y la sección aSa de la ventana de la obra.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ from ..db import audit, get_conn
 from ..licencias import _bearer
 from .acceso import _con_licencia_o_admin, _es_admin, _usuario
 from .comun import _borrar, _cuando
-from .datos import _eliminar_plano, _entregas, _reemplazos
+from .datos import NO_ESTA, _eliminar_plano, _entregas, _reemplazos
 from .kpis import kpis_de, plano_para_kpis, tabla_por_piso
 from .reglas import estado_pedido, reemplazados
 
@@ -111,6 +111,8 @@ def quitar_obra(datos: QuitarObra, admin=Depends(require_admin_or_admin_calidad)
             cur.execute("SELECT plano FROM planos_obra WHERE id_proyecto = %s ORDER BY plano", (datos.obra,))
             planos = [r[0] for r in cur.fetchall()]
             hechos = [_eliminar_plano(cur, email, datos.obra, p, True) for p in planos]
+            if None in hechos:  # otro lo eliminó en este mismo instante: no se hace nada
+                raise HTTPException(status_code=404, detail=NO_ESTA)
             if datos.eliminar:
                 cur.execute("DELETE FROM armascanner_obras WHERE id_proyecto = %s", (datos.obra,))
     _borrar(*[c for x in hechos for c in x["claves"]])
@@ -133,58 +135,72 @@ def obras_linea(user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             _con_licencia_o_admin(cur, user)
-            cur.execute("""SELECT id_proyecto, plano, etapa, elemento, resumen, barras, aprobadas, kg, relacion,
-                                  relacion_de, version, pedido_version, subido_el
-                             FROM planos_obra WHERE id_proyecto IN (SELECT id_proyecto FROM armascanner_obras)""")
-            filas = cur.fetchall()
-            cur.execute("SELECT id_proyecto, agregada_el FROM armascanner_obras")
-            agregadas = dict(cur.fetchall())
-            ids = sorted(agregadas)
-            info = {}
-            if ids:
-                cur.execute("""SELECT pr.id_proyecto, pr.nombre_proyecto, COALESCE(pr.asa_job_id, ''),
-                                      COALESCE(ao.cliente, ''), COALESCE(co.nombre, '')
-                                 FROM proyectos pr
-                                 LEFT JOIN asa_obras ao ON ao.asa_job_id = pr.asa_job_id
-                                 LEFT JOIN constructoras co ON co.id = pr.constructora_id
-                                WHERE pr.id_proyecto = ANY(%s)""", (ids,))
-                info = {f[0]: f[1:] for f in cur.fetchall()}
+            filas, agregadas, info = _leer_obras(cur)
             entregas, pedidos = _entregas(cur), _reemplazos(cur)
             fuera = reemplazados([(f[0], f[1], f[8], f[9]) for f in filas])
-    obras = {}
-
-    def de(obra):  # la obra en la lista; sin planos, su actividad es la fecha en que se agregó
-        nombre, asa, cliente, constructora = info.get(obra) or (obra, "", "", "")
-        return obras.setdefault(obra, {"id": obra, "nombre": nombre or obra, "asa": asa, "cliente": cliente,
-                                       "constructora": constructora, "planos": 0, "terminados": 0, "cargados": 0,
-                                       "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
-                                       "_ultima": agregadas.get(obra), "_kpis": []})
-
-    for obra in agregadas:
-        de(obra)
-    for (obra, plano, etapa, elemento, resumen, barras, aprobadas, kg, _rel, _de, version, pedido_version,
-         subido_el) in filas:
-        o = de(obra)
-        o["planos"] += 1
-        etapa = etapa or ""
-        o["terminados"] += etapa == "terminado"
-        o["cargados"] += etapa == "cargado"
-        e = entregas.get((obra, plano))
-        o["reemplazos"] += sum(1 for r in pedidos.get((obra, plano), [])
-                               if r["estado"] == "pendiente" and e and r["autor"] == e["autor"])
-        if subido_el and (o["_ultima"] is None or subido_el > o["_ultima"]):
-            o["_ultima"] = subido_el
-        if etapa == "cargado" or (obra, plano) in fuera:
-            continue
-        r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "kg": float(kg or 0)}
-        o["consultas"] += int(r.get("consultas") or 0)
-        o["sin_enviar"] += estado_pedido(version, pedido_version) != "enviado"
-        o["_kpis"].append(plano_para_kpis(r, elemento))
+    obras = {obra: _obra_vacia(obra, info, agregadas) for obra in agregadas}
+    for f in filas:
+        if f[0] not in obras:
+            obras[f[0]] = _obra_vacia(f[0], info, agregadas)
+        _sumar_plano(obras[f[0]], f, entregas.get((f[0], f[1])), pedidos.get((f[0], f[1]), []), (f[0], f[1]) in fuera)
     lista = sorted(obras.values(), key=lambda o: (o["_ultima"] is None, -(o["_ultima"].timestamp() if o["_ultima"]
                                                                          else 0), str(o["nombre"])))
     return {"admin": _es_admin(user),
             "obras": [dict({k: v for k, v in o.items() if not k.startswith("_")}, ultima=_cuando(o["_ultima"]),
                            kpis=kpis_de(o["_kpis"]), por_piso=tabla_por_piso(o["_kpis"])) for o in lista]}
+
+
+def _leer_obras(cur) -> tuple:
+    """(los planos de las obras de ArmaScanner, {obra: cuándo se agregó}, {obra: (nombre, código de aSa,
+    cliente, constructora)})."""
+    cur.execute("""SELECT id_proyecto, plano, etapa, elemento, resumen, barras, aprobadas, kg, relacion,
+                          relacion_de, version, pedido_version, subido_el
+                     FROM planos_obra WHERE id_proyecto IN (SELECT id_proyecto FROM armascanner_obras)""")
+    filas = cur.fetchall()
+    cur.execute("SELECT id_proyecto, agregada_el FROM armascanner_obras")
+    agregadas = dict(cur.fetchall())
+    ids = sorted(agregadas)
+    info = {}
+    if ids:
+        cur.execute("""SELECT pr.id_proyecto, pr.nombre_proyecto, COALESCE(pr.asa_job_id, ''),
+                              COALESCE(ao.cliente, ''), COALESCE(co.nombre, '')
+                         FROM proyectos pr
+                         LEFT JOIN asa_obras ao ON ao.asa_job_id = pr.asa_job_id
+                         LEFT JOIN constructoras co ON co.id = pr.constructora_id
+                        WHERE pr.id_proyecto = ANY(%s)""", (ids,))
+        info = {f[0]: f[1:] for f in cur.fetchall()}
+    return filas, agregadas, info
+
+
+def _obra_vacia(obra, info, agregadas) -> dict:
+    """La obra en la lista, antes de sumar sus planos; sin planos, su actividad es la fecha en que se agregó."""
+    nombre, asa, cliente, constructora = info.get(obra) or (obra, "", "", "")
+    return {"id": obra, "nombre": nombre or obra, "asa": asa, "cliente": cliente, "constructora": constructora,
+            "planos": 0, "terminados": 0, "cargados": 0, "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
+            "_ultima": agregadas.get(obra), "_kpis": []}
+
+
+def _sumar_plano(o, f, e, pedidos, reemplazado: bool):
+    """Suma un plano (fila de _leer_obras) a su obra: su etapa, los reemplazos pedidos sobre su entrega `e`,
+    su actividad y, si sus barras cuentan (no es sólo un antecedente ni lo reemplaza otro), sus KPIs."""
+    etapa, subido_el = f[2] or "", f[12]
+    o["planos"] += 1
+    o["terminados"] += etapa == "terminado"
+    o["cargados"] += etapa == "cargado"
+    o["reemplazos"] += sum(1 for r in pedidos if r["estado"] == "pendiente" and e and r["autor"] == e["autor"])
+    if subido_el and (o["_ultima"] is None or subido_el > o["_ultima"]):
+        o["_ultima"] = subido_el
+    if etapa != "cargado" and not reemplazado:
+        _sumar_kpis(o, f)
+
+
+def _sumar_kpis(o, f):
+    """Lo que suma a su obra un plano con barras: sus consultas, su pedido sin enviar y sus KPIs."""
+    elemento, resumen, barras, aprobadas, kg, version, pedido_version = f[3], f[4], f[5], f[6], f[7], f[10], f[11]
+    r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "kg": float(kg or 0)}
+    o["consultas"] += int(r.get("consultas") or 0)
+    o["sin_enviar"] += estado_pedido(version, pedido_version) != "enviado"
+    o["_kpis"].append(plano_para_kpis(r, elemento))
 
 
 # ── La sección aSa de la ventana de la obra: qué parte de cada plano está en aSa y con qué códigos ──
@@ -228,11 +244,7 @@ def cruce_asa(combos, codigos) -> dict:
     plano mandó a los despieces; `codigos`: [{cc, descr, kg, estado, fecha}] de la obra en aSa.
     → {kg, kg_en_asa, pct, codigos (los que calzan), faltan (lo que no tiene código: «LCIELO P5 C3»)}.
     Un código calza si su descripción dice el mismo sector, piso y ciclo. Función pura."""
-    por = {}
-    for c in codigos:
-        k = ubicacion_de_codigo(c.get("descr"))
-        if k:
-            por.setdefault(k, []).append(c)
+    por = _por_ubicacion(codigos)
     kg = en = 0.0
     calzan, faltan = [], []
     for sector, piso, ciclo, k_kg in combos:
@@ -245,6 +257,16 @@ def cruce_asa(combos, codigos) -> dict:
             faltan.append(" ".join(x for x in k if x))
     return {"kg": round(kg, 1), "kg_en_asa": round(en, 1), "pct": round(100 * en / kg) if kg else None,
             "codigos": calzan, "faltan": faltan}
+
+
+def _por_ubicacion(codigos) -> dict:
+    """{(SECTOR, PISO, CICLO): [código…]} de los códigos cuya descripción dice los tres."""
+    por = {}
+    for c in codigos:
+        k = ubicacion_de_codigo(c.get("descr"))
+        if k:
+            por.setdefault(k, []).append(c)
+    return por
 
 
 @router.get("/armascanner/obras-linea/asa")
@@ -261,33 +283,44 @@ def asa_de_obra(obra: str, user=Depends(get_current_user)):
             cur.execute("""SELECT plano, etapa, codigos, version, pedido_version
                              FROM planos_obra WHERE id_proyecto = %s""", (obra,))
             planos = cur.fetchall()
-            de_codigo = {c: p[0] for p in planos for c in (p[2] if isinstance(p[2], list) else [])
-                         if isinstance(c, str) and c.strip()}
-            combos = {}
-            if de_codigo:
-                cur.execute("""SELECT plano_code, COALESCE(sector, ''), COALESCE(piso, ''), COALESCE(ciclo, ''),
-                                      COALESCE(SUM(peso_total), 0)
-                                 FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)
-                                GROUP BY plano_code, sector, piso, ciclo""", (obra, sorted(de_codigo)))
-                for code, s, p, c, kg in cur.fetchall():
-                    combos.setdefault(de_codigo[code], []).append((s, p, c, float(kg or 0)))
-            codigos, al = [], None
-            if job:
-                cur.execute("""SELECT control_code, COALESCE(descr, ''), COALESCE(kg, 0), COALESCE(estado, ''), order_date
-                                 FROM asa_pedidos WHERE asa_job_id = %s AND (estado IS NULL OR estado <> %s)
-                                ORDER BY order_date, control_code""", (job, ESTADO_ANULADO))
-                codigos = [{"cc": r[0], "descr": r[1], "kg": round(float(r[2]), 1), "estado": r[3],
-                            "fecha": r[4].isoformat() if hasattr(r[4], "isoformat") else (r[4] or "")}
-                           for r in cur.fetchall()]
-                cur.execute("SELECT MAX(fin) FROM asa_sync WHERE ok")
-                al = cur.fetchone()[0]
-    out = []
-    for plano, etapa, _c, version, pedido_version in planos:
-        if etapa == "cargado":
-            continue
-        pedido = estado_pedido(version, pedido_version)
-        x = cruce_asa(combos.get(plano, []), codigos) if pedido != "sin_enviar" \
-            else {"kg": None, "kg_en_asa": None, "pct": None, "codigos": [], "faltan": []}
-        out.append(dict(x, plano=plano, pedido=pedido))
+            combos = _combos_de(cur, obra, planos)
+            codigos, al = _codigos_asa(cur, job) if job else ([], None)
+    out = [_cruce_del_plano(p[0], combos.get(p[0], []), codigos, p[3], p[4]) for p in planos if p[1] != "cargado"]
     return {"asa": job, "al": _cuando(al) if hasattr(al, "astimezone") else "", "codigos": len(codigos),
             "kg": round(sum(c["kg"] for c in codigos), 1), "planos": out}
+
+
+def _combos_de(cur, obra: str, planos) -> dict:
+    """{plano: [(sector, piso, ciclo, kg)]} de las barras que cada plano mandó a los despieces (por sus
+    códigos de carga)."""
+    de_codigo = {c: p[0] for p in planos for c in (p[2] if isinstance(p[2], list) else [])
+                 if isinstance(c, str) and c.strip()}
+    combos = {}
+    if de_codigo:
+        cur.execute("""SELECT plano_code, COALESCE(sector, ''), COALESCE(piso, ''), COALESCE(ciclo, ''),
+                              COALESCE(SUM(peso_total), 0)
+                         FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)
+                        GROUP BY plano_code, sector, piso, ciclo""", (obra, sorted(de_codigo)))
+        for code, s, p, c, kg in cur.fetchall():
+            combos.setdefault(de_codigo[code], []).append((s, p, c, float(kg or 0)))
+    return combos
+
+
+def _codigos_asa(cur, job: str) -> tuple:
+    """([{cc, descr, kg, estado, fecha}] de la obra en el espejo de aSa, sin los anulados; cuándo se refrescó)."""
+    cur.execute("""SELECT control_code, COALESCE(descr, ''), COALESCE(kg, 0), COALESCE(estado, ''), order_date
+                     FROM asa_pedidos WHERE asa_job_id = %s AND (estado IS NULL OR estado <> %s)
+                    ORDER BY order_date, control_code""", (job, ESTADO_ANULADO))
+    codigos = [{"cc": r[0], "descr": r[1], "kg": round(float(r[2]), 1), "estado": r[3],
+                "fecha": r[4].isoformat() if hasattr(r[4], "isoformat") else (r[4] or "")}
+               for r in cur.fetchall()]
+    cur.execute("SELECT MAX(fin) FROM asa_sync WHERE ok")
+    return codigos, cur.fetchone()[0]
+
+
+def _cruce_del_plano(plano: str, combos, codigos, version, pedido_version) -> dict:
+    """El cruce de un plano con aSa (cruce_asa) y el estado de su pedido; sin pedido enviado, vacío."""
+    pedido = estado_pedido(version, pedido_version)
+    x = cruce_asa(combos, codigos) if pedido != "sin_enviar" \
+        else {"kg": None, "kg_en_asa": None, "pct": None, "codigos": [], "faltan": []}
+    return dict(x, plano=plano, pedido=pedido)
