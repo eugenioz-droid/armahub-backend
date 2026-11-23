@@ -116,7 +116,7 @@ check("500 genérico: pasajero, con el detalle", CH.explicar_error(500, "boom").
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from armahub import armascanner as A  # noqa: E402
+from armahub.armascanner import acceso as A  # noqa: E402
 from armahub.db import _split_sql_statements  # noqa: E402
 
 sqlite3.register_converter("JSONB", json.loads)

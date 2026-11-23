@@ -49,7 +49,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
-from . import armascanner as A
+from .armascanner import acceso
 from .db import get_conn
 from .licencias import _bearer
 
@@ -459,7 +459,7 @@ def chat(cuerpo: ChatBody, credentials: HTTPAuthorizationCredentials = Depends(_
         raise HTTPException(status_code=400, detail=f"Modelo «{modelo}» no disponible. Valen: {', '.join(MODELOS)}.")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            email = A._usuario(cur, credentials.credentials)["email"]
+            email = acceso._usuario(cur, credentials.credentials)["email"]
             _tope(cur, email)
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise HTTPException(status_code=503, detail="El chat no está configurado en el servidor (falta la clave de la "
@@ -551,7 +551,7 @@ def chat_resultado(cuerpo: ResultadoBody, credentials: HTTPAuthorizationCredenti
         raise HTTPException(status_code=400, detail=f"Resultado «{cuerpo.resultado}» desconocido.")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            email = A._usuario(cur, credentials.credentials)["email"]
+            email = acceso._usuario(cur, credentials.credentials)["email"]
             cur.execute("SELECT eventos FROM armascanner_chat WHERE id = %s AND usuario = %s", (cuerpo.id, email))
             fila = cur.fetchone()
             if not fila:

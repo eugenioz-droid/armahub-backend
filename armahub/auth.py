@@ -345,7 +345,7 @@ def me(user=Depends(get_current_user)):
             ultima_carga = _asa_ultima_carga(cur, row[1])
             # Las herramientas con licencia vigente: la caluga ArmaScanner se muestra a quien
             # la tiene (registry.js, `licencia`), aunque su rol no la abra. [Usuario 19-nov]
-            from .armascanner import licencias_vigentes
+            from .armascanner.acceso import licencias_vigentes
             licencias = licencias_vigentes(cur, email)
     areas = [{"area_id": r[0], "area_nombre": r[1], "area_slug": r[2]} for r in areas_rows]
     return {"email": email, "role": row[1], "nombre": row[2], "apellido": row[3], "areas": areas,

@@ -19,7 +19,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("JWT_SECRET", "test-local-secret-que-no-vale-en-produccion")
 
-from armahub import armascanner as A  # noqa: E402
+from armahub import armascanner  # noqa: E402
+from paquete_entero import Entero  # noqa: E402  (tests/, que Python pone en sys.path al correr este archivo)
+
+# Las pruebas son de cuando armascanner era un solo archivo (antes del 23-nov): A es el paquete como uno solo.
+A = Entero(armascanner)
 
 fallos = 0
 
