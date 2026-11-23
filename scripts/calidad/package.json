@@ -1,0 +1,8 @@
+{
+  "name": "armahub-calidad",
+  "private": true,
+  "description": "Medidor de calidad de ArmaHub (PROTOCOLO_GENERAL_REP §10): ESLint sólo para la regla complexity.",
+  "devDependencies": {
+    "eslint": "10.15.0"
+  }
+}

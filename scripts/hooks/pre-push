@@ -1,0 +1,16 @@
+#!/bin/sh
+# El push a main publica ArmaHub en Render: la calidad del código no puede empeorar (PROTOCOLO_GENERAL_REP §10).
+# Mide cada commit que se sube —no lo que haya sin guardar en la carpeta— contra la base que ese commit trae.
+# Se activa una vez por clon: git config core.hooksPath scripts/hooks
+cero=0000000000000000000000000000000000000000
+py_cmd="py -3.12"
+$py_cmd -c "import pyflakes" 2>/dev/null || py_cmd="python"
+while read local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$cero" ] && continue
+  if ! $py_cmd scripts/calidad/calidad.py --ref "$local_sha"; then
+    echo ""
+    echo "La calidad del código empeoró: no se sube. Para ver todo: py -3.12 scripts/calidad/calidad.py --detalle"
+    exit 1
+  fi
+done
+exit 0
