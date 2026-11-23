@@ -109,16 +109,7 @@ def _responder(email: str, admin: bool, datos: RespuestaReemplazo) -> dict:
                 raise HTTPException(status_code=404, detail="Este plano no tiene una versión que reemplazar.")
             if entrega["autor"] != email and not admin:
                 raise HTTPException(status_code=403, detail="Responde el pedido quien subió el plano o un administrador.")
-            cur.execute("""SELECT id, solicitante, estado FROM planos_obra_reemplazos
-                            WHERE id_proyecto = %s AND plano = %s AND autor = %s
-                              AND estado IN ('pendiente', 'aceptado', 'rechazado')
-                            ORDER BY id DESC""", (datos.obra, datos.plano, entrega["autor"]))
-            pedidos = cur.fetchall()
-            nombres = _nombres(cur, [f[1] for f in pedidos] + [email])
-            quien = datos.solicitante.strip()
-            pedido = next((f for f in pedidos if quien and quien in (f[1], nombres.get(f[1]))), None)
-            if not pedido:
-                raise HTTPException(status_code=404, detail="Ese pedido de reemplazo no está en ArmaHub.")
+            pedido, nombres = _pedido_de(cur, datos, entrega["autor"], email)
             if pedido[2] == nuevo:  # ya estaba así (la respuesta llegó dos veces)
                 return {"ok": True, "estado": nuevo}
             if pedido[2] != "pendiente":
@@ -131,6 +122,22 @@ def _responder(email: str, admin: bool, datos: RespuestaReemplazo) -> dict:
     audit(email, "armascanner_reemplazo", f"{datos.plano}: {nuevo} el pedido de {pedido[1]}"
           + (f" (en lugar de {entrega['autor']})" if email != entrega["autor"] else ""), "proyecto", datos.obra)
     return {"ok": True, "estado": nuevo}
+
+
+def _pedido_de(cur, datos: RespuestaReemplazo, autor: str, email: str) -> tuple:
+    """((id, solicitante, estado) del último pedido de `datos.solicitante` —su correo o su nombre— sobre la
+    entrega de `autor`, {correo: nombre}). 404 si no está."""
+    cur.execute("""SELECT id, solicitante, estado FROM planos_obra_reemplazos
+                    WHERE id_proyecto = %s AND plano = %s AND autor = %s
+                      AND estado IN ('pendiente', 'aceptado', 'rechazado')
+                    ORDER BY id DESC""", (datos.obra, datos.plano, autor))
+    pedidos = cur.fetchall()
+    nombres = _nombres(cur, [f[1] for f in pedidos] + [email])
+    quien = datos.solicitante.strip()
+    pedido = next((f for f in pedidos if quien and quien in (f[1], nombres.get(f[1]))), None)
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Ese pedido de reemplazo no está en ArmaHub.")
+    return pedido, nombres
 
 
 @router.post("/armascanner/planos/reemplazo/responder")

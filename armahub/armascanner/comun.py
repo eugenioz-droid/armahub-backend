@@ -68,3 +68,8 @@ class PlanoEnLinea(BaseModel):
 
 # Lo que vale un enlace de descarga de R2 (planos, reportes, versiones).
 DESCARGA_SEGUNDOS = 600
+
+
+def _texto(d: dict, k: str, largo: int):
+    """El texto `k` de lo que manda ArmaScanner, sin espacios y acotado a `largo`; None si viene vacío."""
+    return str(d.get(k) or "").strip()[:largo] or None

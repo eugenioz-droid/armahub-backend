@@ -22,7 +22,7 @@ from ..auth import get_current_user, require_admin_or_admin_calidad
 from ..db import audit, get_conn
 from ..licencias import _bearer
 from .acceso import _con_licencia_o_admin, _es_admin, _usuario
-from .comun import DESCARGA_SEGUNDOS, _avisar, _borrar, _cuando, _nombres
+from .comun import DESCARGA_SEGUNDOS, _avisar, _borrar, _cuando, _nombres, _texto
 from .datos import (NO_ESTA, _eliminar_plano, _entrega, _entrega_dict, _entregas, _fila_base, _recalcular,
                     _reemplazos, _reemplazos_dict, _rotulo)
 from .kpis import kpis_de, plano_para_kpis, resumen_de
@@ -145,10 +145,6 @@ def _obra_vigente(cur, obra: str):
     cur.execute("SELECT 1 FROM armascanner_obras WHERE id_proyecto = %s FOR SHARE", (obra,))
     if not cur.fetchone():
         raise HTTPException(status_code=409, detail=SIN_OBRA)
-
-
-def _texto(d: dict, k: str, largo: int):
-    return str(d.get(k) or "").strip()[:largo] or None
 
 
 # La carga de antecedentes (el plano del calculista, etapa «cargado») queda en pausa: abrir o tener un

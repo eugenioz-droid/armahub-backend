@@ -170,18 +170,8 @@ def publicar_con_ficha(archivo: UploadFile = File(...), version: str = Form(...)
 
 
 def _publicar(email: str, archivo: UploadFile, version: str, notas: str, obligatoria: bool) -> dict:
-    import re
     from .. import storage
-    version = (version or "").strip()
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", version):
-        raise HTTPException(status_code=400, detail="La versión va como AAAA-MM-DD (o AAAA-MM-DD.2).")
-    if not (archivo.filename or "").lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser el ZIP de ArmaScanner (.zip).")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM armascanner_versiones WHERE version = %s", (version,))
-            if cur.fetchone():
-                raise HTTPException(status_code=409, detail=f"La versión {version} ya está publicada.")
+    version = _version_nueva(version, archivo)
     # una key por subida (como clave_paquete): si la base no confirma, se borra sólo lo subido aquí, nunca
     # el archivo de otra publicación de la misma versión que se haya cruzado
     import uuid
@@ -206,6 +196,23 @@ def _publicar(email: str, archivo: UploadFile, version: str, notas: str, obligat
     audit(email or "?", "armascanner_publicar", f"{version} ({tamano / 1e6:.1f} MB)"
           + (" obligatoria" if obligatoria else ""), "armascanner", version)
     return {"ok": True, "version": version, "tamano": tamano}
+
+
+def _version_nueva(version: str, archivo: UploadFile) -> str:
+    """La versión a publicar, sin espacios: 400 si no va como AAAA-MM-DD(.N) o el archivo no es un ZIP, 409 si
+    ya está publicada."""
+    import re
+    version = (version or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(\.\d+)?", version):
+        raise HTTPException(status_code=400, detail="La versión va como AAAA-MM-DD (o AAAA-MM-DD.2).")
+    if not (archivo.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser el ZIP de ArmaScanner (.zip).")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM armascanner_versiones WHERE version = %s", (version,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail=f"La versión {version} ya está publicada.")
+    return version
 
 
 class CambioVersion(BaseModel):

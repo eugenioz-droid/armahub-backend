@@ -14,7 +14,7 @@ from ..auth import require_admin_or_admin_calidad
 from ..db import audit, get_conn
 from ..licencias import _bearer
 from .acceso import _es_admin, _usuario
-from .comun import AVISO_DESARROLLO, DESCARGA_SEGUNDOS, _avisar, _borrar, _cuando, _nombres
+from .comun import AVISO_DESARROLLO, DESCARGA_SEGUNDOS, _avisar, _borrar, _cuando, _nombres, _texto
 
 router = APIRouter()
 
@@ -60,31 +60,58 @@ async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(..
     plano, comentario, lector (lo que el lector encontró). Un plano que ya tiene un caso abierto en la
     misma obra no se repite: responde `ya_estaba` sin guardar nada. El ZIP va a R2 antes que la fila; si
     la base no confirma, se borra."""
-    import secrets
-    import time
-    try:
-        d = json.loads(datos or "{}")
-    except ValueError:
-        d = {}
-
-    def txt(k, largo):
-        return str(d.get(k) or "").strip()[:largo] or None
-
+    d = _datos_reporte(datos)
     tipo = "plano" if d.get("tipo") == "plano" else "reporte"
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
-            if tipo == "plano" and txt("plano", 300):
-                cur.execute(f"""SELECT id FROM armascanner_reportes
-                                 WHERE tipo = 'plano' AND estado = ANY(%s) AND plano = %s AND {OBRA_CASO} = %s
-                                 ORDER BY id DESC LIMIT 1""",
-                            (CASOS_ABIERTOS, txt("plano", 300), txt("obra_id", 80) or txt("obra", 300) or ""))
-                ya = cur.fetchone()
-                if ya:
-                    return {"ok": True, "id": ya[0], "ya_estaba": True}
+            ya = _caso_abierto(cur, d) if tipo == "plano" else None
+    if ya:
+        return {"ok": True, "id": ya, "ya_estaba": True}
     contenido = await archivo.read()
     if len(contenido) > REPORTE_MAX:
         raise HTTPException(status_code=413, detail="El reporte pesa más de 25 MB.")
+    clave = _subir_reporte(contenido)
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                rid = _guardar_reporte(cur, user["email"], d, tipo, clave, len(contenido))
+                admins = _admins(cur)
+                quien = _nombres(cur, [user["email"]]).get(user["email"], user["email"])
+    except Exception:
+        _borrar(clave)  # la base no confirmó: el ZIP no queda suelto en R2
+        raise
+    audit(user["email"], "armascanner_reporte",
+          f"#{rid} {tipo} {_texto(d, 'plano', 80) or ''} {_texto(d, 'comentario', 80) or ''}".strip(),
+          "armascanner", str(rid))
+    _avisar([a for a in admins if a != user["email"]], _aviso_de_envio(quien, tipo, d), AVISO_DESARROLLO)
+    return {"ok": True, "id": rid, "ya_estaba": False}
+
+
+def _datos_reporte(datos: str) -> dict:
+    """El JSON `datos` de un envío ({} si no se lee)."""
+    try:
+        return json.loads(datos or "{}")
+    except ValueError:
+        return {}
+
+
+def _caso_abierto(cur, d: dict):
+    """El id del caso abierto del mismo plano en la misma obra, o None (un plano no se repite)."""
+    if not _texto(d, "plano", 300):
+        return None
+    cur.execute(f"""SELECT id FROM armascanner_reportes
+                     WHERE tipo = 'plano' AND estado = ANY(%s) AND plano = %s AND {OBRA_CASO} = %s
+                     ORDER BY id DESC LIMIT 1""",
+                (CASOS_ABIERTOS, _texto(d, "plano", 300), _texto(d, "obra_id", 80) or _texto(d, "obra", 300) or ""))
+    ya = cur.fetchone()
+    return ya[0] if ya else None
+
+
+def _subir_reporte(contenido: bytes) -> str:
+    """Sube el ZIP del envío a R2 con una key propia y la devuelve; si R2 falla, 502."""
+    import secrets
+    import time
     from .. import storage
     clave = f"armascanner/reportes/{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}.zip"
     try:
@@ -92,26 +119,23 @@ async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(..
     except Exception as e:
         _borrar(clave)
         raise HTTPException(status_code=502, detail=f"El reporte no se pudo guardar en ArmaHub ({str(e)[:80]}).")
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo,
-                                                                 tamano, tipo, obra_id, lector)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-                            (user["email"], txt("equipo", 80), txt("version", 40), txt("obra", 300), txt("plano", 300),
-                             txt("comentario", 2000), clave, len(contenido), tipo, txt("obra_id", 80), txt("lector", 1000)))
-                rid = cur.fetchone()[0]
-                admins = _admins(cur)
-                quien = _nombres(cur, [user["email"]]).get(user["email"], user["email"])
-    except Exception:
-        _borrar(clave)  # la base no confirmó: el ZIP no queda suelto en R2
-        raise
-    audit(user["email"], "armascanner_reporte", f"#{rid} {tipo} {txt('plano', 80) or ''} {txt('comentario', 80) or ''}".strip(),
-          "armascanner", str(rid))
-    _avisar([a for a in admins if a != user["email"]],
-            f"ArmaScanner · Desarrollo: {quien} envió " + (f"el plano {txt('plano', 80)} (no se lee)" if tipo == "plano"
-                                                           else "un reporte") + ".", AVISO_DESARROLLO)
-    return {"ok": True, "id": rid, "ya_estaba": False}
+    return clave
+
+
+def _guardar_reporte(cur, email: str, d: dict, tipo: str, clave: str, tamano: int) -> int:
+    """La fila del envío; devuelve su id."""
+    cur.execute("""INSERT INTO armascanner_reportes (email, equipo, version, obra, plano, comentario, archivo,
+                                                     tamano, tipo, obra_id, lector)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (email, _texto(d, "equipo", 80), _texto(d, "version", 40), _texto(d, "obra", 300), _texto(d, "plano", 300),
+                 _texto(d, "comentario", 2000), clave, tamano, tipo, _texto(d, "obra_id", 80), _texto(d, "lector", 1000)))
+    return cur.fetchone()[0]
+
+
+def _aviso_de_envio(quien: str, tipo: str, d: dict) -> str:
+    """El aviso a los administradores de un envío que llegó."""
+    return f"ArmaScanner · Desarrollo: {quien} envió " + (f"el plano {_texto(d, 'plano', 80)} (no se lee)"
+                                                         if tipo == "plano" else "un reporte") + "."
 
 
 @router.get("/armascanner/desarrollo")
@@ -121,8 +145,12 @@ def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
     caso está abierto mientras tenga un envío abierto; si no, queda como quedó el último."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""SELECT r.id, r.tipo, r.estado, r.email, r.equipo, r.version, r.obra, r.obra_id, r.plano,
-                                  r.comentario, r.lector, r.nota, r.version_resuelto, r.tamano, r.creado_el, p.calculista_id
+            # (los textos que faltan, vacíos)
+            cur.execute("""SELECT r.id, r.tipo, r.estado, COALESCE(r.email, ''), COALESCE(r.equipo, ''),
+                                  COALESCE(r.version, ''), COALESCE(r.obra, ''), COALESCE(r.obra_id, ''),
+                                  COALESCE(r.plano, ''), COALESCE(r.comentario, ''), COALESCE(r.lector, ''),
+                                  COALESCE(r.nota, ''), COALESCE(r.version_resuelto, ''), r.tamano, r.creado_el,
+                                  p.calculista_id
                              FROM armascanner_reportes r LEFT JOIN proyectos p ON p.id_proyecto = r.obra_id
                             WHERE r.tipo = 'plano' ORDER BY r.id DESC LIMIT 500""")
             filas = cur.fetchall()
@@ -131,25 +159,31 @@ def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
     planos = {}
     for f in filas:  # el más nuevo primero
         planos.setdefault(_caso(f), []).append(f)
-    casos = []
-    for envios in planos.values():
-        u = envios[0]
-        estados = {e[2] for e in envios}
-        estado = next((e for e in CASOS_ABIERTOS if e in estados), u[2])
-        cierre = u if estado not in CASOS_ABIERTOS else None
-        oficina = next((calculistas.get(e[15], "") for e in envios if e[15] is not None), "")
-        casos.append({"id": u[0], "estado": estado, "obra": u[6] or "", "obra_id": u[7] or "", "plano": u[8] or "", "oficina": oficina,
-                      "usuario": nombres.get(u[3], u[3] or ""), "version": u[5] or "", "el": _cuando(u[14]),
-                      "comentario": u[9] or "", "lector": u[10] or "",
-                      "nota": (cierre[11] or "") if cierre else "", "version_resuelto": (cierre[12] or "") if cierre else "",
-                      "envios": [{"id": e[0], "estado": e[2], "usuario": nombres.get(e[3], e[3] or ""),
-                                  "equipo": e[4] or "", "version": e[5] or "", "comentario": e[9] or "",
-                                  "lector": e[10] or "", "nota": e[11] or "", "version_resuelto": e[12] or "",
-                                  "el": _cuando(e[14])} for e in envios]})
+    casos = [_caso_de(envios, nombres, calculistas) for envios in planos.values()]
     casos.sort(key=lambda c: (c["estado"] not in CASOS_ABIERTOS, -c["id"]))
     return {"casos": casos, "oficinas": oficinas,
             "otras": sorted(({"id": k, "nombre": v} for k, v in calculistas.items()
                              if k not in {o["id"] for o in oficinas}), key=lambda x: x["nombre"].lower())}
+
+
+def _caso_de(envios, nombres, calculistas) -> dict:
+    """El caso de un plano con sus envíos (filas de desarrollo(), el más nuevo primero): está abierto mientras
+    tenga un envío abierto; si no, queda como quedó el último (y lleva su nota y la versión que lo resolvió)."""
+    u = envios[0]
+    estados = {e[2] for e in envios}
+    estado = next((e for e in CASOS_ABIERTOS if e in estados), u[2])
+    cierre = u if estado not in CASOS_ABIERTOS else None
+    oficina = next((calculistas.get(e[15], "") for e in envios if e[15] is not None), "")
+    return {"id": u[0], "estado": estado, "obra": u[6], "obra_id": u[7], "plano": u[8], "oficina": oficina,
+            "usuario": nombres.get(u[3], u[3]), "version": u[5], "el": _cuando(u[14]), "comentario": u[9], "lector": u[10],
+            "nota": cierre[11] if cierre else "", "version_resuelto": cierre[12] if cierre else "",
+            "envios": [_envio(e, nombres) for e in envios]}
+
+
+def _envio(e, nombres) -> dict:
+    """Un envío del caso."""
+    return {"id": e[0], "estado": e[2], "usuario": nombres.get(e[3], e[3]), "equipo": e[4], "version": e[5],
+            "comentario": e[9], "lector": e[10], "nota": e[11], "version_resuelto": e[12], "el": _cuando(e[14])}
 
 
 def _caso(f) -> str:
@@ -210,37 +244,47 @@ def _cambiar_caso(email: str, rid: int, datos: CasoDesarrollo) -> dict:
     version = (datos.version or "").strip()[:40] or None
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT plano, tipo, {OBRA_CASO} FROM armascanner_reportes WHERE id = %s", (rid,))
-            fila = cur.fetchone()
-            if not fila:
-                raise HTTPException(status_code=404, detail="Caso no encontrado.")
-            plano, tipo, obra = fila[0] or "", fila[1], fila[2]
-            cur.execute(f"""UPDATE armascanner_reportes
-                               SET estado = %s, nota = COALESCE(%s, nota),
-                                   version_resuelto = CASE WHEN %s = 'resuelto' THEN %s ELSE NULL END,
-                                   resuelto_por = CASE WHEN %s THEN %s ELSE NULL END,
-                                   resuelto_el = CASE WHEN %s THEN NOW() ELSE NULL END
-                             WHERE id = %s OR (%s <> '' AND plano = %s AND {OBRA_CASO} = %s AND tipo = %s
-                                               AND estado = ANY(%s))
-                         RETURNING email, tipo, nota""",
-                        (datos.estado, (datos.nota or "").strip()[:2000] if datos.nota is not None else None,
-                         datos.estado, version, cierra, email, cierra, rid, plano, plano, obra, tipo,
-                         CASOS_ABIERTOS if cierra else ["nuevo"]))
-            filas = cur.fetchall()
+            plano, filas = _cambiar_envios(cur, rid, datos, cierra, version, email)
     audit(email, "armascanner_desarrollo", f"#{rid} {datos.estado} ({len(filas)})" + (f" {version}" if version else ""),
           "armascanner", str(rid))
     autores = sorted({f[0] for f in filas if f[0] and f[0] != email})
     if cierra and autores:
-        no_lee = any(f[1] == "plano" for f in filas)
-        nota = next((f[2] for f in filas if f[2]), "")
-        que = f"lo que reportaste del plano {plano}" if plano else "tu reporte"
-        if datos.estado == "resuelto":
-            _avisar(autores, (f"ArmaScanner ya lee el plano {plano}" if no_lee and plano else f"Se resolvió {que}")
-                    + (f" desde la versión {version}" if version else "") + ": actualiza y vuelve a escanear.", AVISO_DESARROLLO)
-        else:
-            _avisar(autores, (f"El plano {plano} no se podrá leer con ArmaScanner" if no_lee and plano else f"Se cerró {que}")
-                    + (f": {nota}" if nota else "."), AVISO_DESARROLLO)
+        _avisar(autores, _aviso_de_cierre(datos.estado, plano, filas, version), AVISO_DESARROLLO)
     return {"ok": True}
+
+
+def _cambiar_envios(cur, rid: int, datos: CasoDesarrollo, cierra: bool, version, email: str) -> tuple:
+    """Cambia el estado de los envíos del caso de `rid` (ver _cambiar_caso). Devuelve (el plano, [(correo,
+    tipo, nota)] de los envíos que cambiaron). 404 si el envío no está."""
+    cur.execute(f"SELECT plano, tipo, {OBRA_CASO} FROM armascanner_reportes WHERE id = %s", (rid,))
+    fila = cur.fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Caso no encontrado.")
+    plano, tipo, obra = fila[0] or "", fila[1], fila[2]
+    cur.execute(f"""UPDATE armascanner_reportes
+                       SET estado = %s, nota = COALESCE(%s, nota),
+                           version_resuelto = CASE WHEN %s = 'resuelto' THEN %s ELSE NULL END,
+                           resuelto_por = CASE WHEN %s THEN %s ELSE NULL END,
+                           resuelto_el = CASE WHEN %s THEN NOW() ELSE NULL END
+                     WHERE id = %s OR (%s <> '' AND plano = %s AND {OBRA_CASO} = %s AND tipo = %s
+                                       AND estado = ANY(%s))
+                 RETURNING email, tipo, nota""",
+                (datos.estado, (datos.nota or "").strip()[:2000] if datos.nota is not None else None,
+                 datos.estado, version, cierra, email, cierra, rid, plano, plano, obra, tipo,
+                 CASOS_ABIERTOS if cierra else ["nuevo"]))
+    return plano, cur.fetchall()
+
+
+def _aviso_de_cierre(estado: str, plano: str, filas, version) -> str:
+    """El aviso a quienes mandaron el caso cuando se resuelve o se descarta."""
+    no_lee = any(f[1] == "plano" for f in filas)
+    nota = next((f[2] for f in filas if f[2]), "")
+    que = f"lo que reportaste del plano {plano}" if plano else "tu reporte"
+    if estado == "resuelto":
+        return ((f"ArmaScanner ya lee el plano {plano}" if no_lee and plano else f"Se resolvió {que}")
+                + (f" desde la versión {version}" if version else "") + ": actualiza y vuelve a escanear.")
+    return ((f"El plano {plano} no se podrá leer con ArmaScanner" if no_lee and plano else f"Se cerró {que}")
+            + (f": {nota}" if nota else "."))
 
 
 class Oficina(BaseModel):
