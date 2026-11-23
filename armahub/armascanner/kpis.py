@@ -13,11 +13,25 @@ def resumen_de(barras, extra=None) -> dict:
          "kg": round(sum(float(b.get("kg") or 0) for b in barras), 1)}
     r["pendientes"] = r["barras"] - r["aprobadas"] - r["consultas"]
     extra = extra or {}
+    r.update(_lo_enviado(extra))
+    r.update(_lo_de_las_barras(barras, extra))
+    return r
+
+
+def _lo_enviado(extra) -> dict:
+    """Lo que ArmaScanner manda del plano y el resumen guarda tal cual: ciclos, etapa, version_app."""
+    r = {}
     if isinstance(extra.get("ciclos"), int):
         r["ciclos"] = extra["ciclos"]
     for k in ("etapa", "version_app"):
         if isinstance(extra.get(k), str) and extra[k].strip():
             r[k] = extra[k].strip()[:40]
+    return r
+
+
+def _lo_de_las_barras(barras, extra) -> dict:
+    """Lo que se calcula de las barras: el Ø promedio, los m² de losa y los kg por piso."""
+    r = {}
     d = diam_prom(barras)
     if d is not None:
         r["diam_prom"] = d
@@ -134,13 +148,18 @@ def kg_por_piso(barras, pedido=None, elemento="") -> list:
     propio = str(elemento or "").split(",")[0].strip().upper()
     suma = {}
     for b in barras or []:
-        if "piso" in b:
-            piso, sector = b.get("piso"), b.get("sector") or propio
-        else:
-            piso, sector = pedido.get(str(b.get("id") or "")) or pedido.get(None) or ("", propio)
+        piso, sector = _piso_y_sector(b, pedido, propio)
         k = (piso_normal(piso), str(sector or "").strip().upper()[:20])
         suma[k] = suma.get(k, 0.0) + (_numero(b.get("kg")) or 0.0)
     return [{"piso": p, "sector": s, "kg": round(kg, 1)} for (p, s), kg in sorted(suma.items())]
+
+
+def _piso_y_sector(b, pedido, propio):
+    """(piso, sector) de una barra: los de su etiqueta; si no los trae, los de su pedido (o los que más
+    pesan en él); sin pedido, sin piso y con el sector del plano (`propio`)."""
+    if "piso" in b:
+        return b.get("piso"), b.get("sector") or propio
+    return pedido.get(str(b.get("id") or "")) or pedido.get(None) or ("", propio)
 
 
 def piso_del_plano(por_piso) -> str:
@@ -161,29 +180,37 @@ def tabla_por_piso(planos) -> dict:
     orden constructivo (orden.piso_order: S3, S2, S1, P1…) y el sin piso ("") al final. Sin dato va
     None (la pantalla muestra «—»). Función pura."""
     from ..orden import piso_order
+    pisos, fund = _sumar_por_piso(planos)
+    return {"pisos": [_fila_piso(p, pisos[p]) for p in sorted(pisos, key=lambda p: (p == "", piso_order(p), p))],
+            "fund": round(fund, 1) or None}
+
+
+def _sumar_por_piso(planos) -> tuple:
+    """({piso: {kg_losa, kg_viga, kg_elev, m2}}, kg de fundaciones) de los planos (plano_para_kpis)."""
     pisos, fund = {}, 0.0
-
-    def fila(p):
-        return pisos.setdefault(p, {"kg_losa": 0.0, "kg_viga": 0.0, "kg_elev": 0.0, "m2": 0.0})
-
     for pl in planos:
         for f in pl.get("por_piso") or []:
             kg, clase = float(f.get("kg") or 0), clase_de(f.get("sector"), f.get("piso"))
             if clase == "fund":
                 fund += kg
             else:
-                fila(piso_normal(f.get("piso")))["kg_" + clase] += kg
+                _piso_en(pisos, piso_normal(f.get("piso")))["kg_" + clase] += kg
         m2 = _numero(pl.get("m2"))
         if m2 and m2 > 0:
-            fila(piso_del_plano(pl.get("por_piso")))["m2"] += m2
-    out = []
-    for p in sorted(pisos, key=lambda p: (p == "", piso_order(p), p)):
-        x = pisos[p]
-        kg, m2 = round(x["kg_losa"] + x["kg_viga"] + x["kg_elev"], 1), round(x["m2"], 1) or None
-        out.append({"piso": p, "kg_losa": round(x["kg_losa"], 1) or None, "kg_viga": round(x["kg_viga"], 1) or None,
-                    "kg_elev": round(x["kg_elev"], 1) or None, "kg": kg or None, "m2": m2,
-                    "kg_m2": round(kg / m2, 1) if m2 and kg else None})
-    return {"pisos": out, "fund": round(fund, 1) or None}
+            _piso_en(pisos, piso_del_plano(pl.get("por_piso")))["m2"] += m2
+    return pisos, fund
+
+
+def _piso_en(pisos, p) -> dict:
+    return pisos.setdefault(p, {"kg_losa": 0.0, "kg_viga": 0.0, "kg_elev": 0.0, "m2": 0.0})
+
+
+def _fila_piso(p, x) -> dict:
+    """La fila de un piso en la tabla «Por piso»; sin dato, None."""
+    kg, m2 = round(x["kg_losa"] + x["kg_viga"] + x["kg_elev"], 1), round(x["m2"], 1) or None
+    return {"piso": p, "kg_losa": round(x["kg_losa"], 1) or None, "kg_viga": round(x["kg_viga"], 1) or None,
+            "kg_elev": round(x["kg_elev"], 1) or None, "kg": kg or None, "m2": m2,
+            "kg_m2": round(kg / m2, 1) if m2 and kg else None}
 
 
 def plano_para_kpis(resumen, elemento, diam=None, por_piso=None) -> dict:
@@ -198,9 +225,13 @@ def plano_para_kpis(resumen, elemento, diam=None, por_piso=None) -> dict:
             kg_por_piso([{"kg": kg}] if kg else [], elemento=elemento)
     return {"items": int(r.get("barras") or 0), "kg": kg,
             "diam_prom": r.get("diam_prom") if r.get("diam_prom") is not None else diam,
-            "m2": r.get("m2") if es_losa(elemento) else None, "por_piso": por_piso,
-            "kg_fund": round(sum(float(f.get("kg") or 0) for f in por_piso
-                                 if clase_de(f.get("sector"), f.get("piso")) == "fund"), 1)}
+            "m2": r.get("m2") if es_losa(elemento) else None, "por_piso": por_piso, "kg_fund": _kg_fund(por_piso)}
+
+
+def _kg_fund(por_piso) -> float:
+    """Los kg de fundaciones de un kg por piso."""
+    return round(sum(float(f.get("kg") or 0) for f in por_piso
+                     if clase_de(f.get("sector"), f.get("piso")) == "fund"), 1)
 
 
 def kpis_de(planos) -> dict:
@@ -212,16 +243,25 @@ def kpis_de(planos) -> dict:
     items = sum(int(p.get("items") or 0) for p in planos)
     kg = round(sum(float(p.get("kg") or 0) for p in planos), 1)
     fund = round(sum(float(p.get("kg_fund") or 0) for p in planos), 1)
-    con_d = [(float(p["diam_prom"]), float(p.get("kg") or 0)) for p in planos if _numero(p.get("diam_prom"))]
-    peso_d = sum(k for _, k in con_d)
     m2s = [float(p["m2"]) for p in planos if _numero(p.get("m2"))]
     m2 = round(sum(m2s), 1) if m2s else None
+    return {"items": items, "kg": kg, "ppi": round(kg / items, 2) if items else None,
+            "diam_prom": _diam_ponderado(planos), "m2": m2, "kg_m2": _kg_m2(planos, kg, fund, m2),
+            "kg_fund": fund or None}
+
+
+def _diam_ponderado(planos):
+    """El Ø promedio de varios planos, ponderado por sus kg; None si ninguno lo trae."""
+    con_d = [(float(p["diam_prom"]), float(p.get("kg") or 0)) for p in planos if _numero(p.get("diam_prom"))]
+    peso_d = sum(k for _, k in con_d)
+    return round(sum(d * k for d, k in con_d) / peso_d, 1) if peso_d else None
+
+
+def _kg_m2(planos, kg, fund, m2):
+    """kg/m² = Σ kg de los pisos con m² de losa / Σ esos m² (tabla_por_piso); sin el kg por piso (planos
+    sin datos de piso), kg sin fundaciones / m² de losa. None si no hay con qué."""
     if any(p.get("por_piso") for p in planos):
         con_m2 = [f for f in tabla_por_piso(planos)["pisos"] if f["m2"] and f["kg"]]
         m2_pisos = sum(f["m2"] for f in con_m2)
-        kg_m2 = round(sum(f["kg"] for f in con_m2) / m2_pisos, 1) if m2_pisos else None
-    else:  # sin el kg por piso (planos sin datos de piso): kg sin fundaciones / m² de losa
-        kg_m2 = round((kg - fund) / m2, 1) if m2 and kg - fund > 0 else None
-    return {"items": items, "kg": kg, "ppi": round(kg / items, 2) if items else None,
-            "diam_prom": round(sum(d * k for d, k in con_d) / peso_d, 1) if peso_d else None,
-            "m2": m2, "kg_m2": kg_m2, "kg_fund": fund or None}
+        return round(sum(f["kg"] for f in con_m2) / m2_pisos, 1) if m2_pisos else None
+    return round((kg - fund) / m2, 1) if m2 and kg - fund > 0 else None
