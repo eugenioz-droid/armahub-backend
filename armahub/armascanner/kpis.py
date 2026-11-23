@@ -124,42 +124,17 @@ def clase_de(sector, piso="") -> str:
     return "elev" if s.startswith("ELEV") else "viga" if s.startswith(("VCIELO", "VIGA")) else "losa"
 
 
-def pedido_por_barra(filas) -> dict:
-    """{id de barra: (piso, sector)} de las barras de un plano en los despieces (su pedido enviado), y
-    en la clave None el (piso, sector) con más kg. `filas`: [(plano_code, id_unico, piso, sector, kg)];
-    el id de la barra va al final de su id_unico («PROY-PC1-B-0001» → «B-0001»). Función pura."""
-    out, kg = {}, {}
-    for code, unico, piso, sector, k in filas:
-        par, code, unico = (piso or "", sector or ""), str(code or ""), str(unico or "")
-        if code and code + "-" in unico:
-            out[unico.split(code + "-", 1)[1]] = par
-        kg[par] = kg.get(par, 0.0) + (_numero(k) or 0.0)
-    if kg:
-        out[None] = max(sorted(kg), key=lambda x: kg[x])
-    return out
-
-
-def kg_por_piso(barras, pedido=None, elemento="") -> list:
+def kg_por_piso(barras, elemento="") -> list:
     """[{piso, sector, kg}] de las barras a la vista de un plano, sumadas por su piso y su sector (los
-    de su etiqueta). La barra que no los trae (plano terminado antes del 22-nov) toma los suyos del
-    pedido enviado (`pedido`: pedido_por_barra) o, si no está en él, los que más pesan en el pedido;
-    sin pedido, va sin piso ("") y con el sector del plano (`elemento`, el primero). Función pura."""
-    pedido = pedido or {}
+    de su etiqueta). La barra que no los trae va sin piso ("") y con el sector del plano (`elemento`, el
+    primero). Función pura."""
     propio = str(elemento or "").split(",")[0].strip().upper()
     suma = {}
     for b in barras or []:
-        piso, sector = _piso_y_sector(b, pedido, propio)
+        piso, sector = (b.get("piso"), b.get("sector") or propio) if "piso" in b else ("", propio)
         k = (piso_normal(piso), str(sector or "").strip().upper()[:20])
         suma[k] = suma.get(k, 0.0) + (_numero(b.get("kg")) or 0.0)
     return [{"piso": p, "sector": s, "kg": round(kg, 1)} for (p, s), kg in sorted(suma.items())]
-
-
-def _piso_y_sector(b, pedido, propio):
-    """(piso, sector) de una barra: los de su etiqueta; si no los trae, los de su pedido (o los que más
-    pesan en él); sin pedido, sin piso y con el sector del plano (`propio`)."""
-    if "piso" in b:
-        return b.get("piso"), b.get("sector") or propio
-    return pedido.get(str(b.get("id") or "")) or pedido.get(None) or ("", propio)
 
 
 def piso_del_plano(por_piso) -> str:
@@ -213,18 +188,16 @@ def _fila_piso(p, x) -> dict:
             "kg_m2": round(kg / m2, 1) if m2 and kg else None}
 
 
-def plano_para_kpis(resumen, elemento, diam=None, por_piso=None) -> dict:
-    """Lo que un plano aporta a los KPIs: {items, kg, diam_prom, m2, por_piso, kg_fund}. Los m² sólo
-    si es de losa. `diam` y `por_piso`: el Ø promedio y los kg por piso calculados aparte (resumen
-    anterior al 22-nov, que no los trae: _diam_faltante, _por_piso_faltante). Sin kg por piso, todo el
-    plano va sin piso y con su sector."""
+def plano_para_kpis(resumen, elemento) -> dict:
+    """Lo que un plano aporta a los KPIs: {items, kg, diam_prom, m2, por_piso, kg_fund}, de su resumen.
+    Los m² sólo si es de losa. Sin kg por piso (sus barras no traen el piso), todo el plano va sin piso y
+    con su sector. (Hasta el 23-nov, el Ø y el kg por piso de un resumen anterior al 22-nov se calculaban
+    aparte en cada lectura; en la base ya no queda ninguno.)"""
     r = resumen or {}
     kg = float(r.get("kg") or 0)
-    if por_piso is None:
-        por_piso = r["por_piso"] if isinstance(r.get("por_piso"), list) else \
-            kg_por_piso([{"kg": kg}] if kg else [], elemento=elemento)
-    return {"items": int(r.get("barras") or 0), "kg": kg,
-            "diam_prom": r.get("diam_prom") if r.get("diam_prom") is not None else diam,
+    por_piso = r["por_piso"] if isinstance(r.get("por_piso"), list) else \
+        kg_por_piso([{"kg": kg}] if kg else [], elemento=elemento)
+    return {"items": int(r.get("barras") or 0), "kg": kg, "diam_prom": r.get("diam_prom"),
             "m2": r.get("m2") if es_losa(elemento) else None, "por_piso": por_piso, "kg_fund": _kg_fund(por_piso)}
 
 

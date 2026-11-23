@@ -23,8 +23,8 @@ from ..db import audit, get_conn
 from ..licencias import _bearer
 from .acceso import _con_licencia_o_admin, _es_admin, _usuario
 from .comun import DESCARGA_SEGUNDOS, _avisar, _borrar, _cuando, _nombres
-from .datos import (_diam_faltante, _eliminar_plano, _entrega, _entrega_dict, _entregas, _fila_base, _recalcular,
-                    _reemplazos, _reemplazos_dict, _rotulo)
+from .datos import (_eliminar_plano, _entrega, _entrega_dict, _entregas, _fila_base, _recalcular, _reemplazos,
+                    _reemplazos_dict, _rotulo)
 from .kpis import kpis_de, plano_para_kpis, resumen_de
 from .reglas import (accion_al_cargar, accion_al_terminar, barras_a_la_vista, clave_paquete, dwg_del_paquete,
                      estado_pedido, puede_enviar, relacion_enviada)
@@ -377,12 +377,12 @@ def descargar_plano(datos: DescargaPlano, credentials: HTTPAuthorizationCredenti
 
 
 # ── La pestaña Planos del portal (sesión del portal): avance, barras, PDF, reemplazos, pedido ──
-def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list, diam=None) -> dict:
+def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list) -> dict:
     (obra, obra_nombre, plano, numero, titulo, revision, elemento, version, tamano, subido_por, subido_el,
      resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg, etapa, relacion, relacion_de) = f
     r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "consultas": 0,
                     "pendientes": (barras or 0) - (aprobadas or 0), "kg": float(kg or 0)}
-    kpis = kpis_de([plano_para_kpis(r, elemento, diam)]) if etapa != "cargado" else None
+    kpis = kpis_de([plano_para_kpis(r, elemento)]) if etapa != "cargado" else None
     reemplazos = _reemplazos_dict(entrega, pedidos, nombres, yo)
     por_cambiar = any(x["estado"] == "aceptado" for x in reemplazos)
     return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero or "", "titulo": titulo or "",
@@ -424,11 +424,9 @@ def planos_linea(obra: str, user=Depends(get_current_user)):
             nombres = _nombres(cur, [f[9] for f in filas] + [f[14] for f in filas]
                                + [e["autor"] for e in entregas.values()]
                                + [r["solicitante"] for lista in pedidos.values() for r in lista])
-            diam = _diam_faltante(cur, [(f[0], f[2]) for f in filas
-                                        if f[19] != "cargado" and f[16] and "diam_prom" not in (f[11] or {})])
     yo, admin = user.get("email", ""), _es_admin(user)
     return {"admin": admin, "planos": [_fila_plano(f, nombres, yo, admin, entregas.get((f[0], f[2])),
-                                                   pedidos.get((f[0], f[2]), []), diam.get((f[0], f[2])))
+                                                   pedidos.get((f[0], f[2]), []))
                                        for f in filas]}
 
 

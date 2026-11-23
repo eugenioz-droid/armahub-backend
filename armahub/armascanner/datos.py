@@ -4,12 +4,9 @@ La base de los planos de las obras: `planos_obra` (una fila por plano), su entre
 ponerla al día y eliminarla.
 """
 
-import json
-
 from fastapi import HTTPException
 
 from .comun import _cuando
-from .kpis import diam_prom, kg_por_piso, pedido_por_barra, resumen_de
 
 
 # ══════ Planos de las obras: antecedentes y una entrega por plano, sin bloqueo (mig 169 y 174; SPECS §5.4) ══════
@@ -77,12 +74,12 @@ def _reemplazos_dict(e, pedidos, nombres, yo: str) -> list:
 def _fila_base(cur, obra: str, plano: str, exclusiva: bool = False):
     """La fila del plano en `planos_obra` (o None). Con `exclusiva` queda reservada hasta el fin de
     la transacción: lo que cambia la entrega de un plano o sus pedidos pasa de a uno."""
-    cur.execute("""SELECT version, archivo, tamano, etapa, subido_por, subido_el, base
+    cur.execute("""SELECT version, archivo, tamano, etapa, subido_por, subido_el
                      FROM planos_obra WHERE id_proyecto = %s AND plano = %s""" + (" FOR UPDATE" if exclusiva else ""),
                 (obra, plano))
     f = cur.fetchone()
     return f and {"version": f[0], "archivo": f[1], "tamano": f[2], "etapa": f[3] or "", "subido_por": f[4],
-                  "subido_el": f[5], "base": f[6]}
+                  "subido_el": f[5]}
 
 
 def _rotulo(cur, obra: str, plano: str) -> str:
@@ -95,25 +92,12 @@ def _rotulo(cur, obra: str, plano: str) -> str:
 
 
 def _recalcular(cur, obra: str, plano: str):
-    """Pone `planos_obra` al día después de un cambio en la entrega del plano (con su fila reservada:
-    _fila_base(exclusiva)): toma el resumen de la entrega, y su versión sube cuando la entrega cambia
-    (así el pedido sabe si quedó atrás). Sin entrega vuelve a lo que era antes de la primera (el
-    antecedente cargado, o el trabajo anterior al cambio); si no tenía archivo propio, se elimina.
-    Devuelve la entrega (o None)."""
-    from datetime import datetime
+    """Pone `planos_obra` al día con la entrega del plano, recién guardada por «Terminar» (con su fila
+    reservada: _fila_base(exclusiva)): toma el resumen de la entrega, y su versión sube cuando la entrega
+    cambia (así el pedido sabe si quedó atrás). (Hasta el 23-nov también deshacía una entrega borrada y
+    guardaba lo que la fila era antes, para eso; ninguna ruta borra ya una entrega sola.)"""
     entrega = _entrega(cur, obra, plano)
-    fila = _fila_base(cur, obra, plano)
-    if entrega and fila:
-        if fila["etapa"] != "terminado" and fila["archivo"]:  # entra la primera entrega: se guarda lo que la fila era
-            cur.execute("""SELECT barras, aprobadas, kg, resumen, barras_json FROM planos_obra
-                            WHERE id_proyecto = %s AND plano = %s""", (obra, plano))
-            f = cur.fetchone()
-            base = {"etapa": fila["etapa"] or "en_trabajo", "subido_por": fila["subido_por"],
-                    "subido_el": fila["subido_el"].isoformat() if fila["subido_el"] else None,
-                    "barras": f[0], "aprobadas": f[1], "kg": float(f[2]) if f[2] is not None else None,
-                    "resumen": f[3], "barras_json": f[4]}
-            cur.execute("UPDATE planos_obra SET base = %s::jsonb WHERE id_proyecto = %s AND plano = %s",
-                        (json.dumps(base), obra, plano))
+    if entrega:
         cur.execute("""
             UPDATE planos_obra AS p
                SET numero = COALESCE(e.numero, p.numero), titulo = COALESCE(e.titulo, p.titulo),
@@ -128,59 +112,6 @@ def _recalcular(cur, obra: str, plano: str):
               FROM planos_obra_entregas AS e
              WHERE e.id = %s AND p.id_proyecto = e.id_proyecto AND p.plano = e.plano
         """, (entrega["id"],))
-    elif fila:
-        antes = fila["base"] or ({"etapa": "cargado"} if fila["archivo"] else None)
-        if antes is None:
-            cur.execute("DELETE FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (obra, plano))
-        else:
-            el = datetime.fromisoformat(antes["subido_el"]) if antes.get("subido_el") else fila["subido_el"]
-            cur.execute("""
-                UPDATE planos_obra
-                   SET etapa = %s, subido_por = %s, subido_el = %s, barras = %s, aprobadas = %s, kg = %s,
-                       resumen = %s::jsonb, barras_json = %s::jsonb, pdf = NULL, base = NULL, version = version + 1
-                 WHERE id_proyecto = %s AND plano = %s
-            """, (antes["etapa"], antes.get("subido_por", fila["subido_por"]), el, antes.get("barras") or 0,
-                  antes.get("aprobadas") or 0, antes.get("kg") or 0, json.dumps(antes.get("resumen") or resumen_de([])),
-                  json.dumps(antes.get("barras_json") or []), obra, plano))
-    return entrega
-
-
-def _diam_faltante(cur, claves) -> dict:
-    """{(obra, plano): Ø promedio} de los planos cuyo resumen no lo trae (terminados antes del
-    22-nov): se calcula de sus barras a la vista."""
-    claves = set(claves)
-    if not claves:
-        return {}
-    cur.execute("SELECT id_proyecto, plano, barras_json FROM planos_obra WHERE id_proyecto = ANY(%s) AND plano = ANY(%s)",
-                (sorted({c[0] for c in claves}), sorted({c[1] for c in claves})))
-    return {(o, p): diam_prom(b if isinstance(b, list) else []) for o, p, b in cur.fetchall() if (o, p) in claves}
-
-
-def _por_piso_faltante(cur, claves) -> dict:
-    """{(obra, plano): kg por piso} de los planos cuyo resumen no lo trae (terminados antes del 22-nov
-    o con un ArmaScanner anterior): de sus barras a la vista, con el piso y el sector que cada una
-    tiene en su pedido enviado (los despieces: tabla barras, por los códigos del plano, como la
-    sección aSa) y, sin pedido, sin piso (kg_por_piso)."""
-    claves = set(claves)
-    if not claves:
-        return {}
-    cur.execute("""SELECT id_proyecto, plano, barras_json, codigos, elemento FROM planos_obra
-                    WHERE id_proyecto = ANY(%s) AND plano = ANY(%s)""",
-                (sorted({c[0] for c in claves}), sorted({c[1] for c in claves})))
-    filas = [f for f in cur.fetchall() if (f[0], f[1]) in claves]
-    de_codigo = {(o, c): (o, p) for o, p, _b, codigos, _e in filas
-                 for c in (codigos if isinstance(codigos, list) else []) if isinstance(c, str) and c.strip()}
-    del_pedido = {}
-    if de_codigo:
-        cur.execute("""SELECT id_proyecto, plano_code, id_unico, COALESCE(piso, ''), COALESCE(sector, ''),
-                              COALESCE(peso_total, 0)
-                         FROM barras WHERE id_proyecto = ANY(%s) AND plano_code = ANY(%s)""",
-                    (sorted({k[0] for k in de_codigo}), sorted({k[1] for k in de_codigo})))
-        for o, code, unico, piso, sector, kg in cur.fetchall():
-            if (o, code) in de_codigo:
-                del_pedido.setdefault(de_codigo[(o, code)], []).append((code, unico, piso, sector, kg))
-    return {(o, p): kg_por_piso(b if isinstance(b, list) else [], pedido_por_barra(del_pedido.get((o, p), [])), e)
-            for o, p, b, _c, e in filas}
 
 
 def _eliminar_plano(cur, email: str, obra: str, plano: str, con_barras: bool) -> dict:

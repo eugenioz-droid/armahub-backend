@@ -131,9 +131,9 @@ check("los m² cuentan sólo en los planos de losa",
       A.es_losa("LCIELO") and A.es_losa("VCIELO, LCIELO") and not A.es_losa("VCIELO") and not A.es_losa(None)
       and A.plano_para_kpis({"barras": 3, "kg": 10, "m2": 40}, "ELEV")["m2"] is None
       and A.plano_para_kpis({"barras": 3, "kg": 10, "m2": 40}, "LCIELO")["m2"] == 40)
-check("un resumen anterior sin Ø toma el calculado aparte",
-      A.plano_para_kpis({"barras": 1, "kg": 5}, "LCIELO", 10.0)["diam_prom"] == 10.0
-      and A.plano_para_kpis({"barras": 1, "kg": 5, "diam_prom": 8}, "LCIELO", 10.0)["diam_prom"] == 8)
+check("el Ø del plano es el de su resumen; sin él, no se inventa",
+      A.plano_para_kpis({"barras": 1, "kg": 5}, "LCIELO")["diam_prom"] is None
+      and A.plano_para_kpis({"barras": 1, "kg": 5, "diam_prom": 8}, "LCIELO")["diam_prom"] == 8)
 check("el plano reemplazado por otro no suma a la obra (el que lo complementa, sí)",
       A.reemplazados([("O", "A", None, None), ("O", "B", "reemplaza", "A"), ("O", "C", "complementa", "B")]) == {("O", "A")})
 
@@ -152,14 +152,9 @@ check("el resumen lleva el kg por piso y sector si las barras traen su piso (si 
                      {"id": "B-3", "kg": 2, "piso": "P5", "sector": "ELEV"}])["por_piso"]
       == [{"piso": "P5", "sector": "ELEV", "kg": 2.0}, {"piso": "P5", "sector": "LCIELO", "kg": 15.0}]
       and "por_piso" not in A.resumen_de([{"id": "B-1", "kg": 10}]))
-PED = A.pedido_por_barra([("PC1", "PROY-PC1-B-0001", "P5", "LCIELO", 30), ("PC1", "PROY-PC1-B-0002", "P6", "ELEV", 10),
-                          ("PC1", "raro", "P5", "LCIELO", 1)])
-check("el pedido enviado: el piso y el sector de cada barra por su id, y los que más pesan",
-      PED == {"B-0001": ("P5", "LCIELO"), "B-0002": ("P6", "ELEV"), None: ("P5", "LCIELO")}, PED)
-check("una barra sin piso (plano anterior al 22-nov): el de su pedido, o el que más pesa en él; sin pedido, sin piso",
-      A.kg_por_piso([{"id": "B-0001", "kg": 4}, {"id": "B-0002", "kg": 3}, {"id": "B-0009", "kg": 2}], PED)
-      == [{"piso": "P5", "sector": "LCIELO", "kg": 6.0}, {"piso": "P6", "sector": "ELEV", "kg": 3.0}]
-      and A.kg_por_piso([{"id": "B-1", "kg": 4}], None, "ELEV, LCIELO") == [{"piso": "", "sector": "ELEV", "kg": 4.0}])
+check("una barra sin piso va sin piso, con el sector del plano (el primero)",
+      A.kg_por_piso([{"id": "B-1", "kg": 4}], "ELEV, LCIELO") == [{"piso": "", "sector": "ELEV", "kg": 4.0}]
+      and not hasattr(A, "pedido_por_barra") and not hasattr(A, "_por_piso_faltante") and not hasattr(A, "_diam_faltante"))
 check("el piso de un plano (sus m² de losa): el de más kg sin las fundaciones, mejor uno conocido",
       A.piso_del_plano([{"piso": "S1", "sector": "FUND", "kg": 900}, {"piso": "P1", "sector": "LCIELO", "kg": 10},
                         {"piso": "P2", "sector": "LCIELO", "kg": 20}, {"piso": "", "sector": "LCIELO", "kg": 99}]) == "P2"
@@ -512,8 +507,7 @@ check("primera entrega: entra, y el plano queda terminado con su resumen",
       (r["ok"], r["version"], r["reemplazo_de"]) == (True, 1, "") and r["resumen"]["barras"] == 3
       and fila("P1", "etapa, version, subido_por, barras, aprobadas, kg") == ("terminado", 4, EMI, 3, 2, 16.5)
       and fila("P1", "archivo")[0] == "ganador.zip", (r, fila("P1", "etapa, version, subido_por, barras, aprobadas, kg")))
-check("lo que la fila era antes queda guardado (quién cargó el antecedente)",
-      fila("P1", "base")[0]["etapa"] == "cargado" and fila("P1", "base")[0]["subido_por"] == EUG, fila("P1", "base"))
+check("ya no se guarda lo que la fila era antes (nada lo usaba)", fila("P1", "base")[0] is None, fila("P1", "base"))
 e1 = entrega("P1")
 check("el paquete y el PDF quedan en R2, juntos y con key propia",
       R2[e1[2]] == paquete(10) and R2[e1[3]] == b"%PDF-emilio" and e1[3] == e1[2][:-3] + "pdf" and fila("P1", "pdf")[0] == e1[3])
@@ -709,16 +703,12 @@ terminar(EMI, "E5", paquete(71), E5, obra="PROY-2", elemento="ELEV", m2=999.0)
 terminar(EUG, "L4", paquete(72), L4, obra="PROY-2", elemento="LCIELO", m2=150.0)
 terminar(EUG, "L4R", paquete(73), L4, obra="PROY-2", elemento="LCIELO", m2=150.0, relacion="reemplaza", relacion_de="L4")
 cargar(EMI, "L6", b"h" * 80, obra="PROY-2", numero="216")
-# un plano terminado antes del 22-nov: su resumen no trae el Ø (se calcula de sus barras)
-BASE.execute("UPDATE planos_obra SET resumen = ? WHERE plano = 'E5'",
-             (json.dumps({k: v for k, v in A.resumen_de(E5).items() if k != "diam_prom"}),))
-BASE.commit()
 obras_ = web.get("/armascanner/obras-linea").json()["obras"]
 o = next(x for x in obras_ if x["id"] == "PROY-2")
 check("la lista: la obra con su cliente, su constructora y su código de aSa; la de actividad más reciente, primero",
       obras_[0]["id"] == "PROY-2" and (o["nombre"], o["cliente"], o["constructora"], o["asa"])
       == ("EBCO - TORRE NORTE", "EBCO", "EBCO S.A.", "A-200") and o["ultima"], o)
-check("…cuántos planos en cada etapa", (o["planos"], o["terminados"], o["cargados"], o["en_trabajo"]) == (5, 4, 1, 0), o)
+check("…cuántos planos en cada etapa", (o["planos"], o["terminados"], o["cargados"]) == (5, 4, 1) and "en_trabajo" not in o, o)
 check("…y sus KPIs: suman los planos con barras no reemplazados; los m², sólo los de losa",
       o["kpis"] == {"items": 4, "kg": 1050.0, "ppi": 262.5,
                     "diam_prom": round((12 * 300 + 8 * 100 + 16 * 600 + 10 * 50) / 1050, 1), "m2": 350.0, "kg_m2": 3.0,
@@ -780,15 +770,16 @@ terminar(EMI, "EL", paquete(81), [{"id": "B-1", "kg": 300.0, "piso": "S1", "sect
                                    {"id": "B-2", "kg": 200.0, "piso": "P1", "sector": "ELEV"},
                                    {"id": "B-3", "kg": 50.0, "piso": "P", "sector": "ELEV"}], obra="PROY-3", elemento="ELEV")
 terminar(EMI, "FU", paquete(82), [{"id": "B-1", "kg": 400.0, "piso": "S2", "sector": "FUND"}], obra="PROY-3", elemento="FUND")
-# un plano terminado antes del 22-nov (sus barras sin piso) con su pedido enviado: el piso, el de sus despieces
-terminar(EMI, "LP1", paquete(83), [{"id": "B-1", "kg": 160.0}, {"id": "B-9", "kg": 40.0}], obra="PROY-3",
+# la losa del P1, con su pedido enviado
+terminar(EMI, "LP1", paquete(83), [{"id": "B-1", "kg": 160.0, "piso": "P1", "sector": "LCIELO"},
+                                    {"id": "B-9", "kg": 40.0, "piso": "P1", "sector": "LCIELO"}], obra="PROY-3",
          elemento="LCIELO", m2=80.0)
 con_ficha(EMI, "pedido", obra="PROY-3", plano="LP1")
 BASE.execute("INSERT INTO barras VALUES ('PROY-3', 'PC-1', 'LCIELO', 'P1', 'C1', 160, 'csv', 'PROY-3-PC-1-B-1')")
 BASE.commit()
 o = next(x for x in web.get("/armascanner/obras-linea").json()["obras"] if x["id"] == "PROY-3")
-check("por piso: losa (y vigas) + elevación de cada piso, sus m² de losa y kg/m²; el plano sin piso toma el de su "
-      "pedido; la barra sin piso, aparte; las fundaciones, en su fila",
+check("por piso: losa (y vigas) + elevación de cada piso, sus m² de losa y kg/m²; la barra sin piso, aparte; las "
+      "fundaciones, en su fila",
       o["por_piso"] == {"pisos": [{"piso": "S1", "kg_losa": 500.0, "kg_viga": 100.0, "kg_elev": 300.0, "kg": 900.0, "m2": 100.0, "kg_m2": 9.0},
                                   {"piso": "P1", "kg_losa": 200.0, "kg_viga": None, "kg_elev": 200.0, "kg": 400.0, "m2": 80.0, "kg_m2": 5.0},
                                   {"piso": "", "kg_losa": None, "kg_viga": None, "kg_elev": 50.0, "kg": 50.0, "m2": None, "kg_m2": None}],

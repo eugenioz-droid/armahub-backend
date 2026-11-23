@@ -13,7 +13,7 @@ from ..db import audit, get_conn
 from ..licencias import _bearer
 from .acceso import _con_licencia_o_admin, _es_admin, _usuario
 from .comun import _borrar, _cuando
-from .datos import _diam_faltante, _eliminar_plano, _entregas, _por_piso_faltante, _reemplazos
+from .datos import _eliminar_plano, _entregas, _reemplazos
 from .kpis import kpis_de, plano_para_kpis, tabla_por_piso
 from .reglas import estado_pedido, reemplazados
 
@@ -151,17 +151,13 @@ def obras_linea(user=Depends(get_current_user)):
                 info = {f[0]: f[1:] for f in cur.fetchall()}
             entregas, pedidos = _entregas(cur), _reemplazos(cur)
             fuera = reemplazados([(f[0], f[1], f[8], f[9]) for f in filas])
-            diam = _diam_faltante(cur, [(f[0], f[1]) for f in filas
-                                        if f[2] != "cargado" and f[5] and "diam_prom" not in (f[4] or {})])
-            por_piso = _por_piso_faltante(cur, [(f[0], f[1]) for f in filas if f[2] != "cargado" and f[5]
-                                                and (f[0], f[1]) not in fuera and "por_piso" not in (f[4] or {})])
     obras = {}
 
     def de(obra):  # la obra en la lista; sin planos, su actividad es la fecha en que se agregó
         nombre, asa, cliente, constructora = info.get(obra) or (obra, "", "", "")
         return obras.setdefault(obra, {"id": obra, "nombre": nombre or obra, "asa": asa, "cliente": cliente,
                                        "constructora": constructora, "planos": 0, "terminados": 0, "cargados": 0,
-                                       "en_trabajo": 0, "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
+                                       "reemplazos": 0, "consultas": 0, "sin_enviar": 0,
                                        "_ultima": agregadas.get(obra), "_kpis": []})
 
     for obra in agregadas:
@@ -171,7 +167,8 @@ def obras_linea(user=Depends(get_current_user)):
         o = de(obra)
         o["planos"] += 1
         etapa = etapa or ""
-        o["terminados" if etapa == "terminado" else "cargados" if etapa == "cargado" else "en_trabajo"] += 1
+        o["terminados"] += etapa == "terminado"
+        o["cargados"] += etapa == "cargado"
         e = entregas.get((obra, plano))
         o["reemplazos"] += sum(1 for r in pedidos.get((obra, plano), [])
                                if r["estado"] == "pendiente" and e and r["autor"] == e["autor"])
@@ -182,7 +179,7 @@ def obras_linea(user=Depends(get_current_user)):
         r = resumen or {"barras": barras or 0, "aprobadas": aprobadas or 0, "kg": float(kg or 0)}
         o["consultas"] += int(r.get("consultas") or 0)
         o["sin_enviar"] += estado_pedido(version, pedido_version) != "enviado"
-        o["_kpis"].append(plano_para_kpis(r, elemento, diam.get((obra, plano)), por_piso.get((obra, plano))))
+        o["_kpis"].append(plano_para_kpis(r, elemento))
     lista = sorted(obras.values(), key=lambda o: (o["_ultima"] is None, -(o["_ultima"].timestamp() if o["_ultima"]
                                                                          else 0), str(o["nombre"])))
     return {"admin": _es_admin(user),
