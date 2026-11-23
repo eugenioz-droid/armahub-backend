@@ -145,6 +145,11 @@ TIPOLOGIAS = {
     "cabezal":    ("CB", "CAB"),
     "estribo":    ("ESTR", "ESTRIBO"),
     "confinam":   ("CONF",),
+    # REFUERZO DE LOSA O DE SHAFT (23-nov). El usuario: «los usuarios usan mucho la palabra
+    # REF o RL o Ref Losa, Ref Shaft». Medido en los Notes de las barras de los códigos ya
+    # revisados: REF, REF SHAFT, REF.SHAFT, REF LOSA…, REF. CAJON, R.L., RF, REFUERZOS.
+    # Va AL FINAL a propósito: «TR R.L» es una traba del refuerzo, y sigue siendo traba.
+    "refuerzo":   ("REF", "REFUERZO", "REFUERZOS", "RL", "R.L", "RF"),
 }
 
 
@@ -156,7 +161,7 @@ def tipologia_de(texto) -> Optional[str]:
         return None
     for clave, alias in TIPOLOGIAS.items():
         for a in alias:
-            if re.search(r"\b" + a + r"\b", u):
+            if re.search(r"\b" + re.escape(a) + r"\b", u):
                 return clave
     return None
 
@@ -414,6 +419,45 @@ def r_cabezal_delgado(barra, hermanas) -> list:
         "lados": [],
         "valor": diam, "esperado": CABEZAL_DIAM_MINIMO,
         "clave": ("cabezal", diam),
+    }]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EL REFUERZO EN φ8 (23-nov)
+# ─────────────────────────────────────────────────────────────────────────────
+# El usuario: «Existe una tipología de refuerzos de shaft o losas… Si la figura es en L o
+# Recta, debe avisar si aparece un diámetro en 8. Si la figura es un corchete, entonces está
+# bien que sea en 8… de todas formas podemos probar haciendo la alerta general sin distinguir
+# el tipo de figura. Si es que la alerta nos genera mucho ruido, después podemos ver si
+# mejoramos la condición».
+#
+# LA GENERAL SE MIDIÓ Y METÍA RUIDO, ASÍ QUE QUEDA LA CONDICIÓN DEL USUARIO. Sobre 57 mil
+# barras de 987 códigos ya revisados hay 1.356 refuerzos, 183 en φ8: 122 son estribos T1
+# y 52 corchetes (U de tres lados), que en φ8 están bien. La general daba 183 señales y 174
+# eran barras correctas. Rectas (un lado) y L (dos lados): quedan 9.
+REFUERZO_DIAM_REVISAR = 8.0
+REFUERZO_LADOS_REVISAR = {1: "recto", 2: "en L"}
+
+
+def r_refuerzo_fi8(barra, hermanas) -> list:
+    """UN REFUERZO DE LOSA O DE SHAFT EN φ8. Como el cabezal delgado: no afirma que esté
+    mal, dice que hay que mirarlo, y se deja sin efecto de a muchos si corresponde.
+
+    La tipología la escribe una persona en `Notes` (REF, R.L., REF SHAFT…): el diccionario
+    vive en `tipologia_de`, no acá. La forma se cuenta por lados: un corchete o un estribo
+    tienen tres o más y no entran."""
+    if tipologia_de(barra.get("tipologia")) != "refuerzo":
+        return []
+    if barra.get("diam") != REFUERZO_DIAM_REVISAR:
+        return []
+    forma = REFUERZO_LADOS_REVISAR.get(len(barra.get("lados") or []))
+    if not forma:
+        return []
+    return [{
+        "texto": "es un refuerzo %s de φ%g" % (forma, barra["diam"]),
+        "lados": [],
+        "valor": barra["diam"], "esperado": None,
+        "clave": ("refuerzo", barra["diam"]),
     }]
 
 
@@ -718,6 +762,18 @@ REGLAS = [
      "ejemplo": {"lados": [("A", 1200)], "diam": 10, "pin": 60,
                  "marcar": ["A"], "leyenda": "CB con φ8 o φ10"},
      "fn": r_cabezal_delgado},
+    {"codigo": "refuerzo_fi8",
+     "corto": "Refuerzo φ8",
+     "nombre": "Refuerzo de losa o shaft en φ8",
+     "porque": "Un refuerzo recto o en L en φ8 es inusual y conviene mirarlo. Puede ser "
+               "correcto, y entonces se deja sin efecto, de a muchos si hace falta.",
+     "necesita": ("lados", "diam"),
+     "alcance": "Barras rectas o en L cuya tipología (Notes en aSa) dice REF, R.L., RL, RF o "
+                "REFUERZO: REF LOSA, REF SHAFT, REF. CAJON… Un corchete o un estribo de "
+                "refuerzo en φ8 está bien y no salta.",
+     "ejemplo": {"lados": [("A", 1200), ("B", 300, -90)], "diam": 8, "pin": 48,
+                 "marcar": ["A", "B"], "leyenda": "REF con φ8"},
+     "fn": r_refuerzo_fi8},
     {"codigo": "patas_suple",
      "corto": "105A: B ≠ D",
      "nombre": "Suple 105A con B distinto de D",

@@ -669,6 +669,51 @@ check("la regla dice que hay que mirarlo, no que este mal",
       "no afirma que esté mal" in SRC and "de a muchos" in SRC)
 check("la tipologia llega desde aSa en `Notes`", '"tipologia": (item.get("Notes")' in SRC)
 
+print("\n17c. El refuerzo de losa o shaft en phi8 (23-nov)")
+# El usuario: «los usuarios usan mucho la palabra REF o RL o Ref Losa, Ref Shaft… Si la
+# figura es en L o Recta, debe avisar si aparece un diámetro en 8. Si la figura es un
+# corchete, entonces está bien que sea en 8». La general se midió antes de subirla: de 183
+# refuerzos de phi8, 174 eran estribos T1 y corchetes correctos.
+def _ref(diam, nota="REF", lados=None):
+    b = barra(lados or [("A", 1200, "B", None), ("B", 300, "B", 90)], diam=diam)
+    b["tipologia"] = nota
+    return b
+check("la tipología de refuerzo se lee como la escriben en aSa",
+      all(C.tipologia_de(t) == "refuerzo" for t in
+          ("REF", "Ref Losa", "REF SHAFT", "REF.SHAFT", "REF. CAJON", "R.L.", "RL", "RF",
+           "REFUERZOS", "REF LOSA 01-06", "SUP REF VENT")))
+check("...la traba del refuerzo sigue siendo traba, y no se traga palabras que contienen REF",
+      C.tipologia_de("TR R.L") == "traba" and C.tipologia_de("PREFAB") is None
+      and C.tipologia_de("REFER") is None and C.tipologia_de("F'") is None
+      and C.tipologia_de("RAL") is None)
+check("las de antes se leen igual (el punto de R.L obligó a escapar los alias)",
+      C.tipologia_de("Cb") == "cabezal" and C.tipologia_de("CAB SUP") == "cabezal"
+      and C.tipologia_de("MV VAR") == "vertical" and C.tipologia_de("TRABA MURO") == "traba"
+      and "re.escape(a)" in SRC)
+check("un refuerzo en L de phi8 se marca, y uno recto también; de phi10 o phi12 no",
+      len(C.r_refuerzo_fi8(_ref(8.0), [])) == 1
+      and len(C.r_refuerzo_fi8(_ref(8.0, lados=[("A", 1200, "B", None)]), [])) == 1
+      and C.r_refuerzo_fi8(_ref(10.0), []) == [] and C.r_refuerzo_fi8(_ref(12.0), []) == [])
+check("...pero un corchete o un estribo de phi8 no: están bien",
+      C.r_refuerzo_fi8(_ref(8.0, lados=[("A", 300, "B", None), ("B", 1200, "B", 90),
+                                        ("C", 300, "B", 90)]), []) == []
+      and C.r_refuerzo_fi8(_ref(8.0, lados=[("A", 80, "H3", None), ("B", 300, "B", 135),
+                                            ("C", 500, "B", 90), ("D", 300, "B", 90),
+                                            ("E", 500, "B", 90), ("G", 80, "H3", 135)]), []) == []
+      and "REFUERZO_LADOS_REVISAR = {1: \"recto\", 2: \"en L\"}" in SRC)
+check("una barra de phi8 que no es refuerzo no entra",
+      C.r_refuerzo_fi8(_ref(8.0, "MH"), []) == [] and C.r_refuerzo_fi8(_ref(8.0, None), []) == []
+      and C.r_refuerzo_fi8(_ref(8.0, "TR R.L"), []) == [])
+_sr = C.correr([_ref(8.0)])
+check("pasa por el motor: una señal, con su patrón por figura y diámetro",
+      [x["regla"] for x in _sr] == ["refuerzo_fi8"] and _sr[0]["detalle"]["texto"] == "es un refuerzo en L de φ8")
+_rr = {r["codigo"]: r for r in C.REGLAS}["refuerzo_fi8"]
+_er = C.ejemplo_dibujado(_rr)
+check("está en el menú de reglas, con su dibujo (una L) y su alcance",
+      _rr["corto"] == "Refuerzo φ8" and not _rr.get("excepcion_de")
+      and bool(_er) and _er["eje"]["ok"] and [t["lado"] for t in _er["eje"]["tramos"]] == ["A", "B"]
+      and _er["leyenda"] == "REF con φ8" and "corchete" in _rr["alcance"])
+
 print("\n18. La fila muestra la barra, no la describe")
 # El usuario (13-oct): «demasiado texto. Debe indicar hallazgo, mostrar barra renderizada
 # y los lados que tiene la figura, resaltar en rojo el que no cumple. Eso es mejor que
