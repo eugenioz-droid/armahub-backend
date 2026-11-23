@@ -1303,27 +1303,26 @@ def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list, diam=N
 
 
 @router.get("/armascanner/planos-linea")
-def planos_linea(obra: str = "", user=Depends(get_current_user)):
-    """Los planos (portal; con `obra`, los de esa obra: la ventana de la obra en Mis obras): cada uno
-    con su etapa, el avance de su entrega (barras, aprobadas, con consulta, por aprobar, kg), sus KPIs
-    (ítems, kg, PPI, Ø, m² si es de losa), de quién es, los pedidos de reemplazo y el estado de su
-    pedido."""
+def planos_linea(obra: str, user=Depends(get_current_user)):
+    """Los planos de una obra (portal: la ventana de la obra en Mis obras): cada uno con su etapa, el
+    avance de su entrega (barras, aprobadas, con consulta, por aprobar, kg), sus KPIs (ítems, kg, PPI,
+    Ø, m² si es de losa), de quién es, los pedidos de reemplazo y el estado de su pedido. La obra es
+    obligatoria: sin ella devolvía los planos de todas las obras (programa 6.18)."""
+    if not obra.strip():
+        raise HTTPException(status_code=422, detail="Falta la obra.")
     with get_conn() as conn:
         with conn.cursor() as cur:
             _con_licencia_o_admin(cur, user)
-            filtro, params = "", []
-            if obra.strip():
-                filtro, params = "WHERE p.id_proyecto = %s", [obra.strip()]
-            cur.execute(f"""
+            cur.execute("""
                 SELECT p.id_proyecto, COALESCE(pr.nombre_proyecto, p.id_proyecto), p.plano, p.numero, p.titulo,
                        p.revision, p.elemento, p.version, p.tamano, p.subido_por, p.subido_el, p.resumen,
                        p.pedido_version, p.pedido_el, p.pedido_por, p.pdf, p.barras, p.aprobadas, p.kg, p.etapa,
                        p.relacion, p.relacion_de
                   FROM planos_obra p
                   LEFT JOIN proyectos pr ON pr.id_proyecto = p.id_proyecto
-                  {filtro}
+                 WHERE p.id_proyecto = %s
                  ORDER BY 2, p.numero, p.plano
-            """, params)
+            """, (obra.strip(),))
             filas = cur.fetchall()
             obras = [obra.strip()] if obra.strip() else None
             entregas, pedidos = _entregas(cur, obras), _reemplazos(cur, obras)

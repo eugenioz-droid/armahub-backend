@@ -456,7 +456,8 @@ def lista_ficha(email, plano):
 
 
 def lista_portal(plano):
-    return next(x for x in web.get("/armascanner/planos-linea").json()["planos"] if x["plano"] == plano)
+    return next(x for x in web.get("/armascanner/planos-linea", params={"obra": "PROY-1"}).json()["planos"]
+                if x["plano"] == plano)
 
 
 EMI, EUG = "emilio@x.cl", "eugenio@x.cl"
@@ -1067,6 +1068,9 @@ check("dos publicaciones de la misma versión cruzadas: la que no entró borra s
       set(R2) == set(antes_r2) | {"armascanner/versiones/2026-12-02/otra/ArmaScanner-2026-12-02.zip"}
       and b"ZIP-2" not in R2.values() and R2["armascanner/versiones/2026-12-02/otra/ArmaScanner-2026-12-02.zip"] == b"ZIP-OTRA",
       list(R2))
+
+check("los planos del portal piden la obra: sin ella, 422 (antes devolvía los de todas)",
+      web.get("/armascanner/planos-linea").status_code == 422)
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)
