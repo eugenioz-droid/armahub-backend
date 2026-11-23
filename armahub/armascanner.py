@@ -1504,15 +1504,18 @@ def _eliminar_plano(email: str, datos: "EliminarPlano") -> dict:
 # aviso también… un flujo que no dependa de estar enviando planos manualmente sin control ni
 # trazabilidad»; «un pequeño apartado donde listemos las oficinas de cálculo… así se va estableciendo
 # una base de conocimiento»]
-# El caso es el PLANO: sus envíos (planos que no se leen y reportes, de uno o varios cubicadores) son su
-# historial, y resolverlo resuelve todo lo que estaba abierto. [Usuario 23-nov: «más que cada prueba
-# que se hizo (que se puede guardar el historial…) es saber que ese plano ya se resolvió»]
+# Desarrollo es de LECTURAS: el caso es el plano que no se lee (tipo «plano»); sus envíos, de uno o
+# varios cubicadores, son su historial, y resolverlo resuelve todo lo que estaba abierto. Los estados los
+# cambia el agente con la ficha (empaquetar/traer_desarrollo.py), no el usuario. Los reportes de errores
+# (tipo «reporte») no son Desarrollo: se listan en Uso. [Usuario 23-nov: «más que cada prueba que se
+# hizo… es saber que ese plano ya se resolvió»; «esos botones son más para ti… tú vas a resolver el caso
+# y luego actualizarlo y marcarlo como resuelto… Esto apunta a resolver lecturas, no a resolver bugs»]
 REPORTE_MAX = 25 * 1024 * 1024
 ESTADOS_CASO = ("nuevo", "en_estudio", "resuelto", "descartado")
 CASOS_ABIERTOS = ["nuevo", "en_estudio"]
-# Cuenta planos, no envíos (un reporte sin plano es su propio caso).
+# Cuenta planos, no envíos.
 CASOS_NUEVOS = """SELECT COUNT(DISTINCT COALESCE(NULLIF(plano, ''), 'id:' || CAST(id AS TEXT)))
-                    FROM armascanner_reportes WHERE estado = 'nuevo'"""
+                    FROM armascanner_reportes WHERE estado = 'nuevo' AND tipo = 'plano'"""
 
 
 def _admins(cur) -> list:
@@ -1573,15 +1576,15 @@ async def recibir_reporte(datos: str = Form("{}"), archivo: UploadFile = File(..
 
 @router.get("/armascanner/desarrollo")
 def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
-    """La pestaña Desarrollo (administrador): un caso por plano (los abiertos primero, el más nuevo
-    arriba) con la oficina de cálculo de su obra y sus envíos, y las oficinas. El caso está abierto
-    mientras tenga un envío abierto; si no, queda como quedó el último."""
+    """La pestaña Desarrollo (administrador, sólo lectura): un caso por plano que no se lee (los abiertos
+    primero, el más nuevo arriba) con la oficina de cálculo de su obra y sus envíos, y las oficinas. El
+    caso está abierto mientras tenga un envío abierto; si no, queda como quedó el último."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT r.id, r.tipo, r.estado, r.email, r.equipo, r.version, r.obra, r.obra_id, r.plano,
                                   r.comentario, r.lector, r.nota, r.version_resuelto, r.tamano, r.creado_el, p.calculista_id
                              FROM armascanner_reportes r LEFT JOIN proyectos p ON p.id_proyecto = r.obra_id
-                            ORDER BY r.id DESC LIMIT 500""")
+                            WHERE r.tipo = 'plano' ORDER BY r.id DESC LIMIT 500""")
             filas = cur.fetchall()
             nombres = _nombres(cur, [f[3] for f in filas])
             oficinas, calculistas = _oficinas(cur, filas)
@@ -1595,12 +1598,11 @@ def desarrollo(admin=Depends(require_admin_or_admin_calidad)):
         estado = next((e for e in CASOS_ABIERTOS if e in estados), u[2])
         cierre = u if estado not in CASOS_ABIERTOS else None
         oficina = next((calculistas.get(e[15], "") for e in envios if e[15] is not None), "")
-        casos.append({"id": u[0], "estado": estado, "tipo": "plano" if any(e[1] == "plano" for e in envios) else "reporte",
-                      "obra": u[6] or "", "obra_id": u[7] or "", "plano": u[8] or "", "oficina": oficina,
+        casos.append({"id": u[0], "estado": estado, "obra": u[6] or "", "obra_id": u[7] or "", "plano": u[8] or "", "oficina": oficina,
                       "usuario": nombres.get(u[3], u[3] or ""), "version": u[5] or "", "el": _cuando(u[14]),
                       "comentario": u[9] or "", "lector": u[10] or "",
                       "nota": (cierre[11] or "") if cierre else "", "version_resuelto": (cierre[12] or "") if cierre else "",
-                      "envios": [{"id": e[0], "tipo": e[1], "estado": e[2], "usuario": nombres.get(e[3], e[3] or ""),
+                      "envios": [{"id": e[0], "estado": e[2], "usuario": nombres.get(e[3], e[3] or ""),
                                   "equipo": e[4] or "", "version": e[5] or "", "comentario": e[9] or "",
                                   "lector": e[10] or "", "nota": e[11] or "", "version_resuelto": e[12] or "",
                                   "el": _cuando(e[14])} for e in envios]})
@@ -1644,15 +1646,10 @@ class CasoDesarrollo(BaseModel):
     nota: Optional[str] = None
 
 
-@router.post("/armascanner/desarrollo/{rid}")
-def cambiar_caso_portal(rid: int, datos: CasoDesarrollo, admin=Depends(require_admin_or_admin_calidad)):
-    """En estudio, resuelto (con la versión que lo resolvió) o descartado (administrador)."""
-    return _cambiar_caso(admin.get("email", "?"), rid, datos)
-
-
 @router.post("/armascanner/desarrollo-ficha")
 def cambiar_caso_ficha(datos: CasoDesarrollo, credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
-    """Lo mismo, con la ficha de ArmaScanner de un administrador (el agente, desde el equipo de desarrollo)."""
+    """En estudio, resuelto (con la versión que lo resolvió) o descartado, con la ficha de ArmaScanner de
+    un administrador: lo hace el agente desde el equipo de desarrollo (empaquetar/traer_desarrollo.py)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             user = _usuario(cur, credentials.credentials)
@@ -1662,29 +1659,29 @@ def cambiar_caso_ficha(datos: CasoDesarrollo, credentials: HTTPAuthorizationCred
 
 
 def _cambiar_caso(email: str, rid: int, datos: CasoDesarrollo) -> dict:
-    """Cambia el estado del caso del plano del envío `rid`: resolverlo o descartarlo cierra todos sus
-    envíos abiertos; «en estudio» toma los nuevos (y reabre `rid` si estaba cerrado). Al cerrarse, se
-    les avisa a quienes lo mandaron."""
+    """Cambia el estado del caso del plano del envío `rid` (los envíos del mismo plano y tipo): resolverlo
+    o descartarlo cierra todos sus envíos abiertos; «en estudio» toma los nuevos (y reabre `rid` si
+    estaba cerrado). Al cerrarse, se les avisa a quienes lo mandaron."""
     if datos.estado not in ESTADOS_CASO:
         raise HTTPException(status_code=400, detail="Estado no válido.")
     cierra = datos.estado in ("resuelto", "descartado")
     version = (datos.version or "").strip()[:40] or None
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT plano FROM armascanner_reportes WHERE id = %s", (rid,))
+            cur.execute("SELECT plano, tipo FROM armascanner_reportes WHERE id = %s", (rid,))
             fila = cur.fetchone()
             if not fila:
                 raise HTTPException(status_code=404, detail="Caso no encontrado.")
-            plano = fila[0] or ""
+            plano, tipo = fila[0] or "", fila[1]
             cur.execute("""UPDATE armascanner_reportes
                               SET estado = %s, nota = COALESCE(%s, nota),
                                   version_resuelto = CASE WHEN %s = 'resuelto' THEN %s ELSE NULL END,
                                   resuelto_por = CASE WHEN %s THEN %s ELSE NULL END,
                                   resuelto_el = CASE WHEN %s THEN NOW() ELSE NULL END
-                            WHERE id = %s OR (%s <> '' AND plano = %s AND estado = ANY(%s))
+                            WHERE id = %s OR (%s <> '' AND plano = %s AND tipo = %s AND estado = ANY(%s))
                         RETURNING email, tipo, nota""",
                         (datos.estado, (datos.nota or "").strip()[:2000] if datos.nota is not None else None,
-                         datos.estado, version, cierra, email, cierra, rid, plano, plano,
+                         datos.estado, version, cierra, email, cierra, rid, plano, plano, tipo,
                          CASOS_ABIERTOS if cierra else ["nuevo"]))
             filas = cur.fetchall()
     audit(email, "armascanner_desarrollo", f"#{rid} {datos.estado} ({len(filas)})" + (f" {version}" if version else ""),
@@ -1742,6 +1739,21 @@ def avisos(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
             n = cur.fetchone()[0]
     base = (os.getenv("APP_URL", "") or "").strip().rstrip("/")
     return {"admin": True, "desarrollo": n, "url": f"{base}/#mod=armascanner&tab=asc_desarrollo" if base else ""}
+
+
+@router.get("/armascanner/reportes")
+def reportes(admin=Depends(require_admin_or_admin_calidad)):
+    """Los reportes de errores que mandan los cubicadores con «Enviar reporte», el más nuevo primero
+    (administrador; pestaña Uso)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, email, equipo, version, obra, plano, comentario, tamano, creado_el
+                             FROM armascanner_reportes WHERE tipo = 'reporte' ORDER BY id DESC LIMIT 300""")
+            filas = cur.fetchall()
+            nombres = _nombres(cur, [f[1] for f in filas])
+    return {"reportes": [{"id": f[0], "usuario": nombres.get(f[1], f[1] or ""), "equipo": f[2] or "", "version": f[3] or "",
+                          "obra": f[4] or "", "plano": f[5] or "", "comentario": f[6] or "", "tamano": f[7] or 0,
+                          "el": _cuando(f[8])} for f in filas]}
 
 
 @router.get("/armascanner/reportes-ficha")

@@ -675,12 +675,11 @@
   // las oficinas de cálculo, con el lector que lee sus planos. [Usuario 23-nov: «un flujo que no dependa
   // de estar enviando planos manualmente sin control ni trazabilidad»; «un pequeño apartado donde
   // listemos las oficinas de cálculo… así se va estableciendo una base de conocimiento»] ──
-  // El caso es el plano: sus envíos son el historial; resolverlo resuelve todos. [Usuario 23-nov: «más
-  // que cada prueba que se hizo (que se puede guardar el historial…) es saber que ese plano ya se
-  // resolvió»; «el botón confunde»: los botones dicen lo que hacen]
+  // Sólo lectura: el caso es el plano que no se lee y sus envíos son el historial; los estados los
+  // cambia el agente. [Usuario 23-nov: «es saber que ese plano ya se resolvió»; «esos botones son más
+  // para ti… Esto apunta a resolver lecturas, no a resolver bugs»]
   var ESTADO_DEV = { nuevo: ['Nuevo', 'arm-tag--warning'], en_estudio: ['En estudio', 'arm-tag--info'],
                      resuelto: ['Resuelto', 'arm-tag--success'], descartado: ['Descartado', ''] };
-  var TIPO_DEV = { plano: 'No se lee', reporte: 'Reporte' };
 
   async function cargarDesarrollo() {
     if (!est.devListo) {
@@ -731,17 +730,15 @@
     document.getElementById('ascDevCasos').innerHTML = filas.map(function (c) {
       var n = c.envios.length, abierto = est.devHistorial === c.id;
       var acciones = botonDev('Descargar', 'ascDescargarReporte(' + c.id + ')') +
-        (n > 1 ? botonDev(abierto ? 'Ocultar historial' : 'Historial (' + n + ')', 'ascHistorial(' + c.id + ')') : '') +
-        (abiertoDev(c) ? botonDev('Resolver', 'ascCaso(' + c.id + ', \'resuelto\')') + botonDev('Descartar', 'ascCaso(' + c.id + ', \'descartado\')')
-          : botonDev('Reabrir', 'ascCaso(' + c.id + ', \'en_estudio\')'));
+        (n > 1 ? botonDev(abierto ? 'Ocultar historial' : 'Historial (' + n + ')', 'ascHistorial(' + c.id + ')') : '');
       var fila = '<tr>' + estadoDev(c) +
         '<td>' + esc(c.plano || 'Sin plano') + '<div class="asc-linea">' + esc([c.obra, c.oficina].filter(Boolean).join(' · ')) + '</div></td>' +
         '<td>' + esc(c.el) + '<div class="asc-linea">' + esc([c.usuario, c.version].filter(Boolean).join(' · ')) + '</div></td>' +
         detalleDev(c) + '<td class="asc-acciones"><div>' + acciones + '</div></td></tr>';
       if (!abierto) return fila;
       return fila + c.envios.map(function (e) {
-        return '<tr class="asc-hist">' + estadoDev(e) + '<td>' + (TIPO_DEV[e.tipo] || esc(e.tipo)) + '</td>' +
-          '<td>' + esc(e.el) + '<div class="asc-linea">' + esc([e.usuario, e.equipo, e.version].filter(Boolean).join(' · ')) + '</div></td>' +
+        return '<tr class="asc-hist">' + estadoDev(e) + '<td>' + esc(e.equipo) + '</td>' +
+          '<td>' + esc(e.el) + '<div class="asc-linea">' + esc([e.usuario, e.version].filter(Boolean).join(' · ')) + '</div></td>' +
           detalleDev(e) + '<td class="asc-acciones"><div>' + botonDev('Descargar', 'ascDescargarReporte(' + e.id + ')') + '</div></td></tr>';
       }).join('');
     }).join('');
@@ -754,24 +751,6 @@
   global.ascHistorial = function (id) {
     est.devHistorial = est.devHistorial === id ? null : id;
     pintarCasos();
-  };
-
-  global.ascCaso = async function (id, estado) {
-    var cuerpo = { estado: estado };
-    if (estado === 'resuelto') {
-      var v = prompt('Versión de ArmaScanner que lo resuelve (opcional):', '');
-      if (v == null) return;
-      cuerpo.version = v.trim();
-    } else if (estado === 'descartado') {
-      var n = prompt('Motivo (le llega al cubicador):', '');
-      if (n == null) return;
-      cuerpo.nota = n.trim();
-    }
-    var data = await postJson('/armascanner/desarrollo/' + id, cuerpo);
-    if (!data) return;
-    global.showToast(estado === 'resuelto' ? 'Plano resuelto: se avisó a quienes lo enviaron.' : estado === 'descartado'
-      ? 'Plano descartado: se avisó a quienes lo enviaron.' : 'Caso en estudio.', 'success');
-    await cargarDesarrollo();
   };
 
   function pintarOficinas() {
@@ -814,13 +793,25 @@
     global.ascEditarOficina(est.devEditando === id && !lector && !notas ? id : 0);
   }
 
-  // Descargar un caso nuevo lo pasa a «En estudio» (lo mismo que hace el agente al bajarlo).
+  // ── Reportes (administrador, pestaña Uso): los errores que mandan los cubicadores con «Enviar reporte» ──
+  async function cargarReportes() {
+    var data = await global.apiGet('/armascanner/reportes');
+    var filas = (data && data.reportes) || [];
+    document.getElementById('ascReportes').innerHTML = filas.map(function (r) {
+      return '<tr><td>' + esc(r.el) + '</td><td>' + esc(r.usuario) + '<div class="asc-linea">' +
+        esc([r.equipo, r.version].filter(Boolean).join(' · ')) + '</div></td>' +
+        '<td>' + esc(r.obra) + (r.plano ? '<div class="asc-linea">' + esc(r.plano) + '</div>' : '') + '</td>' +
+        '<td>' + esc(r.comentario) + '</td>' +
+        '<td class="asc-acciones"><div>' + botonDev('Descargar', 'ascDescargarReporte(' + r.id + ')') + '</div></td></tr>';
+    }).join('');
+    var vacio = document.getElementById('ascReportesVacio');
+    vacio.style.display = filas.length ? 'none' : '';
+    vacio.textContent = data ? 'Sin reportes.' : 'No se pudieron leer los reportes. Recarga la página.';
+  }
+
   global.ascDescargarReporte = async function (id) {
     var v = await global.apiGet('/armascanner/reportes/' + id + '/descarga');
-    if (!v || !v.url) return;
-    window.location.href = v.url;
-    var c = ((est.dev && est.dev.casos) || []).find(function (x) { return x.envios.some(function (e) { return e.id === id; }); });
-    if (c && c.estado === 'nuevo' && await postJson('/armascanner/desarrollo/' + id, { estado: 'en_estudio' })) await cargarDesarrollo();
+    if (v && v.url) window.location.href = v.url;
   };
 
   // ── Instalar ──
@@ -959,6 +950,7 @@
 
   // ── Uso (administración) ──
   async function cargarUso() {
+    cargarReportes();
     var d = await global.apiGet('/armascanner/uso');
     if (!d) return;
     poner('ascUsoLic', entero(d.licencias_activas));

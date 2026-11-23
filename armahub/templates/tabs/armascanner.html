@@ -6,9 +6,9 @@
      Protocolo y Terreno (los planos van dentro de la obra: ya no hay pestaña Planos).
      Agregar obra (23-nov): la obra se agrega aquí primero, de la lista de aSa Studio, y recién ahí
      ArmaScanner la muestra; el administrador la limpia o la elimina desde su ventana.
-     Desarrollo (23-nov, administrador): un caso por plano (los planos que el lector no reconoce y los
-     reportes que mandan los cubicadores son su historial), con su estado; y las oficinas de cálculo
-     con el lector que lee sus planos. -->
+     Desarrollo (23-nov, administrador, sólo lectura): un caso por plano que el lector no reconoce (sus
+     envíos son el historial), con el estado que le pone el agente; y las oficinas de cálculo con el
+     lector que lee sus planos. Los reportes de errores van en Uso. -->
 <style>
   .asc { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .asc .asc-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -306,6 +306,14 @@
         <tbody id="ascUso"></tbody>
       </table>
       <div id="ascUsoVacio" class="asc-vacio" style="display:none;">Sin uso en los últimos 30 días.</div>
+    </div>
+    <div class="arm-card">
+      <div class="asc-barra"><span class="asc-rotulo">Reportes</span></div>
+      <table class="arm-table">
+        <thead><tr><th>Fecha</th><th>Usuario</th><th>Obra · plano</th><th>Comentario</th><th></th></tr></thead>
+        <tbody id="ascReportes"></tbody>
+      </table>
+      <div id="ascReportesVacio" class="asc-vacio" style="display:none;"></div>
     </div>
   </div>
 </div>

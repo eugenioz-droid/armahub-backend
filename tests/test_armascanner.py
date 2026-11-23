@@ -214,7 +214,7 @@ check("rutas del contrato",
        "/armascanner/planos-linea/barras", "/armascanner/planos-linea/liberar", "/armascanner/planos-linea/pedido",
        "/armascanner/planos-linea/reemplazo/responder", "/armascanner/obras-linea", "/armascanner/obras-linea/asa",
        "/armascanner/planos-linea/dwg", "/armascanner/obras-asa", "/armascanner/obras-linea/agregar",
-       "/armascanner/obras-linea/quitar", "/armascanner/desarrollo", "/armascanner/desarrollo/{rid}",
+       "/armascanner/obras-linea/quitar", "/armascanner/desarrollo", "/armascanner/reportes",
        "/armascanner/desarrollo-ficha", "/armascanner/oficinas", "/armascanner/avisos"} <= rutas, rutas)
 check("Mis obras ya no lista las cargas sueltas", "/armascanner/cargas" not in rutas and not hasattr(A, "cargas"))
 check("ya no existen subir-plano ni elegir la versión que vale",
@@ -912,44 +912,49 @@ check("…el mismo plano con su caso abierto no se repite (ni se guarda otro ZIP
       r.json() == {"ok": True, "id": caso, "ya_estaba": True} and una("SELECT COUNT(*) FROM armascanner_reportes")[0] == n)
 check("…un reporte sí entra siempre", mandar(EUG, "reporte", "L-77").json()["ya_estaba"] is False)
 otro = mandar(EUG, "reporte", "L-90").json()["id"]
-check("el aviso al abrir ArmaScanner: al administrador, cuántos PLANOS nuevos (no envíos); al cubicador, nada",
-      web.get("/armascanner/avisos", headers=ficha("jefa@x.cl")).json()["desarrollo"] == 2
+check("el aviso al abrir ArmaScanner: al administrador, cuántos planos nuevos (no los reportes); al cubicador, nada",
+      web.get("/armascanner/avisos", headers=ficha("jefa@x.cl")).json()["desarrollo"] == 1
       and web.get("/armascanner/avisos", headers=ficha(EMI)).json() == {"admin": False, "desarrollo": 0, "url": ""})
 sesion.update(email="jefa@x.cl", role="admin")
 dev = web.get("/armascanner/desarrollo").json()
-c = next(x for x in dev["casos"] if x["plano"] == "L-77")
-check("la pestaña: un caso por plano, los abiertos primero",
-      [x["plano"] for x in dev["casos"]] == ["L-90", "L-77", ""] and dev["casos"][-1]["estado"] == "en_estudio", dev["casos"])
-check("…el plano con su oficina, lo último que llegó y sus envíos como historial",
-      (c["estado"], c["tipo"], c["oficina"], c["id"], [e["tipo"] for e in c["envios"]])
-      == ("nuevo", "plano", "DELPORTE", caso + 1, ["reporte", "plano"]), c)
-check("…las oficinas que importan: la de una obra en ArmaScanner (con su caso en estudio); las demás, para agregar",
-      [(o["nombre"], o["abiertos"]) for o in dev["oficinas"]] == [("DELPORTE", 2)]
+check("la pestaña Desarrollo: sólo los planos que no se leen, con su oficina y lo que vio el lector",
+      [(x["plano"], x["estado"], x["oficina"], x["id"], x["lector"]) for x in dev["casos"]]
+      == [("L-77", "nuevo", "DELPORTE", caso, "revit: 0 barras; delporte: 0 barras")], dev["casos"])
+check("…los reportes de errores van en Uso", [x["plano"] for x in web.get("/armascanner/reportes").json()["reportes"]]
+      == ["L-90", "L-77", ""])
+check("…las oficinas que importan: la de una obra en ArmaScanner (con su plano en estudio); las demás, para agregar",
+      [(o["nombre"], o["abiertos"]) for o in dev["oficinas"]] == [("DELPORTE", 1)]
       and {o["nombre"] for o in dev["otras"]} == {"SCAD INGENIEROS", "OTRA OFICINA"}, dev["oficinas"])
+JEFA = ficha("jefa@x.cl")
+
+
+def caso_a(rid, **datos):
+    return web.post("/armascanner/desarrollo-ficha", headers=JEFA, json=dict(datos, id=rid))
+
+
 check("cambiar un caso es de administrador",
       web.post("/armascanner/desarrollo-ficha", headers=ficha(EMI), json={"id": caso, "estado": "en_estudio"}).status_code == 403)
-check("…con la ficha del administrador (el agente): en estudio",
-      web.post("/armascanner/desarrollo-ficha", headers=ficha("jefa@x.cl"), json={"id": caso, "estado": "en_estudio"}).json()
-      == {"ok": True} and una("SELECT estado FROM armascanner_reportes WHERE id = ?", caso) == ("en_estudio",))
-check("…«en estudio» toma todo el plano, no sólo ese envío",
-      [una("SELECT estado FROM armascanner_reportes WHERE id = ?", i)[0] for i in (caso, caso + 1, otro)]
-      == ["en_estudio", "en_estudio", "nuevo"])
-r = web.post(f"/armascanner/desarrollo/{caso + 1}", json={"estado": "resuelto", "version": "2026-11-24.1"})
-check("resuelto: el plano entero, con la versión, y se les avisa a quienes lo mandaron",
-      r.json() == {"ok": True}
-      and [una("SELECT estado, version_resuelto, resuelto_por FROM armascanner_reportes WHERE id = ?", i) for i in (caso, caso + 1)]
-      == [("resuelto", "2026-11-24.1", "jefa@x.cl")] * 2
-      and sorted(AVISOS[-1][1]) == sorted([EMI, EUG]) and "ya lee el plano L-77 desde la versión 2026-11-24.1" in AVISOS[-1][0], AVISOS[-1])
-c = next(x for x in web.get("/armascanner/desarrollo").json()["casos"] if x["plano"] == "L-77")
+check("…con la ficha del administrador (el agente): en estudio, sin tocar el reporte del mismo plano",
+      caso_a(caso, estado="en_estudio").json() == {"ok": True}
+      and [una("SELECT estado FROM armascanner_reportes WHERE id = ?", i)[0] for i in (caso, caso + 1)] == ["en_estudio", "nuevo"])
+r = caso_a(caso, estado="resuelto", version="2026-11-24.1")
+check("resuelto: con la versión, y se le avisa a quien lo mandó",
+      r.json() == {"ok": True} and una("SELECT estado, version_resuelto, resuelto_por FROM armascanner_reportes WHERE id = ?", caso)
+      == ("resuelto", "2026-11-24.1", "jefa@x.cl")
+      and AVISOS[-1][1] == [EMI] and "ya lee el plano L-77 desde la versión 2026-11-24.1" in AVISOS[-1][0], AVISOS[-1])
+c = web.get("/armascanner/desarrollo").json()["casos"][0]
 check("…y la pestaña lo muestra resuelto, con su versión", (c["estado"], c["version_resuelto"]) == ("resuelto", "2026-11-24.1"), c)
 r = mandar(EMI, "plano", "L-77")
-c = next(x for x in web.get("/armascanner/desarrollo").json()["casos"] if x["plano"] == "L-77")
+c = web.get("/armascanner/desarrollo").json()["casos"][0]
 check("…si vuelve a llegar, el plano se reabre como nuevo y el historial guarda lo resuelto",
-      r.json()["ya_estaba"] is False and c["estado"] == "nuevo" and [e["estado"] for e in c["envios"]] == ["nuevo", "resuelto", "resuelto"], c)
-web.post(f"/armascanner/desarrollo/{otro}", json={"estado": "descartado", "nota": "No es del lector"})
+      r.json()["ya_estaba"] is False and c["estado"] == "nuevo" and [e["estado"] for e in c["envios"]] == ["nuevo", "resuelto"], c)
+check("…resolverlo de nuevo cierra todos sus envíos abiertos",
+      caso_a(r.json()["id"], estado="resuelto").json() == {"ok": True}
+      and web.get("/armascanner/desarrollo").json()["casos"][0]["estado"] == "resuelto")
+caso_a(otro, estado="descartado", nota="No es del lector")
 check("descartar un reporte: se le avisa con el motivo",
       AVISOS[-1][1] == [EUG] and AVISOS[-1][0].startswith("Se cerró lo que reportaste del plano L-90: No es del lector"), AVISOS[-1])
-check("…un estado que no existe: 400", web.post(f"/armascanner/desarrollo/{caso}", json={"estado": "listo"}).status_code == 400)
+check("…un estado que no existe: 400", caso_a(caso, estado="listo").status_code == 400)
 r = web.post("/armascanner/oficinas", json={"calculista_id": 2, "lector": "scad", "notas": "Planos de SCAD tal cual"})
 dev = web.get("/armascanner/desarrollo").json()
 check("una oficina: su lector y sus notas (base de conocimiento)",
