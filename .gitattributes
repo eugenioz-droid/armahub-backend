@@ -1,0 +1,2 @@
+# El gancho de git lo corre sh: con fin de línea CRLF, la primera línea termina en un retorno de carro y no arranca.
+scripts/hooks/* text eol=lf
