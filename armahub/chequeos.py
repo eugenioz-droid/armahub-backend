@@ -240,6 +240,19 @@ def r_altura_soporte_losa(barra, hermanas) -> list:
     }]
 
 
+def _rectos_junto_a_arco(lados) -> set:
+    """Los lados rectos, que no son gancho, con un arco al lado: el tramo con que la figura
+    entra o sale de una curva (familia RAD, 3D12, ESRAD, DOBLE). El lado corto no los mira.
+
+    EXCEPCIÓN VALIDADA POR EL USUARIO (23-nov), medida sobre las señales reales: 105 lados
+    cortos eran esto, todos se habían dejado sin efecto a mano y ninguno se corrigió. Los
+    ganchos no entran: ninguno de los 105 era gancho, y un gancho corto sigue siendo un
+    error aunque tenga un arco al lado."""
+    return {l["nombre"] for i, l in enumerate(lados)
+            if not l["arco"] and not l.get("gancho")
+            and any(lados[j]["arco"] for j in (i - 1, i + 1) if 0 <= j < len(lados))}
+
+
 def r_lado_corto(barra, hermanas) -> list:
     """UN LADO MÁS CORTO QUE 10 DIÁMETROS. Menos que eso no se dobla ni ancla.
 
@@ -261,9 +274,11 @@ def r_lado_corto(barra, hermanas) -> list:
     # Las alturas de un soporte de losa en φ8, φ10 y φ12 las revisa su propia regla, con el
     # mínimo de Producción (r_altura_soporte_losa). Todos los demás lados, acá.
     alturas = _alturas_soporte_losa(barra)
+    # Los lados rectos pegados a un arco tampoco: ver EXCEPCIONES.
+    junto_arco = _rectos_junto_a_arco(barra["lados"])
     cortos = [l for l in barra["lados"]
               if not l["arco"] and l["largo"] > 0 and l["largo"] < minimo - 0.01
-              and l["nombre"] not in alturas]
+              and l["nombre"] not in alturas and l["nombre"] not in junto_arco]
     if not cortos:
         return []
     # UNA BARRA ES UN HALLAZGO, aunque le fallen tres lados. Lo pidió el usuario (14-oct)
@@ -393,6 +408,13 @@ def r_lados_opuestos(barra, hermanas) -> list:
 # usuario: «no migres los que ya saltaron, que aplique de aquí para adelante»—: cada uno
 # lo resuelve quien lo tiene, con «No aplica» si corresponde.
 CABEZAL_DIAM_MINIMO = 12.0
+# LOS ESTRIBOS Y SUPLES DEL CABEZAL EN φ10 NO SALTAN (23-nov). Los clientes marcan CB
+# también los estribos, trabas y suples del cabezal, y esos van en φ10 por naturaleza.
+# Medido sobre las señales reales: 94 barras de 4 lados o más en φ10, todas dejadas sin
+# efecto a mano, ninguna corregida. EN φ8 SALTA IGUAL, a pedido del usuario: «si dice CB y
+# tiene diámetro 8, salte igual… el cubicador que gestionó se acostumbrará a corregir».
+CABEZAL_DIAM_SIEMPRE = 8.0
+CABEZAL_LADOS_ESTRIBO = 4
 
 
 def r_cabezal_delgado(barra, hermanas) -> list:
@@ -413,6 +435,8 @@ def r_cabezal_delgado(barra, hermanas) -> list:
         return []
     diam = barra.get("diam") or 0
     if diam <= 0 or diam >= CABEZAL_DIAM_MINIMO:
+        return []
+    if diam != CABEZAL_DIAM_SIEMPRE and len(barra.get("lados") or []) >= CABEZAL_LADOS_ESTRIBO:
         return []
     return [{
         "texto": "es un cabezal de φ%g, y lo habitual es φ%g o más" % (diam, CABEZAL_DIAM_MINIMO),
@@ -492,6 +516,13 @@ def r_patas_suple(barra, hermanas) -> list:
     por_nombre = {l["nombre"]: l for l in barra["lados"]}
     b, d = por_nombre.get("B"), por_nombre.get("D")
     if not b or not d or b["largo"] <= 0 or d["largo"] <= 0:
+        return []
+    # EL 105A QUE CRUZA UN DESNIVEL (23-nov): C más corto que A y que E. No es un suple que
+    # va dentro de una losa: es una barra que pasa de una losa a otra de distinto nivel, y
+    # B y D miden distinto a propósito. Medido: 26 señales, todas de PL Opera, todas
+    # dejadas sin efecto («la figura es así»); ningún suple corregido tenía esa forma.
+    a, c, e = por_nombre.get("A"), por_nombre.get("C"), por_nombre.get("E")
+    if a and c and e and 0 < c["largo"] < a["largo"] and c["largo"] < e["largo"]:
         return []
     dif = abs(b["largo"] - d["largo"])
     if dif <= TOLERANCIA_PATAS_SUPLE + 0.01:
@@ -729,7 +760,8 @@ REGLAS = [
      "necesita": ("lados", "diam"),
      "alcance": "Todas las figuras y todos los lados, ganchos incluidos. El mínimo es 10 veces "
                 "el diámetro, con piso de 7,5 cm. Las alturas de los soportes de losa 26 y 305A en "
-                "φ8, φ10 y φ12 tienen su excepción (ver Excepciones de reglas).",
+                "φ8, φ10 y φ12, y los lados rectos pegados a un arco, tienen su excepción (ver "
+                "Excepciones de reglas).",
      "ejemplo": {"lados": [("A", 100), ("B", 900, -90), ("C", 60, -90)], "diam": 10, "pin": 60,
                  "marcar": ["C"], "leyenda": "C < 10 φ"},
      "fn": r_lado_corto},
@@ -752,11 +784,12 @@ REGLAS = [
     {"codigo": "cabezal_delgado",
      "corto": "Cabezal φ chico",
      "nombre": "Cabezal con diámetro menor al habitual",
-     "porque": "Un cabezal de φ12 o menos es inusual. Puede ser correcto —y entonces se "
+     "porque": "Un cabezal de φ8 o φ10 es inusual. Puede ser correcto —y entonces se "
                "deja sin efecto, de a muchos si hace falta— pero conviene mirarlo.",
      "necesita": ("diam",),
-     "alcance": "Sólo barras cuya tipología (Notes en aSa) dice CB o CAB. No mira la figura: "
-                "mira el diámetro.",
+     "alcance": "Sólo barras cuya tipología (Notes en aSa) dice CB o CAB, en φ8 o φ10. Mira el "
+                "diámetro; los estribos y suples en φ10 tienen su excepción (ver Excepciones "
+                "de reglas).",
      # Se dibuja igual (el usuario, 10-nov): una 101A recta, y lo que salta va en el texto
      # de abajo. Así el menú no tiene un hueco donde las demás tienen dibujo.
      "ejemplo": {"lados": [("A", 1200)], "diam": 10, "pin": 60,
@@ -781,7 +814,8 @@ REGLAS = [
                "medir lo mismo. Más de 1 cm de diferencia es una medida tipeada mal.",
      "necesita": ("lados",),
      "alcance": "Sólo la figura 105A. Compara B con D; A y E pueden ser distintos y no se miran. "
-                "Tolerancia: 1 cm, que es como se cubica.",
+                "Tolerancia: 1 cm, que es como se cubica. El 105A que cruza un desnivel tiene su "
+                "excepción (ver Excepciones de reglas).",
      "ejemplo": {"lados": [("A", 130), ("B", 170, -90), ("C", 600, -90), ("D", 130, -90), ("E", 300, -90)],
                  "diam": 12, "pin": 72, "marcar": ["B", "D"], "leyenda": "B ≠ D por más de 1 cm"},
      "fn": r_patas_suple},
@@ -850,6 +884,53 @@ REGLAS = [
 ]
 
 
+# LAS EXCEPCIONES QUE SÓLO DEJAN FUERA (23-nov). La del soporte de losa, en REGLAS, le pone a
+# unas figuras un límite PROPIO y por eso señala como cualquier regla. Éstas no señalan nada:
+# dicen dónde una regla NO salta, y la condición vive dentro de esa regla (el motor no las
+# corre). Están acá para que el menú las muestre en «Excepciones de reglas», con su dibujo en
+# ámbar. El usuario: «la excepción debe quedar escrita en su sección correspondiente de reglas
+# para que el usuario pueda mirar y sepa». Cada una se midió sobre las señales reales y la
+# validó el usuario antes de entrar; la de CB dentro de una losa la descartó («no me molesta
+# que este salte»).
+EXCEPCIONES = [
+    {"codigo": "lado_junto_a_arco",
+     "excepcion_de": "lado_corto",
+     "corto": "Lado junto a arco",
+     "nombre": "Lado recto pegado a un arco",
+     "porque": "Un lado recto que empalma con un arco no salta por medir menos de 10 φ. De 105 "
+               "casos revisados, todos estaban correctos.",
+     "alcance": "Figuras con lados curvos: familia RAD (RADZ, 1RAD, 2RADY…), 3D12, ESRAD, DOBLE. "
+                "Sólo los lados rectos vecinos de un arco; los ganchos y los demás lados siguen "
+                "con la regla de 10 φ.",
+     "ejemplo": {"lados": [("A", 600), ("B", 630, 0, False, 400), ("C", 150, 0)], "diam": 16,
+                 "pin": 96, "marcar": ["C"], "leyenda": "C < 10 φ junto al arco"}},
+    {"codigo": "cabezal_estribo_fi10",
+     "excepcion_de": "cabezal_delgado",
+     "corto": "Cabezal: estribo φ10",
+     "nombre": "Estribo o suple de cabezal en φ10",
+     "porque": "Los estribos, trabas y suples marcados CB van en φ10. De 94 casos revisados, "
+               "todos estaban correctos. En φ8 la regla salta igual.",
+     "alcance": "Barras marcadas CB o CAB con 4 lados o más (T1, 106A, 105A, 104A, 305A…), sólo "
+                "en φ10.",
+     "ejemplo": {"lados": [("A", 100, None, True), ("B", 300, -135), ("C", 500, -90), ("D", 300, -90),
+                           ("E", 500, -90), ("G", 100, -135, True)], "diam": 10, "pin": 40,
+                 "marcar": [], "leyenda": "CB en φ10 con 4 lados o más"}},
+    {"codigo": "suple_cruza_desnivel",
+     "excepcion_de": "patas_suple",
+     "corto": "105A: cruza desnivel",
+     "nombre": "Suple 105A que cruza un desnivel",
+     "porque": "Si C es más corto que A y que E, la barra pasa de una losa a otra de distinto "
+               "nivel: B y D miden distinto a propósito. De 26 casos revisados, todos estaban "
+               "correctos.",
+     "alcance": "Sólo la figura 105A con C más corto que A y que E. Los demás 105A siguen "
+                "comparando B con D.",
+     "ejemplo": {"lados": [("A", 450), ("B", 400, 90), ("C", 350, -90), ("D", 200, -90), ("E", 450, 90)],
+                 "diam": 12, "pin": 72, "marcar": ["C"], "leyenda": "C < A y C < E",
+                 # C es corto y las letras automáticas de C y D se encimaban en la esquina.
+                 "letras_afuera": True}},
+]
+
+
 def _guias(tipo, puntos, base=None) -> list:
     """Líneas de apoyo del dibujo de una regla, en las coordenadas del eje ya orientado (mm).
     `altura`: la línea entre las puntas (cota gris: la diagonal de la L, la cuerda del arco),
@@ -893,7 +974,9 @@ def _letras_afuera(eje) -> list:
     """Las letras de los lados puestas a mano: al medio de cada lado, del lado contrario al
     centro de la figura. Es para la figura en el espacio. El motor pone cada letra a la
     izquierda del sentido del trazo, y en la silla proyectada en isométrica dos letras caen
-    siempre adentro, una encima de la otra (C y D recorriéndola desde A; A y B desde E)."""
+    siempre adentro, una encima de la otra (C y D recorriéndola desde A; A y B desde E).
+    También la pide el ejemplo plano que declara `letras_afuera`, cuando dos lados cortos
+    seguidos dejan sus letras automáticas encimadas (el 105A que cruza un desnivel)."""
     pts = eje.get("puntos") or []
     if len(pts) < 2:
         return []
@@ -915,8 +998,8 @@ def _letras_afuera(eje) -> list:
 def ejemplo_dibujado(regla) -> Optional[dict]:
     """El ejemplo de una regla, trazado con el mismo motor que las barras reales, listo
     para que la pantalla lo dibuje y marque los lados. None si la regla no mira la figura.
-    `letras_a_mano`: la figura en el espacio trae sus letras en `guias` (ver _letras_afuera)
-    y la pantalla apaga las automáticas."""
+    `letras_a_mano`: la figura en el espacio —o la plana que declara `letras_afuera`— trae
+    sus letras en `guias` (ver _letras_afuera) y la pantalla apaga las automáticas."""
     ej = regla.get("ejemplo")
     if not ej:
         return None
@@ -924,11 +1007,12 @@ def ejemplo_dibujado(regla) -> Optional[dict]:
     eje = (figura_espacial_de_lados(ej["lados"]) if espacial
            else figura_de_lados(ej["lados"], pin_diam=ej.get("pin", 0), diam_mm=ej.get("diam", 0)))
     guias = _guias(ej.get("guias"), eje.get("muestra") or eje.get("puntos") or [], ej.get("base"))
-    if espacial:
+    a_mano = espacial or bool(ej.get("letras_afuera"))
+    if a_mano:
         guias += _letras_afuera(eje)
     return {"eje": eje, "marcar": list(ej.get("marcar") or []), "leyenda": ej.get("leyenda") or "",
             "diam": ej.get("diam"), "lados": [[l[0], l[1]] for l in ej["lados"]],
-            "guias": guias, "letras_a_mano": espacial}
+            "guias": guias, "letras_a_mano": a_mano}
 
 def _tiene(barra, campos) -> bool:
     for c in campos:

@@ -1557,7 +1557,7 @@ por = {r["codigo"]: r for r in C.REGLAS}
 e0 = C.ejemplo_dibujado(por["cabezal_delgado"])
 check("el cabezal se dibuja como una 101A recta, con lo que salta en su leyenda; el alcance sigue diciendo que mira el diámetro",
       bool(e0) and e0["eje"]["ok"] and [t["lado"] for t in e0["eje"]["tramos"]] == ["A"] and e0["eje"]["alto"] == 0
-      and "φ8 o φ10" in e0["leyenda"] and "No mira la figura" in por["cabezal_delgado"]["alcance"])
+      and "φ8 o φ10" in e0["leyenda"] and "Mira el diámetro" in por["cabezal_delgado"]["alcance"])
 # 11-nov, el usuario: «pones medidas arbitrarias mayores a 250, eso confunde, mejor poner el
 # nombre de la dimensión». Ninguna leyenda lleva una cifra del ejemplo: nombra la dimensión
 # y el límite de la regla (250 cm, 10 φ, 1 cm).
@@ -1796,7 +1796,7 @@ check("el texto de la regla tampoco usa términos coloquiales",
 # excepciones … separar en un grupo distinto con su desplegable».
 print("\n14. Las excepciones van aparte, plegables, y las reglas se dibujan en rojo")
 _exc = [r for r in C.REGLAS if r.get("excepcion_de")]
-check("la de los soportes de losa es la única excepción, y es del lado corto",
+check("en REGLAS, la de los soportes de losa es la única excepción (las que sólo dejan fuera van en EXCEPCIONES)",
       [(r["codigo"], r["excepcion_de"]) for r in _exc] == [("altura_soporte_losa", "lado_corto")]
       and all(r["excepcion_de"] in por for r in _exc))
 check("el endpoint dice de qué regla es excepción", '"excepcion_de": r.get("excepcion_de")' in API)
@@ -1955,6 +1955,86 @@ check("la pantalla: botón en la fila, línea roja, chip «En consulta» y la fe
       and ".revcc2 tr.consulta td:not(.mal)" in HTM and ".revconbtn.on{" in HTM)
 check("...y sigue siendo una abierta: los conteos no cambian",
       "function _enConsulta(i) { return i.estado === EST.ABIERTA && !!i.consulta_desde; }" in JS)
+
+print("\n17d. Las excepciones que sólo dejan fuera (23-nov)")
+# El usuario pidió revisar las alertas que «no aplicaron» para proponer excepciones, y las
+# validó una por una: la del arco y la del suple tal cual; la del cabezal sólo en φ10 («si
+# dice CB y tiene diámetro 8, salte igual»); la de CB dentro de una losa la descartó.
+# 1RAD φ12, SQVD 12mmA106: C de 100 entre B recto y D curvo. Se había dejado sin efecto.
+_rad = barra([("B", 1000, "STD", None), ("C", 100, "STD", 90.0), ("D", 1400, "RB", 0.0)],
+             diam=12.0, figura="1RAD")
+check("un lado recto corto pegado a un arco no salta (1RAD de SQVD)", C.r_lado_corto(_rad, []) == [])
+# RADZ φ16, SUSU 16mmA10: el C de 1 cm tangente al arco B.
+check("...tampoco el C de 1 cm que empalma con el arco (RADZ de SUSU)",
+      C.r_lado_corto(barra([("B", 1740, "RB", None), ("C", 10, "STD", 0.0), ("D", 530, "STD", -60.0)],
+                           diam=16.0, figura="RADZ"), []) == [])
+check("...pero el mismo C sin arco al lado salta como siempre",
+      len(C.r_lado_corto(barra([("B", 1000, "STD", None), ("C", 100, "STD", 90.0), ("D", 1400, "STD", 0.0)],
+                               diam=12.0, figura="103A"), [])) == 1)
+check("...y un gancho corto pegado a un arco también salta: la excepción es para lados rectos",
+      C.r_lado_corto(barra([("A", 80, "H3", None), ("B", 1400, "RB", 0.0)], diam=12.0, figura="9"),
+                     [])[0]["lados"] == ["A"])
+check("...y los otros lados cortos de la misma barra siguen saltando",
+      C.r_lado_corto(barra([("A", 50, "STD", None), ("B", 1000, "STD", 90.0), ("C", 100, "STD", 90.0),
+                            ("D", 1400, "RB", 0.0)], diam=12.0, figura="1RAD"), [])[0]["lados"] == ["A"])
+
+
+def _cb(diam, n_lados):
+    lados = [("A", 100, "H3", None), ("B", 300, "STD", 135), ("C", 500, "STD", 90),
+             ("D", 300, "STD", 90), ("E", 500, "STD", 90), ("G", 100, "H3", 135)]
+    b = barra(lados[:n_lados] if n_lados < 6 else lados, diam=diam)
+    b["tipologia"] = "CB"
+    return b
+
+
+check("un estribo o suple de cabezal (4 lados o más) en φ10 no salta",
+      C.r_cabezal_delgado(_cb(10.0, 6), []) == [] and C.r_cabezal_delgado(_cb(10.0, 4), []) == [])
+check("...en φ8 salta igual (el usuario: «si dice CB y tiene diámetro 8, salte igual»)",
+      len(C.r_cabezal_delgado(_cb(8.0, 6), [])) == 1 and len(C.r_cabezal_delgado(_cb(8.0, 4), [])) == 1)
+check("...y un cabezal de φ10 recto, en L o en U sigue saltando",
+      all(len(C.r_cabezal_delgado(_cb(10.0, n), [])) == 1 for n in (1, 2, 3)))
+check("...la de CB dentro de una losa se descartó: el nombre del elemento no cuenta",
+      "LOSA" not in SRC.split("def r_cabezal_delgado")[1].split("def ")[0])
+# PL Opera, «102 SUP» φ12: A 124, B 36, C 26, D 16, E 123 cm.
+check("un 105A con C más corto que A y que E cruza un desnivel: B ≠ D no salta (102 SUP de PL Opera)",
+      C.r_patas_suple(suple(1240, 360, 260, 160, 1230), []) == [])
+check("...un suple normal con B ≠ D sigue saltando, y basta que C no sea el más corto de los tres",
+      len(C.r_patas_suple(suple(130, 170, 2280, 130, 640), [])) == 1
+      and len(C.r_patas_suple(suple(1240, 360, 1300, 160, 1230), [])) == 1)
+
+_ex = {r["codigo"]: r for r in C.EXCEPCIONES}
+check("las tres, en EXCEPCIONES, cada una con la regla a la que le pone la excepción",
+      [(k, r["excepcion_de"]) for k, r in _ex.items()]
+      == [("lado_junto_a_arco", "lado_corto"), ("cabezal_estribo_fi10", "cabezal_delgado"),
+          ("suple_cruza_desnivel", "patas_suple")]
+      and all(r["excepcion_de"] in por for r in _ex.values()))
+check("...no señalan nada: el motor no las corre, la condición vive en la regla",
+      all("fn" not in r for r in C.EXCEPCIONES)
+      and "_rectos_junto_a_arco(barra[\"lados\"])" in SRC and "CABEZAL_LADOS_ESTRIBO = 4" in SRC
+      and "CABEZAL_DIAM_SIEMPRE = 8.0" in SRC)
+check("...y el menú las muestra con las demás excepciones",
+      "for r in REGLAS + EXCEPCIONES]}" in API
+      and "' · casos en que una regla no salta o usa otro límite'" in JS)
+check("...cada una con su nombre corto, su alcance y la regla base que la menciona",
+      all(r["corto"] and len(r["corto"]) <= 20 and r["alcance"] and r["porque"] for r in C.EXCEPCIONES)
+      and all("su excepción (ver Excepciones de reglas)" in por[c]["alcance"]
+              for c in ("lado_corto", "patas_suple"))
+      and "su excepción (ver Excepciones de reglas)" in por["cabezal_delgado"]["alcance"].replace("\n", ""))
+_dib = {k: C.ejemplo_dibujado(r) for k, r in _ex.items()}
+check("...y su dibujo: el arco con C marcado, el estribo, y el 105A con las letras por fuera",
+      all(d and d["eje"]["ok"] for d in _dib.values())
+      and [t["tipo"] for t in _dib["lado_junto_a_arco"]["eje"]["tramos"]].count("arco") == 1
+      and _dib["lado_junto_a_arco"]["marcar"] == ["C"]
+      and _dib["suple_cruza_desnivel"]["letras_a_mano"]
+      and [g["texto"] for g in _dib["suple_cruza_desnivel"]["guias"] if g["tipo"] == "letra"] == list("ABCDE")
+      and not _dib["cabezal_estribo_fi10"]["letras_a_mano"])
+check("las leyendas dicen la condición, sin cifras del ejemplo",
+      [r["ejemplo"]["leyenda"] for r in C.EXCEPCIONES]
+      == ["C < 10 φ junto al arco", "CB en φ10 con 4 lados o más", "C < A y C < E"])
+check("...y ningún texto usa términos coloquiales",
+      not _re.search(r"\b(pata|patas|pie|pies|horquilla|cuerpo)\b",
+                     " ".join(" ".join([r["nombre"], r["corto"], r["porque"], r["alcance"],
+                                        r["ejemplo"]["leyenda"]]) for r in C.EXCEPCIONES).lower()))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

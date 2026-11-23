@@ -36,7 +36,7 @@ from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_c
 from .chequeos_elementos import (REGLAS_ELEMENTO, correr_elemento, firma_elemento, gemelos_de, pares_de_obra,
                                  resumir)
 from .auth import get_current_user
-from .chequeos import REGLAS, correr, ejemplo_dibujado, normalizar_asa
+from .chequeos import EXCEPCIONES, REGLAS, correr, ejemplo_dibujado, normalizar_asa
 from .db import audit, get_conn
 
 log = logging.getLogger("armahub.chequeos")
@@ -114,7 +114,7 @@ def listar_reglas(user=Depends(get_current_user)):
                         "corto": r.get("corto") or r["nombre"], "porque": r["porque"],
                         "alcance": r.get("alcance") or "", "ejemplo": ejemplo_dibujado(r),
                         "excepcion_de": r.get("excepcion_de")}
-                       for r in REGLAS]}
+                       for r in REGLAS + EXCEPCIONES]}
 
 
 @router.get("/chequeos/obras")

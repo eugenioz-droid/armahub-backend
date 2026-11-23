@@ -115,7 +115,7 @@
     el.innerHTML = reglas.map(function (k) { return _filaRegla(REV.reglas[k], null); }).join('');
     if (bx && excs.length) {
       bx.hidden = false;
-      $('revExcN').textContent = '— ' + excs.length + ' · figuras con un límite propio en vez del de la regla general';
+      $('revExcN').textContent = '— ' + excs.length + ' · casos en que una regla no salta o usa otro límite';
       $('revExcL').innerHTML = excs.map(function (k) { return _filaRegla(REV.reglas[k], TINTA_EXC); }).join('');
     }
   }
