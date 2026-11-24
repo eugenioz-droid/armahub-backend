@@ -131,6 +131,16 @@ check("un código sin filas confirmadas queda sin confirmación", out["SV2"]["co
 check("una fila sin código se ignora", "" not in out)
 
 
+print("La última pasada")
+check("sin pasadas todavía", C.ultima(None) is None)
+check("terminada bien", C.ultima((t(16, 58), True, None, False)) == {
+      "fin": t(16, 58).isoformat(), "ok": True, "detalle": None, "en_curso": False})
+check("sin fin y reciente: está corriendo, NO fallida (24-nov)",
+      C.ultima((None, False, None, True))["en_curso"] is True)
+check("sin fin y vieja: se cortó a la mitad, eso sí es falla",
+      C.ultima((None, False, None, False)) == {"fin": None, "ok": False, "detalle": None, "en_curso": False})
+
+
 # ── La pasada, con aSa y la base de mentira ─────────────────────────────────────
 class Mundo:
     """Lo que hay en la base (cc_confirmados y cc_modificados) y lo que aSa entrega."""

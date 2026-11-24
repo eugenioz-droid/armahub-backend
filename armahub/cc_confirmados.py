@@ -66,6 +66,8 @@ TOPE_LISTA = 300
 # Diferencia de kilos que se considera cambio (redondeo de aSa).
 KG_MINIMO = 0.5
 BITACORA = "cc-confirmados"
+# Una pasada sin fin más vieja que esto se cortó a la mitad (la primera tardó 6,5 min).
+MINUTOS_EN_CURSO = 30
 
 _corriendo = threading.Lock()
 
@@ -432,7 +434,9 @@ def listar(dias: int) -> dict:
     hoy del pedido y el nombre de quien lo dio por resuelto."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            return dict(listar_en(cur, dias), corriendo=corriendo())
+            d = listar_en(cur, dias)
+    d["corriendo"] = corriendo() or bool(d["ultima"] and d["ultima"]["en_curso"])
+    return d
 
 
 def listar_en(cur, dias: int) -> dict:
@@ -447,10 +451,20 @@ def listar_en(cur, dias: int) -> dict:
             WHERE %s = 0 OR m.modificado_el >= now() - make_interval(days => %s)
             ORDER BY m.modificado_el DESC""", (dias, dias))
     filas = [_fila(r) for r in cur.fetchall()]
-    cur.execute("""SELECT fin, ok, detalle FROM asa_sync WHERE endpoint = %s
-                    ORDER BY id DESC LIMIT 1""", (BITACORA,))
-    u = cur.fetchone()
-    return {"filas": filas, "ultima": {"fin": _iso(u[0]), "ok": u[1], "detalle": u[2]} if u else None}
+    cur.execute("""SELECT fin, ok, detalle, inicio > now() - make_interval(mins => %s)
+                     FROM asa_sync WHERE endpoint = %s ORDER BY id DESC LIMIT 1""",
+                (MINUTOS_EN_CURSO, BITACORA))
+    return {"filas": filas, "ultima": ultima(cur.fetchone())}
+
+
+def ultima(u) -> Optional[dict]:
+    """La última pasada, de la fila (fin, ok, detalle, reciente) de la bitácora. Sin `fin` y
+    reciente está CORRIENDO, quizás en otro proceso (el candado es por proceso): mostrarla
+    como fallida confundió el 24-nov, con la primera pasada a medio camino. Sin `fin` y
+    vieja, se cortó a la mitad: eso sí es una falla."""
+    if not u:
+        return None
+    return {"fin": _iso(u[0]), "ok": bool(u[1]), "detalle": u[2], "en_curso": u[0] is None and bool(u[3])}
 
 
 def marcar_resuelto(fila_id: int, resuelto: bool, email: str) -> Optional[dict]:
