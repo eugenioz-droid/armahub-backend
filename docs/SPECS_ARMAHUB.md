@@ -2031,6 +2031,54 @@ Visible para quien tiene licencia y para el administrador. Pantalla limpia (skil
 - Publicar una versión: pestaña Versiones o, desde el equipo de desarrollo,
   `ArmaScanner/empaquetar/publicar.py` (correo y clave del administrador; la clave no se guarda).
 
+## 14. AUDITORÍAS › CC CONFIRMADOS MODIFICADOS (24-nov)
+
+**Para qué.** La planta confirma un código de control (CC) con sus kilos y lo agenda. Si
+después alguien lo edita en aSa, los kilos agendados dejan de calzar con el pedido. La
+subpestaña «CC Confirmados Modificados» (última de la fila de Auditorías) lista esos códigos,
+Open y Processed, para atajarlos antes del despacho.
+
+**Cuándo se revisa.** En cada turno del reloj de aSa (06, 11, 14 y 20 h, `ASA_SYNC_HORAS`),
+después de sincronizar. Administración puede correrla a mano con «Revisar ahora».
+
+**La regla.** Un CC entra si está Confirmed en la programación de planta y su última
+modificación (`LastModifiedTime`, getOrderSummary) es más de 5 minutos posterior a la
+confirmación (`SchedLastModified`, getScheduling). La confirmación misma deja su hora en el
+pedido (medido 24-nov: ±1 minuto; los cambios reales, a más de 10), por eso la tolerancia.
+Si hay foto, sólo entra cuando cambian barras o kilos: un re-guardado sin cambios (una fecha,
+un comentario) no.
+
+**Lo que aSa no entrega y cómo se suple.**
+- *Quién editó:* no está en la API (ni pedido, ni programación, ni barras). La columna es
+  «Cubicador a cargo» (`DetailPerson`), que es quien normalmente edita.
+- *Kilos confirmados y barras de antes:* aSa no los guarda (la programación muestra los
+  kilos de hoy) y al guardar un CC re-fecha TODAS sus barras. ArmaHub saca su propia foto
+  (barras y kilos) al ver el CC confirmado y sin cambios, y compara contra ella. Un CC que se
+  confirmó y se editó entre dos turnos sale igual, sin kilos al confirmar ni detalle de barras.
+- *Costo en aSa:* 2 consultas agregadas por turno, 1 por foto (tope 100 por turno, primero
+  los Open y lo más reciente) y 1 por CC modificado (tope 60). Lo que no alcanza, al turno
+  siguiente.
+
+**Pantalla.** Indicadores: Por resolver · Diferencia de kilos (con cuántos no tienen kilos al
+confirmar) · Resueltos. Filtros: búsqueda (obra, código, descripción, cubicador), período
+(Hoy · 7 días · 30 días · Todo), estado (Por resolver · Resueltos · Todos) y cubicador. Tabla:
+Modificado · CC · Obra · Descripción · Cubicador a cargo · Confirmado · Kg al confirmar · Kg hoy ·
+Diferencia · Barras · Estado · Resuelto. «Barras» abre la hoja de barras estándar
+(hoja_barras.js) con cada barra Agregada, Cambiada (y lo que tenía antes) o Quitada, sin
+dibujo: la foto no guarda la geometría. «Estado» es el de hoy en aSa, con «Reprogramado» si la
+planta volvió a programar el código después del cambio.
+
+**Resuelto.** Un clic de quien puede auditar; queda quién y cuándo (también en audit_log). Si
+el CC se vuelve a editar después de la misma confirmación, se reabre.
+
+**Permisos.** Ver y resolver: los mismos de Auditorías (administración y área Cubicaciones).
+«Revisar ahora»: administración.
+
+**Datos y código.** Migración 180: `cc_confirmados` (la foto de cada CC confirmado) y
+`cc_modificados` (un registro por confirmación modificada). Lógica en `cc_confirmados.py`
+(sin rutas), rutas `/cc-confirmados` en `chequeos_api.py`, turno en `asa_scheduler.py`,
+pantalla en `static/js/features/auditorias/confirmados.js`.
+
 ---
 
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
