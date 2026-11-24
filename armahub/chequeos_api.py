@@ -23,6 +23,7 @@ nombre y fecha. Lo demás sería burocracia.
 """
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -30,6 +31,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from . import cc_confirmados
 from .asa import AsaError
 from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_cubicador, correo_de_login,
                          _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
@@ -1741,3 +1743,53 @@ def revisiones(job: str = "", nivel: str = "barra", user=Depends(get_current_use
     total["sin_hallazgos"] = vacias
     total["por_cubicador"] = cubs
     return {"revisiones": revs, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# CC CONFIRMADOS MODIFICADOS (24-nov) — Auditorías › «CC Confirmados Modificados». La
+# lógica vive en cc_confirmados.py (sin rutas); acá sólo lo que pide la pantalla.
+# ---------------------------------------------------------------------------
+class CcResueltoBody(BaseModel):
+    resuelto: bool = True
+
+
+@router.get("/cc-confirmados")
+def cc_confirmados_lista(dias: int = 30, user=Depends(get_current_user)):
+    """Los códigos confirmados en planta que se editaron después. `dias` = 0 trae todo."""
+    _puede_ver(user)
+    d = cc_confirmados.listar(max(0, min(int(dias), 3650)))
+    d["puede_revisar"] = user.get("role") in ROLES_ADMINISTRAN
+    return d
+
+
+@router.post("/cc-confirmados/{fila_id}/resuelto")
+def cc_confirmados_resuelto(fila_id: int, body: CcResueltoBody, user=Depends(get_current_user)):
+    """Lo da por resuelto (o lo reabre) quien mira, con un clic. Queda quién y cuándo."""
+    _puede_auditar(user)
+    email = user.get("email", "")
+    r = cc_confirmados.marcar_resuelto(fila_id, body.resuelto, email)
+    if r is None:
+        raise HTTPException(status_code=404, detail="Ese cambio no existe.")
+    audit(email, "cc_confirmado_resuelto" if body.resuelto else "cc_confirmado_reabierto",
+          r["cc"], "cc_modificados", str(fila_id))
+    return r
+
+
+def _revisar_cc_confirmados(email: str):
+    try:
+        cc_confirmados.revisar(lanzado_por=email)
+    except Exception as e:
+        log.error("CC confirmados: falló la revisión pedida por %s (%s)", email, e)
+
+
+@router.post("/cc-confirmados/revisar")
+def cc_confirmados_revisar(user=Depends(get_current_user)):
+    """La revisión ahora, sin esperar el turno del reloj. En segundo plano: con fotos
+    pendientes tarda minutos, y la pantalla pregunta hasta que termina."""
+    if user.get("role") not in ROLES_ADMINISTRAN:
+        raise HTTPException(status_code=403, detail="Sólo administración puede correr la revisión.")
+    if cc_confirmados.corriendo():
+        return {"lanzada": False, "motivo": "Ya hay una revisión corriendo."}
+    threading.Thread(target=_revisar_cc_confirmados, args=(user.get("email", ""),),
+                     daemon=True).start()
+    return {"lanzada": True}

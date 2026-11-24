@@ -137,10 +137,23 @@ def _una_corrida():
         log.info("aSa reloj: %d obras (%d nuevas)", r["filas"], r["nuevas"])
     except Exception as e:
         log.error("aSa reloj: falló la sincronización de obras: %s", e)
+    _cc_confirmados()
     _revisar_barras()
     # Después de los syncs: comprobar usa aSa en vivo, pero el aviso de fabricación lee
     # `asa_pedidos`, que el sync acaba de refrescar.
     _auditorias_al_dia()
+
+
+def _cc_confirmados():
+    """Auditorías › CC Confirmados Modificados, en CADA turno: son dos consultas a aSa más
+    una por foto o código modificado, con tope. Después de los syncs, porque la obra y el
+    cubicador salen del espejo recién refrescado."""
+    try:
+        from .cc_confirmados import revisar
+        r = revisar(lanzado_por="reloj")
+        log.info("CC confirmados: %s", r)
+    except Exception as e:
+        log.error("CC confirmados: falló la revisión (%s)", e)
 
 
 # LA REVISIÓN DE BARRAS, UNA VEZ AL DÍA (8-oct). Va DESPUÉS de sincronizar, porque lo que

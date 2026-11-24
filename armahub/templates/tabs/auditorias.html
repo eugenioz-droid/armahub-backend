@@ -28,6 +28,7 @@
       <button id="audSubBtnAud" class="audsub on" onclick="switchAudSub('auditorias')">Auditorías</button>
       <button id="audSubBtnRev" class="audsub" onclick="switchAudSub('revision')">Revisión de barras</button>
       <button id="audSubBtnEl" class="audsub" onclick="switchAudSub('elementos')">Revisión de elementos</button>
+      <button id="audSubBtnConf" class="audsub" onclick="switchAudSub('confirmados')">CC Confirmados Modificados</button>
     </div>
 
     <div id="audSubAuditorias">
@@ -388,6 +389,32 @@
       </div>
 
     </div><!-- fin sub-tab revisión -->
+
+    <!-- ══════ CC CONFIRMADOS MODIFICADOS (24-nov) ══════
+         Los códigos que la planta ya confirmó y que alguien editó después: los kilos
+         agendados dejan de ser los del pedido. Se llena sola en cada turno del reloj de aSa
+         (cc_confirmados.py). aSa no dice quién editó: va el cubicador a cargo. Resolver es
+         un clic que deja quién y cuándo. -->
+    <div id="audSubConfirmados" style="display:none;">
+      <div class="card audc">
+        <div class="audh">
+          <span>Códigos editados después de confirmar</span>
+          <span class="revcarga" id="ccmCarga"></span>
+          <div style="flex:1"></div>
+          <button id="ccmRevisar" class="audbtn" style="display:none;">Revisar ahora</button>
+        </div>
+        <div class="revkpis" id="ccmKpis"></div>
+        <div class="ccmfiltros">
+          <input type="text" id="ccmBuscar" placeholder="🔍 Obra, código o descripción" autocomplete="off">
+          <div class="dshchips" id="ccmPeriodo"></div>
+          <div class="dshchips" id="ccmEstado"></div>
+        </div>
+        <div class="dshchips" id="ccmCubs"></div>
+      </div>
+      <div class="card audc">
+        <div class="audbd" style="max-height:64vh;"><div id="ccmLista"></div></div>
+      </div>
+    </div><!-- fin sub-tab cc confirmados -->
 
   </div>
 </div>
@@ -1132,4 +1159,23 @@
   .audcc .e{flex:none; width:70px; color:#90a4ae;}
   .audcc .q{flex:none; width:80px; color:#90a4ae; overflow:hidden; text-overflow:ellipsis;}
   /* El origen, como dos botones grandes: es la primera decisión. */
+  /* ══════ CC CONFIRMADOS MODIFICADOS (24-nov) ══════ los colores de estado son los del
+     manual (tokens.json): Open información, Processed advertencia (ya se fabrica),
+     Shipped peligro, reprogramado validación. En el detalle: agregada información,
+     cambiada advertencia, quitada peligro. */
+  .ccmfiltros{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;}
+  .ccmfiltros input{min-width:240px; padding:5px 9px; font-size:12px; border:1px solid #D9DDE3; border-radius:4px;}
+  .ccmest{display:inline-block; font-size:9.5px; font-weight:700; border-radius:4px; padding:1px 7px; white-space:nowrap;}
+  .ccmest.info{background:#E4F0FD; color:#1456A0;}
+  .ccmest.warn{background:#FFF1DC; color:#92400E;}
+  .ccmest.danger{background:#FEE2E2; color:#991B1B;}
+  .ccmest.otro{background:#eceff1; color:#546e7a;}
+  .ccmest.repro{background:#F2E8FA; color:#6E2A9B; margin-left:4px;}
+  .audt td.ccmdif{font-weight:700; color:#991B1B;}
+  .audt td.ccmres{white-space:nowrap;}
+  .audt td.ccmres label{display:flex; align-items:center; gap:5px; cursor:pointer;}
+  .audt td.ccmres small{display:block; color:#17643A; font-size:9.5px; margin-left:20px;}
+  .audt tr.ccmdet > td{background:#fafbfc; padding:6px 8px 10px;}
+  .audt tr.ccmhecho td{color:#78909c;}
+  .revcarga.ccmfallo{background:#FFF1DC; color:#92400E;}
 </style>

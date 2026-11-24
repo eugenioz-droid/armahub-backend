@@ -1910,14 +1910,17 @@
   // Auditorías: son cientos de obras y nadie las pide hasta que mira este lado.
   // LAS TRES LÍNEAS DEL TAB (4-nov). Barras y elementos comparten el panel: es la misma
   // pantalla con otro nivel; lo que cambia es lo que se pide y la fila de la hoja.
+  // LA CUARTA (24-nov): CC Confirmados Modificados, con su propio panel (confirmados.js).
   global.switchAudSub = function (sub) {
-    var panel = { auditorias: 'audSubAuditorias', revision: 'audSubRevision', elementos: 'audSubRevision' };
-    var bts = { auditorias: 'audSubBtnAud', revision: 'audSubBtnRev', elementos: 'audSubBtnEl' };
+    var panel = { auditorias: 'audSubAuditorias', revision: 'audSubRevision', elementos: 'audSubRevision',
+                  confirmados: 'audSubConfirmados' };
+    var bts = { auditorias: 'audSubBtnAud', revision: 'audSubBtnRev', elementos: 'audSubBtnEl',
+                confirmados: 'audSubBtnConf' };
     Object.keys(bts).forEach(function (k) {
       var b = $(bts[k]);
       if (b) b.classList.toggle('on', k === sub);
     });
-    ['audSubAuditorias', 'audSubRevision'].forEach(function (id) {
+    ['audSubAuditorias', 'audSubRevision', 'audSubConfirmados'].forEach(function (id) {
       var p = $(id);
       if (p) p.style.display = (panel[sub] === id) ? '' : 'none';
     });
@@ -1927,7 +1930,9 @@
       revision: ['🔎 Revisión de barras',
                  'La máquina lee todas las barras de los códigos abiertos y marca lo que no calza. La señal sugiere; la decisión es de quien mira.'],
       elementos: ['🔎 Revisión de elementos',
-                  'Cada código se compara con el mismo ciclo del piso anterior: muros que faltan, kilos que se disparan, códigos repetidos. La señal sugiere; la decisión es de quien mira.']
+                  'Cada código se compara con el mismo ciclo del piso anterior: muros que faltan, kilos que se disparan, códigos repetidos. La señal sugiere; la decisión es de quien mira.'],
+      confirmados: ['🔎 CC confirmados modificados',
+                    'Códigos confirmados en planta que se editaron después. Se revisa en cada carga de aSa.']
     };
     var t = $('audTitulo'), ba = $('audBajada');
     if (t) t.textContent = textos[sub][0];
@@ -1940,6 +1945,7 @@
       }
       global.loadRevisionBarras();
     }
+    if (sub === 'confirmados') global.loadCcConfirmados();
   };
 
   global.__revisionTest = { REV: REV, estadoTxt: ESTADO_TXT, REVS: REVS,
