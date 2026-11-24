@@ -2079,6 +2079,119 @@ el CC se vuelve a editar después de la misma confirmación, se reabre.
 (sin rutas), rutas `/cc-confirmados` en `chequeos_api.py`, turno en `asa_scheduler.py`,
 pantalla en `static/js/features/auditorias/confirmados.js`.
 
+## 15. CALUGA: MATERIAL DISPONIBLE — PROPUESTA (24-nov, por validar)
+
+**Para qué.** Reciclar barras que se fabricaron mal, que sobraron o que volvieron de obra y que
+todavía sirven. Quedan como material disponible; ArmaHub busca solo qué ítems por fabricar
+se pueden hacer con ellas, para que producción no los vuelva a procesar, y el cubicador las
+puede consultar al cubicar.
+
+**Quién entra.** Caluga propia en el hub. Ingresan, ven y asignan: Cubicaciones, Calidad,
+Logística, USC C&D y Producción C&D (área que hoy no tiene usuarios; cuando entren, asignan
+ellos directamente), más administración. El control va en el servidor, por área, como
+Auditorías con Cubicaciones.
+
+### 15.1 Menú (subpestañas, como Auditorías)
+
+Disponible · Coincidencias · Asignadas · Resumen.
+
+### 15.2 Disponible — ingresar y listar
+
+«Ingresar» abre un formulario que cambia según el tipo (botones, no desplegable):
+
+- **Desde aSa.** Se escribe el CC; aparecen sus ítems (dibujo, marca, φ, cantidad) y se elige
+  uno, o se busca por marca o número de ítem. ArmaHub trae todo de aSa aunque el ítem ya esté
+  fabricado o despachado. Se elige el motivo: Devolución · Mal fabricada · Sobrante. La
+  cantidad viene con la del ítem y se ajusta (una devolución puede no traer el ítem entero).
+- **A mano (inventario).** Para una barra suelta sin referencia: se elige la figura en tarjetas
+  con su dibujo, con filtro por cantidad de lados (Recta · 2 · 3 · 4 · 5 · 6 · 7+) y búsqueda
+  por código; se escriben los lados (cm), φ, cantidad y grado; el dibujo se ve mientras se
+  escribe. Las figuras son las que de verdad se usan en aSa, con la recta primero.
+- En los dos: ubicación física (texto corto) y nota opcional. Al guardar se busca de inmediato
+  qué ítems calzan con esa barra.
+
+**Lista.** Una fila por barra disponible. Destacado: dibujo · φ · medidas · cantidad
+disponible · kg · estado. Secundario, más chico: marca y Notes · CC e ítem de origen · obra ·
+cliente · descripción del CC (ELEV P1 C1) · eje/elemento (Eje X (1-2)) · motivo · ubicación ·
+quién y cuándo la ingresó. Acciones por fila: ajustar cantidad, Descartar (con motivo).
+Filtros: φ, motivo, figura, búsqueda.
+
+### 15.3 La búsqueda
+
+**Dónde busca.** Ítems de CC en Open y Processed (Processed también: muchas veces sólo tiene
+tarjeta, y si llega tarde, se intentó).
+
+**Condiciones para que calce.**
+- Mismo φ y mismo grado (A630 o soldable). Sin revestimientos; una sola planta.
+- La figura se compara por sus lados, no por su código: misma secuencia de tipos de lado
+  (recto, gancho de 90°, gancho de 135°, curvo) y mismos ángulos, leída de un extremo o del
+  otro.
+- **Igual:** todos los lados iguales (±5 mm).
+- **Con corte:** los lados del medio iguales y los extremos iguales o más largos; se corta lo
+  que sobra. Sólo se cortan extremos rectos: un extremo que termina en gancho no se corta, y
+  una figura cerrada (estribo) tampoco.
+- **Rectas:** de una barra larga pueden salir varias cortas (de 12 m, dos de 5,8 m).
+- **Con doblez:** sólo con el botón «Buscar con doblez», al final de Coincidencias, para cuando
+  el tonelaje lo justifica: hasta 2 dobleces más sobre una barra igual o con corte.
+- **Cantidades parciales:** una barra disponible puede cubrir parte de un ítem, o repartirse
+  entre varios ítems; el saldo sigue disponible.
+
+**Cuándo corre.**
+- Al ingresar o editar una barra: sólo esa barra, al momento.
+- Una vez al día, a las 06:00, después de la carga de aSa: todo lo disponible contra todo lo
+  vivo. Producción parte el día con la lista.
+- Botón «Buscar ahora».
+- No en cada carga de aSa: lo que entra entre medio no se fabrica en horas.
+
+**Por qué aguanta el crecimiento (medido 24-nov).** aSa entrega sumados todos los ítems Open
+en 2 segundos. La búsqueda pide primero los candidatos (φ, grado, figuras con los mismos lados,
+largo de corte que no supera el de la barra disponible) y lee en detalle sólo esos, por lotes
+de ítems, no CC por CC. El costo crece con lo disponible, no con el tamaño de aSa. Los
+resultados quedan en ArmaHub: la pantalla nunca consulta aSa. Cada corrida tiene tope de
+consultas.
+
+### 15.4 Coincidencias
+
+Una fila por par «ítem por fabricar ↔ barra disponible». Destacado: tipo (Igual · Corte ·
+Doblez), qué se hace («cortar A 35 cm»), cuánto cubre, kg que se ahorran, estado del ítem
+(Open · Processed), dibujo de los dos. Secundario: CC, ítem, marca, obra, cliente,
+descripción, eje. Orden: Igual, después Corte, después Doblez; dentro, lo que más kg ahorra.
+Acción: «Asignar» (con la cantidad). Al final, «Buscar con doblez».
+
+### 15.5 Asignadas — el cierre
+
+Cada asignación amarra una cantidad de una barra disponible a un destino:
+- **Un ítem que viene en camino** (CC en Open o Processed): se asigna desde Coincidencias.
+- **Una cubicación nueva** (el CC todavía no existe): el cubicador reserva para la obra con una
+  nota («ELEV P3 C2»). Cuando el CC aparece en aSa, la búsqueda propone el ítem que calza y se
+  vincula con un clic; desde ahí sigue igual que el caso anterior.
+
+Estados: Asignada → Confirmada (se hará con material disponible) → Usada · o Cancelada (vuelve
+al saldo). Cada paso con quién y cuándo. Pasa a Usada sola cuando aSa despacha el ítem
+confirmado. Por ahora los avisos quedan en la pantalla; a quién se le avisa cada cosa se define
+después (lo razonable: producción asigna y confirma directamente cuando esté en la plataforma).
+
+### 15.6 Resumen
+
+Indicadores: kg reutilizados · barras reutilizadas · kg disponibles hoy · kg en coincidencias
+(lo que se podría aprovechar). Gráfico de kg reutilizados por mes, por motivo (Devolución ·
+Mal fabricada · Sobrante · Inventario); obras que más aprovechan.
+
+### 15.7 Datos y código
+
+Tablas nuevas: barras disponibles (origen, motivo, figura con sus lados, φ, grado, cantidades,
+ubicación, quién/cuándo), coincidencias (de la última búsqueda) y asignaciones (destino,
+cantidad, estado y su historial). Lógica de la búsqueda en un módulo propio sin rutas,
+funciones puras probadas con barras reales; rutas en un módulo de rutas propio; dibujo con la
+regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barras.js).
+
+### 15.8 Fases (cada una publicada y probada antes de la siguiente)
+
+1. Caluga, permisos y Disponible (ingresar desde aSa y a mano, lista).
+2. Búsqueda Igual y Corte, Coincidencias, corrida de las 06:00 y botón.
+3. Asignaciones, cierre automático al despachar, cubicación nueva y Resumen.
+4. Buscar con doblez.
+
 ---
 
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
