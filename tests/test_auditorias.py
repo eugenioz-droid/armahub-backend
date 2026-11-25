@@ -37,6 +37,10 @@ def _d(a, m, d):
     return _DATE(a, m, d)
 
 SRC = open(os.path.join(ROOT, "armahub", "auditorias.py"), encoding="utf-8").read()
+# La barra de aSa se arma en asa_barras.py desde el 25-nov (también la usa Material
+# disponible): para estas pruebas es parte del código de la auditoría.
+BARRAS_SRC = open(os.path.join(ROOT, "armahub", "asa_barras.py"), encoding="utf-8").read()
+SRC += BARRAS_SRC
 
 
 def _leer_rec():
@@ -428,7 +432,7 @@ check("...con el mismo azar reproducible que el sorteo en SQL",
 check("el selector lista una fila por JOB de aSa, no por nombre (hay obras con dos)",
       "GROUP BY p.asa_job_id" in SRC and "se sorteaba dentro de 63" in SRC)
 check("los lados de la barra van en columnas y en cm, como en el Bar Manager",
-      "def _lados(" in SRC and "<cp>(.*?)</cp>" in SRC and "function letrasUsadas(" in JS
+      "def lados_de_legangle(" in SRC and "<cp>(.*?)</cp>" in SRC and "function letrasUsadas(" in JS
       and "function normalizarBarra(" in JS and "ang1, ang2, ang3, ang4, radio" in SRC)
 check("y la lista dice de qué origen salió cada auditoría",
       '"origen": r[16]' in SRC and 'class="audori ' in JS and ".audori.asa{" in HTM)
@@ -645,7 +649,8 @@ print("\n7c1. Cuando la reconstrucción no cuadra, se usa EL TRAZO QUE EXPORTÓ 
 check("el elemento pide a la base el trazo de las figuras que trae, no el catálogo entero",
       "SELECT codigo, puntos, lados FROM asa_figuras_catalogo WHERE codigo = ANY(%s)" in SRC)
 check("...y la elección la hace el backend, en un solo lugar",
-      "def mejor_eje(" in SRC and '"eje": mejor_eje(it, lados["dims"])' in SRC
+      "def mejor_eje(" in SRC and '"eje": mejor_eje(it, lados["dims"], trazos)' in SRC
+      and "barras = [barra_de_item(it, trazos) for it in items]" in SRC
       and "from .figura_asa import figura_de, trazo_de_catalogo" in SRC)
 check("...primero la reconstrucción; el trazo sólo si aquélla no cuadra",
       'if eje.get("ok") or eje.get("tridimensional"):' in SRC

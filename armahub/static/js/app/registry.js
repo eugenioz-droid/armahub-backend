@@ -19,7 +19,8 @@
       hubDescription: definition.hubDescription || '',
       hubAccent: definition.hubAccent || '',
       hubIcon: definition.hubIcon || '🧩',
-      licencia: definition.licencia || ''
+      licencia: definition.licencia || '',
+      areas: (definition.areas || []).slice()
     };
   }
 
@@ -52,6 +53,12 @@
     });
   }
 
+  function _deSusAreas(areas) {
+    return areas.length > 0 && (window.currentAreas || []).some(function (a) {
+      return areas.indexOf(a.area_nombre) !== -1;
+    });
+  }
+
   function canAccessModule(id, role) {
     var definition = modules[id];
     if (!definition) {
@@ -60,6 +67,11 @@
     // Una caluga con `licencia` la abre también quien tiene esa licencia vigente, sea cual
     // sea su rol (GET /me → licencias). [ArmaScanner, 19-nov]
     if (definition.licencia && (window.currentLicencias || []).indexOf(definition.licencia) !== -1) {
+      return true;
+    }
+    // Una caluga con `areas` la abre también quien integra una de esas áreas (GET /me →
+    // areas), sea cual sea su rol. [Material disponible, 25-nov]
+    if (_deSusAreas(definition.areas)) {
       return true;
     }
     return definition.allowedRoles.indexOf(role) !== -1;
@@ -168,6 +180,25 @@
     hubDescription: 'Planos subidos por obra, instalación y licencias.',
     hubAccent: '#7EBA27',
     hubIcon: '🛰️'
+  });
+
+  // MATERIAL DISPONIBLE (25-nov, SPECS §15). Reciclar barras: devoluciones, mal fabricadas,
+  // sobrantes e inventario; desde la fase 2, ArmaHub busca en aSa qué ítems por fabricar se
+  // hacen con ellas. La abre administración y quien integra una de estas áreas: la misma
+  // lista que material.AREAS en el servidor, que es quien de verdad deja pasar.
+  registerModule({
+    id: 'material',
+    title: 'Material disponible',
+    css: 'mod-material',
+    defaultTab: 'material',
+    allowedRoles: ['admin', 'admin_calidad'],
+    areas: ['Cubicaciones', 'Calidad', 'Logística', 'USC C&D', 'Producción C&D'],
+    loaderFunction: 'loadMaterialModule',
+    hubCardId: 'hubCardMaterial',
+    hubOrder: 13,
+    hubDescription: 'Barras para reutilizar: devoluciones, mal fabricadas, sobrantes e inventario.',
+    hubAccent: '#7EBA27',
+    hubIcon: '♻️'
   });
 
   registerModule({

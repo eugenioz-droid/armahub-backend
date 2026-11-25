@@ -44,6 +44,8 @@ from .control_auditorias import router as control_auditorias_router
 from .licencias import router as licencias_router
 from .armascanner import router as armascanner_router
 from .armascanner_chat import router as armascanner_chat_router
+# Material disponible (25-nov, SPECS §15): reciclar barras.
+from .material_api import router as material_router
 
 
 def create_app() -> FastAPI:
@@ -136,6 +138,7 @@ def create_app() -> FastAPI:
         licencias_router,
         armascanner_router,
         armascanner_chat_router,
+        material_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

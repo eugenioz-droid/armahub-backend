@@ -28,7 +28,8 @@
     asc_licencias: 'Licencias',
     asc_uso: 'Uso',
     asc_desarrollo: 'Desarrollo',
-    asc_versiones: 'Versiones'
+    asc_versiones: 'Versiones',
+    material: 'Material disponible'
   };
 
   window.currentModule = 'hub';
@@ -125,7 +126,8 @@
     asc_licencias: 'ascCargarLicencias',
     asc_uso: 'ascCargarUso',
     asc_desarrollo: 'ascCargarDesarrollo',
-    asc_versiones: 'ascCargarVersiones'
+    asc_versiones: 'ascCargarVersiones',
+    material: 'loadMaterial'            // Material disponible (25-nov, SPECS §15)
   };
 
   window.switchTab = function switchTab(tabName) {

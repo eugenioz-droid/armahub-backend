@@ -1,0 +1,124 @@
+<!-- MATERIAL DISPONIBLE (25-nov, SPECS §15) — la caluga para reciclar barras.
+     Fase 1: «Disponible» (ingresar desde aSa o a mano, y la lista). Coincidencias, Asignadas y
+     Resumen llegan en las fases siguientes y se suman a la misma fila de subpestañas.
+     Hecha con el Sistema de Diseño Armacero (.arm-ds), como ArmaScanner; las barras van en la
+     hoja estándar (hoja_barras.js) y se dibujan como en Auditorías.
+     Lógica: features/material/index.js; servidor: material.py y material_api.py. -->
+<style>
+  .mat { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .mat .mat-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .mat .mat-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .mat .mat-derecha { margin-left: auto; }
+  .mat .arm-button, .mat .arm-input { font-size: 13px; }
+  .mat .mat-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .mat .mat-seg .arm-button { min-height: 30px; padding: 3px 10px; font-weight: 500; font-size: 12px; }
+  .mat .mat-seg .arm-button.is-on { background: var(--arm-green-tint); border-color: var(--arm-green); color: #3F6B12; font-weight: 600; }
+  .mat .mat-vacio { padding: 24px; text-align: center; color: var(--arm-text-muted); font-size: 13px; }
+  .mat .mat-linea { font-size: 12px; color: var(--arm-text-muted); }
+  .mat .mat-acc { display: flex; gap: 4px; }
+  .mat .mat-acc .arm-button { min-height: 26px; padding: 2px 8px; font-size: 11px; }
+  .mat tr.mat-edit > td { background: var(--arm-background); padding: 8px 10px; }
+  .mat .mat-edit__caja { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+  .mat tr.mat-apagada td { color: var(--arm-text-muted); }
+  .mat .audref:empty { display: none; }   /* una barra a mano no tiene marca */
+  /* La ventana de ingresar */
+  .mat .mat-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 950; display: flex;
+                    align-items: flex-start; justify-content: center; padding: 24px 0; overflow-y: auto; }
+  .mat .mat-modal__caja { background: var(--arm-surface); border-radius: var(--arm-radius-md); width: 96%;
+                          max-width: 1200px; margin: auto; padding: 16px; }
+  .mat .mat-modal__cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .mat .mat-modal__cabeza h3 { margin: 0; font-size: 16px; }
+  .mat .mat-campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 12px 0; }
+  .mat .mat-campo label { display: block; font-size: 12px; color: var(--arm-text-muted); margin-bottom: 4px; }
+  .mat .mat-campo .arm-input { width: 100%; }
+  .mat .mat-campo--ancho { grid-column: 1 / -1; }
+  .mat .mat-figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px;
+                   max-height: 52vh; overflow: auto; }
+  .mat .mat-fig { border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md); background: #fff;
+                  padding: 6px; cursor: pointer; text-align: center; font: inherit; font-size: 12px; }
+  .mat .mat-fig:hover, .mat .mat-fig:focus-visible { border-color: var(--arm-green); }
+  .mat .mat-fig b { display: block; margin-top: 2px; }
+  .mat .mat-fig svg { max-width: 100%; height: auto; }
+  /* En la tarjeta sólo se reconoce la forma: las cotas son las de la barra de ejemplo de aSa
+     y confunden; el aviso de caja también es del ejemplo. La marca «3D» se queda. */
+  .mat .mat-fig svg text, .mat .mat-fig .audfigav { display: none; }
+  .mat .mat-elegida { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; align-items: start; }
+  .mat .mat-previa { border: 1px solid var(--arm-border); border-radius: var(--arm-radius-md); padding: 8px;
+                     min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .mat .mat-previa svg { width: 300px; max-width: 100%; height: auto; }
+  .mat .mat-pie { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+  .mat .mat-error { color: var(--arm-danger); font-size: 12px; margin-right: auto; }
+  @media (max-width: 900px) { .mat .mat-kpis, .mat .mat-elegida { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<div id="tab-material" class="tab-content">
+  <div class="arm-ds mat">
+    <div class="arm-tabs" role="tablist">
+      <button type="button" class="arm-tab is-active" role="tab" aria-selected="true">Disponible</button>
+    </div>
+
+    <div class="mat-kpis">
+      <div class="arm-kpi"><div class="arm-kpi__label">Barras disponibles</div><div class="arm-kpi__value" id="matKpiBarras">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Kilos disponibles</div><div class="arm-kpi__value" id="matKpiKg">—</div></div>
+      <div class="arm-kpi"><div class="arm-kpi__label">Ingresadas este mes</div><div class="arm-kpi__value" id="matKpiMes">—</div></div>
+    </div>
+
+    <div class="arm-card">
+      <div class="mat-barra">
+        <input type="text" id="matBuscar" class="arm-input" placeholder="Buscar marca, CC, obra o figura"
+               autocomplete="off" spellcheck="false" data-lpignore="true" style="width:260px;">
+        <div class="mat-seg" id="matEstado"></div>
+        <div class="mat-seg" id="matMotivo"></div>
+        <button type="button" class="arm-button arm-button--primary mat-derecha" id="matIngresar">Ingresar barra</button>
+      </div>
+      <div class="mat-seg" id="matDiam" style="margin-bottom:12px;"></div>
+      <div id="matLista"></div>
+    </div>
+
+    <div id="matModal" class="mat-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="matModalTit">
+      <div class="mat-modal__caja">
+        <div class="mat-modal__cabeza">
+          <h3 id="matModalTit">Ingresar barra</h3>
+          <button type="button" class="arm-button" id="matCerrar">Cerrar</button>
+        </div>
+        <div class="mat-seg" id="matTipo" style="margin-bottom:12px;"></div>
+
+        <div id="matPasoAsa">
+          <div class="mat-barra">
+            <input type="text" id="matCc" class="arm-input" placeholder="Código de control" autocomplete="off"
+                   spellcheck="false" data-lpignore="true" style="width:180px;">
+            <button type="button" class="arm-button" id="matCcBuscar">Buscar</button>
+            <input type="text" id="matItemFiltro" class="arm-input" placeholder="Filtrar por marca" autocomplete="off"
+                   spellcheck="false" data-lpignore="true" style="width:200px; display:none;">
+          </div>
+          <div id="matItems"></div>
+        </div>
+
+        <div id="matPasoMano" style="display:none;">
+          <div class="mat-barra">
+            <span class="mat-linea">Lados</span>
+            <div class="mat-seg" id="matNLados"></div>
+            <input type="text" id="matFigBuscar" class="arm-input" placeholder="Código de figura" autocomplete="off"
+                   spellcheck="false" data-lpignore="true" style="width:160px;">
+          </div>
+          <div class="mat-figs" id="matFigs"></div>
+        </div>
+
+        <div id="matDatos" style="display:none;">
+          <div class="mat-elegida">
+            <div class="mat-previa" id="matPrevia"></div>
+            <div>
+              <div class="mat-linea" id="matResumen"></div>
+              <div class="mat-campos" id="matCampos"></div>
+            </div>
+          </div>
+          <div class="mat-pie">
+            <span class="mat-error" id="matError"></span>
+            <button type="button" class="arm-button" id="matVolver">Volver</button>
+            <button type="button" class="arm-button arm-button--primary" id="matGuardar">Dejar disponible</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

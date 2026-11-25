@@ -156,6 +156,7 @@
       <button class="tab-btn mod-armascanner" onclick="switchTab('asc_desarrollo')" style="display:none;">Desarrollo</button>
       <button class="tab-btn mod-armascanner" onclick="switchTab('asc_versiones')" style="display:none;">Versiones</button>
       <!-- Admin tabs -->
+      <button class="tab-btn mod-material" onclick="switchTab('material')" style="display:none;">♻️ Material disponible</button>
       <button class="tab-btn mod-admin" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
     </div>
 
@@ -177,6 +178,7 @@
     {% include 'tabs/catalogo.html' %}
     {% include 'tabs/admin.html' %}
     {% include 'tabs/armascanner.html' %}
+    {% include 'tabs/material.html' %}
   </div>
 
   <!-- MODAL: Template Editor (Colocador por proyecciones). Overlay a pantalla completa;
@@ -375,6 +377,7 @@
 <script src="/static/js/features/auditorias/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/auditorias/revision.js?v={{ cache_bust }}"></script>
 <script src="/static/js/features/auditorias/confirmados.js?v={{ cache_bust }}"></script>
+<script src="/static/js/features/material/index.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/registry.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/shell.js?v={{ cache_bust }}"></script>
 <script src="/static/js/app/bootstrap.js?v={{ cache_bust }}"></script>
