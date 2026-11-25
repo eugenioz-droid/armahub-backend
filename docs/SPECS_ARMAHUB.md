@@ -2116,15 +2116,26 @@ Disponible · Coincidencias · Asignadas · Resumen.
 
 ### 15.2 Disponible — ingresar y listar
 
-«Ingresar» abre un formulario que cambia según el tipo (botones, no desplegable):
+«Ingresar ítem» (antes «Ingresar barra», usuario 25-nov) abre una ventana con dos caminos,
+en botones: «Desde aSa» y «Crear ítem».
 
-- **Desde aSa.** Se escribe el CC; aparecen sus barras (dibujo, marca, φ, cantidad) y se elige
-  una, con un filtro por marca. ArmaHub trae todo de aSa aunque el ítem ya esté fabricado o
-  despachado, y lo guarda por su clave única (`OrderItemKey`: los números de línea y de
-  secuencia se repiten dentro de un CC). Se elige el motivo: Devolución · Mal fabricada ·
-  Sobrante. La cantidad viene con la del ítem y se ajusta, sin pasarla (una devolución puede no
-  traer el ítem entero).
-- **A mano (inventario).** Para una barra suelta sin referencia: se elige la figura en tarjetas
+- **Desde aSa, por pasos** (25-nov, «convertir esto en una verdadera herramienta»), con una
+  línea de avance arriba (Obra › CC › Ítems › Datos) que deja volver a cualquier paso:
+  1. *Obra:* campo desplegable con búsqueda (el estándar, combobox.js) con las obras de aSa.
+     Atajo «Tengo el CC» para escribir el código directo (desde una tarjeta).
+  2. *CC:* los códigos de esa obra, del espejo de aSa (al instante): código, descripción,
+     estado, kg, fecha y cubicador, con filtro de texto y por estado. Están todos menos los
+     anulados, también los despachados: de ahí vienen las devoluciones.
+  3. *Ítems:* las barras del CC en la hoja estándar, con un check y la cantidad en cada fila:
+     se eligen VARIOS a la vez (una devolución suele traer varios ítems del mismo CC) y cada
+     uno queda con su cantidad, sin pasar la del ítem.
+  4. *Datos comunes:* motivo (Devolución · Mal fabricada · Sobrante), ubicación y nota →
+     «Dejar disponibles (n)». Se guardan juntos o ninguno (una sola consulta a aSa: el CC), y
+     se buscan sus coincidencias en una sola pasada. Al terminar: «Ingresar otro del mismo
+     CC» o «Cerrar».
+  ArmaHub guarda cada ítem por su clave única (`OrderItemKey`: los números de línea y de
+  secuencia se repiten dentro de un CC).
+- **Crear ítem** (antes «A mano»; inventario). Para una barra suelta sin referencia: se elige la figura en tarjetas
   con su dibujo, con filtro por cantidad de lados (Recta · 2 · 3 · 4 · 5 · 6 · 7+) y búsqueda
   por código; se escriben los lados (cm), φ, cantidad y grado; el dibujo se ve mientras se
   escribe. Las figuras son las que de verdad se usan en aSa, con la recta primero.
@@ -2132,6 +2143,8 @@ Disponible · Coincidencias · Asignadas · Resumen.
   dibuja con el mismo trazador que las barras reales, también las que aSa dobla en dos planos
   (los soportes 26 y 305A, los más reciclados) y los arcos (se pide su radio). Los ganchos los
   decide la misma regla que la revisión de barras.
+  «Guardar y crear otro» deja la figura, el φ, el grado y la ubicación, y limpia los lados: en un
+  inventario se ingresan muchas barras seguidas.
 - **El grado** se guarda con el código de aSa tal cual (A630-420H; A630-420HS es el soldable;
   hay algo de A440-280H), porque es lo que se va a comparar. A mano se elige A630 o Soldable.
 - En los dos: ubicación física (texto corto) y nota opcional. Desde la fase 2, al guardar se
@@ -2141,8 +2154,10 @@ Disponible · Coincidencias · Asignadas · Resumen.
 disponible · kg · estado. Secundario, más chico: marca y Notes · CC e ítem de origen · obra ·
 cliente · descripción del CC (ELEV P1 C1) · eje/elemento (Eje X (1-2)) · motivo · ubicación ·
 quién y cuándo la ingresó. Acciones por fila: Ajustar (cantidad, ubicación, nota; con 0
-queda Agotada) y Descartar (con el porqué). Filtros: estado (Disponibles · Agotadas ·
-Descartadas · Todas), motivo, φ y búsqueda. Indicadores: barras disponibles (piezas), kilos
+queda Agotada) y Descartar (con el porqué). Filtros, rotulados «Filtrar» y a la izquierda (el
+botón «Ingresar ítem» queda solo, a la derecha): obra (campo desplegable con búsqueda), texto
+(marca, CC o figura: busca en lo ya ingresado), estado (Disponibles · Agotadas · Descartadas ·
+Todas), motivo y φ. Indicadores: barras disponibles (piezas), kilos
 disponibles e ingresadas este mes. Los ángulos no van en columnas: el dibujo ya dice la forma, y
 empujaban fuera de la vista el motivo y el origen.
 
