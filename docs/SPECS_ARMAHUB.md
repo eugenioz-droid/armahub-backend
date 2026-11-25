@@ -2098,7 +2098,7 @@ el CC se vuelve a editar después de la misma confirmación, se reabre.
 (sin rutas), rutas `/cc-confirmados` en `chequeos_api.py`, turno en `asa_scheduler.py`,
 pantalla en `static/js/features/auditorias/confirmados.js`.
 
-## 15. CALUGA: MATERIAL DISPONIBLE (validada 24-nov; fases 1 y 2 hechas 25-nov)
+## 15. CALUGA: MATERIAL DISPONIBLE (validada 24-nov; fases 1 a 3 hechas 25-nov)
 
 **Para qué.** Reciclar barras que se fabricaron mal, que sobraron o que volvieron de obra y que
 todavía sirven. Quedan como material disponible; ArmaHub busca solo qué ítems por fabricar
@@ -2112,7 +2112,8 @@ Auditorías con Cubicaciones.
 
 ### 15.1 Menú (subpestañas, como Auditorías)
 
-Disponible · Coincidencias · Asignadas · Resumen.
+Disponible · Resumen. Las coincidencias y lo asignado se ven en la ventana de cada barra
+(usuario, 25-nov: una lista general de coincidencias no decía para qué barra eran).
 
 ### 15.2 Disponible — ingresar y listar
 
@@ -2158,15 +2159,14 @@ o · Código de control [Ir] · o · [Crear ítem]. La obra abre sus CC, el cód
   la tarjeta) y se corrige con Ajustar. Desde la fase 2, al guardar se
   busca de inmediato qué ítems calzan con esa barra.
 
-**Lista.** Una fila por barra disponible. Destacado: dibujo · φ · medidas · cantidad
-disponible · kg · estado. Secundario, más chico: marca y Notes · CC e ítem de origen · obra ·
-cliente · descripción del CC (ELEV P1 C1) · eje/elemento (Eje X (1-2)) · motivo · ubicación ·
-quién y cuándo la ingresó. Acciones por fila: Ajustar (cantidad, ubicación, nota; con 0
-queda Agotada) y Descartar (con el porqué). Filtros, dentro de la tarjeta «Ítems disponibles»,
-rotulados «Filtrar»: obra (campo desplegable con búsqueda), texto (marca, CC o figura: busca en
-lo ya ingresado), estado (Disponibles · Agotadas · Descartadas · Todas), motivo y φ. Indicadores: barras disponibles (piezas), kilos
-disponibles e ingresadas este mes. Los ángulos no van en columnas: el dibujo ya dice la forma, y
-empujaban fuera de la vista el motivo y el origen.
+**Lista.** Una fila por barra con saldo, o sin saldo mientras falte que producción confirme lo
+asignado. Destacado: dibujo · φ · medidas · cantidad disponible · kg. Secundario, más chico:
+marca y Notes · CC e ítem de origen · obra · cliente · descripción del CC · elemento · motivo ·
+ubicación · asignación («2 por confirmar» en ámbar) · quién y cuándo la ingresó. Una sola
+acción por fila: **Asignar**, que abre la ventana de la barra (§15.4). Un solo filtro, el φ
+(usuario, 25-nov: la lista ya muestra obra y marca, y los «Todas/Todos» confundían).
+Indicadores: barras disponibles (piezas), kilos disponibles y asignaciones por confirmar. Los
+ángulos no van en columnas: el dibujo ya dice la forma.
 
 ### 15.3 La búsqueda
 
@@ -2183,24 +2183,19 @@ tarjeta, y si llega tarde, se intentó).
   que sobra. Sólo se cortan extremos rectos: un extremo que termina en gancho no se corta, y
   una figura cerrada (estribo) tampoco.
 - **Rectas:** de una barra larga pueden salir varias cortas (de 12 m, dos de 5,8 m).
-- **Con doblez:** sólo con el botón «Buscar con doblez», al final de Coincidencias, para cuando
+- **Con doblez:** sólo con el botón «Buscar con doblez», en la ventana de la barra, para cuando
   el tonelaje lo justifica: hasta 2 dobleces más sobre una barra igual o con corte.
 - **Cantidades parciales:** una barra disponible puede cubrir parte de un ítem, o repartirse
   entre varios ítems; el saldo sigue disponible.
 
-**Cuándo corre.**
-- Al ingresar o editar una barra: sólo esa barra, al momento.
-- Una vez al día, a las 06:00, después de la carga de aSa: todo lo disponible contra todo lo
-  vivo. Producción parte el día con la lista.
-- Botón «Buscar ahora».
-- No en cada carga de aSa: lo que entra entre medio no se fabrica en horas.
+**Cuándo corre.** En el momento, desde la ventana de una barra («Buscar coincidencias»), y sólo
+para esa barra. No se guarda: lo que se ve es lo vivo en aSa. Ya no hay pasada de las 06:00 ni
+lista general (25-nov: una lista guardada a las 15:24 mostraba dos ítems que se borraron de su
+CC después). Antes de guardar una asignación se vuelve a mirar cada ítem en aSa.
 
-**Por qué aguanta el crecimiento (medido 24-nov).** aSa entrega sumados todos los ítems Open
-en 2 segundos. La búsqueda pide primero los candidatos (φ, grado, figuras con los mismos lados,
-largo de corte que no supera el de la barra disponible) y lee en detalle sólo esos, por lotes
-de ítems, no CC por CC. El costo crece con lo disponible, no con el tamaño de aSa. Los
-resultados quedan en ArmaHub: la pantalla nunca consulta aSa. Cada corrida tiene tope de
-consultas.
+**Cuánto tarda (medido 25-nov).** Una consulta sumada a aSa por barra (su φ, grado y forma):
+940 rectas φ8 de hasta 2 m en 10-15 s; una vez, con aSa lento, 62 s. La pantalla avisa que
+puede tardar hasta un minuto.
 
 **Lo que se ajustó al construirla (25-nov, con datos reales).**
 - *Obra activa:* sólo ítems de códigos con movimiento en los últimos 3 meses y de obras no
@@ -2211,44 +2206,51 @@ consultas.
   cualquier lado recto (con la otra regla, un 26 con una pata 5 cm más larga no calzaba).
 - *Plana o en dos planos cuenta:* el soporte 26 y la S4 tienen los mismos giros; el 26 se
   dobla en dos planos y no puede traer ítems S4.
-- Se guardan las 40 coincidencias que más ahorran por barra disponible.
+- Se muestran las 40 coincidencias que más ahorran.
 
-### 15.4 Coincidencias
+### 15.4 La ventana de la barra (Asignar)
 
-Una fila por par «ítem por fabricar ↔ barra disponible». Destacado: tipo (Igual · Con corte),
-qué se hace («Tal cual», «Cortar B 5 cm», «2 por barra · sobran 40 cm»), cuánto cubre, kg que
-se ahorran. Secundario: la barra disponible (marca o «A mano», y su ubicación), CC con su
-estado (Open · Processed) y la cantidad del ítem, obra, descripción, eje. El dibujo es el de
-la barra disponible (la misma forma); las medidas en columnas son las del ítem. Orden: Igual,
-después Con corte; dentro, lo que más kg ahorra. Indicadores: ítems que se pueden cubrir,
-kilos a recuperar (una coincidencia por barra: la misma barra no se usa dos veces) y barras
-con coincidencia. «Buscar ahora» arriba a la derecha. «Asignar» llega con la fase 3 y «Buscar
-con doblez» con la fase 4.
+Arriba la barra (la misma fila de la lista) y su saldo: «139 de 154 disponibles · 1 por
+confirmar». Después:
+- **Asignadas:** cada ítem al que va, con sus barras y piezas, dónde va (descripción del CC -
+  elemento) y para qué CC y obra. El check **Producido** lo marca producción cuando lo produjo o
+  consumió: queda quién y cuándo; se puede desmarcar. «Quitar» sólo mientras no esté producido
+  (las barras vuelven al saldo).
+- **Coincidencias:** «Buscar coincidencias» (§15.3). Por ítem: check, calce (Igual · Con corte,
+  y qué se hace: «Tal cual», «Cortar B 5 cm», «2 por barra · sobran 40 cm»), cuántas barras
+  (al marcar se propone lo que le falta al ítem, sin pasar el saldo que queda; se puede cambiar),
+  y si ya tiene algo asignado desde cualquier barra, cuánto le falta. El dibujo es el de la
+  barra disponible; las medidas, las del ítem.
+- **Pie, siempre a la vista:** Editar (saldo, ubicación, nota) · Dar de baja (con el porqué; no
+  con asignaciones sin confirmar) · «Quedan N» · **Asignar N barras**.
 
-### 15.5 Asignadas — el cierre
+Ejemplo del usuario: 600 disponibles y cuatro ítems de distintas obras que suman 500 → se
+asignan, quedan 100 para asignar después.
 
-Cada asignación amarra una cantidad de una barra disponible a un destino:
-- **Un ítem que viene en camino** (CC en Open o Processed): se asigna desde Coincidencias.
-- **Una cubicación nueva** (el CC todavía no existe): el cubicador reserva para la obra con una
-  nota («ELEV P3 C2»). Cuando el CC aparece en aSa, la búsqueda propone el ítem que calza y se
-  vincula con un clic; desde ahí sigue igual que el caso anterior.
+### 15.5 El cierre
 
-Estados: Asignada → Confirmada (se hará con material disponible) → Usada · o Cancelada (vuelve
-al saldo). Cada paso con quién y cuándo. Pasa a Usada sola cuando aSa despacha el ítem
-confirmado. Por ahora los avisos quedan en la pantalla; a quién se le avisa cada cosa se define
-después (lo razonable: producción asigna y confirma directamente cuando esté en la plataforma).
+Al asignar, el saldo baja; al quitar, vuelve. Nunca más de lo que le falta al ítem ni del
+saldo; un ítem que se borró de aSa, se despachó o ya no calza se rechaza con su nombre. Las
+cantidades se rebajan sólo en ArmaHub: en aSa lo maneja producción (usuario, 25-nov). Sin saldo
+y con todo lo asignado confirmado, la barra queda **consumida** y pasa al Resumen. Sin saldo y
+sin asignaciones (corregida a 0), queda agotada.
+
+Pendiente (no construido): reservar para una **cubicación nueva** (el CC todavía no existe) y
+vincularla cuando aparezca en aSa.
 
 ### 15.6 Resumen
 
-Indicadores: kg reutilizados · barras reutilizadas · kg disponibles hoy · kg en coincidencias
-(lo que se podría aprovechar). Gráfico de kg reutilizados por mes, por motivo (Devolución ·
-Mal fabricada · Sobrante · Inventario); obras que más aprovechan.
+Lo que producción confirmó, lo más reciente arriba: la barra de la que salió, barras usadas,
+kilos, motivo, para qué CC e ítem, dónde va y quién confirmó. Indicadores: kilos reutilizados ·
+barras usadas · ítems cubiertos. Pendiente: gráfico de kilos reutilizados por mes y motivo.
 
 ### 15.7 Datos y código
 
-Tablas nuevas: barras disponibles (origen, motivo, figura con sus lados, φ, grado, cantidades,
-ubicación, quién/cuándo), coincidencias (de la última búsqueda) y asignaciones (destino,
-cantidad, estado y su historial). Lógica de la búsqueda en un módulo propio sin rutas,
+Tablas: `material_barras` (origen, motivo, figura con sus lados, φ, grado, cantidades,
+ubicación, estado: disponible · agotada · consumida · descartada, quién/cuándo) y
+`material_asignaciones` (184: ítem de destino con lo que muestra la pantalla, barras, piezas,
+kilos, quién asignó y quién confirmó producción). `material_coincidencias` (182) ya no se usa
+desde que la búsqueda es en el momento; se borra cuando se autorice. Lógica de la búsqueda en un módulo propio sin rutas,
 funciones puras probadas con barras reales; rutas en un módulo de rutas propio; dibujo con la
 regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barras.js).
 
@@ -2265,7 +2267,14 @@ regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barr
    una barra se busca ella sola. Probada contra aSa real: 3.981 ítems vivos, 82 coincidencias
    para tres barras de prueba; un soporte 26 calza igual con ítems de CRCC Kimal y, con una
    pata 5 cm más larga, con corte.
-3. Asignaciones, cierre automático al despachar, cubicación nueva y Resumen.
+3. ☑ La ventana de la barra, asignaciones, check de producción y Resumen. Hecha 25-nov:
+   migración 184 (`material_asignaciones`); lógica en `material_asignar.py`; rutas
+   `/material/barras/{id}` (detalle), `…/coincidencias` (búsqueda en el momento), `…/asignar`,
+   `/material/asignaciones/{id}/quitar` y `…/producida`, `/material/resumen`; pantalla en
+   `features/material/asignar.js`. Se fueron la subpestaña Coincidencias, la corrida de las
+   06:00, el botón «Buscar ahora» y los filtros de obra, texto, estado y motivo. Probada contra
+   la base real en una transacción deshecha. Quedan pendientes la cubicación nueva y el gráfico
+   por mes.
 4. Buscar con doblez.
 
 ---
