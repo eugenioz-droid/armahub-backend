@@ -58,6 +58,14 @@ class IngresoBody(BaseModel):
     nota: Optional[str] = None
 
 
+class LoteBody(BaseModel):
+    cc: str
+    items: list = []          # [{item_key, cantidad}]
+    motivo: Optional[str] = None
+    ubicacion: Optional[str] = None
+    nota: Optional[str] = None
+
+
 class AjusteBody(BaseModel):
     cantidad: Optional[int] = None
     ubicacion: Optional[str] = None
@@ -101,7 +109,7 @@ def material_crear(body: IngresoBody, user=Depends(get_current_user)):
     audit(email, "material_ingresada", "%s · %s" % (body.origen, body.motivo or "inventario"),
           "material_barras", str(barra_id))
     # Al ingresar, se busca de inmediato con qué ítems calza ESA barra (SPECS §15.3).
-    _en_fondo(barra_id, email)
+    _en_fondo([barra_id], email)
     return {"id": barra_id}
 
 
@@ -126,16 +134,16 @@ def material_descartar(barra_id: int, body: DescarteBody, user=Depends(get_curre
 # ---------------------------------------------------------------------------
 # LA BÚSQUEDA (fase 2): la lógica vive en material_busqueda.py
 # ---------------------------------------------------------------------------
-def _buscar(barra_id, email):
+def _buscar(barra_ids, email):
     try:
-        material_busqueda.buscar(barra_id=barra_id, lanzado_por=email)
+        material_busqueda.buscar(barra_ids=barra_ids, lanzado_por=email)
     except Exception as e:
         log.error("Material: falló la búsqueda pedida por %s (%s)", email, e)
 
 
-def _en_fondo(barra_id, email):
+def _en_fondo(barra_ids, email):
     """En segundo plano: aSa tarda unos segundos por cada forma que hay que buscar."""
-    threading.Thread(target=_buscar, args=(barra_id, email), daemon=True).start()
+    threading.Thread(target=_buscar, args=(barra_ids, email), daemon=True).start()
 
 
 @router.get("/material/coincidencias")
@@ -152,3 +160,29 @@ def material_buscar(user=Depends(get_current_user)):
         return {"lanzada": False, "motivo": "Ya hay una búsqueda corriendo."}
     _en_fondo(None, user.get("email", ""))
     return {"lanzada": True}
+
+
+# ---------------------------------------------------------------------------
+# INGRESAR DESDE aSa, POR PASOS (25-nov): obra → CC → ítems (varios) → datos
+# ---------------------------------------------------------------------------
+@router.get("/material/obras")
+def material_obras(user=Depends(get_current_user)):
+    """Las obras de aSa, para el campo desplegable."""
+    return {"obras": _hacer(user, material.obras)}
+
+
+@router.get("/material/obras/{job}/ccs")
+def material_ccs_de_obra(job: str, user=Depends(get_current_user)):
+    """Los códigos de una obra, del espejo de aSa."""
+    return {"ccs": _hacer(user, material.ccs_de_obra, job)}
+
+
+@router.post("/material/barras/lote")
+def material_crear_lote(body: LoteBody, user=Depends(get_current_user)):
+    """Varios ítems de un CC de una vez; después se busca con qué calzan, todos juntos."""
+    email = user.get("email", "")
+    ids = _hacer(user, material.crear_lote, email, dict(body))
+    audit(email, "material_ingresadas", "%s · %d ítem(s) · %s" % (body.cc, len(ids), body.motivo or ""),
+          "material_barras", ",".join(str(i) for i in ids))
+    _en_fondo(ids, email)
+    return {"ids": ids}

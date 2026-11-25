@@ -326,6 +326,48 @@ def _insertar(cur, fila: dict, email: str) -> int:
     return cur.fetchone()[0]
 
 
+def crear_lote(cur, email: str, datos: dict) -> list:
+    """Varios ítems de un mismo CC de una vez (una devolución suele traer varios), cada uno
+    con su cantidad y el mismo motivo, ubicación y nota. Una sola consulta a aSa: las barras
+    del CC. Si un ítem no está o una cantidad no sirve, no se guarda ninguno."""
+    pedidos = datos.get("items") or []
+    if not pedidos:
+        raise ErrorMaterial("Elige al menos un ítem.")
+    cc = _txt(datos.get("cc")).upper()
+    por_clave = {it.get("OrderItemKey"): it for it in _pedir_items("CtrlCode eq '%s'" % cc.replace("'", "''"))}
+    trazos = trazos_de(cur, {_txt(it.get("ShpNameID")) for it in por_clave.values()})
+    return [_insertar(cur, _fila_lote(por_clave, p, datos, trazos, cc), email) for p in pedidos]
+
+
+def _fila_lote(por_clave: dict, pedido: dict, datos: dict, trazos: dict, cc: str) -> dict:
+    it = por_clave.get(int(pedido.get("item_key") or 0))
+    if not it:
+        raise ErrorMaterial("Un ítem elegido ya no está en %s." % cc)
+    eje = mejor_eje(it, lados_de_legangle(it.get("LegAngle"))["dims"], trazos)
+    fila = fila_desde_asa(it, datos.get("motivo"), pedido.get("cantidad"), eje)
+    fila.update(_comunes(datos))
+    return fila
+
+
+def obras(cur) -> list:
+    """Las obras de aSa con códigos, la más activa primero, para el campo desplegable."""
+    cur.execute("""SELECT o.asa_job_id, o.nombre, o.cliente FROM asa_obras o
+                    WHERE NOT COALESCE(o.excluida, FALSE)
+                      AND EXISTS (SELECT 1 FROM asa_pedidos p WHERE p.asa_job_id = o.asa_job_id)
+                    ORDER BY o.ultima_actividad DESC NULLS LAST, o.nombre""")
+    return [{"id": r[0], "nombre": r[1], "cliente": r[2]} for r in cur.fetchall()]
+
+
+def ccs_de_obra(cur, job: str) -> list:
+    """Los códigos de una obra, del espejo de aSa (al instante): todos menos los anulados,
+    también los despachados, porque de ahí vienen las devoluciones."""
+    cur.execute("""SELECT control_code, descr, estado, kg, order_date, detail_person FROM asa_pedidos
+                    WHERE asa_job_id = %s AND COALESCE(estado, '') <> 'Cancelled'
+                    ORDER BY order_date DESC NULLS LAST, control_code""", (job,))
+    return [{"cc": r[0], "descr": r[1], "estado": r[2], "kg": float(r[3] or 0),
+             "fecha": r[4].isoformat() if r[4] else None, "cubicador": r[5]} for r in cur.fetchall()]
+
+
 def crear(cur, email: str, datos: dict) -> int:
     """Deja una barra disponible. Devuelve su id."""
     if datos.get("origen") == "asa":

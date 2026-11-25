@@ -99,6 +99,29 @@ I.nLados = ''; I.figBuscar = '26';
 check('por código', figs.filter(T.figuraPasa).map(x => x.nombre).join() === '26');
 I.figBuscar = '';
 
+console.log('Ingresar desde aSa, por pasos');
+const ccs = [{ cc: 'SVOD', descr: 'FUND + ELEV PARTE 1 C13', estado: 'Open', kg: 10523, fecha: '2026-11-20', cubicador: 'Nlopez' },
+             { cc: 'SU6F', descr: 'ELEV P1 Z1', estado: 'Shipped', kg: 8033, fecha: '2026-10-01', cubicador: 'Nlopez' }];
+I.ccEstado = ''; I.ccFiltro = '';
+check('los CC de la obra, todos (también los despachados: de ahí vienen las devoluciones)', ccs.filter(T.ccPasa).length === 2);
+I.ccEstado = 'Shipped';
+check('por estado', ccs.filter(T.ccPasa).map(c => c.cc).join() === 'SU6F');
+I.ccEstado = ''; I.ccFiltro = 'fund';
+check('por texto, en el código o la descripción', ccs.filter(T.ccPasa).map(c => c.cc).join() === 'SVOD');
+I.ccFiltro = '';
+check('cada CC es una fila que se elige con un clic', T.filaCc(ccs[0]).includes('data-cc="SVOD"') && T.filaCc(ccs[0]).includes('mat-clic'));
+const itC = { item_key: 55, marca: '16mmA2', diam: '16mm', figura: '26', dims: { B: 160 }, angulos: [], cant: 40, kg: 86.8,
+              estado_asa: 'Shipped', elemento: 'EJE 1' };
+I.sel = {};
+let fi = T.filaItem(itC);
+check('cada ítem con su check y su cantidad, que parte en la del ítem', fi.check.includes('data-sel="55"') && !fi.check.includes('checked')
+      && fi.propias[0].includes('data-cant="55"') && fi.propias[0].includes('value="40"') && fi.propias[0].includes('max="40"'));
+I.sel = { 55: 12 };
+fi = T.filaItem(itC);
+check('elegido: marcado y con la cantidad que se puso (una devolución incompleta)', fi.check.includes('checked')
+      && fi.propias[0].includes('value="12"') && fi.attrs.includes('bueno'));
+I.sel = {};
+
 console.log('Coincidencias');
 check('tal cual', T.queHacer({ piezas: 1, cortes: [] }) === 'Tal cual');
 check('cortar una pata', T.queHacer({ piezas: 1, cortes: [['B', 50]] }) === 'Cortar B 5 cm');

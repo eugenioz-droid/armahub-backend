@@ -268,12 +268,12 @@ def ccs_activos(cur) -> set:
     return {r[0] for r in cur.fetchall()}
 
 
-def _barras(cur, barra_id: Optional[int]) -> list:
+def _barras(cur, barra_ids: Optional[list]) -> list:
     sql = """SELECT id, item_key, figura, diam_mm, grado, lados, largo_mm, cant_disponible,
                     COALESCE((eje->>'tridimensional')::boolean, FALSE) FROM material_barras
               WHERE estado = 'disponible' AND cant_disponible > 0"""
-    if barra_id:
-        cur.execute(sql + " AND id = %s", (barra_id,))
+    if barra_ids:
+        cur.execute(sql + " AND id = ANY(%s)", (list(barra_ids),))
     else:
         cur.execute(sql)
     nombres = ("id", "item_key", "figura", "diam_mm", "grado", "lados", "largo_mm", "cant_disponible",
@@ -302,13 +302,13 @@ def _guardar(cur, barra_ids: list, filas: list, todas: bool):
 # ---------------------------------------------------------------------------
 # La pasada
 # ---------------------------------------------------------------------------
-def buscar(barra_id: Optional[int] = None, lanzado_por: str = "reloj") -> dict:
-    """Una búsqueda: de todas las barras disponibles o de una sola (la recién ingresada).
+def buscar(barra_ids: Optional[list] = None, lanzado_por: str = "reloj") -> dict:
+    """Una búsqueda: de todas las barras disponibles o sólo de las recién ingresadas.
     Nunca dos a la vez: el reloj, el botón y el ingreso comparten el candado."""
     if not _corriendo.acquire(blocking=False):
         return {"ok": False, "motivo": "Ya hay una búsqueda corriendo."}
     try:
-        return _buscar(barra_id, lanzado_por)
+        return _buscar(barra_ids, lanzado_por)
     finally:
         _corriendo.release()
 
@@ -328,19 +328,19 @@ def _encontrar(barras: list, activos: set, figuras: list, cuenta: dict) -> list:
     return filas
 
 
-def _buscar(barra_id: Optional[int], lanzado_por: str) -> dict:
+def _buscar(barra_ids: Optional[list], lanzado_por: str) -> dict:
     from . import material
     from .asa_sync import _abrir_bitacora, _cerrar_bitacora
     with get_conn() as conn:
         with conn.cursor() as cur:
-            barras, activos, figuras = _barras(cur, barra_id), ccs_activos(cur), material.figuras(cur)
+            barras, activos, figuras = _barras(cur, barra_ids), ccs_activos(cur), material.figuras(cur)
             sync_id = _abrir_bitacora(cur, BITACORA, lanzado_por)
     cuenta = {"barras": len(barras), "grupos": 0, "items": 0, "coincidencias": 0}
     try:
         filas = _encontrar(barras, activos, figuras, cuenta)
         with get_conn() as conn:
             with conn.cursor() as cur:
-                _guardar(cur, [b["id"] for b in barras], filas, barra_id is None)
+                _guardar(cur, [b["id"] for b in barras], filas, not barra_ids)
     except Exception as e:
         _cerrar_bitacora(sync_id, False, detalle=str(e))
         raise
