@@ -651,7 +651,11 @@ check("el elemento pide a la base el trazo de las figuras que trae, no el catál
 check("...y la elección la hace el backend, en un solo lugar",
       "def mejor_eje(" in SRC and '"eje": mejor_eje(it, lados["dims"], trazos)' in SRC
       and "barras = [barra_de_item(it, trazos) for it in items]" in SRC
-      and "from .figura_asa import figura_de, trazo_de_catalogo" in SRC)
+      and "from .figura_asa import figura_de, medidas_de_referencia, trazo_de_catalogo" in SRC)
+check("la planilla muestra las medidas de referencia de aSa (altura, cuerda, radio), sólo para leer",
+      '"referencias": medidas_de_referencia(it.get("ShapeDims"), set(lados["dims"]))' in SRC
+      and "lados: Object.assign({}, f.dims, _refCm(b))" in JS
+      and "if (!v || v.conforme !== false || _esReferencia(b, campo)) {" in JS)
 check("...primero la reconstrucción; el trazo sólo si aquélla no cuadra",
       'if eje.get("ok") or eje.get("tridimensional"):' in SRC
       and 'return alterna if (alterna and alterna.get("ok")) else eje' in SRC)

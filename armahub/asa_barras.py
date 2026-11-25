@@ -10,7 +10,7 @@ para toda la plataforma. Sin rutas: lo importan los módulos de rutas.
 import re
 from typing import Optional
 
-from .figura_asa import figura_de, trazo_de_catalogo
+from .figura_asa import figura_de, medidas_de_referencia, trazo_de_catalogo
 
 
 def es_barra(it: dict) -> bool:
@@ -82,6 +82,9 @@ def barra_de_item(it: dict, trazos: dict) -> dict:
         # Los lados en mm con su letra, los ángulos entre lados y qué lados son gancho:
         # la grilla los pone en columnas, en cm, igual que el Bar Manager.
         "dims": lados["dims"], "angulos": lados["angulos"], "ganchos": lados["ganchos"],
+        # LO QUE aSa MUESTRA ADEMÁS DE LOS LADOS (25-nov): la altura, la cuerda y el radio de
+        # un arco. Sólo para leer: no son lados, no se dibujan ni se comparan.
+        "referencias": medidas_de_referencia(it.get("ShapeDims"), set(lados["dims"])),
         # El largo que se audita es la SUMA DE LOS PARCIALES (ver CAMPOS_ITEM); el de
         # corte viaja al lado porque es el que aSa manda a fabricar, y que los dos no
         # coincidan es normal: la diferencia es el doblez.

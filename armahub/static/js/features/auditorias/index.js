@@ -1076,7 +1076,9 @@
             diam: f.diam, figura: b.figura || '',
             // EL NOMBRE VA EN SU COLUMNA, «Figura»; al lado del dibujo sobraba (6-nov).
             render: celdaFigura(f, true),
-            lados: f.dims, angulos: f.angulos, radio: f.radio, largo: f.largo,
+            // Más lo que aSa muestra además de los lados (altura, cuerda, radio de un arco),
+            // sólo para leer: no entra en el dibujo ni en lo que se corrige (25-nov).
+            lados: Object.assign({}, f.dims, _refCm(b)), angulos: f.angulos, radio: f.radio, largo: f.largo,
             largoTitle: (f.corte != null && Math.abs(f.corte - f.largo) > 0.5)
               ? 'Suma de los largos parciales. aSa corta ' + num(f.corte) + ' cm: la diferencia es lo que se come el doblez.'
               : '',
@@ -1133,14 +1135,29 @@
   // que es lo único honesto que se puede afirmar sin un valor con qué comparar.
   //
   // Sólo se editan las barras marcadas con HALLAZGO: en una conforme no hay nada que pedir.
+  // Las medidas de referencia de aSa (altura, cuerda, radio de un arco) en cm, por letra.
+  function _refCm(b) {
+    var out = {};
+    (b.referencias || []).forEach(function (r) { out[r[0]] = Number(r[1]) / 10; });
+    return out;
+  }
+
+  // Una medida de referencia no se corrige: no es un lado de la barra.
+  function _esReferencia(b, campo) {
+    return campo.indexOf('lado:') === 0 && (b.referencias || []).some(function (r) { return 'lado:' + r[0] === campo; });
+  }
+
+  // Lo que el auditor ya escribió en ese campo (un lado va dentro de `lados`).
+  function _puesto(v, campo) {
+    var esp = (v.esperado || {});
+    return campo.indexOf('lado:') === 0 ? ((esp.lados || {})[campo.slice(5)]) : esp[campo];
+  }
+
   function celdaEd(b, v, campo, valor, clase) {
-    if (!v || v.conforme !== false) {
+    if (!v || v.conforme !== false || _esReferencia(b, campo)) {
       return '<td class="' + clase + '">' + valor + '</td>';
     }
-    var esp = (v.esperado || {});
-    var puesto = campo.indexOf('lado:') === 0
-      ? ((esp.lados || {})[campo.slice(5)])
-      : esp[campo];
+    var puesto = _puesto(v, campo);
     var tiene = puesto !== undefined && puesto !== null && puesto !== '';
     return '<td class="' + clase + ' audedc' + (tiene ? ' puesto' : '') + '">' +
       '<input class="auded" data-ed="' + esc(b.ref) + '" data-campo="' + esc(campo) + '"' +
