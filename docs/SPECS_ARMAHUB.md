@@ -2132,12 +2132,16 @@ o · Código de control [Ir] · o · [Crear ítem]. La obra abre sus CC, el cód
   3. *Ítems:* las barras del CC en la hoja estándar, con un check y la cantidad en cada fila:
      se eligen VARIOS a la vez (una devolución suele traer varios ítems del mismo CC) y cada
      uno queda con su cantidad, sin pasar la del ítem.
-  4. *Datos comunes:* motivo (Devolución · Mal fabricada · Sobrante), ubicación y nota →
+  4. *Datos comunes:* motivo (Mal fabricada · Error de cubicación · Sobrante) y nota →
      «Dejar disponibles (n)». Se guardan juntos o ninguno (una sola consulta a aSa: el CC), y
      se buscan sus coincidencias en una sola pasada. Al terminar: «Ingresar otro del mismo
      CC» o «Cerrar».
   ArmaHub guarda cada ítem por su clave única (`OrderItemKey`: los números de línea y de
   secuencia se repiten dentro de un CC).
+  **La ubicación no se escribe: es la de la tarjeta** (usuario, 25-nov), el elemento del ítem
+  en aSa (`ElementID`: «ref shaft», «L101»), no la descripción general (`ElementDesc`:
+  «LCIELO»). Se ve al lado de cada ítem al elegirlo y en el resumen. «Devolución» no es un
+  motivo: lo guardado antes con él se sigue mostrando con su nombre.
 - **Crear ítem** (antes «A mano»; inventario). Para una barra suelta sin referencia: se elige la figura en tarjetas
   con su dibujo, con filtro por cantidad de lados (Recta · 2 · 3 · 4 · 5 · 6 · 7+) y búsqueda
   por código; se escriben los lados (cm), φ, cantidad y grado; el dibujo se ve mientras se
@@ -2150,7 +2154,8 @@ o · Código de control [Ir] · o · [Crear ítem]. La obra abre sus CC, el cód
   inventario se ingresan muchas barras seguidas.
 - **El grado** se guarda con el código de aSa tal cual (A630-420H; A630-420HS es el soldable;
   hay algo de A440-280H), porque es lo que se va a comparar. A mano se elige A630 o Soldable.
-- En los dos: ubicación física (texto corto) y nota opcional. Desde la fase 2, al guardar se
+- Nota opcional en los dos; la ubicación se escribe sólo en «Crear ítem» (desde aSa viene de
+  la tarjeta) y se corrige con Ajustar. Desde la fase 2, al guardar se
   busca de inmediato qué ítems calzan con esa barra.
 
 **Lista.** Una fila por barra disponible. Destacado: dibujo · φ · medidas · cantidad
