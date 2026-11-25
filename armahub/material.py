@@ -29,9 +29,13 @@ from .peso import peso_unitario_kg
 # Quién entra, además de administración. Es la misma lista que registry.js (`areas`).
 AREAS = ("Cubicaciones", "Calidad", "Logística", "USC C&D", "Producción C&D")
 ROLES_SIEMPRE = ("admin", "admin_calidad")
-MOTIVOS = {"devolucion": "Devolución", "mal_fabricada": "Mal fabricada", "sobrante": "Sobrante",
+# POR QUÉ QUEDÓ DISPONIBLE (usuario, 25-nov): «devolución no es un motivo; motivo es mal
+# fabricada o error de cubicación», y sobrante también puede ser. «Inventario» es lo medido
+# a mano. Lo guardado antes con «devolucion» se sigue mostrando con su nombre.
+MOTIVOS = {"mal_fabricada": "Mal fabricada", "error_cubicacion": "Error de cubicación", "sobrante": "Sobrante",
            "inventario": "Inventario"}
-MOTIVOS_ASA = ("devolucion", "mal_fabricada", "sobrante")
+MOTIVOS_ANTIGUOS = {"devolucion": "Devolución"}
+MOTIVOS_ASA = ("mal_fabricada", "error_cubicacion", "sobrante")
 # El grado se guarda con el código de aSa, tal cual, porque es lo que se compara. Medido
 # (25-nov, ítems Open y Processed): A630-420H casi todo, A630-420HS el soldable, y un poco de
 # A440-280H. A mano se elige entre los dos que se usan (usuario, 24-nov).
@@ -248,6 +252,7 @@ def _item_para_elegir(it: dict, trazos: dict) -> dict:
             "cc": _txt(it.get("CtrlCode")), "obra": it.get("JobName"), "cliente": it.get("CustomerName"),
             "descr_cc": it.get("OrderDescr"), "estado_asa": it.get("OrderStatusDescr"),
             "elemento": it.get("ElementDesc"), "marca": it.get("BarMark"), "notas": _txt(it.get("Notes")) or None,
+            "ubicacion": _txt(it.get("ElementID")) or None,
             "figura": _txt(it.get("ShpNameID")) or None, "diam": it.get("BarSizeDescr"),
             "grado": it.get("GradeID"), "dims": dims["dims"], "angulos": dims["angulos"],
             "cant": it.get("TotalQty"), "kg": it.get("LineWeight"), "largo": it.get("LengthTheor"),
@@ -277,10 +282,18 @@ def _comunes(datos: dict) -> dict:
             "nota": _txt(datos.get("nota"))[:400] or None}
 
 
+def _con_comunes(fila: dict, datos: dict) -> dict:
+    """La nota del formulario; la ubicación, la escrita si la hay, y si no, la de la tarjeta."""
+    c = _comunes(datos)
+    fila["nota"] = c["nota"]
+    fila["ubicacion"] = c["ubicacion"] or fila.get("ubicacion")
+    return fila
+
+
 def fila_desde_asa(it: dict, motivo: str, cantidad, eje: dict) -> dict:
     """La fila de una barra que viene de un ítem de aSa. Pura: el ítem ya viene leído."""
     if motivo not in MOTIVOS_ASA:
-        raise ErrorMaterial("Elige el motivo: Devolución, Mal fabricada o Sobrante.")
+        raise ErrorMaterial("Elige el motivo: Mal fabricada, Error de cubicación o Sobrante.")
     b = normalizar_asa(it, _txt(it.get("BarMark")))
     if not b:
         raise ErrorMaterial("Ese ítem no trae los lados de la barra.")
@@ -297,7 +310,10 @@ def _identidad(it: dict) -> dict:
             "cliente": it.get("CustomerName"), "descr_cc": it.get("OrderDescr"), "elemento": it.get("ElementDesc"),
             "marca": it.get("BarMark"), "notas": _txt(it.get("Notes")) or None,
             "figura": _txt(it.get("ShpNameID")) or None, "diam_mm": diam_mm(it.get("BarSizeDescr")),
-            "grado": _txt(it.get("GradeID")) or GRADO_POR_DEFECTO, "largo_mm": float(it.get("LengthTheor") or 0)}
+            "grado": _txt(it.get("GradeID")) or GRADO_POR_DEFECTO, "largo_mm": float(it.get("LengthTheor") or 0),
+            # LA UBICACIÓN ES LA DE LA TARJETA (usuario, 25-nov): el elemento del ítem en aSa
+            # («ref shaft», «L101»), no la descripción general («LCIELO»).
+            "ubicacion": _txt(it.get("ElementID")) or None}
 
 
 def fila_a_mano(cur, datos: dict) -> dict:
@@ -345,8 +361,7 @@ def _fila_lote(por_clave: dict, pedido: dict, datos: dict, trazos: dict, cc: str
         raise ErrorMaterial("Un ítem elegido ya no está en %s." % cc)
     eje = mejor_eje(it, lados_de_legangle(it.get("LegAngle"))["dims"], trazos)
     fila = fila_desde_asa(it, datos.get("motivo"), pedido.get("cantidad"), eje)
-    fila.update(_comunes(datos))
-    return fila
+    return _con_comunes(fila, datos)
 
 
 def obras(cur) -> list:
@@ -381,7 +396,7 @@ def crear(cur, email: str, datos: dict) -> int:
         fila = fila_a_mano(cur, datos)
     else:
         raise ErrorMaterial("Elige si la barra viene de aSa o se ingresa a mano.")
-    fila.update(_comunes(datos))
+    _con_comunes(fila, datos)
     return _insertar(cur, fila, email)
 
 
@@ -404,7 +419,8 @@ def fila_para_pantalla(r: dict) -> dict:
     return dict(r, diam_mm=float(r["diam_mm"]), largo_mm=float(r["largo_mm"] or 0), kg_unit=kg_unit,
                 dims=dims_de(lados), angulos=angulos_de(lados),
                 kg_disponible=round(kg_unit * r["cant_disponible"], 1) if kg_unit is not None else None,
-                motivo_txt=MOTIVOS.get(r["motivo"], r["motivo"]), grado_txt=GRADOS.get(r["grado"], r["grado"]),
+                motivo_txt=MOTIVOS.get(r["motivo"]) or MOTIVOS_ANTIGUOS.get(r["motivo"], r["motivo"]),
+                grado_txt=GRADOS.get(r["grado"], r["grado"]),
                 creado_el=_iso(r["creado_el"]), editado_el=_iso(r["editado_el"]))
 
 

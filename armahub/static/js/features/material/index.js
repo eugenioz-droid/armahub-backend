@@ -18,8 +18,9 @@
   var ESTADOS = [['disponible', 'Disponibles'], ['agotada', 'Agotadas'], ['descartada', 'Descartadas'], ['', 'Todas']];
   var N_LADOS = [['', 'Todas'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7+']];
   // Los colores de estado del manual, uno por motivo, siempre el mismo.
-  var TAG_MOTIVO = { devolucion: 'info', mal_fabricada: 'warning', sobrante: 'success', inventario: 'review' };
-  var MOTIVOS_ASA = ['devolucion', 'mal_fabricada', 'sobrante'];
+  var TAG_MOTIVO = { mal_fabricada: 'warning', error_cubicacion: 'danger', sobrante: 'success', inventario: 'review',
+                     devolucion: 'info' };
+  var MOTIVOS_ASA = ['mal_fabricada', 'error_cubicacion', 'sobrante'];
   var COIN = { filas: [], tipo: '', estado: '', buscar: '', corriendo: false, ultima: null, sondeo: null };
   var TIPOS = [['', 'Todas'], ['igual', 'Igual'], ['corte', 'Con corte']];
   var ESTADOS_ASA = [['', 'Open y Processed'], ['Open', 'Open'], ['Processed', 'Processed']];
@@ -358,7 +359,7 @@
     var k = it.item_key, marcado = ING.sel[k] != null;
     return { attrs: marcado ? ' class="bueno"' : '',
              check: '<input type="checkbox" data-sel="' + k + '"' + (marcado ? ' checked' : '') + '>',
-             barra: barraHoja(it, it.cant, it.kg), elemento: it.elemento || '',
+             barra: barraHoja(it, it.cant, it.kg), elemento: [it.ubicacion, it.elemento].filter(Boolean).join(' · '),
              propias: ['<input class="arm-input mat-cant" type="number" min="1" max="' + it.cant + '" data-cant="' + k +
                        '" value="' + (marcado ? ING.sel[k] : it.cant) + '">', esc(it.estado_asa || '')],
              texto: esc(it.descr_cc || '') };
@@ -423,7 +424,8 @@
     var kg = 0, filas = Object.keys(ING.sel).map(function (k) {
       var it = itemPorClave(k), n = ING.sel[k];
       kg += it.kg && it.cant ? it.kg / it.cant * n : 0;
-      return '<div class="mat-linea">' + esc(it.marca || '') + ' · ' + esc(it.diam || '') + ' · ' + num(n) + ' de ' + num(it.cant) + '</div>';
+      return '<div class="mat-linea">' + esc(it.marca || '') + ' · ' + esc(it.diam || '') + ' · ' + num(n) + ' de ' + num(it.cant) +
+             (it.ubicacion ? ' · ' + esc(it.ubicacion) : '') + '</div>';
     });
     return '<b>' + filas.length + ' ítem(s) · ' + num(kg) + ' kg</b>' + filas.join('');
   }
@@ -432,8 +434,10 @@
     ING.motivo = '';
     $('matPrevia').innerHTML = resumenSeleccion();
     $('matResumen').textContent = [ING.cc, ING.obra ? ING.obra.label : ''].filter(Boolean).join(' · ');
+    // Sin campo de ubicación: es la de la tarjeta de cada ítem (su elemento en aSa) y la trae
+    // ArmaHub (usuario, 25-nov). Va en el resumen, al lado de cada ítem.
     $('matCampos').innerHTML = campo('Motivo', '<div class="mat-seg" id="matMotivoIng"></div>', true) +
-      campo('Ubicación', campoTexto('matUbic', ING.ubicacion)) + campo('Nota', campoTexto('matNota', ''), true);
+      campo('Nota', campoTexto('matNota', ''), true);
     var ops = MOTIVOS_ASA.map(function (k) { return [k, MAT.motivos[k] || k]; });
     var alElegir = function (v) { ING.motivo = v; seg('matMotivoIng', ops, v, alElegir); };
     seg('matMotivoIng', ops, ING.motivo, alElegir);
@@ -546,7 +550,7 @@
 
   // ── GUARDAR ───────────────────────────────────────────────────────────────────
   function cuerpoLote() {
-    return { cc: ING.cc, motivo: ING.motivo, ubicacion: $('matUbic').value, nota: $('matNota').value,
+    return { cc: ING.cc, motivo: ING.motivo, nota: $('matNota').value,
              items: Object.keys(ING.sel).map(function (k) { return { item_key: Number(k), cantidad: ING.sel[k] }; }) };
   }
 
@@ -556,8 +560,8 @@
   }
 
   async function enviar() {
-    ING.ubicacion = $('matUbic').value;
     if (ING.tipo === 'asa') return global.apiPostJson('/material/barras/lote', cuerpoLote());
+    ING.ubicacion = $('matUbic').value;
     return global.apiPostJson('/material/barras', cuerpoMano());
   }
 

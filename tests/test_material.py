@@ -131,16 +131,23 @@ p = M.previa(Cursor(filas=filas), {"figura": None, "lados": {"A": 600}, "diam": 
 check("recta de 6 m φ16: 6.000 mm y su peso", p["largo_mm"] == 6000.0 and abs(p["kg_unit"] - 9.47) < 0.01)
 
 print("Desde aSa")
-item = {"OrderItemKey": 1625307, "CtrlCode": "ST47", "JobName": "DLP - EDIFICIO TALCA 2 SUR",
+item = {"OrderItemKey": 1625307, "CtrlCode": "ST47", "ElementID": "ref shaft", "JobName": "DLP - EDIFICIO TALCA 2 SUR",
         "CustomerName": "EMPRESA CONSTRUCTORA DLP SA", "OrderDescr": "ELEV. 13° PISO",
         "ElementDesc": "EJE 12/N1 al J PL-305 Rev-0", "BarMark": "10mmA1433", "Notes": "SECCION 12-K",
         "BarSizeDescr": "10mm", "GradeID": "A630-420H", "ShpNameID": "T1",
         "LegAngle": EJ["T1"]["legangle"], "ShapeDims": EJ["T1"]["shapedims"], "PinDiam": 40.0,
         "LengthTheor": 2540.0, "TotalQty": 52.0, "LineWeight": 82.3082936}
-f = M.fila_desde_asa(item, "devolucion", 20, {"ok": True})
+f = M.fila_desde_asa(item, "mal_fabricada", 20, {"ok": True})
 check("trae la identidad del ítem", (f["cc"], f["item_key"], f["marca"], f["obra"]) ==
       ("ST47", 1625307, "10mmA1433", "DLP - EDIFICIO TALCA 2 SUR"))
 check("el grado queda con el código de aSa, tal cual", f["grado"] == "A630-420H")
+check("la ubicación es la de la tarjeta: el elemento del ítem en aSa (no la descripción general)",
+      f["ubicacion"] == "ref shaft")
+check("...y si se escribe una, manda la escrita; la nota viene del formulario",
+      M._con_comunes(dict(f), {"ubicacion": "Patio 2", "nota": "x"})["ubicacion"] == "Patio 2"
+      and M._con_comunes(dict(f), {"nota": "x"})["ubicacion"] == "ref shaft")
+check("los motivos acordados (25-nov): mal fabricada, error de cubicación, sobrante; devolución no",
+      M.MOTIVOS_ASA == ("mal_fabricada", "error_cubicacion", "sobrante") and "devolucion" not in M.MOTIVOS)
 check("el peso de UNA barra", abs(f["kg_unit"] - 82.3082936 / 52) < 0.001)
 check("los lados con la MISMA forma que los de a mano",
       set(f["lados"][0]) == set(lados[0]) == {"nombre", "largo", "tipo", "angulo", "arco", "radio", "gancho"})
@@ -155,7 +162,7 @@ try:
 except M.ErrorMaterial:
     check("«inventario» es sólo de lo ingresado a mano", True)
 try:
-    M.fila_desde_asa(item, "devolucion", 53, {})
+    M.fila_desde_asa(item, "mal_fabricada", 53, {})
     check("más que las 52 del ítem: no", False)
 except M.ErrorMaterial:
     check("más que las 52 del ítem: no", True)
@@ -163,6 +170,8 @@ except M.ErrorMaterial:
 print("Pantalla")
 fila = {"id": 1, "lados": f["lados"], "kg_unit": 1.583, "cant_disponible": 20, "diam_mm": 10, "largo_mm": 2540,
         "motivo": "devolucion", "grado": "A630-420HS", "creado_el": None, "editado_el": None}
+check("lo guardado antes con «devolucion» se sigue mostrando con su nombre",
+      M.fila_para_pantalla(dict(fila))["motivo_txt"] == "Devolución")
 fp = M.fila_para_pantalla(fila)
 check("los lados como letra → mm para la grilla, y los giros", fp["dims"]["A"] > 0 and len(fp["angulos"]) == 5)
 check("kilos disponibles = peso de una por las disponibles", fp["kg_disponible"] == round(1.583 * 20, 1))
