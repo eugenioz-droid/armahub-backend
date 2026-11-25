@@ -1311,15 +1311,34 @@ el archivo anterior se borra sólo después de que la base confirmó (dos subida
 archivo del que ganó). Se baja con un enlace firmado de vida corta.
 
 **Datos.** `planos_obra` (mig 169): obra, plano (nombre en ArmaScanner), número, título, revisión, elemento
-(ELEV · LCIELO · VCIELO · FUND), etapa (cargado · terminado · en_trabajo, ésta sólo para lo guardado a medias
-antes del 22-nov), archivo, PDF, resumen (barras, aprobadas, kg, m², por piso). `planos_obra_entregas` y
-`planos_obra_reemplazos` (mig 174), `armascanner_obras` (mig 177). Las columnas `tomado_por` / `tomado_el`
+(ELEV · LCIELO · VCIELO · FUND), etapa (cargado · en_revision · terminado · en_trabajo, ésta sólo para lo
+guardado a medias antes del 22-nov), archivo, PDF, resumen (barras, aprobadas, kg, m², por piso).
+`planos_obra_entregas` y `planos_obra_reemplazos` (mig 174; la entrega con su etapa y sus grupos, mig 183),
+`armascanner_obras` (mig 177), `planos_obra_grupos` (mig 183). Las columnas `tomado_por` / `tomado_el`
 quedaron sin uso.
 
 **Desarrollo (23-nov, mig 178).** Un plano que el lector no reconoce lo manda el cubicador con «Enviar a
 desarrollo» (DWG + lo que ve cada lector); el administrador lo ve en la pestaña Desarrollo, un caso por
 plano de cada obra (obra + plano: dos obras con un «E-01» son dos casos), sólo para mirar: los estados los cambia el agente al resolver la lectura. Los reportes de errores van
 en Uso.
+
+**Pedido por ciclo (25-nov, mig 183).** Lo que manda es lo que va a aSa Studio, y aSa se sube por ciclo
+completo. ArmaScanner (2026-11-25.3 en adelante) sube la versión actual del plano SIN terminarla («Subir a
+ArmaHub», `POST /armascanner/planos/avance`): queda como la entrega del plano en etapa `en_revision`, sin
+PDF, con el estado de cada ciclo (`grupos`: barras, kg, completo, huella de sus filas del CSV). Mismas reglas
+que terminar (una entrega por plano; la de otro, sólo con su reemplazo aceptado). En Mis obras › Planos el
+plano dice «En revisión (vN)» y cada ciclo su estado: En revisión · Completo · Enviado vN · Cambios sin
+enviar. Un ciclo completo se pide solo («Enviar C1»): sólo sus barras pasan a los despieces y reemplazan las
+de ese ciclo del plano (se importan y después se quita lo de ese ciclo que no vino: nunca se borra antes de
+que lo nuevo esté adentro; lo ingresado a mano no se toca). Lo enviado queda en `planos_obra_grupos`, con su
+historial: versión, huella, barras, kg, quién y cuándo, y las filas enviadas. Si una versión posterior trae
+el ciclo completo con otra huella, son cambios después del pedido: «Reenviar C1» muestra antes qué cambió
+barra por barra (nuevas, corregidas con su campo, eliminadas) y reenvía el ciclo entero. El pedido del plano
+entero queda para los planos terminados, y deja enviado cada ciclo que trae. «Grupo» es genérico: el ciclo
+en losas; en elevaciones será el eje. ArmaScanner anteriores (sin el estado de los ciclos) siguen como antes.
+[Usuario 25-nov: «podemos permitir subir barras validadas siempre y cuando todas las asignadas a ese ciclo
+estén ok»; «lo importante es que haya trazabilidad y si se edita algo subido, se pueda manejar bien en los
+flujos posteriores»]
 
 ### 5.5 Permisos
 
