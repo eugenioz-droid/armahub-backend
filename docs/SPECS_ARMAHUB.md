@@ -2116,8 +2116,11 @@ Disponible · Coincidencias · Asignadas · Resumen.
 
 ### 15.2 Disponible — ingresar y listar
 
-«Ingresar ítem» (antes «Ingresar barra», usuario 25-nov) abre una ventana con dos caminos,
-en botones: «Desde aSa» y «Crear ítem».
+**Arriba, la tarjeta «Ingresar ítem»** (usuario 25-nov: los campos de arriba tienen que servir
+para agregar; los filtros van dentro de la lista, o se confunden): Obra (campo desplegable) ·
+o · Código de control [Ir] · o · [Crear ítem]. La obra abre sus CC, el código abre sus ítems y
+«Crear ítem» la barra medida a mano; todo sigue en una ventana con dos caminos, en botones:
+«Desde aSa» y «Crear ítem».
 
 - **Desde aSa, por pasos** (25-nov, «convertir esto en una verdadera herramienta»), con una
   línea de avance arriba (Obra › CC › Ítems › Datos) que deja volver a cualquier paso:
@@ -2154,10 +2157,9 @@ en botones: «Desde aSa» y «Crear ítem».
 disponible · kg · estado. Secundario, más chico: marca y Notes · CC e ítem de origen · obra ·
 cliente · descripción del CC (ELEV P1 C1) · eje/elemento (Eje X (1-2)) · motivo · ubicación ·
 quién y cuándo la ingresó. Acciones por fila: Ajustar (cantidad, ubicación, nota; con 0
-queda Agotada) y Descartar (con el porqué). Filtros, rotulados «Filtrar» y a la izquierda (el
-botón «Ingresar ítem» queda solo, a la derecha): obra (campo desplegable con búsqueda), texto
-(marca, CC o figura: busca en lo ya ingresado), estado (Disponibles · Agotadas · Descartadas ·
-Todas), motivo y φ. Indicadores: barras disponibles (piezas), kilos
+queda Agotada) y Descartar (con el porqué). Filtros, dentro de la tarjeta «Ítems disponibles»,
+rotulados «Filtrar»: obra (campo desplegable con búsqueda), texto (marca, CC o figura: busca en
+lo ya ingresado), estado (Disponibles · Agotadas · Descartadas · Todas), motivo y φ. Indicadores: barras disponibles (piezas), kilos
 disponibles e ingresadas este mes. Los ángulos no van en columnas: el dibujo ya dice la forma, y
 empujaban fuera de la vista el motivo y el origen.
 
