@@ -2079,7 +2079,7 @@ el CC se vuelve a editar después de la misma confirmación, se reabre.
 (sin rutas), rutas `/cc-confirmados` en `chequeos_api.py`, turno en `asa_scheduler.py`,
 pantalla en `static/js/features/auditorias/confirmados.js`.
 
-## 15. CALUGA: MATERIAL DISPONIBLE — PROPUESTA (24-nov, por validar)
+## 15. CALUGA: MATERIAL DISPONIBLE (validada 24-nov; fase 1 hecha 25-nov)
 
 **Para qué.** Reciclar barras que se fabricaron mal, que sobraron o que volvieron de obra y que
 todavía sirven. Quedan como material disponible; ArmaHub busca solo qué ítems por fabricar
@@ -2099,22 +2099,33 @@ Disponible · Coincidencias · Asignadas · Resumen.
 
 «Ingresar» abre un formulario que cambia según el tipo (botones, no desplegable):
 
-- **Desde aSa.** Se escribe el CC; aparecen sus ítems (dibujo, marca, φ, cantidad) y se elige
-  uno, o se busca por marca o número de ítem. ArmaHub trae todo de aSa aunque el ítem ya esté
-  fabricado o despachado. Se elige el motivo: Devolución · Mal fabricada · Sobrante. La
-  cantidad viene con la del ítem y se ajusta (una devolución puede no traer el ítem entero).
+- **Desde aSa.** Se escribe el CC; aparecen sus barras (dibujo, marca, φ, cantidad) y se elige
+  una, con un filtro por marca. ArmaHub trae todo de aSa aunque el ítem ya esté fabricado o
+  despachado, y lo guarda por su clave única (`OrderItemKey`: los números de línea y de
+  secuencia se repiten dentro de un CC). Se elige el motivo: Devolución · Mal fabricada ·
+  Sobrante. La cantidad viene con la del ítem y se ajusta, sin pasarla (una devolución puede no
+  traer el ítem entero).
 - **A mano (inventario).** Para una barra suelta sin referencia: se elige la figura en tarjetas
   con su dibujo, con filtro por cantidad de lados (Recta · 2 · 3 · 4 · 5 · 6 · 7+) y búsqueda
   por código; se escriben los lados (cm), φ, cantidad y grado; el dibujo se ve mientras se
   escribe. Las figuras son las que de verdad se usan en aSa, con la recta primero.
-- En los dos: ubicación física (texto corto) y nota opcional. Al guardar se busca de inmediato
-  qué ítems calzan con esa barra.
+  **Una barra a mano es la barra de ejemplo de aSa con los largos del usuario** (25-nov): se
+  dibuja con el mismo trazador que las barras reales, también las que aSa dobla en dos planos
+  (los soportes 26 y 305A, los más reciclados) y los arcos (se pide su radio). Los ganchos los
+  decide la misma regla que la revisión de barras.
+- **El grado** se guarda con el código de aSa tal cual (A630-420H; A630-420HS es el soldable;
+  hay algo de A440-280H), porque es lo que se va a comparar. A mano se elige A630 o Soldable.
+- En los dos: ubicación física (texto corto) y nota opcional. Desde la fase 2, al guardar se
+  busca de inmediato qué ítems calzan con esa barra.
 
 **Lista.** Una fila por barra disponible. Destacado: dibujo · φ · medidas · cantidad
 disponible · kg · estado. Secundario, más chico: marca y Notes · CC e ítem de origen · obra ·
 cliente · descripción del CC (ELEV P1 C1) · eje/elemento (Eje X (1-2)) · motivo · ubicación ·
-quién y cuándo la ingresó. Acciones por fila: ajustar cantidad, Descartar (con motivo).
-Filtros: φ, motivo, figura, búsqueda.
+quién y cuándo la ingresó. Acciones por fila: Ajustar (cantidad, ubicación, nota; con 0
+queda Agotada) y Descartar (con el porqué). Filtros: estado (Disponibles · Agotadas ·
+Descartadas · Todas), motivo, φ y búsqueda. Indicadores: barras disponibles (piezas), kilos
+disponibles e ingresadas este mes. Los ángulos no van en columnas: el dibujo ya dice la forma, y
+empujaban fuera de la vista el motivo y el origen.
 
 ### 15.3 La búsqueda
 
@@ -2187,7 +2198,11 @@ regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barr
 
 ### 15.8 Fases (cada una publicada y probada antes de la siguiente)
 
-1. Caluga, permisos y Disponible (ingresar desde aSa y a mano, lista).
+1. ☑ Caluga, permisos y Disponible (ingresar desde aSa y a mano, lista). Hecha 25-nov:
+   migración 181 (`material_barras`); `material.py` (lógica), `material_api.py` (rutas
+   `/material/…`), `asa_barras.py` (la barra de aSa armada en un solo lugar, también para
+   Auditorías); la caluga se abre por rol de administración o por área (registry.js,
+   `areas`, la misma lista que `material.AREAS`).
 2. Búsqueda Igual y Corte, Coincidencias, corrida de las 06:00 y botón.
 3. Asignaciones, cierre automático al despachar, cubicación nueva y Resumen.
 4. Buscar con doblez.
