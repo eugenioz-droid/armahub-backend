@@ -145,10 +145,20 @@
     return '<td class="num">' + num(f.kg_confirmado) + '</td>';
   }
 
-  function celdaDif(d) {
+  function celdaDif(d, extra) {
     if (d == null) return '<td class="num muted">—</td>';
-    if (Math.abs(d) < 0.5) return '<td class="num">0</td>';
-    return '<td class="num ccmdif">' + (d > 0 ? '+' : '−') + num(Math.abs(d)) + '</td>';
+    if (Math.abs(d) < 0.5) return '<td class="num">0' + extra + '</td>';
+    return '<td class="num ccmdif">' + (d > 0 ? '+' : '−') + num(Math.abs(d)) + extra + '</td>';
+  }
+
+  // DÓNDE SE MOVIERON LOS KILOS (25-nov): por φ, sólo los que cambiaron, bajo el total.
+  function porDiametro(f) {
+    var pd = (f.cambios && f.cambios.por_diametro) || [];
+    if (!pd.length) return '';
+    return '<div class="ccmphi">' + pd.map(function (x) {
+      var dd = x[2] - x[1];
+      return esc('φ' + parseFloat(x[0])) + ' ' + (dd > 0 ? '+' : '−') + num(Math.abs(dd));
+    }).join(' · ') + '</div>';
   }
 
   function resumenBarras(n) {
@@ -195,7 +205,7 @@
       '<td class="auddcc" title="' + esc(f.descr) + '">' + esc(f.descr) + '</td>' +
       '<td class="audnom">' + esc(nom(f.cubicador)) + '</td>' +
       '<td>' + esc(fecha(f.confirmado_el)) + '</td>' +
-      celdaKgConf(f) + '<td class="num">' + num(f.kg_actual) + '</td>' + celdaDif(dif(f)) +
+      celdaKgConf(f) + '<td class="num">' + num(f.kg_actual) + '</td>' + celdaDif(dif(f), porDiametro(f)) +
       celdaBarras(f) + celdaEstado(f) + celdaResuelto(f) + '</tr>' +
       (CCM.abiertos[f.id] ? detalle(f) : '');
   }
@@ -341,6 +351,6 @@
 
   global.__ccmTest = { CCM: CCM, dif: dif, desde: desde, filtrar: filtrar, resumenKpi: resumenKpi,
                        resumenBarras: resumenBarras, filasDetalle: filasDetalle, fila: fila,
-                       textoCarga: textoCarga, fecha: fecha };
+                       textoCarga: textoCarga, fecha: fecha, porDiametro: porDiametro };
 
 })(window);

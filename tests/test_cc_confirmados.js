@@ -111,6 +111,14 @@ check('abierto: la hoja de barras estándar debajo de la fila', h.includes('clas
       && h.includes('12mmA9') && h.includes('Agregada'));
 C.abiertos = {};
 
+console.log('Por diámetro');
+const pd = { cambios: { n: {}, por_diametro: [['12mm', 0, 5.3], ['16mm', 37.9, 18.9]] } };
+check('bajo el total, cuánto cambió cada φ (sólo los que cambiaron)', T.porDiametro(pd).includes('φ12 +5')
+      && T.porDiametro(pd).includes('φ16 −19'));
+check('sin foto, o un registro de antes de esto, no muestra nada', T.porDiametro({ cambios: null }) === ''
+      && T.porDiametro({ cambios: { n: {} } }) === '');
+check('la fila lo lleva en la celda de la diferencia', T.fila(Object.assign({}, filas[0], pd)).includes('class="ccmphi"'));
+
 console.log('Fechas');
 check('día-mes hora:minuto, como el resto de Auditorías', T.fecha(new Date(2026, 10, 4, 9, 5).toISOString()) === '04-11 09:05');
 check('sin fecha, vacío', T.fecha(null) === '' && T.fecha('') === '');

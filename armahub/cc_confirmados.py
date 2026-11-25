@@ -40,6 +40,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from .asa_barras import diam_mm
 from .db import get_conn
 
 log = logging.getLogger("armahub.cc_confirmados")
@@ -145,7 +146,24 @@ def diferencias(antes, despues) -> dict:
     return {"agregadas": agregadas[:TOPE_LISTA], "quitadas": quitadas[:TOPE_LISTA],
             "cambiadas": cambiadas[:TOPE_LISTA],
             "n": {"agregadas": len(agregadas), "quitadas": len(quitadas),
-                  "cambiadas": len(cambiadas)}}
+                  "cambiadas": len(cambiadas)},
+            "por_diametro": por_diametro(antes, despues)}
+
+
+def _kilos_por_diametro(barras) -> dict:
+    out = {}
+    for b in barras or []:
+        out[b[2]] = round(out.get(b[2], 0.0) + b[6], 2)
+    return out
+
+
+def por_diametro(antes, despues) -> list:
+    """Cuántos kilos tenía cada φ en la foto y cuántos tiene hoy, sólo los que cambiaron:
+    [[φ, kg antes, kg hoy], …], del más delgado al más grueso. Lo pidió el usuario (25-nov):
+    además del total, saber en qué diámetro se movieron los kilos."""
+    a, d = _kilos_por_diametro(antes), _kilos_por_diametro(despues)
+    cambiaron = [f for f in set(a) | set(d) if abs(d.get(f, 0.0) - a.get(f, 0.0)) >= KG_MINIMO]
+    return [[f, a.get(f, 0.0), d.get(f, 0.0)] for f in sorted(cambiaron, key=diam_mm)]
 
 
 def hay_cambio(cambios: Optional[dict], kg_antes, kg_hoy) -> bool:

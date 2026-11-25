@@ -99,6 +99,12 @@ d = C.diferencias([], mucho)
 check("la lista guardada tiene tope, el total no", len(d["agregadas"]) == C.TOPE_LISTA
       and d["n"]["agregadas"] == C.TOPE_LISTA + 5)
 
+print("Por diámetro")
+pdm = C.diferencias([A, B], [A, B_mas, D])["por_diametro"]
+check("kilos por φ, sólo los que cambiaron, del más delgado al más grueso",
+      pdm == [["10mm", 30.2, 37.6], ["12mm", 0.0, 5.3]])
+check("si no cambió nada, la lista queda vacía", C.diferencias([A, B], [B, A])["por_diametro"] == [])
+
 print("¿Toca lo que se fabrica?")
 nada = {"n": {"agregadas": 0, "quitadas": 0, "cambiadas": 0}}
 check("sin foto no se puede saber: cuenta", C.hay_cambio(None, None, 100))
