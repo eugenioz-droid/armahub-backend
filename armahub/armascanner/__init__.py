@@ -10,17 +10,21 @@ cargar los planos del calculista, subir cada plano cuando lo terminó y enviar s
     POST /armascanner/planos/terminar         el plano terminado: la entrega del plano (paquete y PDF), sólo
                                               en una obra de Mis obras (si no, 409); si la entrega es de otro,
                                               sólo con su reemplazo aceptado (si no, 409 «ocupado»)
+    POST /armascanner/planos/avance           la versión actual SIN terminar («Subir a ArmaHub», mig 183): la entrega
+                                              en revisión, sin PDF, con el estado de cada ciclo; mismas reglas
     POST /armascanner/planos/descargar        enlace para bajar la entrega o el antecedente
     POST /armascanner/planos/reemplazo/pedir · responder   pedir al autor que acepte el reemplazo
     GET  /armascanner/planos/reemplazos       los pedidos para mí y los míos
     POST /armascanner/planos/pedido           «Enviar pedido»: las barras de la entrega pasan a los despieces
-                                              de la obra
+                                              de la obra; con «grupo» (mig 183), sólo las de un ciclo completo,
+                                              que reemplazan las de ese ciclo del plano
     POST /armascanner/reportes                un caso de Desarrollo («plano», que no se lee) o un reporte
     POST /armascanner/planos/guardar          cargar el antecedente: EN PAUSA (CARGA_ANTECEDENTES), responde 410
     POST /armascanner/planos/tomar · soltar   ya no hay bloqueo: sólo para un ArmaScanner hasta la 2026-11-20.10
                                               (tomar responde 404 y ése abre el plano en local; soltar, ok)
     GET/POST /armascanner/planos-linea…       los planos de una obra en el portal (avance, barras, PDF, DWG,
-                                              responder un reemplazo, pedido, eliminar)
+                                              responder un reemplazo, pedido —del plano o de un ciclo—, eliminar)
+    GET  /armascanner/planos-linea/grupo      un ciclo antes de reenviarlo: lo enviado y qué cambió desde entonces
 
 Y lo que muestra la caluga ArmaScanner del portal (sesión del portal; SPECS §13) [Usuario 19-nov:
 «Más que pedidos enviados debiera ver sus obras y ojalá una línea por cada carga de elemento

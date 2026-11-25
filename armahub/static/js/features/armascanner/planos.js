@@ -1,5 +1,7 @@
 /* armascanner/planos.js — la sección Planos de la ventana de la obra: la lista con su estado, sus KPIs y su
  * pedido; ver PDF, descargar DWG, ver barras, responder un pedido de reemplazo, enviar pedido, eliminar.
+ * Desde el 25-nov (mig 183), un plano en revisión trae el estado de cada ciclo y cada ciclo completo se pide
+ * solo; uno que cambió después del pedido se reenvía con lo que cambió a la vista.
  */
 (function (global) {
   'use strict';
@@ -36,11 +38,13 @@
 
   // El estado del plano, en el orden en que se listan.
   var ESTADOS = [['terminado', 'Terminado', 'arm-tag arm-tag--success'],
+                 ['en_revision', 'En revisión', 'arm-tag arm-tag--info'],
                  ['cargado', 'Cargado', 'arm-tag'],
                  ['reemplazado', 'Reemplazado', 'arm-tag']];
   function estadoDe(p) {
     if (reemplazoDe(p)) return 'reemplazado';
-    return p.etapa === 'cargado' ? 'cargado' : 'terminado';
+    if (p.etapa === 'cargado' || p.etapa === 'en_revision') return p.etapa;
+    return 'terminado';
   }
   function ordenEstado(p) {
     var e = estadoDe(p);
@@ -67,12 +71,24 @@
       (p.relacion ? '<span class="arm-tag arm-tag--info">' + (p.relacion === 'reemplaza' ? 'Reemplaza a ' : 'Complementa a ') +
         esc(revDeTexto(planoDe(p.obra, p.relacion_de), p.relacion_de)) + '</span>' : '') +
       (reemplazoDe(p) ? '<span class="arm-tag">Por ' + esc(revDeTexto(reemplazoDe(p))) + '</span>' : '');
-    return '<div class="asc-tags"><span class="' + e[2] + '">' + e[1] + '</span></div>' +
+    var version = e[0] === 'en_revision' && p.entrega ? ' (v' + p.entrega.version + ')' : '';
+    return '<div class="asc-tags"><span class="' + e[2] + '">' + e[1] + version + '</span></div>' +
       (tags ? '<div class="asc-tags">' + tags + '</div>' : '');
+  }
+
+  // El estado de cada ciclo (grupo): enviado, completo (se puede pedir), con cambios después del pedido o en revisión.
+  var GRUPOS = { enviado: ['Enviado', 'arm-tag arm-tag--success'], completo: ['Completo', 'arm-tag arm-tag--info'],
+                 cambios: ['Cambios sin enviar', 'arm-tag arm-tag--warning'], en_revision: ['En revisión', 'arm-tag'] };
+  function tagGrupo(g) {
+    var e = GRUPOS[g.estado] || GRUPOS.en_revision, x = g.enviado;
+    var titulo = x ? 'Enviado v' + x.version + ' · ' + [x.enviado_el, x.enviado_por].filter(Boolean).join(' · ') : '';
+    return '<span class="' + e[1] + '"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(g.grupo) + ' · ' +
+      e[0] + (g.estado === 'enviado' && x ? ' v' + x.version : '') + '</span>';
   }
 
   function celdaPedido(p) {
     if (p.etapa === 'cargado') return '';
+    if ((p.grupos || []).length) return '<div class="asc-tags">' + p.grupos.map(tagGrupo).join('') + '</div>';
     if (p.pedido === 'enviado') {
       return '<span class="arm-tag arm-tag--success" title="' + esc([p.pedido_el, p.pedido_version ? 'v' + p.pedido_version : '',
         p.pedido_por].filter(Boolean).join(' · ')) + '">Enviado</span>';
@@ -116,9 +132,22 @@
       (pendiente && p.puede_responder
         ? '<button type="button" class="arm-button arm-button--primary" onclick="ascResponderReemplazo(' + i + ', true)">Aceptar reemplazo</button>' +
           '<button type="button" class="arm-button" onclick="ascResponderReemplazo(' + i + ', false)">Rechazar</button>' : '') +
-      (p.puede_enviar && total > 0
-        ? '<button type="button" class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '') +
+      botonesPedido(p, i, total) +
       (p.puede_eliminar ? '<button type="button" class="arm-button arm-button--danger" onclick="ascEliminarPlano(' + i + ')">Eliminar</button>' : '');
+  }
+
+  // El pedido: con ciclos, uno por ciclo completo («Enviar C1») o con cambios después del pedido («Reenviar
+  // C1»); sin ciclos (ArmaScanner anteriores), el del plano entero.
+  function botonesPedido(p, i, total) {
+    if ((p.grupos || []).length) {
+      return p.puede_enviar_grupos ? p.grupos.filter(function (g) { return g.estado === 'completo' || g.estado === 'cambios'; })
+        .map(function (g) {
+          return '<button type="button" class="arm-button arm-button--primary" onclick="ascEnviarGrupo(' + i + ', \'' +
+            esc(g.grupo) + '\')">' + (g.estado === 'cambios' ? 'Reenviar ' : 'Enviar ') + esc(g.grupo) + '</button>';
+        }).join('') : '';
+    }
+    return p.puede_enviar && total > 0
+      ? '<button type="button" class="arm-button arm-button--primary" onclick="ascEnviarPedido(' + i + ')">Enviar pedido</button>' : '';
   }
 
   function pintarPlanos() {
@@ -277,6 +306,44 @@
     var data = await postPlano('/armascanner/planos-linea/pedido', p);
     if (!data) return;
     global.showToast('Pedido enviado: ' + entero(data.barras) + ' barras · ' + entero(data.kilos) + ' kg', 'success');
+    await A.recargarObra(true);
+  };
+
+  // Lo que cambió en un ciclo desde su último pedido, en pocas líneas (las barras, hasta 8 por tipo).
+  function lista(ids) { return ids.slice(0, 8).join(', ') + (ids.length > 8 ? '…' : ''); }
+  function corregida(b) {
+    return b.id + ' (' + b.campos.map(function (k) { return k[0] + ' ' + k[1] + ' → ' + k[2]; }).join(', ') + ')';
+  }
+  function linea(cuantas, rotulo, texto) { return cuantas ? entero(cuantas) + ' ' + rotulo + ': ' + texto : ''; }
+  function textoDiferencias(d) {
+    var x = d.diferencias || {}, n = x.nuevas || [], c = x.corregidas || [], e = x.eliminadas || [];
+    var lineas = [linea(n.length, 'nuevas', lista(n)),
+                  linea(c.length, 'corregidas', c.slice(0, 8).map(corregida).join('; ') + (c.length > 8 ? '…' : '')),
+                  linea(e.length, 'eliminadas', lista(e))].filter(Boolean);
+    return lineas.length ? lineas.join('\n') : 'Sin diferencias con lo enviado.';
+  }
+
+  global.ascEnviarGrupo = async function (i, grupo) {
+    var p = est.planos[i];
+    if (!p) return;
+    var g = (p.grupos || []).filter(function (x) { return x.grupo === grupo; })[0];
+    if (!g) return;
+    var plano = p.numero || p.plano, texto;
+    if (g.estado === 'cambios') {
+      var d = await global.apiGet('/armascanner/planos-linea/grupo?obra=' + enc(p.obra) + '&plano=' + enc(p.plano) +
+                                  '&grupo=' + enc(grupo));
+      if (!d) { global.showToast('No se pudo leer lo que cambió en ' + grupo + '.', 'error'); return; }
+      texto = '¿Reenviar ' + grupo + ' de ' + plano + ' (v' + d.version + ')?\n\nDesde lo enviado (v' +
+        (d.enviado ? d.enviado.version : '?') + '):\n' + textoDiferencias(d) +
+        '\n\nReemplaza las barras de ' + grupo + ' de este plano en los despieces de la obra.';
+    } else {
+      texto = '¿Enviar pedido de ' + grupo + ' de ' + plano + '?\n\nSus ' + entero(g.barras) + ' barras pasan a los ' +
+        'despieces de la obra. Reemplazan las de ' + grupo + ' de este plano.';
+    }
+    if (!confirm(texto)) return;
+    var data = await postPlano('/armascanner/planos-linea/pedido', p, { grupo: grupo });
+    if (!data) return;
+    global.showToast(grupo + ' enviado: ' + entero(data.barras) + ' barras · ' + entero(data.kilos) + ' kg', 'success');
     await A.recargarObra(true);
   };
 

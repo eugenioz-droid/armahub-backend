@@ -4,6 +4,8 @@ La base de los planos de las obras: `planos_obra` (una fila por plano), su entre
 ponerla al día y eliminarla. Sin HTTP: quien llama responde.
 """
 
+import json
+
 from .comun import _cuando
 
 NO_ESTA = "Ese plano no está en ArmaHub."
@@ -34,10 +36,11 @@ def _entregas(cur, obras=None, plano=None) -> dict:
     if plano is not None:
         cond.append("plano = %s")
         params.append(plano)
-    cur.execute("""SELECT id, id_proyecto, plano, autor, version, archivo, tamano, resumen, pdf, subido_el
+    cur.execute("""SELECT id, id_proyecto, plano, autor, version, archivo, tamano, resumen, pdf, subido_el, etapa, grupos
                      FROM planos_obra_entregas""" + (" WHERE " + " AND ".join(cond) if cond else ""), params)
     return {(f[1], f[2]): {"id": f[0], "autor": f[3], "version": f[4], "archivo": f[5], "tamano": f[6],
-                           "resumen": f[7] or {}, "pdf": f[8], "subido_el": f[9]} for f in cur.fetchall()}
+                           "resumen": f[7] or {}, "pdf": f[8], "subido_el": f[9], "etapa": f[10] or "terminado",
+                           "grupos": f[11] or {}} for f in cur.fetchall()}
 
 
 def _entrega(cur, obra: str, plano: str):
@@ -104,8 +107,8 @@ def _recalcular(cur, obra: str, plano: str):
                    revision = COALESCE(e.revision, p.revision), elemento = COALESCE(e.elemento, p.elemento),
                    barras = CAST(e.resumen->>'barras' AS INTEGER), aprobadas = CAST(e.resumen->>'aprobadas' AS INTEGER),
                    kg = CAST(e.resumen->>'kg' AS NUMERIC), resumen = e.resumen, barras_json = e.barras_json,
-                   pdf = e.pdf, etapa = 'terminado',
-                   version = p.version + CASE WHEN p.etapa IS DISTINCT FROM 'terminado'
+                   pdf = e.pdf, etapa = COALESCE(e.etapa, 'terminado'),
+                   version = p.version + CASE WHEN p.etapa IS DISTINCT FROM COALESCE(e.etapa, 'terminado')
                                                    OR p.subido_por IS DISTINCT FROM e.autor
                                                    OR p.subido_el IS DISTINCT FROM e.subido_el THEN 1 ELSE 0 END,
                    subido_por = e.autor, subido_el = e.subido_el
@@ -137,6 +140,45 @@ def _eliminar_plano(cur, email: str, obra: str, plano: str, con_barras: bool) ->
     cur.execute("""UPDATE planos_obra_reemplazos SET estado = 'anulado', respondido_por = %s, respondido_el = NOW()
                     WHERE id_proyecto = %s AND plano = %s AND estado IN ('pendiente', 'aceptado')""",
                 (email, obra, plano))
+    cur.execute("DELETE FROM planos_obra_grupos WHERE id_proyecto = %s AND plano = %s", (obra, plano))
     cur.execute("DELETE FROM planos_obra WHERE id_proyecto = %s AND plano = %s", (obra, plano))
     return {"version": fila["version"], "entrega": bool(entregas), "barras": borradas,
             "claves": [c for c in [fila["archivo"]] + [k for f in entregas for k in f] if c]}
+
+
+# ── Lo enviado de cada grupo (mig 183, 25-nov): el ciclo en losas; en elevaciones, el eje ──
+def _enviados(cur, obras) -> dict:
+    """{(obra, plano): {grupo: el último envío}} de las obras (lista de ids): {version, huella, barras, kg,
+    enviado_por, enviado_el}, sin las filas."""
+    if not obras:
+        return {}
+    cur.execute("""SELECT id_proyecto, plano, grupo, version, huella, barras, kg, enviado_por, enviado_el
+                     FROM planos_obra_grupos WHERE id_proyecto = ANY(%s) ORDER BY id""", (list(obras),))
+    out = {}
+    for f in cur.fetchall():
+        out.setdefault((f[0], f[1]), {})[f[2]] = {"version": f[3], "huella": f[4], "barras": f[5],
+                                                  "kg": float(f[6]) if f[6] is not None else None,
+                                                  "enviado_por": f[7], "enviado_el": f[8]}
+    return out
+
+
+def _ultimo_envio(cur, obra: str, plano: str, grupo: str):
+    """El último envío de ese grupo, con lo enviado barra por barra (filas), o None."""
+    cur.execute("""SELECT version, huella, filas, enviado_por, enviado_el FROM planos_obra_grupos
+                    WHERE id_proyecto = %s AND plano = %s AND grupo = %s ORDER BY id DESC LIMIT 1""", (obra, plano, grupo))
+    f = cur.fetchone()
+    return f and {"version": f[0], "huella": f[1], "filas": f[2] or [], "enviado_por": f[3], "enviado_el": f[4]}
+
+
+def _anotar_grupo(cur, obra: str, plano: str, envio: dict) -> bool:
+    """Anota el envío de un grupo, sólo si la entrega del plano sigue en la versión enviada (si cambió mientras
+    se importaba, no queda anotado: hay que reenviarlo). envio = {grupo, version, huella, barras, kg, filas,
+    import_id, enviado_por}. True si quedó anotado."""
+    cur.execute("""INSERT INTO planos_obra_grupos (id_proyecto, plano, grupo, version, huella, barras, kg, filas,
+                                                   import_id, enviado_por)
+                   SELECT %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                    WHERE EXISTS (SELECT 1 FROM planos_obra_entregas
+                                   WHERE id_proyecto = %s AND plano = %s AND version = %s)""",
+                (obra, plano, envio["grupo"], envio["version"], envio["huella"], envio["barras"], envio["kg"],
+                 json.dumps(envio["filas"]), envio["import_id"], envio["enviado_por"], obra, plano, envio["version"]))
+    return cur.rowcount == 1

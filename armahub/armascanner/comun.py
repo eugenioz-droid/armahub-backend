@@ -5,6 +5,8 @@ avisos de la campana y el cuerpo {obra, plano} de varias rutas.
 
 import logging
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -64,6 +66,7 @@ def _avisar(destinatarios, mensaje: str, tipo: str = AVISO):
 class PlanoEnLinea(BaseModel):
     obra: str
     plano: str
+    grupo: Optional[str] = None  # el pedido de un grupo (el ciclo en losas: «C1»); sin él, el plano entero
 
 
 # Lo que vale un enlace de descarga de R2 (planos, reportes, versiones).

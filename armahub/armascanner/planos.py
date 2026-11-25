@@ -4,7 +4,8 @@ portal (avance, barras, PDF, DWG, eliminar).
 
 Cargar, terminar y el pedido aparte (mig 171 y 174; SPECS §5.4)
 Cargar deja el plano del calculista como antecedente. Terminar sube el plano con todas sus barras
-revisadas: es la entrega del plano, con sus barras a la vista y su PDF. Ninguno de los dos carga
+revisadas: es la entrega del plano, con sus barras a la vista y su PDF. El avance (mig 183, 25-nov)
+sube la versión actual sin terminarla, con el estado de cada ciclo: cada ciclo completo se pide solo. Ninguno de los dos carga
 barras en los despieces: eso es «Enviar pedido», que pasa las barras de la entrega a la obra, con su
 procedencia (ArmaScanner). Lo envía quien terminó el plano o un administrador.
 [Usuario 20-nov: «al enviar el pedido lo estamos pasando a los despieces asociados a la obra»]
@@ -23,11 +24,11 @@ from ..db import audit, get_conn
 from ..licencias import _bearer
 from .acceso import _con_licencia_o_admin, _es_admin, _usuario
 from .comun import DESCARGA_SEGUNDOS, _avisar, _borrar, _cuando, _nombres, _texto
-from .datos import (NO_ESTA, _eliminar_plano, _entrega, _entrega_dict, _entregas, _fila_base, _recalcular,
+from .datos import (NO_ESTA, _eliminar_plano, _entrega, _entrega_dict, _entregas, _enviados, _fila_base, _recalcular,
                     _reemplazos, _reemplazos_dict, _rotulo)
 from .kpis import kpis_de, plano_para_kpis, resumen_de
 from .reglas import (accion_al_cargar, accion_al_terminar, barras_a_la_vista, clave_paquete, dwg_del_paquete,
-                     estado_pedido, puede_enviar, relacion_enviada)
+                     estado_pedido, grupos_del_plano, grupos_enviados, puede_enviar, relacion_enviada)
 
 router = APIRouter()
 
@@ -45,13 +46,15 @@ def planos_en_linea(obra: str = "", credentials: HTTPAuthorizationCredentials = 
             filas = _leer_planos(cur, buscada)
             obras = sorted({f[0] for f in filas}) if buscada else None
             entregas, pedidos = _entregas(cur, obras), _reemplazos(cur, obras)
+            enviados = _enviados(cur, sorted({f[0] for f in filas}))
             nombres = _nombres(cur, [f[13] for f in filas] + [e["autor"] for e in entregas.values()]
-                               + [r["solicitante"] for lista in pedidos.values() for r in lista])
+                               + [r["solicitante"] for lista in pedidos.values() for r in lista] + _quienes(enviados))
             # la obra pedida existe: un plano que ArmaScanner tenía en línea y ya no está en la lista
             # fue eliminado en ArmaHub (sin obra confirmada, ArmaScanner no saca conclusiones)
             obra_id = _obra_confirmada(cur, buscada) if buscada else None
     yo = user["email"]
-    planos = [_plano_en_linea(f, entregas.get((f[0], f[3])), pedidos.get((f[0], f[3]), []), nombres, yo) for f in filas]
+    planos = [dict(_plano_en_linea(f, entregas.get((f[0], f[3])), pedidos.get((f[0], f[3]), []), nombres, yo),
+                   grupos=_grupos_vista(entregas.get((f[0], f[3])), enviados.get((f[0], f[3])), nombres)) for f in filas]
     return {"yo": yo, "admin": _es_admin(user), "obra_id": obra_id, "planos": planos}
 
 
@@ -80,6 +83,19 @@ def _obra_confirmada(cur, buscada: str):
     cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s OR asa_job_id = %s LIMIT 1", (buscada, buscada))
     fila = cur.fetchone()
     return fila[0] if fila else None
+
+
+def _quienes(enviados: dict) -> list:
+    """Los correos de quienes enviaron cada grupo (para sus nombres)."""
+    return [x["enviado_por"] for grupos in enviados.values() for x in grupos.values()]
+
+
+def _grupos_vista(e, enviados, nombres) -> list:
+    """Los grupos del plano (el ciclo en losas) con su estado, como los ven las listas: el último envío de cada
+    uno con su versión, quién y cuándo."""
+    env = {g: dict(x, enviado_el=_cuando(x["enviado_el"]), enviado_por=nombres.get(x["enviado_por"], x["enviado_por"]))
+           for g, x in (enviados or {}).items()}
+    return grupos_del_plano((e or {}).get("grupos") or {}, env)
 
 
 def _plano_en_linea(f, e, pedidos, nombres, yo: str) -> dict:
@@ -276,10 +292,29 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
     Una entrega por plano. Sin entrega, o si es la mía, entra (la mía pasa a la versión siguiente). Si
     es de otro, entra sólo si su autor aceptó mi pedido de reemplazo: reemplaza la suya, el pedido queda
     cumplido y a él se le avisa. Si no lo aceptó, 409 «ocupado» y no se guarda nada. Cada subida va a
-    una key propia de R2; el archivo anterior se borra recién cuando la base confirmó."""
+    una key propia de R2; el archivo anterior se borra recién cuando la base confirmó. Si ArmaScanner manda el
+    estado de cada ciclo (ciclos_estado), queda con la entrega (pedido por grupo, mig 183)."""
+    return await _recibir_entrega(datos, paquete, pdf, credentials.credentials, "terminado")
+
+
+@router.post("/armascanner/planos/avance")
+async def avance_plano(datos: str = Form(...), paquete: UploadFile = File(...),
+                       credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """«Subir a ArmaHub» con el plano abierto, SIN terminarlo (ArmaScanner 2026-11-25.3 y siguientes): la versión
+    actual queda como la entrega del plano en etapa «en_revision», sin PDF, con el estado de cada ciclo
+    (ciclos_estado: {"C1": {barras, kg, completo, huella}}); cada ciclo completo se pide solo (pedido por
+    grupo). Las mismas reglas que terminar: una entrega por plano; la de otro, sólo con su reemplazo aceptado
+    (si no, 409 «ocupado»). Responde también el estado de cada ciclo (ciclos). [Usuario 25-nov: «podemos
+    permitir subir barras validadas siempre y cuando todas las asignadas a ese ciclo estén ok»]"""
+    return await _recibir_entrega(datos, paquete, None, credentials.credentials, "en_revision")
+
+
+async def _recibir_entrega(datos: str, paquete: UploadFile, pdf, ficha: str, etapa: str) -> dict:
+    """Terminar (etapa 'terminado') y el avance ('en_revision'): la entrega del plano, con sus barras a la vista,
+    su PDF si viene y el estado de cada grupo si lo manda ArmaScanner."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            user = _usuario(cur, credentials.credentials)
+            user = _usuario(cur, ficha)
             d = _datos_plano(datos)
             obra, plano, email = _obra_de(cur, d), d["plano"], user["email"]
             _accion_o_409(cur, obra, plano, email, _entrega(cur, obra, plano))  # antes de subir nada a R2
@@ -287,6 +322,7 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
     if not contenido:
         raise HTTPException(status_code=400, detail="El paquete del plano llegó vacío.")
     hoja = await pdf.read() if pdf is not None else b""
+    d["etapa_entrega"], d["grupos"] = etapa, grupos_enviados(d)
     barras = barras_a_la_vista(d.get("barras"))
     resumen = resumen_de(barras, d)
     clave = clave_paquete(obra, plano)
@@ -298,6 +334,8 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
                 antes, accion, version = _guardar_entrega(cur, d, obra, email, (clave, len(contenido), clave_pdf),
                                                           resumen, barras)
                 aviso = _aviso_de_reemplazo(cur, accion, email, obra, plano)
+                ciclos = {g["grupo"]: g["estado"]
+                          for g in grupos_del_plano(d["grupos"], _enviados(cur, [obra]).get((obra, plano), {}))}
     except Exception:
         _borrar(clave, clave_pdf)  # la base no confirmó: lo subido en este intento no queda suelto
         raise
@@ -305,10 +343,10 @@ async def terminar_plano(datos: str = Form(...), paquete: UploadFile = File(...)
         _borrar(antes["archivo"], antes["pdf"])  # la entrega anterior (mía o la reemplazada), recién ahora
     if aviso:
         _avisar([antes["autor"]], aviso)
-    audit(email, "armascanner_terminar_plano",
+    audit(email, "armascanner_terminar_plano" if etapa == "terminado" else "armascanner_avance_plano",
           f"{plano} v{version}: {resumen['barras']} barras, {resumen['kg']} kg"
           + (f"; reemplaza la de {antes['autor']}" if accion == "reemplaza" else ""), "proyecto", obra)
-    return {"ok": True, "version": version, "id_proyecto": obra, "resumen": resumen,
+    return {"ok": True, "version": version, "id_proyecto": obra, "resumen": resumen, "etapa": etapa, "ciclos": ciclos,
             "reemplazo_de": antes["autor"] if accion == "reemplaza" else ""}
 
 
@@ -341,17 +379,18 @@ def _guardar_entrega(cur, d: dict, obra: str, email: str, archivos: tuple, resum
     accion = _accion_o_409(cur, obra, plano, email, antes)  # la comprobación que vale
     cur.execute("""
         INSERT INTO planos_obra_entregas (id_proyecto, plano, autor, version, archivo, tamano, numero, titulo,
-                                          revision, elemento, resumen, barras_json, pdf, subido_el)
-        VALUES (%s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, NOW())
+                                          revision, elemento, resumen, barras_json, pdf, subido_el, etapa, grupos)
+        VALUES (%s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, NOW(), %s, %s::jsonb)
         ON CONFLICT (id_proyecto, plano) DO UPDATE SET
             autor = EXCLUDED.autor, version = planos_obra_entregas.version + 1,
             archivo = EXCLUDED.archivo, tamano = EXCLUDED.tamano, numero = EXCLUDED.numero,
             titulo = EXCLUDED.titulo, revision = EXCLUDED.revision, elemento = EXCLUDED.elemento,
             resumen = EXCLUDED.resumen, barras_json = EXCLUDED.barras_json, pdf = EXCLUDED.pdf,
-            subido_el = EXCLUDED.subido_el
+            subido_el = EXCLUDED.subido_el, etapa = EXCLUDED.etapa, grupos = EXCLUDED.grupos
         RETURNING version
     """, (obra, plano, email, clave, tamano, _texto(d, "numero", 40), _texto(d, "titulo", 300),
-          _texto(d, "rev", 20), _texto(d, "elemento", 20), json.dumps(resumen), json.dumps(barras), clave_pdf))
+          _texto(d, "rev", 20), _texto(d, "elemento", 20), json.dumps(resumen), json.dumps(barras), clave_pdf,
+          d.get("etapa_entrega") or "terminado", json.dumps(d["grupos"]) if d.get("grupos") else None))
     version = cur.fetchone()[0]
     # mis pedidos de reemplazo sobre este plano se cumplieron; los de otros sobre la entrega
     # que ya no está (la de su autor anterior) dejan de correr
@@ -415,7 +454,7 @@ def _a_descargar(entrega, fila, nombres, email: str) -> tuple:
     """({version, tamano, etapa, autor, mia}, key en R2) de lo que se baja: la entrega o, sin entrega, el
     paquete de la fila del plano. 404 si no hay ninguno."""
     if entrega:
-        return ({"version": entrega["version"], "tamano": entrega["tamano"], "etapa": "terminado",
+        return ({"version": entrega["version"], "tamano": entrega["tamano"], "etapa": entrega["etapa"],
                  "autor": nombres.get(entrega["autor"], entrega["autor"]), "mia": entrega["autor"] == email},
                 entrega["archivo"])
     if fila and fila["archivo"]:
@@ -426,22 +465,24 @@ def _a_descargar(entrega, fila, nombres, email: str) -> tuple:
 
 
 # ── La pestaña Planos del portal (sesión del portal): avance, barras, PDF, reemplazos, pedido ──
-def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list) -> dict:
+def _fila_plano(f, nombres, yo: str, admin: bool, entrega, pedidos: list, enviados=None) -> dict:
     """Un plano de la obra en el portal (fila de planos_linea, con los textos que faltan vacíos y los números
-    en 0), con su entrega y sus pedidos de reemplazo."""
+    en 0), con su entrega, sus pedidos de reemplazo y sus grupos (el ciclo en losas) con su estado. El pedido
+    del plano entero, sólo terminado; en revisión, cada ciclo completo (puede_enviar_grupos)."""
     (obra, obra_nombre, plano, numero, titulo, revision, elemento, version, tamano, subido_por, subido_el,
      resumen, pedido_version, pedido_el, pedido_por, pdf, barras, aprobadas, kg, etapa, relacion, relacion_de) = f
     r = resumen or {"barras": barras, "aprobadas": aprobadas, "consultas": 0, "pendientes": barras - aprobadas,
                     "kg": float(kg)}
     kpis = kpis_de([plano_para_kpis(r, elemento)]) if etapa != "cargado" else None
     reemplazos = _reemplazos_dict(entrega, pedidos, nombres, yo)
-    por_cambiar = any(x["estado"] == "aceptado" for x in reemplazos)
+    puede = not any(x["estado"] == "aceptado" for x in reemplazos) and puede_enviar(subido_por, yo, admin)
     return {"obra": obra, "obra_nombre": obra_nombre, "plano": plano, "numero": numero, "titulo": titulo,
             "revision": revision, "elemento": elemento, "version": version, "tamano": tamano,
             "guardado_por": nombres.get(subido_por, subido_por), "guardado_el": _cuando(subido_el),
             "resumen": r, "pedido": estado_pedido(version, pedido_version), "pedido_version": pedido_version,
             "pedido_el": _cuando(pedido_el), "pedido_por": nombres.get(pedido_por, pedido_por),
-            "puede_enviar": etapa != "cargado" and not por_cambiar and puede_enviar(subido_por, yo, admin),
+            "puede_enviar": puede and etapa not in ("cargado", "en_revision"), "puede_enviar_grupos": puede,
+            "grupos": _grupos_vista(entrega, enviados, nombres),
             "pdf": bool(pdf), "etapa": etapa, "puede_eliminar": admin, "relacion": relacion, "relacion_de": relacion_de,
             "entrega": _entrega_dict(entrega, nombres, yo), "reemplazos": reemplazos,
             "puede_responder": bool(entrega) and (admin or entrega["autor"] == yo), "kpis": kpis}
@@ -471,13 +512,13 @@ def planos_linea(obra: str, user=Depends(get_current_user)):
             """, (obra.strip(),))
             filas = cur.fetchall()
             obras = [obra.strip()]
-            entregas, pedidos = _entregas(cur, obras), _reemplazos(cur, obras)
+            entregas, pedidos, enviados = _entregas(cur, obras), _reemplazos(cur, obras), _enviados(cur, obras)
             nombres = _nombres(cur, [f[9] for f in filas] + [f[14] for f in filas]
                                + [e["autor"] for e in entregas.values()]
-                               + [r["solicitante"] for lista in pedidos.values() for r in lista])
+                               + [r["solicitante"] for lista in pedidos.values() for r in lista] + _quienes(enviados))
     yo, admin = user.get("email", ""), _es_admin(user)
     return {"admin": admin, "planos": [_fila_plano(f, nombres, yo, admin, entregas.get((f[0], f[2])),
-                                                   pedidos.get((f[0], f[2]), []))
+                                                   pedidos.get((f[0], f[2]), []), enviados.get((f[0], f[2])))
                                        for f in filas]}
 
 

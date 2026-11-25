@@ -343,6 +343,7 @@ check("transición: nadie queda con un plano tomado y lo guardado a medias pasa 
 
 print("\nTEST: migración 177")
 s177 = migrar(177)
+migrar(183)  # la etapa y los grupos de la entrega (pedido por ciclo): los prueba test_armascanner_grupos.py
 check("las obras de ArmaScanner: entran las que ya tenían planos",
       s177[0].startswith("CREATE TABLE IF NOT EXISTS") and BASE.execute("SELECT id_proyecto FROM armascanner_obras").fetchall()
       == [("PROY-1",)])
