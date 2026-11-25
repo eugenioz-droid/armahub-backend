@@ -221,10 +221,26 @@
 
   function mostrar(id, si) { $(id).style.display = si ? '' : 'none'; }
 
-  function abrirIngreso() {
+  function abrirIngreso(tipo) {
     $('matError').textContent = '';
     mostrar('matModal', true);
-    elegirTipo(ING.tipo);
+    elegirTipo(tipo || ING.tipo);
+  }
+
+  // DESDE LA TARJETA DE ARRIBA (25-nov): la obra abre sus CC, el código abre sus ítems.
+  function ingresarObra(it) {
+    if (!it) return;
+    setTimeout(function () { ING.cbIngObra.limpiar(); }, 0);
+    abrirIngreso('asa');
+    elegirObra(it);
+  }
+
+  function ingresarCc() {
+    var cc = $('matIngCc').value.trim();
+    if (!cc) return;
+    $('matIngCc').value = '';
+    abrirIngreso('asa');
+    cargarItems(cc);
   }
 
   function cerrarIngreso() { mostrar('matModal', false); }
@@ -269,18 +285,24 @@
     irA('items');
   }
 
-  // Paso 1: la obra, con el campo desplegable estándar (combobox.js).
+  // Paso 1: la obra, con el campo desplegable estándar (combobox.js). Las obras se piden una
+  // vez y sirven a los dos campos: el de la tarjeta de arriba y el del paso Obra.
+  function comboObras(inputId, alElegir) {
+    return global.Combobox.crear($(inputId), {
+      placeholder: 'Buscar obra',
+      items: function () { return (ING.obras || []).map(function (o) { return { id: o.id, label: o.nombre, sub: o.cliente }; }); },
+      onSelect: alElegir
+    });
+  }
+
   async function cargarObras() {
-    if (ING.obras) return;
-    var d = await global.apiGet('/material/obras');
-    ING.obras = (d && d.obras) || [];
-    if (!ING.cbObra && global.Combobox) {
-      ING.cbObra = global.Combobox.crear($('matObra'), {
-        placeholder: 'Buscar obra',
-        items: function () { return ING.obras.map(function (o) { return { id: o.id, label: o.nombre, sub: o.cliente }; }); },
-        onSelect: function (it) { if (it) elegirObra(it); }
-      });
+    if (!ING.obras) {
+      var d = await global.apiGet('/material/obras');
+      ING.obras = (d && d.obras) || [];
     }
+    if (!global.Combobox) return;
+    if (!ING.cbObra) ING.cbObra = comboObras('matObra', function (it) { if (it) elegirObra(it); });
+    if (!ING.cbIngObra) ING.cbIngObra = comboObras('matIngObra', ingresarObra);
   }
 
   async function elegirObra(it) {
@@ -748,7 +770,9 @@
   }
 
   function enganchar() {
-    $('matIngresar').addEventListener('click', abrirIngreso);
+    $('matIngCrear').addEventListener('click', function () { abrirIngreso('mano'); });
+    $('matIngCcIr').addEventListener('click', ingresarCc);
+    $('matIngCc').addEventListener('keydown', function (e) { if (e.key === 'Enter') ingresarCc(); });
     $('matCerrar').addEventListener('click', cerrarIngreso);
     $('matVolver').addEventListener('click', volver);
     $('matGuardar').addEventListener('click', function () { guardar(false); });
@@ -778,13 +802,14 @@
   global.loadMaterial = async function () {
     if (!$('tab-material')) return;
     if (!_listo) { _listo = true; enganchar(); }
+    cargarObras();
     await cargar();
   };
 
   global.__materialTest = { MAT: MAT, ING: ING, pasa: pasa, resumen: resumen, ladosCm: ladosCm, barraHoja: barraHoja,
                             filaHoja: filaHoja, figuraPasa: figuraPasa, editorHtml: editorHtml, completa: completa,
                             ccPasa: ccPasa, filaCc: filaCc, filaItem: filaItem, elegirObra: elegirObra,
-                            cargarItems: cargarItems, aDatos: aDatos, marcar: marcar,
+                            cargarItems: cargarItems, aDatos: aDatos, marcar: marcar, abrirIngreso: abrirIngreso,
                             COIN: COIN, queHacer: queHacer, coinPasa: coinPasa, resumenCoin: resumenCoin, filaCoin: filaCoin,
                             textoBusqueda: textoBusqueda, fechaHora: fechaHora };
 })(window);

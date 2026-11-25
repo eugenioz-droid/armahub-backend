@@ -54,6 +54,8 @@
   .mat .mat-sin-cotas .audfigcel svg text, .mat .mat-sin-cotas .audfigav { display: none; }
   .mat .mat-hacer { font-weight: 600; white-space: nowrap; }
   /* Los campos desplegables (combobox.js) y la ventana por pasos */
+  .mat .mat-titulo { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  .mat .mat-barra--suelta { margin-bottom: 0; }
   .mat .mat-cb { width: 220px; }
   .mat .mat-cb .arm-input { width: 100%; }
   .mat .mat-cb--ancho { width: 420px; }
@@ -83,9 +85,24 @@
       <div class="arm-kpi"><div class="arm-kpi__label">Ingresadas este mes</div><div class="arm-kpi__value" id="matKpiMes">—</div></div>
     </div>
 
+    <!-- INGRESAR, ARRIBA Y APARTE DE LA LISTA (usuario, 25-nov): los campos de arriba tienen que
+         servir para agregar; los filtros van dentro de la lista, o se confunden. Elegir la obra
+         abre sus CC; el código directo abre sus ítems; «Crear ítem», la barra medida a mano. -->
     <div class="arm-card">
-      <!-- Los filtros a la izquierda, rotulados: el campo de texto busca en lo ya ingresado
-           (no ingresa nada). La acción, a la derecha (usuario, 25-nov). -->
+      <div class="mat-titulo">Ingresar ítem</div>
+      <div class="mat-barra mat-barra--suelta">
+        <div class="mat-cb mat-cb--ancho"><input type="text" id="matIngObra" class="arm-input"></div>
+        <span class="mat-linea">o</span>
+        <input type="text" id="matIngCc" class="arm-input" placeholder="Código de control" autocomplete="off"
+               spellcheck="false" data-lpignore="true" style="width:170px;">
+        <button type="button" class="arm-button" id="matIngCcIr">Ir</button>
+        <span class="mat-linea">o</span>
+        <button type="button" class="arm-button arm-button--primary" id="matIngCrear">Crear ítem</button>
+      </div>
+    </div>
+
+    <div class="arm-card">
+      <div class="mat-titulo">Ítems disponibles</div>
       <div class="mat-barra">
         <span class="mat-linea">Filtrar</span>
         <div class="mat-cb"><input type="text" id="matFiltroObra" class="arm-input"></div>
@@ -93,7 +110,6 @@
                autocomplete="off" spellcheck="false" data-lpignore="true" style="width:200px;">
         <div class="mat-seg" id="matEstado"></div>
         <div class="mat-seg" id="matMotivo"></div>
-        <button type="button" class="arm-button arm-button--primary mat-derecha" id="matIngresar">Ingresar ítem</button>
       </div>
       <div class="mat-seg" id="matDiam" style="margin-bottom:12px;"></div>
       <div id="matLista"></div>
