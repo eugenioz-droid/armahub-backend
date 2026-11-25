@@ -13,8 +13,11 @@ var _FECHA_OPERATIVA = '2026-04-16';
 // NARANJA y no en rojo: un reclamo abierto pide atención pero no es un error; el rojo queda
 // para lo que urge (prioridad alta, tipo error, atraso). El usuario aprobó la tabla. Es la
 // misma que usan el informe PDF y el resumen del Hub: si se cambia acá, cambiarla allá.
+// EN REVISIÓN EN AZUL MARINO (25-nov): compartía el azul de «En análisis» y no se
+// distinguían. El usuario fijó el orden: naranja · azul intenso · azul marino · morado ·
+// verde · gris (las etapas del comienzo, más vivas). Todos son colores del manual.
 var _recEstadoColors = {
-  abierto: '#D97706', en_analisis: '#1769C2', en_revision: '#1769C2',
+  abierto: '#D97706', en_analisis: '#1769C2', en_revision: '#104F9E',
   validacion: '#7E36B1', cerrado: '#248447', rechazado: '#667085'
 };
 var _recEstadoLabels = {

@@ -423,7 +423,7 @@ async function loadLandingIndicadores() {
       var estadoOrder = ['abierto','en_analisis','en_revision','validacion','cerrado','rechazado'];
       var estadoLabels = {abierto:'Abiertos', en_analisis:'En análisis', en_revision:'En revisión', validacion:'En validación', cerrado:'Cerrados', rechazado:'Rechazados'};
       // Los mismos colores de estado que reclamos/constants.js (_recEstadoColors).
-      var estadoColors = {abierto:'#D97706', en_analisis:'#1769C2', en_revision:'#1769C2', validacion:'#7E36B1', cerrado:'#248447', rechazado:'#667085'};
+      var estadoColors = {abierto:'#D97706', en_analisis:'#1769C2', en_revision:'#104F9E', validacion:'#7E36B1', cerrado:'#248447', rechazado:'#667085'};
       var countMap = {};
       (alertas.por_estado || []).forEach(function(a) { countMap[a.estado] = a.count; });
       var badgeHtml = '';
