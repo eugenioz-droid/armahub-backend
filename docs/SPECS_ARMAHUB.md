@@ -2138,9 +2138,9 @@ o · Código de control [Ir] · o · [Crear ítem]. La obra abre sus CC, el cód
      CC» o «Cerrar».
   ArmaHub guarda cada ítem por su clave única (`OrderItemKey`: los números de línea y de
   secuencia se repiten dentro de un CC).
-  **La ubicación no se escribe: es la de la tarjeta** (usuario, 25-nov), el elemento del ítem
-  en aSa (`ElementID`: «ref shaft», «L101»), no la descripción general (`ElementDesc`:
-  «LCIELO»). Se ve al lado de cada ítem al elegirlo y en el resumen. «Devolución» no es un
+  **La ubicación no se escribe: es la de la tarjeta** (usuario, 25-nov): la descripción del CC
+  y la del elemento, juntas (`OrderDescr - ElementID`: «LC S1 C4 Basilica - ref shaft»). Un
+  «ref shaft» sirve a varias losas: solo no dice dónde va. Se ve al lado de cada ítem al elegirlo y en el resumen. «Devolución» no es un
   motivo: lo guardado antes con él se sigue mostrando con su nombre.
 - **Crear ítem** (antes «A mano»; inventario). Para una barra suelta sin referencia: se elige la figura en tarjetas
   con su dibujo, con filtro por cantidad de lados (Recta · 2 · 3 · 4 · 5 · 6 · 7+) y búsqueda
