@@ -6,20 +6,17 @@ material.py; acá sólo el permiso, la conexión y el registro en audit_log.
 Entran administración y las áreas de material.AREAS. Un usuario fuera de esas áreas recibe
 403 aunque conozca la ruta: la caluga ni siquiera le aparece (registry.js, `areas`).
 """
-import logging
-import threading
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import material, material_busqueda
+from . import material, material_asignar
 from .asa import AsaError
 from .auth import get_current_user
 from .db import audit, get_conn
 
 router = APIRouter(tags=["material"])
-log = logging.getLogger("armahub.material")
 
 
 def _exigir(cur, user):
@@ -76,9 +73,17 @@ class DescarteBody(BaseModel):
     motivo: str = ""
 
 
+class AsignarBody(BaseModel):
+    items: list = []          # [{item_key, cantidad (barras), marca, cc}]
+
+
+class ProducidaBody(BaseModel):
+    producida: bool = True
+
+
 @router.get("/material/barras")
 def material_barras(user=Depends(get_current_user)):
-    """Todas las barras ingresadas; la pantalla filtra por estado."""
+    """Las barras disponibles (las consumidas están en el Resumen)."""
     return {"barras": _hacer(user, material.listar),
             "motivos": material.MOTIVOS, "grados": material.GRADOS,
             "diametros": list(material.DIAMETROS)}
@@ -108,8 +113,6 @@ def material_crear(body: IngresoBody, user=Depends(get_current_user)):
     barra_id = _hacer(user, material.crear, email, dict(body))
     audit(email, "material_ingresada", "%s · %s" % (body.origen, body.motivo or "inventario"),
           "material_barras", str(barra_id))
-    # Al ingresar, se busca de inmediato con qué ítems calza ESA barra (SPECS §15.3).
-    _en_fondo([barra_id], email)
     return {"id": barra_id}
 
 
@@ -126,40 +129,55 @@ def material_ajustar(barra_id: int, body: AjusteBody, user=Depends(get_current_u
 def material_descartar(barra_id: int, body: DescarteBody, user=Depends(get_current_user)):
     email = user.get("email", "")
     if not _hacer(user, material.descartar, barra_id, email, body.motivo):
-        raise HTTPException(status_code=404, detail="Esa barra no existe o ya está descartada.")
+        raise HTTPException(status_code=404, detail="Esa barra no existe o ya está dada de baja.")
     audit(email, "material_descartada", body.motivo[:200], "material_barras", str(barra_id))
     return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
-# LA BÚSQUEDA (fase 2): la lógica vive en material_busqueda.py
+# LA VENTANA DE LA BARRA (fase 3): buscar en el momento, asignar, confirmar
 # ---------------------------------------------------------------------------
-def _buscar(barra_ids, email):
-    try:
-        material_busqueda.buscar(barra_ids=barra_ids, lanzado_por=email)
-    except Exception as e:
-        log.error("Material: falló la búsqueda pedida por %s (%s)", email, e)
+@router.get("/material/barras/{barra_id}")
+def material_barra(barra_id: int, user=Depends(get_current_user)):
+    """La barra y lo que ya se le asignó."""
+    return _hacer(user, material_asignar.detalle, barra_id)
 
 
-def _en_fondo(barra_ids, email):
-    """En segundo plano: aSa tarda unos segundos por cada forma que hay que buscar."""
-    threading.Thread(target=_buscar, args=(barra_ids, email), daemon=True).start()
+@router.post("/material/barras/{barra_id}/coincidencias")
+def material_coincidencias(barra_id: int, user=Depends(get_current_user)):
+    """«Buscar coincidencias»: aSa en el momento (unos segundos)."""
+    return _hacer(user, material_asignar.coincidencias, barra_id)
 
 
-@router.get("/material/coincidencias")
-def material_coincidencias(user=Depends(get_current_user)):
-    """Lo que encontró la última búsqueda, de las barras que siguen disponibles."""
-    return _hacer(user, material_busqueda.listar)
+@router.post("/material/barras/{barra_id}/asignar")
+def material_asignar_items(barra_id: int, body: AsignarBody, user=Depends(get_current_user)):
+    email = user.get("email", "")
+    r = _hacer(user, material_asignar.asignar, barra_id, email, body.items)
+    audit(email, "material_asignada", "; ".join("%s %s x%s" % (p.get("cc"), p.get("marca"), p.get("cantidad"))
+                                                for p in body.items)[:500], "material_barras", str(barra_id))
+    return r
 
 
-@router.post("/material/buscar")
-def material_buscar(user=Depends(get_current_user)):
-    """«Buscar ahora»: todas las barras disponibles contra lo que se va a fabricar."""
-    _hacer(user, lambda cur: None)   # sólo el permiso
-    if material_busqueda.corriendo():
-        return {"lanzada": False, "motivo": "Ya hay una búsqueda corriendo."}
-    _en_fondo(None, user.get("email", ""))
-    return {"lanzada": True}
+@router.post("/material/asignaciones/{asignacion_id}/quitar")
+def material_quitar(asignacion_id: int, user=Depends(get_current_user)):
+    r = _hacer(user, material_asignar.quitar, asignacion_id)
+    audit(user.get("email", ""), "material_asignacion_quitada", "", "material_asignaciones", str(asignacion_id))
+    return r
+
+
+@router.post("/material/asignaciones/{asignacion_id}/producida")
+def material_producida(asignacion_id: int, body: ProducidaBody, user=Depends(get_current_user)):
+    email = user.get("email", "")
+    r = _hacer(user, material_asignar.producida, asignacion_id, email, body.producida)
+    audit(email, "material_producida" if body.producida else "material_producida_deshecha", "",
+          "material_asignaciones", str(asignacion_id))
+    return r
+
+
+@router.get("/material/resumen")
+def material_resumen(user=Depends(get_current_user)):
+    """Lo reutilizado: lo que producción confirmó."""
+    return _hacer(user, material_asignar.resumen)
 
 
 # ---------------------------------------------------------------------------
@@ -179,10 +197,9 @@ def material_ccs_de_obra(job: str, user=Depends(get_current_user)):
 
 @router.post("/material/barras/lote")
 def material_crear_lote(body: LoteBody, user=Depends(get_current_user)):
-    """Varios ítems de un CC de una vez; después se busca con qué calzan, todos juntos."""
+    """Varios ítems de un CC de una vez."""
     email = user.get("email", "")
     ids = _hacer(user, material.crear_lote, email, dict(body))
     audit(email, "material_ingresadas", "%s · %d ítem(s) · %s" % (body.cc, len(ids), body.motivo or ""),
           "material_barras", ",".join(str(i) for i in ids))
-    _en_fondo(ids, email)
     return {"ids": ids}

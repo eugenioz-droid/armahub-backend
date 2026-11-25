@@ -7,7 +7,9 @@ Lo que se congela acá:
   · la cantidad de una devolución se ajusta, pero nunca pasa la del ítem;
   · a mano, la figura es la barra de ejemplo de aSa con los largos del usuario: así se dibujan
     también los soportes 26 (en dos planos) y los arcos, que eran los que se caían;
-  · entra administración y quien integra una de las áreas de la caluga.
+  · entra administración y quien integra una de las áreas de la caluga;
+  · ASIGNAR (fase 3): nunca más de lo que le falta al ítem ni del saldo; un ítem borrado de aSa,
+    despachado o que ya no calza se rechaza (25-nov: SS6M 8mmA66 se borró después de buscar).
 
 Las figuras de ejemplo son REALES (asa_figuras, 25-nov): el soporte 26, el arco 9 y el estribo T1.
 
@@ -177,6 +179,55 @@ fp = M.fila_para_pantalla(fila)
 check("los lados como letra → mm para la grilla, y los giros", fp["dims"]["A"] > 0 and len(fp["angulos"]) == 5)
 check("kilos disponibles = peso de una por las disponibles", fp["kg_disponible"] == round(1.583 * 20, 1))
 check("motivo y grado con su nombre", fp["motivo_txt"] == "Devolución" and fp["grado_txt"] == "Soldable")
+
+print("Asignar (fase 3, SPECS §15.4-15.5)")
+from armahub import material_asignar as A  # noqa: E402
+from armahub import material_busqueda as B  # noqa: E402
+
+check("tope: lo que le falta al ítem, sin pasar el saldo", A.tope_barras(40, 1, 154) == 40 and A.tope_barras(40, 1, 25) == 25)
+check("tope: de una recta salen varias (12 piezas, 5 por barra = 3 barras)", A.tope_barras(12, 5, 100) == 3)
+check("tope: nada si el ítem está cubierto o no queda saldo", A.tope_barras(0, 1, 10) == 0 and A.tope_barras(5, 1, 0) == 0)
+cs = A.con_saldo({"cant_item": 98.0, "piezas": 1, "lados": [{"nombre": "A", "largo": 2000.0}]}, 10.0, 139)
+check("cada coincidencia con lo ya asignado (desde cualquier barra), lo que falta y su tope",
+      cs["ya_asignado"] == 10 and cs["falta"] == 88 and cs["tope_barras"] == 88 and cs["dims"] == {"A": 2000.0})
+check("los pedidos: (clave, barras, nombre para los avisos)",
+      A.pedidos_validos([{"item_key": 5, "cantidad": "3", "marca": "8mmA1", "cc": "SS6O"}]) == [(5, 3, "8mmA1 SS6O")])
+for nombre, malo in (("sin ítems", []), ("el mismo ítem dos veces", [{"item_key": 5, "cantidad": 1}] * 2),
+                     ("cero barras", [{"item_key": 5, "cantidad": 0}])):
+    try:
+        A.pedidos_validos(malo)
+        check("rechaza " + nombre, False)
+    except M.ErrorMaterial:
+        check("rechaza " + nombre, True)
+
+t1 = {"diam_mm": 10, "grado": "A630-420H", "lados": B.lados_de_item(EJ["T1"]["legangle"])}
+vivo = {"OrderItemKey": 7, "OrderStatusDescr": "Open", "LegAngle": EJ["T1"]["legangle"], "BarSizeDescr": "10mm",
+        "GradeID": "A630-420H", "TotalQty": 52, "LineWeight": 82.3, "CtrlCode": "ST47", "BarMark": "10mmA1",
+        "OrderDescr": "ELEV. 13° PISO", "ElementID": "EJE 12", "ElementDesc": "EJE 12/N1", "JobName": "OBRA X",
+        "CustomerName": "CLIENTE X", "ShpNameID": "T1"}
+fa = A.fila_asignacion(t1, vivo, 10, 0.0, "10mmA1 ST47")
+check("asignar 10 barras a un estribo igual: 10 piezas, sus kilos y dónde va",
+      fa["tipo"] == "igual" and fa["cant_barras"] == 10 and fa["cant_piezas"] == 10
+      and abs(fa["kg"] - round(10 * 82.3 / 52, 2)) < 0.001 and fa["ubicacion"] == "ELEV. 13° PISO - EJE 12")
+check("...con todo lo que se guarda", all(k in fa for k in A._CAMPOS))
+recta = "<la><st>LN</st><bc>1</bc><v>4.0</v><cp><t>STD</t><l>%d</l><n>1</n></cp></la>"
+r6 = {"diam_mm": 8, "grado": "A630-420H", "lados": B.lados_de_item(recta % 6000)}
+fr = A.fila_asignacion(r6, dict(vivo, LegAngle=recta % 2000, BarSizeDescr="8mm", TotalQty=10, ShpNameID=None),
+                       4, 0.0, "x")
+check("de una recta de 6 m salen 3 de 2 m: 4 barras cubren las 10 piezas (no 12)",
+      fr["piezas"] == 3 and fr["cant_piezas"] == 10)
+for nombre, args, texto in (
+        ("más de lo que le falta, y dice cuántas alcanzan", (t1, vivo, 10, 45.0, "10mmA1 ST47"), "alcanzan 7"),
+        ("un ítem ya cubierto", (t1, vivo, 1, 52.0, "10mmA1 ST47"), "ya está cubierto"),
+        ("un ítem que se borró de aSa", (t1, None, 1, 0.0, "8mmA66 SS6M"), "8mmA66 SS6M ya no está por fabricar"),
+        ("un ítem ya despachado", (t1, dict(vivo, OrderStatusDescr="Shipped"), 1, 0.0, "x"), "ya no está por fabricar"),
+        ("otro φ", (t1, dict(vivo, BarSizeDescr="12mm"), 1, 0.0, "x"), "ya no calza"),
+        ("otro grado (soldable)", (t1, dict(vivo, GradeID="A630-420HS"), 1, 0.0, "x"), "ya no calza")):
+    try:
+        A.fila_asignacion(*args)
+        check("rechaza " + nombre, False)
+    except M.ErrorMaterial as e:
+        check("rechaza " + nombre, texto in str(e))
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

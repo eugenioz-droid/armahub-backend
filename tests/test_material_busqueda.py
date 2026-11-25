@@ -117,6 +117,9 @@ fila = {"OrderItemKey": "1437118", "CtrlCode": "SSHY", "BarMark": "16mmA73", "Ba
 it = B.item_de_fila(fila)
 check("los nulos de aSa («None») quedan vacíos o None", it["figura"] is None and it["cliente"] == "")
 check("números y lados", it["item_key"] == 1437118 and it["cant"] == 3.0 and it["lados"][0]["largo"] == 2000.0)
+check("dónde va: la descripción del CC y el elemento de la tarjeta",
+      B.item_de_fila(dict(fila, ElementID="L105"))["ubicacion"] == "LOSAS C-3° PISO - L105"
+      and it["ubicacion"] == "LOSAS C-3° PISO")
 
 print("Coincidencias")
 items = [dict(it, item_key=10, cant=3.0, kg=9.0), dict(it, item_key=11, cant=40.0, kg=120.0,
@@ -125,8 +128,8 @@ c = B.coincidencias_de(barras[0], items)
 check("primero las iguales, y la más larga (7 m) no calza", [x["item_key"] for x in c] == [11, 10])
 check("cubre lo que alcanza: 12 barras para 40 pedidas", c[0]["cubre"] == 12 and c[0]["kg_ahorro"] == 36.0)
 check("una barra de 6 m da 3 piezas de 2 m: cubre las 3 pedidas", c[1]["piezas"] == 3 and c[1]["cubre"] == 3.0)
-check("la coincidencia lleva el ítem (CC, marca, obra, lados) para no volver a aSa",
-      c[0]["cc"] == "SSHY" and c[0]["marca"] == "16mmA73" and c[0]["lados"] == recta(6000))
+check("la coincidencia lleva el ítem (CC, marca, obra, lados) y sus kilos",
+      c[0]["cc"] == "SSHY" and c[0]["marca"] == "16mmA73" and c[0]["lados"] == recta(6000) and c[0]["kg_item"] == 120.0)
 check("una barra no calza con su propio ítem de origen",
       B.coincidencias_de(dict(barras[0], item_key=11), items)[0]["item_key"] == 10)
 

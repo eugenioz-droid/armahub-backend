@@ -1,5 +1,6 @@
-// MATERIAL DISPONIBLE (25-nov, SPECS §15) — la caluga para reciclar barras. Fase 1: la lista de
-// lo disponible y «Ingresar barra», desde un ítem de aSa o medida a mano.
+// MATERIAL DISPONIBLE (25-nov, SPECS §15) — la caluga para reciclar barras: la lista de lo
+// disponible (con «Asignar», que abre la ventana de la barra: asignar.js), «Ingresar ítem»
+// (desde aSa o medido a mano) y el Resumen de lo reutilizado.
 //
 // LA MISMA BARRA EN TODOS LADOS. La tabla es la hoja estándar de barras (hoja_barras.js) y el
 // dibujo es el de Auditorías (audBarraNormalizada + audCeldaFigura): una barra disponible se ve
@@ -10,20 +11,15 @@
 (function (global) {
   'use strict';
 
-  var MAT = { barras: [], motivos: {}, grados: {}, diametros: [], estado: 'disponible', motivo: '',
-              diam: '', buscar: '', obra: '', cbObra: null };
+  var MAT = { barras: [], motivos: {}, grados: {}, diametros: [], diam: '' };
   var ING = { tipo: 'asa', paso: 'obra', obras: null, cbObra: null, obra: null, ccs: [], ccFiltro: '', ccEstado: '',
               cc: '', items: [], sel: {}, filtroItem: '', figuras: null, nLados: '', figBuscar: '', fig: null,
               previa: null, espera: null, motivo: '', diam: 12, grado: 'A630-420H', ubicacion: '' };
-  var ESTADOS = [['disponible', 'Disponibles'], ['agotada', 'Agotadas'], ['descartada', 'Descartadas'], ['', 'Todas']];
   var N_LADOS = [['', 'Todas'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7+']];
   // Los colores de estado del manual, uno por motivo, siempre el mismo.
   var TAG_MOTIVO = { mal_fabricada: 'warning', error_cubicacion: 'danger', sobrante: 'success', inventario: 'review',
                      devolucion: 'info' };
   var MOTIVOS_ASA = ['mal_fabricada', 'error_cubicacion', 'sobrante'];
-  var COIN = { filas: [], tipo: '', estado: '', buscar: '', corriendo: false, ultima: null, sondeo: null };
-  var TIPOS = [['', 'Todas'], ['igual', 'Igual'], ['corte', 'Con corte']];
-  var ESTADOS_ASA = [['', 'Open y Processed'], ['Open', 'Open'], ['Processed', 'Processed']];
   var _listo = false;
 
   function $(id) { return document.getElementById(id); }
@@ -77,32 +73,25 @@
   }
 
   // ── LA LISTA ──────────────────────────────────────────────────────────────────
-  function texto(b) {
-    return [b.marca, b.cc, b.obra, b.figura || 'recta', b.elemento, b.descr_cc, b.ubicacion].join(' ').toLowerCase();
-  }
+  // UN SOLO FILTRO, EL φ (usuario, 25-nov): la lista ya muestra la obra y la marca, y los
+  // «Todas/Todos» confundían. Sólo están las disponibles: las consumidas van al Resumen.
+  function pasa(b) { return !MAT.diam || String(b.diam_mm) === MAT.diam; }
 
-  function pasa(b) {
-    if (MAT.estado && b.estado !== MAT.estado) return false;
-    if (MAT.obra && b.obra !== MAT.obra) return false;
-    if (MAT.motivo && b.motivo !== MAT.motivo) return false;
-    if (MAT.diam && String(b.diam_mm) !== MAT.diam) return false;
-    return !MAT.buscar || texto(b).indexOf(MAT.buscar) >= 0;
-  }
-
-  function resumen(barras, ahora) {
-    var mes = new Date(ahora).toISOString().slice(0, 7), r = { barras: 0, kg: 0, mes: 0 };
+  function resumen(barras) {
+    var r = { barras: 0, kg: 0, pendientes: 0 };
     barras.forEach(function (b) {
-      if (b.estado === 'disponible') { r.barras += b.cant_disponible; r.kg += b.kg_disponible || 0; }
-      if ((b.creado_el || '').slice(0, 7) === mes) r.mes++;
+      r.barras += b.cant_disponible;
+      r.kg += b.kg_disponible || 0;
+      r.pendientes += b.n_por_confirmar || 0;
     });
     return r;
   }
 
   function pintarKpis() {
-    var r = resumen(MAT.barras, Date.now());
+    var r = resumen(MAT.barras);
     $('matKpiBarras').textContent = num(r.barras);
     $('matKpiKg').textContent = num(r.kg) + ' kg';
-    $('matKpiMes').textContent = num(r.mes);
+    $('matKpiPend').textContent = num(r.pendientes);
   }
 
   function origen(b) {
@@ -111,9 +100,13 @@
   }
 
   function accionesDe(b) {
-    if (b.estado === 'descartada') return '<span class="mat-linea">Descartada</span>';
-    return '<div class="mat-acc"><button type="button" class="arm-button" data-ajustar="' + b.id + '">Ajustar</button>' +
-           '<button type="button" class="arm-button arm-button--danger" data-descartar="' + b.id + '">Descartar</button></div>';
+    return '<button type="button" class="arm-button" data-asignar="' + b.id + '">Asignar</button>';
+  }
+
+  // Lo asignado de la barra: lo que falta que producción confirme, en ámbar.
+  function asignacionDe(b) {
+    if (b.n_por_confirmar) return '<span class="arm-tag arm-tag--warning">' + b.n_por_confirmar + ' por confirmar</span>';
+    return b.n_asignadas ? '<span class="mat-linea">' + b.n_asignadas + ' confirmadas</span>' : '';
   }
 
   function textoDe(b) {
@@ -123,22 +116,33 @@
            '<div class="mat-linea">' + esc(quien) + ' · ' + esc((b.creado_el || '').slice(0, 10)) + '</div>';
   }
 
-  function filaHoja(b) {
+  function tagMotivo(motivo, texto) {
+    return '<span class="arm-tag arm-tag--' + (TAG_MOTIVO[motivo] || 'info') + '">' + esc(texto) + '</span>';
+  }
+
+  function filaHoja(b, conAccion) {
     return {
-      attrs: ' data-id="' + b.id + '"' + (b.estado !== 'disponible' ? ' class="mat-apagada"' : ''),
-      accion: accionesDe(b),
+      attrs: ' data-id="' + b.id + '"' + (b.cant_disponible ? '' : ' class="mat-apagada"'),
+      accion: conAccion ? accionesDe(b) : '',
       barra: barraHoja(b, b.cant_disponible, b.kg_disponible),
       elemento: b.elemento || '',
-      propias: ['<span class="arm-tag arm-tag--' + (TAG_MOTIVO[b.motivo] || 'info') + '">' + esc(b.motivo_txt) + '</span>',
-                origen(b), esc(b.ubicacion || '')],
+      propias: [tagMotivo(b.motivo, b.motivo_txt), origen(b), esc(b.ubicacion || ''), asignacionDe(b)],
       texto: textoDe(b)
     };
   }
 
+  // La hoja de barras disponibles: la de la lista (con «Asignar») y la de la ventana (sin).
+  function tablaBarras(lista, conAccion) {
+    return global.HojaBarras.tabla({
+      accion: conAccion ? { titulo: '', ancho: 86 } : null,
+      propias: [{ titulo: 'Motivo', ancho: 104 }, { titulo: 'Origen', ancho: 170 }, { titulo: 'Ubicación', ancho: 150 },
+                { titulo: 'Asignación', ancho: 120 }],
+      texto: { titulo: 'Detalle' },
+      filas: lista.map(function (b) { return filaHoja(b, conAccion); })
+    });
+  }
+
   function pintarFiltros() {
-    seg('matEstado', ESTADOS, MAT.estado, function (v) { MAT.estado = v; pintarLista(); });
-    var motivos = [['', 'Todos']].concat(Object.keys(MAT.motivos).map(function (k) { return [k, MAT.motivos[k]]; }));
-    seg('matMotivo', motivos, MAT.motivo, function (v) { MAT.motivo = v; pintarLista(); });
     var hay = {};
     MAT.barras.forEach(function (b) { hay[String(b.diam_mm)] = 1; });
     var diams = Object.keys(hay).sort(function (a, b) { return a - b; }).map(function (d) { return [d, 'φ' + d]; });
@@ -151,65 +155,10 @@
     var lista = MAT.barras.filter(pasa);
     if (!lista.length) {
       $('matLista').innerHTML = '<div class="mat-vacio">' +
-        (MAT.barras.length ? 'Nada con estos filtros.' : 'Todavía no hay ítems ingresados.') + '</div>';
+        (MAT.barras.length ? 'Nada con ese φ.' : 'Todavía no hay ítems disponibles.') + '</div>';
       return;
     }
-    $('matLista').innerHTML = global.HojaBarras.tabla({
-      accion: { titulo: '', ancho: 150 },
-      propias: [{ titulo: 'Motivo', ancho: 104 }, { titulo: 'Origen', ancho: 170 }, { titulo: 'Ubicación', ancho: 110 }],
-      texto: { titulo: 'Detalle' },
-      filas: lista.map(filaHoja)
-    });
-  }
-
-  // ── AJUSTAR Y DESCARTAR, EN UNA FILA DEBAJO ──────────────────────────────────
-  function barraPorId(id) { return MAT.barras.filter(function (b) { return String(b.id) === String(id); })[0]; }
-
-  function editorHtml(b, modo) {
-    if (modo === 'descartar') {
-      return '<label class="mat-campo">Por qué se descarta<input class="arm-input" data-campo="motivo" style="width:320px"></label>' +
-             '<button type="button" class="arm-button arm-button--danger" data-confirmar="descartar">Descartar</button>' +
-             '<button type="button" class="arm-button" data-confirmar="no">Cancelar</button>';
-    }
-    return '<label class="mat-campo">Disponibles<input class="arm-input" type="number" min="0" data-campo="cantidad" value="' +
-             b.cant_disponible + '" style="width:110px"></label>' +
-           '<label class="mat-campo">Ubicación<input class="arm-input" data-campo="ubicacion" value="' + esc(b.ubicacion || '') + '"></label>' +
-           '<label class="mat-campo">Nota<input class="arm-input" data-campo="nota" value="' + esc(b.nota || '') + '" style="width:280px"></label>' +
-           '<button type="button" class="arm-button arm-button--primary" data-confirmar="ajustar">Guardar</button>' +
-           '<button type="button" class="arm-button" data-confirmar="no">Cancelar</button>';
-  }
-
-  function abrirEditor(id, modo) {
-    var viejo = document.querySelector('#matLista tr.mat-edit');
-    if (viejo) viejo.parentNode.removeChild(viejo);
-    var tr = document.querySelector('#matLista tr[data-id="' + id + '"]');
-    if (!tr) return;
-    var ed = document.createElement('tr');
-    ed.className = 'mat-edit';
-    ed.dataset.id = id;
-    ed.innerHTML = '<td colspan="99"><div class="mat-edit__caja">' + editorHtml(barraPorId(id), modo) + '</div></td>';
-    tr.parentNode.insertBefore(ed, tr.nextSibling);
-    var primero = ed.querySelector('input');
-    if (primero) primero.focus();
-  }
-
-  function valorEditor(ed, campo) {
-    var i = ed.querySelector('[data-campo="' + campo + '"]');
-    return i ? i.value : null;
-  }
-
-  async function confirmarEditor(ed, accion) {
-    if (accion === 'no') { ed.parentNode.removeChild(ed); return; }
-    var id = ed.dataset.id, r;
-    if (accion === 'descartar') {
-      r = await global.apiPostJson('/material/barras/' + id + '/descartar', { motivo: valorEditor(ed, 'motivo') || '' });
-    } else {
-      r = await global.apiPostJson('/material/barras/' + id + '/ajustar', {
-        cantidad: Number(valorEditor(ed, 'cantidad')), ubicacion: valorEditor(ed, 'ubicacion'), nota: valorEditor(ed, 'nota') });
-    }
-    if (!r || r.detail) { aviso(errorDe(r, 'No se pudo guardar.')); return; }
-    ok(accion === 'descartar' ? 'Barra descartada' : 'Cambios guardados');
-    await cargar();
+    $('matLista').innerHTML = tablaBarras(lista, true);
   }
 
   // ── INGRESAR ÍTEM (25-nov) ────────────────────────────────────────────────────
@@ -574,8 +523,7 @@
     await cargar();
     if (yOtro) { otroIgual(); return; }
     if (ING.tipo === 'mano') { ok('Ítem disponible'); cerrarIngreso(); return; }
-    $('matListoTxt').innerHTML = '<b>' + (r.ids || []).length + ' ítem(s) de ' + esc(ING.cc) + ' quedaron disponibles.</b>' +
-      '<div class="mat-linea">Se están buscando sus coincidencias en aSa.</div>';
+    $('matListoTxt').innerHTML = '<b>' + (r.ids || []).length + ' ítem(s) de ' + esc(ING.cc) + ' quedaron disponibles.</b>';
     irA('listo');
   }
 
@@ -596,86 +544,8 @@
     irA('items');
   }
 
-  // ── COINCIDENCIAS (fase 2): lo que la búsqueda encontró en aSa ─────────────────
-  function cmTxt(mm) { return global.HojaBarras.cm(Number(mm) / 10) + ' cm'; }
-
-  // Qué hay que hacerle a la barra disponible para fabricar el ítem.
-  function queHacer(c) {
-    var cortes = c.cortes || [];
-    if (c.piezas > 1) {
-      var sobra = cortes[0] && cortes[0][1] > 0 ? ' · sobran ' + cmTxt(cortes[0][1]) : '';
-      return c.piezas + ' por barra' + sobra;
-    }
-    if (!cortes.length) return 'Tal cual';
-    return 'Cortar ' + cortes.map(function (x) { return x[0] + ' ' + cmTxt(x[1]); }).join(' y ');
-  }
-
-  function coinTexto(c) { return [c.cc, c.obra, c.marca, c.descr_cc, c.elemento].join(' ').toLowerCase(); }
-
-  function coinPasa(c) {
-    if (COIN.tipo && c.tipo !== COIN.tipo) return false;
-    if (COIN.estado && c.estado_asa !== COIN.estado) return false;
-    return !COIN.buscar || coinTexto(c).indexOf(COIN.buscar) >= 0;
-  }
-
-  // Los kilos a recuperar cuentan UNA coincidencia por barra disponible (la que más ahorra):
-  // la misma barra no se puede usar dos veces.
-  function resumenCoin(filas) {
-    var items = {}, mejor = {};
-    filas.forEach(function (c) {
-      items[c.item_key] = 1;
-      mejor[c.barra_id] = Math.max(mejor[c.barra_id] || 0, c.kg_ahorro || 0);
-    });
-    var kg = Object.keys(mejor).reduce(function (s, k) { return s + mejor[k]; }, 0);
-    return { items: Object.keys(items).length, kg: kg, barras: Object.keys(mejor).length };
-  }
-
-  function disponibleDe(c) {
-    var que = c.barra_marca || (c.origen === 'mano' ? 'A mano' : '');
-    return esc(que) + '<div class="mat-linea">' + esc(c.ubicacion || 'Sin ubicación') + '</div>';
-  }
-
-  function filaCoin(c) {
-    var tag = c.tipo === 'igual' ? '<span class="arm-tag arm-tag--success">Igual</span>'
-                                 : '<span class="arm-tag arm-tag--warning">Con corte</span>';
-    return {
-      barra: barraHoja({ marca: c.marca, notas: '', diam_mm: c.diam_mm, figura: c.figura, dims: c.dims, eje: c.eje,
-                         referencias: [], largo_mm: 0 }, c.cubre, c.kg_ahorro),
-      elemento: c.elemento || '',
-      propias: [tag, '<span class="mat-hacer">' + esc(queHacer(c)) + '</span>', disponibleDe(c),
-                esc(c.cc) + '<div class="mat-linea">' + esc(c.estado_asa || '') + ' · de ' + num(c.cant_item) + '</div>'],
-      texto: esc([c.obra, c.descr_cc].filter(Boolean).join(' · '))
-    };
-  }
-
-  function pintarCoin() {
-    seg('matCoinTipo', TIPOS, COIN.tipo, function (v) { COIN.tipo = v; pintarCoin(); });
-    seg('matCoinEstado', ESTADOS_ASA, COIN.estado, function (v) { COIN.estado = v; pintarCoin(); });
-    var lista = COIN.filas.filter(coinPasa), r = resumenCoin(lista);
-    $('matKpiItems').textContent = num(r.items);
-    $('matKpiAhorro').textContent = num(r.kg) + ' kg';
-    $('matKpiConCoin').textContent = num(r.barras);
-    if (!lista.length) {
-      $('matCoin').innerHTML = '<div class="mat-vacio">' +
-        (COIN.filas.length ? 'Nada con estos filtros.' : 'Sin coincidencias en lo que se va a fabricar.') + '</div>';
-      return;
-    }
-    $('matCoin').innerHTML = '<div class="mat-sin-cotas">' + global.HojaBarras.tabla({
-      accion: null,
-      propias: [{ titulo: 'Tipo', ancho: 84 }, { titulo: 'Qué hacer', ancho: 170 },
-                { titulo: 'Barra disponible', ancho: 130 }, { titulo: 'CC', ancho: 110 }],
-      texto: { titulo: 'Obra' }, titulos: { cant: 'Cuántas piezas del ítem cubre lo disponible' },
-      filas: lista.map(filaCoin) }) + '</div>';
-  }
-
-  function textoBusqueda(u, corriendo) {
-    if (corriendo || (u && u.en_curso)) return 'Buscando en aSa…';
-    if (!u) return 'Todavía sin buscar';
-    if (!u.ok) return 'La última búsqueda falló' + (u.detalle ? ': ' + u.detalle : '');
-    return 'Buscado ' + fechaHora(u.fin);
-  }
-
-  // «25-11 06:00», en hora local, como el resto de la plataforma.
+  // ── RESUMEN: LO REUTILIZADO (fase 3) ─────────────────────────────────────────
+  // Lo que producción confirmó: de qué barra salió, para qué ítem y quién lo confirmó.
   function dos(n) { return ('0' + n).slice(-2); }
   function fechaHora(iso) {
     var d = new Date(iso || '');
@@ -683,36 +553,32 @@
     return dos(d.getDate()) + '-' + dos(d.getMonth() + 1) + ' ' + dos(d.getHours()) + ':' + dos(d.getMinutes());
   }
 
-  function cabeceraCoin() {
-    var buscando = COIN.corriendo || !!(COIN.ultima && COIN.ultima.en_curso);
-    $('matCoinCarga').textContent = textoBusqueda(COIN.ultima, COIN.corriendo);
-    $('matBuscarAhora').disabled = buscando;
-    $('matBuscarAhora').textContent = buscando ? 'Buscando…' : 'Buscar ahora';
-    if (buscando) sondearCoin();
+  function filaResumen(f) {
+    return {
+      barra: barraHoja({ marca: f.barra_marca, diam_mm: f.diam_mm, figura: f.barra_figura, dims: f.barra_dims, eje: f.eje,
+                         referencias: f.referencias, largo_mm: f.largo_mm }, f.cant_barras, f.kg),
+      elemento: f.ubicacion || '',
+      propias: [tagMotivo(f.motivo, f.motivo_txt), esc(f.cc) + '<div class="mat-linea">' + esc(f.marca || '') + '</div>',
+                esc(f.producido_nombre || '—') + '<div class="mat-linea">' + esc(fechaHora(f.producido_el)) + '</div>'],
+      texto: esc([f.obra, f.descr_cc].filter(Boolean).join(' · '))
+    };
   }
 
-  // Mientras busca, la lista se vuelve a pedir sola hasta que termine.
-  function sondearCoin() {
-    if (COIN.sondeo) return;
-    COIN.sondeo = setTimeout(function () { COIN.sondeo = null; cargarCoin(); }, 8000);
-  }
-
-  async function cargarCoin() {
-    var d = await global.apiGet('/material/coincidencias');
-    if (!d) { $('matCoin').innerHTML = '<div class="mat-vacio">No se pudo cargar.</div>'; return; }
-    COIN.filas = d.coincidencias || [];
-    COIN.corriendo = !!d.corriendo;
-    COIN.ultima = d.ultima || null;
-    cabeceraCoin();
-    pintarCoin();
-  }
-
-  async function buscarAhora() {
-    var r = await global.apiPostJson('/material/buscar', {});
-    if (!r || r.detail) { aviso(errorDe(r, 'No se pudo lanzar la búsqueda.')); return; }
-    if (!r.lanzada && r.motivo) ok(r.motivo);
-    COIN.corriendo = true;
-    cabeceraCoin();
+  async function cargarResumen() {
+    var d = await global.apiGet('/material/resumen');
+    if (!d) { $('matRes').innerHTML = '<div class="mat-vacio">No se pudo cargar.</div>'; return; }
+    $('matKpiResKg').textContent = num(d.kg) + ' kg';
+    $('matKpiResBarras').textContent = num(d.barras);
+    $('matKpiResItems').textContent = num(d.items);
+    if (!d.filas.length) {
+      $('matRes').innerHTML = '<div class="mat-vacio">Todavía no hay material reutilizado confirmado.</div>';
+      return;
+    }
+    $('matRes').innerHTML = global.HojaBarras.tabla({
+      accion: null,
+      propias: [{ titulo: 'Motivo', ancho: 104 }, { titulo: 'Para', ancho: 110 }, { titulo: 'Confirmó', ancho: 150 }],
+      texto: { titulo: 'Obra' }, titulos: { cant: 'Barras disponibles usadas', peso: 'Kilos reutilizados' },
+      filas: d.filas.map(filaResumen) });
   }
 
   function elegirSub(sub) {
@@ -722,8 +588,8 @@
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     mostrar('matPanelDisp', sub === 'disp');
-    mostrar('matPanelCoin', sub === 'coin');
-    if (sub === 'coin') cargarCoin();
+    mostrar('matPanelRes', sub === 'res');
+    if (sub === 'res') cargarResumen();
   }
 
   // ── CARGA Y EVENTOS ───────────────────────────────────────────────────────────
@@ -738,10 +604,8 @@
   }
 
   function clicLista(e) {
-    var b = e.target.closest('[data-ajustar],[data-descartar],[data-confirmar]');
-    if (!b) return;
-    if (b.dataset.confirmar) { confirmarEditor(b.closest('tr.mat-edit'), b.dataset.confirmar); return; }
-    abrirEditor(b.dataset.ajustar || b.dataset.descartar, b.dataset.ajustar ? 'ajustar' : 'descartar');
+    var b = e.target.closest('[data-asignar]');
+    if (b && global.MaterialAsignar) global.MaterialAsignar.abrir(b.dataset.asignar);
   }
 
   function clicModal(e) {
@@ -757,20 +621,6 @@
     var t = e.target;
     if (t.matches('[data-sel]')) marcar(t.dataset.sel, t.checked);
     else if (t.matches('[data-cant]')) cambiaCantidad(t);
-  }
-
-  // El filtro por obra de la lista: el campo desplegable estándar, con las obras que hay.
-  function engancharFiltroObra() {
-    if (!global.Combobox) return;
-    MAT.cbObra = global.Combobox.crear($('matFiltroObra'), {
-      placeholder: 'Obra',
-      items: function () {
-        var hay = {};
-        MAT.barras.forEach(function (b) { if (b.obra) hay[b.obra] = 1; });
-        return Object.keys(hay).sort().map(function (o) { return { id: o, label: o }; });
-      },
-      onSelect: function (it) { MAT.obra = it ? it.label : ''; pintarLista(); }
-    });
   }
 
   function enganchar() {
@@ -789,14 +639,10 @@
     $('matCcFiltro').addEventListener('input', function () { ING.ccFiltro = this.value.trim().toLowerCase(); pintarCcs(); });
     $('matModal').addEventListener('change', cambioModal);
     $('matModal').addEventListener('input', function (e) { if (e.target.matches('[data-cant]')) cambiaCantidad(e.target); });
-    engancharFiltroObra();
     $('matItemFiltro').addEventListener('input', function () { ING.filtroItem = this.value.trim().toLowerCase(); pintarItems(); });
     $('matFigBuscar').addEventListener('input', function () { ING.figBuscar = this.value.trim().toLowerCase(); pintarFiguras(); });
-    $('matBuscar').addEventListener('input', function () { MAT.buscar = this.value.trim().toLowerCase(); pintarLista(); });
     $('matLista').addEventListener('click', clicLista);
     $('matModal').addEventListener('click', clicModal);
-    $('matBuscarAhora').addEventListener('click', buscarAhora);
-    $('matCoinBuscar').addEventListener('input', function () { COIN.buscar = this.value.trim().toLowerCase(); pintarCoin(); });
     document.querySelectorAll('#matSubs .arm-tab').forEach(function (b) {
       b.addEventListener('click', function () { elegirSub(b.dataset.sub); });
     });
@@ -810,10 +656,13 @@
     await cargar();
   };
 
+  // Lo que usa la ventana de la barra (asignar.js).
+  global.MaterialComun = { esc: esc, num: num, ok: ok, errorDe: errorDe, barraHoja: barraHoja, tablaBarras: tablaBarras,
+                           fechaHora: fechaHora, recargar: function () { return cargar(); } };
+
   global.__materialTest = { MAT: MAT, ING: ING, pasa: pasa, resumen: resumen, ladosCm: ladosCm, barraHoja: barraHoja,
-                            filaHoja: filaHoja, figuraPasa: figuraPasa, editorHtml: editorHtml, completa: completa,
+                            filaHoja: filaHoja, figuraPasa: figuraPasa, completa: completa,
                             ccPasa: ccPasa, filaCc: filaCc, filaItem: filaItem, elegirObra: elegirObra,
                             cargarItems: cargarItems, aDatos: aDatos, marcar: marcar, abrirIngreso: abrirIngreso,
-                            COIN: COIN, queHacer: queHacer, coinPasa: coinPasa, resumenCoin: resumenCoin, filaCoin: filaCoin,
-                            textoBusqueda: textoBusqueda, fechaHora: fechaHora };
+                            filaResumen: filaResumen, fechaHora: fechaHora, asignacionDe: asignacionDe };
 })(window);

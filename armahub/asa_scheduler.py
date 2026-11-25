@@ -138,27 +138,10 @@ def _una_corrida():
     except Exception as e:
         log.error("aSa reloj: falló la sincronización de obras: %s", e)
     _cc_confirmados()
-    _material_busqueda()
     _revisar_barras()
     # Después de los syncs: comprobar usa aSa en vivo, pero el aviso de fabricación lee
     # `asa_pedidos`, que el sync acaba de refrescar.
     _auditorias_al_dia()
-
-
-# MATERIAL DISPONIBLE: LA BÚSQUEDA COMPLETA, UNA VEZ AL DÍA (25-nov, SPECS §15.3). A las 06:00,
-# después de la carga de aSa: producción parte el día con la lista. No en cada carga: lo que
-# entra entre medio no se fabrica en horas, y cada forma en stock es una consulta de segundos.
-HORA_MATERIAL = int(os.getenv("MATERIAL_HORA", "6") or 6)
-
-
-def _material_busqueda():
-    try:
-        if datetime.now(_zona()).hour != HORA_MATERIAL:
-            return
-        from .material_busqueda import buscar
-        log.info("Material: %s", buscar(lanzado_por="reloj"))
-    except Exception as e:
-        log.error("Material: falló la búsqueda (%s)", e)
 
 
 def _cc_confirmados():

@@ -22,19 +22,18 @@ Los dobleces (fase 4) quedan para el botón «Buscar con doblez».
 POR QUÉ AGUANTA EL CRECIMIENTO (medido 25-nov). aSa entrega sumados, en una consulta, los
 ítems de un φ y unas figuras con su definición de lados: 51 soportes 26 de φ16 en 14 s, 4.902
 rectas φ16 de hasta 6 m en 11 s. Se hace una consulta por cada grupo (φ, grado, forma) que hay
-en stock, no una por código. Lo encontrado se guarda: la pantalla no le pregunta nada a aSa.
+en stock, no una por código.
 
-Sin rutas ni fastapi: las rutas están en material_api.py; el reloj llama a `buscar`.
+SE BUSCA POR BARRA Y EN EL MOMENTO (usuario, 25-nov): quien abre la ventana de una barra
+aprieta «Buscar coincidencias» y ve lo que hay hoy en aSa; ahí mismo asigna
+(material_asignar.py). Ya no hay pasada de las 06:00 ni lista guardada: una lista vieja
+mostraba ítems que ya se habían borrado de su CC.
+
+Sin rutas ni fastapi: las rutas están en material_api.py.
 """
-import json
-import logging
-import threading
 from typing import Optional
 
-from .db import get_conn
 from .figura_asa import _legs
-
-log = logging.getLogger("armahub.material_busqueda")
 
 ESTADOS = ("Open", "Processed")
 TOLERANCIA_MM = 5.0
@@ -43,17 +42,14 @@ TOLERANCIA_GIRO = 2.0
 # barras (chequeos_api.MESES_MOVIMIENTO). Sin él aparecen códigos de 2021 que nadie cerró en
 # aSa (medido: un soporte 26 «Open» de un CC de 2021).
 MESES_ACTIVA = 3
-# Cuántas coincidencias se guardan por barra disponible: las que más kilos ahorran.
+# Cuántas coincidencias se muestran por barra: las que más kilos ahorran.
 TOPE_POR_BARRA = 40
-BITACORA = "material-busqueda"
 DIMS = ["OrderItemKey", "CtrlCode", "BarMark", "BarSizeDescr", "GradeID", "ShpNameID", "LegAngle",
-        "LengthTheor", "OrderStatusDescr", "JobName", "CustomerName", "OrderDescr", "ElementDesc"]
+        "LengthTheor", "OrderStatusDescr", "JobName", "CustomerName", "OrderDescr", "ElementDesc", "ElementID"]
 
-# Lo que se guarda del ítem en cada coincidencia (la pantalla no vuelve a preguntarle a aSa).
-CAMPOS_ITEM = ("item_key", "cc", "marca", "obra", "cliente", "descr_cc", "elemento", "estado_asa", "figura",
-               "lados")
-
-_corriendo = threading.Lock()
+# Lo que se lleva del ítem a la pantalla y a la asignación.
+CAMPOS_ITEM = ("item_key", "cc", "marca", "obra", "cliente", "descr_cc", "elemento", "ubicacion", "estado_asa",
+               "figura", "lados")
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +166,7 @@ def resultado(barra: dict, item: dict, cmp: dict) -> dict:
     cubre = min(item["cant"], barra["cant_disponible"] * cmp["piezas"])
     kg_unit = item["kg"] / item["cant"] if item["cant"] else 0.0
     return dict(cmp, **{k: item[k] for k in CAMPOS_ITEM}, barra_id=barra["id"], cubre=cubre,
-                cant_item=item["cant"], kg_ahorro=round(cubre * kg_unit, 2))
+                cant_item=item["cant"], kg_item=round(item["kg"], 2), kg_ahorro=round(cubre * kg_unit, 2))
 
 
 def coincidencias_de(barra: dict, items: list) -> list:
@@ -210,6 +206,8 @@ def item_de_fila(f: dict) -> Optional[dict]:
     return {"item_key": int(_num(f.get("OrderItemKey"))), "cc": _txt(f.get("CtrlCode")),
             "marca": _txt(f.get("BarMark")), "obra": _txt(f.get("JobName")), "cliente": _txt(f.get("CustomerName")),
             "descr_cc": _txt(f.get("OrderDescr")), "elemento": _txt(f.get("ElementDesc")),
+            # Dónde va: la descripción del CC y el elemento de la tarjeta (como material.ubicacion_de).
+            "ubicacion": " - ".join(t for t in (_txt(f.get("OrderDescr")), _txt(f.get("ElementID"))) if t),
             "estado_asa": _txt(f.get("OrderStatusDescr")), "figura": _txt(f.get("ShpNameID")) or None,
             "lados": lados, "cant": _num(f.get("Cant")), "kg": _num(f.get("Kg"))}
 
@@ -268,122 +266,34 @@ def ccs_activos(cur) -> set:
     return {r[0] for r in cur.fetchall()}
 
 
-def _barras(cur, barra_ids: Optional[list]) -> list:
-    sql = """SELECT id, item_key, figura, diam_mm, grado, lados, largo_mm, cant_disponible,
-                    COALESCE((eje->>'tridimensional')::boolean, FALSE) FROM material_barras
-              WHERE estado = 'disponible' AND cant_disponible > 0"""
-    if barra_ids:
-        cur.execute(sql + " AND id = ANY(%s)", (list(barra_ids),))
-    else:
-        cur.execute(sql)
+def _barras(cur, barra_ids: list) -> list:
+    """Las barras con saldo, con lo que hace falta para compararlas."""
+    cur.execute("""SELECT id, item_key, figura, diam_mm, grado, lados, largo_mm, cant_disponible,
+                          COALESCE((eje->>'tridimensional')::boolean, FALSE) FROM material_barras
+                    WHERE estado = 'disponible' AND cant_disponible > 0 AND id = ANY(%s)""", (list(barra_ids),))
     nombres = ("id", "item_key", "figura", "diam_mm", "grado", "lados", "largo_mm", "cant_disponible",
                "tridimensional")
     return [dict(zip(nombres, r)) for r in cur.fetchall()]
 
 
-def _guardar(cur, barra_ids: list, filas: list, todas: bool):
-    """Reemplaza lo encontrado de esas barras. En la pasada completa también se van las
-    coincidencias de barras que ya no están disponibles."""
-    if todas:
-        cur.execute("DELETE FROM material_coincidencias")
-    else:
-        cur.execute("DELETE FROM material_coincidencias WHERE barra_id = ANY(%s)", (barra_ids,))
-    for r in filas:
-        cur.execute(
-            """INSERT INTO material_coincidencias (barra_id, item_key, cc, marca, obra, cliente, descr_cc, elemento,
-                                                   estado_asa, figura, lados, tipo, cortes, piezas, cant_item, cubre,
-                                                   kg_ahorro)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (r["barra_id"], r["item_key"], r["cc"], r["marca"], r["obra"], r["cliente"], r["descr_cc"], r["elemento"],
-             r["estado_asa"], r["figura"], json.dumps(r["lados"]), r["tipo"], json.dumps(r["cortes"]), r["piezas"],
-             r["cant_item"], r["cubre"], r["kg_ahorro"]))
-
-
 # ---------------------------------------------------------------------------
-# La pasada
+# La búsqueda de UNA barra, en el momento
 # ---------------------------------------------------------------------------
-def buscar(barra_ids: Optional[list] = None, lanzado_por: str = "reloj") -> dict:
-    """Una búsqueda: de todas las barras disponibles o sólo de las recién ingresadas.
-    Nunca dos a la vez: el reloj, el botón y el ingreso comparten el candado."""
-    if not _corriendo.acquire(blocking=False):
-        return {"ok": False, "motivo": "Ya hay una búsqueda corriendo."}
-    try:
-        return _buscar(barra_ids, lanzado_por)
-    finally:
-        _corriendo.release()
-
-
-def corriendo() -> bool:
-    return _corriendo.locked()
-
-
-def _encontrar(barras: list, activos: set, figuras: list, cuenta: dict) -> list:
+def _encontrar(barras: list, activos: set, figuras: list) -> list:
     filas = []
     for clave, g in grupos(barras, figuras).items():
         items = [it for it in _pedir(clave, g) if it["cc"] in activos]
-        cuenta["grupos"] += 1
-        cuenta["items"] += len(items)
         for b in g["barras"]:
             filas += coincidencias_de(b, items)
     return filas
 
 
-def _buscar(barra_ids: Optional[list], lanzado_por: str) -> dict:
+def buscar_barra(cur, barra_id: int) -> list:
+    """Lo que se puede hacer HOY con una barra disponible: se le pregunta a aSa en el momento
+    (una consulta: su φ, su grado y su forma). No se guarda: lo que se muestra es lo vivo
+    (25-nov: dos ítems borrados de su CC después de la búsqueda seguían en la lista)."""
     from . import material
-    from .asa_sync import _abrir_bitacora, _cerrar_bitacora
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            barras, activos, figuras = _barras(cur, barra_ids), ccs_activos(cur), material.figuras(cur)
-            sync_id = _abrir_bitacora(cur, BITACORA, lanzado_por)
-    cuenta = {"barras": len(barras), "grupos": 0, "items": 0, "coincidencias": 0}
-    try:
-        filas = _encontrar(barras, activos, figuras, cuenta)
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _guardar(cur, [b["id"] for b in barras], filas, not barra_ids)
-    except Exception as e:
-        _cerrar_bitacora(sync_id, False, detalle=str(e))
-        raise
-    cuenta["coincidencias"] = len(filas)
-    _cerrar_bitacora(sync_id, True, cuenta["items"], cuenta["coincidencias"])
-    log.info("Material: %(barras)d barras, %(grupos)d grupos, %(items)d ítems, %(coincidencias)d coincidencias",
-             cuenta)
-    return dict(cuenta, ok=True)
-
-
-# ---------------------------------------------------------------------------
-# Lo que lee la pantalla
-# ---------------------------------------------------------------------------
-_COLUMNAS = ("c.id, c.barra_id, c.item_key, c.cc, c.marca, c.obra, c.cliente, c.descr_cc, c.elemento, "
-             "c.estado_asa, c.figura, c.lados, c.tipo, c.cortes, c.piezas, c.cant_item, c.cubre, c.kg_ahorro, "
-             "c.buscado_el, b.diam_mm, b.grado, b.eje, b.ubicacion, b.motivo, b.cant_disponible, b.origen, "
-             "b.cc, b.marca")
-_NOMBRES = ("id", "barra_id", "item_key", "cc", "marca", "obra", "cliente", "descr_cc", "elemento", "estado_asa",
-            "figura", "lados", "tipo", "cortes", "piezas", "cant_item", "cubre", "kg_ahorro", "buscado_el",
-            "diam_mm", "grado", "eje", "ubicacion", "motivo", "cant_disponible", "origen", "barra_cc", "barra_marca")
-
-
-def _fila(r) -> dict:
-    d = dict(zip(_NOMBRES, r))
-    for k in ("cant_item", "cubre", "kg_ahorro", "diam_mm"):
-        d[k] = float(d[k]) if d[k] is not None else None
-    d["buscado_el"] = d["buscado_el"].isoformat() if d["buscado_el"] else None
-    d["dims"] = {l["nombre"]: l["largo"] for l in d["lados"] or []}
-    return d
-
-
-def _ultima(cur) -> Optional[dict]:
-    cur.execute("SELECT fin, ok, detalle FROM asa_sync WHERE endpoint = %s ORDER BY id DESC LIMIT 1", (BITACORA,))
-    u = cur.fetchone()
-    if not u:
-        return None
-    return {"fin": u[0].isoformat() if u[0] else None, "ok": bool(u[1]), "detalle": u[2], "en_curso": u[0] is None}
-
-
-def listar(cur) -> dict:
-    """Lo encontrado en la última búsqueda, de las barras que siguen disponibles: primero las
-    iguales, y dentro, lo que más kilos ahorra."""
-    cur.execute("""SELECT %s FROM material_coincidencias c JOIN material_barras b ON b.id = c.barra_id
-                    WHERE b.estado = 'disponible'
-                    ORDER BY (c.tipo <> 'igual'), c.kg_ahorro DESC, c.id""" % _COLUMNAS)
-    return {"coincidencias": [_fila(r) for r in cur.fetchall()], "corriendo": corriendo(), "ultima": _ultima(cur)}
+    barras = _barras(cur, [barra_id])
+    if not barras:
+        return []
+    return _encontrar(barras, ccs_activos(cur), material.figuras(cur))

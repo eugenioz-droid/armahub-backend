@@ -429,35 +429,72 @@ def fila_para_pantalla(r: dict) -> dict:
                 creado_el=_iso(r["creado_el"]), editado_el=_iso(r["editado_el"]))
 
 
-def listar(cur) -> list:
-    """Todas las barras, lo más nuevo arriba; la pantalla filtra por estado. Con el nombre de
-    quien la ingresó, no su correo."""
-    cur.execute("""SELECT %s, (SELECT NULLIF(TRIM(CONCAT(u.nombre, ' ', u.apellido)), '') FROM users u
-                                WHERE LOWER(u.email) = LOWER(m.creado_por) LIMIT 1)
-                     FROM material_barras m ORDER BY creado_el DESC, id DESC""" % _COLUMNAS)
-    nombres = [c.strip() for c in _COLUMNAS.split(",")] + ["creado_nombre"]
+def nombre_de(columna: str) -> str:
+    """El nombre de quien hizo algo (no su correo), como subconsulta."""
+    return ("(SELECT NULLIF(TRIM(CONCAT(u.nombre, ' ', u.apellido)), '') FROM users u "
+            "WHERE LOWER(u.email) = LOWER(%s) LIMIT 1)" % columna)
+
+
+def _leer(cur, donde: str, params: tuple) -> list:
+    """Barras con el nombre de quien las ingresó, cuántas asignaciones tienen y cuántas falta
+    que producción confirme."""
+    cur.execute("""SELECT %s, %s,
+                          (SELECT COUNT(*) FROM material_asignaciones a WHERE a.barra_id = m.id),
+                          (SELECT COUNT(*) FROM material_asignaciones a
+                            WHERE a.barra_id = m.id AND a.producido_el IS NULL)
+                     FROM material_barras m WHERE %s ORDER BY creado_el DESC, id DESC"""
+                % (_COLUMNAS, nombre_de("m.creado_por"), donde), params)
+    nombres = [c.strip() for c in _COLUMNAS.split(",")] + ["creado_nombre", "n_asignadas", "n_por_confirmar"]
     return [fila_para_pantalla(dict(zip(nombres, r))) for r in cur.fetchall()]
 
 
+def listar(cur) -> list:
+    """Las barras disponibles, lo más nuevo arriba. Una sin saldo sigue acá mientras falte que
+    producción confirme lo asignado; consumida, pasa al Resumen (usuario, 25-nov)."""
+    return _leer(cur, "estado = 'disponible'", ())
+
+
+def barra(cur, barra_id: int) -> Optional[dict]:
+    filas = _leer(cur, "id = %s", (barra_id,))
+    return filas[0] if filas else None
+
+
+def estado_de_barra(cur, barra_id: int):
+    """Con saldo, disponible. Sin saldo: consumida cuando producción confirmó todo lo asignado,
+    disponible mientras falte confirmar, agotada si se dejó en 0 sin asignar nada."""
+    cur.execute("""UPDATE material_barras m SET estado = CASE
+                       WHEN m.cant_disponible > 0 THEN 'disponible'
+                       WHEN NOT EXISTS (SELECT 1 FROM material_asignaciones a WHERE a.barra_id = m.id) THEN 'agotada'
+                       WHEN EXISTS (SELECT 1 FROM material_asignaciones a
+                                     WHERE a.barra_id = m.id AND a.producido_el IS NULL) THEN 'disponible'
+                       ELSE 'consumida' END
+                    WHERE m.id = %s AND m.estado <> 'descartada'""", (barra_id,))
+
+
 def ajustar(cur, barra_id: int, email: str, datos: dict) -> bool:
-    """Cambia la cantidad disponible, la ubicación o la nota. Con 0 disponibles queda agotada."""
+    """Corrige el saldo, la ubicación o la nota."""
     n = datos.get("cantidad")
     disp = None if n is None else (0 if str(n).strip() == "0" else cantidad_valida(n))
     cur.execute("""UPDATE material_barras
                       SET cant_disponible = COALESCE(%s, cant_disponible),
-                          estado = CASE WHEN COALESCE(%s, cant_disponible) = 0 THEN 'agotada'
-                                        WHEN estado = 'agotada' THEN 'disponible' ELSE estado END,
                           ubicacion = %s, nota = %s, editado_por = %s, editado_el = %s
                     WHERE id = %s AND estado <> 'descartada' RETURNING id""",
-                (disp, disp, _comunes(datos)["ubicacion"], _comunes(datos)["nota"], email,
+                (disp, _comunes(datos)["ubicacion"], _comunes(datos)["nota"], email,
                  datetime.now(timezone.utc), barra_id))
-    return cur.fetchone() is not None
+    if cur.fetchone() is None:
+        return False
+    estado_de_barra(cur, barra_id)
+    return True
 
 
 def descartar(cur, barra_id: int, email: str, motivo: str) -> bool:
     motivo = _txt(motivo)[:200]
     if not motivo:
-        raise ErrorMaterial("Escribe por qué se descarta.")
+        raise ErrorMaterial("Escribe por qué se da de baja.")
+    cur.execute("SELECT 1 FROM material_asignaciones WHERE barra_id = %s AND producido_el IS NULL LIMIT 1",
+                (barra_id,))
+    if cur.fetchone():
+        raise ErrorMaterial("Tiene asignaciones sin confirmar: quítalas o confírmalas antes de darla de baja.")
     cur.execute("""UPDATE material_barras SET estado = 'descartada', descarte_motivo = %s,
                           editado_por = %s, editado_el = %s
                     WHERE id = %s AND estado <> 'descartada' RETURNING id""",
