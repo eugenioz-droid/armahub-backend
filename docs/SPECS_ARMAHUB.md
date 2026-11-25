@@ -2079,7 +2079,7 @@ el CC se vuelve a editar después de la misma confirmación, se reabre.
 (sin rutas), rutas `/cc-confirmados` en `chequeos_api.py`, turno en `asa_scheduler.py`,
 pantalla en `static/js/features/auditorias/confirmados.js`.
 
-## 15. CALUGA: MATERIAL DISPONIBLE (validada 24-nov; fase 1 hecha 25-nov)
+## 15. CALUGA: MATERIAL DISPONIBLE (validada 24-nov; fases 1 y 2 hechas 25-nov)
 
 **Para qué.** Reciclar barras que se fabricaron mal, que sobraron o que volvieron de obra y que
 todavía sirven. Quedan como material disponible; ArmaHub busca solo qué ítems por fabricar
@@ -2161,13 +2161,28 @@ de ítems, no CC por CC. El costo crece con lo disponible, no con el tamaño de 
 resultados quedan en ArmaHub: la pantalla nunca consulta aSa. Cada corrida tiene tope de
 consultas.
 
+**Lo que se ajustó al construirla (25-nov, con datos reales).**
+- *Obra activa:* sólo ítems de códigos con movimiento en los últimos 3 meses y de obras no
+  excluidas, el mismo criterio de la revisión de barras. Sin esto aparecían códigos de 2021
+  que siguen «Open» en aSa.
+- *Gancho es el que aSa declara* (H3, H9…). La revisión de barras llama gancho también a un
+  extremo corto que dobla 90°; para reciclar no: la pata de un soporte 26 se corta como
+  cualquier lado recto (con la otra regla, un 26 con una pata 5 cm más larga no calzaba).
+- *Plana o en dos planos cuenta:* el soporte 26 y la S4 tienen los mismos giros; el 26 se
+  dobla en dos planos y no puede traer ítems S4.
+- Se guardan las 40 coincidencias que más ahorran por barra disponible.
+
 ### 15.4 Coincidencias
 
-Una fila por par «ítem por fabricar ↔ barra disponible». Destacado: tipo (Igual · Corte ·
-Doblez), qué se hace («cortar A 35 cm»), cuánto cubre, kg que se ahorran, estado del ítem
-(Open · Processed), dibujo de los dos. Secundario: CC, ítem, marca, obra, cliente,
-descripción, eje. Orden: Igual, después Corte, después Doblez; dentro, lo que más kg ahorra.
-Acción: «Asignar» (con la cantidad). Al final, «Buscar con doblez».
+Una fila por par «ítem por fabricar ↔ barra disponible». Destacado: tipo (Igual · Con corte),
+qué se hace («Tal cual», «Cortar B 5 cm», «2 por barra · sobran 40 cm»), cuánto cubre, kg que
+se ahorran. Secundario: la barra disponible (marca o «A mano», y su ubicación), CC con su
+estado (Open · Processed) y la cantidad del ítem, obra, descripción, eje. El dibujo es el de
+la barra disponible (la misma forma); las medidas en columnas son las del ítem. Orden: Igual,
+después Con corte; dentro, lo que más kg ahorra. Indicadores: ítems que se pueden cubrir,
+kilos a recuperar (una coincidencia por barra: la misma barra no se usa dos veces) y barras
+con coincidencia. «Buscar ahora» arriba a la derecha. «Asignar» llega con la fase 3 y «Buscar
+con doblez» con la fase 4.
 
 ### 15.5 Asignadas — el cierre
 
@@ -2203,7 +2218,12 @@ regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barr
    `/material/…`), `asa_barras.py` (la barra de aSa armada en un solo lugar, también para
    Auditorías); la caluga se abre por rol de administración o por área (registry.js,
    `areas`, la misma lista que `material.AREAS`).
-2. Búsqueda Igual y Corte, Coincidencias, corrida de las 06:00 y botón.
+2. ☑ Búsqueda Igual y Corte, Coincidencias, corrida de las 06:00 y botón. Hecha 25-nov:
+   migración 182 (`material_coincidencias`, se reemplaza en cada búsqueda); lógica en
+   `material_busqueda.py`; rutas `/material/coincidencias` y `/material/buscar`; al ingresar
+   una barra se busca ella sola. Probada contra aSa real: 3.981 ítems vivos, 82 coincidencias
+   para tres barras de prueba; un soporte 26 calza igual con ítems de CRCC Kimal y, con una
+   pata 5 cm más larga, con corte.
 3. Asignaciones, cierre automático al despachar, cubicación nueva y Resumen.
 4. Buscar con doblez.
 
