@@ -79,6 +79,13 @@ def _txt(v) -> str:
     return str(v or "").strip()
 
 
+def ubicacion_de(it: dict) -> str:
+    """DÓNDE VA LA BARRA (usuario, 25-nov): «son ambas», la descripción del CC y la del
+    elemento en la tarjeta («LC S1 C4 Basilica - ref shaft»). Un «ref shaft» sirve a varias
+    losas: solo, no dice dónde va."""
+    return " - ".join(t for t in (_txt(it.get("OrderDescr")), _txt(it.get("ElementID"))) if t)
+
+
 def lado_guardado(l: dict) -> dict:
     """Lo que se guarda de cada lado: lo que hace falta para dibujarlo y para compararlo."""
     return {"nombre": l["nombre"], "largo": round(float(l["largo"]), 1), "tipo": l.get("tipo") or "STD",
@@ -252,7 +259,7 @@ def _item_para_elegir(it: dict, trazos: dict) -> dict:
             "cc": _txt(it.get("CtrlCode")), "obra": it.get("JobName"), "cliente": it.get("CustomerName"),
             "descr_cc": it.get("OrderDescr"), "estado_asa": it.get("OrderStatusDescr"),
             "elemento": it.get("ElementDesc"), "marca": it.get("BarMark"), "notas": _txt(it.get("Notes")) or None,
-            "ubicacion": _txt(it.get("ElementID")) or None,
+            "ubicacion": ubicacion_de(it) or None,
             "figura": _txt(it.get("ShpNameID")) or None, "diam": it.get("BarSizeDescr"),
             "grado": it.get("GradeID"), "dims": dims["dims"], "angulos": dims["angulos"],
             "cant": it.get("TotalQty"), "kg": it.get("LineWeight"), "largo": it.get("LengthTheor"),
@@ -311,9 +318,7 @@ def _identidad(it: dict) -> dict:
             "marca": it.get("BarMark"), "notas": _txt(it.get("Notes")) or None,
             "figura": _txt(it.get("ShpNameID")) or None, "diam_mm": diam_mm(it.get("BarSizeDescr")),
             "grado": _txt(it.get("GradeID")) or GRADO_POR_DEFECTO, "largo_mm": float(it.get("LengthTheor") or 0),
-            # LA UBICACIÓN ES LA DE LA TARJETA (usuario, 25-nov): el elemento del ítem en aSa
-            # («ref shaft», «L101»), no la descripción general («LCIELO»).
-            "ubicacion": _txt(it.get("ElementID")) or None}
+            "ubicacion": ubicacion_de(it) or None}
 
 
 def fila_a_mano(cur, datos: dict) -> dict:

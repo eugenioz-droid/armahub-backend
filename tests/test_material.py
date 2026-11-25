@@ -141,11 +141,12 @@ f = M.fila_desde_asa(item, "mal_fabricada", 20, {"ok": True})
 check("trae la identidad del ítem", (f["cc"], f["item_key"], f["marca"], f["obra"]) ==
       ("ST47", 1625307, "10mmA1433", "DLP - EDIFICIO TALCA 2 SUR"))
 check("el grado queda con el código de aSa, tal cual", f["grado"] == "A630-420H")
-check("la ubicación es la de la tarjeta: el elemento del ítem en aSa (no la descripción general)",
-      f["ubicacion"] == "ref shaft")
+check("la ubicación es la descripción del CC y la del elemento en la tarjeta",
+      f["ubicacion"] == "ELEV. 13° PISO - ref shaft")
+check("...y si falta una, queda la otra sola", M.ubicacion_de({"ElementID": "L105"}) == "L105")
 check("...y si se escribe una, manda la escrita; la nota viene del formulario",
       M._con_comunes(dict(f), {"ubicacion": "Patio 2", "nota": "x"})["ubicacion"] == "Patio 2"
-      and M._con_comunes(dict(f), {"nota": "x"})["ubicacion"] == "ref shaft")
+      and M._con_comunes(dict(f), {"nota": "x"})["ubicacion"] == "ELEV. 13° PISO - ref shaft")
 check("los motivos acordados (25-nov): mal fabricada, error de cubicación, sobrante; devolución no",
       M.MOTIVOS_ASA == ("mal_fabricada", "error_cubicacion", "sobrante") and "devolucion" not in M.MOTIVOS)
 check("el peso de UNA barra", abs(f["kg_unit"] - 82.3082936 / 52) < 0.001)
