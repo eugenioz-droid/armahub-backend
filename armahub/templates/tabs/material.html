@@ -1,6 +1,7 @@
 <!-- MATERIAL DISPONIBLE (25-nov, SPECS §15) — la caluga para reciclar barras.
-     Fase 1: «Disponible» (ingresar desde aSa o a mano, y la lista). Coincidencias, Asignadas y
-     Resumen llegan en las fases siguientes y se suman a la misma fila de subpestañas.
+     Fase 1: «Disponible» (ingresar desde aSa o a mano, y la lista). Fase 2: «Coincidencias»
+     (lo que la búsqueda encontró en aSa). Asignadas y Resumen llegan en la fase 3 y se suman a
+     la misma fila de subpestañas.
      Hecha con el Sistema de Diseño Armacero (.arm-ds), como ArmaScanner; las barras van en la
      hoja estándar (hoja_barras.js) y se dibujan como en Auditorías.
      Lógica: features/material/index.js; servidor: material.py y material_api.py. -->
@@ -48,15 +49,21 @@
   .mat .mat-previa svg { width: 300px; max-width: 100%; height: auto; }
   .mat .mat-pie { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
   .mat .mat-error { color: var(--arm-danger); font-size: 12px; margin-right: auto; }
+  /* Coincidencias: el dibujo es el de la barra disponible (la misma forma); las cotas van en
+     las columnas, que son las del ítem. */
+  .mat .mat-sin-cotas .audfigcel svg text, .mat .mat-sin-cotas .audfigav { display: none; }
+  .mat .mat-hacer { font-weight: 600; white-space: nowrap; }
   @media (max-width: 900px) { .mat .mat-kpis, .mat .mat-elegida { grid-template-columns: minmax(0, 1fr); } }
 </style>
 
 <div id="tab-material" class="tab-content">
   <div class="arm-ds mat">
-    <div class="arm-tabs" role="tablist">
-      <button type="button" class="arm-tab is-active" role="tab" aria-selected="true">Disponible</button>
+    <div class="arm-tabs" role="tablist" id="matSubs">
+      <button type="button" class="arm-tab is-active" role="tab" aria-selected="true" data-sub="disp">Disponible</button>
+      <button type="button" class="arm-tab" role="tab" aria-selected="false" data-sub="coin">Coincidencias</button>
     </div>
 
+    <div id="matPanelDisp">
     <div class="mat-kpis">
       <div class="arm-kpi"><div class="arm-kpi__label">Barras disponibles</div><div class="arm-kpi__value" id="matKpiBarras">—</div></div>
       <div class="arm-kpi"><div class="arm-kpi__label">Kilos disponibles</div><div class="arm-kpi__value" id="matKpiKg">—</div></div>
@@ -74,6 +81,26 @@
       <div class="mat-seg" id="matDiam" style="margin-bottom:12px;"></div>
       <div id="matLista"></div>
     </div>
+    </div><!-- fin Disponible -->
+
+    <div id="matPanelCoin" style="display:none;">
+      <div class="mat-kpis">
+        <div class="arm-kpi"><div class="arm-kpi__label">Ítems que se pueden cubrir</div><div class="arm-kpi__value" id="matKpiItems">—</div></div>
+        <div class="arm-kpi"><div class="arm-kpi__label">Kilos a recuperar</div><div class="arm-kpi__value" id="matKpiAhorro">—</div></div>
+        <div class="arm-kpi"><div class="arm-kpi__label">Barras con coincidencia</div><div class="arm-kpi__value" id="matKpiConCoin">—</div></div>
+      </div>
+      <div class="arm-card">
+        <div class="mat-barra">
+          <input type="text" id="matCoinBuscar" class="arm-input" placeholder="Buscar CC, obra o marca"
+                 autocomplete="off" spellcheck="false" data-lpignore="true" style="width:240px;">
+          <div class="mat-seg" id="matCoinTipo"></div>
+          <div class="mat-seg" id="matCoinEstado"></div>
+          <span class="mat-linea" id="matCoinCarga"></span>
+          <button type="button" class="arm-button arm-button--primary mat-derecha" id="matBuscarAhora">Buscar ahora</button>
+        </div>
+        <div id="matCoin"></div>
+      </div>
+    </div><!-- fin Coincidencias -->
 
     <div id="matModal" class="mat-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="matModalTit">
       <div class="mat-modal__caja">

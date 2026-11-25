@@ -6,17 +6,20 @@ material.py; acá sólo el permiso, la conexión y el registro en audit_log.
 Entran administración y las áreas de material.AREAS. Un usuario fuera de esas áreas recibe
 403 aunque conozca la ruta: la caluga ni siquiera le aparece (registry.js, `areas`).
 """
+import logging
+import threading
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import material
+from . import material, material_busqueda
 from .asa import AsaError
 from .auth import get_current_user
 from .db import audit, get_conn
 
 router = APIRouter(tags=["material"])
+log = logging.getLogger("armahub.material")
 
 
 def _exigir(cur, user):
@@ -97,6 +100,8 @@ def material_crear(body: IngresoBody, user=Depends(get_current_user)):
     barra_id = _hacer(user, material.crear, email, dict(body))
     audit(email, "material_ingresada", "%s · %s" % (body.origen, body.motivo or "inventario"),
           "material_barras", str(barra_id))
+    # Al ingresar, se busca de inmediato con qué ítems calza ESA barra (SPECS §15.3).
+    _en_fondo(barra_id, email)
     return {"id": barra_id}
 
 
@@ -116,3 +121,34 @@ def material_descartar(barra_id: int, body: DescarteBody, user=Depends(get_curre
         raise HTTPException(status_code=404, detail="Esa barra no existe o ya está descartada.")
     audit(email, "material_descartada", body.motivo[:200], "material_barras", str(barra_id))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# LA BÚSQUEDA (fase 2): la lógica vive en material_busqueda.py
+# ---------------------------------------------------------------------------
+def _buscar(barra_id, email):
+    try:
+        material_busqueda.buscar(barra_id=barra_id, lanzado_por=email)
+    except Exception as e:
+        log.error("Material: falló la búsqueda pedida por %s (%s)", email, e)
+
+
+def _en_fondo(barra_id, email):
+    """En segundo plano: aSa tarda unos segundos por cada forma que hay que buscar."""
+    threading.Thread(target=_buscar, args=(barra_id, email), daemon=True).start()
+
+
+@router.get("/material/coincidencias")
+def material_coincidencias(user=Depends(get_current_user)):
+    """Lo que encontró la última búsqueda, de las barras que siguen disponibles."""
+    return _hacer(user, material_busqueda.listar)
+
+
+@router.post("/material/buscar")
+def material_buscar(user=Depends(get_current_user)):
+    """«Buscar ahora»: todas las barras disponibles contra lo que se va a fabricar."""
+    _hacer(user, lambda cur: None)   # sólo el permiso
+    if material_busqueda.corriendo():
+        return {"lanzada": False, "motivo": "Ya hay una búsqueda corriendo."}
+    _en_fondo(None, user.get("email", ""))
+    return {"lanzada": True}

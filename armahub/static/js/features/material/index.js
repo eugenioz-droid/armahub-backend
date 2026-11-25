@@ -19,6 +19,9 @@
   // Los colores de estado del manual, uno por motivo, siempre el mismo.
   var TAG_MOTIVO = { devolucion: 'info', mal_fabricada: 'warning', sobrante: 'success', inventario: 'review' };
   var MOTIVOS_ASA = ['devolucion', 'mal_fabricada', 'sobrante'];
+  var COIN = { filas: [], tipo: '', estado: '', buscar: '', corriendo: false, ultima: null, sondeo: null };
+  var TIPOS = [['', 'Todas'], ['igual', 'Igual'], ['corte', 'Con corte']];
+  var ESTADOS_ASA = [['', 'Open y Processed'], ['Open', 'Open'], ['Processed', 'Processed']];
   var _listo = false;
 
   function $(id) { return document.getElementById(id); }
@@ -414,6 +417,136 @@
     await cargar();
   }
 
+  // ── COINCIDENCIAS (fase 2): lo que la búsqueda encontró en aSa ─────────────────
+  function cmTxt(mm) { return global.HojaBarras.cm(Number(mm) / 10) + ' cm'; }
+
+  // Qué hay que hacerle a la barra disponible para fabricar el ítem.
+  function queHacer(c) {
+    var cortes = c.cortes || [];
+    if (c.piezas > 1) {
+      var sobra = cortes[0] && cortes[0][1] > 0 ? ' · sobran ' + cmTxt(cortes[0][1]) : '';
+      return c.piezas + ' por barra' + sobra;
+    }
+    if (!cortes.length) return 'Tal cual';
+    return 'Cortar ' + cortes.map(function (x) { return x[0] + ' ' + cmTxt(x[1]); }).join(' y ');
+  }
+
+  function coinTexto(c) { return [c.cc, c.obra, c.marca, c.descr_cc, c.elemento].join(' ').toLowerCase(); }
+
+  function coinPasa(c) {
+    if (COIN.tipo && c.tipo !== COIN.tipo) return false;
+    if (COIN.estado && c.estado_asa !== COIN.estado) return false;
+    return !COIN.buscar || coinTexto(c).indexOf(COIN.buscar) >= 0;
+  }
+
+  // Los kilos a recuperar cuentan UNA coincidencia por barra disponible (la que más ahorra):
+  // la misma barra no se puede usar dos veces.
+  function resumenCoin(filas) {
+    var items = {}, mejor = {};
+    filas.forEach(function (c) {
+      items[c.item_key] = 1;
+      mejor[c.barra_id] = Math.max(mejor[c.barra_id] || 0, c.kg_ahorro || 0);
+    });
+    var kg = Object.keys(mejor).reduce(function (s, k) { return s + mejor[k]; }, 0);
+    return { items: Object.keys(items).length, kg: kg, barras: Object.keys(mejor).length };
+  }
+
+  function disponibleDe(c) {
+    var que = c.barra_marca || (c.origen === 'mano' ? 'A mano' : '');
+    return esc(que) + '<div class="mat-linea">' + esc(c.ubicacion || 'Sin ubicación') + '</div>';
+  }
+
+  function filaCoin(c) {
+    var tag = c.tipo === 'igual' ? '<span class="arm-tag arm-tag--success">Igual</span>'
+                                 : '<span class="arm-tag arm-tag--warning">Con corte</span>';
+    return {
+      barra: barraHoja({ marca: c.marca, notas: '', diam_mm: c.diam_mm, figura: c.figura, dims: c.dims, eje: c.eje,
+                         referencias: [], largo_mm: 0 }, c.cubre, c.kg_ahorro),
+      elemento: c.elemento || '',
+      propias: [tag, '<span class="mat-hacer">' + esc(queHacer(c)) + '</span>', disponibleDe(c),
+                esc(c.cc) + '<div class="mat-linea">' + esc(c.estado_asa || '') + ' · de ' + num(c.cant_item) + '</div>'],
+      texto: esc([c.obra, c.descr_cc].filter(Boolean).join(' · '))
+    };
+  }
+
+  function pintarCoin() {
+    seg('matCoinTipo', TIPOS, COIN.tipo, function (v) { COIN.tipo = v; pintarCoin(); });
+    seg('matCoinEstado', ESTADOS_ASA, COIN.estado, function (v) { COIN.estado = v; pintarCoin(); });
+    var lista = COIN.filas.filter(coinPasa), r = resumenCoin(lista);
+    $('matKpiItems').textContent = num(r.items);
+    $('matKpiAhorro').textContent = num(r.kg) + ' kg';
+    $('matKpiConCoin').textContent = num(r.barras);
+    if (!lista.length) {
+      $('matCoin').innerHTML = '<div class="mat-vacio">' +
+        (COIN.filas.length ? 'Nada con estos filtros.' : 'Sin coincidencias en lo que se va a fabricar.') + '</div>';
+      return;
+    }
+    $('matCoin').innerHTML = '<div class="mat-sin-cotas">' + global.HojaBarras.tabla({
+      accion: null,
+      propias: [{ titulo: 'Tipo', ancho: 84 }, { titulo: 'Qué hacer', ancho: 170 },
+                { titulo: 'Barra disponible', ancho: 130 }, { titulo: 'CC', ancho: 110 }],
+      texto: { titulo: 'Obra' }, titulos: { cant: 'Cuántas piezas del ítem cubre lo disponible' },
+      filas: lista.map(filaCoin) }) + '</div>';
+  }
+
+  function textoBusqueda(u, corriendo) {
+    if (corriendo || (u && u.en_curso)) return 'Buscando en aSa…';
+    if (!u) return 'Todavía sin buscar';
+    if (!u.ok) return 'La última búsqueda falló' + (u.detalle ? ': ' + u.detalle : '');
+    return 'Buscado ' + fechaHora(u.fin);
+  }
+
+  // «25-11 06:00», en hora local, como el resto de la plataforma.
+  function dos(n) { return ('0' + n).slice(-2); }
+  function fechaHora(iso) {
+    var d = new Date(iso || '');
+    if (isNaN(d)) return '';
+    return dos(d.getDate()) + '-' + dos(d.getMonth() + 1) + ' ' + dos(d.getHours()) + ':' + dos(d.getMinutes());
+  }
+
+  function cabeceraCoin() {
+    var buscando = COIN.corriendo || !!(COIN.ultima && COIN.ultima.en_curso);
+    $('matCoinCarga').textContent = textoBusqueda(COIN.ultima, COIN.corriendo);
+    $('matBuscarAhora').disabled = buscando;
+    $('matBuscarAhora').textContent = buscando ? 'Buscando…' : 'Buscar ahora';
+    if (buscando) sondearCoin();
+  }
+
+  // Mientras busca, la lista se vuelve a pedir sola hasta que termine.
+  function sondearCoin() {
+    if (COIN.sondeo) return;
+    COIN.sondeo = setTimeout(function () { COIN.sondeo = null; cargarCoin(); }, 8000);
+  }
+
+  async function cargarCoin() {
+    var d = await global.apiGet('/material/coincidencias');
+    if (!d) { $('matCoin').innerHTML = '<div class="mat-vacio">No se pudo cargar.</div>'; return; }
+    COIN.filas = d.coincidencias || [];
+    COIN.corriendo = !!d.corriendo;
+    COIN.ultima = d.ultima || null;
+    cabeceraCoin();
+    pintarCoin();
+  }
+
+  async function buscarAhora() {
+    var r = await global.apiPostJson('/material/buscar', {});
+    if (!r || r.detail) { aviso(errorDe(r, 'No se pudo lanzar la búsqueda.')); return; }
+    if (!r.lanzada && r.motivo) ok(r.motivo);
+    COIN.corriendo = true;
+    cabeceraCoin();
+  }
+
+  function elegirSub(sub) {
+    document.querySelectorAll('#matSubs .arm-tab').forEach(function (b) {
+      var on = b.dataset.sub === sub;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    mostrar('matPanelDisp', sub === 'disp');
+    mostrar('matPanelCoin', sub === 'coin');
+    if (sub === 'coin') cargarCoin();
+  }
+
   // ── CARGA Y EVENTOS ───────────────────────────────────────────────────────────
   async function cargar() {
     var d = await global.apiGet('/material/barras');
@@ -451,6 +584,11 @@
     $('matBuscar').addEventListener('input', function () { MAT.buscar = this.value.trim().toLowerCase(); pintarLista(); });
     $('matLista').addEventListener('click', clicLista);
     $('matModal').addEventListener('click', clicModal);
+    $('matBuscarAhora').addEventListener('click', buscarAhora);
+    $('matCoinBuscar').addEventListener('input', function () { COIN.buscar = this.value.trim().toLowerCase(); pintarCoin(); });
+    document.querySelectorAll('#matSubs .arm-tab').forEach(function (b) {
+      b.addEventListener('click', function () { elegirSub(b.dataset.sub); });
+    });
   }
 
   global.loadMaterialModule = function () {};   // la pestaña carga lo suyo (shell.js, tabLoaders)
@@ -461,5 +599,7 @@
   };
 
   global.__materialTest = { MAT: MAT, ING: ING, pasa: pasa, resumen: resumen, ladosCm: ladosCm, barraHoja: barraHoja,
-                            filaHoja: filaHoja, figuraPasa: figuraPasa, editorHtml: editorHtml, completa: completa };
+                            filaHoja: filaHoja, figuraPasa: figuraPasa, editorHtml: editorHtml, completa: completa,
+                            COIN: COIN, queHacer: queHacer, coinPasa: coinPasa, resumenCoin: resumenCoin, filaCoin: filaCoin,
+                            textoBusqueda: textoBusqueda, fechaHora: fechaHora };
 })(window);
