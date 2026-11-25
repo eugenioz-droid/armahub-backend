@@ -1409,7 +1409,7 @@ check("...y el estado de la fila gana sobre el cebrado (una fila par resuelta ya
 # Con foto, la cantidad es la de la foto; aSa sólo la pone donde no hay foto (9-nov).
 check("«Ver figuras» trae el dibujo y nada más: la foto manda en las medidas",
       "diam: o.diam || null, cant: o.cant || (deFoto ? null : v.cant_total) || null" in JS
-      and "lados: porL, malos: malos, angulos: angs" in REVJS)
+      and "lados: ld.porL, malos: ld.malos, angulos: ld.angs" in REVJS)
 # 9-nov: «elimina la columna del elemento… tienes el nombre del elemento arriba».
 check("la planilla del auditor no lleva columna Elemento: es un solo elemento y lo dice la cabecera",
       "elemento:" not in JS.split("function pintarBarras()")[1].split("function celdaEd(")[0]

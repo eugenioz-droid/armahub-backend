@@ -146,16 +146,37 @@ def envolvente_declarada(legangle: Optional[str]):
     return (abs(_num(m.group(1))), abs(_num(m.group(2))))
 
 
-def _vectores(shapedims):
-    """Lo que ShapeDims dice de cada lado, por letra: vector, si es gancho, el barrido de
-    los curvos; y el radio del tramo curvo, que viene en una entrada aparte (`WR` / `R`)."""
+def _lista_shapedims(shapedims) -> list:
+    """ShapeDims como lista (aSa lo manda como texto JSON); [] si no viene o no se entiende."""
     if not shapedims:
-        return {}, None, []
+        return []
     try:
         datos = json.loads(shapedims) if isinstance(shapedims, str) else shapedims
     except (ValueError, TypeError):
-        return {}, None, []
-    if not isinstance(datos, list):
+        return []
+    return datos if isinstance(datos, list) else []
+
+
+def medidas_de_referencia(shapedims, ya=()) -> list:
+    """Las medidas que aSa muestra en pantalla y que NO son lados del trazo, como pares
+    [letra, mm] en su orden. En un arco (figura 9) el trazo es un solo lado, B, y aSa
+    además muestra la altura H, la cuerda O y el radio R: sin ellas la revisión enseñaba
+    sólo B y la barra no se podía leer (usuario, 25-nov). Lo que aSa apaga o deja en cero
+    —el B de una 103D1— no va; `ya` son las letras que ya están como lados."""
+    out, vistas = [], set(ya)
+    for d in _lista_shapedims(shapedims):
+        letra, mm = d.get("LegName") or "", _num(d.get("MMLength"))
+        if letra and letra not in vistas and d.get("OnScreen") and d.get("HasLength") and mm > 0:
+            out.append([letra, mm])
+            vistas.add(letra)
+    return out
+
+
+def _vectores(shapedims):
+    """Lo que ShapeDims dice de cada lado, por letra: vector, si es gancho, el barrido de
+    los curvos; y el radio del tramo curvo, que viene en una entrada aparte (`WR` / `R`)."""
+    datos = _lista_shapedims(shapedims)
+    if not datos:
         return {}, None, []
     radio = None
     por_letra = {}

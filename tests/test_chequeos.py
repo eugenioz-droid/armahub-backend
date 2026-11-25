@@ -719,7 +719,7 @@ print("\n18. La fila muestra la barra, no la describe")
 # y los lados que tiene la figura, resaltar en rojo el que no cumple. Eso es mejor que
 # todo ese texto. Además así el usuario verifica acá sin tener que ir a aSa».
 check("los lados de la figura están en la fila, con el que falla en rojo",
-      "lados: porL, malos: malos" in JS and "(b.malos || {})[L] ? ' mal' : ''" in HOJA
+      "lados: ld.porL, malos: ld.malos" in JS and "(b.malos || {})[L] ? ' mal' : ''" in HOJA
       and ".audt.hojab tbody tr td.mal{background:#ffebee; color:#c62828;" in HTM)
 # DESDE LA SEÑAL, NO DESDE aSa (21-oct): todos los lados se guardan al detectar, en su
 # orden y con su ángulo, y la hoja los pinta sin leer nada. La figura sólo dibuja.
@@ -727,6 +727,8 @@ check("...y salen de la señal misma, guardados al detectar: no cuesta leer aSa"
       '"lados_all": [[l["nombre"], l["largo"], l.get("angulo")]' in SRC and "det.lados_all" in JS)
 check("...y una señal de antes de hoy (sin todos los lados) muestra al menos el del hallazgo",
       "porL[L] = Number(det.valor) / 10" in JS)
+check("...y las medidas de referencia de aSa (altura, cuerda, radio) van en la misma fila (25-nov)",
+      "(det.referencias || []).forEach" in JS and '"referencias": b.get("referencias", [])' in SRC)
 check("el esperado se rotula según lo que significa en cada regla, no «debería» siempre",
       "i.regla === 'lado_corto' ? 'mín ' : ''" in JS and "title: 'Lo que la regla pide" in JS)
 check("el hallazgo va como etiqueta corta, no como párrafo",
@@ -2035,6 +2037,30 @@ check("...y ningún texto usa términos coloquiales",
       not _re.search(r"\b(pata|patas|pie|pies|horquilla|cuerpo)\b",
                      " ".join(" ".join([r["nombre"], r["corto"], r["porque"], r["alcance"],
                                         r["ejemplo"]["leyenda"]]) for r in C.EXCEPCIONES).lower()))
+
+# ── La señal lleva las medidas de referencia de aSa (25-nov) ──────────────────────────
+# SVE5 25mmA101, figura 9: un arco de 12 m. El trazo es un solo lado (B); la tabla de la
+# revisión mostraba sólo B. aSa además muestra la altura H, la cuerda O y el radio R.
+print("Medidas de referencia en la señal")
+import json as _json  # noqa: E402
+_item = {"CtrlCode": "SVE5", "ElementID": "01", "BarMark": "25mmA101", "BarSizeDescr": "25mm",
+         "ShpNameID": "9", "PinDiam": 150.0, "LengthTheor": 12000.0, "TotalQty": 1,
+         "LegAngle": "<la><st>R</st><bc>5</bc><mbr><X>10170</X><Y>2691</Y><Z>0</Z></mbr><lt>12000</lt>"
+                     "<v>4.0</v><cp><t>RB</t><l>12000</l><n>1</n><s>111.797</s><r>6150</r><ln>B</ln></cp></la>",
+         "ShapeDims": _json.dumps([
+             {"LegName": "B", "ElemType": "RB", "MMLength": 12000.0, "OnScreen": True, "HasLength": True,
+              "LegNum": 1, "IsRadial": True},
+             {"LegName": "H", "ElemType": "WS", "MMLength": 2715.94, "OnScreen": True, "HasLength": True},
+             {"LegName": "O", "ElemType": "WS", "MMLength": 10184.94, "OnScreen": True, "HasLength": True},
+             {"LegName": "R", "ElemType": "WR", "MMLength": 6150.0, "OnScreen": True, "HasLength": True}])}
+_arco = C.normalizar_asa(_item, "25mmA101")
+_s = C.correr([_arco])
+check("el arco sigue saltando por el camión", [x["regla"] for x in _s] == ["no_cabe_camion_radio"])
+check("y la señal guarda el lado B y, aparte, altura, cuerda y radio",
+      _s[0]["detalle"]["lados_all"] == [["B", 12000.0, None]]
+      and _s[0]["detalle"]["referencias"] == [["H", 2715.94], ["O", 10184.94], ["R", 6150.0]])
+check("las referencias no son lados: las reglas no las ven", [l["nombre"] for l in _arco["lados"]] == ["B"])
+
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

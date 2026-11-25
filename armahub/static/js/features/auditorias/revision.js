@@ -1090,7 +1090,9 @@
       // El check «todas» va donde van los checks: en su columna (29-oct).
       check: { titulo: '<input type="checkbox" data-grupo="' + esc(g.cc || '') +
                        '" title="Marcar todas las barras de este código">' },
-      accion: { titulo: 'Acción', ancho: 160 },
+      // 232 = Resuelto · No aplica · En consulta (215 px medidos) más el relleno de la celda.
+      // Con 160 —el ancho de cuando eran dos botones— «En consulta» quedaba tapado (25-nov).
+      accion: { titulo: 'Acción', ancho: 232 },
       // LAS MEDIDAS SON LAS DEL MOMENTO EN QUE SALTÓ (3-nov). El dibujo, en cambio, se lee
       // de aSa cuando se aprieta «Ver figuras»: si alguien ya corrigió la barra, el dibujo
       // muestra la medida nueva y la columna la vieja, y parecen contradecirse. Son dos
@@ -1288,18 +1290,26 @@
       '</div></td></tr>';
   }
 
+  // Los lados de la señal para la hoja: la medida de cada letra, los que la regla marcó y
+  // los ángulos. La señal guarda los lados en mm; la tabla los muestra en cm.
+  function _ladosDeSenal(det) {
+    var malos = {}, porL = {}, angs = [], todos = det.lados_all || [];
+    (det.lados || []).forEach(function (L) { malos[L] = 1; });
+    todos.forEach(function (l, k) {
+      porL[l[0]] = Number(l[1]) / 10;
+      if (k > 0 && l[2] != null) angs[k - 1] = l[2];
+    });
+    if (!todos.length) (det.lados || []).forEach(function (L) { porL[L] = Number(det.valor) / 10; });
+    // Las medidas que aSa muestra además de los lados (altura, cuerda y radio de un arco).
+    (det.referencias || []).forEach(function (r) { porL[r[0]] = Number(r[1]) / 10; });
+    return { porL: porL, malos: malos, angs: angs };
+  }
+
   function filaItem(i) {
     var det = i.detalle || {}, r = (REV.reglas || {})[i.regla] || { nombre: i.regla };
     var hecho = _resuelta(i), nap = _noAplica(i);
     var cm = global.audNumCm || function (x) { return Math.round(Number(x) || 0); };
-    var malos = {}, porL = {}, angs = [];
-    // La señal guarda los lados en mm; la tabla los muestra en cm.
-    (det.lados || []).forEach(function (L) { malos[L] = 1; });
-    (det.lados_all || []).forEach(function (l, k) {
-      porL[l[0]] = Number(l[1]) / 10;
-      if (k > 0 && l[2] != null) angs[k - 1] = l[2];
-    });
-    if (!(det.lados_all || []).length) (det.lados || []).forEach(function (L) { porL[L] = Number(det.valor) / 10; });
+    var ld = _ladosDeSenal(det);
     var esp = det.esperado != null ? (i.regla === 'lado_corto' ? 'mín ' : '') + cm(det.esperado / 10) : '';
     return {
       attrs: ' class="' + (hecho ? 'hecho' : nap ? 'nap' : _enConsulta(i) ? 'consulta' : '') + '" data-fila="' + i.id + '"',
@@ -1310,7 +1320,7 @@
                diam: i.diam, figura: i.figura || '',
                render: _celda(i.cc || '', i.ref, i.id),
                renderAttrs: ' data-fig="' + esc(i.ref) + '" data-cc="' + esc(i.cc || '') + '" data-sen="' + i.id + '"',
-               lados: porL, malos: malos, angulos: angs },
+               lados: ld.porL, malos: ld.malos, angulos: ld.angs },
       elemento: i.elemento || '',
       propias: [esc(esp),
                 '<span class="revreg" title="' + esc(det.texto || r.porque || r.nombre || '') + '">' +

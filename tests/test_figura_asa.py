@@ -429,5 +429,26 @@ check("un lado con radio es CURVO: medio círculo de radio 280, 560 × 280, con 
 check("figura_de y el ejemplo comparten el trazado (una sola policurva)",
       _fa.count("_policurva(legs, dirs, radio_codo, pasos_arco)") == 2 and "def _policurva(" in _fa)
 
+# ── Las medidas de referencia (25-nov) ─────────────────────────────────────────────
+# Barras REALES: SVE5 25mmA101 (figura 9, un arco) y SVDT 8mmA106 (103D1). En el arco el
+# trazo es un solo lado, B; aSa además muestra la altura H, la cuerda O y el radio R.
+print("Medidas de referencia")
+import json as _json  # noqa: E402
+from armahub.figura_asa import medidas_de_referencia  # noqa: E402
+_arco = _json.dumps([
+    {"LegName": "B", "ElemType": "RB", "MMLength": 12000.0, "OnScreen": True, "HasLength": True},
+    {"LegName": "H", "ElemType": "WS", "MMLength": 2715.94, "OnScreen": True, "HasLength": True},
+    {"LegName": "O", "ElemType": "WS", "MMLength": 10184.94, "OnScreen": True, "HasLength": True},
+    {"LegName": "R", "ElemType": "WR", "MMLength": 6150.0, "OnScreen": True, "HasLength": True}])
+check("arco: altura, cuerda y radio, en el orden de aSa, sin repetir el lado B",
+      medidas_de_referencia(_arco, {"B"}) == [["H", 2715.94], ["O", 10184.94], ["R", 6150.0]])
+_103d1 = _json.dumps([
+    {"LegName": "B", "ElemType": "B", "MMLength": 0.0, "OnScreen": False, "HasLength": False},
+    {"LegName": "C", "ElemType": "B", "MMLength": 140.0, "OnScreen": True, "HasLength": True},
+    {"LegName": "D", "ElemType": "B", "MMLength": 500.0, "OnScreen": True, "HasLength": True}])
+check("103D1: el B apagado y en cero no va; C y D ya son lados", medidas_de_referencia(_103d1, {"C", "D"}) == [])
+check("sin ShapeDims, o roto: nada", medidas_de_referencia(None) == [] and medidas_de_referencia("no es json") == [])
+
+
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

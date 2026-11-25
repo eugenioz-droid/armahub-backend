@@ -31,7 +31,7 @@ import re
 from typing import Optional
 
 from .figura_asa import (GANCHO_MAXIMO_PHI, _direcciones, _giro, _legs, envolvente_declarada,
-                         figura_de_lados, figura_espacial_de_lados)
+                         figura_de_lados, figura_espacial_de_lados, medidas_de_referencia)
 from .modelador_config import GANCHO_FABRICACION
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +93,9 @@ def normalizar_asa(item: dict, ref: str) -> Optional[dict]:
         "diam": diam, "pin": _num(item.get("PinDiam")),
         "largo": _num(item.get("LengthTheor")), "cant": _num(item.get("TotalQty")),
         "lados": lados, "mbr": envolvente_declarada(legangle),
+        # Lo que aSa muestra además de los lados (la altura, la cuerda y el radio de un
+        # arco): no entra en las reglas, sólo en la tabla de la revisión.
+        "referencias": medidas_de_referencia(item.get("ShapeDims"), {l["nombre"] for l in lados}),
     }
 
 
@@ -1073,7 +1076,9 @@ def correr(barras, reglas=None) -> list:
                                 # figura queda sólo para el dibujo. Va como lista y no como
                                 # dict porque jsonb no respeta el orden de las llaves.
                                 "lados_all": [[l["nombre"], l["largo"], l.get("angulo")]
-                                              for l in (b.get("lados") or [])]},
+                                              for l in (b.get("lados") or [])],
+                                # Y LAS MEDIDAS DE REFERENCIA DE aSa (25-nov): [letra, mm].
+                                "referencias": b.get("referencias", [])},
                     # Esta barra de este código. Con ella, revisar dos veces no duplica.
                     "firma": _firma(r["codigo"], b.get("cc"), b.get("elemento"), b["ref"], *clave),
                     # La FORMA del problema, sin la barra ni el código: aceptar una apaga
