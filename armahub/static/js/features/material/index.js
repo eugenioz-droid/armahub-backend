@@ -120,9 +120,13 @@
     return '<span class="arm-tag arm-tag--' + (TAG_MOTIVO[motivo] || 'info') + '">' + esc(texto) + '</span>';
   }
 
+  // En la lista, TODA LA FILA abre la ventana de la barra, además del botón (usuario, 25-nov:
+  // «no veo cómo abrir la fila»).
   function filaHoja(b, conAccion) {
+    var clases = [conAccion ? 'mat-clic' : '', b.cant_disponible ? '' : 'mat-apagada'].filter(Boolean).join(' ');
     return {
-      attrs: ' data-id="' + b.id + '"' + (b.cant_disponible ? '' : ' class="mat-apagada"'),
+      attrs: ' data-id="' + b.id + '"' + (conAccion ? ' data-asignar="' + b.id + '" title="Abrir para asignar"' : '') +
+             (clases ? ' class="' + clases + '"' : ''),
       accion: conAccion ? accionesDe(b) : '',
       barra: barraHoja(b, b.cant_disponible, b.kg_disponible),
       elemento: b.elemento || '',

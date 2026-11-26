@@ -82,6 +82,8 @@ check('la ubicación y lo que falta confirmar, en ámbar', fa.propias[2].include
       fa.propias[3].includes('arm-tag--warning') && fa.propias[3].includes('2 por confirmar'));
 check('todo confirmado: sólo el número, sin etiqueta', T.asignacionDe(barras[1]) === '<span class="mat-linea">1 confirmadas</span>');
 check('sin saldo (esperando que producción confirme): apagada', T.filaHoja(barras[2], true).attrs.includes('mat-apagada'));
+check('toda la fila abre la ventana (no sólo el botón)', fa.attrs.includes('data-asignar="1"') && fa.attrs.includes('mat-clic')
+      && !f.attrs.includes('data-asignar'));
 check('a mano: el origen dice «A mano» (el motivo ya dice «Inventario»)', T.filaHoja(barras[1]).propias[1].includes('A mano'));
 check('la tabla sale de la hoja estándar', sandbox.HojaBarras.tabla({ accion: { titulo: '', ancho: 150 },
       propias: [{ titulo: 'Motivo', ancho: 104 }], texto: { titulo: 'Detalle' }, filas: [f] }).includes('hojab'));
