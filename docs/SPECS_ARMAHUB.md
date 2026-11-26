@@ -2305,8 +2305,9 @@ se puede estudiar (usuario, 26-nov). Primera obra: PL - EDIFICIO OPERA (Plaenge)
 - Centro: **el edificio en corte.** Los pisos apilados como la obra: fundación abajo, los
   subterráneos bajo la línea de terreno, la torre arriba; los ciclos en columnas. Cada CC es una
   ficha (código · descripción · kg) con su estado en color y, si tiene hallazgos, una marca
-  con la cantidad. Lo que no tiene piso ni ciclo (reposiciones, adicionales) va en una franja
-  aparte, abajo.
+  con la cantidad. Lo que no tiene piso ni ciclo va abajo en lista, por tipo (usuario, 26-nov):
+  Reposiciones · Adicionales · Barra en punta (stock) · Sin piso o ciclo en el nombre, cada
+  grupo con su cantidad y sus kilos.
 - «Color por» (botones): **Estado** (Open gris · Processed ámbar · Shipped verde claro ·
   Shipped en las últimas 3 semanas verde intenso) · **Cubicador** (un color estable por persona:
   quién cubicó qué) · **Hallazgos** (por gravedad).
@@ -2338,6 +2339,13 @@ se puede estudiar (usuario, 26-nov). Primera obra: PL - EDIFICIO OPERA (Plaenge)
 - **E2 Cambios tras confirmar.** Lo que detecta CC Confirmados Modificados (§14).
 - **E3 Borrado de aSa.** CC que el espejo de ArmaHub todavía muestra y aSa ya no tiene (26-nov:
   cinco CC Open de OPERA se borraron ese día y seguían en el espejo como Open).
+- **O1 Despacho fuera de secuencia.** Un piso alto despachado antes que el de abajo del mismo
+  sector y ciclo: o se adelantó, o el nombre no dice el piso. En OPERA, «ELEV Z1 P2», «P3» y
+  «S1 P4» salieron entre el 20 y el 27-oct con «ELEVACIONES PISO 1 Z1» todavía Open: esa P era
+  la parte del subterráneo (sus elementos son de nivel 0 y -1).
+- **El estado y el despacho salen de aSa en vivo** (usuario, 26-nov: «corroborar con lo que está
+  en aSa y no usar una foto de ArmaHub»): getOrderSummary para el estado y los kilos,
+  getScheduling para la fecha de despacho, los remitos y lo programado.
 - **F1 Figuras.** Las señales de la Revisión de barras de los CC de la obra.
 - **K1 Peso fuera de rango.** Un ciclo muy distinto de los otros ciclos del mismo piso y
   sector. Se calibra con la obra: no compara subterráneos con torre, y tolera que la torre se
