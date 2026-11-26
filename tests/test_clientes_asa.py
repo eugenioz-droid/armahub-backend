@@ -13,14 +13,11 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "scripts"))
-try:
-    from asa_ping import cargar_env
-    cargar_env()
-except Exception:
-    pass
-os.environ.setdefault("JWT_SECRET", "test-local-secret-que-no-vale-en-produccion")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import entorno_real  # noqa: E402
+
+# La base real, sin que arrancar la app le cambie el esquema (tests/entorno_real.py).
+entorno_real.cargar()
 
 fallos = 0
 

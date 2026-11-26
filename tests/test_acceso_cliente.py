@@ -17,14 +17,11 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "scripts"))
-try:
-    from asa_ping import cargar_env
-    cargar_env()
-except Exception:
-    pass
-os.environ.setdefault("JWT_SECRET", "test-local-secret-que-no-vale-en-produccion")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import entorno_real  # noqa: E402
+
+# La base real, sin que arrancar la app le cambie el esquema (tests/entorno_real.py).
+entorno_real.cargar()
 
 fallos = 0
 
@@ -57,7 +54,12 @@ check("el método importa: la campana se lee, no se borra",
 
 print("\n2. Contra la API entera, con un token de cliente")
 from fastapi.testclient import TestClient  # noqa: E402
+import armahub.db as _db  # noqa: E402
+
+_init = []
+_db.init_db = lambda: _init.append(1)   # si la app lo llamara, queda anotado (y no toca nada)
 from armahub.main import app  # noqa: E402
+check("la app arranca sin init_db: correr las pruebas no cambia el esquema de producción", not _init)
 
 cli = TestClient(app)
 H = {"Authorization": "Bearer " + A.create_token("cliente@armacero.cl", "cliente")}
