@@ -38,7 +38,9 @@ def main(args):
         raise
     finally:
         conn.close()
-    nombre = "Deep Audit %s %s%s.xlsx" % (corrida["obra"].replace("/", "-"), date.today().isoformat(), " (prueba)" if probar else "")
+    # Con el número de la corrida: no choca con el Excel de otra corrida abierto en pantalla.
+    nombre = "Deep Audit %s %s DA-%s%s.xlsx" % (corrida["obra"].replace("/", "-"), date.today().isoformat(), corrida["id"],
+                                                 " (prueba)" if probar else "")
     destino = os.path.join(RAIZ, "entrada", "deep_audit", nombre)
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     deep_audit_excel.libro(corrida).save(destino)
