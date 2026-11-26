@@ -2285,7 +2285,7 @@ regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barr
 
 ---
 
-## 16. AUDITORÍAS › DEEP AUDIT (validado 26-nov; fase 1 hecha)
+## 16. AUDITORÍAS › DEEP AUDIT (validado 26-nov; fases 1 y 2 hechas)
 
 **Para qué.** Una foto de la obra que de un golpe de vista diga cómo va, y una auditoría a fondo
 para detener errores. Cada corrida queda guardada: con el tiempo cuenta la historia de la obra y
@@ -2361,7 +2361,12 @@ Cada hallazgo: código de la regla, gravedad (alta · media · aviso), CC, detal
    por estado, ⚠ con enlace a sus hallazgos, totales por piso) · Hallazgos (filtros y columna
    de validación) · CC · Barras (una fila por barra, con su marca contra el modelo) ·
    Cubicadores (prolijidad). OPERA: 39 CC, 75 hallazgos en la primera prueba.
-2. **La subpestaña** de §16.1, sobre el mismo motor y las mismas tablas.
+2. ☑ **La subpestaña** (26-nov), sobre el mismo motor y las mismas tablas: `auditorias/deep_audit.js`
+   y las rutas `/deep-audit/…` en chequeos_api.py (obras · corridas de una obra · una corrida ·
+   auditar en segundo plano, con la pantalla preguntando hasta que aparece · validar un
+   hallazgo · barras de un CC). La ventana del CC tiene dos pestañas, Hallazgos y Barras; la
+   historia (fechas) va en su cabecera. Pendiente: «qué cambió desde la corrida anterior» y
+   exportar el Excel desde la pantalla (hoy, `scripts/deep_audit_correr.py`).
 3. **Reglas desde los reclamos (C1)** e **informe de cierre** (PDF) con los hallazgos
    validados.
 
