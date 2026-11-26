@@ -2294,6 +2294,11 @@ se puede estudiar (usuario, 26-nov). Primera obra: PL - EDIFICIO OPERA (Plaenge)
 **Dónde.** Subpestaña «Deep Audit», al final de la fila de Auditorías.
 
 ### 16.1 La pantalla
+- **Al entrar, lo que ya existe** (usuario, 26-nov: «te faltó lo básico»), como Auditorías:
+  indicadores (auditorías · obras auditadas · hallazgos · por revisar) y la tabla de auditorías
+  (DA-n · obra · fecha · quién · CC · kg · hallazgos · revisados · estado: Por revisar, En
+  revisión, Revisada · barrita de gravedad). Una fila abre su corrida; «← Todas las
+  auditorías» vuelve.
 - Arriba: obra (campo desplegable) · «Auditar» · corridas anteriores (fecha · quién · hallazgos)
   · «Excel». Indicadores (4): kilos de la obra por estado · CC con hallazgos · reprocesos
   (REP + ADICIONAL, % de los kilos) · reclamos abiertos.
