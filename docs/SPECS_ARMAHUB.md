@@ -2163,7 +2163,8 @@ o · Código de control [Ir] · o · [Crear ítem]. La obra abre sus CC, el cód
 asignado. Destacado: dibujo · φ · medidas · cantidad disponible · kg. Secundario, más chico:
 marca y Notes · CC e ítem de origen · obra · cliente · descripción del CC · elemento · motivo ·
 ubicación · asignación («2 por confirmar» en ámbar) · quién y cuándo la ingresó. Una sola
-acción por fila: **Asignar**, que abre la ventana de la barra (§15.4). Un solo filtro, el φ
+acción por fila: **Asignar**, que abre la ventana de la barra (§15.4); un clic en cualquier
+parte de la fila también la abre. Un solo filtro, el φ
 (usuario, 25-nov: la lista ya muestra obra y marca, y los «Todas/Todos» confundían).
 Indicadores: barras disponibles (piezas), kilos disponibles y asignaciones por confirmar. Los
 ángulos no van en columnas: el dibujo ya dice la forma.
@@ -2235,8 +2236,9 @@ cantidades se rebajan sólo en ArmaHub: en aSa lo maneja producción (usuario, 2
 y con todo lo asignado confirmado, la barra queda **consumida** y pasa al Resumen. Sin saldo y
 sin asignaciones (corregida a 0), queda agotada.
 
-Pendiente (no construido): reservar para una **cubicación nueva** (el CC todavía no existe) y
-vincularla cuando aparezca en aSa.
+Reservar para una cubicación nueva (el CC todavía no existe) queda fuera por ahora (usuario,
+25-nov: no sabe si tiene sentido). Lo que sí tiene sentido: que lo disponible se vea con
+facilidad, para que el cubicador, al cubicar, adapte algo y use lo que ya existe. Por diseñar.
 
 ### 15.6 Resumen
 
@@ -2273,8 +2275,8 @@ regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barr
    `/material/asignaciones/{id}/quitar` y `…/producida`, `/material/resumen`; pantalla en
    `features/material/asignar.js`. Se fueron la subpestaña Coincidencias, la corrida de las
    06:00, el botón «Buscar ahora» y los filtros de obra, texto, estado y motivo. Probada contra
-   la base real en una transacción deshecha. Quedan pendientes la cubicación nueva y el gráfico
-   por mes.
+   la base real en una transacción deshecha. Quedan pendientes ver lo disponible para el
+   cubicador (§15.5) y el gráfico por mes.
 4. Buscar con doblez.
 
 ---
