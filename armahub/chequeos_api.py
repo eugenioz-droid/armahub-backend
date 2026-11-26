@@ -1819,7 +1819,8 @@ def deep_audit_obras(user=Depends(get_current_user)):
 
 
 @router.get("/deep-audit/corridas")
-def deep_audit_corridas(job: str, user=Depends(get_current_user)):
+def deep_audit_corridas(job: Optional[str] = None, user=Depends(get_current_user)):
+    """Todas las corridas (la lista de entrada) o las de una obra."""
     _puede_ver(user)
     with get_conn() as conn:
         with conn.cursor() as cur:

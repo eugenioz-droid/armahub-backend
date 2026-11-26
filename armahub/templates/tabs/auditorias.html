@@ -422,16 +422,26 @@
     <div id="audSubDeep" style="display:none;">
       <div class="card audc">
         <div class="dpa-barra">
+          <button type="button" class="dpa-bt" id="dpaVolver" style="display:none;">← Todas las auditorías</button>
           <div class="dpa-obra"><input type="text" id="dpaObra"></div>
           <button id="dpaAuditar" class="audbtn" disabled>Auditar</button>
+          <span class="dpa-linea">Revisa todos los CC de la obra. Cada corrida queda guardada.</span>
           <span class="revcarga" id="dpaCarga"></span>
           <div style="flex:1"></div>
-          <span class="dpa-sub" style="margin:0;">Corridas</span>
-          <div class="dshchips" id="dpaCorridas"></div>
+          <span class="dpa-sub" id="dpaCorridasTit" style="margin:0; display:none;">Corridas</span>
+          <div class="dshchips" id="dpaCorridas" style="display:none;"></div>
         </div>
         <div class="revkpis" id="dpaKpis"></div>
       </div>
-      <div class="card audc dpa-vacio" id="dpaVacio">Elige una obra.</div>
+      <div class="card audc" id="dpaListaCaja">
+        <div class="audh">Auditorías <span class="muted" id="dpaListaN"></span>
+          <div style="flex:1"></div>
+          <span class="audley"><i style="background:#DC2626"></i>alta <i style="background:#D97706"></i>media
+            <i style="background:#687582"></i>aviso</span>
+        </div>
+        <div class="audbd" style="max-height:none;"><table class="audt" id="dpaLista"></table></div>
+      </div>
+      <div class="card audc dpa-vacio" id="dpaVacio" style="display:none;"></div>
       <div class="dpa-cuerpo" id="dpaCuerpo" style="display:none;">
         <div class="card audc dpa-izq">
           <div class="dpa-cab"><span class="dpa-tit">El edificio</span><span class="dpa-sub" style="margin:0 0 0 12px;">Color por</span>
@@ -910,6 +920,8 @@
   #audSubDeep .dshchips button.on{background:#EEF6E2; border-color:#7EBA27; color:#2E5B0B;}
   .dpa-barra{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px;}
   .dpa-obra{width:380px;} .dpa-obra input{width:100%;}
+  .dpa-linea{font-size:11.5px; color:#667085;}
+  #dpaLista tr.fila{cursor:pointer;} #dpaLista tr.fila:hover td{background:#F4F9EC;}
   .dpa-vacio{padding:24px; text-align:center; color:#667085; font-size:13px;}
   .dpa-cuerpo{display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:12px; align-items:start;}
   .dpa-cab{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px;}

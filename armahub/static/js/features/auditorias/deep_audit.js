@@ -7,6 +7,8 @@
 // los demás. Clic en un CC: su ventana, con sus hallazgos (confirmar o descartar, queda quién y
 // cuándo) y sus barras (la hoja estándar, con las marcas contra el modelo de A Detailer).
 //
+// LA PESTAÑA ABRE CON LO QUE YA EXISTE (usuario, 26-nov: «te faltó lo básico»): indicadores y la
+// lista de auditorías, como Auditorías. Una fila abre su corrida; «Todas las auditorías» vuelve.
 // Cada «Auditar» es una corrida nueva y queda guardada: arriba se elige cuál mirar.
 // El servidor: deep_audit.py (reglas) y las rutas /deep-audit en chequeos_api.py.
 (function (global) {
@@ -21,7 +23,7 @@
   var SERIES = ['#7EBA27', '#104F9E', '#FF8A00', '#8344AD', '#278E86', '#687582', '#DB3B3B'];
   var COLORES = [['estado', 'Estado'], ['cubicador', 'Cubicador'], ['hallazgos', 'Hallazgos']];
   var DPA = { obras: null, cb: null, job: '', obra: '', corridas: [], corrida: null, color: 'estado', familia: '',
-              corriendo: false, sondeo: null, n0: 0, modal: null };
+              corriendo: false, sondeo: null, modal: null, lista: [], vista: 'lista' };
   var _listo = false;
 
   function $(id) { return document.getElementById(id); }
@@ -184,6 +186,60 @@
     }).join('') : '';
   }
 
+  // ── LA ENTRADA: INDICADORES Y LA LISTA DE AUDITORÍAS ──────────────────────────────
+  function estadoRevision(c) {
+    if (!c.hallazgos || c.revisados >= c.hallazgos) return ['cerrada', 'Revisada'];
+    return c.revisados ? ['en_curso', 'En revisión'] : ['planificada', 'Por revisar'];
+  }
+
+  function barraGravedad(c) {
+    if (!c.hallazgos) return '<div class="audres" title="Sin hallazgos"></div>';
+    return '<div class="audres" title="Alta ' + c.alta + ' · media ' + c.media + ' · aviso ' + c.aviso + '">' +
+      ['alta', 'media', 'aviso'].map(function (g) {
+        return c[g] ? '<i style="width:' + (c[g] / c.hallazgos * 100).toFixed(1) + '%; background:' + GRAVEDAD[g] + '"></i>' : '';
+      }).join('') + '</div>';
+  }
+
+  function filaLista(c) {
+    var est = estadoRevision(c);
+    return '<tr class="fila" data-corrida="' + c.id + '" data-job="' + esc((c.jobs || [])[0]) + '" data-obra="' + esc(c.obra) + '">' +
+      '<td class="cc">DA-' + c.id + '</td><td>' + esc(c.obra) + '</td><td>' + fecha(c.creado_el) + '</td>' +
+      '<td>' + esc(c.creado_nombre || String(c.creado_por || '').split('@')[0]) + '</td>' +
+      '<td class="num">' + num(c.ccs) + '</td><td class="num">' + num(c.kg) + '</td><td class="num">' + c.hallazgos + '</td>' +
+      '<td class="num">' + c.revisados + '/' + c.hallazgos + '</td>' +
+      '<td><span class="audest ' + est[0] + '">' + est[1] + '</span></td><td>' + barraGravedad(c) + '</td></tr>';
+  }
+
+  function pintarLista() {
+    var l = DPA.lista, obras = {}, h = 0, pend = 0;
+    l.forEach(function (c) { obras[c.obra] = 1; h += c.hallazgos; pend += c.hallazgos - c.revisados; });
+    $('dpaKpis').innerHTML = kpi('', l.length, 'Auditorías', '') + kpi('', Object.keys(obras).length, 'Obras auditadas', '') +
+      kpi('', h, 'Hallazgos', '') + kpi(pend ? 'urge' : 'listo', pend, 'Por revisar', '');
+    $('dpaListaN').textContent = '· ' + l.length;
+    $('dpaLista').innerHTML = l.length
+      ? '<thead><tr><th>#</th><th>Obra</th><th>Fecha</th><th>Auditó</th><th class="num">CC</th><th class="num">Kg</th>' +
+        '<th class="num">Hallazgos</th><th class="num">Revisados</th><th>Estado</th><th>Gravedad</th></tr></thead><tbody>' +
+        l.map(filaLista).join('') + '</tbody>'
+      : '<tbody><tr><td class="audvacio">Todavía no hay auditorías. Elige una obra arriba y «Auditar».</td></tr></tbody>';
+  }
+
+  // Lo que se ve: la lista de entrada o una corrida.
+  function pintarVista() {
+    var enLista = DPA.vista === 'lista';
+    $('dpaListaCaja').style.display = enLista ? '' : 'none';
+    $('dpaVolver').style.display = enLista ? 'none' : '';
+    $('dpaCorridasTit').style.display = enLista ? 'none' : '';
+    $('dpaCorridas').style.display = enLista ? 'none' : '';
+    if (enLista) {
+      $('dpaVacio').style.display = 'none';
+      $('dpaCuerpo').style.display = 'none';
+      pintarLista();
+    } else {
+      pintarTodo();
+    }
+    estadoCarga();
+  }
+
   function pintarCorridas() {
     var ops = DPA.corridas.slice(0, 6).map(function (c) { return [String(c.id), fecha(c.creado_el) + ' · ' + c.hallazgos]; });
     chips('dpaCorridas', ops, DPA.corrida ? String(DPA.corrida.id) : '', function (v) { cargarCorrida(v); });
@@ -216,8 +272,7 @@
     $('dpaAuditar').textContent = DPA.corriendo ? 'Auditando…' : 'Auditar';
     $('dpaCarga').textContent = DPA.corriendo ? 'Leyendo aSa: uno o dos minutos'
       : (DPA.corrida ? 'Corrida ' + DPA.corrida.id + ' · ' + fecha(DPA.corrida.creado_el) + ' · ' + nom(DPA.corrida.creado_nombre || DPA.corrida.creado_por) : '');
-    $('dpaVacio').textContent = !DPA.job ? 'Elige una obra.'
-      : DPA.corriendo ? 'Auditando la obra…' : 'Esta obra no tiene auditorías. «Auditar» corre la primera.';
+    $('dpaVacio').textContent = DPA.corriendo ? 'Auditando la obra…' : 'Esta obra no tiene auditorías. «Auditar» corre la primera.';
   }
 
   // ── LA VENTANA DEL CC ──────────────────────────────────────────────────────────
@@ -323,21 +378,49 @@
     }
   }
 
+  async function cargarLista() {
+    var d = await global.apiGet('/deep-audit/corridas');
+    DPA.lista = (d && d.corridas) || [];
+    DPA.corriendo = !!(d && d.corriendo);
+    pintarVista();
+    if (DPA.corriendo) sondear();
+  }
+
   function elegirObra(it) {
     DPA.job = it.id;
     DPA.obra = it.label;
     DPA.corrida = null;
     DPA.familia = '';
+    DPA.vista = 'corrida';
     cargarCorridas();
   }
 
-  async function cargarCorridas() {
+  // Una fila de la lista: esa corrida, con su obra puesta en el campo.
+  function abrirCorrida(id, job, obra) {
+    DPA.job = job;
+    DPA.obra = obra || '';
+    DPA.familia = '';
+    DPA.vista = 'corrida';
+    if (DPA.cb) DPA.cb.setValor({ id: job, label: DPA.obra });
+    cargarCorridas(Number(id));
+  }
+
+  function volver() {
+    DPA.vista = 'lista';
+    DPA.corrida = null;
+    DPA.job = '';
+    if (DPA.cb) DPA.cb.limpiar();
+    cargarLista();
+  }
+
+  // Las corridas de la obra; abre la pedida o, si no, la más nueva.
+  async function cargarCorridas(pedida) {
     var d = await global.apiGet('/deep-audit/corridas?job=' + encodeURIComponent(DPA.job));
     DPA.corridas = (d && d.corridas) || [];
     DPA.corriendo = !!(d && d.corriendo);
-    if (DPA.corridas.length && (!DPA.corrida || DPA.corridas[0].id !== DPA.corrida.id)) await cargarCorrida(DPA.corridas[0].id);
-    else pintarTodo();
-    estadoCarga();
+    var id = pedida || (DPA.corridas[0] && DPA.corridas[0].id);
+    if (id && (!DPA.corrida || DPA.corrida.id !== id)) await cargarCorrida(id);
+    else pintarVista();
     if (DPA.corriendo) sondear();
   }
 
@@ -345,14 +428,16 @@
     var d = await global.apiGet('/deep-audit/corridas/' + id);
     if (!d) { aviso('No se pudo cargar la corrida.'); return; }
     DPA.corrida = d;
-    pintarTodo();
-    estadoCarga();
+    pintarVista();
   }
 
   // Mientras audita, la lista de corridas se vuelve a pedir hasta que aparece la nueva.
   function sondear() {
     if (DPA.sondeo) return;
-    DPA.sondeo = setTimeout(function () { DPA.sondeo = null; cargarCorridas(); }, 10000);
+    DPA.sondeo = setTimeout(function () {
+      DPA.sondeo = null;
+      if (DPA.vista === 'lista') cargarLista(); else cargarCorridas();
+    }, 10000);
   }
 
   async function auditar() {
@@ -366,8 +451,9 @@
 
   // ── EVENTOS ────────────────────────────────────────────────────────────────────
   function clic(e) {
-    var f = e.target.closest('[data-cc],[data-fam],[data-h]');
+    var f = e.target.closest('[data-cc],[data-fam],[data-h],[data-corrida]');
     if (!f) return;
+    if (f.dataset.corrida) { abrirCorrida(f.dataset.corrida, f.dataset.job, f.dataset.obra); return; }
     if (f.dataset.h) { validar(f.dataset.h, f.dataset.val); return; }
     if (f.dataset.fam != null && !f.dataset.cc) { DPA.familia = f.dataset.fam; pintarEdificio(); pintarFamilias(); return; }
     abrirCc(f.dataset.cc);
@@ -378,6 +464,7 @@
   function enganchar() {
     $('audSubDeep').addEventListener('click', clic);
     $('dpaAuditar').addEventListener('click', auditar);
+    $('dpaVolver').addEventListener('click', volver);
     $('dpaCerrar').addEventListener('click', cerrarModal);
     var m = $('dpaModal'), desde = null;
     m.addEventListener('mousedown', function (e) { desde = e.target; });
@@ -389,11 +476,13 @@
     if (!_listo) { _listo = true; enganchar(); }
     estadoCarga();
     await cargarObras();
-    if (DPA.job) cargarCorridas();
+    if (DPA.vista === 'corrida' && DPA.job) cargarCorridas(DPA.corrida && DPA.corrida.id);
+    else cargarLista();
   };
 
   global.__deepAuditTest = { DPA: DPA, filaPiso: filaPiso, enGrilla: enGrilla, cmpPiso: cmpPiso, cmpCiclo: cmpCiclo,
                              edificio: edificio, porCc: porCc, peor: peor, familias: familias, colorDe: colorDe,
                              colorCubicador: colorCubicador, ficha: ficha, filaHallazgo: filaHallazgo, filaBarra: filaBarra,
-                             ESTADO: ESTADO, GRAVEDAD: GRAVEDAD, cargarCorridas: cargarCorridas, abrirCc: abrirCc };
+                             ESTADO: ESTADO, GRAVEDAD: GRAVEDAD, cargarCorridas: cargarCorridas, abrirCc: abrirCc,
+                             filaLista: filaLista, estadoRevision: estadoRevision, barraGravedad: barraGravedad };
 })(window);

@@ -77,5 +77,19 @@ check('la barra marcada: marca fuera del modelo y su elemento fuera de orden', f
       && fb.propias[0].includes('Fuera del modelo') && fb.propias[0].includes('Elemento fuera de orden: CB antes que TC')
       && fb.barra.lados.B === 106 && fb.elemento === '29-G');
 
+console.log('La lista de entrada');
+const corrida = { id: 1, obra: 'PL - EDIFICIO OPERA', jobs: ['2013218', '2013218B'], creado_el: '2026-11-26T15:47:00+00:00',
+                  creado_por: 'eugenio.z@x.cl', creado_nombre: null, ccs: 39, kg: 263425.6, hallazgos: 75, revisados: 0,
+                  alta: 2, media: 36, aviso: 37 };
+const fl = T.filaLista(corrida);
+check('cada auditoría en una fila que la abre: número, obra, CC, kilos, hallazgos y revisados',
+      fl.includes('data-corrida="1"') && fl.includes('data-job="2013218"') && fl.includes('DA-1') && fl.includes('PL - EDIFICIO OPERA')
+      && fl.includes('263.426') && fl.includes('0/75'));
+check('el estado de la revisión', T.estadoRevision(corrida)[1] === 'Por revisar'
+      && T.estadoRevision(Object.assign({}, corrida, { revisados: 10 }))[1] === 'En revisión'
+      && T.estadoRevision(Object.assign({}, corrida, { revisados: 75 }))[1] === 'Revisada');
+check('la barrita de gravedad (alta, media, aviso)', T.barraGravedad(corrida).includes(T.GRAVEDAD.alta)
+      && T.barraGravedad(corrida).includes('Alta 2'));
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTodo OK');
 process.exit(fallos ? 1 : 0);

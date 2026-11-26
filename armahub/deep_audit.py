@@ -526,15 +526,27 @@ def jobs_de(cur, job: str) -> list:
     return [j for j in (job, job + "B") if j in hay] or [job]
 
 
-def corridas(cur, job: str) -> list:
-    """Las corridas de una obra, la más nueva primero."""
+_CLAVES_CORRIDA = ("id", "obra", "jobs", "creado_el", "creado_por", "creado_nombre", "ccs", "kg", "hallazgos",
+                   "revisados", "alta", "media", "aviso")
+
+
+def corridas(cur, job: Optional[str] = None) -> list:
+    """Las corridas, la más nueva primero: todas (la lista de entrada de la pestaña) o las de
+    una obra. Con lo que dice la fila: CC, kilos, hallazgos por gravedad y cuántos revisados."""
     from .material import nombre_de
-    cur.execute("""SELECT d.id, d.creado_el, d.creado_por, %s, d.version, d.kpis->'ccs_con_hallazgos',
-                          (SELECT COUNT(*) FROM deep_audit_hallazgo h WHERE h.audit_id = d.id),
-                          (SELECT COUNT(*) FROM deep_audit_hallazgo h WHERE h.audit_id = d.id AND h.estado <> 'pendiente')
-                     FROM deep_audit d WHERE %%s = ANY(d.jobs) ORDER BY d.creado_el DESC""" % nombre_de("d.creado_por"), (job,))
-    return [{"id": r[0], "creado_el": r[1].isoformat(), "creado_por": r[2], "creado_nombre": r[3], "version": r[4],
-             "ccs_con_hallazgos": r[5], "hallazgos": r[6], "revisados": r[7]} for r in cur.fetchall()]
+    cur.execute("""SELECT d.id, d.obra, d.jobs, d.creado_el, d.creado_por, %s, d.kpis->'ccs', d.kpis->'kg_total',
+                          COUNT(h.id), COUNT(h.id) FILTER (WHERE h.estado <> 'pendiente'),
+                          COUNT(h.id) FILTER (WHERE h.gravedad = 'alta'), COUNT(h.id) FILTER (WHERE h.gravedad = 'media'),
+                          COUNT(h.id) FILTER (WHERE h.gravedad = 'aviso')
+                     FROM deep_audit d LEFT JOIN deep_audit_hallazgo h ON h.audit_id = d.id
+                    WHERE %%s::text IS NULL OR %%s = ANY(d.jobs)
+                    GROUP BY d.id ORDER BY d.creado_el DESC""" % nombre_de("d.creado_por"), (job, job))
+    out = []
+    for r in cur.fetchall():
+        c = dict(zip(_CLAVES_CORRIDA, r))
+        c["creado_el"] = c["creado_el"].isoformat()
+        out.append(c)
+    return out
 
 
 def _hallazgo(r, nombres) -> dict:
