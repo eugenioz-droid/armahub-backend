@@ -124,6 +124,30 @@ check('elegido: marcado y con la cantidad que se puso (una devolución incomplet
       && fi.propias[0].includes('value="12"') && fi.attrs.includes('bueno'));
 I.sel = {};
 
+console.log('Ingresar: la línea de pasos dice lo elegido');
+const P = [['obra', 'Obra'], ['cc', 'CC'], ['items', 'Ítems'], ['datos', 'Datos']];
+I.obra = { id: '2013218', label: 'PL - EDIFICIO OPERA' }; I.cc = 'SVXV'; I.items = [{ obra: 'OTRA' }]; I.sel = { 7: 2, 8: 1 };
+check('en Datos: la obra, el CC y cuántos ítems', T.etiquetaPaso(P[0], 0, 3) === 'Obra: PL - EDIFICIO OPERA'
+      && T.etiquetaPaso(P[1], 1, 3) === 'CC: SVXV' && T.etiquetaPaso(P[2], 2, 3) === 'Ítems (2)' && T.etiquetaPaso(P[3], 3, 3) === 'Datos');
+check('en el paso CC todavía no hay CC que mostrar', T.etiquetaPaso(P[1], 1, 1) === 'CC');
+I.obra = null;
+check('con «Tengo el CC» la obra sale de los ítems', T.etiquetaPaso(P[0], 0, 2) === 'Obra: OTRA');
+I.items = []; I.sel = {}; I.cc = '';
+check('sin nada elegido, sólo el nombre del paso', T.etiquetaPaso(P[0], 0, 0) === 'Obra');
+
+console.log('El fondo cierra la ventana sólo si el clic empezó ahí');
+function modalFalso() {
+  const h = {};
+  return { addEventListener: (ev, f) => { h[ev] = f; }, disparar: (ev, target) => h[ev]({ target }) };
+}
+let cerrada = 0;
+const mf = modalFalso();
+T.fondoCierra(mf, () => { cerrada++; });
+mf.disparar('mousedown', 'opcion-de-la-lista'); mf.disparar('click', mf);
+check('elegir de la lista y soltar sobre el fondo NO cierra (el bug del 26-nov)', cerrada === 0);
+mf.disparar('mousedown', mf); mf.disparar('click', mf);
+check('un clic que empieza y termina en el fondo sí cierra', cerrada === 1);
+
 console.log('La ventana de la barra: qué hacer');
 check('tal cual', V.queHacer({ piezas: 1, cortes: [] }) === 'Tal cual');
 check('cortar una pata', V.queHacer({ piezas: 1, cortes: [['B', 50]] }) === 'Cortar B 5 cm');

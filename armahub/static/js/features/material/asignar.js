@@ -339,7 +339,6 @@
   function cerrar() { mostrar('matAsig', false); }
 
   function clic(e) {
-    if (e.target === $('matAsig')) { cerrar(); return; }
     var el = e.target.closest('[data-quitar],[data-confirmar],[data-asig]');
     if (!el || el.disabled) return;
     if (el.dataset.quitar) { quitar(el.dataset.quitar); return; }
@@ -362,6 +361,7 @@
     if (_enganchado) return;
     _enganchado = true;
     var m = $('matAsig');
+    C().fondoCierra(m, cerrar);   // el fondo cierra sólo si el clic empezó ahí
     m.addEventListener('click', clic);
     m.addEventListener('change', cambio);
     m.addEventListener('input', function (e) { if (e.target.matches('[data-cant]')) cambiaCantidad(e.target); });

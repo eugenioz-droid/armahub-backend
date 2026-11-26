@@ -193,6 +193,7 @@
     var cc = $('matIngCc').value.trim();
     if (!cc) return;
     $('matIngCc').value = '';
+    ING.obra = null;
     abrirIngreso('asa');
     cargarItems(cc);
   }
@@ -221,16 +222,28 @@
     mostrar('matListo', paso === 'listo');
     mostrar('matGuardarOtro', !asa);
     mostrar('matPasos', asa && paso !== 'listo');
+    if (paso === 'obra' && ING.cbObra) ING.cbObra.limpiar();
     pintarPasos();
   }
 
-  // La línea de avance: lo hecho se puede volver a abrir con un clic.
+  // La línea de avance: lo hecho se puede volver a abrir con un clic, y DICE LO ELEGIDO
+  // (usuario, 26-nov: «se pierden los datos de la obra y el CC cuando avanzas»).
+  function obraElegida() { return ING.obra ? ING.obra.label : ((ING.items[0] || {}).obra || ''); }
+
+  function etiquetaPaso(p, i, hasta) {
+    var n = Object.keys(ING.sel).length;
+    if (p[0] === 'obra' && obraElegida()) return 'Obra: ' + obraElegida();
+    if (p[0] === 'cc' && ING.cc && i < hasta) return 'CC: ' + ING.cc;
+    if (p[0] === 'items' && n && i < hasta) return 'Ítems (' + n + ')';
+    return p[1];
+  }
+
   function pintarPasos() {
     var hasta = PASOS.map(function (p) { return p[0]; }).indexOf(ING.paso);
     $('matPasos').innerHTML = PASOS.map(function (p, i) {
       var clase = i === hasta ? ' is-on' : (i < hasta ? ' hecho' : '');
       return '<button type="button" class="mat-paso' + clase + '" data-paso="' + p[0] + '"' +
-             (i < hasta ? '' : ' disabled') + '>' + esc(p[1]) + '</button>';
+             (i < hasta ? '' : ' disabled') + '>' + esc(etiquetaPaso(p, i, hasta)) + '</button>';
     }).join('<span class="mat-linea">›</span>');
   }
 
@@ -261,6 +274,9 @@
 
   async function elegirObra(it) {
     ING.obra = it;
+    ING.cc = '';
+    ING.items = [];
+    ING.sel = {};
     ING.ccFiltro = '';
     $('matCcFiltro').value = '';
     $('matCcs').innerHTML = '<div class="mat-vacio">Cargando los códigos de ' + esc(it.label) + '…</div>';
@@ -306,6 +322,7 @@
     var d = await global.apiGet('/material/cc/' + encodeURIComponent(cc) + '/items');
     ING.items = (d && d.items) || [];
     pintarItems();
+    pintarPasos();
   }
 
   function filaItem(it) {
@@ -613,7 +630,6 @@
   }
 
   function clicModal(e) {
-    if (e.target === $('matModal')) { cerrarIngreso(); return; }
     var el = e.target.closest('[data-paso],tr[data-cc],[data-fig]');
     if (!el || el.disabled) return;
     if (el.dataset.paso) irA(el.dataset.paso);
@@ -627,7 +643,17 @@
     else if (t.matches('[data-cant]')) cambiaCantidad(t);
   }
 
+  // CERRAR CON UN CLIC EN EL FONDO, SÓLO SI EL CLIC EMPEZÓ AHÍ (26-nov). La lista de obras
+  // sobresale de la ventana: al elegir una de abajo, el botón se soltaba sobre el fondo y el
+  // navegador lo cuenta como clic en el fondo; la ventana se cerraba recién elegida la obra.
+  function fondoCierra(modal, alCerrar) {
+    var desde = null;
+    modal.addEventListener('mousedown', function (e) { desde = e.target; });
+    modal.addEventListener('click', function (e) { if (e.target === modal && desde === modal) alCerrar(); });
+  }
+
   function enganchar() {
+    fondoCierra($('matModal'), cerrarIngreso);
     $('matIngCrear').addEventListener('click', function () { abrirIngreso('mano'); });
     $('matIngCcIr').addEventListener('click', ingresarCc);
     $('matIngCc').addEventListener('keydown', function (e) { if (e.key === 'Enter') ingresarCc(); });
@@ -662,11 +688,12 @@
 
   // Lo que usa la ventana de la barra (asignar.js).
   global.MaterialComun = { esc: esc, num: num, ok: ok, errorDe: errorDe, barraHoja: barraHoja, tablaBarras: tablaBarras,
-                           fechaHora: fechaHora, recargar: function () { return cargar(); } };
+                           fechaHora: fechaHora, fondoCierra: fondoCierra, recargar: function () { return cargar(); } };
 
   global.__materialTest = { MAT: MAT, ING: ING, pasa: pasa, resumen: resumen, ladosCm: ladosCm, barraHoja: barraHoja,
                             filaHoja: filaHoja, figuraPasa: figuraPasa, completa: completa,
                             ccPasa: ccPasa, filaCc: filaCc, filaItem: filaItem, elegirObra: elegirObra,
                             cargarItems: cargarItems, aDatos: aDatos, marcar: marcar, abrirIngreso: abrirIngreso,
-                            filaResumen: filaResumen, fechaHora: fechaHora, asignacionDe: asignacionDe };
+                            filaResumen: filaResumen, fechaHora: fechaHora, asignacionDe: asignacionDe,
+                            etiquetaPaso: etiquetaPaso, fondoCierra: fondoCierra };
 })(window);
