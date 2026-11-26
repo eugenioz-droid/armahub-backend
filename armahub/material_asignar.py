@@ -11,6 +11,10 @@ Desde la ventana de una barra disponible (usuario, 25-nov):
     quién y cuándo). Sin saldo y con todo confirmado, la barra queda CONSUMIDA y pasa al
     Resumen.
 
+LA ÚLTIMA BÚSQUEDA QUEDA GUARDADA (usuario, 26-nov: «no me lo dejó guardado; tengo que volver
+a buscar»): cada búsqueda reemplaza las filas de esa barra en material_coincidencias y la
+ventana las muestra con su hora; lo que falta y el tope se rehacen con el saldo de hoy.
+
 Antes de guardar se vuelve a mirar cada ítem en aSa: que siga por fabricar y que siga
 calzando (25-nov: dos ítems se borraron de su CC después de la búsqueda). Las cantidades se
 rebajan sólo acá; en aSa lo maneja producción.
@@ -150,18 +154,59 @@ def asignaciones(cur, barra_id: int) -> list:
     return [_asignacion(r) for r in cur.fetchall()]
 
 
+# Lo que se guarda de cada coincidencia (y se lee igual).
+_COIN = ("item_key", "cc", "marca", "obra", "cliente", "descr_cc", "elemento", "ubicacion", "estado_asa", "figura",
+         "lados", "tipo", "cortes", "piezas", "cant_item", "cubre", "kg_item", "kg_ahorro")
+
+
+def _guardar(cur, barra_id: int, filas: list, cuando):
+    """Reemplaza la búsqueda guardada de esa barra."""
+    cur.execute("DELETE FROM material_coincidencias WHERE barra_id = %s", (barra_id,))
+    for c in filas:
+        valores = [json.dumps(c[k], ensure_ascii=False) if k in ("lados", "cortes") else c[k] for k in _COIN]
+        cur.execute("INSERT INTO material_coincidencias (barra_id, %s, buscado_el) VALUES (%%s, %s, %%s)"
+                    % (", ".join(_COIN), ", ".join(["%s"] * len(_COIN))), [barra_id] + valores + [cuando])
+    cur.execute("UPDATE material_barras SET coin_buscado_el = %s WHERE id = %s", (cuando, barra_id))
+
+
+def coincidencia_guardada(r) -> dict:
+    """Una fila guardada como la entrega la búsqueda."""
+    c = dict(zip(_COIN, r))
+    for k in ("cant_item", "cubre", "kg_item", "kg_ahorro"):
+        c[k] = float(c[k]) if c[k] is not None else 0.0
+    return c
+
+
+def _con_saldos(cur, filas: list, saldo: int) -> list:
+    ya = _ya_asignado(cur, {c["item_key"] for c in filas})
+    return [con_saldo(c, ya.get(int(c["item_key"]), 0.0), saldo) for c in filas]
+
+
+def guardadas(cur, barra_id: int, saldo: int) -> dict:
+    """La última búsqueda de la barra, con lo que le falta hoy a cada ítem. Sin búsqueda,
+    coincidencias = None (no es lo mismo que buscar y no encontrar nada)."""
+    cur.execute("SELECT coin_buscado_el FROM material_barras WHERE id = %s", (barra_id,))
+    cuando = (cur.fetchone() or [None])[0]
+    if not cuando:
+        return {"coincidencias": None, "buscado_el": None}
+    cur.execute("SELECT %s FROM material_coincidencias WHERE barra_id = %%s ORDER BY (tipo <> 'igual'), kg_ahorro DESC, id"
+                % ", ".join(_COIN), (barra_id,))
+    filas = [coincidencia_guardada(r) for r in cur.fetchall()]
+    return {"coincidencias": _con_saldos(cur, filas, saldo), "buscado_el": cuando.isoformat()}
+
+
 def detalle(cur, barra_id: int) -> dict:
-    """La barra y lo que ya se le asignó."""
-    return {"barra": _barra(cur, barra_id), "asignaciones": asignaciones(cur, barra_id)}
+    """La barra, lo que ya se le asignó y su última búsqueda."""
+    b = _barra(cur, barra_id)
+    return dict(guardadas(cur, barra_id, b["cant_disponible"]), barra=b, asignaciones=asignaciones(cur, barra_id))
 
 
 def coincidencias(cur, barra_id: int) -> dict:
-    """La búsqueda en el momento, con lo que le falta a cada ítem y el tope de barras."""
+    """La búsqueda en el momento, guardada, con lo que le falta a cada ítem y el tope de barras."""
     saldo = _barra(cur, barra_id)["cant_disponible"]
-    filas = B.buscar_barra(cur, barra_id)
-    ya = _ya_asignado(cur, {c["item_key"] for c in filas})
-    return {"coincidencias": [con_saldo(c, ya.get(int(c["item_key"]), 0.0), saldo) for c in filas],
-            "buscado_el": _ahora().isoformat()}
+    filas, cuando = B.buscar_barra(cur, barra_id), _ahora()
+    _guardar(cur, barra_id, filas, cuando)
+    return {"coincidencias": _con_saldos(cur, filas, saldo), "buscado_el": cuando.isoformat()}
 
 
 def _items_en_asa(keys: list) -> dict:

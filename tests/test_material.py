@@ -18,6 +18,7 @@ Correr con: python tests/test_material.py
 import json
 import os
 import sys
+from decimal import Decimal
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -228,6 +229,16 @@ for nombre, args, texto in (
         check("rechaza " + nombre, False)
     except M.ErrorMaterial as e:
         check("rechaza " + nombre, texto in str(e))
+
+print("La búsqueda guardada (26-nov)")
+fila = (11, "SU6S", "8mmA375", "OBRA A", "CLIENTE", "Losa PL-151", "LOSA", "Losa PL-151 - 01", "Open", None,
+        [{"nombre": "A", "largo": 2000.0}], "igual", [], 1, Decimal("98.00"), Decimal("98.00"), Decimal("77.30"),
+        Decimal("77.30"))
+cg = A.coincidencia_guardada(fila)
+check("una fila guardada vuelve como la entrega la búsqueda (números, no Decimal)",
+      cg["item_key"] == 11 and cg["cant_item"] == 98.0 and isinstance(cg["kg_item"], float) and cg["ubicacion"] == "Losa PL-151 - 01")
+check("...y con lo que falta y el tope de hoy", A.con_saldo(cg, 90.0, 139)["tope_barras"] == 8)
+check("se guarda todo lo que la ventana muestra", set(A._COIN) >= set(B.CAMPOS_ITEM) | {"tipo", "cortes", "piezas", "kg_item"})
 
 print("\nFALLOS: %d" % fallos if fallos else "\nTODO OK")
 sys.exit(1 if fallos else 0)

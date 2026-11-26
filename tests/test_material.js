@@ -194,15 +194,20 @@ const f3 = V.filaCoin(AS.coin[2]);
 check('un ítem ya cubierto: sin check ni campo', f3.check === '' && f3.propias[1].includes('Cubierto'));
 check('mientras busca, avisa que puede tardar', (AS.buscando = true) && V.textoCoin().includes('hasta un minuto'));
 AS.buscando = false;
-AS.sel = {};
-V.ajustarCoin(1, 60);
-AS.barra.cant_disponible = 40;
-V.topes();
-check('después de asignar se rehace lo que falta y el tope, sin volver a aSa',
-      AS.coin[0].falta === 38 && AS.coin[0].tope_barras === 38 && AS.coin[1].tope_barras === 34);
-AS.barra.cant_disponible = 20;
-V.topes();
-check('...y el tope nunca pasa el saldo', AS.coin[0].tope_barras === 20 && AS.coin[2].tope_barras === 0);
+
+console.log('La ventana de la barra: la última búsqueda queda guardada');
+const guardada = AS.coin.map(c => Object.assign({}, c));
+AS.coin = null; AS.buscadoEl = null; AS.sel = { 1: 10, 3: 5 };
+V.ponerDetalle({ barra: AS.barra, asignaciones: [], coincidencias: guardada, buscado_el: '2026-11-26T13:15:00+00:00' });
+check('al abrir, la última búsqueda con su hora (no hay que volver a buscar)',
+      AS.coin.length === 3 && AS.buscadoEl === '2026-11-26T13:15:00+00:00' && V.textoCoin().startsWith('Buscado '));
+check('lo elegido que ya no tiene tope se suelta; lo demás queda', AS.sel['1'] === 10 && AS.sel['3'] === undefined);
+V.ponerDetalle({ barra: AS.barra, asignaciones: [], coincidencias: null, buscado_el: null });
+check('una barra que nunca se buscó: sin lista, con el botón «Buscar coincidencias»', AS.coin === null && V.textoCoin() === '');
+AS.buscando = true; AS.coin = guardada;
+V.ponerDetalle({ barra: AS.barra, asignaciones: [], coincidencias: null, buscado_el: null });
+check('mientras busca, una respuesta del detalle no pisa la búsqueda en curso', AS.coin === guardada);
+AS.buscando = false; AS.sel = {};
 
 console.log('La ventana de la barra: lo asignado');
 const pend = { id: 9, item_key: 1, cc: 'SU6S', marca: '8mmA375', estado_asa: 'Open', obra: 'OBRA A', dims: { A: 2000 },

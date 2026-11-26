@@ -3,7 +3,8 @@
 // Se abre con «Asignar» en la lista. Arriba la barra y su saldo; después lo ya asignado, con el
 // check de producción («Producido»: queda quién y cuándo) y «Quitar» mientras no se produzca;
 // abajo «Buscar coincidencias», que le pregunta a aSa en el momento, y se reparten las barras
-// entre los ítems que se quiera (el saldo que queda se asigna después). Al pie, Editar y Dar de
+// entre los ítems que se quiera (el saldo que queda se asigna después). La última búsqueda
+// queda guardada: al volver a abrir la barra se ve con su hora (usuario, 26-nov). Al pie, Editar y Dar de
 // baja. Sin saldo y con todo confirmado, la barra pasa al Resumen.
 //
 // Las piezas comunes (la hoja, el dibujo, los textos) vienen de index.js (MaterialComun).
@@ -198,26 +199,20 @@
     pintarPie();
   }
 
-  // Después de asignar o quitar, lo que le falta a cada ítem y el tope se rehacen acá, sin
-  // volver a preguntarle a aSa.
-  function ajustarCoin(itemKey, piezas) {
-    var c = coinPorClave(itemKey);
-    if (!c) return;
-    c.ya_asignado += piezas;
-    c.falta = Math.max(c.cant_item - c.ya_asignado, 0);
-  }
-
-  function topes() {
-    (AS.coin || []).forEach(function (c) {
-      c.tope_barras = c.falta > 0 ? Math.min(AS.barra.cant_disponible, Math.ceil(c.falta / (c.piezas || 1))) : 0;
-    });
-  }
-
   // ── LO QUE SE LE PIDE AL SERVIDOR ─────────────────────────────────────────────
+  // Lo que manda el servidor: la barra, lo asignado y la última búsqueda guardada, con lo que
+  // le falta hoy a cada ítem. Lo elegido que ya no tiene tope se suelta.
   function ponerDetalle(d) {
     AS.barra = d.barra;
     AS.asignaciones = d.asignaciones || [];
-    topes();
+    if (!AS.buscando) {
+      AS.coin = d.coincidencias || null;
+      AS.buscadoEl = d.buscado_el || null;
+    }
+    Object.keys(AS.sel).forEach(function (k) {
+      var c = coinPorClave(k);
+      if (!c || !c.tope_barras) delete AS.sel[k];
+    });
     pintarTodo();
   }
 
@@ -251,10 +246,6 @@
     bt.disabled = true;
     var r = await global.apiPostJson('/material/barras/' + AS.id + '/asignar', cuerpo);
     if (!r || r.detail) { bt.disabled = false; error(C().errorDe(r, 'No se pudo asignar.')); return; }
-    cuerpo.items.forEach(function (p) {
-      var c = coinPorClave(p.item_key);
-      ajustarCoin(p.item_key, Math.min(p.cantidad * (c.piezas || 1), c.falta));
-    });
     AS.sel = {};
     ponerDetalle(r);
     C().ok('Asignado');
@@ -262,10 +253,8 @@
   }
 
   async function quitar(id) {
-    var a = AS.asignaciones.filter(function (x) { return String(x.id) === String(id); })[0];
     var r = await global.apiPostJson('/material/asignaciones/' + id + '/quitar', {});
     if (!r || r.detail) { error(C().errorDe(r, 'No se pudo quitar.')); return; }
-    if (a) ajustarCoin(a.item_key, -a.cant_piezas);
     ponerDetalle(r);
     C().recargar();
   }
@@ -370,7 +359,6 @@
 
   global.MaterialAsignar = { abrir: abrir };
   global.__materialAsignarTest = { AS: AS, queHacer: queHacer, filaCoin: filaCoin, filaAsignada: filaAsignada,
-                                   problema: problema, usado: usado, marcar: marcar, ajustarCoin: ajustarCoin,
-                                   topes: topes, cuerpoAsignar: cuerpoAsignar, editorHtml: editorHtml,
-                                   textoCoin: textoCoin };
+                                   problema: problema, usado: usado, marcar: marcar, ponerDetalle: ponerDetalle,
+                                   cuerpoAsignar: cuerpoAsignar, editorHtml: editorHtml, textoCoin: textoCoin };
 })(window);
