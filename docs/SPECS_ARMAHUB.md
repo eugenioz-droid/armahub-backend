@@ -2190,9 +2190,12 @@ tarjeta, y si llega tarde, se intentó).
   entre varios ítems; el saldo sigue disponible.
 
 **Cuándo corre.** En el momento, desde la ventana de una barra («Buscar coincidencias»), y sólo
-para esa barra. No se guarda: lo que se ve es lo vivo en aSa. Ya no hay pasada de las 06:00 ni
-lista general (25-nov: una lista guardada a las 15:24 mostraba dos ítems que se borraron de su
-CC después). Antes de guardar una asignación se vuelve a mirar cada ítem en aSa.
+para esa barra. Ya no hay pasada de las 06:00 ni lista general. **La última búsqueda de cada
+barra queda guardada** (usuario, 26-nov: «no me lo dejó guardado; tengo que volver a buscar»):
+al abrir la barra se ve con su hora («Buscado 26-11 09:05 · 40 ítems») y «Buscar de nuevo» la
+reemplaza; lo que le falta a cada ítem y el tope se rehacen con el saldo de hoy. Como puede
+haber cambiado algo en aSa desde esa hora (25-nov: dos ítems se borraron de su CC después de
+la búsqueda), antes de guardar una asignación se vuelve a mirar cada ítem en aSa.
 
 **Cuánto tarda (medido 25-nov).** Una consulta sumada a aSa por barra (su φ, grado y forma):
 940 rectas φ8 de hasta 2 m en 10-15 s; una vez, con aSa lento, 62 s. La pantalla avisa que
@@ -2251,8 +2254,9 @@ barras usadas · ítems cubiertos. Pendiente: gráfico de kilos reutilizados por
 Tablas: `material_barras` (origen, motivo, figura con sus lados, φ, grado, cantidades,
 ubicación, estado: disponible · agotada · consumida · descartada, quién/cuándo) y
 `material_asignaciones` (184: ítem de destino con lo que muestra la pantalla, barras, piezas,
-kilos, quién asignó y quién confirmó producción). `material_coincidencias` (182) ya no se usa
-desde que la búsqueda es en el momento; se borra cuando se autorice. Lógica de la búsqueda en un módulo propio sin rutas,
+kilos, quién asignó y quién confirmó producción). `material_coincidencias` (182, con ubicación y
+kilos del ítem desde la 185) guarda la última búsqueda de cada barra, y
+`material_barras.coin_buscado_el` su hora (sin hora = nunca se buscó). Lógica de la búsqueda en un módulo propio sin rutas,
 funciones puras probadas con barras reales; rutas en un módulo de rutas propio; dibujo con la
 regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barras.js).
 
