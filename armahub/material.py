@@ -259,7 +259,7 @@ def _item_para_elegir(it: dict, trazos: dict) -> dict:
             "cc": _txt(it.get("CtrlCode")), "obra": it.get("JobName"), "cliente": it.get("CustomerName"),
             "descr_cc": it.get("OrderDescr"), "estado_asa": it.get("OrderStatusDescr"),
             "elemento": it.get("ElementDesc"), "marca": it.get("BarMark"), "notas": _txt(it.get("Notes")) or None,
-            "ubicacion": ubicacion_de(it) or None,
+            "ubicacion": ubicacion_de(it) or None, "eje_id": _txt(it.get("ElementID")) or None,
             "figura": _txt(it.get("ShpNameID")) or None, "diam": it.get("BarSizeDescr"),
             "grado": it.get("GradeID"), "dims": dims["dims"], "angulos": dims["angulos"],
             "cant": it.get("TotalQty"), "kg": it.get("LineWeight"), "largo": it.get("LengthTheor"),

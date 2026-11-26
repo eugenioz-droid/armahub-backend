@@ -1923,14 +1923,14 @@
   // LA CUARTA (24-nov): CC Confirmados Modificados, con su propio panel (confirmados.js).
   global.switchAudSub = function (sub) {
     var panel = { auditorias: 'audSubAuditorias', revision: 'audSubRevision', elementos: 'audSubRevision',
-                  confirmados: 'audSubConfirmados' };
+                  confirmados: 'audSubConfirmados', deep: 'audSubDeep' };
     var bts = { auditorias: 'audSubBtnAud', revision: 'audSubBtnRev', elementos: 'audSubBtnEl',
-                confirmados: 'audSubBtnConf' };
+                confirmados: 'audSubBtnConf', deep: 'audSubBtnDeep' };
     Object.keys(bts).forEach(function (k) {
       var b = $(bts[k]);
       if (b) b.classList.toggle('on', k === sub);
     });
-    ['audSubAuditorias', 'audSubRevision', 'audSubConfirmados'].forEach(function (id) {
+    ['audSubAuditorias', 'audSubRevision', 'audSubConfirmados', 'audSubDeep'].forEach(function (id) {
       var p = $(id);
       if (p) p.style.display = (panel[sub] === id) ? '' : 'none';
     });
@@ -1942,7 +1942,8 @@
       elementos: ['🔎 Revisión de elementos',
                   'Cada código se compara con el mismo ciclo del piso anterior: muros que faltan, kilos que se disparan, códigos repetidos. La señal sugiere; la decisión es de quien mira.'],
       confirmados: ['🔎 CC confirmados modificados',
-                    'Códigos confirmados en planta que se editaron después. Se revisa en cada carga de aSa.']
+                    'Códigos confirmados en planta que se editaron después. Se revisa en cada carga de aSa.'],
+      deep: ['🔎 Deep Audit', 'La auditoría a fondo de una obra: cómo va y qué hay que corregir. Cada corrida queda guardada.']
     };
     var t = $('audTitulo'), ba = $('audBajada');
     if (t) t.textContent = textos[sub][0];
@@ -1956,6 +1957,7 @@
       global.loadRevisionBarras();
     }
     if (sub === 'confirmados') global.loadCcConfirmados();
+    if (sub === 'deep' && global.loadDeepAudit) global.loadDeepAudit();
   };
 
   global.__revisionTest = { REV: REV, estadoTxt: ESTADO_TXT, REVS: REVS,

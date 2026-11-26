@@ -29,6 +29,7 @@
       <button id="audSubBtnRev" class="audsub" onclick="switchAudSub('revision')">Revisión de barras</button>
       <button id="audSubBtnEl" class="audsub" onclick="switchAudSub('elementos')">Revisión de elementos</button>
       <button id="audSubBtnConf" class="audsub" onclick="switchAudSub('confirmados')">CC Confirmados Modificados</button>
+      <button id="audSubBtnDeep" class="audsub" onclick="switchAudSub('deep')">Deep Audit</button>
     </div>
 
     <div id="audSubAuditorias">
@@ -415,6 +416,44 @@
         <div class="audbd" style="max-height:64vh;"><div id="ccmLista"></div></div>
       </div>
     </div><!-- fin sub-tab cc confirmados -->
+
+    <!-- DEEP AUDIT (26-nov, SPECS §16): la auditoría a fondo de una obra. El edificio en corte,
+         «Color por», los hallazgos por familia y la ventana de cada CC (deep_audit.js). -->
+    <div id="audSubDeep" style="display:none;">
+      <div class="card audc">
+        <div class="dpa-barra">
+          <div class="dpa-obra"><input type="text" id="dpaObra"></div>
+          <button id="dpaAuditar" class="audbtn" disabled>Auditar</button>
+          <span class="revcarga" id="dpaCarga"></span>
+          <div style="flex:1"></div>
+          <span class="dpa-sub" style="margin:0;">Corridas</span>
+          <div class="dshchips" id="dpaCorridas"></div>
+        </div>
+        <div class="revkpis" id="dpaKpis"></div>
+      </div>
+      <div class="card audc dpa-vacio" id="dpaVacio">Elige una obra.</div>
+      <div class="dpa-cuerpo" id="dpaCuerpo" style="display:none;">
+        <div class="card audc dpa-izq">
+          <div class="dpa-cab"><span class="dpa-tit">El edificio</span><span class="dpa-sub" style="margin:0 0 0 12px;">Color por</span>
+            <div class="dshchips" id="dpaColor"></div><span class="dpa-leyendas" id="dpaLeyenda"></span></div>
+          <div class="dpa-scroll"><div id="dpaMapa"></div></div>
+          <div id="dpaFuera"></div>
+        </div>
+        <div class="card audc dpa-der">
+          <div class="dpa-tit">Hallazgos</div>
+          <div id="dpaFamilias"></div>
+          <div id="dpaSueltos"></div>
+        </div>
+      </div>
+      <div id="dpaModal" class="dpa-modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="dpa-modal__caja">
+          <div class="dpa-modal__cab"><div id="dpaModalTit"></div><button type="button" class="dpa-bt" id="dpaCerrar">Cerrar</button></div>
+          <div class="dpa-modal__sub" id="dpaModalSub"></div>
+          <div class="dshchips" id="dpaModalTabs" style="margin-bottom:10px;"></div>
+          <div id="dpaModalCuerpo"></div>
+        </div>
+      </div>
+    </div><!-- fin sub-tab deep audit -->
 
   </div>
 </div>
@@ -864,6 +903,57 @@
   }
   /* ══════ EL FLUJO DE CHEQUEOS (13-oct) ══════ */
   .revcarga{font-size:10px; color:#546e7a; background:#eceff1; border-radius:99px; padding:1px 8px; margin-left:8px;}
+  /* DEEP AUDIT (26-nov): el edificio en corte. */
+  #audSubDeep .dshchips{display:flex; flex-wrap:wrap; gap:4px;}
+  #audSubDeep .dshchips button{font-size:11px; font-weight:600; padding:3px 9px; border-radius:4px; cursor:pointer;
+    background:#fff; border:1px solid #D9DDE3; color:#475467;}
+  #audSubDeep .dshchips button.on{background:#EEF6E2; border-color:#7EBA27; color:#2E5B0B;}
+  .dpa-barra{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px;}
+  .dpa-obra{width:380px;} .dpa-obra input{width:100%;}
+  .dpa-vacio{padding:24px; text-align:center; color:#667085; font-size:13px;}
+  .dpa-cuerpo{display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:12px; align-items:start;}
+  .dpa-cab{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px;}
+  .dpa-tit{font-size:14px; font-weight:700; color:#292D32;}
+  .dpa-sub{font-size:11px; font-weight:700; color:#667085; text-transform:uppercase; letter-spacing:.04em; margin:12px 0 6px;}
+  .dpa-leyendas{display:flex; flex-wrap:wrap; gap:10px; margin-left:auto;}
+  .dpa-ley{font-size:11px; color:#475467; display:inline-flex; align-items:center; gap:4px;}
+  .dpa-ley i{width:12px; height:12px; border-radius:3px; display:inline-block;}
+  .dpa-scroll{overflow-x:auto;}
+  .dpa-ed{border-collapse:separate; border-spacing:4px; min-width:100%;}
+  .dpa-ed th{font-size:11px; color:#667085; font-weight:700; text-align:center; padding:2px 4px;}
+  .dpa-ed td{vertical-align:top; background:#F7F8FA; border-radius:6px; padding:4px; min-width:150px;}
+  .dpa-ed th.dpa-piso{background:#F3F4F6; border-radius:6px; color:#292D32; font-size:12px; width:70px;}
+  .dpa-ed .dpa-tot{background:none; font-size:11px; color:#475467; text-align:right; min-width:60px; font-variant-numeric:tabular-nums;}
+  .dpa-ed tr.dpa-terreno td{background:none; border-top:2px dashed #A8B0BB; padding:0; height:10px; font-size:9px;
+    color:#98A2B3; text-align:right; min-width:0;}
+  .dpa-fichas{display:flex; flex-wrap:wrap; gap:4px;}
+  .dpa-ficha{display:block; width:100%; text-align:left; border:1px solid #D9DDE3; border-left:5px solid #D9DDE3;
+    border-radius:5px; padding:4px 6px; margin-bottom:4px; cursor:pointer; font:inherit; transition:opacity .15s;}
+  .dpa-fichas .dpa-ficha{width:auto; max-width:260px; margin:0;}
+  .dpa-ficha:hover, .dpa-ficha:focus-visible{border-color:#7EBA27; outline:none;}
+  .dpa-ficha b{font-size:12px; color:#171717;} .dpa-ficha small{display:block; font-size:10.5px; color:#475467;}
+  .dpa-ficha.apagada{opacity:.22;}
+  .dpa-n{float:right; font-size:10.5px; font-weight:700; border-radius:99px; padding:0 6px; color:#fff;}
+  .dpa-n.dpa-alta, .dpa-g.dpa-alta{background:#DC2626;} .dpa-n.dpa-media, .dpa-g.dpa-media{background:#D97706;}
+  .dpa-n.dpa-aviso, .dpa-g.dpa-aviso{background:#687582;}
+  .dpa-g{font-size:10px; font-weight:700; color:#fff; border-radius:4px; padding:1px 6px; text-transform:uppercase;}
+  .dpa-fam{display:flex; justify-content:space-between; width:100%; border:1px solid #E4E7EC; background:#fff; border-radius:6px;
+    padding:6px 8px; margin-bottom:4px; font:inherit; font-size:12.5px; cursor:pointer; text-align:left;}
+  .dpa-fam span{font-size:11px; color:#667085;} .dpa-fam.on{border-color:#7EBA27; background:#EEF6E2; font-weight:700;}
+  .dpa-suelto{font-size:12px; padding:5px 0; border-bottom:1px solid #F0F1F3;}
+  .dpa-modal{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:950; display:flex; align-items:flex-start;
+    justify-content:center; padding:24px 0; overflow-y:auto;}
+  .dpa-modal__caja{background:#fff; border-radius:8px; width:96%; max-width:1200px; margin:auto; padding:16px;}
+  .dpa-modal__cab{display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:15px; margin-bottom:4px;}
+  .dpa-modal__sub{font-size:12px; color:#475467; margin-bottom:10px;}
+  .dpa-bt{font-size:12px; font-weight:600; padding:4px 10px; border:1px solid #D9DDE3; background:#fff; border-radius:5px; cursor:pointer;}
+  .dpa-bt:hover{border-color:#7EBA27;}
+  .dpa-hall{display:flex; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid #F0F1F3; font-size:12.5px;}
+  .dpa-hall__txt{flex:1;} .dpa-quien{font-size:11px; color:#667085; margin-top:2px;}
+  .dpa-acc{display:flex; gap:4px;}
+  .dpa-hoja{max-height:62vh; overflow:auto;}
+  .dpa-hoja tr.dpa-obs td{background:#FEF0D9;}
+  @media (max-width:1000px){ .dpa-cuerpo{grid-template-columns:minmax(0,1fr);} .dpa-obra{width:100%;} }
   .revsend{display:grid; grid-template-columns:1fr 1fr; gap:14px; font-size:11.5px;}
   .revsend .revsenfig{grid-column:1 / -1; text-align:center; padding:8px; background:#fafafa; border:1px solid #eceff1; border-radius:6px;}
   .revsend dl{margin:0;} .revsend dt{font-size:10px; color:#90a4ae; text-transform:uppercase; letter-spacing:.3px;}

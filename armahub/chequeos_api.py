@@ -31,7 +31,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import cc_confirmados
+from . import cc_confirmados, deep_audit
 from .asa import AsaError
 from .auditorias import (PATRON_OBRAS_FUERA, ROLES_ADMINISTRAN, _avisar, alias_cubicador, correo_de_login,
                          _es_barra, _items_de, _puede_auditar, _puede_ver, refs_de_barras)
@@ -1793,3 +1793,87 @@ def cc_confirmados_revisar(user=Depends(get_current_user)):
     threading.Thread(target=_revisar_cc_confirmados, args=(user.get("email", ""),),
                      daemon=True).start()
     return {"lanzada": True}
+
+
+# ---------------------------------------------------------------------------
+# DEEP AUDIT (26-nov, SPECS §16): la auditoría a fondo de una obra. La lógica vive en
+# deep_audit.py (sin rutas); acá sólo lo que pide la pantalla.
+# ---------------------------------------------------------------------------
+class DeepAuditarBody(BaseModel):
+    job: str
+
+
+class DeepValidarBody(BaseModel):
+    estado: str
+    nota: Optional[str] = None
+
+
+@router.get("/deep-audit/obras")
+def deep_audit_obras(user=Depends(get_current_user)):
+    """Las obras de aSa para el campo desplegable."""
+    _puede_ver(user)
+    from .material import obras
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            return {"obras": obras(cur), "corriendo": deep_audit.corriendo()}
+
+
+@router.get("/deep-audit/corridas")
+def deep_audit_corridas(job: str, user=Depends(get_current_user)):
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            return {"corridas": deep_audit.corridas(cur, job), "corriendo": deep_audit.corriendo()}
+
+
+@router.get("/deep-audit/corridas/{audit_id}")
+def deep_audit_corrida(audit_id: int, user=Depends(get_current_user)):
+    _puede_ver(user)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            c = deep_audit.corrida(cur, audit_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Esa corrida no existe.")
+    return c
+
+
+@router.post("/deep-audit/auditar")
+def deep_audit_auditar(body: DeepAuditarBody, user=Depends(get_current_user)):
+    """Una corrida nueva, en segundo plano: son decenas de consultas a aSa (uno o dos minutos).
+    La pantalla pregunta hasta que aparece."""
+    _puede_auditar(user)
+    if deep_audit.corriendo():
+        return {"lanzada": False, "motivo": "Ya hay una auditoría corriendo."}
+    email = user.get("email", "")
+    threading.Thread(target=deep_audit.correr, args=(body.job.strip(), email), daemon=True).start()
+    audit(email, "deep_audit_lanzada", body.job, "deep_audit", body.job)
+    return {"lanzada": True}
+
+
+@router.post("/deep-audit/hallazgos/{hallazgo_id}")
+def deep_audit_validar(hallazgo_id: int, body: DeepValidarBody, user=Depends(get_current_user)):
+    """Confirmar o descartar un hallazgo (o volverlo a pendiente). Queda quién y cuándo."""
+    _puede_auditar(user)
+    email = user.get("email", "")
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                r = deep_audit.validar(cur, hallazgo_id, body.estado, body.nota, email)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not r:
+        raise HTTPException(status_code=404, detail="Ese hallazgo no existe.")
+    audit(email, "deep_audit_" + body.estado, "", "deep_audit_hallazgo", str(hallazgo_id))
+    return r
+
+
+@router.get("/deep-audit/cc/{cc}/barras")
+def deep_audit_barras(cc: str, user=Depends(get_current_user)):
+    """Las barras de un CC (aSa en vivo) con su marca contra el modelo de A Detailer."""
+    _puede_ver(user)
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                return {"barras": deep_audit.barras_de_cc(cur, cc)}
+    except AsaError as e:
+        raise HTTPException(status_code=502, detail="aSa no respondió: %s" % e)

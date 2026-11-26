@@ -23,11 +23,14 @@ elemento: en muros MH, MV, TR, EC, TC y CB al final (usuario, 26-nov).
 Sin rutas ni fastapi. La lectura de aSa va aparte (`leer_obra`) para que las reglas sean puras.
 """
 import json
+import logging
 import re
+import threading
 from datetime import date, datetime, timezone
 from statistics import median
 from typing import Optional
 
+log = logging.getLogger("armahub.deep_audit")
 VERSION_REGLAS = 1
 SECTORES = ("ELEV", "LCIELO", "VCIELO", "FUND")
 # Cómo se escriben los sectores fuera de norma (para decir cuál debió ser).
@@ -432,7 +435,9 @@ def kpis(ccs: list, hs: list) -> dict:
     total = sum(c["kg"] for c in ccs) or 1
     rep = sum(c["kg"] for c in ccs if c["tipo"] == "reproceso")
     return {"kg_total": round(total, 1), "kg_por_estado": por_estado, "ccs": len(ccs),
-            "ccs_con_hallazgos": len({h["cc"] for h in hs if h["cc"]}), "pct_reprocesos": round(100 * rep / total, 1),
+            # Sólo los CC de la foto: los borrados de aSa (E3) no son de la obra de hoy.
+            "ccs_con_hallazgos": len({h["cc"] for h in hs} & {c["cc"] for c in ccs}),
+            "pct_reprocesos": round(100 * rep / total, 1),
             "kg_reprocesos": round(rep, 1), "reclamos": sum(1 for h in hs if h["regla"] == "Q1"),
             "por_regla": {r: sum(1 for h in hs if h["regla"] == r) for r in sorted({h["regla"] for h in hs})},
             "cubicadores": por_cubicador(ccs, hs)}
@@ -505,4 +510,101 @@ def auditar(cur, jobs: list, email: str, leido: tuple, hoy: Optional[date] = Non
     hs = hallazgos(cur, ccs, items, jobs, hoy)
     audit_id = guardar(cur, obra, jobs, email, ccs, hs)
     return {"id": audit_id, "obra": obra, "ccs": ccs, "hallazgos": hs, "items": items, "kpis": kpis(ccs, hs)}
+
+
+# ---------------------------------------------------------------------------
+# Lo que pide la pantalla (fase 2): corridas, una corrida, validar, correr
+# ---------------------------------------------------------------------------
+_corriendo = threading.Lock()
+ESTADOS_VALIDACION = ("pendiente", "confirmado", "descartado")
+
+
+def jobs_de(cur, job: str) -> list:
+    """La obra y, si existe, su obra «- BARRAS» (job con B al final)."""
+    cur.execute("SELECT asa_job_id FROM asa_obras WHERE asa_job_id = ANY(%s)", ([job, job + "B"],))
+    hay = {r[0] for r in cur.fetchall()}
+    return [j for j in (job, job + "B") if j in hay] or [job]
+
+
+def corridas(cur, job: str) -> list:
+    """Las corridas de una obra, la más nueva primero."""
+    from .material import nombre_de
+    cur.execute("""SELECT d.id, d.creado_el, d.creado_por, %s, d.version, d.kpis->'ccs_con_hallazgos',
+                          (SELECT COUNT(*) FROM deep_audit_hallazgo h WHERE h.audit_id = d.id),
+                          (SELECT COUNT(*) FROM deep_audit_hallazgo h WHERE h.audit_id = d.id AND h.estado <> 'pendiente')
+                     FROM deep_audit d WHERE %%s = ANY(d.jobs) ORDER BY d.creado_el DESC""" % nombre_de("d.creado_por"), (job,))
+    return [{"id": r[0], "creado_el": r[1].isoformat(), "creado_por": r[2], "creado_nombre": r[3], "version": r[4],
+             "ccs_con_hallazgos": r[5], "hallazgos": r[6], "revisados": r[7]} for r in cur.fetchall()]
+
+
+def _hallazgo(r, nombres) -> dict:
+    claves = ("id", "regla", "gravedad", "cc", "titulo", "detalle", "kg", "estado", "revisado_por", "revisado_el", "nota")
+    h = dict(zip(claves, r))
+    h["kg"] = float(h["kg"]) if h["kg"] is not None else None
+    h["revisado_el"] = h["revisado_el"].isoformat() if h["revisado_el"] else None
+    h["revisado_nombre"] = nombres.get(h["revisado_por"])
+    return h
+
+
+def corrida(cur, audit_id: int) -> Optional[dict]:
+    from .material import nombre_de
+    cur.execute("SELECT id, obra, jobs, creado_el, creado_por, %s, version, kpis, foto FROM deep_audit d WHERE id = %%s"
+                % nombre_de("d.creado_por"), (audit_id,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    cur.execute("""SELECT h.id, h.regla, h.gravedad, h.cc, h.titulo, h.detalle, h.kg, h.estado, h.revisado_por,
+                          h.revisado_el, h.nota, %s FROM deep_audit_hallazgo h WHERE h.audit_id = %%s ORDER BY h.id"""
+                % nombre_de("h.revisado_por"), (audit_id,))
+    filas = cur.fetchall()
+    nombres = {f[8]: f[11] for f in filas if f[8]}
+    return {"id": r[0], "obra": r[1], "jobs": r[2], "creado_el": r[3].isoformat(), "creado_por": r[4],
+            "creado_nombre": r[5], "version": r[6], "kpis": r[7], "foto": r[8],
+            "hallazgos": [_hallazgo(f[:11], nombres) for f in filas]}
+
+
+def validar(cur, hallazgo_id: int, estado: str, nota: Optional[str], email: str) -> Optional[dict]:
+    """Confirmar o descartar un hallazgo (o volverlo a pendiente). Queda quién y cuándo."""
+    if estado not in ESTADOS_VALIDACION:
+        raise ValueError("Estado no válido.")
+    pendiente = estado == "pendiente"
+    cur.execute("""UPDATE deep_audit_hallazgo SET estado = %s, nota = COALESCE(%s, nota), revisado_por = %s,
+                          revisado_el = %s WHERE id = %s RETURNING audit_id""",
+                (estado, (nota or "").strip()[:400] or None, None if pendiente else email,
+                 None if pendiente else datetime.now(timezone.utc), hallazgo_id))
+    r = cur.fetchone()
+    return {"ok": True, "audit_id": r[0]} if r else None
+
+
+def barras_de_cc(cur, cc: str) -> list:
+    """Las barras de un CC (aSa en vivo, la hoja estándar) con su marca contra el modelo."""
+    from .material import items_de_cc
+    out = items_de_cc(cur, cc)
+    for b in out:
+        b["marca_estado"] = clasificar_marca(b.get("notas"))
+    return out
+
+
+def corriendo() -> bool:
+    return _corriendo.locked()
+
+
+def correr(job: str, email: str) -> Optional[int]:
+    """Una corrida completa, en segundo plano: aSa primero, la base después, por poco rato."""
+    from .db import get_conn
+    if not _corriendo.acquire(blocking=False):
+        return None
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                jobs = jobs_de(cur, job)
+        leido = leer_asa(jobs)
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                return auditar(cur, jobs, email, leido)["id"]
+    except Exception as e:
+        log.error("Deep Audit: falló la corrida de %s pedida por %s (%s)", job, email, e)
+        return None
+    finally:
+        _corriendo.release()
 
