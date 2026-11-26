@@ -77,6 +77,22 @@ check('la barra marcada: marca fuera del modelo y su elemento fuera de orden', f
       && fb.propias[0].includes('Fuera del modelo') && fb.propias[0].includes('Elemento fuera de orden: CB antes que TC')
       && fb.barra.lados.B === 106 && fb.elemento === '29-G');
 
+console.log('Fuera de la grilla, en lista y por tipo');
+const fuera = [{ cc: 'SVN9', descr: 'REP CB', tipo: 'reproceso', estado: 'Shipped', kg: 90, fecha: '2026-11-09' },
+               { cc: 'SVXV', descr: 'REPOSICION K(8-13)', tipo: 'reproceso', estado: 'Open', kg: 374, fecha: '2026-11-24' },
+               { cc: 'SUZP', descr: 'ADICIONAL PATAS DE LOSA', tipo: 'reproceso', estado: 'Shipped', kg: 2148, fecha: '2026-10-08' },
+               { cc: 'SVAT', descr: 'BARRAS STOCK', tipo: 'aparte', estado: 'Shipped', kg: 1513, fecha: '2026-10-22' },
+               { cc: 'SUX3', descr: 'Estanque de Agua', tipo: 'normal', estado: 'Shipped', kg: 2824, fecha: '2026-10-06' }];
+check('cada uno en su grupo', fuera.map(T.grupoFuera).join() === 'rep,rep,adi,stock,otro');
+const lf = T.listaFuera(fuera, {});
+check('una tabla por grupo, con su cantidad y sus kilos, en el orden del diseño',
+      lf.indexOf('Reposiciones · 2 · 464 kg') >= 0 && lf.indexOf('Reposiciones') < lf.indexOf('Adicionales')
+      && lf.indexOf('Adicionales') < lf.indexOf('Barra en punta') && lf.indexOf('Sin piso o ciclo') > 0
+      && lf.includes('data-cc="SVN9"'));
+check('el despacho de aSa: con remito, la fecha y el remito; sin remito, lo programado',
+      T.despacho({ envio: '2026-10-20', remitos: ['REM-021852'] }) === 'despachado 20-10 (REM-021852)'
+      && T.despacho({ envio_plan: '2026-12-02' }) === 'despacho programado 02-12' && T.despacho({}) === '');
+
 console.log('La lista de entrada');
 const corrida = { id: 1, obra: 'PL - EDIFICIO OPERA', jobs: ['2013218', '2013218B'], creado_el: '2026-11-26T15:47:00+00:00',
                   creado_por: 'eugenio.z@x.cl', creado_nombre: null, ccs: 39, kg: 263425.6, hallazgos: 75, revisados: 0,

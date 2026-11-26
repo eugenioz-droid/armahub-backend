@@ -9,7 +9,7 @@ deep_audit_hallazgo) para estudiar la obra en el tiempo (usuario, 26-nov).
 LAS REGLAS (SPECS §16.2):
   N1 nombre fuera de norma · N2 marcas fuera del modelo o del orden de A Detailer ·
   D1 CC duplicado · D2 doble pedido · E1 Open estancado · E2 cambios tras confirmar ·
-  E3 CC borrado de aSa que ArmaHub sigue mostrando ·
+  E3 CC borrado de aSa que ArmaHub sigue mostrando · O1 despacho fuera de secuencia ·
   F1 señales de la Revisión de barras · K1 peso fuera de rango · R1 reprocesos · Q1 reclamos.
 
 EL ESTÁNDAR DEL NOMBRE es el que exporta ArmaHub (export.py): «SECTOR PISO CICLO» en mayúsculas,
@@ -31,7 +31,7 @@ from statistics import median
 from typing import Optional
 
 log = logging.getLogger("armahub.deep_audit")
-VERSION_REGLAS = 1
+VERSION_REGLAS = 2   # 2 (26-nov): O1 y el despacho desde aSa en vivo
 SECTORES = ("ELEV", "LCIELO", "VCIELO", "FUND")
 # Cómo se escriben los sectores fuera de norma (para decir cuál debió ser).
 ABREVIADOS = {"LC": "LCIELO", "VC": "VCIELO", "ELEVACION": "ELEV", "ELEVACIONES": "ELEV",
@@ -327,6 +327,44 @@ def regla_k1(ccs: list) -> list:
     return out
 
 
+def nivel(c: dict) -> Optional[int]:
+    """La altura del CC para comparar: P3 = 3, S1 = -1, fundación más abajo que todo."""
+    if c.get("sector") == "FUND":
+        return -99
+    m = re.match(r"^([PS])(\d+)$", c.get("piso") or "")
+    if not m:
+        return None
+    return int(m.group(2)) * (1 if m.group(1) == "P" else -1)
+
+
+def _abajo_pendiente(c: dict, ccs: list) -> Optional[dict]:
+    """Un CC del mismo sector y ciclo, más abajo, que todavía no sale (o salió después)."""
+    for b in ccs:
+        if (b["tipo"] == "normal" and b["sector"] == c["sector"] and b["ciclo"] == c["ciclo"]
+                and nivel(b) is not None and nivel(b) < nivel(c)
+                and (b["estado"] != "Shipped" or (b.get("envio") or "9999") > c["envio"])):
+            return b
+    return None
+
+
+def regla_o1(ccs: list) -> list:
+    """DESPACHO FUERA DE SECUENCIA (usuario, 26-nov: «veo códigos despachados que van en pisos más
+    arriba»). Un piso alto despachado antes que el de abajo del mismo sector y ciclo: o se adelantó,
+    o el nombre no dice el piso (en OPERA, «ELEV Z1 P2» salió el 20-oct y «ELEVACIONES PISO 1 Z1»
+    seguía Open: la P era la parte del subterráneo)."""
+    out = []
+    for c in ccs:
+        if c["tipo"] != "normal" or c["estado"] != "Shipped" or not c.get("envio") or nivel(c) is None:
+            continue
+        b = _abajo_pendiente(c, ccs)
+        if b:
+            out.append(_h("O1", "media", c["cc"], "Despachado el %s antes que %s %s (%s, %s): el nombre podría no decir el piso"
+                          % (c["envio"][:10], b["cc"], b["piso"] or "fundación", b["descr"],
+                             "despachado el " + b["envio"][:10] if b["estado"] == "Shipped" and b.get("envio") else b["estado"]),
+                          {"despachado": c["envio"][:10], "abajo": b["cc"], "remitos": c.get("remitos")}))
+    return out
+
+
 def regla_r1(ccs: list) -> list:
     return [_h("R1", "aviso", c["cc"], "Reproceso o adicional: %s" % c["descr"], {"descr": c["descr"]}, c["kg"])
             for c in ccs if c["tipo"] == "reproceso"]
@@ -410,7 +448,7 @@ def ficha_cc(c: dict, hoy: date) -> dict:
 def hallazgos(cur, ccs: list, items: dict, jobs: list, hoy: date) -> list:
     d1 = regla_d1(ccs, items)
     return (regla_n1(ccs) + regla_n2(ccs, items) + d1 + regla_d2(ccs, items, {h["cc"] for h in d1})
-            + regla_e1(ccs, hoy) + regla_e2(cur, ccs) + regla_e3(cur, jobs, ccs) + regla_f1(cur, jobs) + regla_k1(ccs) + regla_r1(ccs)
+            + regla_e1(ccs, hoy) + regla_e2(cur, ccs) + regla_e3(cur, jobs, ccs) + regla_o1(ccs) + regla_f1(cur, jobs) + regla_k1(ccs) + regla_r1(ccs)
             + regla_q1(cur, jobs, [c["cc"] for c in ccs]))
 
 
@@ -447,8 +485,9 @@ def guardar(cur, obra: str, jobs: list, email: str, ccs: list, hs: list) -> int:
     n_por_cc = {}
     for h in hs:
         n_por_cc[h["cc"]] = n_por_cc.get(h["cc"], 0) + 1
-    foto = [{k: c.get(k) for k in ("cc", "descr", "estado", "kg", "fecha", "envio", "cubicador", "sector", "piso",
-                                   "ciclo", "tipo", "reciente", "job")} for c in ccs]
+    foto = [{k: c.get(k) for k in ("cc", "descr", "estado", "kg", "fecha", "envio", "envio_plan", "remitos", "fab",
+                                   "planta", "cubicador", "sector", "piso", "ciclo", "tipo", "reciente", "job")}
+            for c in ccs]
     for f in foto:
         f["hallazgos"] = n_por_cc.get(f["cc"], 0)
     cur.execute("""INSERT INTO deep_audit (obra, jobs, creado_por, version, kpis, foto)
@@ -487,18 +526,39 @@ def leer_asa(jobs: list) -> tuple:
                                                   "kg": 0.0, "fecha": x["OrderDate"], "cubicador": x["DetailPerson"],
                                                   "job": job, "obra": x["JobName"]})
             c["kg"] = round(c["kg"] + float(x["Kg"] or 0), 1)
+    for job in jobs:
+        _con_despacho(ccs, asa.consultar("getScheduling", select=["CtrlCode", "ProjShipDate", "ShipID", "ProjFabDate",
+                                                                   "SchedStatusDescr"],
+                                         filtro="JobID eq '%s'" % job.replace("'", "''"), top=500))
     items = {cc: asa.consultar("getOrderItemView", select=CAMPOS_ITEM, filtro="CtrlCode eq '%s'" % cc, top=500)
              for cc in ccs}
     obra = next((c["obra"] for c in ccs.values() if c["job"] == jobs[0]), jobs[0])
     return obra, list(ccs.values()), items
 
 
-def con_envio(cur, crudos: list) -> list:
-    """La fecha de despacho de cada CC, del espejo (para «despachado las últimas 3 semanas»)."""
-    cur.execute("SELECT control_code, proj_ship_date FROM asa_pedidos WHERE control_code = ANY(%s)",
-                ([c["cc"] for c in crudos],))
-    envios = {cc: (e.isoformat() if e else None) for cc, e in cur.fetchall()}
-    return [dict(c, envio=envios.get(c["cc"])) for c in crudos]
+def _fecha10(v) -> Optional[str]:
+    return (v or "")[:10] or None
+
+
+def _despacho_de(c: dict, x: dict):
+    """Una fila de planta sobre su CC: con remito suma el despacho; sin remito, lo programado."""
+    c["planta"] = x.get("SchedStatusDescr")
+    c["fab"] = c.get("fab") or _fecha10(x.get("ProjFabDate"))
+    if x.get("ShipID"):
+        c.setdefault("remitos", []).append(x["ShipID"])
+        c["envio"] = max(c.get("envio") or "", _fecha10(x.get("ProjShipDate")) or "") or None
+    elif not c.get("envio"):
+        c["envio_plan"] = _fecha10(x.get("ProjShipDate"))
+
+
+def _con_despacho(ccs: dict, filas: list):
+    """EL DESPACHO, DE aSa EN VIVO (usuario, 26-nov: «corroborar con lo que está en aSa y no usar
+    una foto de ArmaHub»): la fecha de despacho de cada CC con remito, sus remitos y lo que planta
+    tiene programado."""
+    for x in filas:
+        c = ccs.get(x.get("CtrlCode"))
+        if c:
+            _despacho_de(c, x)
 
 
 def auditar(cur, jobs: list, email: str, leido: tuple, hoy: Optional[date] = None) -> dict:
@@ -506,7 +566,7 @@ def auditar(cur, jobs: list, email: str, leido: tuple, hoy: Optional[date] = Non
     la corrida con sus ítems (para el Excel de la fase 1; la pantalla no los necesita guardados)."""
     hoy = hoy or datetime.now(timezone.utc).date()
     obra, crudos, items = leido
-    ccs = [ficha_cc(c, hoy) for c in con_envio(cur, crudos)]
+    ccs = [ficha_cc(c, hoy) for c in crudos]
     hs = hallazgos(cur, ccs, items, jobs, hoy)
     audit_id = guardar(cur, obra, jobs, email, ccs, hs)
     return {"id": audit_id, "obra": obra, "ccs": ccs, "hallazgos": hs, "items": items, "kpis": kpis(ccs, hs)}

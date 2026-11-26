@@ -33,7 +33,7 @@ GRIS = PatternFill("solid", start_color="F3F4F6")
 COLOR_ESTADO = {"Open": "E5E7EB", "Processed": "FBD38D", "Shipped": "D9EDC2", "reciente": "7EBA27"}
 COLOR_GRAVEDAD = {"alta": "FDE2E2", "media": "FEF0D9", "aviso": "F3F4F6"}
 REGLAS = {"N1": "Nombre", "N2": "Marcas", "D1": "Duplicado", "D2": "Doble pedido", "E1": "Open estancado",
-          "E2": "Cambio tras confirmar", "E3": "Borrado de aSa", "F1": "Figuras", "K1": "Peso fuera de rango", "R1": "Reproceso",
+          "E2": "Cambio tras confirmar", "E3": "Borrado de aSa", "O1": "Despacho fuera de secuencia", "F1": "Figuras", "K1": "Peso fuera de rango", "R1": "Reproceso",
           "Q1": "Reclamo"}
 TON = '#,##0'
 

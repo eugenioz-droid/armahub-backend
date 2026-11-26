@@ -16,6 +16,7 @@
 
   var FAMILIAS = [['N1', 'Nombres'], ['N2', 'Marcas'], ['D1', 'Duplicados'], ['D2', 'Doble pedido'],
                   ['E1', 'Open estancados'], ['E2', 'Cambios tras confirmar'], ['E3', 'Borrados de aSa'],
+                  ['O1', 'Despacho fuera de secuencia'],
                   ['F1', 'Figuras'], ['K1', 'Peso fuera de rango'], ['R1', 'Reprocesos'], ['Q1', 'Reclamos']];
   var ESTADO = { Open: '#9CA3AF', Processed: '#D97706', Shipped: '#7EBA27', reciente: '#2E7D0F' };
   var ESTADO_TXT = [['Open', 'Open'], ['Processed', 'Processed'], ['Shipped', 'Shipped'], ['reciente', 'Shipped últimas 3 semanas']];
@@ -147,6 +148,40 @@
     return '<tr><th class="dpa-piso">' + esc(p) + '</th>' + celdas + '<td class="dpa-tot">' + num(kg) + '</td></tr>';
   }
 
+  // FUERA DE LA GRILLA, EN LISTA Y POR TIPO (usuario, 26-nov): reposiciones, adicionales, barra en
+  // punta y lo que no dice piso o ciclo en el nombre.
+  var GRUPOS_FUERA = [['rep', 'Reposiciones'], ['adi', 'Adicionales'], ['stock', 'Barra en punta (stock)'],
+                      ['otro', 'Sin piso o ciclo en el nombre']];
+
+  function grupoFuera(c) {
+    var d = String(c.descr || '').toUpperCase().trim();
+    if (/^(REP\b|REPOSICI)/.test(d)) return 'rep';
+    if (/^ADICIONAL/.test(d)) return 'adi';
+    return c.tipo === 'aparte' ? 'stock' : 'otro';
+  }
+
+  function filaFuera(c, hs) {
+    var lista = hs[c.cc] || [];
+    return '<tr class="fila" data-cc="' + esc(c.cc) + '"><td class="cc">' + esc(c.cc) + '</td><td>' + esc(c.descr) + '</td>' +
+      '<td><i class="dpa-punto" style="background:' + colorDe(c, 'estado', [], {}) + '"></i>' + esc(c.estado) + '</td>' +
+      '<td>' + dia(c.fecha) + '</td><td>' + (c.envio ? dia(c.envio) : '') + '</td><td class="num">' + num(c.kg) + '</td>' +
+      '<td>' + (lista.length ? '<span class="dpa-n dpa-' + peor(lista) + '">⚠ ' + lista.length + '</span>' : '') + '</td></tr>';
+  }
+
+  function listaFuera(fuera, hs) {
+    if (!fuera.length) return '';
+    return GRUPOS_FUERA.map(function (g) {
+      var de = fuera.filter(function (c) { return grupoFuera(c) === g[0]; })
+        .sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+      if (!de.length) return '';
+      var kg = de.reduce(function (s, c) { return s + c.kg; }, 0);
+      return '<div class="dpa-sub">' + esc(g[1]) + ' · ' + de.length + ' · ' + num(kg) + ' kg</div>' +
+        '<table class="audt dpa-fuera"><thead><tr><th>CC</th><th>Descripción</th><th>Estado</th><th>Creado</th><th>Despacho</th>' +
+        '<th class="num">Kg</th><th></th></tr></thead><tbody>' + de.map(function (c) { return filaFuera(c, hs); }).join('') +
+        '</tbody></table>';
+    }).join('');
+  }
+
   function pintarEdificio() {
     var foto = DPA.corrida.foto, e = edificio(foto), hs = porCc(DPA.corrida.hallazgos), cubs = colorCubicador(foto);
     var ultimoP = e.pisos.filter(function (p) { return p.charAt(0) === 'P'; }).pop();
@@ -156,8 +191,7 @@
     }).join('');
     $('dpaMapa').innerHTML = '<table class="dpa-ed"><thead><tr><th></th>' + e.ciclos.map(function (z) {
       return '<th>' + esc(z) + '</th>'; }).join('') + '<th class="dpa-tot">kg</th></tr></thead><tbody>' + filas + '</tbody></table>';
-    $('dpaFuera').innerHTML = e.fuera.length ? '<div class="dpa-sub">Fuera de la grilla</div><div class="dpa-fichas">' +
-      e.fuera.map(function (c) { return ficha(c, hs, cubs); }).join('') + '</div>' : '';
+    $('dpaFuera').innerHTML = listaFuera(e.fuera, hs);
     $('dpaLeyenda').innerHTML = leyenda(DPA.color, cubs);
     chips('dpaColor', COLORES, DPA.color, function (v) { DPA.color = v; pintarEdificio(); });
   }
@@ -329,7 +363,7 @@
     var m = DPA.modal, c = m.c, hs = porCc(DPA.corrida.hallazgos)[c.cc] || [];
     $('dpaModalTit').innerHTML = '<b>' + esc(c.cc) + '</b> · ' + esc(c.descr);
     $('dpaModalSub').textContent = [c.estado + (c.reciente ? ' (últimas 3 semanas)' : ''), nom(c.cubicador), num(c.kg) + ' kg',
-                                    'creado ' + dia(c.fecha), c.envio ? 'envío ' + dia(c.envio) : ''].filter(Boolean).join(' · ');
+                                    'creado ' + dia(c.fecha), despacho(c)].filter(Boolean).join(' · ');
     chips('dpaModalTabs', [['hall', 'Hallazgos (' + hs.length + ')'], ['barras', 'Barras']], m.tab, function (v) {
       m.tab = v; pintarModal(); if (v === 'barras' && !m.barras) cargarBarras(); });
     if (m.tab === 'hall') {
@@ -338,6 +372,12 @@
       $('dpaModalCuerpo').innerHTML = m.barras ? '<div class="dpa-hoja">' + pintarBarras(m.barras, hs) + '</div>'
         : '<div class="dpa-vacio">Leyendo ' + esc(c.cc) + ' en aSa…</div>';
     }
+  }
+
+  // Lo que aSa dice del despacho: con remito, la fecha y los remitos; sin remito, lo programado.
+  function despacho(c) {
+    if (c.envio) return 'despachado ' + dia(c.envio) + ((c.remitos || []).length ? ' (' + c.remitos.join(', ') + ')' : '');
+    return c.envio_plan ? 'despacho programado ' + dia(c.envio_plan) : '';
   }
 
   function abrirCc(cc) {
@@ -484,5 +524,6 @@
                              edificio: edificio, porCc: porCc, peor: peor, familias: familias, colorDe: colorDe,
                              colorCubicador: colorCubicador, ficha: ficha, filaHallazgo: filaHallazgo, filaBarra: filaBarra,
                              ESTADO: ESTADO, GRAVEDAD: GRAVEDAD, cargarCorridas: cargarCorridas, abrirCc: abrirCc,
-                             filaLista: filaLista, estadoRevision: estadoRevision, barraGravedad: barraGravedad };
+                             filaLista: filaLista, estadoRevision: estadoRevision, barraGravedad: barraGravedad,
+                             grupoFuera: grupoFuera, listaFuera: listaFuera, despacho: despacho };
 })(window);

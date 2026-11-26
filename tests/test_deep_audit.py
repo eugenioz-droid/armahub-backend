@@ -97,6 +97,27 @@ check("reprocesos y adicionales aparte, y no cuentan como nombre fuera de norma"
 check("Shipped en las últimas 3 semanas", cc("Z", "ELEV P1 Z1", "Shipped", envio="2026-11-10")["reciente"]
       and not cc("Z", "ELEV P1 Z1", "Shipped", envio="2026-10-10")["reciente"])
 
+print("Despacho fuera de secuencia (O1) y el despacho desde aSa")
+o = [cc("SU1S", "ELEV Z1 P2", "Shipped", envio="2026-10-20"), cc("SU22", "ELEV Z1 P3", "Shipped", envio="2026-10-27"),
+     cc("SVIP", "ELEVACIONES PISO 1 Z1", "Open")]
+o1 = D.regla_o1(o)
+check("el caso real de OPERA: P2 y P3 despachados en octubre con el piso 1 todavía Open",
+      [h["cc"] for h in o1] == ["SU1S", "SU22"] and "antes que SVIP P1" in o1[0]["titulo"])
+check("en secuencia no se reporta", D.regla_o1([cc("A", "ELEV P1 Z1", "Shipped", envio="2026-10-01"),
+                                                cc("B", "ELEV P2 Z1", "Shipped", envio="2026-10-10")]) == [])
+check("otro ciclo u otro sector no cuentan", D.regla_o1([cc("A", "ELEV P2 Z1", "Shipped", envio="2026-10-01"),
+                                                        cc("B", "ELEV P1 Z2", "Open"), cc("C", "LCIELO P1 Z1", "Open")]) == [])
+check("la altura: P3 = 3, S1 = -1, la fundación más abajo que todo",
+      (D.nivel(cc("x", "ELEV P3 Z1")), D.nivel(cc("x", "ELEV S1 Z1")), D.nivel(cc("x", "FUND Z1"))) == (3, -1, -99))
+ccs_asa = {"SU1S": {"cc": "SU1S"}, "SVIP": {"cc": "SVIP"}}
+D._con_despacho(ccs_asa, [
+    {"CtrlCode": "SU1S", "ShipID": "REM-1", "ProjShipDate": "2026-10-18T00:00:00", "SchedStatusDescr": "Confirmed"},
+    {"CtrlCode": "SU1S", "ShipID": "REM-2", "ProjShipDate": "2026-10-20T00:00:00", "SchedStatusDescr": "Confirmed"},
+    {"CtrlCode": "SVIP", "ShipID": None, "ProjShipDate": "2026-12-02T00:00:00", "ProjFabDate": "2026-11-30T00:00:00"}])
+check("el despacho sale de aSa: la última fecha con remito y todos los remitos; sin remito, lo programado",
+      ccs_asa["SU1S"]["envio"] == "2026-10-20" and ccs_asa["SU1S"]["remitos"] == ["REM-1", "REM-2"]
+      and ccs_asa["SVIP"].get("envio") is None and ccs_asa["SVIP"]["envio_plan"] == "2026-12-02")
+
 print("Indicadores")
 hs = n1 + [D._h("N2", "media", "SUQC", "x")]
 kp = D.kpis(ccs + [r], hs)
