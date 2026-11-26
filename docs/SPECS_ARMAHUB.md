@@ -2285,4 +2285,86 @@ regla de ArmaHub (figura_asa); tablas de barras con la hoja estándar (hoja_barr
 
 ---
 
+## 16. AUDITORÍAS › DEEP AUDIT (validado 26-nov; fase 1 hecha)
+
+**Para qué.** Una foto de la obra que de un golpe de vista diga cómo va, y una auditoría a fondo
+para detener errores. Cada corrida queda guardada: con el tiempo cuenta la historia de la obra y
+se puede estudiar (usuario, 26-nov). Primera obra: PL - EDIFICIO OPERA (Plaenge).
+
+**Dónde.** Subpestaña «Deep Audit», al final de la fila de Auditorías.
+
+### 16.1 La pantalla
+- Arriba: obra (campo desplegable) · «Auditar» · corridas anteriores (fecha · quién · hallazgos)
+  · «Excel». Indicadores (4): kilos de la obra por estado · CC con hallazgos · reprocesos
+  (REP + ADICIONAL, % de los kilos) · reclamos abiertos.
+- Centro: **el edificio en corte.** Los pisos apilados como la obra: fundación abajo, los
+  subterráneos bajo la línea de terreno, la torre arriba; los ciclos en columnas. Cada CC es una
+  ficha (código · descripción · kg) con su estado en color y, si tiene hallazgos, una marca
+  con la cantidad. Lo que no tiene piso ni ciclo (reposiciones, adicionales) va en una franja
+  aparte, abajo.
+- «Color por» (botones): **Estado** (Open gris · Processed ámbar · Shipped verde claro ·
+  Shipped en las últimas 3 semanas verde intenso) · **Cubicador** (un color estable por persona:
+  quién cubicó qué) · **Hallazgos** (por gravedad).
+- Derecha: **los hallazgos por familia** (Nombres · Marcas · Duplicados · Estancados · Cambios
+  tras confirmar · Figuras · Peso · Reprocesos · Reclamos), con su cantidad. Un clic en una
+  familia ilumina en el edificio los CC afectados y apaga los demás: del concepto al lugar.
+- Clic en un CC → **ventana del CC**: cabecera (CC, descripción, estado, cubicador, kg, fechas)
+  y tres pestañas: Barras (la hoja estándar, con las filas observadas marcadas) · Hallazgos
+  (cada uno se confirma o se descarta, con quién y cuándo) · Historia (cambios tras confirmar,
+  reclamos, material disponible).
+
+### 16.2 Las reglas (código · qué mira)
+- **N1 Nombre fuera de norma.** El estándar es el que exporta ArmaHub: «SECTOR PISO CICLO» en
+  mayúsculas («ELEV P1 C1», «LCIELO P5 C1»). Alerta: minúsculas, sector abreviado («LC», «VC»),
+  orden invertido, agregados, sin piso o sin ciclo. La letra del ciclo la puede definir el
+  cliente (OPERA usa Z, de zona): se reporta usar dos letras en la misma obra (usuario, 26-nov:
+  «partió el ciclo 1 como C1 en vez de Z1»), con la recomendación de mantener una sola hasta
+  arriba. Por cubicador: % de sus CC fuera de norma (qué tan prolijo es). Las reposiciones,
+  que no tienen estándar, se listan para proponer uno.
+- **N2 Marca fuera del modelo.** La marca (Notes) contra la lista de A Detailer de su elemento
+  (tipologia.lsp: muro MH, MV, TR, EC, TC, CB; losa Fi, Fs, F'i, F's, F, F', SP, Rp, TRL; viga
+  CBS, CBSn, CBI, CBIn, LT, ES, TRV; columna CB, CBn, TRC, ESC; fundación Fi, Fs, F'i, F's,
+  SPF, TRF). Alerta: mayúsculas o minúsculas cambiadas, marcas que no existen y **el orden**:
+  dentro de cada elemento las marcas van en el orden del modelo (en muros MH, MV, TR, EC, TC y
+  CB al final; usuario, 26-nov), leído por las líneas del CC.
+- **D1 CC duplicado.** Mismo contenido barra a barra (marca, φ, figura, lados, cantidad).
+- **D2 Doble pedido.** La misma marca del mismo elemento en dos CC del mismo piso y ciclo.
+- **E1 Open estancado.** Más de 30 días sin procesarse.
+- **E2 Cambios tras confirmar.** Lo que detecta CC Confirmados Modificados (§14).
+- **E3 Borrado de aSa.** CC que el espejo de ArmaHub todavía muestra y aSa ya no tiene (26-nov:
+  cinco CC Open de OPERA se borraron ese día y seguían en el espejo como Open).
+- **F1 Figuras.** Las señales de la Revisión de barras de los CC de la obra.
+- **K1 Peso fuera de rango.** Un ciclo muy distinto de los otros ciclos del mismo piso y
+  sector. Se calibra con la obra: no compara subterráneos con torre, y tolera que la torre se
+  achique en altura.
+- **R1 Reprocesos.** REP y ADICIONAL: kilos, % de la obra y a qué sector apuntan.
+- **Q1 Reclamos.** Los reclamos de la obra, con su CC y su causa.
+- **C1 Reglas de cubicador** (fase 3). Salen de estudiar los 654 reclamos registrados (causa,
+  descripción, cubicador): por ejemplo, muros con mallas (MH, MV) y sin cabezal (CB, EC, TC)
+  en el mismo elemento.
+
+Cada hallazgo: código de la regla, gravedad (alta · media · aviso), CC, detalle y kilos.
+
+### 16.3 Lo que se guarda (la historia)
+- `deep_audit`: cada corrida (obra, quién, cuándo, versión de las reglas, indicadores y la
+  foto de los CC: estado, kg, piso, ciclo, sector, cubicador, fechas).
+- `deep_audit_hallazgo`: cada hallazgo de la corrida, con su validación (pendiente ·
+  confirmado · descartado, quién, cuándo, nota).
+- Una corrida nueva no borra las anteriores; la pantalla dice qué cambió desde la última
+  (hallazgos nuevos, resueltos).
+
+### 16.4 Fases
+1. ☑ **Motor y primera corrida** (26-nov). `deep_audit.py` (las reglas, sin rutas; lee aSa
+   antes de abrir la base), `deep_audit_excel.py` (el Excel de una corrida), migración 186
+   (`deep_audit`, `deep_audit_hallazgo`), `scripts/deep_audit_correr.py <job…>` (corre y deja
+   el Excel en entrada/deep_audit/; `--probar` no guarda). Excel: Mapa (un CC por celda, color
+   por estado, ⚠ con enlace a sus hallazgos, totales por piso) · Hallazgos (filtros y columna
+   de validación) · CC · Barras (una fila por barra, con su marca contra el modelo) ·
+   Cubicadores (prolijidad). OPERA: 39 CC, 75 hallazgos en la primera prueba.
+2. **La subpestaña** de §16.1, sobre el mismo motor y las mismas tablas.
+3. **Reglas desde los reclamos (C1)** e **informe de cierre** (PDF) con los hallazgos
+   validados.
+
+---
+
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
